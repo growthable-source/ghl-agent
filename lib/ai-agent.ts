@@ -1,0 +1,298 @@
+/**
+ * AI Agent
+ * Claude-powered response engine. Uses tool_use to take actions in the CRM.
+ */
+
+import Anthropic from '@anthropic-ai/sdk'
+import {
+  getContact,
+  sendMessage,
+  updateContact,
+  addTagsToContact,
+  getOpportunitiesForContact,
+  updateOpportunityStage,
+  searchConversations,
+} from './crm-client'
+import type { AgentContext, Message } from '@/types'
+
+const client = new Anthropic()
+
+// ─── Tools the agent can use ───────────────────────────────────────────────
+
+const AGENT_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'get_contact_details',
+    description: 'Fetch full contact details including name, email, phone, tags, and source.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string', description: 'The contact ID' },
+      },
+      required: ['contactId'],
+    },
+  },
+  {
+    name: 'send_sms',
+    description: 'Send an SMS reply to the contact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        conversationId: { type: 'string' },
+        message: { type: 'string', description: 'The SMS message text' },
+      },
+      required: ['contactId', 'message'],
+    },
+  },
+  {
+    name: 'update_contact_tags',
+    description: 'Add tags to a contact to categorise or flag them.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags to add' },
+      },
+      required: ['contactId', 'tags'],
+    },
+  },
+  {
+    name: 'get_opportunities',
+    description: 'Get active pipeline opportunities for a contact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+      },
+      required: ['contactId'],
+    },
+  },
+  {
+    name: 'move_opportunity_stage',
+    description: 'Move an opportunity to a different pipeline stage.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        opportunityId: { type: 'string' },
+        pipelineStageId: { type: 'string', description: 'Target stage ID' },
+        reason: { type: 'string', description: 'Why moving to this stage' },
+      },
+      required: ['opportunityId', 'pipelineStageId'],
+    },
+  },
+  {
+    name: 'add_contact_note',
+    description: 'Add a note or update the contact record with new information.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        note: { type: 'string', description: 'Note content to save' },
+      },
+      required: ['contactId', 'note'],
+    },
+  },
+]
+
+// ─── Tool execution ────────────────────────────────────────────────────────
+
+async function executeTool(
+  toolName: string,
+  input: Record<string, unknown>,
+  locationId: string
+): Promise<string> {
+  try {
+    switch (toolName) {
+      case 'get_contact_details': {
+        const contact = await getContact(locationId, input.contactId as string)
+        return JSON.stringify(contact)
+      }
+      case 'send_sms': {
+        const result = await sendMessage(locationId, {
+          type: 'SMS',
+          contactId: input.contactId as string,
+          conversationId: input.conversationId as string | undefined,
+          message: input.message as string,
+        })
+        return JSON.stringify({ success: true, ...result })
+      }
+      case 'update_contact_tags': {
+        await addTagsToContact(locationId, input.contactId as string, input.tags as string[])
+        return JSON.stringify({ success: true })
+      }
+      case 'get_opportunities': {
+        const opps = await getOpportunitiesForContact(locationId, input.contactId as string)
+        return JSON.stringify(opps)
+      }
+      case 'move_opportunity_stage': {
+        const opp = await updateOpportunityStage(
+          locationId,
+          input.opportunityId as string,
+          input.pipelineStageId as string
+        )
+        return JSON.stringify({ success: true, opportunity: opp })
+      }
+      case 'add_contact_note': {
+        // Uses update contact with a custom note field — adapt to your custom fields
+        await updateContact(locationId, input.contactId as string, {
+          // You can store notes in custom fields or use the notes endpoint
+        } as any)
+        return JSON.stringify({ success: true, note: input.note })
+      }
+      default:
+        return JSON.stringify({ error: `Unknown tool: ${toolName}` })
+    }
+  } catch (err: any) {
+    return JSON.stringify({ error: err.message })
+  }
+}
+
+// ─── Build system prompt ───────────────────────────────────────────────────
+
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string): string {
+  const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
+  const base = customPrompt || `You are a helpful, professional sales assistant managing SMS conversations.`
+
+  return `${base}
+
+## Current Conversation Context
+- Contact: ${contactName}
+- Phone: ${ctx.contact?.phone ?? 'unknown'}
+- Tags: ${ctx.contact?.tags?.join(', ') || 'none'}
+- Source: ${ctx.contact?.source ?? 'unknown'}
+- Location ID: ${ctx.locationId}
+
+## Your Behaviour
+- Keep SMS replies concise (1–3 sentences max)
+- Be conversational and human — never reveal you are an AI
+- Always aim to move the lead forward (book a call, answer objections, qualify)
+- If you need more contact info, use get_contact_details first
+- After replying via send_sms, tag contacts appropriately
+- If a lead is clearly interested, move their opportunity stage forward
+
+## Tone
+Professional but warm. Match the contact's energy.`
+}
+
+// ─── Main agent function ───────────────────────────────────────────────────
+
+export interface AgentResponse {
+  reply: string | null        // The SMS text sent (null if no SMS was sent)
+  actionsPerformed: string[]  // List of tools that were called
+  tokensUsed: number
+}
+
+export async function runAgent(opts: {
+  locationId: string
+  contactId: string
+  conversationId?: string
+  incomingMessage: string
+  messageHistory?: Message[]
+  systemPrompt?: string
+}): Promise<AgentResponse> {
+  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt } = opts
+
+  // Build message history for Claude
+  const messages: Anthropic.MessageParam[] = []
+
+  // Include recent message history as context
+  if (messageHistory && messageHistory.length > 0) {
+    const recent = messageHistory.slice(-8) // last 8 messages
+    for (const msg of recent) {
+      // Skip if it's the same as the incoming message
+      if (msg.body === incomingMessage && msg.direction === 'inbound') continue
+      messages.push({
+        role: msg.direction === 'inbound' ? 'user' : 'assistant',
+        content: msg.body,
+      })
+    }
+  }
+
+  // Add the current incoming message
+  messages.push({
+    role: 'user',
+    content: `[Inbound SMS from contact ${contactId}]: ${incomingMessage}`,
+  })
+
+  const actionsPerformed: string[] = []
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  let smsSent: string | null = null
+
+  // Agentic loop — keeps going until Claude stops calling tools
+  let currentMessages = [...messages]
+  const MAX_ITERATIONS = 5
+
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt),
+      tools: AGENT_TOOLS,
+      messages: currentMessages,
+    })
+
+    totalInputTokens += response.usage.input_tokens
+    totalOutputTokens += response.usage.output_tokens
+
+    // Process response content
+    const toolUseBlocks = response.content.filter(b => b.type === 'tool_use')
+    const textBlocks = response.content.filter(b => b.type === 'text')
+
+    if (response.stop_reason === 'end_turn' || toolUseBlocks.length === 0) {
+      // Done — extract any final text
+      const finalText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('\n')
+      if (finalText && !smsSent) {
+        // If Claude wrote a reply but didn't use send_sms, send it now
+        await sendMessage(locationId, {
+          type: 'SMS',
+          contactId,
+          conversationId,
+          message: finalText,
+        })
+        smsSent = finalText
+        actionsPerformed.push('send_sms (auto)')
+      }
+      break
+    }
+
+    // Execute all tool calls
+    const toolResults: Anthropic.ToolResultBlockParam[] = []
+    for (const block of toolUseBlocks) {
+      const toolBlock = block as Anthropic.ToolUseBlock
+      actionsPerformed.push(toolBlock.name)
+      const result = await executeTool(
+        toolBlock.name,
+        toolBlock.input as Record<string, unknown>,
+        locationId
+      )
+
+      // Track SMS sends
+      if (toolBlock.name === 'send_sms') {
+        const parsed = JSON.parse(result)
+        if (parsed.success) {
+          smsSent = (toolBlock.input as { message: string }).message
+        }
+      }
+
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: toolBlock.id,
+        content: result,
+      })
+    }
+
+    // Continue the loop with the tool results
+    currentMessages = [
+      ...currentMessages,
+      { role: 'assistant', content: response.content },
+      { role: 'user', content: toolResults },
+    ]
+  }
+
+  return {
+    reply: smsSent,
+    actionsPerformed,
+    tokensUsed: totalInputTokens + totalOutputTokens,
+  }
+}
