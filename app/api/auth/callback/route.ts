@@ -60,14 +60,12 @@ export async function GET(req: NextRequest) {
 
     // Store using locationId as key (or companyId for Agency tokens)
     const storeKey = tokenData.locationId ?? tokenData.companyId
-    saveTokens(storeKey, tokenData)
+    await saveTokens(storeKey, tokenData)
 
     console.log(`[OAuth] Token saved for ${tokenData.userType}: ${storeKey}`)
 
-    // Redirect to dashboard with the location context
-    const redirectUrl = new URL('/dashboard', req.url)
-    redirectUrl.searchParams.set('locationId', storeKey)
-    redirectUrl.searchParams.set('connected', '1')
+    // Redirect to location-specific dashboard
+    const redirectUrl = new URL(`/dashboard/${storeKey}`, req.url)
 
     return NextResponse.redirect(redirectUrl)
   } catch (err) {

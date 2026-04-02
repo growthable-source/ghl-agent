@@ -12,6 +12,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTokens } from '@/lib/token-store'
 import { getMessages } from '@/lib/crm-client'
 import { runAgent } from '@/lib/ai-agent'
+import { db } from '@/lib/db'
+import { findMatchingAgent } from '@/lib/routing'
+import { buildKnowledgeBlock } from '@/lib/rag'
 import type {
   WebhookEventType,
   WebhookInstallPayload,
@@ -63,38 +66,75 @@ export async function POST(req: NextRequest) {
       // ── Inbound SMS ────────────────────────────────────────────────────
       case 'InboundMessage': {
         const p = payload as WebhookMessagePayload
-
-        // Only handle SMS for now
         if (p.messageType !== 'SMS') break
 
-        // Check if auto-reply is enabled for this location
-        const tokens = getTokens(p.locationId)
+        const tokens = await getTokens(p.locationId)
         if (!tokens) {
           console.warn(`[Webhook] No tokens for location ${p.locationId}`)
           break
         }
 
-        // Fetch recent message history for context
-        let history: import('@/types').Message[]
-        try {
-          history = await getMessages(p.locationId, p.conversationId, 10)
-        } catch {
-          history = []
-        }
-
-        // Run the AI agent
-        const result = await runAgent({
-          locationId: p.locationId,
-          contactId: p.contactId,
-          conversationId: p.conversationId,
-          incomingMessage: p.body,
-          messageHistory: history,
+        // Create pending log
+        const log = await db.messageLog.create({
+          data: {
+            locationId: p.locationId,
+            contactId: p.contactId,
+            conversationId: p.conversationId,
+            inboundMessage: p.body,
+            status: 'PENDING',
+          },
         })
 
-        console.log(
-          `[Agent] Replied to ${p.contactId}: "${result.reply?.slice(0, 60)}…" | ` +
-          `Actions: ${result.actionsPerformed.join(', ')} | Tokens: ${result.tokensUsed}`
-        )
+        // Find matching agent
+        const agent = await findMatchingAgent(p.locationId, p.contactId, p.body)
+
+        if (!agent) {
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: { status: 'SKIPPED' },
+          })
+          console.log(`[Webhook] No matching agent for location ${p.locationId}`)
+          break
+        }
+
+        // Build full system prompt with RAG
+        let fullPrompt = agent.systemPrompt
+        if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
+        fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries)
+
+        // Fetch message history
+        let history: import('@/types').Message[]
+        try { history = await getMessages(p.locationId, p.conversationId, 10) } catch { history = [] }
+
+        try {
+          const result = await runAgent({
+            locationId: p.locationId,
+            contactId: p.contactId,
+            conversationId: p.conversationId,
+            incomingMessage: p.body,
+            messageHistory: history,
+            systemPrompt: fullPrompt,
+          })
+
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: {
+              agentId: agent.id,
+              outboundReply: result.reply,
+              actionsPerformed: result.actionsPerformed,
+              tokensUsed: result.tokensUsed,
+              status: 'SUCCESS',
+            },
+          })
+
+          console.log(`[Agent] ${agent.name} replied to ${p.contactId}: "${result.reply?.slice(0, 60)}"`)
+        } catch (err: any) {
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: { agentId: agent.id, status: 'ERROR', errorMessage: err.message },
+          })
+          console.error(`[Agent] Error:`, err)
+        }
         break
       }
 

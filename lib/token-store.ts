@@ -1,57 +1,60 @@
 /**
- * Token Store
- * 
- * In production, replace the in-memory Map with your database of choice.
- * Each locationId gets its own token set.
- * 
- * For Vercel/Railway: use Upstash Redis (free tier covers this well)
- * For self-hosted: use Postgres or SQLite
+ * Token Store — Prisma/Postgres backed
+ * Replaces the in-memory Map. Same public API.
  */
 
+import { db } from './db'
 import type { StoredTokens, OAuthTokenResponse } from '@/types'
 
-// ─── In-memory store (swap for DB in production) ───────────────────────────
-// Key: locationId | companyId
-const tokenStore = new Map<string, StoredTokens>()
+export async function saveTokens(key: string, data: OAuthTokenResponse): Promise<StoredTokens> {
+  const expiresAt = new Date(Date.now() + (data.expires_in - 300) * 1000)
 
-export function saveTokens(key: string, data: OAuthTokenResponse): StoredTokens {
-  const stored: StoredTokens = {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    refreshTokenId: data.refreshTokenId,
-    userType: data.userType,
-    companyId: data.companyId,
-    locationId: data.locationId,
-    userId: data.userId,
-    scope: data.scope,
-    // expires_in is in seconds, store as ms timestamp with 5-min buffer
-    expiresAt: Date.now() + (data.expires_in - 300) * 1000,
-    installedAt: Date.now(),
-  }
-  tokenStore.set(key, stored)
-  return stored
+  const location = await db.location.upsert({
+    where: { id: key },
+    create: {
+      id: key,
+      companyId: data.companyId,
+      userId: data.userId,
+      userType: data.userType,
+      scope: data.scope,
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      refreshTokenId: data.refreshTokenId,
+      expiresAt,
+    },
+    update: {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      refreshTokenId: data.refreshTokenId,
+      expiresAt,
+      scope: data.scope,
+    },
+  })
+
+  return locationToStoredTokens(location)
 }
 
-export function getTokens(key: string): StoredTokens | null {
-  return tokenStore.get(key) ?? null
+export async function getTokens(key: string): Promise<StoredTokens | null> {
+  const location = await db.location.findUnique({ where: { id: key } })
+  if (!location) return null
+  return locationToStoredTokens(location)
 }
 
-export function deleteTokens(key: string): void {
-  tokenStore.delete(key)
+export async function deleteTokens(key: string): Promise<void> {
+  await db.location.delete({ where: { id: key } }).catch(() => {})
 }
 
 export function isExpired(tokens: StoredTokens): boolean {
   return Date.now() >= tokens.expiresAt
 }
 
-export function listAllLocations(): string[] {
-  return Array.from(tokenStore.keys())
+export async function listAllLocations(): Promise<string[]> {
+  const locations = await db.location.findMany({ select: { id: true } })
+  return locations.map((l) => l.id)
 }
 
-// ─── Token refresh ─────────────────────────────────────────────────────────
-
 export async function refreshAccessToken(key: string): Promise<StoredTokens | null> {
-  const existing = getTokens(key)
+  const existing = await getTokens(key)
   if (!existing) return null
 
   try {
@@ -67,7 +70,7 @@ export async function refreshAccessToken(key: string): Promise<StoredTokens | nu
     const res = await fetch('https://services.leadconnectorhq.com/oauth/token', {
       method: 'POST',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: params.toString(),
@@ -86,18 +89,14 @@ export async function refreshAccessToken(key: string): Promise<StoredTokens | nu
   }
 }
 
-// ─── Get a valid access token (auto-refreshes if needed) ───────────────────
-
 export async function getValidAccessToken(key: string): Promise<string | null> {
-  let tokens = getTokens(key)
+  let tokens = await getTokens(key)
   if (!tokens) return null
   if (isExpired(tokens)) {
     tokens = await refreshAccessToken(key)
   }
   return tokens?.accessToken ?? null
 }
-
-// ─── Upgrade: get a Location token from an Agency token ────────────────────
 
 export async function getLocationToken(
   companyId: string,
@@ -111,19 +110,47 @@ export async function getLocationToken(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Version': '2021-07-28',
-        'Authorization': `Bearer ${agencyToken}`,
+        Accept: 'application/json',
+        Version: '2021-07-28',
+        Authorization: `Bearer ${agencyToken}`,
       },
       body: JSON.stringify({ companyId, locationId }),
     })
 
     if (!res.ok) return null
     const data: OAuthTokenResponse = await res.json()
-    saveTokens(locationId, data)
+    await saveTokens(locationId, data)
     return data.access_token
   } catch (err) {
     console.error('[TokenStore] Location token error:', err)
     return null
+  }
+}
+
+// ─── Internal helper ───────────────────────────────────────────────────────
+
+function locationToStoredTokens(location: {
+  id: string
+  accessToken: string
+  refreshToken: string
+  refreshTokenId: string
+  userType: string
+  companyId: string
+  userId: string
+  scope: string
+  expiresAt: Date
+  installedAt: Date
+}): StoredTokens {
+  return {
+    accessToken: location.accessToken,
+    refreshToken: location.refreshToken,
+    refreshTokenId: location.refreshTokenId,
+    userType: location.userType as 'Location' | 'Company',
+    companyId: location.companyId,
+    locationId: location.id,
+    userId: location.userId,
+    scope: location.scope,
+    expiresAt: location.expiresAt.getTime(),
+    installedAt: location.installedAt.getTime(),
   }
 }

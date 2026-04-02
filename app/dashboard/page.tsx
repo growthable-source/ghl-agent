@@ -1,75 +1,64 @@
 import Link from 'next/link'
+import { db } from '@/lib/db'
 
-interface Props {
-  searchParams: Promise<{ locationId?: string; connected?: string; error?: string }>
-}
+export const dynamic = 'force-dynamic'
 
-export default async function Dashboard({ searchParams }: Props) {
-  const params = await searchParams
-  const { locationId, connected, error } = params
+export default async function DashboardPage() {
+  const locations = await db.location.findMany({
+    include: {
+      _count: { select: { agents: true, messageLogs: true } },
+    },
+    orderBy: { installedAt: 'desc' },
+  })
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center p-8">
-      <div className="max-w-lg w-full">
+    <div className="min-h-screen bg-black text-white p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-semibold">Dashboard</h1>
+            <p className="text-zinc-400 text-sm mt-1">{locations.length} connected location{locations.length !== 1 ? 's' : ''}</p>
+          </div>
+          <Link href="/" className="text-sm text-zinc-400 hover:text-white transition-colors">
+            + Install New Location
+          </Link>
+        </div>
 
-        {error ? (
-          <>
-            <div className="mb-8 inline-flex items-center gap-2 text-sm text-red-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
-              Error
-            </div>
-            <h1 className="text-3xl font-semibold mb-2">Installation Failed</h1>
-            <p className="text-zinc-400 mb-8">
-              Something went wrong during the OAuth flow.
-            </p>
-            <div className="rounded-lg border border-red-800 bg-red-950/40 text-red-400 text-sm px-4 py-3 mb-8">
-              <code>{error}</code>
-            </div>
-            <Link
-              href="/"
-              className="inline-flex items-center justify-center w-full rounded-lg bg-white text-black font-medium text-sm h-11 px-6 hover:bg-zinc-200 transition-colors"
-            >
-              Try Again
+        {locations.length === 0 ? (
+          <div className="rounded-lg border border-zinc-800 p-12 text-center">
+            <p className="text-zinc-400 mb-4">No locations connected yet.</p>
+            <Link href="/" className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 px-5 hover:bg-zinc-200 transition-colors">
+              Install on GoHighLevel
             </Link>
-          </>
-        ) : connected && locationId ? (
-          <>
-            <div className="mb-8 inline-flex items-center gap-2 text-sm text-emerald-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-              Connected
-            </div>
-            <h1 className="text-3xl font-semibold mb-2">Agent is Live</h1>
-            <p className="text-zinc-400 mb-10">
-              The AI agent is now active on your location. It will automatically respond to inbound SMS messages.
-            </p>
-            <div className="space-y-3 mb-8">
-              <div className="flex items-center justify-between rounded-lg border border-zinc-800 px-4 py-3">
-                <span className="text-sm text-zinc-400">Location ID</span>
-                <code className="text-sm text-zinc-200">{locationId}</code>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-zinc-800 px-4 py-3">
-                <span className="text-sm text-zinc-400">Status</span>
-                <span className="text-sm text-emerald-400">Listening for inbound SMS</span>
-              </div>
-            </div>
-            <Link
-              href="/"
-              className="inline-flex items-center justify-center w-full rounded-lg border border-zinc-800 text-zinc-400 font-medium text-sm h-11 px-6 hover:border-zinc-600 hover:text-white transition-colors"
-            >
-              Back to Home
-            </Link>
-          </>
+          </div>
         ) : (
-          <>
-            <h1 className="text-3xl font-semibold mb-2">Dashboard</h1>
-            <p className="text-zinc-400 mb-8">No location connected yet.</p>
-            <Link
-              href="/"
-              className="inline-flex items-center justify-center w-full rounded-lg bg-white text-black font-medium text-sm h-11 px-6 hover:bg-zinc-200 transition-colors"
-            >
-              Install App
-            </Link>
-          </>
+          <div className="space-y-3">
+            {locations.map((loc) => (
+              <Link
+                key={loc.id}
+                href={`/dashboard/${loc.id}`}
+                className="flex items-center justify-between rounded-lg border border-zinc-800 px-5 py-4 hover:border-zinc-600 transition-colors"
+              >
+                <div>
+                  <p className="font-medium text-sm">{loc.id}</p>
+                  <p className="text-zinc-500 text-xs mt-0.5">
+                    Installed {new Date(loc.installedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-6 text-right">
+                  <div>
+                    <p className="text-sm font-medium">{loc._count.agents}</p>
+                    <p className="text-zinc-500 text-xs">agents</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{loc._count.messageLogs}</p>
+                    <p className="text-zinc-500 text-xs">messages</p>
+                  </div>
+                  <span className="text-zinc-600">→</span>
+                </div>
+              </Link>
+            ))}
+          </div>
         )}
       </div>
     </div>

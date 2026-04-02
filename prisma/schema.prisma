@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Location {
+  id             String   @id
+  companyId      String
+  userId         String
+  userType       String
+  scope          String
+  accessToken    String
+  refreshToken   String
+  refreshTokenId String
+  expiresAt      DateTime
+  installedAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  agents      Agent[]
+  messageLogs MessageLog[]
+
+  @@index([companyId])
+}
+
+model Agent {
+  id           String   @id @default(cuid())
+  locationId   String
+  location     Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  name         String
+  systemPrompt String   @db.Text
+  instructions String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  knowledgeEntries KnowledgeEntry[]
+  routingRules     RoutingRule[]
+  messageLogs      MessageLog[]
+
+  @@index([locationId, isActive])
+}
+
+model KnowledgeEntry {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  title     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentId])
+}
+
+model RoutingRule {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  priority  Int      @default(10)
+  ruleType  RuleType
+  value     String?
+  createdAt DateTime @default(now())
+
+  @@index([agentId, priority])
+}
+
+enum RuleType {
+  ALL
+  TAG
+  PIPELINE_STAGE
+  KEYWORD
+}
+
+model MessageLog {
+  id               String    @id @default(cuid())
+  locationId       String
+  location         Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  agentId          String?
+  agent            Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  contactId        String
+  conversationId   String
+  inboundMessage   String    @db.Text
+  outboundReply    String?   @db.Text
+  actionsPerformed String[]
+  tokensUsed       Int       @default(0)
+  status           LogStatus @default(PENDING)
+  errorMessage     String?   @db.Text
+  createdAt        DateTime  @default(now())
+
+  @@index([locationId, createdAt(sort: Desc)])
+  @@index([agentId, createdAt(sort: Desc)])
+}
+
+enum LogStatus {
+  PENDING
+  SUCCESS
+  ERROR
+  SKIPPED
+}
