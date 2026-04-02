@@ -16,7 +16,14 @@ interface Agent {
   enabledTools: string[]
   calendarId: string | null
   routingRules: Array<{ id: string; ruleType: RuleType; value: string | null; priority: number }>
-  knowledgeEntries: Array<{ id: string; title: string; content: string }>
+  knowledgeEntries: Array<{
+    id: string
+    title: string
+    content: string
+    source: string
+    sourceUrl: string | null
+    tokenEstimate: number
+  }>
 }
 
 export default function AgentPage() {
@@ -39,6 +46,13 @@ export default function AgentPage() {
   const [kTitle, setKTitle] = useState('')
   const [kContent, setKContent] = useState('')
   const [addingK, setAddingK] = useState(false)
+  const [knowledgeTab, setKnowledgeTab] = useState<'manual' | 'url' | 'file'>('manual')
+  const [crawlUrl_, setCrawlUrl] = useState('')
+  const [crawling, setCrawling] = useState(false)
+  const [crawlResult, setCrawlResult] = useState('')
+  const [uploadResult, setUploadResult] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
 
   // Rules state
   const [ruleType, setRuleType] = useState<RuleType>('ALL')
@@ -109,6 +123,61 @@ export default function AgentPage() {
   async function deleteKnowledge(entryId: string) {
     await fetch(`/api/locations/${locationId}/agents/${agentId}/knowledge/${entryId}`, { method: 'DELETE' })
     setAgent((a) => a ? { ...a, knowledgeEntries: a.knowledgeEntries.filter((e) => e.id !== entryId) } : a)
+  }
+
+  async function crawlUrl(e: React.FormEvent) {
+    e.preventDefault()
+    setCrawling(true)
+    setCrawlResult('')
+    try {
+      const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/knowledge/crawl`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: crawlUrl_ }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setCrawlResult(`✓ Added ${data.chunks} chunk${data.chunks !== 1 ? 's' : ''} from "${data.title}" (~${data.totalTokens} tokens)`)
+      setCrawlUrl('')
+      // Refresh entries
+      const r2 = await fetch(`/api/locations/${locationId}/agents/${agentId}`)
+      const { agent: updated } = await r2.json()
+      setAgent(updated)
+    } catch (err: any) {
+      setCrawlResult(`Error: ${err.message}`)
+    }
+    setCrawling(false)
+  }
+
+  async function uploadFile(file: File) {
+    setUploading(true)
+    setUploadResult('')
+    setDragOver(false)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/knowledge/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setUploadResult(`✓ Added ${data.chunks} chunk${data.chunks !== 1 ? 's' : ''} from "${data.fileName}" (~${data.totalTokens} tokens)`)
+      // Refresh entries
+      const r2 = await fetch(`/api/locations/${locationId}/agents/${agentId}`)
+      const { agent: updated } = await r2.json()
+      setAgent(updated)
+    } catch (err: any) {
+      setUploadResult(`Error: ${err.message}`)
+    }
+    setUploading(false)
+  }
+
+  function handleFileDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) uploadFile(file)
   }
 
   async function addRule(e: React.FormEvent) {
@@ -271,14 +340,46 @@ export default function AgentPage() {
         {/* Knowledge Base */}
         {activeTab === 'knowledge' && (
           <div className="space-y-6">
+            {/* Token budget indicator */}
             {agent.knowledgeEntries.length > 0 && (
-              <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-zinc-500 px-1">
+                <span>{agent.knowledgeEntries.length} entries</span>
+                <span>
+                  ~{agent.knowledgeEntries.reduce((sum, e) => sum + (e.tokenEstimate || 0), 0).toLocaleString()} tokens
+                  {agent.knowledgeEntries.length > 15 && (
+                    <span className="ml-1 text-emerald-500">(smart retrieval active)</span>
+                  )}
+                </span>
+              </div>
+            )}
+
+            {/* Existing entries */}
+            {agent.knowledgeEntries.length > 0 && (
+              <div className="space-y-2">
                 {agent.knowledgeEntries.map((entry) => (
                   <div key={entry.id} className="rounded-lg border border-zinc-800 px-4 py-3">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-zinc-200">{entry.title}</p>
-                        <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{entry.content}</p>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-sm font-medium text-zinc-200">{entry.title}</p>
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                            (entry.source || 'manual') === 'url' ? 'bg-blue-900/40 text-blue-400' :
+                            (entry.source || 'manual') === 'file' ? 'bg-purple-900/40 text-purple-400' :
+                            'bg-zinc-800 text-zinc-500'
+                          }`}>
+                            {(entry.source || 'manual') === 'url' ? '🔗 url' : (entry.source || 'manual') === 'file' ? '📄 file' : '✏️ manual'}
+                          </span>
+                          {(entry.tokenEstimate || 0) > 0 && (
+                            <span className="text-xs text-zinc-600">~{entry.tokenEstimate} tokens</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-500 line-clamp-2">{entry.content}</p>
+                        {entry.sourceUrl && (
+                          <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-blue-500 hover:text-blue-400 truncate block mt-1">
+                            {entry.sourceUrl}
+                          </a>
+                        )}
                       </div>
                       <button
                         onClick={() => deleteKnowledge(entry.id)}
@@ -292,33 +393,113 @@ export default function AgentPage() {
               </div>
             )}
 
-            <div className="rounded-lg border border-zinc-800 p-4">
-              <p className="text-sm font-medium text-zinc-300 mb-4">Add Knowledge Entry</p>
-              <form onSubmit={addKnowledge} className="space-y-3">
-                <input
-                  type="text"
-                  value={kTitle}
-                  onChange={(e) => setKTitle(e.target.value)}
-                  placeholder="Title (e.g. Pricing, FAQ, About Us)"
-                  required
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-                />
-                <textarea
-                  value={kContent}
-                  onChange={(e) => setKContent(e.target.value)}
-                  placeholder="Paste the content the agent should know about…"
-                  required
-                  rows={4}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
-                />
-                <button
-                  type="submit"
-                  disabled={addingK}
-                  className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
-                >
-                  {addingK ? 'Adding…' : 'Add Entry'}
-                </button>
-              </form>
+            {/* Add knowledge — tabbed */}
+            <div className="rounded-lg border border-zinc-800 overflow-hidden">
+              <div className="flex border-b border-zinc-800">
+                {(['manual', 'url', 'file'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setKnowledgeTab(t)}
+                    className={`flex-1 px-4 py-2.5 text-xs font-medium capitalize transition-colors ${
+                      knowledgeTab === t
+                        ? 'bg-zinc-800 text-white'
+                        : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {t === 'manual' ? '✏️ Write' : t === 'url' ? '🔗 URL' : '📄 File'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-4">
+                {/* Manual */}
+                {knowledgeTab === 'manual' && (
+                  <form onSubmit={addKnowledge} className="space-y-3">
+                    <input
+                      type="text"
+                      value={kTitle}
+                      onChange={(e) => setKTitle(e.target.value)}
+                      placeholder="Title (e.g. Pricing, FAQ)"
+                      required
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    />
+                    <textarea
+                      value={kContent}
+                      onChange={(e) => setKContent(e.target.value)}
+                      placeholder="Paste content here…"
+                      required
+                      rows={4}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
+                    />
+                    <button
+                      type="submit"
+                      disabled={addingK}
+                      className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                    >
+                      {addingK ? 'Adding…' : 'Add Entry'}
+                    </button>
+                  </form>
+                )}
+
+                {/* URL */}
+                {knowledgeTab === 'url' && (
+                  <form onSubmit={crawlUrl} className="space-y-3">
+                    <input
+                      type="url"
+                      value={crawlUrl_}
+                      onChange={(e) => setCrawlUrl(e.target.value)}
+                      placeholder="https://example.com/page"
+                      required
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    />
+                    <p className="text-xs text-zinc-600">The page content will be fetched, cleaned, and split into chunks automatically.</p>
+                    {crawlResult && (
+                      <p className={`text-xs ${crawlResult.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {crawlResult}
+                      </p>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={crawling}
+                      className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                    >
+                      {crawling ? 'Fetching…' : 'Crawl Page'}
+                    </button>
+                  </form>
+                )}
+
+                {/* File */}
+                {knowledgeTab === 'file' && (
+                  <div className="space-y-3">
+                    <div
+                      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                        dragOver ? 'border-zinc-500 bg-zinc-800/50' : 'border-zinc-700'
+                      }`}
+                      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={handleFileDrop}
+                    >
+                      <p className="text-sm text-zinc-400 mb-2">Drop a file here or</p>
+                      <label className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors cursor-pointer">
+                        Browse
+                        <input
+                          type="file"
+                          accept=".pdf,.txt,.md"
+                          className="hidden"
+                          onChange={(e) => e.target.files?.[0] && uploadFile(e.target.files[0])}
+                        />
+                      </label>
+                      <p className="text-xs text-zinc-600 mt-2">PDF, TXT, MD — max 5MB</p>
+                    </div>
+                    {uploadResult && (
+                      <p className={`text-xs ${uploadResult.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {uploadResult}
+                      </p>
+                    )}
+                    {uploading && <p className="text-xs text-zinc-500">Uploading and processing…</p>}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

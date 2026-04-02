@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         // Build full system prompt with RAG
         let fullPrompt = agent.systemPrompt
         if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
-        fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries)
+        fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, p.body)
 
         // Inject calendar ID if booking tools are enabled and a calendar is configured
         if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
