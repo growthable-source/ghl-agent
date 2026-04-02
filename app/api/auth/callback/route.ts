@@ -31,26 +31,29 @@ export async function GET(req: NextRequest) {
 
   try {
     // Exchange authorization code for tokens
+    const params = new URLSearchParams({
+      client_id: process.env.OAUTH_CLIENT_ID!,
+      client_secret: process.env.OAUTH_CLIENT_SECRET!,
+      grant_type: 'authorization_code',
+      code,
+      user_type: 'Location',
+      redirect_uri: `${process.env.APP_URL}/api/auth/callback`,
+    })
+
     const tokenRes = await fetch('https://services.leadconnectorhq.com/oauth/token', {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({
-        client_id: process.env.OAUTH_CLIENT_ID,
-        client_secret: process.env.OAUTH_CLIENT_SECRET,
-        grant_type: 'authorization_code',
-        code,
-        user_type: 'Location', // Request a Location-scoped token
-        redirect_uri: `${process.env.APP_URL}/api/auth/callback`,
-      }),
+      body: params.toString(),
     })
 
     if (!tokenRes.ok) {
       const body = await tokenRes.text()
       console.error('[OAuth] Token exchange failed:', body)
-      return NextResponse.redirect(new URL('/dashboard?error=token_exchange_failed', req.url))
+      const msg = encodeURIComponent(`token_exchange_failed: ${body}`)
+      return NextResponse.redirect(new URL(`/dashboard?error=${msg}`, req.url))
     }
 
     const tokenData: OAuthTokenResponse = await tokenRes.json()
