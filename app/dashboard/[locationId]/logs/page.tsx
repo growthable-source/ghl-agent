@@ -1,6 +1,11 @@
 import Link from 'next/link'
 import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
+import type { Prisma } from '@prisma/client'
+
+type LogWithAgent = Prisma.MessageLogGetPayload<{
+  include: { agent: { select: { name: true } } }
+}>
 
 export const dynamic = 'force-dynamic'
 
@@ -63,7 +68,7 @@ export default async function LogsPage({
         ) : (
           <>
             <div className="space-y-2">
-              {logs.map((log) => (
+              {logs.map((log: LogWithAgent) => (
                 <div key={log.id} className="rounded-lg border border-zinc-800 px-5 py-4">
                   <div className="flex items-start justify-between gap-4 mb-2">
                     <div className="flex items-center gap-3 text-xs text-zinc-500">
