@@ -14,7 +14,11 @@ import {
   searchConversations,
   getFreeSlots,
   bookAppointment,
+  searchContacts,
+  createContact,
 } from './crm-client'
+import { getValidAccessToken } from './token-store'
+import { buildPersonaBlock, applyTypos, calculateTypingDelay, type PersonaSettings } from './persona'
 import type { AgentContext, Message } from '@/types'
 
 const client = new Anthropic()
@@ -122,6 +126,82 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['calendarId', 'contactId', 'startTime'],
     },
   },
+  {
+    name: 'search_contacts',
+    description: 'Search for contacts by name, email, or phone number.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Search query — name, email, or phone' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'create_contact',
+    description: 'Create a new contact in the CRM.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        firstName: { type: 'string' },
+        lastName: { type: 'string' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+      },
+      required: ['firstName'],
+    },
+  },
+  {
+    name: 'send_email',
+    description: 'Send an email to the contact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        subject: { type: 'string' },
+        body: { type: 'string', description: 'Email body text' },
+      },
+      required: ['contactId', 'subject', 'body'],
+    },
+  },
+  {
+    name: 'create_opportunity',
+    description: 'Create a new pipeline opportunity for the contact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        name: { type: 'string' },
+        pipelineId: { type: 'string' },
+        pipelineStageId: { type: 'string' },
+        monetaryValue: { type: 'number' },
+      },
+      required: ['contactId', 'name', 'pipelineId', 'pipelineStageId'],
+    },
+  },
+  {
+    name: 'update_opportunity_value',
+    description: 'Update the monetary value of an opportunity.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        opportunityId: { type: 'string' },
+        monetaryValue: { type: 'number' },
+      },
+      required: ['opportunityId', 'monetaryValue'],
+    },
+  },
+  {
+    name: 'get_calendar_events',
+    description: 'Get upcoming calendar appointments for a contact.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+      },
+      required: ['contactId'],
+    },
+  },
 ]
 
 // ─── Tool execution ────────────────────────────────────────────────────────
@@ -189,6 +269,76 @@ async function executeTool(
         })
         return JSON.stringify({ success: true, ...result })
       }
+      case 'search_contacts': {
+        const contacts = await searchContacts(locationId, input.query as string)
+        return JSON.stringify(contacts)
+      }
+      case 'create_contact': {
+        const contact = await createContact(locationId, {
+          firstName: input.firstName as string,
+          lastName: input.lastName as string | undefined,
+          phone: input.phone as string | undefined,
+          email: input.email as string | undefined,
+        })
+        return JSON.stringify({ success: true, contact })
+      }
+      case 'send_email': {
+        const result = await sendMessage(locationId, {
+          type: 'Email',
+          contactId: input.contactId as string,
+          message: input.body as string,
+          subject: input.subject as string,
+        })
+        return JSON.stringify({ success: true, ...result })
+      }
+      case 'create_opportunity': {
+        const token = await getValidAccessToken(locationId)
+        if (!token) return JSON.stringify({ error: 'Not authenticated' })
+        const res = await fetch('https://services.leadconnectorhq.com/opportunities/', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Version: '2021-07-28',
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            title: input.name,
+            contactId: input.contactId,
+            pipelineId: input.pipelineId,
+            pipelineStageId: input.pipelineStageId,
+            monetaryValue: input.monetaryValue,
+            locationId,
+          }),
+        })
+        const opp = await res.json()
+        return JSON.stringify({ success: true, ...opp })
+      }
+      case 'update_opportunity_value': {
+        const token = await getValidAccessToken(locationId)
+        if (!token) return JSON.stringify({ error: 'Not authenticated' })
+        const res = await fetch(`https://services.leadconnectorhq.com/opportunities/${input.opportunityId as string}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Version: '2021-07-28',
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ monetaryValue: input.monetaryValue }),
+        })
+        const opp = await res.json()
+        return JSON.stringify({ success: true, ...opp })
+      }
+      case 'get_calendar_events': {
+        const token = await getValidAccessToken(locationId)
+        if (!token) return JSON.stringify({ error: 'Not authenticated' })
+        const res = await fetch(`https://services.leadconnectorhq.com/calendars/events?contactId=${input.contactId as string}&locationId=${locationId}`, {
+          headers: { Authorization: `Bearer ${token}`, Version: '2021-04-15', Accept: 'application/json' },
+        })
+        const data = await res.json()
+        return JSON.stringify(data)
+      }
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
@@ -199,11 +349,11 @@ async function executeTool(
 
 // ─── Build system prompt ───────────────────────────────────────────────────
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const base = customPrompt || `You are a helpful, professional sales assistant managing SMS conversations.`
 
-  return `${base}
+  let prompt = `${base}
 
 ## Current Conversation Context
 - Contact: ${contactName}
@@ -222,6 +372,12 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string): string {
 
 ## Tone
 Professional but warm. Match the contact's energy.`
+
+  if (persona) {
+    prompt += buildPersonaBlock(persona)
+  }
+
+  return prompt
 }
 
 // ─── Main agent function ───────────────────────────────────────────────────
@@ -248,8 +404,9 @@ export async function runAgent(opts: {
   messageHistory?: Message[]
   systemPrompt?: string
   enabledTools?: string[]
+  persona?: PersonaSettings
 }): Promise<AgentResponse> {
-  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools } = opts
+  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona } = opts
 
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
@@ -290,7 +447,7 @@ export async function runAgent(opts: {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt),
+      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona),
       tools,
       messages: currentMessages,
     })
@@ -307,13 +464,19 @@ export async function runAgent(opts: {
       const finalText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('\n')
       if (finalText && !smsSent) {
         // If Claude wrote a reply but didn't use send_sms, send it now
+        let msgToSend = finalText
+        if (persona?.simulateTypos) msgToSend = applyTypos(msgToSend)
+        if (persona?.typingDelayEnabled) {
+          const delay = calculateTypingDelay(msgToSend, persona.typingDelayMinMs, persona.typingDelayMaxMs)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
         await sendMessage(locationId, {
           type: 'SMS',
           contactId,
           conversationId,
-          message: finalText,
+          message: msgToSend,
         })
-        smsSent = finalText
+        smsSent = msgToSend
         actionsPerformed.push('send_sms (auto)')
       }
       break
@@ -341,7 +504,9 @@ export async function runAgent(opts: {
       if (toolBlock.name === 'send_sms') {
         const parsed = JSON.parse(result)
         if (parsed.success) {
-          smsSent = (toolBlock.input as { message: string }).message
+          let msg = (toolBlock.input as { message: string }).message
+          if (persona?.simulateTypos) msg = applyTypos(msg)
+          smsSent = msg
         }
       }
 

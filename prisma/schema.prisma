@@ -6,6 +6,38 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ConversationState {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum StopConditionType {
+  APPOINTMENT_BOOKED
+  KEYWORD
+  MESSAGE_COUNT
+  OPPORTUNITY_STAGE
+}
+
+enum FollowUpStatus {
+  SCHEDULED
+  SENT
+  CANCELLED
+  FAILED
+}
+
+enum ResponseLength {
+  BRIEF
+  MODERATE
+  DETAILED
+}
+
+enum FormalityLevel {
+  CASUAL
+  NEUTRAL
+  FORMAL
+}
+
 model Location {
   id             String   @id
   companyId      String
@@ -40,9 +72,26 @@ model Agent {
   enabledTools     String[] @default(["get_contact_details", "send_sms", "update_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note"])
   calendarId       String?
 
+  agentPersonaName    String?
+  responseLength      ResponseLength   @default(MODERATE)
+  formalityLevel      FormalityLevel   @default(NEUTRAL)
+  useEmojis           Boolean          @default(false)
+  neverSayList        String[]         @default([])
+  simulateTypos       Boolean          @default(false)
+  typingDelayEnabled  Boolean          @default(false)
+  typingDelayMinMs    Int              @default(500)
+  typingDelayMaxMs    Int              @default(3000)
+  languages           String[]         @default(["en"])
+
   knowledgeEntries KnowledgeEntry[]
   routingRules     RoutingRule[]
   messageLogs      MessageLog[]
+  stopConditions      StopCondition[]
+  followUpSequences   FollowUpSequence[]
+  qualifyingQuestions QualifyingQuestion[]
+  conversationStates  ConversationStateRecord[]
+  contactMemories     ContactMemory[]
+  conversationMessages ConversationMessage[]
 
   @@index([locationId, isActive])
 }
@@ -107,4 +156,111 @@ enum LogStatus {
   SUCCESS
   ERROR
   SKIPPED
+}
+
+model StopCondition {
+  id            String            @id @default(cuid())
+  agentId       String
+  agent         Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conditionType StopConditionType
+  value         String?
+  pauseAgent    Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  @@index([agentId])
+}
+
+model FollowUpSequence {
+  id        String         @id @default(cuid())
+  agentId   String
+  agent     Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name      String
+  isActive  Boolean        @default(true)
+  steps     FollowUpStep[]
+  jobs      FollowUpJob[]
+  createdAt DateTime       @default(now())
+  @@index([agentId])
+}
+
+model FollowUpStep {
+  id         String           @id @default(cuid())
+  sequenceId String
+  sequence   FollowUpSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  stepNumber Int
+  delayHours Int
+  message    String           @db.Text
+  @@index([sequenceId, stepNumber])
+}
+
+model FollowUpJob {
+  id             String           @id @default(cuid())
+  sequenceId     String
+  sequence       FollowUpSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  locationId     String
+  contactId      String
+  conversationId String?
+  currentStep    Int              @default(1)
+  status         FollowUpStatus   @default(SCHEDULED)
+  scheduledAt    DateTime
+  lastSentAt     DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime         @default(now())
+  @@index([status, scheduledAt])
+  @@index([locationId, contactId])
+}
+
+model QualifyingQuestion {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  question  String   @db.Text
+  fieldKey  String
+  required  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  @@index([agentId, order])
+}
+
+model ConversationStateRecord {
+  id                String            @id @default(cuid())
+  agentId           String
+  agent             Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  locationId        String
+  contactId         String
+  conversationId    String?
+  state             ConversationState @default(ACTIVE)
+  messageCount      Int               @default(0)
+  pauseReason       String?
+  pausedAt          DateTime?
+  resumedAt         DateTime?
+  qualifyingAnswers Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  @@unique([agentId, contactId])
+  @@index([locationId, state])
+}
+
+model ConversationMessage {
+  id             String   @id @default(cuid())
+  agentId        String
+  agent          Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  locationId     String
+  contactId      String
+  conversationId String
+  role           String
+  content        String   @db.Text
+  createdAt      DateTime @default(now())
+  @@index([agentId, contactId, createdAt(sort: Asc)])
+  @@index([conversationId, createdAt(sort: Asc)])
+}
+
+model ContactMemory {
+  id         String   @id @default(cuid())
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  locationId String
+  contactId  String
+  summary    String   @db.Text
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  @@unique([agentId, contactId])
 }

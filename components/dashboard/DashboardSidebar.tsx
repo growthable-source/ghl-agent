@@ -62,6 +62,7 @@ export default function DashboardSidebar() {
                 {navLink(`/dashboard/${locationId}`, 'Overview')}
                 {navLink(`/dashboard/${locationId}/playground`, 'Playground')}
                 {navLink(`/dashboard/${locationId}/logs`, 'Logs')}
+                {navLink(`/dashboard/${locationId}/conversations`, 'Conversations')}
               </>
             )}
           </>

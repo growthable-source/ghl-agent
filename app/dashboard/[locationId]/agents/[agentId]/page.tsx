@@ -33,7 +33,7 @@ export default function AgentPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'settings' | 'knowledge' | 'rules' | 'tools'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'knowledge' | 'rules' | 'tools' | 'persona' | 'goals' | 'follow-ups' | 'qualifying'>('settings')
 
   // Settings state
   const [name, setName] = useState('')
@@ -271,7 +271,7 @@ export default function AgentPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-8 border-b border-zinc-800">
-          {(['settings', 'knowledge', 'rules', 'tools'] as const).map((tab) => (
+          {(['settings', 'knowledge', 'rules', 'tools', 'persona', 'goals', 'follow-ups', 'qualifying'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => { setActiveTab(tab); if (tab === 'tools') loadCalendars() }}
@@ -583,6 +583,50 @@ export default function AgentPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Persona */}
+        {activeTab === 'persona' && (
+          <div className="rounded-lg border border-zinc-800 p-6 text-center">
+            <p className="text-zinc-400 text-sm mb-4">Configure agent persona, tone, and human mimicry settings.</p>
+            <a href={`/dashboard/${locationId}/agents/${agentId}/persona`}
+              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
+              Open Persona Settings →
+            </a>
+          </div>
+        )}
+
+        {/* Goals */}
+        {activeTab === 'goals' && (
+          <div className="rounded-lg border border-zinc-800 p-6 text-center">
+            <p className="text-zinc-400 text-sm mb-4">Define when the agent should stop and pause conversations.</p>
+            <a href={`/dashboard/${locationId}/agents/${agentId}/goals`}
+              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
+              Open Goals & Stop Conditions →
+            </a>
+          </div>
+        )}
+
+        {/* Follow-Ups */}
+        {activeTab === 'follow-ups' && (
+          <div className="rounded-lg border border-zinc-800 p-6 text-center">
+            <p className="text-zinc-400 text-sm mb-4">Set up automatic follow-up sequences for non-responsive contacts.</p>
+            <a href={`/dashboard/${locationId}/agents/${agentId}/follow-ups`}
+              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
+              Open Follow-Up Sequences →
+            </a>
+          </div>
+        )}
+
+        {/* Qualifying */}
+        {activeTab === 'qualifying' && (
+          <div className="rounded-lg border border-zinc-800 p-6 text-center">
+            <p className="text-zinc-400 text-sm mb-4">Define questions the agent must ask before taking actions.</p>
+            <a href={`/dashboard/${locationId}/agents/${agentId}/qualifying`}
+              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
+              Open Qualifying Questions →
+            </a>
           </div>
         )}
 

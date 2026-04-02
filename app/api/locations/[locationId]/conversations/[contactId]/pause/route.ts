@@ -1,0 +1,22 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { pauseConversation, resumeConversation } from '@/lib/conversation-state'
+
+type Params = { params: Promise<{ locationId: string; contactId: string }> }
+
+export async function POST(req: NextRequest, { params }: Params) {
+  const { contactId } = await params
+  const body = await req.json()
+  const { agentId, reason } = body
+  if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 })
+  const record = await pauseConversation(agentId, contactId, reason ?? 'manual')
+  return NextResponse.json({ record })
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const { contactId } = await params
+  const body = await req.json()
+  const { agentId } = body
+  if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 })
+  const record = await resumeConversation(agentId, contactId)
+  return NextResponse.json({ record })
+}

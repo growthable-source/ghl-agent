@@ -15,6 +15,11 @@ import { runAgent } from '@/lib/ai-agent'
 import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
 import { buildKnowledgeBlock } from '@/lib/rag'
+import { getOrCreateConversationState, checkStopConditions, pauseConversation, incrementMessageCount } from '@/lib/conversation-state'
+import { saveMessages, getMessageHistory, getMemorySummary, updateContactMemorySummary } from '@/lib/conversation-memory'
+import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
+import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
+import { buildPersonaBlock } from '@/lib/persona'
 import type {
   WebhookEventType,
   WebhookInstallPayload,
@@ -97,6 +102,16 @@ export async function POST(req: NextRequest) {
           break
         }
 
+        // Check conversation state
+        const convState = await getOrCreateConversationState(agent.id, p.locationId, p.contactId, p.conversationId)
+        if (convState.state === 'PAUSED') {
+          await db.messageLog.update({ where: { id: log.id }, data: { status: 'SKIPPED', errorMessage: 'Conversation paused' } })
+          break
+        }
+
+        // Cancel any scheduled follow-ups since contact replied
+        await cancelFollowUpsForContact(p.locationId, p.contactId)
+
         // Build full system prompt with RAG
         let fullPrompt = agent.systemPrompt
         if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
@@ -107,9 +122,33 @@ export async function POST(req: NextRequest) {
           fullPrompt += `\n\n## Calendar Configuration\nCalendar ID for booking: ${agent.calendarId}\nAlways use this calendar ID when checking availability or booking appointments.`
         }
 
-        // Fetch message history
+        // Memory context and qualifying questions
+        const [memorySummary, unanswered] = await Promise.all([
+          getMemorySummary(agent.id, p.contactId),
+          getUnansweredQuestions(agent.id, p.contactId),
+        ])
+
+        if (memorySummary) {
+          fullPrompt += `\n\n## Previous Conversation Context\n${memorySummary}`
+        }
+        fullPrompt += buildQualifyingPromptBlock(unanswered)
+        fullPrompt += buildPersonaBlock(agent)
+
+        // Use DB history if available, otherwise fall back to GHL API
         let history: import('@/types').Message[]
         try { history = await getMessages(p.locationId, p.conversationId, 10) } catch { history = [] }
+
+        const dbHistory = await getMessageHistory(agent.id, p.contactId, 20)
+        const messageHistory: import('@/types').Message[] = dbHistory.length > 0
+          ? dbHistory.map(m => ({
+              id: m.id,
+              conversationId: m.conversationId,
+              locationId: m.locationId,
+              contactId: m.contactId,
+              body: m.content,
+              direction: m.role === 'user' ? 'inbound' as const : 'outbound' as const,
+            }))
+          : history
 
         try {
           const result = await runAgent({
@@ -117,9 +156,21 @@ export async function POST(req: NextRequest) {
             contactId: p.contactId,
             conversationId: p.conversationId,
             incomingMessage: p.body,
-            messageHistory: history,
+            messageHistory,
             systemPrompt: fullPrompt,
             enabledTools: agent.enabledTools,
+            persona: {
+              agentPersonaName: agent.agentPersonaName,
+              responseLength: agent.responseLength,
+              formalityLevel: agent.formalityLevel,
+              useEmojis: agent.useEmojis,
+              neverSayList: agent.neverSayList,
+              simulateTypos: agent.simulateTypos,
+              typingDelayEnabled: agent.typingDelayEnabled,
+              typingDelayMinMs: agent.typingDelayMinMs,
+              typingDelayMaxMs: agent.typingDelayMaxMs,
+              languages: agent.languages,
+            },
           })
 
           await db.messageLog.update({
@@ -135,6 +186,36 @@ export async function POST(req: NextRequest) {
           })
 
           console.log(`[Agent] ${agent.name} replied to ${p.contactId}: "${result.reply?.slice(0, 60)}"`)
+
+          // Save messages to persistent history
+          await saveMessages(agent.id, p.locationId, p.contactId, p.conversationId, [
+            { role: 'user', content: p.body },
+            ...(result.reply ? [{ role: 'assistant', content: result.reply }] : []),
+          ])
+
+          // Increment message count
+          await incrementMessageCount(agent.id, p.contactId)
+
+          // Check stop conditions
+          const stopCheck = await checkStopConditions(agent as any, p.contactId, p.body, result.actionsPerformed)
+          if (stopCheck.shouldPause) {
+            await pauseConversation(agent.id, p.contactId, stopCheck.reason ?? 'condition_met')
+          }
+
+          // Schedule follow-ups if sequences exist and no jobs pending
+          if (agent.followUpSequences && agent.followUpSequences.length > 0 && !stopCheck.shouldPause) {
+            const activeSeq = agent.followUpSequences[0]
+            const existingJob = await db.followUpJob.findFirst({
+              where: { sequenceId: activeSeq.id, contactId: p.contactId, status: 'SCHEDULED' },
+            })
+            if (!existingJob) {
+              await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, activeSeq.id)
+            }
+          }
+
+          // Fire-and-forget memory update
+          updateContactMemorySummary(agent.id, p.locationId, p.contactId).catch(() => {})
+
         } catch (err: any) {
           await db.messageLog.update({
             where: { id: log.id },

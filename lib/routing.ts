@@ -1,10 +1,13 @@
 import { db } from './db'
 import { getContact, getOpportunitiesForContact } from './crm-client'
-import type { Agent, KnowledgeEntry, RoutingRule } from '@prisma/client'
+import type { Agent, KnowledgeEntry, RoutingRule, StopCondition, FollowUpSequence, QualifyingQuestion } from '@prisma/client'
 
 export type AgentWithDetails = Agent & {
   knowledgeEntries: KnowledgeEntry[]
   routingRules: RoutingRule[]
+  stopConditions: StopCondition[]
+  followUpSequences: FollowUpSequence[]
+  qualifyingQuestions: QualifyingQuestion[]
 }
 
 export async function findMatchingAgent(
@@ -17,6 +20,9 @@ export async function findMatchingAgent(
     include: {
       routingRules: { orderBy: { priority: 'asc' } },
       knowledgeEntries: true,
+      stopConditions: true,
+      followUpSequences: { where: { isActive: true } },
+      qualifyingQuestions: true,
     },
   })
 

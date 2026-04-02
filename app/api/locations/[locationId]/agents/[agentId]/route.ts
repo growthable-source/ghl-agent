@@ -28,6 +28,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.isActive !== undefined && { isActive: body.isActive }),
       ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
       ...(body.calendarId !== undefined && { calendarId: body.calendarId }),
+      ...(body.agentPersonaName !== undefined && { agentPersonaName: body.agentPersonaName }),
+      ...(body.responseLength !== undefined && { responseLength: body.responseLength }),
+      ...(body.formalityLevel !== undefined && { formalityLevel: body.formalityLevel }),
+      ...(body.useEmojis !== undefined && { useEmojis: body.useEmojis }),
+      ...(body.neverSayList !== undefined && { neverSayList: body.neverSayList }),
+      ...(body.simulateTypos !== undefined && { simulateTypos: body.simulateTypos }),
+      ...(body.typingDelayEnabled !== undefined && { typingDelayEnabled: body.typingDelayEnabled }),
+      ...(body.typingDelayMinMs !== undefined && { typingDelayMinMs: body.typingDelayMinMs }),
+      ...(body.typingDelayMaxMs !== undefined && { typingDelayMaxMs: body.typingDelayMaxMs }),
+      ...(body.languages !== undefined && { languages: body.languages }),
     },
   })
   return NextResponse.json({ agent })
