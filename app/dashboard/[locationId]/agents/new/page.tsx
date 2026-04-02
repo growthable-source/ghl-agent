@@ -37,16 +37,8 @@ export default function NewAgentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-8">
+    <div className="p-8">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-2 text-sm text-zinc-500 mb-8">
-          <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
-          <span>/</span>
-          <Link href={`/dashboard/${locationId}`} className="hover:text-white transition-colors font-mono">{locationId}</Link>
-          <span>/</span>
-          <span className="text-zinc-300">New Agent</span>
-        </div>
-
         <h1 className="text-2xl font-semibold mb-8">Create Agent</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">

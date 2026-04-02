@@ -226,10 +226,18 @@ Professional but warm. Match the contact's energy.`
 
 // ─── Main agent function ───────────────────────────────────────────────────
 
+export interface ToolCallEntry {
+  tool: string
+  input: Record<string, unknown>
+  output: string
+  durationMs: number
+}
+
 export interface AgentResponse {
   reply: string | null        // The SMS text sent (null if no SMS was sent)
   actionsPerformed: string[]  // List of tools that were called
   tokensUsed: number
+  toolCallTrace: ToolCallEntry[]
 }
 
 export async function runAgent(opts: {
@@ -266,6 +274,7 @@ export async function runAgent(opts: {
   })
 
   const actionsPerformed: string[] = []
+  const toolCallTrace: ToolCallEntry[] = []
   let totalInputTokens = 0
   let totalOutputTokens = 0
   let smsSent: string | null = null
@@ -315,11 +324,18 @@ export async function runAgent(opts: {
     for (const block of toolUseBlocks) {
       const toolBlock = block as Anthropic.ToolUseBlock
       actionsPerformed.push(toolBlock.name)
+      const toolStart = Date.now()
       const result = await executeTool(
         toolBlock.name,
         toolBlock.input as Record<string, unknown>,
         locationId
       )
+      toolCallTrace.push({
+        tool: toolBlock.name,
+        input: toolBlock.input as Record<string, unknown>,
+        output: result,
+        durationMs: Date.now() - toolStart,
+      })
 
       // Track SMS sends
       if (toolBlock.name === 'send_sms') {
@@ -348,5 +364,6 @@ export async function runAgent(opts: {
     reply: smsSent,
     actionsPerformed,
     tokensUsed: totalInputTokens + totalOutputTokens,
+    toolCallTrace,
   }
 }

@@ -233,41 +233,40 @@ export default function AgentPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center">
+    <div className="flex items-center justify-center h-64">
       <p className="text-zinc-500 text-sm">Loading…</p>
     </div>
   )
 
   if (!agent) return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center">
+    <div className="flex items-center justify-center h-64">
       <p className="text-zinc-500 text-sm">Agent not found.</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-black text-white p-8">
+    <div className="p-8">
       <div className="max-w-2xl mx-auto">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-zinc-500 mb-8">
-          <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
-          <span>/</span>
-          <Link href={`/dashboard/${locationId}`} className="hover:text-white transition-colors font-mono">{locationId}</Link>
-          <span>/</span>
-          <span className="text-zinc-300">{agent.name}</span>
-        </div>
-
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <span className={`w-2.5 h-2.5 rounded-full ${agent.isActive ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
             <h1 className="text-2xl font-semibold">{agent.name}</h1>
           </div>
-          <button
-            onClick={toggleActive}
-            className="text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-1.5 transition-colors"
-          >
-            {agent.isActive ? 'Deactivate' : 'Activate'}
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/dashboard/${locationId}/playground?agentId=${agentId}`}
+              className="text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              Test in Playground
+            </Link>
+            <button
+              onClick={toggleActive}
+              className="text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              {agent.isActive ? 'Deactivate' : 'Activate'}
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}

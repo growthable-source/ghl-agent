@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { saveTokens } from '@/lib/token-store'
+import { db } from '@/lib/db'
 import type { OAuthTokenResponse } from '@/types'
 
 export async function GET(req: NextRequest) {
@@ -64,10 +65,12 @@ export async function GET(req: NextRequest) {
 
     console.log(`[OAuth] Token saved for ${tokenData.userType}: ${storeKey}`)
 
-    // Redirect to location-specific dashboard
-    const redirectUrl = new URL(`/dashboard/${storeKey}`, req.url)
-
-    return NextResponse.redirect(redirectUrl)
+    // New installs go to onboarding, reinstalls go to dashboard
+    const agentCount = await db.agent.count({ where: { locationId: storeKey } })
+    const redirectPath = agentCount === 0
+      ? `/dashboard/${storeKey}/onboarding`
+      : `/dashboard/${storeKey}`
+    return NextResponse.redirect(new URL(redirectPath, req.url))
   } catch (err) {
     console.error('[OAuth] Unexpected error:', err)
     return NextResponse.redirect(new URL('/dashboard?error=unexpected', req.url))

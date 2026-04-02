@@ -16,8 +16,9 @@ model Location {
   refreshToken   String
   refreshTokenId String
   expiresAt      DateTime
-  installedAt    DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  installedAt             DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  onboardingCompletedAt   DateTime?
 
   agents      Agent[]
   messageLogs MessageLog[]
@@ -92,6 +93,7 @@ model MessageLog {
   outboundReply    String?   @db.Text
   actionsPerformed String[]
   tokensUsed       Int       @default(0)
+  toolCallTrace    Json?
   status           LogStatus @default(PENDING)
   errorMessage     String?   @db.Text
   createdAt        DateTime  @default(now())

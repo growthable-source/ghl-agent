@@ -18,21 +18,29 @@ export default async function LocationPage({ params }: { params: Promise<{ locat
 
   if (!location) notFound()
 
-  return (
-    <div className="min-h-screen bg-black text-white p-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-zinc-500 mb-8">
-          <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
-          <span>/</span>
-          <span className="text-zinc-300 font-mono">{locationId}</span>
-        </div>
+  const [agentCount, messageCount, successCount, tokenSum] = await Promise.all([
+    db.agent.count({ where: { locationId, isActive: true } }),
+    db.messageLog.count({ where: { locationId } }),
+    db.messageLog.count({ where: { locationId, status: 'SUCCESS' } }),
+    db.messageLog.aggregate({ where: { locationId }, _sum: { tokensUsed: true } }),
+  ])
+  const successRate = messageCount > 0 ? Math.round((successCount / messageCount) * 100) : 0
+  const totalTokens = tokenSum._sum.tokensUsed ?? 0
 
+  return (
+    <div className="p-8">
+      <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Agents</h1>
           <div className="flex items-center gap-3">
             <Link href={`/dashboard/${locationId}/logs`} className="text-sm text-zinc-400 hover:text-white transition-colors">
               View Logs
+            </Link>
+            <Link
+              href={`/dashboard/${locationId}/playground`}
+              className="inline-flex items-center justify-center rounded-lg border border-zinc-700 text-zinc-300 font-medium text-sm h-9 px-4 hover:border-zinc-500 hover:text-white transition-colors"
+            >
+              Playground
             </Link>
             <Link
               href={`/dashboard/${locationId}/agents/new`}
@@ -41,6 +49,20 @@ export default async function LocationPage({ params }: { params: Promise<{ locat
               New Agent
             </Link>
           </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          {[
+            { label: 'Active Agents', value: agentCount },
+            { label: 'Messages Handled', value: messageCount },
+            { label: 'Reply Rate', value: `${successRate}%` },
+            { label: 'Tokens Used', value: totalTokens.toLocaleString() },
+          ].map((stat) => (
+            <div key={stat.label} className="rounded-lg border border-zinc-800 px-4 py-4">
+              <p className="text-2xl font-semibold mb-1">{stat.value}</p>
+              <p className="text-xs text-zinc-500">{stat.label}</p>
+            </div>
+          ))}
         </div>
 
         {location.agents.length === 0 ? (

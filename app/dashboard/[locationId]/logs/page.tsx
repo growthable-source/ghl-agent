@@ -44,16 +44,8 @@ export default async function LogsPage({
   const pages = Math.ceil(total / limit)
 
   return (
-    <div className="min-h-screen bg-black text-white p-8">
+    <div className="p-8">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center gap-2 text-sm text-zinc-500 mb-8">
-          <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
-          <span>/</span>
-          <Link href={`/dashboard/${locationId}`} className="hover:text-white transition-colors font-mono">{locationId}</Link>
-          <span>/</span>
-          <span className="text-zinc-300">Logs</span>
-        </div>
-
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Message Logs</h1>
           <p className="text-zinc-500 text-sm">{total} total</p>
@@ -67,7 +59,11 @@ export default async function LogsPage({
           <>
             <div className="space-y-2">
               {logs.map((log: LogWithAgent) => (
-                <div key={log.id} className="rounded-lg border border-zinc-800 px-5 py-4">
+                <Link
+                  key={log.id}
+                  href={`/dashboard/${locationId}/logs/${log.id}`}
+                  className="block rounded-lg border border-zinc-800 px-5 py-4 hover:border-zinc-600 transition-colors"
+                >
                   <div className="flex items-start justify-between gap-4 mb-2">
                     <div className="flex items-center gap-3 text-xs text-zinc-500">
                       <span>{new Date(log.createdAt).toLocaleString()}</span>
@@ -75,9 +71,12 @@ export default async function LogsPage({
                       <span className="font-mono">{log.contactId}</span>
                       {log.agent && <><span>·</span><span>{log.agent.name}</span></>}
                     </div>
-                    <span className={`text-xs font-medium ${statusColors[log.status] ?? 'text-zinc-400'}`}>
-                      {log.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium ${statusColors[log.status] ?? 'text-zinc-400'}`}>
+                        {log.status}
+                      </span>
+                      <span className="text-zinc-600 text-xs">→</span>
+                    </div>
                   </div>
                   <p className="text-sm text-zinc-300 mb-1">
                     <span className="text-zinc-600">IN: </span>{log.inboundMessage}
@@ -94,7 +93,7 @@ export default async function LogsPage({
                     {log.tokensUsed > 0 && <span>{log.tokensUsed} tokens</span>}
                     {log.actionsPerformed.length > 0 && <span>{log.actionsPerformed.join(', ')}</span>}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
 

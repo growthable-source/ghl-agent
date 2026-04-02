@@ -130,6 +130,7 @@ export async function POST(req: NextRequest) {
               actionsPerformed: result.actionsPerformed,
               tokensUsed: result.tokensUsed,
               status: 'SUCCESS',
+              toolCallTrace: result.toolCallTrace as any,
             },
           })
 
