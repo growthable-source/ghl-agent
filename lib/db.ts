@@ -2,7 +2,12 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL ?? 'postgresql://localhost:5432/ghl_agent'
+  // Prefer pooled URLs set by Supabase/Vercel integration, fall back to DATABASE_URL
+  const connectionString =
+    process.env.POSTGRES_PRISMA_URL ??
+    process.env.POSTGRES_URL ??
+    process.env.DATABASE_URL ??
+    'postgresql://localhost:5432/ghl_agent'
   const adapter = new PrismaPg(connectionString)
   return new PrismaClient({
     adapter,
