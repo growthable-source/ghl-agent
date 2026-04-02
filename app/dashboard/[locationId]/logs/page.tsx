@@ -1,11 +1,9 @@
 import Link from 'next/link'
 import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
-import type { Prisma } from '@prisma/client'
-
-type LogWithAgent = Prisma.MessageLogGetPayload<{
+type LogWithAgent = Awaited<ReturnType<typeof db.messageLog.findMany<{
   include: { agent: { select: { name: true } } }
-}>
+}>>>[number]
 
 export const dynamic = 'force-dynamic'
 
