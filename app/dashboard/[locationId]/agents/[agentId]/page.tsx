@@ -33,7 +33,7 @@ export default function AgentPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'settings' | 'knowledge' | 'rules' | 'tools' | 'persona' | 'goals' | 'follow-ups' | 'qualifying'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'knowledge' | 'rules' | 'tools'>('settings')
 
   // Settings state
   const [name, setName] = useState('')
@@ -269,13 +269,13 @@ export default function AgentPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-8 border-b border-zinc-800">
-          {(['settings', 'knowledge', 'rules', 'tools', 'persona', 'goals', 'follow-ups', 'qualifying'] as const).map((tab) => (
+        {/* Primary Tabs */}
+        <div className="flex gap-0.5 mb-8 border-b border-zinc-800 overflow-x-auto">
+          {(['settings', 'knowledge', 'rules', 'tools'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => { setActiveTab(tab); if (tab === 'tools') loadCalendars() }}
-              className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+              className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px shrink-0 ${
                 activeTab === tab
                   ? 'border-white text-white'
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -586,50 +586,6 @@ export default function AgentPage() {
           </div>
         )}
 
-        {/* Persona */}
-        {activeTab === 'persona' && (
-          <div className="rounded-lg border border-zinc-800 p-6 text-center">
-            <p className="text-zinc-400 text-sm mb-4">Configure agent persona, tone, and human mimicry settings.</p>
-            <a href={`/dashboard/${locationId}/agents/${agentId}/persona`}
-              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
-              Open Persona Settings →
-            </a>
-          </div>
-        )}
-
-        {/* Goals */}
-        {activeTab === 'goals' && (
-          <div className="rounded-lg border border-zinc-800 p-6 text-center">
-            <p className="text-zinc-400 text-sm mb-4">Define when the agent should stop and pause conversations.</p>
-            <a href={`/dashboard/${locationId}/agents/${agentId}/goals`}
-              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
-              Open Goals & Stop Conditions →
-            </a>
-          </div>
-        )}
-
-        {/* Follow-Ups */}
-        {activeTab === 'follow-ups' && (
-          <div className="rounded-lg border border-zinc-800 p-6 text-center">
-            <p className="text-zinc-400 text-sm mb-4">Set up automatic follow-up sequences for non-responsive contacts.</p>
-            <a href={`/dashboard/${locationId}/agents/${agentId}/follow-ups`}
-              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
-              Open Follow-Up Sequences →
-            </a>
-          </div>
-        )}
-
-        {/* Qualifying */}
-        {activeTab === 'qualifying' && (
-          <div className="rounded-lg border border-zinc-800 p-6 text-center">
-            <p className="text-zinc-400 text-sm mb-4">Define questions the agent must ask before taking actions.</p>
-            <a href={`/dashboard/${locationId}/agents/${agentId}/qualifying`}
-              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors">
-              Open Qualifying Questions →
-            </a>
-          </div>
-        )}
-
         {/* Routing Rules */}
         {activeTab === 'rules' && (
           <div className="space-y-6">
@@ -703,6 +659,51 @@ export default function AgentPage() {
             </div>
           </div>
         )}
+
+        {/* Advanced */}
+        <div className="mt-10 pt-6 border-t border-zinc-800">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-4">Advanced</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              {
+                href: `/dashboard/${locationId}/agents/${agentId}/persona`,
+                icon: '🎭',
+                label: 'Persona & Tone',
+                desc: 'Voice, formality, typos, typing delays',
+              },
+              {
+                href: `/dashboard/${locationId}/agents/${agentId}/goals`,
+                icon: '🎯',
+                label: 'Goals & Stop Conditions',
+                desc: 'When to pause or hand off to a human',
+              },
+              {
+                href: `/dashboard/${locationId}/agents/${agentId}/follow-ups`,
+                icon: '📬',
+                label: 'Follow-up Sequences',
+                desc: 'Auto-messages for non-responsive contacts',
+              },
+              {
+                href: `/dashboard/${locationId}/agents/${agentId}/qualifying`,
+                icon: '✅',
+                label: 'Qualifying Questions',
+                desc: 'Ask questions with conditional actions',
+              },
+            ].map(item => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="block rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-950 p-4 transition-colors group"
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-base">{item.icon}</span>
+                  <p className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">{item.label}</p>
+                </div>
+                <p className="text-xs text-zinc-500">{item.desc}</p>
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

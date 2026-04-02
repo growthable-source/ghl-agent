@@ -22,6 +22,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       fieldKey: body.fieldKey,
       required: body.required ?? true,
       order: body.order ?? 0,
+      answerType: body.answerType ?? 'text',
+      choices: body.choices ?? [],
+      conditionOp: body.conditionOp ?? null,
+      conditionVal: body.conditionVal ?? null,
+      actionType: body.actionType ?? null,
+      actionValue: body.actionValue ?? null,
     },
   })
   return NextResponse.json({ question }, { status: 201 })

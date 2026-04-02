@@ -9,6 +9,63 @@ interface QualifyingQuestion {
   fieldKey: string
   required: boolean
   order: number
+  answerType: string
+  choices: string[]
+  conditionOp: string | null
+  conditionVal: string | null
+  actionType: string | null
+  actionValue: string | null
+}
+
+const ANSWER_TYPES = [
+  { value: 'text', label: 'Text', desc: 'Free-form answer' },
+  { value: 'yes_no', label: 'Yes / No', desc: 'Boolean response' },
+  { value: 'number', label: 'Number', desc: 'Numeric value' },
+  { value: 'choice', label: 'Multiple Choice', desc: 'Pick from options' },
+]
+
+const CONDITION_OPS: Record<string, { label: string; needsValue: boolean }> = {
+  any:      { label: 'is anything (always trigger)', needsValue: false },
+  is_yes:   { label: 'is yes', needsValue: false },
+  is_no:    { label: 'is no', needsValue: false },
+  contains: { label: 'contains', needsValue: true },
+  equals:   { label: 'equals', needsValue: true },
+  gt:       { label: 'is greater than', needsValue: true },
+  lt:       { label: 'is less than', needsValue: true },
+}
+
+const ACTION_TYPES: Record<string, { label: string; needsValue: boolean; placeholder?: string }> = {
+  continue:   { label: 'Continue conversation', needsValue: false },
+  tag:        { label: 'Tag contact with', needsValue: true, placeholder: 'e.g. hot-lead' },
+  stage:      { label: 'Move to pipeline stage', needsValue: true, placeholder: 'Stage name or ID' },
+  book:       { label: 'Proceed to book appointment', needsValue: false },
+  stop:       { label: 'Stop & hand off to human', needsValue: false },
+}
+
+function conditionLabel(q: QualifyingQuestion): string | null {
+  if (!q.conditionOp || !q.actionType) return null
+  const cond = CONDITION_OPS[q.conditionOp]
+  const act = ACTION_TYPES[q.actionType]
+  if (!cond || !act) return null
+  let str = `If answer ${cond.label}`
+  if (cond.needsValue && q.conditionVal) str += ` "${q.conditionVal}"`
+  str += ` → ${act.label}`
+  if (act.needsValue && q.actionValue) str += ` "${q.actionValue}"`
+  return str
+}
+
+const emptyForm = {
+  question: '',
+  fieldKey: '',
+  required: true,
+  answerType: 'text',
+  choices: [] as string[],
+  conditionOp: '',
+  conditionVal: '',
+  actionType: '',
+  actionValue: '',
+  showConditional: false,
+  newChoice: '',
 }
 
 export default function QualifyingPage() {
@@ -18,11 +75,8 @@ export default function QualifyingPage() {
 
   const [questions, setQuestions] = useState<QualifyingQuestion[]>([])
   const [loading, setLoading] = useState(true)
-
-  const [newQuestion, setNewQuestion] = useState('')
-  const [newFieldKey, setNewFieldKey] = useState('')
-  const [newRequired, setNewRequired] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState(emptyForm)
 
   useEffect(() => {
     fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions`)
@@ -31,42 +85,68 @@ export default function QualifyingPage() {
       .finally(() => setLoading(false))
   }, [locationId, agentId])
 
-  async function addQuestion(e: React.FormEvent) {
+  function autoFieldKey(question: string) {
+    return question
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 3)
+      .join('_')
+  }
+
+  function updateForm(key: string, value: any) {
+    setForm(prev => {
+      const next = { ...prev, [key]: value }
+      if (key === 'question' && !prev.fieldKey) {
+        next.fieldKey = autoFieldKey(value)
+      }
+      return next
+    })
+  }
+
+  function addChoice() {
+    if (!form.newChoice.trim()) return
+    setForm(prev => ({ ...prev, choices: [...prev.choices, prev.newChoice.trim()], newChoice: '' }))
+  }
+
+  function removeChoice(i: number) {
+    setForm(prev => ({ ...prev, choices: prev.choices.filter((_, idx) => idx !== i) }))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!newQuestion.trim() || !newFieldKey.trim()) return
+    if (!form.question.trim() || !form.fieldKey.trim()) return
     setAdding(true)
     const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        question: newQuestion,
-        fieldKey: newFieldKey,
-        required: newRequired,
+        question: form.question,
+        fieldKey: form.fieldKey,
+        required: form.required,
         order: questions.length,
+        answerType: form.answerType,
+        choices: form.choices,
+        conditionOp: form.showConditional && form.conditionOp ? form.conditionOp : null,
+        conditionVal: form.showConditional && form.conditionOp ? form.conditionVal : null,
+        actionType: form.showConditional && form.actionType ? form.actionType : null,
+        actionValue: form.showConditional && form.actionType ? form.actionValue : null,
       }),
     })
     const { question } = await res.json()
     setQuestions(prev => [...prev, question])
-    setNewQuestion('')
-    setNewFieldKey('')
-    setNewRequired(true)
+    setForm(emptyForm)
     setAdding(false)
-  }
-
-  async function toggleRequired(q: QualifyingQuestion) {
-    const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions/${q.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ required: !q.required }),
-    })
-    const { question } = await res.json()
-    setQuestions(prev => prev.map(item => item.id === q.id ? question : item))
   }
 
   async function deleteQuestion(id: string) {
     await fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions/${id}`, { method: 'DELETE' })
     setQuestions(prev => prev.filter(q => q.id !== id))
   }
+
+  const condInfo = form.conditionOp ? CONDITION_OPS[form.conditionOp] : null
+  const actInfo = form.actionType ? ACTION_TYPES[form.actionType] : null
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -75,79 +155,253 @@ export default function QualifyingPage() {
   )
 
   return (
-    <div className="p-8">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-2">Qualifying Questions</h1>
-        <p className="text-zinc-400 text-sm mb-8">Questions the agent must ask before taking goal actions.</p>
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold mb-1">Qualifying Questions</h1>
+        <p className="text-zinc-400 text-sm">
+          Questions the agent asks before taking key actions. Add conditional logic to tag contacts, move pipeline stages, or hand off to a human based on how they answer.
+        </p>
+      </div>
 
-        {/* Existing questions */}
-        {questions.length > 0 && (
-          <div className="space-y-2 mb-8">
-            {questions.sort((a, b) => a.order - b.order).map((q, idx) => (
-              <div key={q.id} className="rounded-lg border border-zinc-800 px-4 py-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs text-zinc-600 w-4">{idx + 1}</span>
-                      <span className="text-xs font-mono text-zinc-500 bg-zinc-800 rounded px-1.5 py-0.5">{q.fieldKey}</span>
-                      <button
-                        onClick={() => toggleRequired(q)}
-                        className={`text-xs px-1.5 py-0.5 rounded transition-colors ${q.required ? 'bg-amber-900/40 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}
-                      >
-                        {q.required ? 'required' : 'optional'}
-                      </button>
-                    </div>
-                    <p className="text-sm text-zinc-300">{q.question}</p>
+      {/* Existing questions */}
+      {questions.length > 0 && (
+        <div className="space-y-2 mb-6">
+          {questions.sort((a, b) => a.order - b.order).map((q, idx) => (
+            <div key={q.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className="text-xs text-zinc-600 font-mono">{idx + 1}</span>
+                    <span className="text-xs font-mono text-zinc-400 bg-zinc-800 rounded px-1.5 py-0.5">{q.fieldKey}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 capitalize">{q.answerType.replace('_', '/')}</span>
+                    {q.required && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400">required</span>}
                   </div>
-                  <button
-                    onClick={() => deleteQuestion(q.id)}
-                    className="text-xs text-zinc-600 hover:text-red-400 transition-colors shrink-0"
-                  >
-                    Delete
-                  </button>
+                  <p className="text-sm text-zinc-200 mb-2">{q.question}</p>
+                  {q.choices?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {q.choices.map(c => (
+                        <span key={c} className="text-xs bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5">{c}</span>
+                      ))}
+                    </div>
+                  )}
+                  {conditionLabel(q) && (
+                    <div className="flex items-center gap-1.5 mt-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                      <span className="text-xs text-zinc-500">⚡</span>
+                      <span className="text-xs text-zinc-400">{conditionLabel(q)}</span>
+                    </div>
+                  )}
                 </div>
+                <button
+                  onClick={() => deleteQuestion(q.id)}
+                  className="text-xs text-zinc-600 hover:text-red-400 transition-colors shrink-0 mt-1"
+                >
+                  Remove
+                </button>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* Add form */}
-        <div className="rounded-lg border border-zinc-800 p-4">
-          <p className="text-sm font-medium text-zinc-300 mb-4">Add Question</p>
-          <form onSubmit={addQuestion} className="space-y-3">
+      {/* Add form */}
+      <div className="rounded-xl border border-zinc-700 bg-zinc-950 overflow-hidden">
+        <div className="px-5 py-3 border-b border-zinc-800">
+          <p className="text-sm font-medium text-zinc-200">Add Question</p>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-5">
+          {/* Question */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Question</label>
             <textarea
-              value={newQuestion}
-              onChange={e => setNewQuestion(e.target.value)}
-              placeholder="What is your budget range?"
+              value={form.question}
+              onChange={e => updateForm('question', e.target.value)}
+              placeholder="e.g. Are you looking to buy or rent?"
               required
               rows={2}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
             />
-            <input
-              type="text"
-              value={newFieldKey}
-              onChange={e => setNewFieldKey(e.target.value)}
-              placeholder="Field key (e.g. budget)"
-              required
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-            />
-            <label className="flex items-center gap-2 cursor-pointer">
+          </div>
+
+          {/* Field key + Required in a row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Field Key <span className="text-zinc-600">(internal)</span></label>
               <input
-                type="checkbox"
-                checked={newRequired}
-                onChange={e => setNewRequired(e.target.checked)}
+                type="text"
+                value={form.fieldKey}
+                onChange={e => updateForm('fieldKey', e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
+                placeholder="e.g. intent"
+                required
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
               />
-              <span className="text-sm text-zinc-300">Required</span>
-            </label>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Required</label>
+              <button
+                type="button"
+                onClick={() => updateForm('required', !form.required)}
+                className={`w-full h-10 rounded-lg border text-sm font-medium transition-colors ${
+                  form.required
+                    ? 'border-amber-600 bg-amber-900/20 text-amber-400'
+                    : 'border-zinc-700 bg-zinc-900 text-zinc-500'
+                }`}
+              >
+                {form.required ? 'Required' : 'Optional'}
+              </button>
+            </div>
+          </div>
+
+          {/* Answer Type */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Answer Type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {ANSWER_TYPES.map(t => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => updateForm('answerType', t.value)}
+                  className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                    form.answerType === t.value
+                      ? 'border-zinc-500 bg-zinc-800 text-white'
+                      : 'border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-400'
+                  }`}
+                >
+                  <div className="font-medium">{t.label}</div>
+                  <div className="text-xs text-zinc-600 mt-0.5">{t.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Choices (only for choice type) */}
+          {form.answerType === 'choice' && (
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Options</label>
+              <div className="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">
+                {form.choices.map((c, i) => (
+                  <span key={i} className="flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs rounded-full px-2.5 py-1">
+                    {c}
+                    <button type="button" onClick={() => removeChoice(i)} className="text-zinc-500 hover:text-red-400 ml-0.5 leading-none">×</button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={form.newChoice}
+                  onChange={e => setForm(p => ({ ...p, newChoice: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addChoice() }}}
+                  placeholder="Type an option and press Enter…"
+                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                />
+                <button type="button" onClick={addChoice} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors">
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Conditional action — collapsible */}
+          <div className="rounded-lg border border-zinc-800 overflow-hidden">
             <button
-              type="submit"
-              disabled={adding}
-              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              type="button"
+              onClick={() => updateForm('showConditional', !form.showConditional)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
             >
-              {adding ? 'Adding…' : 'Add Question'}
+              <span className="flex items-center gap-2">
+                <span className="text-zinc-600">⚡</span>
+                <span>Conditional Action <span className="text-zinc-600">(optional)</span></span>
+              </span>
+              <span className="text-zinc-600 text-xs">{form.showConditional ? '▲' : '▼'}</span>
             </button>
-          </form>
-        </div>
+
+            {form.showConditional && (
+              <div className="px-4 pb-4 space-y-3 border-t border-zinc-800 pt-3">
+                <p className="text-xs text-zinc-500">Take an automatic action based on how the contact responds to this question.</p>
+
+                {/* Condition */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">If answer…</label>
+                    <select
+                      value={form.conditionOp}
+                      onChange={e => updateForm('conditionOp', e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                    >
+                      <option value="">Select condition</option>
+                      {Object.entries(CONDITION_OPS).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {condInfo?.needsValue && (
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Value</label>
+                      <input
+                        type="text"
+                        value={form.conditionVal}
+                        onChange={e => updateForm('conditionVal', e.target.value)}
+                        placeholder="e.g. yes, buy, 500000"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Action */}
+                {form.conditionOp && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1">Then…</label>
+                      <select
+                        value={form.actionType}
+                        onChange={e => updateForm('actionType', e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                      >
+                        <option value="">Select action</option>
+                        {Object.entries(ACTION_TYPES).map(([k, v]) => (
+                          <option key={k} value={k}>{v.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {actInfo?.needsValue && (
+                      <div>
+                        <label className="block text-xs text-zinc-500 mb-1">Value</label>
+                        <input
+                          type="text"
+                          value={form.actionValue}
+                          onChange={e => updateForm('actionValue', e.target.value)}
+                          placeholder={actInfo.placeholder ?? ''}
+                          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Preview */}
+                {form.conditionOp && form.actionType && (
+                  <div className="bg-zinc-900 rounded-lg p-2.5 text-xs text-zinc-400">
+                    <span className="text-zinc-500">Preview: </span>
+                    If answer {CONDITION_OPS[form.conditionOp]?.label}
+                    {condInfo?.needsValue && form.conditionVal ? ` "${form.conditionVal}"` : ''}
+                    {' → '}
+                    {ACTION_TYPES[form.actionType]?.label}
+                    {actInfo?.needsValue && form.actionValue ? ` "${form.actionValue}"` : ''}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={adding}
+            className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+          >
+            {adding ? 'Adding…' : 'Add Question'}
+          </button>
+        </form>
       </div>
     </div>
   )

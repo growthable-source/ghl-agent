@@ -13,6 +13,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.fieldKey !== undefined && { fieldKey: body.fieldKey }),
       ...(body.required !== undefined && { required: body.required }),
       ...(body.order !== undefined && { order: body.order }),
+      ...(body.answerType !== undefined && { answerType: body.answerType }),
+      ...(body.choices !== undefined && { choices: body.choices }),
+      ...(body.conditionOp !== undefined && { conditionOp: body.conditionOp }),
+      ...(body.conditionVal !== undefined && { conditionVal: body.conditionVal }),
+      ...(body.actionType !== undefined && { actionType: body.actionType }),
+      ...(body.actionValue !== undefined && { actionValue: body.actionValue }),
     },
   })
   return NextResponse.json({ question })

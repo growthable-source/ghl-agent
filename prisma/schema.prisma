@@ -209,14 +209,20 @@ model FollowUpJob {
 }
 
 model QualifyingQuestion {
-  id        String   @id @default(cuid())
-  agentId   String
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  question  String   @db.Text
-  fieldKey  String
-  required  Boolean  @default(true)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  agentId      String
+  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  question     String   @db.Text
+  fieldKey     String
+  required     Boolean  @default(true)
+  order        Int      @default(0)
+  answerType   String   @default("text")
+  choices      String[] @default([])
+  conditionOp  String?
+  conditionVal String?
+  actionType   String?
+  actionValue  String?
+  createdAt    DateTime @default(now())
   @@index([agentId, order])
 }
 
