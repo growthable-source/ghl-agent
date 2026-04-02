@@ -14,6 +14,7 @@ interface Agent {
   instructions: string | null
   isActive: boolean
   enabledTools: string[]
+  calendarId: string | null
   routingRules: Array<{ id: string; ruleType: RuleType; value: string | null; priority: number }>
   knowledgeEntries: Array<{ id: string; title: string; content: string }>
 }
@@ -46,6 +47,9 @@ export default function AgentPage() {
 
   // Tools state
   const [enabledTools, setEnabledTools] = useState<string[]>([])
+  const [calendarId, setCalendarId] = useState<string>('')
+  const [calendars, setCalendars] = useState<Array<{ id: string; name: string }>>([])
+  const [loadingCalendars, setLoadingCalendars] = useState(false)
 
   useEffect(() => {
     fetch(`/api/locations/${locationId}/agents/${agentId}`)
@@ -56,6 +60,7 @@ export default function AgentPage() {
         setSystemPrompt(agent.systemPrompt)
         setInstructions(agent.instructions ?? '')
         setEnabledTools(agent.enabledTools ?? [])
+        setCalendarId(agent.calendarId ?? '')
       })
       .finally(() => setLoading(false))
   }, [locationId, agentId])
@@ -126,6 +131,26 @@ export default function AgentPage() {
     setAgent((a) => a ? { ...a, routingRules: a.routingRules.filter((r) => r.id !== ruleId) } : a)
   }
 
+  async function loadCalendars() {
+    if (calendars.length > 0) return
+    setLoadingCalendars(true)
+    try {
+      const res = await fetch(`/api/locations/${locationId}/calendars`)
+      const data = await res.json()
+      setCalendars(data.calendars ?? [])
+    } catch {}
+    setLoadingCalendars(false)
+  }
+
+  async function saveCalendarId(id: string) {
+    setCalendarId(id)
+    await fetch(`/api/locations/${locationId}/agents/${agentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendarId: id }),
+    })
+  }
+
   async function toggleTool(toolName: string) {
     const updated = enabledTools.includes(toolName)
       ? enabledTools.filter(t => t !== toolName)
@@ -181,7 +206,7 @@ export default function AgentPage() {
           {(['settings', 'knowledge', 'rules', 'tools'] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => { setActiveTab(tab); if (tab === 'tools') loadCalendars() }}
               className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
                 activeTab === tab
                   ? 'border-white text-white'
@@ -345,6 +370,36 @@ export default function AgentPage() {
                       )
                     })}
                   </div>
+                  {/* Calendar picker — show when any calendar tool is enabled */}
+                  {category === 'calendar' && (['get_available_slots', 'book_appointment'] as const).some(t => enabledTools.includes(t)) && (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-4 mt-2">
+                      <label className="block text-sm font-medium text-zinc-300 mb-1">
+                        Connected Calendar
+                      </label>
+                      <p className="text-xs text-zinc-500 mb-3">
+                        The agent will use this calendar to check availability and book appointments.
+                      </p>
+                      {loadingCalendars ? (
+                        <p className="text-sm text-zinc-500">Loading calendars…</p>
+                      ) : calendars.length === 0 ? (
+                        <p className="text-sm text-red-400">No calendars found for this location.</p>
+                      ) : (
+                        <select
+                          value={calendarId}
+                          onChange={(e) => saveCalendarId(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
+                        >
+                          <option value="">Select a calendar…</option>
+                          {calendars.map((cal) => (
+                            <option key={cal.id} value={cal.id}>{cal.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      {calendarId && (
+                        <p className="text-xs text-zinc-600 mt-2 font-mono">{calendarId}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}

@@ -102,6 +102,11 @@ export async function POST(req: NextRequest) {
         if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
         fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries)
 
+        // Inject calendar ID if booking tools are enabled and a calendar is configured
+        if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
+          fullPrompt += `\n\n## Calendar Configuration\nCalendar ID for booking: ${agent.calendarId}\nAlways use this calendar ID when checking availability or booking appointments.`
+        }
+
         // Fetch message history
         let history: import('@/types').Message[]
         try { history = await getMessages(p.locationId, p.conversationId, 10) } catch { history = [] }
