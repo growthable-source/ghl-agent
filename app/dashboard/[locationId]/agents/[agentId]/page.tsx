@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { ALL_TOOLS } from '@/lib/tools'
 
 type RuleType = 'ALL' | 'TAG' | 'PIPELINE_STAGE' | 'KEYWORD'
 
@@ -12,6 +13,7 @@ interface Agent {
   systemPrompt: string
   instructions: string | null
   isActive: boolean
+  enabledTools: string[]
   routingRules: Array<{ id: string; ruleType: RuleType; value: string | null; priority: number }>
   knowledgeEntries: Array<{ id: string; title: string; content: string }>
 }
@@ -23,7 +25,7 @@ export default function AgentPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'settings' | 'knowledge' | 'rules'>('settings')
+  const [activeTab, setActiveTab] = useState<'settings' | 'knowledge' | 'rules' | 'tools'>('settings')
 
   // Settings state
   const [name, setName] = useState('')
@@ -42,6 +44,9 @@ export default function AgentPage() {
   const [ruleValue, setRuleValue] = useState('')
   const [addingRule, setAddingRule] = useState(false)
 
+  // Tools state
+  const [enabledTools, setEnabledTools] = useState<string[]>([])
+
   useEffect(() => {
     fetch(`/api/locations/${locationId}/agents/${agentId}`)
       .then((r) => r.json())
@@ -50,6 +55,7 @@ export default function AgentPage() {
         setName(agent.name)
         setSystemPrompt(agent.systemPrompt)
         setInstructions(agent.instructions ?? '')
+        setEnabledTools(agent.enabledTools ?? [])
       })
       .finally(() => setLoading(false))
   }, [locationId, agentId])
@@ -120,6 +126,18 @@ export default function AgentPage() {
     setAgent((a) => a ? { ...a, routingRules: a.routingRules.filter((r) => r.id !== ruleId) } : a)
   }
 
+  async function toggleTool(toolName: string) {
+    const updated = enabledTools.includes(toolName)
+      ? enabledTools.filter(t => t !== toolName)
+      : [...enabledTools, toolName]
+    setEnabledTools(updated)
+    await fetch(`/api/locations/${locationId}/agents/${agentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabledTools: updated }),
+    })
+  }
+
   if (loading) return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center">
       <p className="text-zinc-500 text-sm">Loading…</p>
@@ -160,7 +178,7 @@ export default function AgentPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-8 border-b border-zinc-800">
-          {(['settings', 'knowledge', 'rules'] as const).map((tab) => (
+          {(['settings', 'knowledge', 'rules', 'tools'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -173,6 +191,7 @@ export default function AgentPage() {
               {tab}
               {tab === 'knowledge' && ` (${agent.knowledgeEntries.length})`}
               {tab === 'rules' && ` (${agent.routingRules.length})`}
+              {tab === 'tools' && ` (${enabledTools.length})`}
             </button>
           ))}
         </div>
@@ -276,6 +295,59 @@ export default function AgentPage() {
                 </button>
               </form>
             </div>
+          </div>
+        )}
+
+        {/* Tools */}
+        {activeTab === 'tools' && (
+          <div className="space-y-8">
+            <p className="text-sm text-zinc-400">
+              Enable or disable tools available to this agent. Calendar tools require a calendar ID to be configured in your system prompt.
+            </p>
+            {(['messaging', 'contacts', 'pipeline', 'calendar'] as const).map((category) => {
+              const categoryTools = ALL_TOOLS.filter(t => t.category === category)
+              return (
+                <div key={category}>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                    {category}
+                  </h3>
+                  <div className="grid grid-cols-1 gap-2">
+                    {categoryTools.map((tool) => {
+                      const isEnabled = enabledTools.includes(tool.name)
+                      return (
+                        <div
+                          key={tool.name}
+                          className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${
+                            isEnabled ? 'border-zinc-700 bg-zinc-900' : 'border-zinc-800 bg-transparent'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium ${isEnabled ? 'text-zinc-100' : 'text-zinc-500'}`}>
+                              {tool.label}
+                            </p>
+                            <p className="text-xs text-zinc-600 mt-0.5">{tool.description}</p>
+                          </div>
+                          <button
+                            onClick={() => toggleTool(tool.name)}
+                            className={`ml-4 relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                              isEnabled ? 'bg-emerald-500' : 'bg-zinc-700'
+                            }`}
+                            role="switch"
+                            aria-checked={isEnabled}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+                                isEnabled ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 

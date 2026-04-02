@@ -26,6 +26,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.systemPrompt !== undefined && { systemPrompt: body.systemPrompt }),
       ...(body.instructions !== undefined && { instructions: body.instructions }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
+      ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
     },
   })
   return NextResponse.json({ agent })

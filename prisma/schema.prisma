@@ -36,6 +36,8 @@ model Agent {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  enabledTools     String[] @default(["get_contact_details", "send_sms", "update_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note"])
+
   knowledgeEntries KnowledgeEntry[]
   routingRules     RoutingRule[]
   messageLogs      MessageLog[]

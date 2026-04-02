@@ -12,6 +12,8 @@ import {
   getOpportunitiesForContact,
   updateOpportunityStage,
   searchConversations,
+  getFreeSlots,
+  bookAppointment,
 } from './crm-client'
 import type { AgentContext, Message } from '@/types'
 
@@ -92,6 +94,34 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['contactId', 'note'],
     },
   },
+  {
+    name: 'get_available_slots',
+    description: 'Get available appointment slots for a calendar on a given date range.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        calendarId: { type: 'string', description: 'The GHL calendar ID' },
+        startDate: { type: 'string', description: 'Start date in ISO format (YYYY-MM-DD)' },
+        endDate: { type: 'string', description: 'End date in ISO format (YYYY-MM-DD)' },
+      },
+      required: ['calendarId', 'startDate', 'endDate'],
+    },
+  },
+  {
+    name: 'book_appointment',
+    description: 'Book an appointment for the contact on a calendar.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        calendarId: { type: 'string', description: 'The GHL calendar ID' },
+        contactId: { type: 'string' },
+        startTime: { type: 'string', description: 'Start time in ISO format' },
+        title: { type: 'string', description: 'Appointment title' },
+        notes: { type: 'string', description: 'Optional notes for the appointment' },
+      },
+      required: ['calendarId', 'contactId', 'startTime'],
+    },
+  },
 ]
 
 // ─── Tool execution ────────────────────────────────────────────────────────
@@ -138,6 +168,26 @@ async function executeTool(
           // You can store notes in custom fields or use the notes endpoint
         } as any)
         return JSON.stringify({ success: true, note: input.note })
+      }
+      case 'get_available_slots': {
+        const slots = await getFreeSlots(
+          locationId,
+          input.calendarId as string,
+          input.startDate as string,
+          input.endDate as string
+        )
+        return JSON.stringify(slots)
+      }
+      case 'book_appointment': {
+        const result = await bookAppointment(locationId, {
+          calendarId: input.calendarId as string,
+          contactId: input.contactId as string,
+          startTime: input.startTime as string,
+          endTime: '',
+          title: input.title as string | undefined,
+          notes: input.notes as string | undefined,
+        })
+        return JSON.stringify({ success: true, ...result })
       }
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
@@ -189,8 +239,9 @@ export async function runAgent(opts: {
   incomingMessage: string
   messageHistory?: Message[]
   systemPrompt?: string
+  enabledTools?: string[]
 }): Promise<AgentResponse> {
-  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt } = opts
+  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools } = opts
 
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
@@ -219,6 +270,9 @@ export async function runAgent(opts: {
   let totalOutputTokens = 0
   let smsSent: string | null = null
 
+  // Filter tools based on agent configuration
+  const tools = enabledTools ? AGENT_TOOLS.filter(t => enabledTools.includes(t.name)) : AGENT_TOOLS
+
   // Agentic loop — keeps going until Claude stops calling tools
   let currentMessages = [...messages]
   const MAX_ITERATIONS = 5
@@ -228,7 +282,7 @@ export async function runAgent(opts: {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
       system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt),
-      tools: AGENT_TOOLS,
+      tools,
       messages: currentMessages,
     })
 

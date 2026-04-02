@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
             incomingMessage: p.body,
             messageHistory: history,
             systemPrompt: fullPrompt,
+            enabledTools: agent.enabledTools,
           })
 
           await db.messageLog.update({

@@ -22,6 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ loc
       name: body.name,
       systemPrompt: body.systemPrompt,
       instructions: body.instructions ?? null,
+      ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
     },
   })
   return NextResponse.json({ agent }, { status: 201 })
