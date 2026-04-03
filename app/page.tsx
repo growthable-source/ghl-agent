@@ -13,9 +13,9 @@ export default function Home() {
           </span>
         </div>
 
-        <h1 className="text-3xl font-semibold mb-2">GHL AI Agent</h1>
+        <h1 className="text-3xl font-semibold mb-2">Voxility AI</h1>
         <p className="text-zinc-400 mb-10">
-          AI-powered SMS agent for GoHighLevel. Handles inbound messages, updates contacts, and moves pipeline stages automatically.
+          AI-powered conversational agent. Handles inbound messages, updates contacts, and moves pipeline stages automatically.
         </p>
 
         {installUrl ? (
@@ -23,7 +23,7 @@ export default function Home() {
             href={installUrl}
             className="inline-flex items-center justify-center w-full rounded-lg bg-white text-black font-medium text-sm h-11 px-6 hover:bg-zinc-200 transition-colors mb-6"
           >
-            Install on GoHighLevel
+            Install App
           </a>
         ) : (
           <div className="rounded-lg border border-yellow-800 bg-yellow-950/40 text-yellow-400 text-sm px-4 py-3 mb-6">
