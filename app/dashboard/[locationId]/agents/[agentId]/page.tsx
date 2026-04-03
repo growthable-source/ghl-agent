@@ -666,6 +666,12 @@ export default function AgentPage() {
           <div className="grid grid-cols-2 gap-3">
             {[
               {
+                href: `/dashboard/${locationId}/agents/${agentId}/voice`,
+                icon: '📞',
+                label: 'Voice',
+                desc: 'Inbound call handling via Vapi',
+              },
+              {
                 href: `/dashboard/${locationId}/agents/${agentId}/persona`,
                 icon: '🎭',
                 label: 'Persona & Tone',

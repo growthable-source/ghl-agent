@@ -92,6 +92,7 @@ model Agent {
   conversationStates  ConversationStateRecord[]
   contactMemories     ContactMemory[]
   conversationMessages ConversationMessage[]
+  vapiConfig          VapiConfig?
 
   @@index([locationId, isActive])
 }
@@ -269,4 +270,54 @@ model ContactMemory {
   updatedAt  DateTime @updatedAt
   createdAt  DateTime @default(now())
   @@unique([agentId, contactId])
+}
+
+model VapiConfig {
+  id              String   @id @default(cuid())
+  agentId         String   @unique
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  phoneNumberId   String?
+  phoneNumber     String?
+  voiceProvider   String   @default("elevenlabs")
+  voiceId         String   @default("EXAVITQu4vr4xnSDxMaL")
+  firstMessage    String?  @db.Text
+  endCallMessage  String?  @db.Text
+  maxDurationSecs Int      @default(600)
+  recordCalls     Boolean  @default(true)
+  isActive        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CallLog {
+  id           String   @id @default(cuid())
+  locationId   String
+  agentId      String?
+  contactId    String?
+  contactPhone String?
+  vapiCallId   String?  @unique
+  direction    String   @default("inbound")
+  status       String   @default("completed")
+  durationSecs Int?
+  transcript   String?  @db.Text
+  summary      String?  @db.Text
+  recordingUrl String?
+  tokensUsed   Int      @default(0)
+  endedReason  String?
+  createdAt    DateTime @default(now())
+  @@index([locationId, createdAt(sort: Desc)])
+  @@index([agentId, createdAt(sort: Desc)])
+}
+
+model Integration {
+  id          String   @id @default(cuid())
+  locationId  String
+  type        String
+  name        String
+  credentials Json
+  config      Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([locationId, type])
 }

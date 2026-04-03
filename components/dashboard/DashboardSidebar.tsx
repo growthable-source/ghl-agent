@@ -37,9 +37,9 @@ export default function DashboardSidebar() {
       <div className="px-4 py-5 border-b border-zinc-800">
         <Link href="/dashboard" className="flex items-center gap-2">
           <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
-            <span className="text-black text-xs font-bold">G</span>
+            <span className="text-black text-xs font-bold">V</span>
           </div>
-          <span className="font-semibold text-sm text-white">GHL Agent</span>
+          <span className="font-semibold text-sm text-white">Voxility</span>
         </Link>
       </div>
 
@@ -63,6 +63,8 @@ export default function DashboardSidebar() {
                 {navLink(`/dashboard/${locationId}/playground`, 'Playground')}
                 {navLink(`/dashboard/${locationId}/logs`, 'Logs')}
                 {navLink(`/dashboard/${locationId}/conversations`, 'Conversations')}
+                {navLink(`/dashboard/${locationId}/calls`, 'Calls')}
+                {navLink(`/dashboard/${locationId}/integrations`, 'Integrations')}
               </>
             )}
           </>
