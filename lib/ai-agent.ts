@@ -206,11 +206,52 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
 
 // ─── Tool execution ────────────────────────────────────────────────────────
 
+function executeSandboxTool(toolName: string, input: Record<string, unknown>): string {
+  switch (toolName) {
+    case 'get_contact_details':
+      return JSON.stringify({ id: input.contactId, firstName: 'Test', lastName: 'User', phone: '+10000000000', email: 'test@example.com', tags: [] })
+    case 'send_sms':
+      return JSON.stringify({ success: true, note: '[Sandbox: SMS not actually sent]', message: input.message })
+    case 'send_email':
+      return JSON.stringify({ success: true, note: '[Sandbox: Email not actually sent]' })
+    case 'update_contact_tags':
+      return JSON.stringify({ success: true, note: `[Sandbox: Tags "${(input.tags as string[]).join(', ')}" not actually applied]` })
+    case 'get_opportunities':
+      return JSON.stringify([{ id: 'opp-sandbox', name: 'Test Opportunity', pipelineStageId: 'stage-1', monetaryValue: 1000 }])
+    case 'move_opportunity_stage':
+      return JSON.stringify({ success: true, note: '[Sandbox: Stage not actually moved]' })
+    case 'add_contact_note':
+      return JSON.stringify({ success: true, note: '[Sandbox: Note not actually saved]' })
+    case 'get_available_slots':
+      return JSON.stringify([
+        { startTime: '2025-01-15T09:00:00Z', endTime: '2025-01-15T09:30:00Z' },
+        { startTime: '2025-01-15T10:00:00Z', endTime: '2025-01-15T10:30:00Z' },
+        { startTime: '2025-01-15T14:00:00Z', endTime: '2025-01-15T14:30:00Z' },
+      ])
+    case 'book_appointment':
+      return JSON.stringify({ success: true, note: '[Sandbox: Appointment not actually booked]', startTime: input.startTime })
+    case 'search_contacts':
+      return JSON.stringify([{ id: 'contact-sandbox', firstName: 'Test', lastName: 'User', phone: '+10000000000' }])
+    case 'create_contact':
+      return JSON.stringify({ success: true, note: '[Sandbox: Contact not actually created]', contact: { id: 'new-sandbox', ...input } })
+    case 'create_opportunity':
+      return JSON.stringify({ success: true, note: '[Sandbox: Opportunity not actually created]' })
+    case 'update_opportunity_value':
+      return JSON.stringify({ success: true, note: '[Sandbox: Value not actually updated]' })
+    case 'get_calendar_events':
+      return JSON.stringify({ events: [], note: '[Sandbox: No real events]' })
+    default:
+      return JSON.stringify({ note: `[Sandbox: ${toolName} not executed]` })
+  }
+}
+
 async function executeTool(
   toolName: string,
   input: Record<string, unknown>,
-  locationId: string
+  locationId: string,
+  sandbox = false
 ): Promise<string> {
+  if (sandbox) return executeSandboxTool(toolName, input)
   try {
     switch (toolName) {
       case 'get_contact_details': {
@@ -405,8 +446,10 @@ export async function runAgent(opts: {
   systemPrompt?: string
   enabledTools?: string[]
   persona?: PersonaSettings
+  sandbox?: boolean
 }): Promise<AgentResponse> {
-  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona } = opts
+  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona, sandbox } = opts
+  const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
@@ -491,7 +534,8 @@ export async function runAgent(opts: {
       const result = await executeTool(
         toolBlock.name,
         toolBlock.input as Record<string, unknown>,
-        locationId
+        locationId,
+        isSandbox
       )
       toolCallTrace.push({
         tool: toolBlock.name,
