@@ -282,10 +282,18 @@ model VapiConfig {
   phoneNumber     String?
   voiceProvider   String   @default("elevenlabs")
   voiceId         String   @default("EXAVITQu4vr4xnSDxMaL")
+  voiceName       String?
+  stability       Float    @default(0.5)
+  similarityBoost Float    @default(0.75)
+  speed           Float    @default(1.0)
+  style           Float    @default(0.0)
   firstMessage    String?  @db.Text
   endCallMessage  String?  @db.Text
   maxDurationSecs Int      @default(600)
   recordCalls     Boolean  @default(true)
+  backgroundSound String?
+  endCallPhrases  String[] @default([])
+  language        String?
   isActive        Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
