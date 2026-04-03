@@ -14,7 +14,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const location = await db.location.findUnique({ where: { id: locationId } })
   const ghlConnected = !!(location?.accessToken)
 
-  return NextResponse.json({ integrations, ghlConnected })
+  const vapiActive = !!process.env.VAPI_API_KEY
+
+  return NextResponse.json({ integrations, ghlConnected, vapiActive })
 }
 
 export async function POST(req: NextRequest, { params }: Params) {

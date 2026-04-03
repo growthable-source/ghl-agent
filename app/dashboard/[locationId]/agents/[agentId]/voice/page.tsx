@@ -48,15 +48,25 @@ export default function VoicePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [vapiKeyMissing, setVapiKeyMissing] = useState(false)
+  const [vapiReady, setVapiReady] = useState(false)
+
+  // Phone number provisioning
+  const [showBuyForm, setShowBuyForm] = useState(false)
+  const [areaCode, setAreaCode] = useState('')
+  const [buying, setBuying] = useState(false)
+  const [buyError, setBuyError] = useState('')
 
   useEffect(() => {
     fetch(`/api/locations/${locationId}/agents/${agentId}/vapi`)
       .then(r => r.json())
-      .then(({ config: cfg, phoneNumbers: phones }: { config: VapiConfig | null; phoneNumbers: PhoneNumber[] | null }) => {
+      .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready }: {
+        config: VapiConfig | null
+        phoneNumbers: PhoneNumber[] | null
+        vapiReady: boolean
+      }) => {
         if (cfg) setConfig(cfg)
         setPhoneNumbers(phones || [])
-        if (!phones || phones.length === 0) setVapiKeyMissing(true)
+        setVapiReady(ready)
       })
       .finally(() => setLoading(false))
   }, [locationId, agentId])
@@ -75,19 +85,43 @@ export default function VoicePage() {
     setTimeout(() => setSaved(false), 2000)
   }
 
+  async function buyNumber(e: React.FormEvent) {
+    e.preventDefault()
+    setBuying(true)
+    setBuyError('')
+    try {
+      const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/vapi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ areaCode }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to provision number')
+      const newPhone: PhoneNumber = data.phone
+      setPhoneNumbers(prev => [...prev, newPhone])
+      setConfig(c => ({ ...c, phoneNumberId: newPhone.id, phoneNumber: newPhone.number }))
+      setShowBuyForm(false)
+      setAreaCode('')
+    } catch (err: any) {
+      setBuyError(err.message)
+    } finally {
+      setBuying(false)
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center h-64"><p className="text-zinc-500 text-sm">Loading…</p></div>
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-semibold mb-1">Voice</h1>
-        <p className="text-zinc-400 text-sm">Configure this agent for inbound phone calls via Vapi. Uses the same knowledge base and agent brain as SMS.</p>
+        <p className="text-zinc-400 text-sm">Configure this agent for inbound phone calls. Uses the same knowledge base and agent brain as SMS.</p>
       </div>
 
-      {vapiKeyMissing && (
-        <div className="mb-6 rounded-xl border border-yellow-800 bg-yellow-950/30 p-4">
-          <p className="text-sm text-yellow-400 font-medium mb-1">VAPI_API_KEY not configured</p>
-          <p className="text-xs text-yellow-600">Add your Vapi API key to Vercel environment variables to enable voice calls. Get one at <a href="https://vapi.ai" target="_blank" className="underline">vapi.ai</a>.</p>
+      {!vapiReady && (
+        <div className="mb-6 rounded-xl border border-red-900 bg-red-950/30 p-4">
+          <p className="text-sm text-red-400 font-medium">Voice AI is not enabled on this account.</p>
+          <p className="text-xs text-red-700 mt-1">Contact support to enable voice calling.</p>
         </div>
       )}
 
@@ -101,7 +135,8 @@ export default function VoicePage() {
           <button
             type="button"
             onClick={() => setConfig(c => ({ ...c, isActive: !c.isActive }))}
-            className={`relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors ${config.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+            disabled={!vapiReady}
+            className={`relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors disabled:opacity-40 ${config.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}
           >
             <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${config.isActive ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
@@ -109,9 +144,46 @@ export default function VoicePage() {
 
         {/* Phone number */}
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1.5">Phone Number</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-zinc-400">Phone Number</label>
+            {vapiReady && (
+              <button
+                type="button"
+                onClick={() => { setShowBuyForm(!showBuyForm); setBuyError('') }}
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                {showBuyForm ? 'Cancel' : '+ Get a number'}
+              </button>
+            )}
+          </div>
+
+          {showBuyForm && (
+            <div className="mb-3 rounded-lg border border-zinc-700 bg-zinc-900 p-4">
+              <p className="text-xs text-zinc-400 mb-3">Provision a new phone number. Enter an area code to get a local number.</p>
+              <form onSubmit={buyNumber} className="flex gap-2">
+                <input
+                  type="text"
+                  value={areaCode}
+                  onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  placeholder="Area code e.g. 415"
+                  maxLength={3}
+                  required
+                  className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-400"
+                />
+                <button
+                  type="submit"
+                  disabled={buying || areaCode.length < 3}
+                  className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  {buying ? 'Provisioning…' : 'Get number'}
+                </button>
+              </form>
+              {buyError && <p className="text-xs text-red-400 mt-2">{buyError}</p>}
+            </div>
+          )}
+
           {phoneNumbers.length === 0 ? (
-            <p className="text-sm text-zinc-500">No Vapi phone numbers found. <a href="https://dashboard.vapi.ai" target="_blank" className="text-blue-400 hover:underline">Buy a number in Vapi →</a></p>
+            <p className="text-sm text-zinc-500">No phone numbers yet. Click <span className="text-blue-400">+ Get a number</span> above to provision one.</p>
           ) : (
             <select
               value={config.phoneNumberId || ''}
@@ -207,17 +279,17 @@ export default function VoicePage() {
 
         {/* Webhook URL info */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-5 py-4">
-          <p className="text-xs font-medium text-zinc-400 mb-2">Vapi Server URL</p>
-          <p className="text-xs text-zinc-600 mb-2">Set this as the Server URL in your Vapi phone number settings:</p>
-          <code className="text-xs text-zinc-300 bg-zinc-900 px-2 py-1 rounded block">{process.env.NEXT_PUBLIC_APP_URL || 'https://voxilityai.vercel.app'}/api/vapi/webhook</code>
+          <p className="text-xs font-medium text-zinc-400 mb-1">Inbound Webhook</p>
+          <code className="text-xs text-zinc-400 bg-zinc-900 px-2 py-1 rounded block">{process.env.NEXT_PUBLIC_APP_URL || 'https://voxilityai.vercel.app'}/api/vapi/webhook</code>
+          <p className="text-xs text-zinc-600 mt-2">This is configured automatically for numbers provisioned above.</p>
         </div>
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || !vapiReady}
           className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
         >
-          {saving ? 'Saving…' : saved ? 'Saved' : 'Save Voice Settings'}
+          {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Voice Settings'}
         </button>
       </form>
     </div>

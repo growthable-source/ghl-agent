@@ -27,6 +27,18 @@ export async function listPhoneNumbers() {
   }))
 }
 
+export async function purchasePhoneNumber(areaCode: string, country = 'US') {
+  const data = await vapiRequest('/phone-number', {
+    method: 'POST',
+    body: JSON.stringify({ provider: 'vapi', areaCode, country }),
+  })
+  return {
+    id: (data as any).id,
+    number: (data as any).number,
+    name: (data as any).name || (data as any).number,
+  }
+}
+
 export async function listVoices() {
   // Return curated list of ElevenLabs voices available on Vapi
   return [

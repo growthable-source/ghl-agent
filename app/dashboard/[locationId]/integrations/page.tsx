@@ -17,6 +17,7 @@ export default function IntegrationsPage() {
 
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [ghlConnected, setGhlConnected] = useState(false)
+  const [vapiActive, setVapiActive] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Twilio form
@@ -27,9 +28,14 @@ export default function IntegrationsPage() {
   useEffect(() => {
     fetch(`/api/locations/${locationId}/integrations`)
       .then(r => r.json())
-      .then(({ integrations: ints, ghlConnected: ghl }: { integrations: Integration[]; ghlConnected: boolean }) => {
+      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi }: {
+        integrations: Integration[]
+        ghlConnected: boolean
+        vapiActive: boolean
+      }) => {
         setIntegrations(ints || [])
         setGhlConnected(ghl)
+        setVapiActive(vapi)
       })
       .finally(() => setLoading(false))
   }, [locationId])
@@ -84,25 +90,19 @@ export default function IntegrationsPage() {
           </div>
         </div>
 
-        {/* Vapi */}
+        {/* Vapi Voice */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="text-2xl">🎙️</span>
               <div>
-                <p className="text-sm font-medium text-zinc-200">Vapi Voice</p>
-                <p className="text-xs text-zinc-500">AI voice calls — configured per agent in Voice settings</p>
+                <p className="text-sm font-medium text-zinc-200">Voice AI</p>
+                <p className="text-xs text-zinc-500">Inbound call handling — configure per agent in Voice settings</p>
               </div>
             </div>
-            <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-zinc-800 text-zinc-500">
-              Needs API key
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${vapiActive ? 'bg-emerald-900/30 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+              {vapiActive ? 'Active' : 'Unavailable'}
             </span>
-          </div>
-          <div className="mt-3 pt-3 border-t border-zinc-800 flex gap-2">
-            <div className="flex-1 text-xs text-zinc-600">
-              Add <code className="bg-zinc-800 px-1 rounded">VAPI_API_KEY</code> to Vercel env vars, then configure voice per agent.
-            </div>
-            <a href="https://vapi.ai" target="_blank" className="text-xs text-blue-400 hover:underline shrink-0">Get API key →</a>
           </div>
         </div>
 
@@ -137,7 +137,7 @@ export default function IntegrationsPage() {
 
           {showTwilioForm && (
             <form onSubmit={connectTwilio} className="space-y-3 mt-3 pt-3 border-t border-zinc-800">
-              <p className="text-xs text-zinc-500">Find these in your <a href="https://console.twilio.com" target="_blank" className="text-blue-400 hover:underline">Twilio Console</a>. Set your webhook to <code className="bg-zinc-800 px-1 rounded">/api/twilio/sms</code>.</p>
+              <p className="text-xs text-zinc-500">Find these in your <a href="https://console.twilio.com" target="_blank" className="text-blue-400 hover:underline">Twilio Console</a>.</p>
               <input
                 type="text"
                 value={twilioForm.accountSid}
