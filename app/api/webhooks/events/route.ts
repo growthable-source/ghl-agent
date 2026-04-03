@@ -153,6 +153,7 @@ export async function POST(req: NextRequest) {
         try {
           const result = await runAgent({
             locationId: p.locationId,
+            agentId: agent.id,
             contactId: p.contactId,
             conversationId: p.conversationId,
             incomingMessage: p.body,

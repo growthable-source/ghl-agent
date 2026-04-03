@@ -15,6 +15,16 @@ interface QualifyingQuestion {
   conditionVal: string | null
   actionType: string | null
   actionValue: string | null
+  ghlFieldKey: string | null
+  overwrite: boolean
+}
+
+interface ContactField {
+  id: string
+  name: string
+  fieldKey: string
+  dataType: string
+  group: string
 }
 
 const ANSWER_TYPES = [
@@ -66,6 +76,8 @@ const emptyForm = {
   actionValue: '',
   showConditional: false,
   newChoice: '',
+  ghlFieldKey: '',
+  overwrite: false,
 }
 
 export default function QualifyingPage() {
@@ -77,12 +89,18 @@ export default function QualifyingPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState(emptyForm)
+  const [contactFields, setContactFields] = useState<ContactField[]>([])
 
   useEffect(() => {
-    fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions`)
-      .then(r => r.json())
-      .then(({ questions }) => setQuestions(questions ?? []))
-      .finally(() => setLoading(false))
+    Promise.all([
+      fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions`)
+        .then(r => r.json())
+        .then(({ questions }) => setQuestions(questions ?? [])),
+      fetch(`/api/locations/${locationId}/contact-fields`)
+        .then(r => r.json())
+        .then(({ fields }) => setContactFields(fields ?? []))
+        .catch(() => {}),
+    ]).finally(() => setLoading(false))
   }, [locationId, agentId])
 
   function autoFieldKey(question: string) {
@@ -132,6 +150,8 @@ export default function QualifyingPage() {
         conditionVal: form.showConditional && form.conditionOp ? form.conditionVal : null,
         actionType: form.showConditional && form.actionType ? form.actionType : null,
         actionValue: form.showConditional && form.actionType ? form.actionValue : null,
+        ghlFieldKey: form.ghlFieldKey || null,
+        overwrite: form.overwrite,
       }),
     })
     const { question } = await res.json()
@@ -148,6 +168,13 @@ export default function QualifyingPage() {
   const condInfo = form.conditionOp ? CONDITION_OPS[form.conditionOp] : null
   const actInfo = form.actionType ? ACTION_TYPES[form.actionType] : null
 
+  const standardFields = contactFields.filter(f => f.group === 'Standard')
+  const customFields = contactFields.filter(f => f.group === 'Custom')
+
+  function fieldName(fieldKey: string) {
+    return contactFields.find(f => f.fieldKey === fieldKey)?.name ?? fieldKey
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <p className="text-zinc-500 text-sm">Loading…</p>
@@ -159,7 +186,7 @@ export default function QualifyingPage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold mb-1">Qualifying Questions</h1>
         <p className="text-zinc-400 text-sm">
-          Questions the agent asks before taking key actions. Add conditional logic to tag contacts, move pipeline stages, or hand off to a human based on how they answer.
+          Questions the agent asks before taking key actions. Map answers to contact fields and add conditional logic to tag, move stages, or hand off based on responses.
         </p>
       </div>
 
@@ -175,6 +202,11 @@ export default function QualifyingPage() {
                     <span className="text-xs font-mono text-zinc-400 bg-zinc-800 rounded px-1.5 py-0.5">{q.fieldKey}</span>
                     <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 capitalize">{q.answerType.replace('_', '/')}</span>
                     {q.required && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400">required</span>}
+                    {q.ghlFieldKey && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400">
+                        → {fieldName(q.ghlFieldKey)} {q.overwrite ? '(overwrite)' : '(keep first)'}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-zinc-200 mb-2">{q.question}</p>
                   {q.choices?.length > 0 && (
@@ -220,35 +252,6 @@ export default function QualifyingPage() {
               rows={2}
               className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
             />
-          </div>
-
-          {/* Field key + Required in a row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Field Key <span className="text-zinc-600">(internal)</span></label>
-              <input
-                type="text"
-                value={form.fieldKey}
-                onChange={e => updateForm('fieldKey', e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
-                placeholder="e.g. intent"
-                required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Required</label>
-              <button
-                type="button"
-                onClick={() => updateForm('required', !form.required)}
-                className={`w-full h-10 rounded-lg border text-sm font-medium transition-colors ${
-                  form.required
-                    ? 'border-amber-600 bg-amber-900/20 text-amber-400'
-                    : 'border-zinc-700 bg-zinc-900 text-zinc-500'
-                }`}
-              >
-                {form.required ? 'Required' : 'Optional'}
-              </button>
-            </div>
           </div>
 
           {/* Answer Type */}
@@ -300,6 +303,95 @@ export default function QualifyingPage() {
               </div>
             </div>
           )}
+
+          {/* Save to contact field */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">Save answer to contact field</label>
+              <p className="text-xs text-zinc-600 mb-2">When the agent gets an answer, write it directly to the contact record.</p>
+              <select
+                value={form.ghlFieldKey}
+                onChange={e => {
+                  const val = e.target.value
+                  updateForm('ghlFieldKey', val)
+                  // Auto-populate internal key from field selection if not set
+                  if (val && !form.fieldKey) {
+                    const slug = val.replace('contact.', '').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+                    updateForm('fieldKey', slug)
+                  }
+                }}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+              >
+                <option value="">Don&apos;t save to contact</option>
+                {standardFields.length > 0 && (
+                  <optgroup label="Standard Fields">
+                    {standardFields.map(f => (
+                      <option key={f.id} value={f.fieldKey}>{f.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {customFields.length > 0 && (
+                  <optgroup label="Custom Fields">
+                    {customFields.map(f => (
+                      <option key={f.id} value={f.fieldKey}>{f.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
+            {form.ghlFieldKey && (
+              <button
+                type="button"
+                onClick={() => updateForm('overwrite', !form.overwrite)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-sm transition-colors text-left ${
+                  form.overwrite
+                    ? 'border-blue-700 bg-blue-900/20 text-blue-300'
+                    : 'border-zinc-700 text-zinc-400'
+                }`}
+              >
+                <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${
+                  form.overwrite ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
+                }`}>
+                  {form.overwrite && <span className="text-white text-[10px] leading-none">✓</span>}
+                </span>
+                <span>
+                  {form.overwrite
+                    ? 'Overwrite — always update the field with the latest answer'
+                    : 'Keep first answer — don\'t overwrite if field already has a value'}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Internal key + Required */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Internal key <span className="text-zinc-600">(auto)</span></label>
+              <input
+                type="text"
+                value={form.fieldKey}
+                onChange={e => updateForm('fieldKey', e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
+                placeholder="e.g. intent"
+                required
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Required</label>
+              <button
+                type="button"
+                onClick={() => updateForm('required', !form.required)}
+                className={`w-full h-10 rounded-lg border text-sm font-medium transition-colors ${
+                  form.required
+                    ? 'border-amber-600 bg-amber-900/20 text-amber-400'
+                    : 'border-zinc-700 bg-zinc-900 text-zinc-500'
+                }`}
+              >
+                {form.required ? 'Required' : 'Optional'}
+              </button>
+            </div>
+          </div>
 
           {/* Conditional action — collapsible */}
           <div className="rounded-lg border border-zinc-800 overflow-hidden">

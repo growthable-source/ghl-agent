@@ -202,6 +202,19 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['contactId'],
     },
   },
+  {
+    name: 'save_qualifying_answer',
+    description: 'Save a qualifying question answer for this contact. Call this whenever the contact answers one of the qualifying questions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        fieldKey: { type: 'string', description: 'The field key of the qualifying question that was answered' },
+        answer: { type: 'string', description: 'The contact\'s answer' },
+      },
+      required: ['contactId', 'fieldKey', 'answer'],
+    },
+  },
 ]
 
 // ─── Tool execution ────────────────────────────────────────────────────────
@@ -240,6 +253,8 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ success: true, note: '[Sandbox: Value not actually updated]' })
     case 'get_calendar_events':
       return JSON.stringify({ events: [], note: '[Sandbox: No real events]' })
+    case 'save_qualifying_answer':
+      return JSON.stringify({ success: true, note: `[Sandbox: Answer "${input.answer}" for field "${input.fieldKey}" not actually saved]` })
     default:
       return JSON.stringify({ note: `[Sandbox: ${toolName} not executed]` })
   }
@@ -249,7 +264,8 @@ async function executeTool(
   toolName: string,
   input: Record<string, unknown>,
   locationId: string,
-  sandbox = false
+  sandbox = false,
+  agentId?: string
 ): Promise<string> {
   if (sandbox) return executeSandboxTool(toolName, input)
   try {
@@ -380,6 +396,19 @@ async function executeTool(
         const data = await res.json()
         return JSON.stringify(data)
       }
+      case 'save_qualifying_answer': {
+        if (agentId) {
+          const { saveQualifyingAnswer } = await import('./qualifying')
+          await saveQualifyingAnswer(
+            agentId,
+            input.contactId as string,
+            input.fieldKey as string,
+            input.answer as string,
+            locationId
+          )
+        }
+        return JSON.stringify({ success: true })
+      }
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
@@ -439,6 +468,7 @@ export interface AgentResponse {
 
 export async function runAgent(opts: {
   locationId: string
+  agentId?: string
   contactId: string
   conversationId?: string
   incomingMessage: string
@@ -448,7 +478,7 @@ export async function runAgent(opts: {
   persona?: PersonaSettings
   sandbox?: boolean
 }): Promise<AgentResponse> {
-  const { locationId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona, sandbox } = opts
+  const { locationId, agentId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona, sandbox } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Build message history for Claude
@@ -535,7 +565,8 @@ export async function runAgent(opts: {
         toolBlock.name,
         toolBlock.input as Record<string, unknown>,
         locationId,
-        isSandbox
+        isSandbox,
+        agentId
       )
       toolCallTrace.push({
         tool: toolBlock.name,

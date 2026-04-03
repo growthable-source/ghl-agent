@@ -28,6 +28,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       conditionVal: body.conditionVal ?? null,
       actionType: body.actionType ?? null,
       actionValue: body.actionValue ?? null,
+      ghlFieldKey: body.ghlFieldKey ?? null,
+      overwrite: body.overwrite ?? false,
     },
   })
   return NextResponse.json({ question }, { status: 201 })

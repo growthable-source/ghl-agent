@@ -1,4 +1,5 @@
 import { db } from './db'
+import { updateContactField, getContact } from './crm-client'
 import type { QualifyingQuestion } from '@prisma/client'
 
 export async function getUnansweredQuestions(agentId: string, contactId: string): Promise<QualifyingQuestion[]> {
@@ -64,13 +65,48 @@ export function buildQualifyingPromptBlock(unanswered: QualifyingQuestion[]): st
   return `\n\n## Qualifying Questions\nAsk these questions naturally — one at a time. Follow the specified actions based on the contact's answers:\n\n${list}`
 }
 
-export async function saveQualifyingAnswer(agentId: string, contactId: string, fieldKey: string, answer: string) {
+export async function saveQualifyingAnswer(
+  agentId: string,
+  contactId: string,
+  fieldKey: string,
+  answer: string,
+  locationId?: string
+) {
+  // 1. Find the question to get ghlFieldKey + overwrite setting
+  const question = await db.qualifyingQuestion.findFirst({
+    where: { agentId, fieldKey },
+  })
+
+  // 2. Get existing answers
   const state = await db.conversationStateRecord.findUnique({
     where: { agentId_contactId: { agentId, contactId } },
   })
   const existing = (state?.qualifyingAnswers as Record<string, string>) ?? {}
-  await db.conversationStateRecord.update({
-    where: { agentId_contactId: { agentId, contactId } },
-    data: { qualifyingAnswers: { ...existing, [fieldKey]: answer } },
-  })
+
+  // 3. Apply overwrite logic: if overwrite is false and we already have an answer, skip update
+  const shouldUpdate = question?.overwrite !== false || !existing[fieldKey]
+
+  if (shouldUpdate) {
+    // Save to DB
+    await db.conversationStateRecord.update({
+      where: { agentId_contactId: { agentId, contactId } },
+      data: { qualifyingAnswers: { ...existing, [fieldKey]: answer } },
+    })
+
+    // Write to GHL contact field if configured and not a sandbox contact
+    if (question?.ghlFieldKey && locationId && !contactId.startsWith('playground-')) {
+      try {
+        // Check if we should overwrite existing value
+        if (!question.overwrite) {
+          const contact = await getContact(locationId, contactId)
+          const existingVal = (contact as any)[question.ghlFieldKey] ||
+            (contact as any).customFields?.find((f: any) => f.key === question.ghlFieldKey)?.value
+          if (existingVal) return // Keep first answer — field already has a value
+        }
+        await updateContactField(locationId, contactId, question.ghlFieldKey, answer)
+      } catch (err) {
+        console.error(`[Qualifying] Failed to update GHL field ${question.ghlFieldKey}:`, err)
+      }
+    }
+  }
 }

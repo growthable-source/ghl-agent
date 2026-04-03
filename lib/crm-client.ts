@@ -68,6 +68,47 @@ export async function createContact(
   return data.contact
 }
 
+export interface CustomField {
+  id: string
+  name: string
+  fieldKey: string
+  dataType: string
+  placeholder?: string
+  position?: number
+}
+
+export async function getCustomFields(locationId: string): Promise<CustomField[]> {
+  try {
+    const data = await apiFetch<{ customFields: CustomField[] }>(
+      locationId,
+      `/contacts/custom-fields?locationId=${locationId}`
+    )
+    return data.customFields ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function updateContactField(
+  locationId: string,
+  contactId: string,
+  ghlFieldKey: string,
+  value: string
+): Promise<void> {
+  // Custom fields have keys like "contact.field_name"
+  if (ghlFieldKey.startsWith('contact.') || ghlFieldKey.startsWith('custom.')) {
+    await apiFetch(locationId, `/contacts/${contactId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        customFields: [{ key: ghlFieldKey, field_value: value }],
+      }),
+    })
+  } else {
+    // Standard field (firstName, lastName, email, phone, etc.)
+    await updateContact(locationId, contactId, { [ghlFieldKey]: value } as any)
+  }
+}
+
 export async function updateContact(
   locationId: string,
   contactId: string,

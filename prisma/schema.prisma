@@ -223,6 +223,8 @@ model QualifyingQuestion {
   conditionVal String?
   actionType   String?
   actionValue  String?
+  ghlFieldKey  String?
+  overwrite    Boolean  @default(false)
   createdAt    DateTime @default(now())
   @@index([agentId, order])
 }
