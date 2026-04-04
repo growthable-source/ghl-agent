@@ -107,6 +107,7 @@ export default function VoicePage() {
   // Phone provisioning
   const [showBuyForm, setShowBuyForm] = useState(false)
   const [areaCode, setAreaCode] = useState('')
+  const [buyCountry, setBuyCountry] = useState('US')
   const [buying, setBuying] = useState(false)
   const [buyError, setBuyError] = useState('')
 
@@ -174,15 +175,15 @@ export default function VoicePage() {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  async function buyNumber(e: React.FormEvent) {
-    e.preventDefault()
+  async function buyNumber() {
+    if (!areaCode.trim() || buying) return
     setBuying(true)
     setBuyError('')
     try {
       const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/vapi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ areaCode }),
+        body: JSON.stringify({ areaCode: areaCode.trim(), country: buyCountry }),
       })
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to provision number')
@@ -244,18 +245,49 @@ export default function VoicePage() {
             )}
           </div>
           {showBuyForm && (
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-              <p className="text-xs text-zinc-500 mb-2">Enter area code to provision a local number.</p>
-              <form onSubmit={buyNumber} className="flex gap-2">
+            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
+              <p className="text-xs text-zinc-500">Provision a local phone number by country and area code.</p>
+              <div className="flex gap-2">
+                <select value={buyCountry} onChange={e => setBuyCountry(e.target.value)}
+                  className="bg-zinc-800 border border-zinc-600 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-zinc-400">
+                  <option value="US">US +1</option>
+                  <option value="GB">UK +44</option>
+                  <option value="CA">CA +1</option>
+                  <option value="AU">AU +61</option>
+                  <option value="DE">DE +49</option>
+                  <option value="FR">FR +33</option>
+                  <option value="ES">ES +34</option>
+                  <option value="IT">IT +39</option>
+                  <option value="NL">NL +31</option>
+                  <option value="BR">BR +55</option>
+                  <option value="MX">MX +52</option>
+                  <option value="IN">IN +91</option>
+                  <option value="JP">JP +81</option>
+                  <option value="SG">SG +65</option>
+                  <option value="NZ">NZ +64</option>
+                  <option value="IE">IE +353</option>
+                  <option value="SE">SE +46</option>
+                  <option value="NO">NO +47</option>
+                  <option value="DK">DK +45</option>
+                  <option value="FI">FI +358</option>
+                  <option value="PT">PT +351</option>
+                  <option value="AT">AT +43</option>
+                  <option value="CH">CH +41</option>
+                  <option value="BE">BE +32</option>
+                  <option value="PL">PL +48</option>
+                  <option value="ZA">ZA +27</option>
+                  <option value="PH">PH +63</option>
+                  <option value="IL">IL +972</option>
+                </select>
                 <input type="text" value={areaCode}
-                  onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                  placeholder="e.g. 415" maxLength={3} required
+                  onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                  placeholder="Area code"
                   className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-                <button type="submit" disabled={buying || areaCode.length < 3}
+                <button type="button" onClick={buyNumber} disabled={buying || !areaCode.trim()}
                   className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 whitespace-nowrap">
                   {buying ? 'Provisioning…' : 'Get number'}
                 </button>
-              </form>
+              </div>
               {buyError && <p className="text-xs text-red-400 mt-2">{buyError}</p>}
             </div>
           )}
