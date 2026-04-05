@@ -6,7 +6,14 @@ type Params = { params: Promise<{ locationId: string; agentId: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { agentId } = await params
-  const config = await db.vapiConfig.findUnique({ where: { agentId } })
+
+  const [config, agent] = await Promise.all([
+    db.vapiConfig.findUnique({ where: { agentId } }),
+    db.agent.findUnique({
+      where: { id: agentId },
+      include: { knowledgeEntries: true },
+    }),
+  ])
 
   let phoneNumbers: { id: string; number: string; name: string }[] = []
   try {
@@ -14,8 +21,26 @@ export async function GET(_req: NextRequest, { params }: Params) {
   } catch {}
 
   const vapiReady = !!process.env.VAPI_API_KEY
+  const vapiPublicKey = process.env.VAPI_PUBLIC_KEY || null
 
-  return NextResponse.json({ config, phoneNumbers, vapiReady })
+  // Build system prompt for test calls
+  let testSystemPrompt = agent?.systemPrompt || 'You are a helpful assistant.'
+  if (agent?.instructions) testSystemPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
+  if (agent?.knowledgeEntries?.length) {
+    const kb = agent.knowledgeEntries.map(e => `### ${e.title}\n${e.content}`).join('\n\n')
+    testSystemPrompt += `\n\n## Knowledge Base\n${kb}`
+  }
+
+  return NextResponse.json({
+    config,
+    phoneNumbers,
+    vapiReady,
+    vapiPublicKey,
+    agentName: agent?.name || 'Agent',
+    agentPersonaName: agent?.agentPersonaName || null,
+    testSystemPrompt,
+    serverUrl: `${process.env.APP_URL || 'https://voxilityai.vercel.app'}/api/vapi/webhook`,
+  })
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {

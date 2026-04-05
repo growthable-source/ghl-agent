@@ -215,6 +215,58 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['contactId', 'fieldKey', 'answer'],
     },
   },
+  {
+    name: 'score_lead',
+    description: 'Score a lead from 1-100 based on buying signals, engagement, and qualification. Save the score to the contact. Use this after qualifying or when you detect strong intent.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        score: { type: 'number', description: 'Lead score 1-100. 80+ = hot, 50-79 = warm, below 50 = cold' },
+        reason: { type: 'string', description: 'Brief reason for the score' },
+      },
+      required: ['contactId', 'score', 'reason'],
+    },
+  },
+  {
+    name: 'detect_sentiment',
+    description: 'Analyse the sentiment of the conversation. Use this when the contact seems frustrated, angry, or very positive. Tags the contact and can trigger escalation.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        sentiment: { type: 'string', description: 'One of: very_positive, positive, neutral, negative, very_negative' },
+        summary: { type: 'string', description: 'Brief summary of why this sentiment was detected' },
+      },
+      required: ['contactId', 'sentiment', 'summary'],
+    },
+  },
+  {
+    name: 'schedule_followup',
+    description: 'Schedule an automated follow-up SMS to be sent after a delay. Use this to re-engage contacts who go quiet, or to send a check-in after a booking.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        message: { type: 'string', description: 'The follow-up SMS message' },
+        delayHours: { type: 'number', description: 'Hours to wait before sending. e.g. 24 = tomorrow, 72 = 3 days' },
+      },
+      required: ['contactId', 'message', 'delayHours'],
+    },
+  },
+  {
+    name: 'transfer_to_human',
+    description: 'Escalate the conversation to a human agent. Use this when the AI cannot resolve the issue, the contact explicitly asks for a human, or sentiment is very negative.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        reason: { type: 'string', description: 'Why the transfer is needed' },
+        contextSummary: { type: 'string', description: 'Summary of the conversation so far for the human agent' },
+      },
+      required: ['contactId', 'reason'],
+    },
+  },
 ]
 
 // ─── Tool execution ────────────────────────────────────────────────────────
@@ -255,6 +307,14 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ events: [], note: '[Sandbox: No real events]' })
     case 'save_qualifying_answer':
       return JSON.stringify({ success: true, note: `[Sandbox: Answer "${input.answer}" for field "${input.fieldKey}" not actually saved]` })
+    case 'score_lead':
+      return JSON.stringify({ success: true, note: `[Sandbox: Lead scored ${input.score}/100 — "${input.reason}"]` })
+    case 'detect_sentiment':
+      return JSON.stringify({ success: true, note: `[Sandbox: Sentiment "${input.sentiment}" — "${input.summary}"]` })
+    case 'schedule_followup':
+      return JSON.stringify({ success: true, note: `[Sandbox: Follow-up "${input.message}" scheduled in ${input.delayHours}h — not actually queued]` })
+    case 'transfer_to_human':
+      return JSON.stringify({ success: true, note: `[Sandbox: Transfer to human requested — "${input.reason}"]` })
     default:
       return JSON.stringify({ note: `[Sandbox: ${toolName} not executed]` })
   }
@@ -408,6 +468,67 @@ async function executeTool(
           )
         }
         return JSON.stringify({ success: true })
+      }
+      case 'score_lead': {
+        const score = input.score as number
+        const reason = input.reason as string
+        const scoreTag = score >= 80 ? 'lead-hot' : score >= 50 ? 'lead-warm' : 'lead-cold'
+        await addTagsToContact(locationId, input.contactId as string, [scoreTag])
+        if (agentId) {
+          const { db: prisma } = await import('./db')
+          await prisma.leadScore.upsert({
+            where: { agentId_contactId: { agentId, contactId: input.contactId as string } },
+            create: { agentId, locationId, contactId: input.contactId as string, score, reason },
+            update: { score, reason },
+          })
+        }
+        return JSON.stringify({ success: true, score, tier: scoreTag, reason })
+      }
+      case 'detect_sentiment': {
+        const sentiment = input.sentiment as string
+        const summary = input.summary as string
+        // Tag with sentiment
+        await addTagsToContact(locationId, input.contactId as string, [`sentiment-${sentiment}`])
+        // If very negative, also tag for escalation
+        if (sentiment === 'very_negative' || sentiment === 'negative') {
+          await addTagsToContact(locationId, input.contactId as string, ['needs-attention'])
+        }
+        return JSON.stringify({ success: true, sentiment, summary })
+      }
+      case 'schedule_followup': {
+        const { db: prisma } = await import('./db')
+        const delayMs = (input.delayHours as number) * 60 * 60 * 1000
+        const scheduledAt = new Date(Date.now() + delayMs)
+        await prisma.scheduledMessage.create({
+          data: {
+            locationId,
+            agentId: agentId || null,
+            contactId: input.contactId as string,
+            channel: 'SMS',
+            message: input.message as string,
+            scheduledAt,
+            status: 'pending',
+          },
+        })
+        return JSON.stringify({ success: true, scheduledAt: scheduledAt.toISOString(), message: input.message })
+      }
+      case 'transfer_to_human': {
+        // Tag contact for human follow-up and pause the AI
+        await addTagsToContact(locationId, input.contactId as string, ['human-requested', 'ai-paused'])
+        // Pause the conversation state
+        if (agentId) {
+          const { db: prisma } = await import('./db')
+          await prisma.conversationStateRecord.updateMany({
+            where: { agentId, contactId: input.contactId as string, state: 'ACTIVE' },
+            data: { state: 'PAUSED', pauseReason: `Transfer to human: ${input.reason}`, pausedAt: new Date() },
+          })
+        }
+        return JSON.stringify({
+          success: true,
+          reason: input.reason,
+          contextSummary: input.contextSummary || '',
+          note: 'Conversation paused. Contact tagged for human follow-up.',
+        })
       }
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })

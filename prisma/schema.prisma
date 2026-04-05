@@ -294,6 +294,7 @@ model VapiConfig {
   backgroundSound String?
   endCallPhrases  String[] @default([])
   language        String?
+  voiceTools      Json?
   isActive        Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -317,6 +318,33 @@ model CallLog {
   createdAt    DateTime @default(now())
   @@index([locationId, createdAt(sort: Desc)])
   @@index([agentId, createdAt(sort: Desc)])
+}
+
+model ScheduledMessage {
+  id           String   @id @default(cuid())
+  locationId   String
+  agentId      String?
+  contactId    String
+  channel      String   @default("SMS")
+  message      String   @db.Text
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  status       String   @default("pending")  // pending, sent, cancelled, failed
+  createdAt    DateTime @default(now())
+  @@index([status, scheduledAt])
+  @@index([locationId, contactId])
+}
+
+model LeadScore {
+  id         String   @id @default(cuid())
+  locationId String
+  agentId    String
+  contactId  String
+  score      Int
+  reason     String
+  createdAt  DateTime @default(now())
+  @@unique([agentId, contactId])
+  @@index([locationId, score(sort: Desc)])
 }
 
 model Integration {

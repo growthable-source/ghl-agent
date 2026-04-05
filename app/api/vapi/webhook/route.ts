@@ -79,7 +79,8 @@ async function buildVoiceSystemPrompt(
   agent: { systemPrompt: string; instructions: string | null; agentPersonaName: string | null },
   knowledgeEntries: { id: string; agentId: string; title: string; content: string; source: string; sourceUrl: string | null; tokenEstimate: number; createdAt: Date; updatedAt: Date }[],
   callerPhone: string,
-  locationId: string
+  locationId: string,
+  voiceTools?: any[] | null
 ): Promise<string> {
   let contactContext = ''
   try {
@@ -107,7 +108,15 @@ You are on a live phone call. Follow these rules strictly:
 - If you can't help, offer to have someone call them back
 ${contactContext}
 ${agent.instructions ? `\n## Additional Instructions\n${agent.instructions}` : ''}
-${knowledgeBlock}`
+${knowledgeBlock}${buildToolConditions(voiceTools)}`
+}
+
+function buildToolConditions(voiceTools?: any[] | null): string {
+  if (!voiceTools || !Array.isArray(voiceTools)) return ''
+  const conditioned = voiceTools.filter((t: any) => t.condition)
+  if (conditioned.length === 0) return ''
+  const lines = conditioned.map((t: any) => `- ${t.function?.name}: ${t.condition}`)
+  return `\n\n## Tool Usage Rules\n${lines.join('\n')}`
 }
 
 export async function POST(req: NextRequest) {
@@ -140,7 +149,7 @@ export async function POST(req: NextRequest) {
 
     const agent = vapiConfig.agent
     const locationId = agent.locationId
-    const systemPrompt = await buildVoiceSystemPrompt(agent, agent.knowledgeEntries, callerPhone, locationId)
+    const systemPrompt = await buildVoiceSystemPrompt(agent, agent.knowledgeEntries, callerPhone, locationId, vapiConfig.voiceTools as any[])
 
     return NextResponse.json({
       assistant: {
@@ -149,17 +158,20 @@ export async function POST(req: NextRequest) {
           provider: 'anthropic',
           model: 'claude-sonnet-4-20250514',
           messages: [{ role: 'system', content: systemPrompt }],
-          tools: VAPI_TOOLS,
+          tools: [
+            ...VAPI_TOOLS,
+            ...((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest),
+          ],
         },
         voice: {
-          provider: '11labs',
+          provider: '11labs' as any,
           voiceId: vapiConfig.voiceId,
           stability: vapiConfig.stability,
           similarityBoost: vapiConfig.similarityBoost,
           speed: vapiConfig.speed,
           style: vapiConfig.style,
           ...(vapiConfig.language ? { language: vapiConfig.language } : {}),
-        },
+        } as any,
         firstMessage: vapiConfig.firstMessage || `Hi there! This is ${agent.agentPersonaName || agent.name}. How can I help you today?`,
         endCallMessage: vapiConfig.endCallMessage || 'Thanks for calling. Have a great day!',
         maxDurationSeconds: vapiConfig.maxDurationSecs,
