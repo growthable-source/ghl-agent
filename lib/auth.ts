@@ -5,19 +5,21 @@ import { PrismaAdapter } from '@auth/prisma-adapter'
 import { db } from '@/lib/db'
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
   adapter: PrismaAdapter(db) as any,
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
+    ...(process.env.GOOGLE_CLIENT_ID ? [Google({
+      clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-    GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID!,
+    })] : []),
+    ...(process.env.GITHUB_CLIENT_ID ? [GitHub({
+      clientId: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    }),
+    })] : []),
   ],
   pages: {
     signIn: '/login',
+    error: '/login',
   },
   callbacks: {
     session({ session, user }) {
@@ -27,4 +29,5 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session
     },
   },
+  debug: process.env.NODE_ENV === 'development',
 })
