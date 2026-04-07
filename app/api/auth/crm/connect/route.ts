@@ -21,5 +21,5 @@ export async function GET(req: NextRequest) {
     state: locationId,
   })
 
-  return NextResponse.redirect(`https://marketplace.leadconnectorhq.com/oauth/chooselocation?${params}`)
+  return NextResponse.redirect(`https://marketplace.gohighlevel.com/oauth/chooselocation?${params}`)
 }
