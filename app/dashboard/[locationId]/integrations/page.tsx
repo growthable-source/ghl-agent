@@ -202,9 +202,14 @@ export default function IntegrationsPage() {
                 <p className="text-xs text-zinc-500">CRM, pipelines, SMS, email, calendars</p>
               </div>
             </div>
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ghlConnected ? 'bg-emerald-900/30 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-              {ghlConnected ? 'Connected' : 'Not connected'}
-            </span>
+            {ghlConnected ? (
+              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
+            ) : (
+              <a href={`/api/auth/ghl/connect?locationId=${locationId}`}
+                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors">
+                Connect
+              </a>
+            )}
           </div>
         </div>
 
