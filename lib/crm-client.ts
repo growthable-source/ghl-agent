@@ -222,18 +222,45 @@ export async function updateOpportunityStage(
 export async function getFreeSlots(
   locationId: string,
   calendarId: string,
-  startDate: string,  // ISO
-  endDate: string     // ISO
+  startDate: string,  // YYYY-MM-DD
+  endDate: string,    // YYYY-MM-DD
+  timezone?: string
 ): Promise<Array<{ startTime: string; endTime: string }>> {
   const params = new URLSearchParams({ startDate, endDate })
-  const data = await apiFetch<{ _dates_: Record<string, string[]> }>(
+  if (timezone) params.set('timezone', timezone)
+
+  const data = await apiFetch<Record<string, any>>(
     locationId,
     `/calendars/${calendarId}/free-slots?${params}`
   )
-  // Flatten the dates map into flat slot objects
-  return Object.entries(data._dates_ ?? {}).flatMap(([date, times]) =>
-    times.map(t => ({ startTime: `${date}T${t}`, endTime: '' }))
-  )
+
+  // The response is a map keyed by date (YYYY-MM-DD).
+  // Each value can be:
+  //   - An object with "slots" array: { slots: [{ startTime, endTime }] }
+  //   - An array of slot objects: [{ startTime, endTime }]
+  //   - An array of time strings: ["09:00", "09:30"]
+  // Handle all shapes gracefully.
+  const slots: Array<{ startTime: string; endTime: string }> = []
+
+  for (const [date, value] of Object.entries(data)) {
+    // Skip non-date keys (e.g. metadata)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+
+    const slotArray = Array.isArray(value) ? value
+      : value?.slots && Array.isArray(value.slots) ? value.slots
+      : []
+
+    for (const slot of slotArray) {
+      if (typeof slot === 'string') {
+        // Plain time string like "09:00"
+        slots.push({ startTime: `${date}T${slot}`, endTime: '' })
+      } else if (slot && typeof slot === 'object' && slot.startTime) {
+        slots.push({ startTime: slot.startTime, endTime: slot.endTime || '' })
+      }
+    }
+  }
+
+  return slots
 }
 
 export async function bookAppointment(
@@ -245,10 +272,69 @@ export async function bookAppointment(
     endTime: string
     title?: string
     notes?: string
+    selectedTimezone?: string
   }
-): Promise<{ id: string; startTime: string }> {
+): Promise<any> {
   return apiFetch(locationId, '/calendars/events/appointments', {
     method: 'POST',
-    body: JSON.stringify({ ...payload, locationId }),
+    body: JSON.stringify({
+      calendarId: payload.calendarId,
+      locationId,
+      contactId: payload.contactId,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      title: payload.title || 'Appointment',
+      appointmentStatus: 'confirmed',
+      ...(payload.selectedTimezone ? { selectedTimezone: payload.selectedTimezone } : {}),
+      ...(payload.notes ? { notes: payload.notes } : {}),
+    }),
+  })
+}
+
+export async function getAppointment(
+  locationId: string,
+  eventId: string
+): Promise<any> {
+  return apiFetch(locationId, `/calendars/events/appointments/${eventId}`)
+}
+
+export async function updateAppointment(
+  locationId: string,
+  eventId: string,
+  payload: {
+    startTime?: string
+    endTime?: string
+    title?: string
+    appointmentStatus?: string
+    notes?: string
+    selectedTimezone?: string
+  }
+): Promise<any> {
+  return apiFetch(locationId, `/calendars/events/appointments/${eventId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function createAppointmentNote(
+  locationId: string,
+  appointmentId: string,
+  body: string
+): Promise<any> {
+  return apiFetch(locationId, `/calendars/appointments/${appointmentId}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  })
+}
+
+export async function updateAppointmentNote(
+  locationId: string,
+  appointmentId: string,
+  noteId: string,
+  body: string
+): Promise<any> {
+  return apiFetch(locationId, `/calendars/appointments/${appointmentId}/notes/${noteId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ body }),
   })
 }

@@ -210,35 +210,58 @@ export async function POST(req: NextRequest) {
           const agent = agentId ? await db.agent.findUnique({ where: { id: agentId } }) : null
           if (!agent?.calendarId) return NextResponse.json({ result: 'No calendar configured for this agent.' })
           const startDate: string = params.date || new Date().toISOString().split('T')[0]
-          const endDate = startDate
-          const slots = await getFreeSlots(locationId, agent.calendarId, startDate, endDate)
-          if (!slots || (slots as any[]).length === 0) return NextResponse.json({ result: 'No available slots on that date. Would you like to try a different day?' })
-          const formatted = (slots as any[]).slice(0, 5).map((s: any) => {
-            const d = new Date(s.startTime)
-            return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-          }).join(', ')
-          return NextResponse.json({ result: `Available times: ${formatted}` })
+          // Check the requested day plus the next 2 days to give more options
+          const endDateObj = new Date(startDate)
+          endDateObj.setDate(endDateObj.getDate() + 2)
+          const endDate = endDateObj.toISOString().split('T')[0]
+          const timezone = params.timezone || 'America/New_York'
+          const slots = await getFreeSlots(locationId, agent.calendarId, startDate, endDate, timezone)
+          if (!slots || slots.length === 0) return NextResponse.json({ result: 'No available slots in the next few days. Would you like to try a different date?' })
+          // Group by day for natural reading
+          const byDay: Record<string, string[]> = {}
+          for (const s of slots.slice(0, 15)) {
+            const dt = new Date(s.startTime)
+            const dayKey = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+            const time = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+            if (!byDay[dayKey]) byDay[dayKey] = []
+            byDay[dayKey].push(time)
+          }
+          const formatted = Object.entries(byDay).map(([day, times]) => `${day}: ${times.join(', ')}`).join('. ')
+          return NextResponse.json({ result: `Here are the available times. ${formatted}` })
         }
 
         case 'book_appointment': {
           if (!locationId) return NextResponse.json({ result: 'Sorry, I cannot book right now.' })
           const { bookAppointment, searchContacts: sc } = await import('@/lib/crm-client')
-          const agent = agentId ? await db.agent.findUnique({ where: { id: agentId } }) : null
-          if (!agent?.calendarId) return NextResponse.json({ result: 'No calendar configured.' })
+          const agentForBook = agentId ? await db.agent.findUnique({ where: { id: agentId } }) : null
+          if (!agentForBook?.calendarId) return NextResponse.json({ result: 'No calendar configured.' })
           let contactId = ''
           try {
             const contacts = await sc(locationId, callerPhone)
             if (contacts && contacts.length > 0) contactId = contacts[0].id
           } catch {}
           if (!contactId) return NextResponse.json({ result: 'I could not find your contact record. I will have someone follow up.' })
-          await bookAppointment(locationId, {
-            calendarId: agent.calendarId,
+          // Calculate endTime (30 min default if not provided)
+          const startTime = params.startTime
+          let endTime = params.endTime || ''
+          if (!endTime && startTime) {
+            const end = new Date(startTime)
+            end.setMinutes(end.getMinutes() + 30)
+            endTime = end.toISOString()
+          }
+          const result = await bookAppointment(locationId, {
+            calendarId: agentForBook.calendarId,
             contactId,
-            startTime: params.startTime,
-            endTime: '',
+            startTime,
+            endTime,
             title: params.name ? `Call with ${params.name}` : 'Appointment',
+            selectedTimezone: params.timezone || 'America/New_York',
           })
-          return NextResponse.json({ result: 'Done! Your appointment has been booked. You will receive a confirmation shortly.' })
+          const bookedTime = new Date(startTime).toLocaleString('en-US', {
+            weekday: 'long', month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', hour12: true,
+          })
+          return NextResponse.json({ result: `Done! Your appointment is booked for ${bookedTime}. You will receive a confirmation shortly.` })
         }
 
         case 'tag_contact': {

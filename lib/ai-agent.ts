@@ -376,11 +376,18 @@ async function executeTool(
         return JSON.stringify(slots)
       }
       case 'book_appointment': {
+        const startTime = input.startTime as string
+        let endTime = (input.endTime as string) || ''
+        if (!endTime && startTime) {
+          const end = new Date(startTime)
+          end.setMinutes(end.getMinutes() + 30)
+          endTime = end.toISOString()
+        }
         const result = await bookAppointment(locationId, {
           calendarId: input.calendarId as string,
           contactId: input.contactId as string,
-          startTime: input.startTime as string,
-          endTime: '',
+          startTime,
+          endTime,
           title: input.title as string | undefined,
           notes: input.notes as string | undefined,
         })
