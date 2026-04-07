@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       grant_type: 'authorization_code',
       code,
       user_type: 'Location',
-      redirect_uri: `${process.env.APP_URL}/api/auth/ghl/callback`,
+      redirect_uri: `${process.env.APP_URL}/api/auth/crm/callback`,
     })
 
     const tokenRes = await fetch('https://services.leadconnectorhq.com/oauth/token', {
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     })
 
     if (!tokenRes.ok) {
-      console.error('[GHL Connect] Token exchange failed:', await tokenRes.text())
+      console.error('[CRM Connect] Token exchange failed:', await tokenRes.text())
       return NextResponse.redirect(
         new URL(`/dashboard/${state}/integrations?error=ghl_token_failed`, req.url)
       )
@@ -56,13 +56,13 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    console.log(`[GHL Connect] Tokens saved for workspace ${state}`)
+    console.log(`[CRM Connect] Tokens saved for workspace ${state}`)
 
     return NextResponse.redirect(
       new URL(`/dashboard/${state}/integrations?success=ghl_connected`, req.url)
     )
   } catch (err) {
-    console.error('[GHL Connect] Error:', err)
+    console.error('[CRM Connect] Error:', err)
     return NextResponse.redirect(
       new URL(`/dashboard/${state}/integrations?error=ghl_unexpected`, req.url)
     )
