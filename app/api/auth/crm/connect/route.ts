@@ -9,17 +9,20 @@ export async function GET(req: NextRequest) {
   }
 
   const clientId = process.env.OAUTH_CLIENT_ID
+  const versionId = process.env.OAUTH_VERSION_ID
   if (!clientId) {
     return NextResponse.json({ error: 'CRM OAuth not configured' }, { status: 500 })
   }
 
   const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: `${process.env.APP_URL}/api/auth/crm/callback`,
     response_type: 'code',
-    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write calendars.readonly calendars.write calendars/events.readonly calendars/events.write opportunities.readonly opportunities.write',
+    redirect_uri: `${process.env.APP_URL}/api/auth/callback`,
+    client_id: clientId,
+    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.write calendars.readonly',
     state: locationId,
   })
+
+  if (versionId) params.set('version_id', versionId)
 
   return NextResponse.redirect(`https://marketplace.gohighlevel.com/oauth/chooselocation?${params}`)
 }

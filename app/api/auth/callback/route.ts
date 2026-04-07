@@ -65,6 +65,29 @@ export async function GET(req: NextRequest) {
 
     console.log(`[OAuth] Token saved for ${tokenData.userType}: ${storeKey}`)
 
+    // If state param is a workspace ID (from connect flow), link GHL location to that workspace
+    const workspaceId = searchParams.get('state')
+    if (workspaceId && workspaceId.startsWith('ws_') && workspaceId !== storeKey) {
+      // Move agents and user links from the temp workspace to the real GHL location
+      try {
+        // Link users from the temp workspace to the real location
+        const userLinks = await db.userLocation.findMany({ where: { locationId: workspaceId } })
+        for (const link of userLinks) {
+          await db.userLocation.upsert({
+            where: { userId_locationId: { userId: link.userId, locationId: storeKey } },
+            create: { userId: link.userId, locationId: storeKey, role: link.role },
+            update: {},
+          })
+        }
+        // Clean up temp workspace
+        await db.userLocation.deleteMany({ where: { locationId: workspaceId } })
+        await db.location.delete({ where: { id: workspaceId } }).catch(() => {})
+      } catch (err) {
+        console.error('[OAuth] Error linking workspace:', err)
+      }
+      return NextResponse.redirect(new URL(`/dashboard/${storeKey}/integrations?success=crm_connected`, req.url))
+    }
+
     // New installs go to onboarding, reinstalls go to dashboard
     const agentCount = await db.agent.count({ where: { locationId: storeKey } })
     const redirectPath = agentCount === 0
