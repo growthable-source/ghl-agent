@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 
 interface Agent { id: string; name: string }
 
@@ -27,6 +27,8 @@ export default function PlaygroundPanel({
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Stable contact ID for this session so conversation state persists across messages
+  const contactIdRef = useRef(`playground-${Date.now()}`)
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
@@ -35,14 +37,26 @@ export default function PlaygroundPanel({
     const userMsg = input.trim()
     setInput('')
     setError('')
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }])
+    const updatedMessages = [...messages, { role: 'user' as const, content: userMsg }]
+    setMessages(updatedMessages)
     setLoading(true)
+
+    // Build message history for context (exclude the message we just added)
+    const history = messages.map(m => ({
+      body: m.content,
+      direction: m.role === 'user' ? 'inbound' : 'outbound',
+    }))
 
     try {
       const res = await fetch(`/api/locations/${locationId}/playground`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId: selectedAgentId, message: userMsg }),
+        body: JSON.stringify({
+          agentId: selectedAgentId,
+          message: userMsg,
+          contactId: contactIdRef.current,
+          messageHistory: history,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -74,7 +88,7 @@ export default function PlaygroundPanel({
         <label className="block text-xs text-zinc-500 mb-1.5">Agent</label>
         <select
           value={selectedAgentId}
-          onChange={(e) => { setSelectedAgentId(e.target.value); setMessages([]) }}
+          onChange={(e) => { setSelectedAgentId(e.target.value); setMessages([]); contactIdRef.current = `playground-${Date.now()}` }}
           className="bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
         >
           {agents.map(a => (
@@ -146,8 +160,11 @@ export default function PlaygroundPanel({
         </button>
       </form>
       {messages.length > 0 && (
-        <button onClick={() => setMessages([])} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
-          Clear conversation
+        <button
+          onClick={() => { setMessages([]); contactIdRef.current = `playground-${Date.now()}` }}
+          className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+        >
+          Reset conversation
         </button>
       )}
     </div>

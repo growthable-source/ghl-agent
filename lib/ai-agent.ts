@@ -676,12 +676,20 @@ export async function runAgent(opts: {
   let totalOutputTokens = 0
   let smsSent: string | null = null
 
-  // Load qualifying questions for this agent/contact
+  // Load qualifying questions for this agent
+  // In sandbox: show all questions (no answer state to check)
+  // In production: only show unanswered required questions
   let qualifyingBlock = ''
-  if (agentId && !isSandbox) {
-    const { getUnansweredQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
-    const unanswered = await getUnansweredQuestions(agentId, contactId)
-    qualifyingBlock = buildQualifyingPromptBlock(unanswered)
+  if (agentId) {
+    if (isSandbox) {
+      const { getAllQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
+      const questions = await getAllQuestions(agentId)
+      qualifyingBlock = buildQualifyingPromptBlock(questions)
+    } else {
+      const { getUnansweredQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
+      const unanswered = await getUnansweredQuestions(agentId, contactId)
+      qualifyingBlock = buildQualifyingPromptBlock(unanswered)
+    }
   }
 
   // Filter tools based on agent configuration

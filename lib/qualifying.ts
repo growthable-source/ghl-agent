@@ -2,6 +2,13 @@ import { db } from './db'
 import { updateContactField, getContact, addTagsToContact } from './crm-client'
 import type { QualifyingQuestion } from '@prisma/client'
 
+export async function getAllQuestions(agentId: string): Promise<QualifyingQuestion[]> {
+  return db.qualifyingQuestion.findMany({
+    where: { agentId },
+    orderBy: { order: 'asc' },
+  })
+}
+
 export async function getUnansweredQuestions(agentId: string, contactId: string): Promise<QualifyingQuestion[]> {
   const [questions, state] = await Promise.all([
     db.qualifyingQuestion.findMany({

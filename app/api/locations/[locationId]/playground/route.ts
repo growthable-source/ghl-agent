@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ locationId: string }> }
 ) {
   const { locationId } = await params
-  const { agentId, message, contactId } = await req.json()
+  const { agentId, message, contactId, messageHistory } = await req.json()
 
   if (!agentId || !message) {
     return NextResponse.json({ error: 'agentId and message are required' }, { status: 400 })
@@ -38,10 +38,13 @@ export async function POST(
   try {
     const result = await runAgent({
       locationId,
+      agentId,
       contactId: testContactId,
       incomingMessage: message,
+      messageHistory: messageHistory ?? [],
       systemPrompt: fullPrompt,
       enabledTools: agent.enabledTools,
+      sandbox: true,
     })
 
     return NextResponse.json({
