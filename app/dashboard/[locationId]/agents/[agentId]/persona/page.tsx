@@ -113,10 +113,7 @@ export default function PersonaPage() {
 
   return (
     <div className="p-8">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-2">Persona & Tone</h1>
-        <p className="text-zinc-400 text-sm mb-8">Configure how the agent presents itself and communicates.</p>
-
+      <div className="max-w-2xl">
         <form onSubmit={save} className="space-y-8">
           {/* Agent Name */}
           <div>
@@ -323,3 +320,4 @@ export default function PersonaPage() {
     </div>
   )
 }
+

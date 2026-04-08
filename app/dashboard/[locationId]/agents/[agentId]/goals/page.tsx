@@ -67,9 +67,8 @@ export default function GoalsPage() {
 
   return (
     <div className="p-8">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-2">Goals & Stop Conditions</h1>
-        <p className="text-zinc-400 text-sm mb-8">Define when the agent should stop and pause the conversation.</p>
+      <div className="max-w-2xl">
+        <p className="text-sm text-zinc-400 mb-6">Define when the agent should stop and pause the conversation.</p>
 
         {/* Existing conditions */}
         {conditions.length > 0 && (

@@ -182,13 +182,10 @@ export default function QualifyingPage() {
   )
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold mb-1">Qualifying Questions</h1>
-        <p className="text-zinc-400 text-sm">
-          Questions the agent asks before taking key actions. Map answers to contact fields and add conditional logic to tag, move stages, or hand off based on responses.
-        </p>
-      </div>
+    <div className="p-8 max-w-2xl">
+      <p className="text-sm text-zinc-400 mb-6">
+        Questions the agent weaves into the conversation naturally, one at a time. Map answers to contact fields and trigger actions based on responses.
+      </p>
 
       {/* Existing questions */}
       {questions.length > 0 && (

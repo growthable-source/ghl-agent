@@ -87,9 +87,8 @@ export default function FollowUpsPage() {
 
   return (
     <div className="p-8">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-2">Follow-Up Sequences</h1>
-        <p className="text-zinc-400 text-sm mb-8">Automatic messages sent to non-responsive contacts.</p>
+      <div className="max-w-2xl">
+        <p className="text-sm text-zinc-400 mb-6">Automatic messages sent to non-responsive contacts.</p>
 
         {/* Existing sequences */}
         {sequences.length > 0 && (

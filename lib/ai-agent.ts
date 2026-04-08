@@ -486,7 +486,7 @@ async function executeTool(
       }
       case 'save_qualifying_answer': {
         if (agentId) {
-          const { saveQualifyingAnswer } = await import('./qualifying')
+          const { saveQualifyingAnswer, executeQualifyingAction } = await import('./qualifying')
           await saveQualifyingAnswer(
             agentId,
             input.contactId as string,
@@ -494,6 +494,14 @@ async function executeTool(
             input.answer as string,
             locationId
           )
+          const actionResult = await executeQualifyingAction(
+            agentId,
+            input.fieldKey as string,
+            input.answer as string,
+            input.contactId as string,
+            locationId
+          )
+          return JSON.stringify({ success: true, action: actionResult })
         }
         return JSON.stringify({ success: true })
       }
@@ -568,7 +576,7 @@ async function executeTool(
 
 // ─── Build system prompt ───────────────────────────────────────────────────
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const base = customPrompt || `You are a helpful, professional sales assistant managing SMS conversations.`
 
@@ -597,6 +605,10 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: P
 
 ## Tone
 Professional but warm. Match the contact's energy.`
+
+  if (qualifyingBlock) {
+    prompt += qualifyingBlock
+  }
 
   if (persona) {
     prompt += buildPersonaBlock(persona)
@@ -664,6 +676,14 @@ export async function runAgent(opts: {
   let totalOutputTokens = 0
   let smsSent: string | null = null
 
+  // Load qualifying questions for this agent/contact
+  let qualifyingBlock = ''
+  if (agentId && !isSandbox) {
+    const { getUnansweredQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
+    const unanswered = await getUnansweredQuestions(agentId, contactId)
+    qualifyingBlock = buildQualifyingPromptBlock(unanswered)
+  }
+
   // Filter tools based on agent configuration
   const tools = enabledTools ? AGENT_TOOLS.filter(t => enabledTools.includes(t.name)) : AGENT_TOOLS
 
@@ -675,7 +695,7 @@ export async function runAgent(opts: {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona),
+      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock),
       tools,
       messages: currentMessages,
     })

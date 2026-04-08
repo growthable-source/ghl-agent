@@ -385,11 +385,8 @@ export default function VoicePage() {
   if (loading) return <div className="flex items-center justify-center h-64"><p className="text-zinc-500 text-sm">Loading…</p></div>
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold mb-1">Voice</h1>
-        <p className="text-zinc-400 text-sm">Configure inbound call handling. Same knowledge base and brain as SMS.</p>
-      </div>
+    <div className="p-8 max-w-2xl">
+      <p className="text-sm text-zinc-400 mb-6">Configure inbound call handling. Same knowledge base and brain as SMS.</p>
 
       {!vapiReady && (
         <div className="mb-6 rounded-xl border border-red-900 bg-red-950/30 p-4">

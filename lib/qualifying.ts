@@ -1,5 +1,5 @@
 import { db } from './db'
-import { updateContactField, getContact } from './crm-client'
+import { updateContactField, getContact, addTagsToContact } from './crm-client'
 import type { QualifyingQuestion } from '@prisma/client'
 
 export async function getUnansweredQuestions(agentId: string, contactId: string): Promise<QualifyingQuestion[]> {
@@ -109,4 +109,55 @@ export async function saveQualifyingAnswer(
       }
     }
   }
+}
+
+export async function executeQualifyingAction(
+  agentId: string,
+  fieldKey: string,
+  answer: string,
+  contactId: string,
+  locationId: string
+): Promise<{ actionType: string; actionValue?: string } | null> {
+  const question = await db.qualifyingQuestion.findFirst({
+    where: { agentId, fieldKey },
+  })
+
+  if (!question?.conditionOp || !question?.actionType) return null
+
+  // Evaluate condition
+  const normalised = answer.trim().toLowerCase()
+  let conditionMet = false
+  switch (question.conditionOp) {
+    case 'any':      conditionMet = true; break
+    case 'is_yes':   conditionMet = ['yes', 'y', 'yeah', 'yep', 'yup', 'sure', 'absolutely', 'definitely'].includes(normalised); break
+    case 'is_no':    conditionMet = ['no', 'n', 'nope', 'nah', 'not really'].includes(normalised); break
+    case 'contains': conditionMet = !!question.conditionVal && normalised.includes(question.conditionVal.toLowerCase()); break
+    case 'equals':   conditionMet = !!question.conditionVal && normalised === question.conditionVal.toLowerCase(); break
+    case 'gt':       conditionMet = !!question.conditionVal && parseFloat(answer) > parseFloat(question.conditionVal); break
+    case 'lt':       conditionMet = !!question.conditionVal && parseFloat(answer) < parseFloat(question.conditionVal); break
+  }
+
+  if (!conditionMet) return null
+
+  // Execute action
+  try {
+    switch (question.actionType) {
+      case 'tag':
+        if (question.actionValue) {
+          await addTagsToContact(locationId, contactId, [question.actionValue])
+        }
+        break
+      case 'stop':
+        // Signal to caller that we should stop/hand off — the agent will handle this
+        break
+      case 'book':
+      case 'continue':
+        // These are handled by the agent itself based on the returned action
+        break
+    }
+  } catch (err) {
+    console.error(`[Qualifying] Failed to execute action ${question.actionType}:`, err)
+  }
+
+  return { actionType: question.actionType, actionValue: question.actionValue ?? undefined }
 }
