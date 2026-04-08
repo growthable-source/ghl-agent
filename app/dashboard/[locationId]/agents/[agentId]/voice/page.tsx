@@ -293,12 +293,21 @@ export default function VoicePage() {
         vapiInstanceRef.current = null
       })
 
+      const builtInTools = [
+        { type: 'function', function: { name: 'get_available_slots', description: 'Get available appointment slots for booking', parameters: { type: 'object', properties: { date: { type: 'string', description: 'Date to check in YYYY-MM-DD format' } }, required: ['date'] } } },
+        { type: 'function', function: { name: 'book_appointment', description: 'Book an appointment for the caller', parameters: { type: 'object', properties: { startTime: { type: 'string', description: 'ISO datetime for the appointment' }, name: { type: 'string', description: 'Caller name for the booking' } }, required: ['startTime'] } } },
+        { type: 'function', function: { name: 'tag_contact', description: 'Tag the caller contact with a label', parameters: { type: 'object', properties: { tag: { type: 'string', description: 'Tag to apply to the contact' } }, required: ['tag'] } } },
+        { type: 'function', function: { name: 'send_sms_followup', description: 'Send an SMS follow-up message to the caller after the call', parameters: { type: 'object', properties: { message: { type: 'string', description: 'The SMS message to send after the call' } }, required: ['message'] } } },
+      ]
+      const customTools = (config.voiceTools || []).map(({ condition, ...rest }: any) => rest)
+
       await vapi.start({
         name: agentName,
         model: {
           provider: 'anthropic' as any,
           model: 'claude-sonnet-4-20250514' as any,
           messages: [{ role: 'system' as any, content: testSystemPrompt + '\n\n## VOICE CALL INSTRUCTIONS\nYou are on a live phone call. Speak naturally and conversationally. Keep responses SHORT — 1-3 sentences max.' }],
+          tools: [...builtInTools, ...customTools] as any,
         },
         voice: {
           provider: '11labs' as any,
@@ -310,8 +319,12 @@ export default function VoicePage() {
           ...(config.language ? { language: config.language } : {}),
         } as any,
         firstMessage: config.firstMessage || `Hi there! This is ${agentName}. How can I help you today?`,
+        endCallMessage: config.endCallMessage || 'Thanks for calling. Have a great day!',
+        maxDurationSeconds: config.maxDurationSecs,
+        ...(config.backgroundSound ? { backgroundSound: config.backgroundSound } : {}),
+        ...(config.endCallPhrases?.length ? { endCallPhrases: config.endCallPhrases } : {}),
         server: { url: serverUrl },
-      })
+      } as any)
     } catch (err) {
       console.error('[TestCall] start error:', err)
       setTestCallConnecting(false)

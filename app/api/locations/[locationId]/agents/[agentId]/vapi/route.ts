@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { listPhoneNumbers, purchasePhoneNumber } from '@/lib/vapi-client'
+import { getAllQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
+import { buildPersonaBlock } from '@/lib/persona'
 
 type Params = { params: Promise<{ locationId: string; agentId: string }> }
 
@@ -29,12 +31,40 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const vapiReady = !!rawKey && rawKey.trim().length > 0
     const vapiPublicKey = process.env.VAPI_PUBLIC_KEY || null
 
-    // Build system prompt for test calls
+    // Build full system prompt for test calls — same as production
     let testSystemPrompt = agent?.systemPrompt || 'You are a helpful assistant.'
     if (agent?.instructions) testSystemPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
     if (agent?.knowledgeEntries?.length) {
       const kb = agent.knowledgeEntries.map(e => `### ${e.title}\n${e.content}`).join('\n\n')
       testSystemPrompt += `\n\n## Knowledge Base\n${kb}`
+    }
+
+    // Calendar ID
+    if (agent?.calendarId) {
+      testSystemPrompt += `\n\n## Calendar Configuration\nCalendar ID for booking: ${agent.calendarId}\nAlways use get_available_slots before booking. Use this calendar ID.`
+    }
+
+    // Qualifying questions
+    if (agent) {
+      const questions = await getAllQuestions(agentId)
+      const qStyle = (agent as any).qualifyingStyle ?? 'strict'
+      testSystemPrompt += buildQualifyingPromptBlock(questions, qStyle)
+    }
+
+    // Persona
+    if (agent) {
+      testSystemPrompt += buildPersonaBlock(agent as any)
+    }
+
+    // Fallback behavior
+    const fallbackBehavior = (agent as any)?.fallbackBehavior ?? 'message'
+    const fallbackMessage = (agent as any)?.fallbackMessage
+    if (fallbackBehavior === 'transfer') {
+      testSystemPrompt += `\n\n## When You Don't Know the Answer\nIf asked something you don't know, say you'll connect them with someone and end the topic. Do NOT guess.`
+    } else if (fallbackMessage) {
+      testSystemPrompt += `\n\n## When You Don't Know the Answer\nIf asked something you don't know, say: "${fallbackMessage}" — do NOT guess or make up information.`
+    } else {
+      testSystemPrompt += `\n\n## When You Don't Know the Answer\nIf asked something you don't know, say you'll find out and get back to them. Do NOT guess or make up information.`
     }
 
     return NextResponse.json({

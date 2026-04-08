@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { buildKnowledgeBlock } from '@/lib/rag'
 import { searchContacts } from '@/lib/crm-client'
+import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
+import { buildPersonaBlock } from '@/lib/persona'
 
 const VAPI_TOOLS = [
   {
@@ -76,17 +78,19 @@ async function findAgentByPhoneNumber(phoneNumber: string) {
 }
 
 async function buildVoiceSystemPrompt(
-  agent: { systemPrompt: string; instructions: string | null; agentPersonaName: string | null },
-  knowledgeEntries: { id: string; agentId: string; title: string; content: string; source: string; sourceUrl: string | null; tokenEstimate: number; createdAt: Date; updatedAt: Date }[],
+  agent: any,
+  knowledgeEntries: any[],
   callerPhone: string,
   locationId: string,
   voiceTools?: any[] | null
 ): Promise<string> {
   let contactContext = ''
+  let contactId = ''
   try {
     const contacts = await searchContacts(locationId, callerPhone)
     if (contacts && contacts.length > 0) {
       const c = contacts[0] as any
+      contactId = c.id
       const name = [c.firstName, c.lastName].filter(Boolean).join(' ')
       contactContext = `\n\n## Caller Info\nName: ${name || 'Unknown'}\nPhone: ${callerPhone}\nContact ID: ${c.id}`
       if (c.tags?.length) contactContext += `\nTags: ${c.tags.join(', ')}`
@@ -94,6 +98,37 @@ async function buildVoiceSystemPrompt(
   } catch {}
 
   const knowledgeBlock = buildKnowledgeBlock(knowledgeEntries)
+
+  // Qualifying questions
+  let qualifyingBlock = ''
+  if (agent.id && contactId) {
+    try {
+      const unanswered = await getUnansweredQuestions(agent.id, contactId)
+      qualifyingBlock = buildQualifyingPromptBlock(unanswered, agent.qualifyingStyle ?? 'strict')
+    } catch {}
+  }
+
+  // Persona
+  let personaBlock = ''
+  try { personaBlock = buildPersonaBlock(agent) } catch {}
+
+  // Fallback
+  const fb = agent.fallbackBehavior ?? 'message'
+  const fm = agent.fallbackMessage
+  let fallbackBlock = '\n\n## When You Don\'t Know the Answer\nDo NOT guess or make things up.'
+  if (fb === 'transfer') {
+    fallbackBlock += ' Tell the caller you\'ll connect them with someone who can help.'
+  } else if (fm) {
+    fallbackBlock += ` Say: "${fm}"`
+  } else {
+    fallbackBlock += ' Say you\'ll find out and get back to them.'
+  }
+
+  // Calendar
+  let calendarBlock = ''
+  if (agent.calendarId) {
+    calendarBlock = `\n\n## Calendar Configuration\nCalendar ID: ${agent.calendarId}\nAlways use get_available_slots before booking. Use this calendar ID.`
+  }
 
   return `${agent.systemPrompt}
 
@@ -108,7 +143,7 @@ You are on a live phone call. Follow these rules strictly:
 - If you can't help, offer to have someone call them back
 ${contactContext}
 ${agent.instructions ? `\n## Additional Instructions\n${agent.instructions}` : ''}
-${knowledgeBlock}${buildToolConditions(voiceTools)}`
+${knowledgeBlock}${calendarBlock}${qualifyingBlock}${personaBlock}${fallbackBlock}${buildToolConditions(voiceTools)}`
 }
 
 function buildToolConditions(voiceTools?: any[] | null): string {
