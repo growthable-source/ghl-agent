@@ -57,7 +57,9 @@ function describeCondition(q: QualifyingQuestion): string {
   return ` → If ${conditionDesc}, ${actionDesc}.`
 }
 
-export function buildQualifyingPromptBlock(unanswered: QualifyingQuestion[]): string {
+export type QualifyingStyle = 'strict' | 'natural'
+
+export function buildQualifyingPromptBlock(unanswered: QualifyingQuestion[], style: QualifyingStyle = 'strict'): string {
   if (unanswered.length === 0) return ''
 
   const list = unanswered.map((q, i) => {
@@ -69,7 +71,11 @@ export function buildQualifyingPromptBlock(unanswered: QualifyingQuestion[]): st
     return line
   }).join('\n')
 
-  return `\n\n## Qualifying Questions\nAsk these questions naturally — one at a time. Follow the specified actions based on the contact's answers:\n\n${list}`
+  if (style === 'natural') {
+    return `\n\n## Qualifying Questions\n\nWork these questions into the conversation naturally as the opportunity arises. Rules:\n- Ask ONE question at a time — don't stack them.\n- After the contact answers, call \`save_qualifying_answer\` with the fieldKey and their answer.\n- You don't have to ask them in order — use your judgement on timing.\n- It's OK to answer the contact's questions or discuss other topics in between.\n- Try to cover all of them by the end of the conversation, but don't force it if the contact is moving in a different direction.\n\nQuestions to cover:\n\n${list}`
+  }
+
+  return `\n\n## REQUIRED: Qualifying Questions — You Must Ask These\n\nBefore doing anything else, you MUST work through every question below in order. Rules:\n- Ask ONE question at a time. Do not ask multiple questions in a single message.\n- After the contact answers, immediately call \`save_qualifying_answer\` with the fieldKey and their answer.\n- Then ask the next question. Do not skip ahead.\n- Do not answer other topics or proceed with any task until ALL questions are asked and saved.\n- Weave them naturally into conversation — but do not omit them.\n\nQuestions to ask:\n\n${list}`
 }
 
 export async function saveQualifyingAnswer(

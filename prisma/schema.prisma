@@ -131,6 +131,10 @@ model Agent {
   enabledTools     String[] @default(["get_contact_details", "send_sms", "update_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note"])
   calendarId       String?
 
+  qualifyingStyle     String   @default("strict")    // "strict" | "natural"
+  fallbackBehavior    String   @default("message")  // "message" | "transfer" | "message_and_transfer"
+  fallbackMessage     String?  @db.Text
+
   agentPersonaName    String?
   responseLength      ResponseLength   @default(MODERATE)
   formalityLevel      FormalityLevel   @default(NEUTRAL)
@@ -404,6 +408,17 @@ model LeadScore {
   createdAt  DateTime @default(now())
   @@unique([agentId, contactId])
   @@index([locationId, score(sort: Desc)])
+}
+
+model MessageBuffer {
+  id             String   @id @default(cuid())
+  locationId     String
+  contactId      String
+  conversationId String
+  body           String   @db.Text
+  processed      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  @@index([locationId, contactId, processed, createdAt(sort: Asc)])
 }
 
 model Integration {

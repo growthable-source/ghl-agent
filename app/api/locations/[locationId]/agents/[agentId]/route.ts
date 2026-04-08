@@ -38,6 +38,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.typingDelayMinMs !== undefined && { typingDelayMinMs: body.typingDelayMinMs }),
       ...(body.typingDelayMaxMs !== undefined && { typingDelayMaxMs: body.typingDelayMaxMs }),
       ...(body.languages !== undefined && { languages: body.languages }),
+      ...(body.qualifyingStyle !== undefined && { qualifyingStyle: body.qualifyingStyle }),
+      ...(body.fallbackBehavior !== undefined && { fallbackBehavior: body.fallbackBehavior }),
+      ...(body.fallbackMessage !== undefined && { fallbackMessage: body.fallbackMessage }),
     },
   })
   return NextResponse.json({ agent })

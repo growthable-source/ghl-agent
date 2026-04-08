@@ -19,6 +19,7 @@ import { getOrCreateConversationState, checkStopConditions, pauseConversation, i
 import { saveMessages, getMessageHistory, getMemorySummary, updateContactMemorySummary } from '@/lib/conversation-memory'
 import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
+import { debounceMessage } from '@/lib/message-debounce'
 import { buildPersonaBlock } from '@/lib/persona'
 import type {
   WebhookEventType,
@@ -79,19 +80,29 @@ export async function POST(req: NextRequest) {
           break
         }
 
+        // Debounce rapid messages — accumulate into a single agent call
+        const debounced = await debounceMessage(p.locationId, p.contactId, p.conversationId, p.body)
+        if (!debounced) {
+          // A newer message will handle this batch — exit quietly
+          console.log(`[Webhook] Message debounced for contact ${p.contactId}, waiting for batch`)
+          break
+        }
+
+        const inboundMessage = debounced.combinedMessage
+
         // Create pending log
         const log = await db.messageLog.create({
           data: {
             locationId: p.locationId,
             contactId: p.contactId,
             conversationId: p.conversationId,
-            inboundMessage: p.body,
+            inboundMessage,
             status: 'PENDING',
           },
         })
 
         // Find matching agent
-        const agent = await findMatchingAgent(p.locationId, p.contactId, p.body)
+        const agent = await findMatchingAgent(p.locationId, p.contactId, inboundMessage)
 
         if (!agent) {
           await db.messageLog.update({
@@ -115,7 +126,7 @@ export async function POST(req: NextRequest) {
         // Build full system prompt with RAG
         let fullPrompt = agent.systemPrompt
         if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
-        fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, p.body)
+        fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, inboundMessage)
 
         // Inject calendar ID if booking tools are enabled and a calendar is configured
         if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
@@ -131,7 +142,7 @@ export async function POST(req: NextRequest) {
         if (memorySummary) {
           fullPrompt += `\n\n## Previous Conversation Context\n${memorySummary}`
         }
-        fullPrompt += buildQualifyingPromptBlock(unanswered)
+        fullPrompt += buildQualifyingPromptBlock(unanswered, (agent as any).qualifyingStyle ?? 'strict')
         fullPrompt += buildPersonaBlock(agent)
 
         // Use DB history if available, otherwise fall back to GHL API
@@ -156,10 +167,15 @@ export async function POST(req: NextRequest) {
             agentId: agent.id,
             contactId: p.contactId,
             conversationId: p.conversationId,
-            incomingMessage: p.body,
+            incomingMessage: inboundMessage,
             messageHistory,
             systemPrompt: fullPrompt,
             enabledTools: agent.enabledTools,
+            qualifyingStyle: (agent as any).qualifyingStyle ?? 'strict',
+            fallback: {
+              behavior: (agent as any).fallbackBehavior ?? 'message',
+              message: (agent as any).fallbackMessage ?? null,
+            },
             persona: {
               agentPersonaName: agent.agentPersonaName,
               responseLength: agent.responseLength,
@@ -190,7 +206,7 @@ export async function POST(req: NextRequest) {
 
           // Save messages to persistent history
           await saveMessages(agent.id, p.locationId, p.contactId, p.conversationId, [
-            { role: 'user', content: p.body },
+            { role: 'user', content: inboundMessage },
             ...(result.reply ? [{ role: 'assistant', content: result.reply }] : []),
           ])
 
@@ -198,7 +214,7 @@ export async function POST(req: NextRequest) {
           await incrementMessageCount(agent.id, p.contactId)
 
           // Check stop conditions
-          const stopCheck = await checkStopConditions(agent as any, p.contactId, p.body, result.actionsPerformed)
+          const stopCheck = await checkStopConditions(agent as any, p.contactId, inboundMessage, result.actionsPerformed)
           if (stopCheck.shouldPause) {
             await pauseConversation(agent.id, p.contactId, stopCheck.reason ?? 'condition_met')
           }

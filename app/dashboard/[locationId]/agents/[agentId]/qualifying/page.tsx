@@ -91,6 +91,8 @@ export default function QualifyingPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [contactFields, setContactFields] = useState<ContactField[]>([])
+  const [qualifyingStyle, setQualifyingStyle] = useState<'strict' | 'natural'>('strict')
+  const [styleSaving, setStyleSaving] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -100,6 +102,10 @@ export default function QualifyingPage() {
       fetch(`/api/locations/${locationId}/contact-fields`)
         .then(r => r.json())
         .then(({ fields }) => setContactFields(fields ?? []))
+        .catch(() => {}),
+      fetch(`/api/locations/${locationId}/agents/${agentId}`)
+        .then(r => r.json())
+        .then(({ agent }) => setQualifyingStyle(agent.qualifyingStyle ?? 'strict'))
         .catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [locationId, agentId])
@@ -225,9 +231,41 @@ export default function QualifyingPage() {
 
   return (
     <div className="p-8 max-w-2xl">
-      <p className="text-sm text-zinc-400 mb-6">
-        Questions the agent weaves into the conversation naturally, one at a time. Map answers to contact fields and trigger actions based on responses.
+      <p className="text-sm text-zinc-400 mb-4">
+        Questions the agent asks during the conversation. Map answers to contact fields and trigger actions based on responses.
       </p>
+
+      {/* Qualifying Style Toggle */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 mb-6">
+        <label className="block text-sm font-medium text-zinc-300 mb-2">Questioning style</label>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { value: 'strict' as const, label: 'Strict', desc: 'Must ask all questions in order before anything else' },
+            { value: 'natural' as const, label: 'Natural', desc: 'Weave questions into conversation as opportunities arise' },
+          ]).map(opt => (
+            <button key={opt.value} type="button"
+              disabled={styleSaving}
+              onClick={async () => {
+                setQualifyingStyle(opt.value)
+                setStyleSaving(true)
+                await fetch(`/api/locations/${locationId}/agents/${agentId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ qualifyingStyle: opt.value }),
+                })
+                setStyleSaving(false)
+              }}
+              className={`flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors ${
+                qualifyingStyle === opt.value
+                  ? 'border-white bg-zinc-900'
+                  : 'border-zinc-800 hover:border-zinc-600'
+              }`}>
+              <span className="text-sm font-medium text-zinc-200">{opt.label}</span>
+              <span className="text-xs text-zinc-500">{opt.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Existing questions */}
       {questions.length > 0 && (

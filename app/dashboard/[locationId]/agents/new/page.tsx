@@ -4,25 +4,143 @@ import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
-type Step = 'crm' | 'calendar' | 'voice' | 'build'
+type Step = 'template' | 'crm' | 'calendar' | 'voice' | 'build'
 
 const STEPS: { key: Step; label: string }[] = [
+  { key: 'template', label: 'Type' },
   { key: 'crm', label: 'CRM' },
   { key: 'calendar', label: 'Calendar' },
   { key: 'voice', label: 'Voice' },
   { key: 'build', label: 'Build' },
 ]
 
+interface AgentTemplate {
+  id: string
+  initiation: 'outbound' | 'inbound'
+  role: 'sales' | 'support' | 'assistant'
+  name: string
+  tagline: string
+  icon: string
+  systemPrompt: string
+  instructions: string
+  enabledTools: string[]
+}
+
+const TEMPLATES: AgentTemplate[] = [
+  {
+    id: 'outbound-sales',
+    initiation: 'outbound',
+    role: 'sales',
+    name: 'Outbound Sales',
+    tagline: 'Proactively reaches leads, qualifies them, and books meetings',
+    icon: '🎯',
+    systemPrompt: `You are an outbound sales agent. Your job is to proactively engage with leads who have expressed interest, qualify them with a series of questions, and move them toward booking an appointment or next step.
+
+You initiate the conversation, guide it with purpose, and don't wait for the lead to take action — you lead them there.`,
+    instructions: `- Always open by reminding the contact why you're reaching out (their inquiry, their opt-in, etc.)
+- Use a friendly, confident, and concise tone — no long monologues
+- Ask qualifying questions one at a time and listen before moving forward
+- If the lead qualifies, push for the appointment booking
+- If the lead isn't interested, tag them appropriately and close gracefully
+- Never push more than twice on a specific ask`,
+    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
+  },
+  {
+    id: 'outbound-support',
+    initiation: 'outbound',
+    role: 'support',
+    name: 'Outbound Follow-up',
+    tagline: 'Re-engages customers after service, collects feedback, resolves issues',
+    icon: '🔄',
+    systemPrompt: `You are an outbound customer follow-up agent. You reach out to customers after a service, purchase, or interaction to check in, gather feedback, and resolve any lingering issues.
+
+You represent the business in a warm, professional way and make customers feel valued.`,
+    instructions: `- Open by referencing the specific service or interaction
+- Ask open-ended questions to learn how their experience was
+- If they raise an issue, acknowledge it and take action (tag, note, escalate)
+- If they're satisfied, thank them and optionally ask for a referral or review
+- Keep messages short — customers don't expect long follow-up texts`,
+    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'detect_sentiment', 'schedule_followup', 'transfer_to_human'],
+  },
+  {
+    id: 'outbound-assistant',
+    initiation: 'outbound',
+    role: 'assistant',
+    name: 'Outbound Assistant',
+    tagline: 'Sends reminders, confirms appointments, handles scheduling outreach',
+    icon: '📤',
+    systemPrompt: `You are an outbound scheduling and reminder assistant. You proactively contact people to confirm upcoming appointments, remind them of deadlines or events, and assist with rescheduling when needed.
+
+You are clear, direct, and action-oriented.`,
+    instructions: `- Always state the reason for the outreach immediately
+- Confirm specific details (date, time, location) and ask for confirmation
+- If they need to reschedule, offer available alternatives
+- Keep messages brief — one clear action per message
+- Log all outcomes (confirmed, rescheduled, cancelled) to the contact record`,
+    enabledTools: ['get_contact_details', 'get_calendar_events', 'get_available_slots', 'book_appointment', 'add_contact_note', 'schedule_followup'],
+  },
+  {
+    id: 'inbound-sales',
+    initiation: 'inbound',
+    role: 'sales',
+    name: 'Inbound Sales',
+    tagline: 'Responds to inbound leads, answers questions, converts to bookings',
+    icon: '📥',
+    systemPrompt: `You are an inbound sales agent. You respond to people who have reached out — via SMS, web chat, or form submission — and help them understand your service, answer their questions, and guide them toward booking an appointment.
+
+You are responsive, knowledgeable, and helpful without being pushy.`,
+    instructions: `- Respond promptly and warmly to whoever has reached out
+- Answer questions clearly and honestly
+- Naturally weave in qualifying questions to understand their needs
+- When they seem ready, introduce the booking option
+- If they're not ready yet, offer to follow up or send useful info
+- Never pressure — let the conversation move at their pace`,
+    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
+  },
+  {
+    id: 'inbound-support',
+    initiation: 'inbound',
+    role: 'support',
+    name: 'Inbound Support',
+    tagline: 'Handles customer questions, resolves issues, escalates when needed',
+    icon: '🎧',
+    systemPrompt: `You are an inbound customer support agent. You help customers who reach out with questions, problems, or requests. You resolve issues where you can, gather context when you can't, and escalate to a human when the situation calls for it.
+
+You are empathetic, patient, and solution-focused.`,
+    instructions: `- Greet the customer and acknowledge their concern immediately
+- Ask clarifying questions to fully understand the issue before responding
+- Provide clear, accurate answers — don't guess
+- If you can't resolve it, let them know clearly and escalate to a human with full context
+- Log the issue, outcome, and any tags to the contact record
+- Always close with a confirmation that their issue has been addressed or next steps`,
+    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'search_contacts', 'detect_sentiment', 'transfer_to_human'],
+  },
+  {
+    id: 'inbound-assistant',
+    initiation: 'inbound',
+    role: 'assistant',
+    name: 'Inbound Assistant',
+    tagline: 'Books appointments, answers FAQs, and manages requests conversationally',
+    icon: '🤝',
+    systemPrompt: `You are a friendly inbound assistant. You help people who reach out with scheduling requests, general questions, and information needs. You make it easy to book, reschedule, or get answers without any friction.
+
+You are warm, conversational, and efficient.`,
+    instructions: `- Be conversational and friendly — this is a helpful assistant, not a salesperson
+- Understand what they need before jumping to a solution
+- For scheduling requests, check availability and book directly
+- For questions, give accurate and concise answers
+- If something is outside your scope, let them know and offer to connect them with someone who can help`,
+    enabledTools: ['get_contact_details', 'get_available_slots', 'book_appointment', 'get_calendar_events', 'add_contact_note', 'transfer_to_human'],
+  },
+]
+
 const CRM_OPTIONS = [
   { id: 'ghl', name: 'GoHighLevel', desc: 'Already connected via OAuth', icon: '🔗', connected: true },
-  { id: 'hubspot', name: 'HubSpot', desc: 'Connect via OAuth', icon: '🟠', connected: false },
   { id: 'none', name: 'No CRM', desc: 'Skip for now — you can connect later', icon: '⏭️', connected: false },
 ]
 
 const CALENDAR_OPTIONS = [
   { id: 'ghl', name: 'GHL Calendar', desc: 'Use your GoHighLevel calendar', icon: '📅' },
-  { id: 'calendly', name: 'Calendly', desc: 'Connect your Calendly account', icon: '📆' },
-  { id: 'calcom', name: 'Cal.com', desc: 'Connect your Cal.com account', icon: '🗓️' },
   { id: 'none', name: 'No Calendar', desc: 'Skip — agent won\'t book appointments', icon: '⏭️' },
 ]
 
@@ -31,15 +149,19 @@ const VOICE_OPTIONS = [
   { id: 'disabled', name: 'SMS Only', desc: 'Text-based agent, no phone calls', icon: '💬' },
 ]
 
+const INITIATION_LABELS: Record<string, string> = { outbound: 'Outbound', inbound: 'Inbound' }
+const ROLE_LABELS: Record<string, string> = { sales: 'Sales', support: 'Support', assistant: 'Assistant' }
+
 export default function NewAgentWizard() {
   const router = useRouter()
   const params = useParams()
   const locationId = params.locationId as string
 
-  const [step, setStep] = useState<Step>('crm')
+  const [step, setStep] = useState<Step>('template')
+  const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null)
   const [selectedCrm, setSelectedCrm] = useState<string>('ghl')
   const [selectedCalendar, setSelectedCalendar] = useState<string>('ghl')
-  const [selectedVoice, setSelectedVoice] = useState<string>('enabled')
+  const [selectedVoice, setSelectedVoice] = useState<string>('disabled')
 
   // Build step
   const [name, setName] = useState('')
@@ -47,11 +169,6 @@ export default function NewAgentWizard() {
   const [instructions, setInstructions] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
-  // Integration connection states
-  const [connectingHubspot, setConnectingHubspot] = useState(false)
-  const [connectingCalendly, setConnectingCalendly] = useState(false)
-  const [connectingCalcom, setConnectingCalcom] = useState(false)
 
   const currentIdx = STEPS.findIndex(s => s.key === step)
 
@@ -65,16 +182,14 @@ export default function NewAgentWizard() {
     if (prevIdx >= 0) setStep(STEPS[prevIdx].key)
   }
 
-  function handleCrmSelect(id: string) {
-    setSelectedCrm(id)
-    if (id === 'hubspot') {
-      // Redirect to HubSpot OAuth
-      window.open(`/api/auth/hubspot?locationId=${locationId}`, '_blank')
-    }
-  }
-
-  function handleCalendarSelect(id: string) {
-    setSelectedCalendar(id)
+  function selectTemplate(t: AgentTemplate) {
+    setSelectedTemplate(t)
+    // Pre-fill build step
+    if (!name) setName(t.name + ' Agent')
+    setSystemPrompt(t.systemPrompt)
+    setInstructions(t.instructions)
+    // Auto-select voice based on initiation
+    if (t.initiation === 'inbound') setSelectedVoice('enabled')
   }
 
   async function handleCreate() {
@@ -93,12 +208,12 @@ export default function NewAgentWizard() {
           crmProvider: selectedCrm,
           calendarProvider: selectedCalendar,
           voiceEnabled: selectedVoice === 'enabled',
+          ...(selectedTemplate && { enabledTools: selectedTemplate.enabledTools }),
         }),
       })
       if (!res.ok) throw new Error('Failed to create agent')
       const { agent } = await res.json()
 
-      // If voice is enabled, redirect to voice config. Otherwise go to agent page.
       if (selectedVoice === 'enabled') {
         router.push(`/dashboard/${locationId}/agents/${agent.id}/voice`)
       } else {
@@ -109,6 +224,9 @@ export default function NewAgentWizard() {
       setSaving(false)
     }
   }
+
+  const canProceed = step !== 'template' || selectedTemplate !== null
+  const canCreate = name.trim() && systemPrompt.trim()
 
   return (
     <div className="p-8">
@@ -136,6 +254,64 @@ export default function NewAgentWizard() {
           ))}
         </div>
 
+        {/* Step: Template */}
+        {step === 'template' && (
+          <div>
+            <h1 className="text-2xl font-semibold mb-2">What kind of agent?</h1>
+            <p className="text-zinc-400 text-sm mb-6">
+              Pick the template that best fits your use case. Everything can be customized afterward.
+            </p>
+
+            {/* Outbound */}
+            <div className="mb-6">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Outbound — Agent initiates the conversation</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {TEMPLATES.filter(t => t.initiation === 'outbound').map(t => (
+                  <button key={t.id} type="button" onClick={() => selectTemplate(t)}
+                    className={`flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors ${
+                      selectedTemplate?.id === t.id
+                        ? 'border-white bg-zinc-900'
+                        : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
+                    }`}>
+                    <span className="text-2xl">{t.icon}</span>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-200">{ROLE_LABELS[t.role]}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{t.tagline}</p>
+                    </div>
+                    {selectedTemplate?.id === t.id && (
+                      <span className="text-xs text-emerald-400 font-medium">Selected</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Inbound */}
+            <div>
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Inbound — Contact initiates the conversation</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {TEMPLATES.filter(t => t.initiation === 'inbound').map(t => (
+                  <button key={t.id} type="button" onClick={() => selectTemplate(t)}
+                    className={`flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors ${
+                      selectedTemplate?.id === t.id
+                        ? 'border-white bg-zinc-900'
+                        : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
+                    }`}>
+                    <span className="text-2xl">{t.icon}</span>
+                    <div>
+                      <p className="text-sm font-medium text-zinc-200">{ROLE_LABELS[t.role]}</p>
+                      <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{t.tagline}</p>
+                    </div>
+                    {selectedTemplate?.id === t.id && (
+                      <span className="text-xs text-emerald-400 font-medium">Selected</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Step: CRM */}
         {step === 'crm' && (
           <div>
@@ -143,8 +319,7 @@ export default function NewAgentWizard() {
             <p className="text-zinc-400 text-sm mb-6">Your agent will read contacts, update tags, and manage pipelines through your CRM.</p>
             <div className="space-y-3">
               {CRM_OPTIONS.map(opt => (
-                <button key={opt.id} type="button"
-                  onClick={() => handleCrmSelect(opt.id)}
+                <button key={opt.id} type="button" onClick={() => setSelectedCrm(opt.id)}
                   className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
                     selectedCrm === opt.id
                       ? 'border-white bg-zinc-900'
@@ -173,8 +348,7 @@ export default function NewAgentWizard() {
             <p className="text-zinc-400 text-sm mb-6">Your agent will check availability and book appointments for leads.</p>
             <div className="space-y-3">
               {CALENDAR_OPTIONS.map(opt => (
-                <button key={opt.id} type="button"
-                  onClick={() => handleCalendarSelect(opt.id)}
+                <button key={opt.id} type="button" onClick={() => setSelectedCalendar(opt.id)}
                   className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
                     selectedCalendar === opt.id
                       ? 'border-white bg-zinc-900'
@@ -192,32 +366,6 @@ export default function NewAgentWizard() {
                   )}
                 </button>
               ))}
-              {selectedCalendar === 'calendly' && (
-                <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
-                  <p className="text-xs text-zinc-400">Enter your Calendly Personal Access Token to connect.</p>
-                  <div className="flex gap-2">
-                    <input type="password" placeholder="Calendly API token"
-                      className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-                    <button type="button"
-                      className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50">
-                      Connect
-                    </button>
-                  </div>
-                </div>
-              )}
-              {selectedCalendar === 'calcom' && (
-                <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
-                  <p className="text-xs text-zinc-400">Enter your Cal.com API key to connect.</p>
-                  <div className="flex gap-2">
-                    <input type="password" placeholder="Cal.com API key"
-                      className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-                    <button type="button"
-                      className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50">
-                      Connect
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -229,8 +377,7 @@ export default function NewAgentWizard() {
             <p className="text-zinc-400 text-sm mb-6">Do you want this agent to handle inbound phone calls? You can always enable this later.</p>
             <div className="space-y-3">
               {VOICE_OPTIONS.map(opt => (
-                <button key={opt.id} type="button"
-                  onClick={() => setSelectedVoice(opt.id)}
+                <button key={opt.id} type="button" onClick={() => setSelectedVoice(opt.id)}
                   className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
                     selectedVoice === opt.id
                       ? 'border-white bg-zinc-900'
@@ -255,10 +402,15 @@ export default function NewAgentWizard() {
         {/* Step: Build */}
         {step === 'build' && (
           <div>
-            <h1 className="text-2xl font-semibold mb-2">Build your agent</h1>
-            <p className="text-zinc-400 text-sm mb-6">
-              Give your agent a name and personality. You selected: {selectedCrm !== 'none' ? selectedCrm.toUpperCase() : 'No CRM'} + {selectedCalendar !== 'none' ? selectedCalendar : 'No Calendar'} + {selectedVoice === 'enabled' ? 'Voice' : 'SMS only'}
-            </p>
+            <h1 className="text-2xl font-semibold mb-2">Review and build</h1>
+            {selectedTemplate && (
+              <div className="flex items-center gap-2 mb-5 text-sm text-zinc-400">
+                <span className="text-base">{selectedTemplate.icon}</span>
+                <span>{INITIATION_LABELS[selectedTemplate.initiation]} {ROLE_LABELS[selectedTemplate.role]} template</span>
+                <span className="text-zinc-700">·</span>
+                <span>{selectedTemplate.enabledTools.length} tools pre-selected</span>
+              </div>
+            )}
             <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Agent Name</label>
@@ -268,19 +420,20 @@ export default function NewAgentWizard() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">System Prompt</label>
-                <p className="text-xs text-zinc-500 mb-2">The core identity and role of the agent.</p>
+                <p className="text-xs text-zinc-500 mb-2">The core identity and role of the agent. Pre-filled from your template — edit as needed.</p>
                 <textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
-                  placeholder="You are a helpful sales assistant for Acme Corp. You respond to inbound SMS leads..."
-                  rows={6}
+                  placeholder="You are a helpful sales assistant for Acme Corp..."
+                  rows={7}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Additional Instructions <span className="text-zinc-600">(optional)</span>
+                  Behavioral Instructions <span className="text-zinc-600">(optional)</span>
                 </label>
+                <p className="text-xs text-zinc-500 mb-2">Bullet-point rules the agent follows. Pre-filled from your template — edit as needed.</p>
                 <textarea value={instructions} onChange={e => setInstructions(e.target.value)}
-                  placeholder="- Always greet the contact by first name&#10;- If they ask about pricing, send them to the booking link"
-                  rows={4}
+                  placeholder="- Always greet by first name&#10;- If they ask about pricing, send them the booking link"
+                  rows={5}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y" />
               </div>
               {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -304,12 +457,12 @@ export default function NewAgentWizard() {
           </div>
           <div>
             {step !== 'build' ? (
-              <button type="button" onClick={next}
-                className="bg-white text-black font-medium text-sm h-10 px-6 rounded-lg hover:bg-zinc-200 transition-colors inline-flex items-center justify-center">
+              <button type="button" onClick={next} disabled={!canProceed}
+                className="bg-white text-black font-medium text-sm h-10 px-6 rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50 inline-flex items-center justify-center">
                 Continue &rarr;
               </button>
             ) : (
-              <button type="button" onClick={handleCreate} disabled={saving || !name.trim() || !systemPrompt.trim()}
+              <button type="button" onClick={handleCreate} disabled={saving || !canCreate}
                 className="bg-white text-black font-medium text-sm h-10 px-6 rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50 inline-flex items-center justify-center">
                 {saving ? 'Creating…' : 'Create Agent'}
               </button>

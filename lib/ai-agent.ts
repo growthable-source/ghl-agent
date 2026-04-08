@@ -576,7 +576,12 @@ async function executeTool(
 
 // ─── Build system prompt ───────────────────────────────────────────────────
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string): string {
+export interface FallbackConfig {
+  behavior: 'message' | 'transfer' | 'message_and_transfer'
+  message?: string | null
+}
+
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const base = customPrompt || `You are a helpful, professional sales assistant managing SMS conversations.`
 
@@ -602,6 +607,21 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: P
 - If you don't have their email, ask for it — you need it for the calendar invite
 - After booking, ALWAYS create an appointment note summarising what the meeting is about and any context from the conversation
 - Confirm the date, time, and purpose back to the contact after booking
+
+## When You Don't Know the Answer
+If a contact asks something you genuinely do not have the information for — do NOT guess, fabricate, or make up an answer. This is critical.
+${(() => {
+  if (!fallback) return '- Acknowledge that you don\'t have that information and offer to connect them with someone who does.'
+  switch (fallback.behavior) {
+    case 'transfer':
+      return '- Immediately transfer the conversation to a human using the transfer_to_human tool. Do not attempt to answer.'
+    case 'message_and_transfer':
+      return `- Say: "${fallback.message || "That\'s a great question — let me connect you with someone who can help."}" and then use transfer_to_human to escalate.`
+    case 'message':
+    default:
+      return `- Say: "${fallback.message || "That\'s a great question — let me find out and get back to you."}" Do not attempt to answer beyond this.`
+  }
+})()}
 
 ## Tone
 Professional but warm. Match the contact's energy.`
@@ -643,9 +663,11 @@ export async function runAgent(opts: {
   systemPrompt?: string
   enabledTools?: string[]
   persona?: PersonaSettings
+  fallback?: FallbackConfig
+  qualifyingStyle?: 'strict' | 'natural'
   sandbox?: boolean
 }): Promise<AgentResponse> {
-  const { locationId, agentId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona, sandbox } = opts
+  const { locationId, agentId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Build message history for Claude
@@ -684,11 +706,11 @@ export async function runAgent(opts: {
     if (isSandbox) {
       const { getAllQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
       const questions = await getAllQuestions(agentId)
-      qualifyingBlock = buildQualifyingPromptBlock(questions)
+      qualifyingBlock = buildQualifyingPromptBlock(questions, qualifyingStyle ?? 'strict')
     } else {
       const { getUnansweredQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
       const unanswered = await getUnansweredQuestions(agentId, contactId)
-      qualifyingBlock = buildQualifyingPromptBlock(unanswered)
+      qualifyingBlock = buildQualifyingPromptBlock(unanswered, qualifyingStyle ?? 'strict')
     }
   }
 
@@ -703,7 +725,7 @@ export async function runAgent(opts: {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock),
+      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback),
       tools,
       messages: currentMessages,
     })
