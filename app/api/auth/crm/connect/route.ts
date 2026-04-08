@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     response_type: 'code',
     redirect_uri: `${process.env.APP_URL}/api/auth/callback`,
     client_id: clientId,
-    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.write calendars.readonly',
+    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.write calendars.readonly locations/customFields.readonly locations/customFields.write',
     state: locationId,
   })
 
