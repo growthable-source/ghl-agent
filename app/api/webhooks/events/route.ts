@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
         const p = payload as WebhookMessagePayload
         const channel = p.messageType || 'SMS'
 
+        console.log(`[Webhook] InboundMessage — channel=${channel} messageType=${p.messageType} location=${p.locationId} contact=${p.contactId} conv=${p.conversationId} provId=${p.conversationProviderId ?? 'none'} body="${(p.body ?? '').slice(0, 80)}"`)
+
         // Skip channels we don't handle (e.g. raw email without a configured agent)
         const SUPPORTED_CHANNELS = ['SMS', 'WhatsApp', 'GMB', 'FB', 'IG', 'Live_Chat', 'Email']
         if (!SUPPORTED_CHANNELS.includes(channel)) {
@@ -108,7 +110,17 @@ export async function POST(req: NextRequest) {
         })
 
         // Find matching agent that is deployed on this channel
-        const agent = await findMatchingAgent(p.locationId, p.contactId, inboundMessage, channel)
+        let agent: Awaited<ReturnType<typeof findMatchingAgent>>
+        try {
+          agent = await findMatchingAgent(p.locationId, p.contactId, inboundMessage, channel)
+        } catch (routingErr: any) {
+          console.error(`[Webhook] Routing error (channel=${channel}):`, routingErr.message)
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: { status: 'ERROR', errorMessage: `Routing error: ${routingErr.message}` },
+          })
+          break
+        }
 
         if (!agent) {
           await db.messageLog.update({
@@ -173,6 +185,7 @@ export async function POST(req: NextRequest) {
             agentId: agent.id,
             contactId: p.contactId,
             conversationId: p.conversationId,
+            conversationProviderId: p.conversationProviderId,
             channel,
             incomingMessage: inboundMessage,
             messageHistory,

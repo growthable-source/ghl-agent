@@ -70,7 +70,6 @@ export async function processDueFollowUps(): Promise<number> {
       await sendMessage(job.locationId, {
         type: (job.channel || 'SMS') as MessageChannelType,
         contactId: job.contactId,
-        conversationId: job.conversationId ?? undefined,
         message: step.message,
       })
 

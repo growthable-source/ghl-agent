@@ -182,6 +182,7 @@ export async function sendMessage(
   locationId: string,
   payload: SendMessagePayload
 ): Promise<{ messageId: string; conversationId: string }> {
+  console.log(`[CRM] sendMessage type=${payload.type} contact=${payload.contactId} provId=${payload.conversationProviderId ?? 'none'}`)
   return apiFetch(locationId, '/conversations/messages', {
     method: 'POST',
     body: JSON.stringify(payload),

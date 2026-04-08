@@ -355,7 +355,8 @@ async function executeTool(
   locationId: string,
   sandbox = false,
   agentId?: string,
-  channel?: string
+  channel?: string,
+  conversationProviderId?: string
 ): Promise<string> {
   if (sandbox) return executeSandboxTool(toolName, input)
   try {
@@ -370,7 +371,7 @@ async function executeTool(
         const result = await sendMessage(locationId, {
           type: replyChannel,
           contactId: input.contactId as string,
-          conversationId: input.conversationId as string | undefined,
+          conversationProviderId: conversationProviderId || input.conversationProviderId as string | undefined,
           message: input.message as string,
         })
         return JSON.stringify({ success: true, channel: replyChannel, ...result })
@@ -379,7 +380,7 @@ async function executeTool(
         const result = await sendMessage(locationId, {
           type: 'SMS',
           contactId: input.contactId as string,
-          conversationId: input.conversationId as string | undefined,
+          conversationProviderId,
           message: input.message as string,
         })
         return JSON.stringify({ success: true, ...result })
@@ -689,6 +690,7 @@ export async function runAgent(opts: {
   agentId?: string
   contactId: string
   conversationId?: string
+  conversationProviderId?: string
   channel?: string
   incomingMessage: string
   messageHistory?: Message[]
@@ -699,7 +701,7 @@ export async function runAgent(opts: {
   qualifyingStyle?: 'strict' | 'natural'
   sandbox?: boolean
 }): Promise<AgentResponse> {
-  const { locationId, agentId, contactId, conversationId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox } = opts
+  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Build message history for Claude
@@ -787,7 +789,7 @@ export async function runAgent(opts: {
         await sendMessage(locationId, {
           type: (channel || 'SMS') as import('@/types').MessageChannelType,
           contactId,
-          conversationId,
+          conversationProviderId,
           message: msgToSend,
         })
         smsSent = msgToSend
@@ -808,7 +810,8 @@ export async function runAgent(opts: {
         locationId,
         isSandbox,
         agentId,
-        channel
+        channel,
+        conversationProviderId
       )
       toolCallTrace.push({
         tool: toolBlock.name,

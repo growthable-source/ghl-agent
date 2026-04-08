@@ -87,7 +87,7 @@ export type MessageChannelType = 'SMS' | 'Email' | 'WhatsApp' | 'GMB' | 'FB' | '
 export interface SendMessagePayload {
   type: MessageChannelType
   contactId: string
-  conversationId?: string
+  conversationProviderId?: string
   message: string
   subject?: string
   html?: string
@@ -128,6 +128,7 @@ export interface WebhookMessagePayload {
   locationId: string
   contactId: string
   conversationId: string
+  conversationProviderId?: string
   messageId: string
   body: string
   messageType: MessageChannelType | string
