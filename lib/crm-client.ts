@@ -81,7 +81,7 @@ export async function getCustomFields(locationId: string): Promise<CustomField[]
   try {
     const data = await apiFetch<{ customFields: CustomField[] }>(
       locationId,
-      `/contacts/custom-fields?locationId=${locationId}`
+      `/locations/${locationId}/customFields`
     )
     return data.customFields ?? []
   } catch (err) {
