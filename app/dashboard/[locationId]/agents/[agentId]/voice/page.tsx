@@ -4,20 +4,6 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
-interface VoiceTool {
-  type: 'function'
-  function: {
-    name: string
-    description: string
-    parameters: {
-      type: 'object'
-      properties: Record<string, { type: string; description: string }>
-      required: string[]
-    }
-  }
-  condition?: string
-}
-
 interface VapiConfig {
   phoneNumberId: string | null
   phoneNumber: string | null
@@ -34,7 +20,7 @@ interface VapiConfig {
   backgroundSound: string | null
   endCallPhrases: string[]
   language: string | null
-  voiceTools: VoiceTool[] | null
+  voiceTools: any[] | null
   isActive: boolean
 }
 
@@ -146,10 +132,6 @@ export default function VoicePage() {
   const [serverUrl, setServerUrl] = useState('')
   const vapiInstanceRef = useRef<any>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
-
-  // Voice tools state
-  const [editingTool, setEditingTool] = useState<VoiceTool | null>(null)
-  const [showToolForm, setShowToolForm] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -338,56 +320,6 @@ export default function VoicePage() {
     setTestCallConnecting(false)
     setTestVolume(0)
     vapiInstanceRef.current = null
-  }
-
-  // ── Voice tools handlers ──
-  function addVoiceTool() {
-    setEditingTool({
-      type: 'function',
-      function: {
-        name: '',
-        description: '',
-        parameters: { type: 'object', properties: {}, required: [] },
-      },
-      condition: '',
-    })
-    setShowToolForm(true)
-  }
-
-  function editVoiceTool(idx: number) {
-    const tools = config.voiceTools || []
-    const t = tools[idx]
-    setEditingTool({
-      ...t,
-      function: {
-        ...t.function,
-        parameters: {
-          ...t.function.parameters,
-          properties: { ...t.function.parameters.properties },
-          required: [...t.function.parameters.required],
-        },
-      },
-    })
-    setShowToolForm(true)
-  }
-
-  function removeVoiceTool(idx: number) {
-    const tools = [...(config.voiceTools || [])]
-    tools.splice(idx, 1)
-    setConfig(c => ({ ...c, voiceTools: tools.length > 0 ? tools : null }))
-  }
-
-  function saveVoiceTool(tool: VoiceTool) {
-    const tools = [...(config.voiceTools || [])]
-    const existingIdx = tools.findIndex(t => t.function.name === tool.function.name)
-    if (existingIdx >= 0) {
-      tools[existingIdx] = tool
-    } else {
-      tools.push(tool)
-    }
-    setConfig(c => ({ ...c, voiceTools: tools }))
-    setShowToolForm(false)
-    setEditingTool(null)
   }
 
   const filteredVoices = voices.filter(v => {
@@ -703,60 +635,27 @@ export default function VoicePage() {
         </div>
 
         {/* ── Voice Tools ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-zinc-200">Voice Tools</p>
-              <p className="text-xs text-zinc-500 mt-0.5">Custom functions the agent can call during a voice call.</p>
-            </div>
-            <button type="button" onClick={addVoiceTool}
-              className="text-xs text-blue-400 hover:text-blue-300 transition-colors">+ Add tool</button>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">Voice Tools</p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              The voice agent automatically uses the same tools configured on the <Link href={`/dashboard/${locationId}/agents/${agentId}/tools`} className="text-blue-400 hover:text-blue-300">Tools tab</Link>. These voice-specific tools are always available:
+            </p>
           </div>
-
-          {/* Built-in tools (read only) */}
           <div className="space-y-1.5">
-            <p className="text-xs text-zinc-500 font-medium">Built-in</p>
-            {['get_available_slots', 'book_appointment', 'tag_contact', 'send_sms_followup'].map(name => (
-              <div key={name} className="flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-lg">
+            {[
+              { name: 'get_available_slots', desc: 'Check calendar availability' },
+              { name: 'book_appointment', desc: 'Book a meeting for the caller' },
+              { name: 'tag_contact', desc: 'Tag the caller in the CRM' },
+              { name: 'send_sms_followup', desc: 'Send an SMS after the call ends' },
+            ].map(tool => (
+              <div key={tool.name} className="flex items-center gap-3 px-3 py-2 bg-zinc-900 rounded-lg">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                <span className="text-xs text-zinc-300 font-mono">{name}</span>
-                <span className="text-xs text-zinc-600 ml-auto">built-in</span>
+                <span className="text-xs text-zinc-300 font-mono">{tool.name}</span>
+                <span className="text-xs text-zinc-600 ml-auto">{tool.desc}</span>
               </div>
             ))}
           </div>
-
-          {/* Custom tools */}
-          {(config.voiceTools || []).length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs text-zinc-500 font-medium">Custom</p>
-              {(config.voiceTools || []).map((tool, idx) => (
-                <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-lg group">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs text-zinc-300 font-mono">{tool.function.name || 'unnamed'}</span>
-                    {tool.condition && (
-                      <p className="text-xs text-zinc-600 truncate mt-0.5">When: {tool.condition}</p>
-                    )}
-                  </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button type="button" onClick={() => editVoiceTool(idx)}
-                      className="text-xs text-zinc-500 hover:text-white px-1.5 py-0.5 transition-colors">Edit</button>
-                    <button type="button" onClick={() => removeVoiceTool(idx)}
-                      className="text-xs text-zinc-500 hover:text-red-400 px-1.5 py-0.5 transition-colors">Remove</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Tool form */}
-          {showToolForm && editingTool && (
-            <ToolForm
-              tool={editingTool}
-              onSave={saveVoiceTool}
-              onCancel={() => { setShowToolForm(false); setEditingTool(null) }}
-            />
-          )}
         </div>
 
         {/* ── Webhook info ── */}
@@ -843,146 +742,6 @@ export default function VoicePage() {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ─── Tool Form Component ─────────────────────────────────────────────────
-
-function ToolForm({ tool, onSave, onCancel }: {
-  tool: VoiceTool
-  onSave: (t: VoiceTool) => void
-  onCancel: () => void
-}) {
-  const [name, setName] = useState(tool.function.name)
-  const [description, setDescription] = useState(tool.function.description)
-  const [condition, setCondition] = useState(tool.condition || '')
-  const [params, setParams] = useState<{ key: string; type: string; desc: string; required: boolean }[]>(() => {
-    const props = tool.function.parameters.properties
-    const req = tool.function.parameters.required
-    return Object.entries(props).map(([key, val]) => ({
-      key,
-      type: val.type,
-      desc: val.description,
-      required: req.includes(key),
-    }))
-  })
-  const [newParamKey, setNewParamKey] = useState('')
-
-  function addParam() {
-    if (!newParamKey.trim()) return
-    const key = newParamKey.trim().replace(/\s+/g, '_').toLowerCase()
-    if (params.some(p => p.key === key)) return
-    setParams(prev => [...prev, { key, type: 'string', desc: '', required: false }])
-    setNewParamKey('')
-  }
-
-  function handleSave() {
-    if (!name.trim()) return
-    const properties: Record<string, { type: string; description: string }> = {}
-    const required: string[] = []
-    for (const p of params) {
-      properties[p.key] = { type: p.type, description: p.desc }
-      if (p.required) required.push(p.key)
-    }
-    onSave({
-      type: 'function',
-      function: {
-        name: name.trim().replace(/\s+/g, '_').toLowerCase(),
-        description: description.trim(),
-        parameters: { type: 'object', properties, required },
-      },
-      ...(condition.trim() ? { condition: condition.trim() } : {}),
-    })
-  }
-
-  return (
-    <div className="border border-zinc-700 rounded-lg bg-zinc-900 p-4 space-y-3">
-      <p className="text-xs font-medium text-zinc-300">
-        {tool.function.name ? 'Edit Tool' : 'New Tool'}
-      </p>
-
-      <div>
-        <label className="block text-xs text-zinc-500 mb-1">Function Name</label>
-        <input type="text" value={name}
-          onChange={e => setName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
-          placeholder="e.g. check_pricing"
-          className="w-full bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-      </div>
-
-      <div>
-        <label className="block text-xs text-zinc-500 mb-1">Description</label>
-        <input type="text" value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="What does this tool do? The AI uses this to decide when to call it."
-          className="w-full bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-      </div>
-
-      <div>
-        <label className="block text-xs text-zinc-500 mb-1">Condition <span className="text-zinc-600">(optional)</span></label>
-        <input type="text" value={condition}
-          onChange={e => setCondition(e.target.value)}
-          placeholder="e.g. Only use when the caller asks about pricing"
-          className="w-full bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-        <p className="text-xs text-zinc-600 mt-1">Natural language condition. Added to the system prompt so the AI knows when to use this tool.</p>
-      </div>
-
-      {/* Parameters */}
-      <div>
-        <label className="block text-xs text-zinc-500 mb-1.5">Parameters</label>
-        {params.length > 0 && (
-          <div className="space-y-2 mb-2">
-            {params.map((p, i) => (
-              <div key={p.key} className="flex items-start gap-2 bg-zinc-800 rounded-lg p-2">
-                <div className="flex-1 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-300 font-mono">{p.key}</span>
-                    <select value={p.type}
-                      onChange={e => setParams(prev => prev.map((pp, ii) => ii === i ? { ...pp, type: e.target.value } : pp))}
-                      className="bg-zinc-700 border border-zinc-600 rounded px-1.5 py-0.5 text-xs text-zinc-300 focus:outline-none">
-                      <option value="string">string</option>
-                      <option value="number">number</option>
-                      <option value="boolean">boolean</option>
-                    </select>
-                    <label className="flex items-center gap-1 text-xs text-zinc-500 ml-auto">
-                      <input type="checkbox" checked={p.required}
-                        onChange={e => setParams(prev => prev.map((pp, ii) => ii === i ? { ...pp, required: e.target.checked } : pp))}
-                        className="rounded border-zinc-600 bg-zinc-800 text-emerald-500" />
-                      required
-                    </label>
-                  </div>
-                  <input type="text" value={p.desc}
-                    onChange={e => setParams(prev => prev.map((pp, ii) => ii === i ? { ...pp, desc: e.target.value } : pp))}
-                    placeholder="Description for this parameter"
-                    className="w-full bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400" />
-                </div>
-                <button type="button" onClick={() => setParams(prev => prev.filter((_, ii) => ii !== i))}
-                  className="text-zinc-600 hover:text-red-400 text-xs p-1 transition-colors mt-0.5">x</button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="flex gap-2">
-          <input type="text" value={newParamKey}
-            onChange={e => setNewParamKey(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addParam() } }}
-            placeholder="param_name"
-            className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-2 py-1.5 text-xs text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-          <button type="button" onClick={addParam} disabled={!newParamKey.trim()}
-            className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-lg transition-colors disabled:opacity-50">Add param</button>
-        </div>
-      </div>
-
-      <div className="flex gap-2 pt-1">
-        <button type="button" onClick={handleSave} disabled={!name.trim()}
-          className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50">
-          Save tool
-        </button>
-        <button type="button" onClick={onCancel}
-          className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition-colors">
-          Cancel
-        </button>
-      </div>
     </div>
   )
 }
