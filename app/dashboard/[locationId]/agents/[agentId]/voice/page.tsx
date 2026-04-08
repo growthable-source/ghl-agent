@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 
 interface VoiceTool {
   type: 'function'
@@ -389,8 +390,18 @@ export default function VoicePage() {
       <p className="text-sm text-zinc-400 mb-6">Configure inbound call handling. Same knowledge base and brain as SMS.</p>
 
       {!vapiReady && (
-        <div className="mb-6 rounded-xl border border-red-900 bg-red-950/30 p-4">
-          <p className="text-sm text-red-400 font-medium">Voice AI is not enabled on this account.</p>
+        <div className="mb-6 rounded-xl border border-amber-900/50 bg-amber-950/20 p-4 space-y-2">
+          <p className="text-sm text-amber-400 font-medium">Voice AI is not configured</p>
+          <p className="text-xs text-zinc-400">
+            Add <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">VAPI_API_KEY</code> and{' '}
+            <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">VAPI_PUBLIC_KEY</code> to your environment variables, then redeploy.
+          </p>
+          <Link
+            href={`/dashboard/${locationId}/integrations`}
+            className="inline-block text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            Go to Integrations →
+          </Link>
         </div>
       )}
 

@@ -202,15 +202,23 @@ export default function IntegrationsPage() {
                 <p className="text-xs text-zinc-500">CRM, pipelines, SMS, email, calendars</p>
               </div>
             </div>
-            {ghlConnected ? (
-              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
-            ) : (
-              <a href={`/api/auth/crm/connect?locationId=${locationId}`}
-                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors">
-                Connect
+            <div className="flex items-center gap-2">
+              {ghlConnected && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
+              )}
+              <a
+                href={`/api/auth/crm/connect?locationId=${locationId}`}
+                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+              >
+                {ghlConnected ? 'Reconnect' : 'Connect'}
               </a>
-            )}
+            </div>
           </div>
+          {ghlConnected && (
+            <p className="text-xs text-zinc-600 mt-3">
+              Reconnect to refresh your token or add new permission scopes.
+            </p>
+          )}
         </div>
 
         {/* Vapi Voice */}
@@ -219,14 +227,38 @@ export default function IntegrationsPage() {
             <div className="flex items-center gap-3">
               <span className="text-2xl">🎙️</span>
               <div>
-                <p className="text-sm font-medium text-zinc-200">Voice AI</p>
-                <p className="text-xs text-zinc-500">Inbound call handling — configure per agent in Voice settings</p>
+                <p className="text-sm font-medium text-zinc-200">Voice AI (Vapi)</p>
+                <p className="text-xs text-zinc-500">Inbound call handling — configure per agent in the Voice tab</p>
               </div>
             </div>
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${vapiActive ? 'bg-emerald-900/30 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-              {vapiActive ? 'Active' : 'Unavailable'}
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${vapiActive ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
+              {vapiActive ? 'Active' : 'Not configured'}
             </span>
           </div>
+          {!vapiActive && (
+            <div className="mt-4 rounded-lg bg-zinc-900 border border-zinc-800 p-4 space-y-2">
+              <p className="text-xs text-zinc-300 font-medium">Setup required</p>
+              <p className="text-xs text-zinc-500">Add these environment variables in your Vercel project settings:</p>
+              <div className="space-y-1 font-mono">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-zinc-400 bg-zinc-800 px-2 py-1 rounded">VAPI_API_KEY</span>
+                  <span className="text-zinc-600">— your Vapi secret key</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-zinc-400 bg-zinc-800 px-2 py-1 rounded">VAPI_PUBLIC_KEY</span>
+                  <span className="text-zinc-600">— your Vapi public key (for test calls)</span>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-600">
+                Get your keys at{' '}
+                <a href="https://dashboard.vapi.ai" target="_blank" rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300">
+                  dashboard.vapi.ai
+                </a>
+                {' '}→ Account → API Keys. Redeploy after adding.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Twilio */}
