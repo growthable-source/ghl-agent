@@ -84,7 +84,8 @@ export async function getCustomFields(locationId: string): Promise<CustomField[]
       `/contacts/custom-fields?locationId=${locationId}`
     )
     return data.customFields ?? []
-  } catch {
+  } catch (err) {
+    console.error('[CRM] getCustomFields failed:', err)
     return []
   }
 }

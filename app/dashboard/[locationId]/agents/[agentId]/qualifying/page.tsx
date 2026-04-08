@@ -116,7 +116,7 @@ export default function QualifyingPage() {
   function updateForm(key: string, value: any) {
     setForm(prev => {
       const next = { ...prev, [key]: value }
-      if (key === 'question' && !prev.fieldKey) {
+      if (key === 'question') {
         next.fieldKey = autoFieldKey(value)
       }
       return next
@@ -134,14 +134,15 @@ export default function QualifyingPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.question.trim() || !form.fieldKey.trim()) return
+    if (!form.question.trim()) return
+    const fieldKey = form.fieldKey.trim() || autoFieldKey(form.question)
     setAdding(true)
     const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: form.question,
-        fieldKey: form.fieldKey,
+        fieldKey,
         required: form.required,
         order: questions.length,
         answerType: form.answerType,
@@ -361,33 +362,20 @@ export default function QualifyingPage() {
             )}
           </div>
 
-          {/* Internal key + Required */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Internal key <span className="text-zinc-600">(auto)</span></label>
-              <input
-                type="text"
-                value={form.fieldKey}
-                onChange={e => updateForm('fieldKey', e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
-                placeholder="e.g. intent"
-                required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Required</label>
-              <button
-                type="button"
-                onClick={() => updateForm('required', !form.required)}
-                className={`w-full h-10 rounded-lg border text-sm font-medium transition-colors ${
-                  form.required
-                    ? 'border-amber-600 bg-amber-900/20 text-amber-400'
-                    : 'border-zinc-700 bg-zinc-900 text-zinc-500'
-                }`}
-              >
-                {form.required ? 'Required' : 'Optional'}
-              </button>
-            </div>
+          {/* Required toggle — internal key is auto-generated, not shown */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Required</label>
+            <button
+              type="button"
+              onClick={() => updateForm('required', !form.required)}
+              className={`w-40 h-10 rounded-lg border text-sm font-medium transition-colors ${
+                form.required
+                  ? 'border-amber-600 bg-amber-900/20 text-amber-400'
+                  : 'border-zinc-700 bg-zinc-900 text-zinc-500'
+              }`}
+            >
+              {form.required ? 'Required' : 'Optional'}
+            </button>
           </div>
 
           {/* Conditional action — collapsible */}
