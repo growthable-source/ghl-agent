@@ -4,13 +4,13 @@ import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
-type Step = 'template' | 'crm' | 'calendar' | 'voice' | 'build'
+type Step = 'template' | 'crm' | 'calendar' | 'channels' | 'build'
 
 const STEPS: { key: Step; label: string }[] = [
   { key: 'template', label: 'Type' },
   { key: 'crm', label: 'CRM' },
   { key: 'calendar', label: 'Calendar' },
-  { key: 'voice', label: 'Voice' },
+  { key: 'channels', label: 'Channels' },
   { key: 'build', label: 'Build' },
 ]
 
@@ -43,7 +43,7 @@ You initiate the conversation, guide it with purpose, and don't wait for the lea
 - If the lead qualifies, push for the appointment booking
 - If the lead isn't interested, tag them appropriately and close gracefully
 - Never push more than twice on a specific ask`,
-    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
+    enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
   },
   {
     id: 'outbound-support',
@@ -60,7 +60,7 @@ You represent the business in a warm, professional way and make customers feel v
 - If they raise an issue, acknowledge it and take action (tag, note, escalate)
 - If they're satisfied, thank them and optionally ask for a referral or review
 - Keep messages short — customers don't expect long follow-up texts`,
-    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'detect_sentiment', 'schedule_followup', 'transfer_to_human'],
+    enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'detect_sentiment', 'schedule_followup', 'transfer_to_human'],
   },
   {
     id: 'outbound-assistant',
@@ -77,7 +77,7 @@ You are clear, direct, and action-oriented.`,
 - If they need to reschedule, offer available alternatives
 - Keep messages brief — one clear action per message
 - Log all outcomes (confirmed, rescheduled, cancelled) to the contact record`,
-    enabledTools: ['get_contact_details', 'get_calendar_events', 'get_available_slots', 'book_appointment', 'add_contact_note', 'schedule_followup'],
+    enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'get_calendar_events', 'get_available_slots', 'book_appointment', 'add_contact_note', 'schedule_followup'],
   },
   {
     id: 'inbound-sales',
@@ -95,7 +95,7 @@ You are responsive, knowledgeable, and helpful without being pushy.`,
 - When they seem ready, introduce the booking option
 - If they're not ready yet, offer to follow up or send useful info
 - Never pressure — let the conversation move at their pace`,
-    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
+    enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
   },
   {
     id: 'inbound-support',
@@ -113,7 +113,7 @@ You are empathetic, patient, and solution-focused.`,
 - If you can't resolve it, let them know clearly and escalate to a human with full context
 - Log the issue, outcome, and any tags to the contact record
 - Always close with a confirmation that their issue has been addressed or next steps`,
-    enabledTools: ['get_contact_details', 'update_contact_tags', 'add_contact_note', 'search_contacts', 'detect_sentiment', 'transfer_to_human'],
+    enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'search_contacts', 'detect_sentiment', 'transfer_to_human'],
   },
   {
     id: 'inbound-assistant',
@@ -130,7 +130,7 @@ You are warm, conversational, and efficient.`,
 - For scheduling requests, check availability and book directly
 - For questions, give accurate and concise answers
 - If something is outside your scope, let them know and offer to connect them with someone who can help`,
-    enabledTools: ['get_contact_details', 'get_available_slots', 'book_appointment', 'get_calendar_events', 'add_contact_note', 'transfer_to_human'],
+    enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'get_available_slots', 'book_appointment', 'get_calendar_events', 'add_contact_note', 'transfer_to_human'],
   },
 ]
 
@@ -144,9 +144,14 @@ const CALENDAR_OPTIONS = [
   { id: 'none', name: 'No Calendar', desc: 'Skip — agent won\'t book appointments', icon: '⏭️' },
 ]
 
-const VOICE_OPTIONS = [
-  { id: 'enabled', name: 'Enable Voice', desc: 'Handle inbound phone calls with AI', icon: '🎙️' },
-  { id: 'disabled', name: 'SMS Only', desc: 'Text-based agent, no phone calls', icon: '💬' },
+const CHANNEL_OPTIONS = [
+  { key: 'SMS', label: 'SMS', desc: 'Text messages', icon: '💬' },
+  { key: 'WhatsApp', label: 'WhatsApp', desc: 'WhatsApp Business', icon: '📱' },
+  { key: 'FB', label: 'Facebook Messenger', desc: 'Facebook page messages', icon: '📘' },
+  { key: 'IG', label: 'Instagram DMs', desc: 'Instagram direct messages', icon: '📸' },
+  { key: 'GMB', label: 'Google Business', desc: 'Google Business messages', icon: '📍' },
+  { key: 'Live_Chat', label: 'Live Chat', desc: 'Website chat widget', icon: '🌐' },
+  { key: 'Email', label: 'Email', desc: 'Email conversations', icon: '✉️' },
 ]
 
 const INITIATION_LABELS: Record<string, string> = { outbound: 'Outbound', inbound: 'Inbound' }
@@ -161,7 +166,7 @@ export default function NewAgentWizard() {
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null)
   const [selectedCrm, setSelectedCrm] = useState<string>('ghl')
   const [selectedCalendar, setSelectedCalendar] = useState<string>('ghl')
-  const [selectedVoice, setSelectedVoice] = useState<string>('disabled')
+  const [selectedChannels, setSelectedChannels] = useState<string[]>(['SMS'])
 
   // Build step
   const [name, setName] = useState('')
@@ -184,12 +189,15 @@ export default function NewAgentWizard() {
 
   function selectTemplate(t: AgentTemplate) {
     setSelectedTemplate(t)
-    // Pre-fill build step
     if (!name) setName(t.name + ' Agent')
     setSystemPrompt(t.systemPrompt)
     setInstructions(t.instructions)
-    // Auto-select voice based on initiation
-    if (t.initiation === 'inbound') setSelectedVoice('enabled')
+  }
+
+  function toggleChannel(key: string) {
+    setSelectedChannels(prev =>
+      prev.includes(key) ? prev.filter(c => c !== key) : [...prev, key]
+    )
   }
 
   async function handleCreate() {
@@ -207,18 +215,24 @@ export default function NewAgentWizard() {
           instructions,
           crmProvider: selectedCrm,
           calendarProvider: selectedCalendar,
-          voiceEnabled: selectedVoice === 'enabled',
           ...(selectedTemplate && { enabledTools: selectedTemplate.enabledTools }),
         }),
       })
       if (!res.ok) throw new Error('Failed to create agent')
       const { agent } = await res.json()
 
-      if (selectedVoice === 'enabled') {
-        router.push(`/dashboard/${locationId}/agents/${agent.id}/voice`)
-      } else {
-        router.push(`/dashboard/${locationId}/agents/${agent.id}`)
+      // Save channel deployments
+      if (selectedChannels.length > 0) {
+        await fetch(`/api/locations/${locationId}/agents/${agent.id}/channels`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channels: selectedChannels.map(ch => ({ channel: ch, isActive: true })),
+          }),
+        })
       }
+
+      router.push(`/dashboard/${locationId}/agents/${agent.id}/deploy`)
     } catch {
       setError('Something went wrong. Please try again.')
       setSaving(false)
@@ -370,31 +384,43 @@ export default function NewAgentWizard() {
           </div>
         )}
 
-        {/* Step: Voice */}
-        {step === 'voice' && (
+        {/* Step: Channels */}
+        {step === 'channels' && (
           <div>
-            <h1 className="text-2xl font-semibold mb-2">Voice calls</h1>
-            <p className="text-zinc-400 text-sm mb-6">Do you want this agent to handle inbound phone calls? You can always enable this later.</p>
-            <div className="space-y-3">
-              {VOICE_OPTIONS.map(opt => (
-                <button key={opt.id} type="button" onClick={() => setSelectedVoice(opt.id)}
-                  className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
-                    selectedVoice === opt.id
-                      ? 'border-white bg-zinc-900'
-                      : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-                  }`}>
-                  <span className="text-2xl">{opt.icon}</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-zinc-200">{opt.name}</p>
-                    <p className="text-xs text-zinc-500">{opt.desc}</p>
-                  </div>
-                  {selectedVoice === opt.id && (
-                    <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center">
-                      <span className="w-2 h-2 rounded-full bg-black" />
-                    </span>
-                  )}
-                </button>
-              ))}
+            <h1 className="text-2xl font-semibold mb-2">Deploy to channels</h1>
+            <p className="text-zinc-400 text-sm mb-6">
+              Choose where this agent should respond. You can enable more channels later from the Deploy tab.
+            </p>
+            <div className="space-y-2.5">
+              {CHANNEL_OPTIONS.map(ch => {
+                const active = selectedChannels.includes(ch.key)
+                return (
+                  <button key={ch.key} type="button" onClick={() => toggleChannel(ch.key)}
+                    className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
+                      active
+                        ? 'border-emerald-500/40 bg-emerald-500/5'
+                        : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
+                    }`}>
+                    <span className="text-xl w-8 text-center">{ch.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${active ? 'text-white' : 'text-zinc-300'}`}>{ch.label}</p>
+                      <p className="text-xs text-zinc-500">{ch.desc}</p>
+                    </div>
+                    <div className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
+                      active ? 'bg-emerald-500' : 'bg-zinc-700'
+                    }`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        active ? 'translate-x-4' : 'translate-x-0'
+                      }`} />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+              <p className="text-xs text-zinc-500">
+                <span className="text-zinc-400 font-medium">Voice calls</span> are configured separately after creation, from the Voice tab.
+              </p>
             </div>
           </div>
         )}
@@ -408,7 +434,7 @@ export default function NewAgentWizard() {
                 <span className="text-base">{selectedTemplate.icon}</span>
                 <span>{INITIATION_LABELS[selectedTemplate.initiation]} {ROLE_LABELS[selectedTemplate.role]} template</span>
                 <span className="text-zinc-700">·</span>
-                <span>{selectedTemplate.enabledTools.length} tools pre-selected</span>
+                <span>{selectedChannels.length} channel{selectedChannels.length !== 1 ? 's' : ''}</span>
               </div>
             )}
             <div className="space-y-5">
@@ -436,6 +462,24 @@ export default function NewAgentWizard() {
                   rows={5}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y" />
               </div>
+
+              {/* Channel summary */}
+              {selectedChannels.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Deploying to</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedChannels.map(ch => {
+                      const opt = CHANNEL_OPTIONS.find(o => o.key === ch)
+                      return (
+                        <span key={ch} className="inline-flex items-center gap-1.5 bg-zinc-800 text-zinc-300 text-xs rounded-full px-2.5 py-1">
+                          <span>{opt?.icon}</span> {opt?.label}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {error && <p className="text-red-400 text-sm">{error}</p>}
             </div>
           </div>
@@ -464,7 +508,7 @@ export default function NewAgentWizard() {
             ) : (
               <button type="button" onClick={handleCreate} disabled={saving || !canCreate}
                 className="bg-white text-black font-medium text-sm h-10 px-6 rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50 inline-flex items-center justify-center">
-                {saving ? 'Creating…' : 'Create Agent'}
+                {saving ? 'Creating...' : 'Create Agent'}
               </button>
             )}
           </div>
