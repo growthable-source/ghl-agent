@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import {
+  GoHighLevelIcon, VapiIcon, TwilioIcon, HubSpotIcon,
+  CalendlyIcon, CalcomIcon, StripeIcon,
+} from '@/components/icons/brand-icons'
 
 interface Integration {
   id: string
@@ -196,7 +200,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">⚡</span>
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><GoHighLevelIcon className="w-8 h-8" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">GoHighLevel</p>
                 <p className="text-xs text-zinc-500">CRM, pipelines, SMS, email, calendars</p>
@@ -225,7 +229,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🎙️</span>
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><VapiIcon className="w-8 h-8" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">Voice AI (Vapi)</p>
                 <p className="text-xs text-zinc-500">Inbound call handling — configure per agent in the Voice tab</p>
@@ -265,7 +269,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">📱</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#F22F46]"><TwilioIcon className="w-7 h-7" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">Twilio</p>
                 <p className="text-xs text-zinc-500">Direct SMS — no CRM required</p>
@@ -333,7 +337,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🟠</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#FF7A59]"><HubSpotIcon className="w-7 h-7" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">HubSpot</p>
                 <p className="text-xs text-zinc-500">CRM contacts, deals, timeline events</p>
@@ -361,7 +365,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">📅</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#006BFF]"><CalendlyIcon className="w-7 h-7" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">Calendly</p>
                 <p className="text-xs text-zinc-500">Scheduling links, availability, and bookings</p>
@@ -409,7 +413,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🗓️</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-white"><CalcomIcon className="w-7 h-7" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">Cal.com</p>
                 <p className="text-xs text-zinc-500">Open-source scheduling — event types, availability, bookings</p>
@@ -462,7 +466,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">💳</span>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#635BFF]"><StripeIcon className="w-7 h-7" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">Stripe</p>
                 <p className="text-xs text-zinc-500">Collect payments and send invoices during conversations</p>

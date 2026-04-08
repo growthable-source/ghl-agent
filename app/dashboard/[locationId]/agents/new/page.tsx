@@ -3,6 +3,11 @@
 import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
+import {
+  SmsIcon, WhatsAppIcon, FacebookIcon, InstagramIcon,
+  GoogleIcon, LiveChatIcon, EmailIcon,
+  GoHighLevelIcon,
+} from '@/components/icons/brand-icons'
 
 type Step = 'template' | 'crm' | 'calendar' | 'channels' | 'build'
 
@@ -135,23 +140,23 @@ You are warm, conversational, and efficient.`,
 ]
 
 const CRM_OPTIONS = [
-  { id: 'ghl', name: 'GoHighLevel', desc: 'Already connected via OAuth', icon: '🔗', connected: true },
-  { id: 'none', name: 'No CRM', desc: 'Skip for now — you can connect later', icon: '⏭️', connected: false },
+  { id: 'ghl', name: 'GoHighLevel', desc: 'Already connected via OAuth', icon: <GoHighLevelIcon className="w-8 h-8" />, connected: true },
+  { id: 'none', name: 'No CRM', desc: 'Skip for now — you can connect later', icon: null, connected: false },
 ]
 
 const CALENDAR_OPTIONS = [
-  { id: 'ghl', name: 'GHL Calendar', desc: 'Use your GoHighLevel calendar', icon: '📅' },
-  { id: 'none', name: 'No Calendar', desc: 'Skip — agent won\'t book appointments', icon: '⏭️' },
+  { id: 'ghl', name: 'GHL Calendar', desc: 'Use your GoHighLevel calendar', icon: <GoHighLevelIcon className="w-8 h-8" /> },
+  { id: 'none', name: 'No Calendar', desc: 'Skip — agent won\'t book appointments', icon: null },
 ]
 
 const CHANNEL_OPTIONS = [
-  { key: 'SMS', label: 'SMS', desc: 'Text messages', icon: '💬' },
-  { key: 'WhatsApp', label: 'WhatsApp', desc: 'WhatsApp Business', icon: '📱' },
-  { key: 'FB', label: 'Facebook Messenger', desc: 'Facebook page messages', icon: '📘' },
-  { key: 'IG', label: 'Instagram DMs', desc: 'Instagram direct messages', icon: '📸' },
-  { key: 'GMB', label: 'Google Business', desc: 'Google Business messages', icon: '📍' },
-  { key: 'Live_Chat', label: 'Live Chat', desc: 'Website chat widget', icon: '🌐' },
-  { key: 'Email', label: 'Email', desc: 'Email conversations', icon: '✉️' },
+  { key: 'SMS', label: 'SMS', desc: 'Text messages', icon: <SmsIcon className="w-5 h-5" />, color: 'text-blue-400' },
+  { key: 'WhatsApp', label: 'WhatsApp', desc: 'WhatsApp Business', icon: <WhatsAppIcon className="w-5 h-5" />, color: 'text-[#25D366]' },
+  { key: 'FB', label: 'Facebook Messenger', desc: 'Facebook page messages', icon: <FacebookIcon className="w-5 h-5" />, color: 'text-[#1877F2]' },
+  { key: 'IG', label: 'Instagram DMs', desc: 'Instagram direct messages', icon: <InstagramIcon className="w-5 h-5" />, color: 'text-[#E4405F]' },
+  { key: 'GMB', label: 'Google Business', desc: 'Google Business messages', icon: <GoogleIcon className="w-5 h-5" />, color: 'text-white' },
+  { key: 'Live_Chat', label: 'Live Chat', desc: 'Website chat widget', icon: <LiveChatIcon className="w-5 h-5" />, color: 'text-violet-400' },
+  { key: 'Email', label: 'Email', desc: 'Email conversations', icon: <EmailIcon className="w-5 h-5" />, color: 'text-amber-400' },
 ]
 
 const INITIATION_LABELS: Record<string, string> = { outbound: 'Outbound', inbound: 'Inbound' }
@@ -339,7 +344,7 @@ export default function NewAgentWizard() {
                       ? 'border-white bg-zinc-900'
                       : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
                   }`}>
-                  <span className="text-2xl">{opt.icon}</span>
+                  <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl text-zinc-500">--</span>}</span>
                   <div className="flex-1">
                     <p className="text-sm font-medium text-zinc-200">{opt.name}</p>
                     <p className="text-xs text-zinc-500">{opt.desc}</p>
@@ -368,7 +373,7 @@ export default function NewAgentWizard() {
                       ? 'border-white bg-zinc-900'
                       : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
                   }`}>
-                  <span className="text-2xl">{opt.icon}</span>
+                  <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl text-zinc-500">--</span>}</span>
                   <div className="flex-1">
                     <p className="text-sm font-medium text-zinc-200">{opt.name}</p>
                     <p className="text-xs text-zinc-500">{opt.desc}</p>
@@ -401,7 +406,7 @@ export default function NewAgentWizard() {
                         ? 'border-emerald-500/40 bg-emerald-500/5'
                         : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
                     }`}>
-                    <span className="text-xl w-8 text-center">{ch.icon}</span>
+                    <span className={`w-8 flex items-center justify-center ${active ? ch.color : 'text-zinc-500'}`}>{ch.icon}</span>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium ${active ? 'text-white' : 'text-zinc-300'}`}>{ch.label}</p>
                       <p className="text-xs text-zinc-500">{ch.desc}</p>
@@ -471,8 +476,8 @@ export default function NewAgentWizard() {
                     {selectedChannels.map(ch => {
                       const opt = CHANNEL_OPTIONS.find(o => o.key === ch)
                       return (
-                        <span key={ch} className="inline-flex items-center gap-1.5 bg-zinc-800 text-zinc-300 text-xs rounded-full px-2.5 py-1">
-                          <span>{opt?.icon}</span> {opt?.label}
+                        <span key={ch} className={`inline-flex items-center gap-1.5 bg-zinc-800 text-zinc-300 text-xs rounded-full px-2.5 py-1 ${opt?.color || ''}`}>
+                          <span className="w-3.5 h-3.5">{opt?.icon}</span> {opt?.label}
                         </span>
                       )
                     })}
