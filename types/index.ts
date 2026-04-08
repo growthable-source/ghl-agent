@@ -82,8 +82,10 @@ export interface Opportunity {
   updatedAt?: string
 }
 
+export type MessageChannelType = 'SMS' | 'Email' | 'WhatsApp' | 'GMB' | 'FB' | 'IG' | 'Live_Chat' | 'Custom'
+
 export interface SendMessagePayload {
-  type: 'SMS' | 'Email' | 'WhatsApp'
+  type: MessageChannelType
   contactId: string
   conversationId?: string
   message: string
@@ -128,7 +130,7 @@ export interface WebhookMessagePayload {
   conversationId: string
   messageId: string
   body: string
-  messageType: 'SMS' | 'Email' | 'WhatsApp' | string
+  messageType: MessageChannelType | string
   direction: 'inbound' | 'outbound'
   dateAdded?: string
 }

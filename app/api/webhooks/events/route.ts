@@ -69,10 +69,17 @@ export async function POST(req: NextRequest) {
         break
       }
 
-      // ── Inbound SMS ────────────────────────────────────────────────────
+      // ── Inbound message (any channel) ──────────────────────────────────
       case 'InboundMessage': {
         const p = payload as WebhookMessagePayload
-        if (p.messageType !== 'SMS') break
+        const channel = p.messageType || 'SMS'
+
+        // Skip channels we don't handle (e.g. raw email without a configured agent)
+        const SUPPORTED_CHANNELS = ['SMS', 'WhatsApp', 'GMB', 'FB', 'IG', 'Live_Chat', 'Email']
+        if (!SUPPORTED_CHANNELS.includes(channel)) {
+          console.log(`[Webhook] Unsupported channel: ${channel}`)
+          break
+        }
 
         const tokens = await getTokens(p.locationId)
         if (!tokens) {
@@ -80,10 +87,9 @@ export async function POST(req: NextRequest) {
           break
         }
 
-        // Debounce rapid messages — accumulate into a single agent call
+        // Debounce rapid messages (mainly useful for SMS/chat, still safe for others)
         const debounced = await debounceMessage(p.locationId, p.contactId, p.conversationId, p.body)
         if (!debounced) {
-          // A newer message will handle this batch — exit quietly
           console.log(`[Webhook] Message debounced for contact ${p.contactId}, waiting for batch`)
           break
         }
@@ -101,15 +107,15 @@ export async function POST(req: NextRequest) {
           },
         })
 
-        // Find matching agent
-        const agent = await findMatchingAgent(p.locationId, p.contactId, inboundMessage)
+        // Find matching agent that is deployed on this channel
+        const agent = await findMatchingAgent(p.locationId, p.contactId, inboundMessage, channel)
 
         if (!agent) {
           await db.messageLog.update({
             where: { id: log.id },
             data: { status: 'SKIPPED' },
           })
-          console.log(`[Webhook] No matching agent for location ${p.locationId}`)
+          console.log(`[Webhook] No matching agent for location ${p.locationId} on channel ${channel}`)
           break
         }
 
@@ -167,6 +173,7 @@ export async function POST(req: NextRequest) {
             agentId: agent.id,
             contactId: p.contactId,
             conversationId: p.conversationId,
+            channel,
             incomingMessage: inboundMessage,
             messageHistory,
             systemPrompt: fullPrompt,
@@ -234,15 +241,13 @@ export async function POST(req: NextRequest) {
               if (existingJob) continue
 
               if (trigger === 'always') {
-                await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id)
+                await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id, channel)
               } else if (trigger === 'no_reply') {
-                // Schedule a check — the first step delay acts as the silence window
-                // The processDueFollowUps cron will verify silence before sending
-                await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id)
+                await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id, channel)
               } else if (trigger === 'keyword') {
                 const keywords = ((seq as any).triggerValue ?? '').split(',').map((k: string) => k.trim().toLowerCase()).filter(Boolean)
                 if (keywords.some((k: string) => inboundMessage.toLowerCase().includes(k))) {
-                  await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id)
+                  await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id, channel)
                 }
               }
             }

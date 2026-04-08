@@ -39,8 +39,22 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'send_reply',
+    description: 'Send a reply message to the contact on the current conversation channel (SMS, WhatsApp, Instagram, Facebook, Live Chat, etc.). Always use this tool to respond.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        conversationId: { type: 'string' },
+        message: { type: 'string', description: 'The message text to send' },
+      },
+      required: ['contactId', 'message'],
+    },
+  },
+  // Backward compat — old agents with send_sms in enabledTools still work
+  {
     name: 'send_sms',
-    description: 'Send an SMS reply to the contact.',
+    description: 'Send an SMS reply to the contact. Prefer send_reply instead, which works on any channel.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -288,6 +302,8 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
   switch (toolName) {
     case 'get_contact_details':
       return JSON.stringify({ id: input.contactId, firstName: 'Test', lastName: 'User', phone: '+10000000000', email: 'test@example.com', tags: [] })
+    case 'send_reply':
+      return JSON.stringify({ success: true, note: '[Sandbox: Message not actually sent]', message: input.message })
     case 'send_sms':
       return JSON.stringify({ success: true, note: '[Sandbox: SMS not actually sent]', message: input.message })
     case 'send_email':
@@ -338,7 +354,8 @@ async function executeTool(
   input: Record<string, unknown>,
   locationId: string,
   sandbox = false,
-  agentId?: string
+  agentId?: string,
+  channel?: string
 ): Promise<string> {
   if (sandbox) return executeSandboxTool(toolName, input)
   try {
@@ -346,6 +363,17 @@ async function executeTool(
       case 'get_contact_details': {
         const contact = await getContact(locationId, input.contactId as string)
         return JSON.stringify(contact)
+      }
+      case 'send_reply': {
+        // Send on the same channel the message arrived on
+        const replyChannel = (channel || 'SMS') as import('@/types').MessageChannelType
+        const result = await sendMessage(locationId, {
+          type: replyChannel,
+          contactId: input.contactId as string,
+          conversationId: input.conversationId as string | undefined,
+          message: input.message as string,
+        })
+        return JSON.stringify({ success: true, channel: replyChannel, ...result })
       }
       case 'send_sms': {
         const result = await sendMessage(locationId, {
@@ -581,9 +609,10 @@ export interface FallbackConfig {
   message?: string | null
 }
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
-  const base = customPrompt || `You are a helpful, professional sales assistant managing SMS conversations.`
+  const ch = channel || 'SMS'
+  const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`
 
   let prompt = `${base}
 
@@ -593,14 +622,16 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: P
 - Tags: ${ctx.contact?.tags?.join(', ') || 'none'}
 - Source: ${ctx.contact?.source ?? 'unknown'}
 - Location ID: ${ctx.locationId}
+- Channel: ${ch}
 
 ## Your Behaviour
-- Keep SMS replies concise (1–3 sentences max)
+- Keep replies concise (1–3 sentences max) — this is a ${ch} conversation
 - Be conversational and human — never reveal you are an AI
 - Always aim to move the lead forward (book a call, answer objections, qualify)
 - If you need more contact info, use get_contact_details first
-- After replying via send_sms, tag contacts appropriately
+- After replying via send_reply, tag contacts appropriately
 - If a lead is clearly interested, move their opportunity stage forward
+- Use send_reply to respond — it automatically sends on the correct channel (${ch})
 
 ## Booking Appointments
 - BEFORE booking, always collect: the contact's name, email address, and what the meeting is about
@@ -658,6 +689,7 @@ export async function runAgent(opts: {
   agentId?: string
   contactId: string
   conversationId?: string
+  channel?: string
   incomingMessage: string
   messageHistory?: Message[]
   systemPrompt?: string
@@ -667,7 +699,7 @@ export async function runAgent(opts: {
   qualifyingStyle?: 'strict' | 'natural'
   sandbox?: boolean
 }): Promise<AgentResponse> {
-  const { locationId, agentId, contactId, conversationId, incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox } = opts
+  const { locationId, agentId, contactId, conversationId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Build message history for Claude
@@ -689,7 +721,7 @@ export async function runAgent(opts: {
   // Add the current incoming message
   messages.push({
     role: 'user',
-    content: `[Inbound SMS from contact ${contactId}]: ${incomingMessage}`,
+    content: `[Inbound ${channel} message from contact ${contactId}]: ${incomingMessage}`,
   })
 
   const actionsPerformed: string[] = []
@@ -715,7 +747,11 @@ export async function runAgent(opts: {
   }
 
   // Filter tools based on agent configuration
-  const tools = enabledTools ? AGENT_TOOLS.filter(t => enabledTools.includes(t.name)) : AGENT_TOOLS
+  // Normalize: if agent has send_sms enabled, also enable send_reply
+  const normalizedTools = enabledTools
+    ? [...new Set([...enabledTools, ...(enabledTools.includes('send_sms') ? ['send_reply'] : [])])]
+    : undefined
+  const tools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS
 
   // Agentic loop — keeps going until Claude stops calling tools
   let currentMessages = [...messages]
@@ -725,7 +761,7 @@ export async function runAgent(opts: {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback),
+      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel),
       tools,
       messages: currentMessages,
     })
@@ -741,7 +777,7 @@ export async function runAgent(opts: {
       // Done — extract any final text
       const finalText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('\n')
       if (finalText && !smsSent) {
-        // If Claude wrote a reply but didn't use send_sms, send it now
+        // If Claude wrote a reply but didn't use send_reply, send it now on the correct channel
         let msgToSend = finalText
         if (persona?.simulateTypos) msgToSend = applyTypos(msgToSend)
         if (persona?.typingDelayEnabled) {
@@ -749,13 +785,13 @@ export async function runAgent(opts: {
           await new Promise(resolve => setTimeout(resolve, delay))
         }
         await sendMessage(locationId, {
-          type: 'SMS',
+          type: (channel || 'SMS') as import('@/types').MessageChannelType,
           contactId,
           conversationId,
           message: msgToSend,
         })
         smsSent = msgToSend
-        actionsPerformed.push('send_sms (auto)')
+        actionsPerformed.push(`send_reply (auto, ${channel})`)
       }
       break
     }
@@ -771,7 +807,8 @@ export async function runAgent(opts: {
         toolBlock.input as Record<string, unknown>,
         locationId,
         isSandbox,
-        agentId
+        agentId,
+        channel
       )
       toolCallTrace.push({
         tool: toolBlock.name,
@@ -780,8 +817,8 @@ export async function runAgent(opts: {
         durationMs: Date.now() - toolStart,
       })
 
-      // Track SMS sends
-      if (toolBlock.name === 'send_sms') {
+      // Track message sends (send_reply or legacy send_sms)
+      if (toolBlock.name === 'send_reply' || toolBlock.name === 'send_sms') {
         const parsed = JSON.parse(result)
         if (parsed.success) {
           let msg = (toolBlock.input as { message: string }).message

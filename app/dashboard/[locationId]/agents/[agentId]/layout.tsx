@@ -13,6 +13,7 @@ const SECTIONS = [
   { key: 'persona',     label: 'Persona',     path: '/persona' },
   { key: 'goals',       label: 'Goals',       path: '/goals' },
   { key: 'follow-ups',  label: 'Follow-ups',  path: '/follow-ups' },
+  { key: 'deploy',      label: 'Deploy',      path: '/deploy' },
   { key: 'voice',       label: 'Voice',       path: '/voice' },
 ]
 

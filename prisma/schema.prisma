@@ -128,7 +128,7 @@ model Agent {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  enabledTools     String[] @default(["get_contact_details", "send_sms", "update_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note"])
+  enabledTools     String[] @default(["get_contact_details", "send_reply", "send_sms", "update_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note"])
   calendarId       String?
 
   qualifyingStyle     String   @default("strict")    // "strict" | "natural"
@@ -156,6 +156,7 @@ model Agent {
   contactMemories     ContactMemory[]
   conversationMessages ConversationMessage[]
   vapiConfig          VapiConfig?
+  channelDeployments  ChannelDeployment[]
 
   @@index([locationId, isActive])
 }
@@ -264,6 +265,7 @@ model FollowUpJob {
   locationId     String
   contactId      String
   conversationId String?
+  channel        String           @default("SMS")
   currentStep    Int              @default(1)
   status         FollowUpStatus   @default(SCHEDULED)
   scheduledAt    DateTime
@@ -337,6 +339,19 @@ model ContactMemory {
   updatedAt  DateTime @updatedAt
   createdAt  DateTime @default(now())
   @@unique([agentId, contactId])
+}
+
+model ChannelDeployment {
+  id         String   @id @default(cuid())
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  channel    String                         // "SMS" | "WhatsApp" | "GMB" | "FB" | "IG" | "Live_Chat" | "Email"
+  isActive   Boolean  @default(true)
+  config     Json?                          // channel-specific settings (e.g. WhatsApp template, FB page ID)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@unique([agentId, channel])
+  @@index([channel, isActive])
 }
 
 model VapiConfig {

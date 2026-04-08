@@ -1,12 +1,14 @@
 import { db } from './db'
 import { sendMessage } from './crm-client'
+import type { MessageChannelType } from '@/types'
 
 export async function scheduleFollowUp(
   agentId: string,
   locationId: string,
   contactId: string,
   conversationId: string,
-  sequenceId: string
+  sequenceId: string,
+  channel: string = 'SMS'
 ) {
   const sequence = await db.followUpSequence.findUnique({
     where: { id: sequenceId },
@@ -18,7 +20,7 @@ export async function scheduleFollowUp(
   const scheduledAt = new Date(Date.now() + firstStep.delayHours * 60 * 60 * 1000)
 
   await db.followUpJob.create({
-    data: { sequenceId, locationId, contactId, conversationId, currentStep: 1, scheduledAt },
+    data: { sequenceId, locationId, contactId, conversationId, channel, currentStep: 1, scheduledAt },
   })
 }
 
@@ -66,7 +68,7 @@ export async function processDueFollowUps(): Promise<number> {
       }
 
       await sendMessage(job.locationId, {
-        type: 'SMS',
+        type: (job.channel || 'SMS') as MessageChannelType,
         contactId: job.contactId,
         conversationId: job.conversationId ?? undefined,
         message: step.message,

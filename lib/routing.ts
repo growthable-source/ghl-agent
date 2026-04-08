@@ -1,6 +1,6 @@
 import { db } from './db'
 import { getContact, getOpportunitiesForContact } from './crm-client'
-import type { Agent, KnowledgeEntry, RoutingRule, StopCondition, FollowUpSequence, QualifyingQuestion } from '@prisma/client'
+import type { Agent, KnowledgeEntry, RoutingRule, StopCondition, FollowUpSequence, QualifyingQuestion, ChannelDeployment } from '@prisma/client'
 
 export type AgentWithDetails = Agent & {
   knowledgeEntries: KnowledgeEntry[]
@@ -8,12 +8,14 @@ export type AgentWithDetails = Agent & {
   stopConditions: StopCondition[]
   followUpSequences: FollowUpSequence[]
   qualifyingQuestions: QualifyingQuestion[]
+  channelDeployments: ChannelDeployment[]
 }
 
 export async function findMatchingAgent(
   locationId: string,
   contactId: string,
-  messageBody: string
+  messageBody: string,
+  channel?: string
 ): Promise<AgentWithDetails | null> {
   const agents = await db.agent.findMany({
     where: { locationId, isActive: true },
@@ -23,10 +25,22 @@ export async function findMatchingAgent(
       stopConditions: true,
       followUpSequences: { where: { isActive: true } },
       qualifyingQuestions: true,
+      channelDeployments: true,
     },
   })
 
   if (agents.length === 0) return null
+
+  // Filter agents that are deployed on this channel (if channel is specified)
+  const eligibleAgents = channel
+    ? agents.filter(a => {
+        // If no deployments configured, agent responds to all channels (backward compat)
+        if (a.channelDeployments.length === 0) return true
+        return a.channelDeployments.some(d => d.channel === channel && d.isActive)
+      })
+    : agents
+
+  if (eligibleAgents.length === 0) return null
 
   // Lazy-load contact and opportunities — only fetch once each if needed
   let contact: Awaited<ReturnType<typeof getContact>> | null = null
@@ -46,7 +60,7 @@ export async function findMatchingAgent(
     return opportunities ?? []
   }
 
-  for (const agent of agents) {
+  for (const agent of eligibleAgents) {
     for (const rule of agent.routingRules) {
       let matched = false
 

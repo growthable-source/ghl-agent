@@ -8,7 +8,8 @@ export interface ToolDefinition {
 
 export const ALL_TOOLS: ToolDefinition[] = [
   // Messaging
-  { name: 'send_sms', label: 'Send SMS', description: 'Reply to the contact via SMS', category: 'messaging' },
+  { name: 'send_reply', label: 'Send Reply', description: 'Reply on the current channel (SMS, WhatsApp, Facebook, Instagram, Live Chat)', category: 'messaging' },
+  { name: 'send_sms', label: 'Send SMS', description: 'Send an SMS directly (use Send Reply for auto channel detection)', category: 'messaging' },
   { name: 'send_email', label: 'Send Email', description: 'Send an email to the contact', category: 'messaging' },
 
   // Contacts
