@@ -11,6 +11,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data: {
       ...(body.name !== undefined && { name: body.name }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
+      ...(body.triggerType !== undefined && { triggerType: body.triggerType }),
+      ...(body.triggerValue !== undefined && { triggerValue: body.triggerValue }),
     },
     include: { steps: { orderBy: { stepNumber: 'asc' } } },
   })

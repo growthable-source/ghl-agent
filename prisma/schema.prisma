@@ -234,14 +234,16 @@ model StopCondition {
 }
 
 model FollowUpSequence {
-  id        String         @id @default(cuid())
-  agentId   String
-  agent     Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  name      String
-  isActive  Boolean        @default(true)
-  steps     FollowUpStep[]
-  jobs      FollowUpJob[]
-  createdAt DateTime       @default(now())
+  id            String         @id @default(cuid())
+  agentId       String
+  agent         Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name          String
+  isActive      Boolean        @default(true)
+  triggerType   String         @default("always")   // "always" | "no_reply" | "keyword" | "agent"
+  triggerValue  String?                               // hours for no_reply, comma-sep keywords for keyword, null for agent/always
+  steps         FollowUpStep[]
+  jobs          FollowUpJob[]
+  createdAt     DateTime       @default(now())
   @@index([agentId])
 }
 

@@ -18,7 +18,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const body = await req.json()
   const sequence = await db.$transaction(async (tx) => {
     const seq = await tx.followUpSequence.create({
-      data: { agentId, name: body.name, isActive: body.isActive ?? true },
+      data: {
+        agentId,
+        name: body.name,
+        isActive: body.isActive ?? true,
+        triggerType: body.triggerType ?? 'always',
+        triggerValue: body.triggerValue ?? null,
+      },
     })
     if (body.steps && Array.isArray(body.steps) && body.steps.length > 0) {
       await tx.followUpStep.createMany({

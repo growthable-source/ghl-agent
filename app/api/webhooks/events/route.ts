@@ -219,14 +219,32 @@ export async function POST(req: NextRequest) {
             await pauseConversation(agent.id, p.contactId, stopCheck.reason ?? 'condition_met')
           }
 
-          // Schedule follow-ups if sequences exist and no jobs pending
+          // Schedule follow-ups based on trigger rules
           if (agent.followUpSequences && agent.followUpSequences.length > 0 && !stopCheck.shouldPause) {
-            const activeSeq = agent.followUpSequences[0]
-            const existingJob = await db.followUpJob.findFirst({
-              where: { sequenceId: activeSeq.id, contactId: p.contactId, status: 'SCHEDULED' },
-            })
-            if (!existingJob) {
-              await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, activeSeq.id)
+            for (const seq of agent.followUpSequences) {
+              if (!seq.isActive) continue
+              const trigger = (seq as any).triggerType ?? 'always'
+
+              // Skip agent-triggered sequences (those are started by the schedule_followup tool)
+              if (trigger === 'agent') continue
+
+              const existingJob = await db.followUpJob.findFirst({
+                where: { sequenceId: seq.id, contactId: p.contactId, status: 'SCHEDULED' },
+              })
+              if (existingJob) continue
+
+              if (trigger === 'always') {
+                await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id)
+              } else if (trigger === 'no_reply') {
+                // Schedule a check — the first step delay acts as the silence window
+                // The processDueFollowUps cron will verify silence before sending
+                await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id)
+              } else if (trigger === 'keyword') {
+                const keywords = ((seq as any).triggerValue ?? '').split(',').map((k: string) => k.trim().toLowerCase()).filter(Boolean)
+                if (keywords.some((k: string) => inboundMessage.toLowerCase().includes(k))) {
+                  await scheduleFollowUp(agent.id, p.locationId, p.contactId, p.conversationId, seq.id)
+                }
+              }
             }
           }
 

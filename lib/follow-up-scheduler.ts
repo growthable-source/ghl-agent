@@ -40,6 +40,25 @@ export async function processDueFollowUps(): Promise<number> {
 
   for (const job of dueJobs) {
     try {
+      const triggerType = (job.sequence as any).triggerType ?? 'always'
+
+      // For no_reply triggers: check if the contact replied since this job was scheduled
+      // If they did, cancel the follow-up — the conversation is active again
+      if (triggerType === 'no_reply') {
+        const recentInbound = await db.conversationMessage.findFirst({
+          where: {
+            contactId: job.contactId,
+            role: 'user',
+            createdAt: { gt: job.createdAt },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+        if (recentInbound) {
+          await db.followUpJob.update({ where: { id: job.id }, data: { status: 'CANCELLED', cancelledAt: new Date() } })
+          continue
+        }
+      }
+
       const step = job.sequence.steps.find(s => s.stepNumber === job.currentStep)
       if (!step) {
         await db.followUpJob.update({ where: { id: job.id }, data: { status: 'SENT' } })
