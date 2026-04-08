@@ -88,6 +88,7 @@ export default function QualifyingPage() {
   const [questions, setQuestions] = useState<QualifyingQuestion[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [contactFields, setContactFields] = useState<ContactField[]>([])
 
@@ -116,11 +117,37 @@ export default function QualifyingPage() {
   function updateForm(key: string, value: any) {
     setForm(prev => {
       const next = { ...prev, [key]: value }
-      if (key === 'question') {
+      if (key === 'question' && !editingId) {
         next.fieldKey = autoFieldKey(value)
       }
       return next
     })
+  }
+
+  function startEdit(q: QualifyingQuestion) {
+    setEditingId(q.id)
+    setForm({
+      question: q.question,
+      fieldKey: q.fieldKey,
+      required: q.required,
+      answerType: q.answerType,
+      choices: q.choices ?? [],
+      conditionOp: q.conditionOp ?? '',
+      conditionVal: q.conditionVal ?? '',
+      actionType: q.actionType ?? '',
+      actionValue: q.actionValue ?? '',
+      showConditional: !!(q.conditionOp && q.actionType),
+      newChoice: '',
+      ghlFieldKey: q.ghlFieldKey ?? '',
+      overwrite: q.overwrite,
+    })
+    // Scroll form into view
+    setTimeout(() => document.getElementById('q-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setForm(emptyForm)
   }
 
   function addChoice() {
@@ -137,26 +164,40 @@ export default function QualifyingPage() {
     if (!form.question.trim()) return
     const fieldKey = form.fieldKey.trim() || autoFieldKey(form.question)
     setAdding(true)
-    const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question: form.question,
-        fieldKey,
-        required: form.required,
-        order: questions.length,
-        answerType: form.answerType,
-        choices: form.choices,
-        conditionOp: form.showConditional && form.conditionOp ? form.conditionOp : null,
-        conditionVal: form.showConditional && form.conditionOp ? form.conditionVal : null,
-        actionType: form.showConditional && form.actionType ? form.actionType : null,
-        actionValue: form.showConditional && form.actionType ? form.actionValue : null,
-        ghlFieldKey: form.ghlFieldKey || null,
-        overwrite: form.overwrite,
-      }),
-    })
-    const { question } = await res.json()
-    setQuestions(prev => [...prev, question])
+
+    const payload = {
+      question: form.question,
+      fieldKey,
+      required: form.required,
+      answerType: form.answerType,
+      choices: form.choices,
+      conditionOp: form.showConditional && form.conditionOp ? form.conditionOp : null,
+      conditionVal: form.showConditional && form.conditionOp ? form.conditionVal : null,
+      actionType: form.showConditional && form.actionType ? form.actionType : null,
+      actionValue: form.showConditional && form.actionType ? form.actionValue : null,
+      ghlFieldKey: form.ghlFieldKey || null,
+      overwrite: form.overwrite,
+    }
+
+    if (editingId) {
+      const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions/${editingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const { question: updated } = await res.json()
+      setQuestions(prev => prev.map(q => q.id === editingId ? updated : q))
+      setEditingId(null)
+    } else {
+      const res = await fetch(`/api/locations/${locationId}/agents/${agentId}/qualifying-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, order: questions.length }),
+      })
+      const { question } = await res.json()
+      setQuestions(prev => [...prev, question])
+    }
+
     setForm(emptyForm)
     setAdding(false)
   }
@@ -221,22 +262,35 @@ export default function QualifyingPage() {
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => deleteQuestion(q.id)}
-                  className="text-xs text-zinc-600 hover:text-red-400 transition-colors shrink-0 mt-1"
-                >
-                  Remove
-                </button>
+                <div className="flex items-center gap-3 shrink-0 mt-1">
+                  <button
+                    onClick={() => startEdit(q)}
+                    className="text-xs text-zinc-500 hover:text-white transition-colors"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteQuestion(q.id)}
+                    className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Add form */}
-      <div className="rounded-xl border border-zinc-700 bg-zinc-950 overflow-hidden">
-        <div className="px-5 py-3 border-b border-zinc-800">
-          <p className="text-sm font-medium text-zinc-200">Add Question</p>
+      {/* Add / Edit form */}
+      <div id="q-form" className={`rounded-xl border bg-zinc-950 overflow-hidden ${editingId ? 'border-zinc-600' : 'border-zinc-700'}`}>
+        <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
+          <p className="text-sm font-medium text-zinc-200">{editingId ? 'Edit Question' : 'Add Question'}</p>
+          {editingId && (
+            <button type="button" onClick={cancelEdit} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+              Cancel
+            </button>
+          )}
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-5">
           {/* Question */}
@@ -476,7 +530,7 @@ export default function QualifyingPage() {
             disabled={adding}
             className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
           >
-            {adding ? 'Adding…' : 'Add Question'}
+            {adding ? (editingId ? 'Saving…' : 'Adding…') : (editingId ? 'Save Changes' : 'Add Question')}
           </button>
         </form>
       </div>

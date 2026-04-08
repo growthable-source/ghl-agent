@@ -16,9 +16,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
   ])
 
   let phoneNumbers: { id: string; number: string; name: string }[] = []
+  let vapiError: string | null = null
   try {
     phoneNumbers = await listPhoneNumbers()
-  } catch {}
+  } catch (err: any) {
+    vapiError = err.message
+    console.error('[Vapi] listPhoneNumbers failed:', err.message)
+  }
 
   const vapiReady = !!process.env.VAPI_API_KEY
   const vapiPublicKey = process.env.VAPI_PUBLIC_KEY || null
@@ -35,6 +39,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     config,
     phoneNumbers,
     vapiReady,
+    vapiError,
     vapiPublicKey,
     agentName: agent?.name || 'Agent',
     agentPersonaName: agent?.agentPersonaName || null,

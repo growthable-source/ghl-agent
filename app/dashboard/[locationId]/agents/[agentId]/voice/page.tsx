@@ -118,6 +118,7 @@ export default function VoicePage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [vapiReady, setVapiReady] = useState(false)
+  const [vapiError, setVapiError] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
@@ -154,10 +155,11 @@ export default function VoicePage() {
     Promise.all([
       fetch(`/api/locations/${locationId}/agents/${agentId}/vapi`)
         .then(r => r.json())
-        .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready, vapiPublicKey: pk, testSystemPrompt: sp, agentName: an, serverUrl: su }) => {
+        .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready, vapiError: ve, vapiPublicKey: pk, testSystemPrompt: sp, agentName: an, serverUrl: su }) => {
           if (cfg) setConfig({ ...cfg, voiceTools: cfg.voiceTools || null })
           setPhoneNumbers(phones || [])
           setVapiReady(ready)
+          setVapiError(ve || null)
           if (pk) setVapiPublicKey(pk)
           if (sp) setTestSystemPrompt(sp)
           if (an) setAgentName(an)
@@ -402,6 +404,12 @@ export default function VoicePage() {
           >
             Go to Integrations →
           </Link>
+        </div>
+      )}
+      {vapiReady && vapiError && (
+        <div className="mb-6 rounded-xl border border-red-900/50 bg-red-950/20 p-4 space-y-1">
+          <p className="text-sm text-red-400 font-medium">Vapi API error</p>
+          <p className="text-xs font-mono text-zinc-400 break-all">{vapiError}</p>
         </div>
       )}
 
