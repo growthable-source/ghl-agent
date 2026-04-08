@@ -24,8 +24,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     console.error('[Vapi] listPhoneNumbers failed:', err.message)
   }
 
-  const vapiReady = !!process.env.VAPI_API_KEY
+  const rawKey = process.env.VAPI_API_KEY
+  const vapiReady = !!rawKey && rawKey.trim().length > 0
   const vapiPublicKey = process.env.VAPI_PUBLIC_KEY || null
+
+  // Debug: log what the server actually sees (masked)
+  console.log(`[Vapi] VAPI_API_KEY present: ${!!rawKey}, length: ${rawKey?.length ?? 0}, trimmed: ${rawKey?.trim().length ?? 0}`)
+  console.log(`[Vapi] VAPI_PUBLIC_KEY present: ${!!process.env.VAPI_PUBLIC_KEY}, length: ${process.env.VAPI_PUBLIC_KEY?.length ?? 0}`)
 
   // Build system prompt for test calls
   let testSystemPrompt = agent?.systemPrompt || 'You are a helpful assistant.'
@@ -45,6 +50,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     agentPersonaName: agent?.agentPersonaName || null,
     testSystemPrompt,
     serverUrl: `${process.env.APP_URL || 'https://voxilityai.vercel.app'}/api/vapi/webhook`,
+    _debug: {
+      keyPresent: !!rawKey,
+      keyLength: rawKey?.length ?? 0,
+      publicKeyPresent: !!process.env.VAPI_PUBLIC_KEY,
+      publicKeyLength: process.env.VAPI_PUBLIC_KEY?.length ?? 0,
+      nodeEnv: process.env.NODE_ENV,
+    },
   })
 }
 
