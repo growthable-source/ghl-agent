@@ -16,6 +16,7 @@ import {
   bookAppointment,
   searchContacts,
   createContact,
+  createAppointmentNote,
 } from './crm-client'
 import { getValidAccessToken } from './token-store'
 import { buildPersonaBlock, applyTypos, calculateTypingDelay, type PersonaSettings } from './persona'
@@ -200,6 +201,18 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
         contactId: { type: 'string' },
       },
       required: ['contactId'],
+    },
+  },
+  {
+    name: 'create_appointment_note',
+    description: 'Add a note to a booked appointment. Always use this after booking to record what the meeting is about and any relevant context from the conversation.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        appointmentId: { type: 'string', description: 'The appointment/event ID returned from book_appointment' },
+        body: { type: 'string', description: 'The note content — include what the meeting is about and key context' },
+      },
+      required: ['appointmentId', 'body'],
     },
   },
   {
@@ -393,6 +406,14 @@ async function executeTool(
         })
         return JSON.stringify({ success: true, ...result })
       }
+      case 'create_appointment_note': {
+        const noteResult = await createAppointmentNote(
+          locationId,
+          input.appointmentId as string,
+          input.body as string
+        )
+        return JSON.stringify({ success: true, ...noteResult })
+      }
       case 'search_contacts': {
         const contacts = await searchContacts(locationId, input.query as string)
         return JSON.stringify(contacts)
@@ -567,6 +588,12 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: P
 - If you need more contact info, use get_contact_details first
 - After replying via send_sms, tag contacts appropriately
 - If a lead is clearly interested, move their opportunity stage forward
+
+## Booking Appointments
+- BEFORE booking, always collect: the contact's name, email address, and what the meeting is about
+- If you don't have their email, ask for it — you need it for the calendar invite
+- After booking, ALWAYS create an appointment note summarising what the meeting is about and any context from the conversation
+- Confirm the date, time, and purpose back to the contact after booking
 
 ## Tone
 Professional but warm. Match the contact's energy.`
