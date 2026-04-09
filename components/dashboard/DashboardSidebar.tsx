@@ -72,7 +72,17 @@ export default function DashboardSidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="p-3 border-t border-zinc-800">
+      <div className="p-3 border-t border-zinc-800 space-y-0.5">
+        <Link
+          href="/dashboard/settings"
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
+            pathname === '/dashboard/settings'
+              ? 'bg-zinc-800 text-white'
+              : 'text-zinc-500 hover:text-white hover:bg-zinc-900'
+          }`}
+        >
+          Settings
+        </Link>
         <Link
           href="/dashboard"
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white transition-colors"
