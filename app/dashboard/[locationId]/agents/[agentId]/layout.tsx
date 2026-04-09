@@ -6,15 +6,15 @@ import Link from 'next/link'
 
 const SECTIONS = [
   { key: 'settings',    label: 'Settings',    path: '' },
+  { key: 'deploy',      label: 'Channels',    path: '/deploy' },
   { key: 'knowledge',   label: 'Knowledge',   path: '/knowledge' },
-  { key: 'tools',       label: 'Tools',       path: '/tools' },
   { key: 'rules',       label: 'Rules',       path: '/rules' },
+  { key: 'tools',       label: 'Tools',       path: '/tools' },
   { key: 'qualifying',  label: 'Qualifying',  path: '/qualifying' },
   { key: 'persona',     label: 'Persona',     path: '/persona' },
   { key: 'goals',       label: 'Goals',       path: '/goals' },
-  { key: 'follow-ups',  label: 'Follow-ups',  path: '/follow-ups' },
   { key: 'triggers',    label: 'Triggers',    path: '/triggers' },
-  { key: 'deploy',      label: 'Deploy',      path: '/deploy' },
+  { key: 'follow-ups',  label: 'Follow-ups',  path: '/follow-ups' },
   { key: 'voice',       label: 'Voice',       path: '/voice' },
 ]
 
@@ -28,11 +28,24 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
   const [agent, setAgent] = useState<{ name: string; isActive: boolean } | null>(null)
   const [toggling, setToggling] = useState(false)
+  const [channelCount, setChannelCount] = useState<number | null>(null)
 
   useEffect(() => {
     fetch(`/api/locations/${locationId}/agents/${agentId}`)
       .then(r => r.json())
       .then(({ agent }) => setAgent({ name: agent.name, isActive: agent.isActive }))
+  }, [locationId, agentId])
+
+  useEffect(() => {
+    fetch(`/api/locations/${locationId}/agents/${agentId}/deploy`)
+      .then(r => r.json())
+      .then(({ deployments }) => {
+        if (Array.isArray(deployments)) {
+          const active = deployments.filter((d: { enabled?: boolean }) => d.enabled !== false)
+          setChannelCount(active.length)
+        }
+      })
+      .catch(() => {})
   }, [locationId, agentId])
 
   async function toggleActive() {
@@ -55,6 +68,13 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
     return suffix.startsWith(s.path)
   })?.key ?? 'settings'
 
+  function getTabLabel(section: typeof SECTIONS[number]) {
+    if (section.key === 'deploy' && channelCount !== null && channelCount > 0) {
+      return `${section.label} (${channelCount})`
+    }
+    return section.label
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Agent header */}
@@ -70,7 +90,15 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
           {agent ? (
             <>
               <h1 className="text-lg font-semibold">{agent.name}</h1>
-              <span className={`w-2 h-2 rounded-full shrink-0 ${agent.isActive ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                  agent.isActive
+                    ? 'bg-emerald-400/10 text-emerald-400 ring-1 ring-inset ring-emerald-400/30'
+                    : 'bg-zinc-400/10 text-zinc-400 ring-1 ring-inset ring-zinc-400/30'
+                }`}
+              >
+                {agent.isActive ? 'Live' : 'Inactive'}
+              </span>
             </>
           ) : (
             <div className="h-5 w-32 bg-zinc-800 rounded animate-pulse" />
@@ -92,7 +120,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
                 : 'border-emerald-800 text-emerald-400 hover:border-emerald-600'
             }`}
           >
-            {toggling ? '…' : agent?.isActive ? 'Deactivate' : 'Activate'}
+            {toggling ? '...' : agent?.isActive ? 'Deactivate' : 'Activate'}
           </button>
         </div>
       </div>
@@ -109,7 +137,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
                 : 'border-transparent text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            {s.label}
+            {getTabLabel(s)}
           </Link>
         ))}
       </div>
