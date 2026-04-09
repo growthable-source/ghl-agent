@@ -111,14 +111,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   await params
   const body = await req.json()
-  const { areaCode, country } = body
-
-  if (!areaCode) {
-    return NextResponse.json({ error: 'areaCode is required' }, { status: 400 })
-  }
+  const { areaCode } = body
 
   try {
-    const phone = await purchasePhoneNumber(areaCode.trim(), country || 'US')
+    const phone = await purchasePhoneNumber((areaCode || '').trim())
     return NextResponse.json({ phone })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 400 })

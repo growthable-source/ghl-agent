@@ -27,10 +27,13 @@ export async function listPhoneNumbers() {
   }))
 }
 
-export async function purchasePhoneNumber(areaCode: string, country = 'US') {
+export async function purchasePhoneNumber(areaCode: string) {
+  const payload: Record<string, string> = { provider: 'vapi' }
+  if (areaCode) payload.numberDesiredAreaCode = areaCode
+
   const data = await vapiRequest('/phone-number', {
     method: 'POST',
-    body: JSON.stringify({ provider: 'vapi', areaCode, country }),
+    body: JSON.stringify(payload),
   })
   return {
     id: (data as any).id,
