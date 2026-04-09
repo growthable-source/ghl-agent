@@ -135,3 +135,22 @@ export interface WebhookMessagePayload {
   direction: 'inbound' | 'outbound'
   dateAdded?: string
 }
+
+export interface WebhookContactCreatePayload {
+  type: 'ContactCreate'
+  locationId: string
+  id: string               // this is the contactId
+  contactId?: string       // some events may use this instead
+  firstName?: string
+  lastName?: string
+  email?: string
+  phone?: string
+  tags?: string[]
+}
+
+export interface WebhookContactTagUpdatePayload {
+  type: 'ContactTagUpdate'
+  locationId: string
+  contactId: string
+  tags: string[]
+}

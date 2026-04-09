@@ -157,6 +157,7 @@ model Agent {
   conversationMessages ConversationMessage[]
   vapiConfig          VapiConfig?
   channelDeployments  ChannelDeployment[]
+  triggers            AgentTrigger[]
 
   @@index([locationId, isActive])
 }
@@ -339,6 +340,25 @@ model ContactMemory {
   updatedAt  DateTime @updatedAt
   createdAt  DateTime @default(now())
   @@unique([agentId, contactId])
+}
+
+model AgentTrigger {
+  id              String   @id @default(cuid())
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  eventType       String                         // "ContactCreate" | "ContactTagUpdate"
+  tagFilter       String?                        // only fire when this specific tag is present/added
+  channel         String   @default("SMS")       // which channel to send on: "SMS" | "WhatsApp" | "Email" etc.
+  messageMode     String   @default("AI_GENERATE") // "FIXED" | "AI_GENERATE"
+  fixedMessage    String?  @db.Text              // static first message (when mode=FIXED)
+  aiInstructions  String?  @db.Text              // extra context for the AI (when mode=AI_GENERATE)
+  delaySeconds    Int      @default(0)           // optional delay before sending (0 = immediate)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([eventType, isActive])
 }
 
 model ChannelDeployment {

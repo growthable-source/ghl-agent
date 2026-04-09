@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTokens } from '@/lib/token-store'
 import { getMessages } from '@/lib/crm-client'
 import { runAgent } from '@/lib/ai-agent'
+import { processContactTrigger } from '@/lib/triggers'
 import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
 import { buildKnowledgeBlock } from '@/lib/rag'
@@ -279,14 +280,29 @@ export async function POST(req: NextRequest) {
         break
       }
 
-      // ── Contact events ─────────────────────────────────────────────────
-      case 'ContactCreate':
-        console.log(`[Webhook] New contact: ${payload.id} at ${payload.locationId}`)
+      // ── Contact events → fire agent triggers ─────────────────────────
+      case 'ContactCreate': {
+        const cId = payload.id ?? payload.contactId
+        console.log(`[Webhook] New contact: ${cId} at ${payload.locationId}`)
+        await processContactTrigger({
+          eventType: 'ContactCreate',
+          locationId: payload.locationId,
+          contactId: cId,
+          tags: payload.tags ?? [],
+        })
         break
+      }
 
-      case 'ContactTagUpdate':
-        console.log(`[Webhook] Tags updated for contact: ${payload.contactId}`)
+      case 'ContactTagUpdate': {
+        console.log(`[Webhook] Tags updated for contact: ${payload.contactId} — tags: ${(payload.tags ?? []).join(', ')}`)
+        await processContactTrigger({
+          eventType: 'ContactTagUpdate',
+          locationId: payload.locationId,
+          contactId: payload.contactId,
+          tags: payload.tags ?? [],
+        })
         break
+      }
 
       // ── Opportunity events ─────────────────────────────────────────────
       case 'OpportunityStageUpdate':
