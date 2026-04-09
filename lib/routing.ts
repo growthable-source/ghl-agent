@@ -66,8 +66,8 @@ export async function findMatchingAgent(
           console.log(`[Routing] Agent "${a.name}" has no channel deployments — eligible for all channels`)
           return true
         }
-        const match = a.channelDeployments.some(d => d.channel === channel && d.isActive)
-        console.log(`[Routing] Agent "${a.name}" deployments: [${a.channelDeployments.map(d => `${d.channel}(${d.isActive ? 'on' : 'off'})`).join(', ')}] → ${match ? 'ELIGIBLE' : 'FILTERED OUT'} for channel ${channel}`)
+        const match = a.channelDeployments.some((d: any) => d.channel === channel && d.isActive)
+        console.log(`[Routing] Agent "${a.name}" deployments: [${a.channelDeployments.map((d: any) => `${d.channel}(${d.isActive ? 'on' : 'off'})`).join(', ')}] → ${match ? 'ELIGIBLE' : 'FILTERED OUT'} for channel ${channel}`)
         return match
       })
     : agents
