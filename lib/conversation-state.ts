@@ -10,10 +10,16 @@ export async function getOrCreateConversationState(agentId: string, locationId: 
 }
 
 export async function pauseConversation(agentId: string, contactId: string, reason: string) {
-  return db.conversationStateRecord.update({
-    where: { agentId_contactId: { agentId, contactId } },
-    data: { state: 'PAUSED', pauseReason: reason, pausedAt: new Date() },
-  })
+  try {
+    return await db.conversationStateRecord.update({
+      where: { agentId_contactId: { agentId, contactId } },
+      data: { state: 'PAUSED', pauseReason: reason, pausedAt: new Date() },
+    })
+  } catch {
+    // Record doesn't exist yet — should not happen, but handle gracefully
+    console.warn(`[ConvState] No state record to pause for agent=${agentId} contact=${contactId}`)
+    return null
+  }
 }
 
 export async function resumeConversation(agentId: string, contactId: string) {
@@ -24,10 +30,15 @@ export async function resumeConversation(agentId: string, contactId: string) {
 }
 
 export async function incrementMessageCount(agentId: string, contactId: string) {
-  return db.conversationStateRecord.update({
-    where: { agentId_contactId: { agentId, contactId } },
-    data: { messageCount: { increment: 1 } },
-  })
+  try {
+    return await db.conversationStateRecord.update({
+      where: { agentId_contactId: { agentId, contactId } },
+      data: { messageCount: { increment: 1 } },
+    })
+  } catch {
+    console.warn(`[ConvState] No state record to increment for agent=${agentId} contact=${contactId}`)
+    return null
+  }
 }
 
 export type AgentWithStopConditions = Agent & { stopConditions: StopCondition[] }

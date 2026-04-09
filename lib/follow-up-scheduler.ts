@@ -88,8 +88,9 @@ export async function processDueFollowUps(): Promise<number> {
         })
       }
       processed++
-    } catch {
-      await db.followUpJob.update({ where: { id: job.id }, data: { status: 'FAILED' } })
+    } catch (err: any) {
+      console.error(`[FollowUp] Job ${job.id} failed for contact ${job.contactId}:`, err.message)
+      await db.followUpJob.update({ where: { id: job.id }, data: { status: 'FAILED' } }).catch(() => {})
     }
   }
 

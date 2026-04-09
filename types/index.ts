@@ -84,6 +84,9 @@ export interface Opportunity {
 
 export type MessageChannelType = 'SMS' | 'Email' | 'WhatsApp' | 'GMB' | 'FB' | 'IG' | 'Live_Chat' | 'Custom'
 
+/** Channels supported for agent deployment and inbound message handling */
+export const SUPPORTED_CHANNELS: MessageChannelType[] = ['SMS', 'WhatsApp', 'GMB', 'FB', 'IG', 'Live_Chat', 'Email']
+
 export interface SendMessagePayload {
   type: MessageChannelType
   contactId: string

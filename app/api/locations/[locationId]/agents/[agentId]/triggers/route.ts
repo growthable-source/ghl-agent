@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { SUPPORTED_CHANNELS } from '@/types'
 
 type Params = { params: Promise<{ locationId: string; agentId: string }> }
 
@@ -17,13 +18,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   const body = await req.json()
 
   const VALID_EVENTS = ['ContactCreate', 'ContactTagUpdate']
-  const VALID_CHANNELS = ['SMS', 'WhatsApp', 'Email', 'FB', 'IG', 'GMB', 'Live_Chat']
   const VALID_MODES = ['FIXED', 'AI_GENERATE']
 
   if (!VALID_EVENTS.includes(body.eventType)) {
     return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
   }
-  if (body.channel && !VALID_CHANNELS.includes(body.channel)) {
+  if (body.channel && !SUPPORTED_CHANNELS.includes(body.channel)) {
     return NextResponse.json({ error: 'Invalid channel' }, { status: 400 })
   }
   if (body.messageMode && !VALID_MODES.includes(body.messageMode)) {

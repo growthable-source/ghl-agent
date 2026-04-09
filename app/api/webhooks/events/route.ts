@@ -22,10 +22,11 @@ import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualif
 import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
 import { debounceMessage } from '@/lib/message-debounce'
 import { buildPersonaBlock } from '@/lib/persona'
-import type {
-  WebhookEventType,
-  WebhookInstallPayload,
-  WebhookMessagePayload,
+import {
+  SUPPORTED_CHANNELS,
+  type WebhookEventType,
+  type WebhookInstallPayload,
+  type WebhookMessagePayload,
 } from '@/types'
 
 // ─── Optional: verify webhook signature ───────────────────────────────────
@@ -78,8 +79,7 @@ export async function POST(req: NextRequest) {
         console.log(`[Webhook] InboundMessage — channel=${channel} messageType=${p.messageType} location=${p.locationId} contact=${p.contactId} conv=${p.conversationId} provId=${p.conversationProviderId ?? 'none'} body="${(p.body ?? '').slice(0, 80)}"`)
 
         // Skip channels we don't handle (e.g. raw email without a configured agent)
-        const SUPPORTED_CHANNELS = ['SMS', 'WhatsApp', 'GMB', 'FB', 'IG', 'Live_Chat', 'Email']
-        if (!SUPPORTED_CHANNELS.includes(channel)) {
+        if (!SUPPORTED_CHANNELS.includes(channel as any)) {
           console.log(`[Webhook] Unsupported channel: ${channel}`)
           break
         }
@@ -162,11 +162,22 @@ export async function POST(req: NextRequest) {
           fullPrompt += `\n\n## Previous Conversation Context\n${memorySummary}`
         }
         fullPrompt += buildQualifyingPromptBlock(unanswered, (agent as any).qualifyingStyle ?? 'strict')
-        fullPrompt += buildPersonaBlock(agent)
+        fullPrompt += buildPersonaBlock({
+          agentPersonaName: agent.agentPersonaName,
+          responseLength: agent.responseLength,
+          formalityLevel: agent.formalityLevel,
+          useEmojis: agent.useEmojis,
+          neverSayList: agent.neverSayList,
+          simulateTypos: agent.simulateTypos,
+          typingDelayEnabled: agent.typingDelayEnabled,
+          typingDelayMinMs: agent.typingDelayMinMs,
+          typingDelayMaxMs: agent.typingDelayMaxMs,
+          languages: agent.languages,
+        })
 
         // Use DB history if available, otherwise fall back to GHL API
         let history: import('@/types').Message[]
-        try { history = await getMessages(p.locationId, p.conversationId, 10) } catch { history = [] }
+        try { history = await getMessages(p.locationId, p.conversationId, 10) } catch (err: any) { console.warn(`[Webhook] Failed to fetch GHL messages: ${err.message}`); history = [] }
 
         const dbHistory = await getMessageHistory(agent.id, p.contactId, 20)
         const messageHistory: import('@/types').Message[] = dbHistory.length > 0

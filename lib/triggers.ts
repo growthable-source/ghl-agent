@@ -107,7 +107,9 @@ export async function processContactTrigger(event: TriggerEvent) {
       let contact: any = null
       try {
         contact = await getContact(locationId, contactId)
-      } catch { /* contact fetch failed, proceed with limited info */ }
+      } catch (err: any) {
+        console.warn(`[Trigger] Could not fetch contact ${contactId}: ${err.message}`)
+      }
 
       const contactName = contact
         ? [contact.firstName, contact.lastName].filter(Boolean).join(' ') || 'there'
@@ -166,7 +168,18 @@ export async function processContactTrigger(event: TriggerEvent) {
           fullPrompt += `\n\nSpecial instructions for this trigger:\n${trigger.aiInstructions}`
         }
         fullPrompt += `\n\nIMPORTANT: Send a single, friendly first message to this contact using the send_reply tool. Do NOT ask them to repeat information they already provided. Keep it concise and natural.`
-        fullPrompt += buildPersonaBlock(agent)
+        fullPrompt += buildPersonaBlock({
+          agentPersonaName: agent.agentPersonaName,
+          responseLength: agent.responseLength,
+          formalityLevel: agent.formalityLevel,
+          useEmojis: agent.useEmojis,
+          neverSayList: agent.neverSayList,
+          simulateTypos: agent.simulateTypos,
+          typingDelayEnabled: agent.typingDelayEnabled,
+          typingDelayMinMs: agent.typingDelayMinMs,
+          typingDelayMaxMs: agent.typingDelayMaxMs,
+          languages: agent.languages,
+        })
 
         // Synthetic inbound message to kickstart the agent
         const syntheticMessage = eventType === 'ContactCreate'
