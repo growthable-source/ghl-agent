@@ -6,9 +6,11 @@ import { usePathname } from 'next/navigation'
 export default function DashboardSidebar() {
   const pathname = usePathname()
 
-  // Extract locationId from path
+  // Extract locationId from path — exclude known static routes
+  const STATIC_ROUTES = ['settings', 'new']
   const match = pathname.match(/\/dashboard\/([^\/]+)/)
-  const locationId = match ? match[1] : null
+  const rawSegment = match ? match[1] : null
+  const locationId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
 
   // Don't show location nav for these sub-pages
   const isOnboarding = pathname.includes('/onboarding')
