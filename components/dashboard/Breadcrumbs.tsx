@@ -23,6 +23,7 @@ const ROUTE_LABELS: Record<string, string> = {
   conversations: 'Conversations',
   playground: 'Playground',
   onboarding: 'Onboarding',
+  feedback: 'Feedback',
 }
 
 export default function Breadcrumbs() {

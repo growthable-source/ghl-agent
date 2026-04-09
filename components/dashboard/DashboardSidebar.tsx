@@ -7,7 +7,7 @@ export default function DashboardSidebar() {
   const pathname = usePathname()
 
   // Extract locationId from path — exclude known static routes
-  const STATIC_ROUTES = ['settings', 'new']
+  const STATIC_ROUTES = ['settings', 'new', 'feedback']
   const match = pathname.match(/\/dashboard\/([^\/]+)/)
   const rawSegment = match ? match[1] : null
   const locationId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
@@ -75,6 +75,15 @@ export default function DashboardSidebar() {
 
       {/* Bottom */}
       <div className="p-3 border-t border-zinc-800 space-y-0.5">
+        <a
+          href="https://voxility.canny.io"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
+        >
+          Feedback
+          <span className="text-zinc-700 text-[10px]">↗</span>
+        </a>
         <Link
           href="/dashboard/settings"
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
