@@ -1,69 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { buildKnowledgeBlock } from '@/lib/rag'
-import { searchContacts } from '@/lib/crm-client'
-import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
-import { buildPersonaBlock } from '@/lib/persona'
-
-const VAPI_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'book_appointment',
-      description: 'Book an appointment for the caller',
-      parameters: {
-        type: 'object',
-        properties: {
-          startTime: { type: 'string', description: 'ISO datetime for the appointment' },
-          name: { type: 'string', description: 'Caller name for the booking' },
-        },
-        required: ['startTime'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_available_slots',
-      description: 'Get available appointment slots for booking',
-      parameters: {
-        type: 'object',
-        properties: {
-          date: { type: 'string', description: 'Date to check in YYYY-MM-DD format' },
-        },
-        required: ['date'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'tag_contact',
-      description: 'Tag the caller contact with a label',
-      parameters: {
-        type: 'object',
-        properties: {
-          tag: { type: 'string', description: 'Tag to apply to the contact' },
-        },
-        required: ['tag'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'send_sms_followup',
-      description: 'Send an SMS follow-up message to the caller after the call',
-      parameters: {
-        type: 'object',
-        properties: {
-          message: { type: 'string', description: 'The SMS message to send after the call' },
-        },
-        required: ['message'],
-      },
-    },
-  },
-]
+import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
 
 async function findAgentByPhoneNumber(phoneNumber: string) {
   const vapiConfig = await db.vapiConfig.findFirst({
@@ -75,83 +12,6 @@ async function findAgentByPhoneNumber(phoneNumber: string) {
     },
   })
   return vapiConfig
-}
-
-async function buildVoiceSystemPrompt(
-  agent: any,
-  knowledgeEntries: any[],
-  callerPhone: string,
-  locationId: string,
-  voiceTools?: any[] | null
-): Promise<string> {
-  let contactContext = ''
-  let contactId = ''
-  try {
-    const contacts = await searchContacts(locationId, callerPhone)
-    if (contacts && contacts.length > 0) {
-      const c = contacts[0] as any
-      contactId = c.id
-      const name = [c.firstName, c.lastName].filter(Boolean).join(' ')
-      contactContext = `\n\n## Caller Info\nName: ${name || 'Unknown'}\nPhone: ${callerPhone}\nContact ID: ${c.id}`
-      if (c.tags?.length) contactContext += `\nTags: ${c.tags.join(', ')}`
-    }
-  } catch {}
-
-  const knowledgeBlock = buildKnowledgeBlock(knowledgeEntries)
-
-  // Qualifying questions
-  let qualifyingBlock = ''
-  if (agent.id && contactId) {
-    try {
-      const unanswered = await getUnansweredQuestions(agent.id, contactId)
-      qualifyingBlock = buildQualifyingPromptBlock(unanswered, agent.qualifyingStyle ?? 'strict')
-    } catch {}
-  }
-
-  // Persona
-  let personaBlock = ''
-  try { personaBlock = buildPersonaBlock(agent) } catch {}
-
-  // Fallback
-  const fb = agent.fallbackBehavior ?? 'message'
-  const fm = agent.fallbackMessage
-  let fallbackBlock = '\n\n## When You Don\'t Know the Answer\nDo NOT guess or make things up.'
-  if (fb === 'transfer') {
-    fallbackBlock += ' Tell the caller you\'ll connect them with someone who can help.'
-  } else if (fm) {
-    fallbackBlock += ` Say: "${fm}"`
-  } else {
-    fallbackBlock += ' Say you\'ll find out and get back to them.'
-  }
-
-  // Calendar
-  let calendarBlock = ''
-  if (agent.calendarId) {
-    calendarBlock = `\n\n## Calendar Configuration\nCalendar ID: ${agent.calendarId}\nAlways use get_available_slots before booking. Use this calendar ID.`
-  }
-
-  return `${agent.systemPrompt}
-
-## VOICE CALL INSTRUCTIONS
-You are on a live phone call. Follow these rules strictly:
-- Speak naturally and conversationally — no bullet points, no markdown, no lists
-- Keep responses SHORT — 1-3 sentences max unless the caller asks for detail
-- Don't read out URLs, email addresses, or long codes
-- If you need to check something, say "Let me look that up for you" or "One moment"
-- When the caller wants to book, use get_available_slots first, then book_appointment
-- After booking, offer to send an SMS confirmation using send_sms_followup
-- If you can't help, offer to have someone call them back
-${contactContext}
-${agent.instructions ? `\n## Additional Instructions\n${agent.instructions}` : ''}
-${knowledgeBlock}${calendarBlock}${qualifyingBlock}${personaBlock}${fallbackBlock}${buildToolConditions(voiceTools)}`
-}
-
-function buildToolConditions(voiceTools?: any[] | null): string {
-  if (!voiceTools || !Array.isArray(voiceTools)) return ''
-  const conditioned = voiceTools.filter((t: any) => t.condition)
-  if (conditioned.length === 0) return ''
-  const lines = conditioned.map((t: any) => `- ${t.function?.name}: ${t.condition}`)
-  return `\n\n## Tool Usage Rules\n${lines.join('\n')}`
 }
 
 export async function POST(req: NextRequest) {
@@ -345,24 +205,38 @@ export async function POST(req: NextRequest) {
     const locationId: string = call?.assistantOverrides?.variableValues?.locationId
     const agentId: string = call?.assistantOverrides?.variableValues?.agentId
     const callerPhone: string = call?.assistantOverrides?.variableValues?.callerPhone || call?.customer?.number
+    const direction: string = call?.assistantOverrides?.variableValues?.direction || 'inbound'
 
     if (locationId) {
       try {
-        await db.callLog.create({
-          data: {
-            locationId,
-            agentId: agentId || null,
-            contactPhone: callerPhone,
-            vapiCallId: call?.id,
-            direction: 'inbound',
-            status: call?.endedReason === 'customer-ended-call' ? 'completed' : (call?.endedReason || 'completed'),
-            durationSecs,
-            transcript,
-            summary,
-            recordingUrl,
-            endedReason: call?.endedReason,
-          },
-        })
+        const callStatus = call?.endedReason === 'customer-ended-call' ? 'completed' : (call?.endedReason || 'completed')
+
+        if (direction === 'outbound' && call?.id) {
+          // Outbound calls have a pre-created CallLog — update it
+          const existing = await db.callLog.findUnique({ where: { vapiCallId: call.id } })
+          if (existing) {
+            await db.callLog.update({
+              where: { vapiCallId: call.id },
+              data: { status: callStatus, durationSecs, transcript, summary, recordingUrl, endedReason: call?.endedReason },
+            })
+          } else {
+            await db.callLog.create({
+              data: {
+                locationId, agentId: agentId || null, contactPhone: callerPhone,
+                vapiCallId: call.id, direction: 'outbound', status: callStatus,
+                durationSecs, transcript, summary, recordingUrl, endedReason: call?.endedReason,
+              },
+            })
+          }
+        } else {
+          await db.callLog.create({
+            data: {
+              locationId, agentId: agentId || null, contactPhone: callerPhone,
+              vapiCallId: call?.id, direction: 'inbound', status: callStatus,
+              durationSecs, transcript, summary, recordingUrl, endedReason: call?.endedReason,
+            },
+          })
+        }
 
         if (summary && agentId && callerPhone) {
           try {

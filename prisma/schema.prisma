@@ -415,9 +415,10 @@ model CallLog {
   transcript   String?  @db.Text
   summary      String?  @db.Text
   recordingUrl String?
-  tokensUsed   Int      @default(0)
-  endedReason  String?
-  createdAt    DateTime @default(now())
+  tokensUsed    Int      @default(0)
+  endedReason   String?
+  triggerSource String?
+  createdAt     DateTime @default(now())
   @@index([locationId, createdAt(sort: Desc)])
   @@index([agentId, createdAt(sort: Desc)])
 }

@@ -42,6 +42,26 @@ export async function purchasePhoneNumber(areaCode: string) {
   }
 }
 
+// ─── Outbound Calls ───────────────────────────────────────────────────────
+
+export async function createOutboundCall(opts: {
+  phoneNumberId: string
+  customerNumber: string
+  assistant: Record<string, unknown>
+  assistantOverrides?: { variableValues?: Record<string, string> }
+}): Promise<{ id: string; status: string }> {
+  const data = await vapiRequest('/call', {
+    method: 'POST',
+    body: JSON.stringify({
+      phoneNumberId: opts.phoneNumberId,
+      customer: { number: opts.customerNumber },
+      assistant: opts.assistant,
+      ...(opts.assistantOverrides ? { assistantOverrides: opts.assistantOverrides } : {}),
+    }),
+  })
+  return { id: (data as any).id, status: (data as any).status }
+}
+
 // ─── ElevenLabs Voice Library ──────────────────────────────────────────────
 
 export interface ElevenLabsVoice {
