@@ -112,17 +112,17 @@ export async function findMatchingAgent(
 
         case 'PIPELINE_STAGE': {
           const opps = await getOpportunities()
-          matched = opps.some((o) => o.pipelineStageId === rule.value)
+          matched = opps.some((o: any) => o.pipelineStageId === rule.value)
           break
         }
 
         case 'KEYWORD': {
           const keywords = (rule.value ?? '')
             .split(',')
-            .map((k) => k.trim().toLowerCase())
+            .map((k: string) => k.trim().toLowerCase())
             .filter(Boolean)
           const body = messageBody.toLowerCase()
-          matched = keywords.some((k) => body.includes(k))
+          matched = keywords.some((k: string) => body.includes(k))
           break
         }
       }
