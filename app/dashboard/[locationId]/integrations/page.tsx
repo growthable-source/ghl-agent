@@ -22,6 +22,8 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [ghlConnected, setGhlConnected] = useState(false)
   const [vapiActive, setVapiActive] = useState(false)
+  const [crmProvider, setCrmProvider] = useState<string>('ghl')
+  const [switchingCrm, setSwitchingCrm] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Twilio form
@@ -50,14 +52,16 @@ export default function IntegrationsPage() {
   useEffect(() => {
     fetch(`/api/locations/${locationId}/integrations`)
       .then(r => r.json())
-      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi }: {
+      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm }: {
         integrations: Integration[]
         ghlConnected: boolean
         vapiActive: boolean
+        crmProvider: string
       }) => {
         setIntegrations(ints || [])
         setGhlConnected(ghl)
         setVapiActive(vapi)
+        setCrmProvider(crm || 'ghl')
       })
       .finally(() => setLoading(false))
   }, [locationId])
@@ -179,6 +183,17 @@ export default function IntegrationsPage() {
     finally { setSavingStripe(false) }
   }
 
+  async function switchCrmProvider(provider: string) {
+    setSwitchingCrm(true)
+    await fetch(`/api/locations/${locationId}/integrations`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crmProvider: provider }),
+    })
+    setCrmProvider(provider)
+    setSwitchingCrm(false)
+  }
+
   if (loading) return <div className="flex items-center justify-center h-64"><p className="text-zinc-500 text-sm">Loading…</p></div>
 
   const twilioIntegrations = integrations.filter(i => i.type === 'twilio')
@@ -193,6 +208,42 @@ export default function IntegrationsPage() {
         <h1 className="text-xl font-semibold mb-1">Integrations</h1>
         <p className="text-zinc-400 text-sm">Connect your CRM, telephony, and communication platforms. Agents work across all connected channels.</p>
       </div>
+
+      {/* CRM Provider Selector — only show when both are available */}
+      {ghlConnected && hubspotIntegrations.length > 0 && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">
+          <p className="text-sm font-medium text-zinc-200 mb-1">Primary CRM</p>
+          <p className="text-xs text-zinc-500 mb-3">Choose which CRM your agents use for contacts, deals, messaging, and calendar.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: 'ghl', label: 'GoHighLevel', icon: GoHighLevelIcon, color: '' },
+              { value: 'hubspot', label: 'HubSpot', icon: HubSpotIcon, color: 'text-[#FF7A59]' },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                disabled={switchingCrm}
+                onClick={() => switchCrmProvider(opt.value)}
+                className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+                  crmProvider === opt.value
+                    ? 'border-white bg-zinc-900'
+                    : 'border-zinc-800 hover:border-zinc-600'
+                }`}
+              >
+                <div className={`w-6 h-6 flex-shrink-0 ${opt.color}`}>
+                  <opt.icon className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-zinc-200">{opt.label}</span>
+                  {crmProvider === opt.value && (
+                    <span className="ml-2 text-xs text-emerald-400">Active</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
 
@@ -218,7 +269,12 @@ export default function IntegrationsPage() {
               </a>
             </div>
           </div>
-          {ghlConnected && (
+          {ghlConnected && crmProvider === 'ghl' && hubspotIntegrations.length > 0 && (
+            <p className="text-xs text-emerald-500/70 mt-3">
+              GoHighLevel is your primary CRM — agents use it for contacts, deals, and messaging.
+            </p>
+          )}
+          {ghlConnected && !(crmProvider === 'ghl' && hubspotIntegrations.length > 0) && (
             <p className="text-xs text-zinc-600 mt-3">
               Reconnect to refresh your token or add new permission scopes.
             </p>
@@ -343,17 +399,32 @@ export default function IntegrationsPage() {
                 <p className="text-xs text-zinc-500">CRM contacts, deals, timeline events</p>
               </div>
             </div>
-            {hubspotIntegrations.length > 0 ? (
-              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
-            ) : (
+            <div className="flex items-center gap-2">
+              {hubspotIntegrations.length > 0 && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
+              )}
+              {hubspotIntegrations.length > 0 && crmProvider !== 'hubspot' && (
+                <button
+                  onClick={() => switchCrmProvider('hubspot')}
+                  disabled={switchingCrm}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-50"
+                >
+                  Use as primary
+                </button>
+              )}
               <a
                 href={`/api/auth/hubspot?locationId=${locationId}`}
                 className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors"
               >
-                Connect
+                {hubspotIntegrations.length > 0 ? 'Reconnect' : 'Connect'}
               </a>
-            )}
+            </div>
           </div>
+          {hubspotIntegrations.length > 0 && crmProvider === 'hubspot' && (
+            <p className="text-xs text-emerald-500/70 mt-3">
+              HubSpot is your primary CRM — agents use it for contacts, deals, and messaging.
+            </p>
+          )}
         </div>
 
         {/* ── Section: Calendars ── */}

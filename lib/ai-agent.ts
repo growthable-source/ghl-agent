@@ -4,21 +4,8 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import {
-  getContact,
-  sendMessage,
-  updateContact,
-  addTagsToContact,
-  getOpportunitiesForContact,
-  updateOpportunityStage,
-  searchConversations,
-  getFreeSlots,
-  bookAppointment,
-  searchContacts,
-  createContact,
-  createAppointmentNote,
-} from './crm-client'
-import { getValidAccessToken } from './token-store'
+import { getCrmAdapter } from './crm/factory'
+import type { CrmAdapter } from './crm/types'
 import { buildPersonaBlock, applyTypos, calculateTypingDelay, type PersonaSettings } from './persona'
 import type { AgentContext, Message } from '@/types'
 
@@ -356,19 +343,21 @@ async function executeTool(
   sandbox = false,
   agentId?: string,
   channel?: string,
-  conversationProviderId?: string
+  conversationProviderId?: string,
+  adapter?: CrmAdapter
 ): Promise<string> {
   if (sandbox) return executeSandboxTool(toolName, input)
+  // Resolve adapter if not provided (backward compat)
+  const crm = adapter ?? (await getCrmAdapter(locationId))
   try {
     switch (toolName) {
       case 'get_contact_details': {
-        const contact = await getContact(locationId, input.contactId as string)
+        const contact = await crm.getContact(input.contactId as string)
         return JSON.stringify(contact)
       }
       case 'send_reply': {
-        // Send on the same channel the message arrived on
         const replyChannel = (channel || 'SMS') as import('@/types').MessageChannelType
-        const result = await sendMessage(locationId, {
+        const result = await crm.sendMessage({
           type: replyChannel,
           contactId: input.contactId as string,
           conversationProviderId: conversationProviderId || input.conversationProviderId as string | undefined,
@@ -377,7 +366,7 @@ async function executeTool(
         return JSON.stringify({ success: true, channel: replyChannel, ...result })
       }
       case 'send_sms': {
-        const result = await sendMessage(locationId, {
+        const result = await crm.sendMessage({
           type: 'SMS',
           contactId: input.contactId as string,
           conversationProviderId,
@@ -386,31 +375,26 @@ async function executeTool(
         return JSON.stringify({ success: true, ...result })
       }
       case 'update_contact_tags': {
-        await addTagsToContact(locationId, input.contactId as string, input.tags as string[])
+        await crm.addTags(input.contactId as string, input.tags as string[])
         return JSON.stringify({ success: true })
       }
       case 'get_opportunities': {
-        const opps = await getOpportunitiesForContact(locationId, input.contactId as string)
+        const opps = await crm.getOpportunitiesForContact(input.contactId as string)
         return JSON.stringify(opps)
       }
       case 'move_opportunity_stage': {
-        const opp = await updateOpportunityStage(
-          locationId,
+        const opp = await crm.updateOpportunityStage(
           input.opportunityId as string,
           input.pipelineStageId as string
         )
         return JSON.stringify({ success: true, opportunity: opp })
       }
       case 'add_contact_note': {
-        // Uses update contact with a custom note field — adapt to your custom fields
-        await updateContact(locationId, input.contactId as string, {
-          // You can store notes in custom fields or use the notes endpoint
-        } as any)
+        await crm.updateContact(input.contactId as string, {} as any)
         return JSON.stringify({ success: true, note: input.note })
       }
       case 'get_available_slots': {
-        const slots = await getFreeSlots(
-          locationId,
+        const slots = await crm.getFreeSlots(
           input.calendarId as string,
           input.startDate as string,
           input.endDate as string
@@ -425,7 +409,7 @@ async function executeTool(
           end.setMinutes(end.getMinutes() + 30)
           endTime = end.toISOString()
         }
-        const result = await bookAppointment(locationId, {
+        const result = await crm.bookAppointment({
           calendarId: input.calendarId as string,
           contactId: input.contactId as string,
           startTime,
@@ -436,19 +420,18 @@ async function executeTool(
         return JSON.stringify({ success: true, ...result })
       }
       case 'create_appointment_note': {
-        const noteResult = await createAppointmentNote(
-          locationId,
+        const noteResult = await crm.createAppointmentNote(
           input.appointmentId as string,
           input.body as string
         )
         return JSON.stringify({ success: true, ...noteResult })
       }
       case 'search_contacts': {
-        const contacts = await searchContacts(locationId, input.query as string)
+        const contacts = await crm.searchContacts(input.query as string)
         return JSON.stringify(contacts)
       }
       case 'create_contact': {
-        const contact = await createContact(locationId, {
+        const contact = await crm.createContact({
           firstName: input.firstName as string,
           lastName: input.lastName as string | undefined,
           phone: input.phone as string | undefined,
@@ -457,7 +440,7 @@ async function executeTool(
         return JSON.stringify({ success: true, contact })
       }
       case 'send_email': {
-        const result = await sendMessage(locationId, {
+        const result = await crm.sendMessage({
           type: 'Email',
           contactId: input.contactId as string,
           message: input.body as string,
@@ -466,51 +449,24 @@ async function executeTool(
         return JSON.stringify({ success: true, ...result })
       }
       case 'create_opportunity': {
-        const token = await getValidAccessToken(locationId)
-        if (!token) return JSON.stringify({ error: 'Not authenticated' })
-        const res = await fetch('https://services.leadconnectorhq.com/opportunities/', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Version: '2021-07-28',
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            title: input.name,
-            contactId: input.contactId,
-            pipelineId: input.pipelineId,
-            pipelineStageId: input.pipelineStageId,
-            monetaryValue: input.monetaryValue,
-            locationId,
-          }),
+        const opp = await crm.createOpportunity({
+          name: input.name as string,
+          contactId: input.contactId as string,
+          pipelineId: input.pipelineId as string,
+          pipelineStageId: input.pipelineStageId as string,
+          monetaryValue: input.monetaryValue as number | undefined,
         })
-        const opp = await res.json()
         return JSON.stringify({ success: true, ...opp })
       }
       case 'update_opportunity_value': {
-        const token = await getValidAccessToken(locationId)
-        if (!token) return JSON.stringify({ error: 'Not authenticated' })
-        const res = await fetch(`https://services.leadconnectorhq.com/opportunities/${input.opportunityId as string}`, {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Version: '2021-07-28',
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({ monetaryValue: input.monetaryValue }),
-        })
-        const opp = await res.json()
+        const opp = await crm.updateOpportunityValue(
+          input.opportunityId as string,
+          input.monetaryValue as number
+        )
         return JSON.stringify({ success: true, ...opp })
       }
       case 'get_calendar_events': {
-        const token = await getValidAccessToken(locationId)
-        if (!token) return JSON.stringify({ error: 'Not authenticated' })
-        const res = await fetch(`https://services.leadconnectorhq.com/calendars/events?contactId=${input.contactId as string}&locationId=${locationId}`, {
-          headers: { Authorization: `Bearer ${token}`, Version: '2021-04-15', Accept: 'application/json' },
-        })
-        const data = await res.json()
+        const data = await crm.getCalendarEvents(input.contactId as string)
         return JSON.stringify(data)
       }
       case 'save_qualifying_answer': {
@@ -538,7 +494,7 @@ async function executeTool(
         const score = input.score as number
         const reason = input.reason as string
         const scoreTag = score >= 80 ? 'lead-hot' : score >= 50 ? 'lead-warm' : 'lead-cold'
-        await addTagsToContact(locationId, input.contactId as string, [scoreTag])
+        await crm.addTags(input.contactId as string, [scoreTag])
         if (agentId) {
           const { db: prisma } = await import('./db')
           await prisma.leadScore.upsert({
@@ -552,11 +508,9 @@ async function executeTool(
       case 'detect_sentiment': {
         const sentiment = input.sentiment as string
         const summary = input.summary as string
-        // Tag with sentiment
-        await addTagsToContact(locationId, input.contactId as string, [`sentiment-${sentiment}`])
-        // If very negative, also tag for escalation
+        await crm.addTags(input.contactId as string, [`sentiment-${sentiment}`])
         if (sentiment === 'very_negative' || sentiment === 'negative') {
-          await addTagsToContact(locationId, input.contactId as string, ['needs-attention'])
+          await crm.addTags(input.contactId as string, ['needs-attention'])
         }
         return JSON.stringify({ success: true, sentiment, summary })
       }
@@ -578,9 +532,7 @@ async function executeTool(
         return JSON.stringify({ success: true, scheduledAt: scheduledAt.toISOString(), message: input.message })
       }
       case 'transfer_to_human': {
-        // Tag contact for human follow-up and pause the AI
-        await addTagsToContact(locationId, input.contactId as string, ['human-requested', 'ai-paused'])
-        // Pause the conversation state
+        await crm.addTags(input.contactId as string, ['human-requested', 'ai-paused'])
         if (agentId) {
           const { db: prisma } = await import('./db')
           await prisma.conversationStateRecord.updateMany({
@@ -599,6 +551,7 @@ async function executeTool(
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
   } catch (err: any) {
+    console.error(`[Agent] Tool ${toolName} failed:`, err.message)
     return JSON.stringify({ error: err.message })
   }
 }
@@ -704,6 +657,9 @@ export async function runAgent(opts: {
   const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
+  // Resolve CRM adapter once for the entire agent run
+  const crm = isSandbox ? null : await getCrmAdapter(locationId)
+
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
 
@@ -786,12 +742,14 @@ export async function runAgent(opts: {
           const delay = calculateTypingDelay(msgToSend, persona.typingDelayMinMs, persona.typingDelayMaxMs)
           await new Promise(resolve => setTimeout(resolve, delay))
         }
-        await sendMessage(locationId, {
-          type: (channel || 'SMS') as import('@/types').MessageChannelType,
-          contactId,
-          conversationProviderId,
-          message: msgToSend,
-        })
+        if (crm) {
+          await crm.sendMessage({
+            type: (channel || 'SMS') as import('@/types').MessageChannelType,
+            contactId,
+            conversationProviderId,
+            message: msgToSend,
+          })
+        }
         smsSent = msgToSend
         actionsPerformed.push(`send_reply (auto, ${channel})`)
       }
@@ -811,7 +769,8 @@ export async function runAgent(opts: {
         isSandbox,
         agentId,
         channel,
-        conversationProviderId
+        conversationProviderId,
+        crm ?? undefined
       )
       toolCallTrace.push({
         tool: toolBlock.name,

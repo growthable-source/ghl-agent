@@ -15,7 +15,7 @@ interface QualifyingQuestion {
   conditionVal: string | null
   actionType: string | null
   actionValue: string | null
-  ghlFieldKey: string | null
+  crmFieldKey: string | null
   overwrite: boolean
 }
 
@@ -76,7 +76,7 @@ const emptyForm = {
   actionValue: '',
   showConditional: false,
   newChoice: '',
-  ghlFieldKey: '',
+  crmFieldKey: '',
   overwrite: false,
 }
 
@@ -144,7 +144,7 @@ export default function QualifyingPage() {
       actionValue: q.actionValue ?? '',
       showConditional: !!(q.conditionOp && q.actionType),
       newChoice: '',
-      ghlFieldKey: q.ghlFieldKey ?? '',
+      crmFieldKey: q.crmFieldKey ?? '',
       overwrite: q.overwrite,
     })
     // Scroll form into view
@@ -181,7 +181,7 @@ export default function QualifyingPage() {
       conditionVal: form.showConditional && form.conditionOp ? form.conditionVal : null,
       actionType: form.showConditional && form.actionType ? form.actionType : null,
       actionValue: form.showConditional && form.actionType ? form.actionValue : null,
-      ghlFieldKey: form.ghlFieldKey || null,
+      crmFieldKey: form.crmFieldKey || null,
       overwrite: form.overwrite,
     }
 
@@ -279,9 +279,9 @@ export default function QualifyingPage() {
                     <span className="text-xs font-mono text-zinc-400 bg-zinc-800 rounded px-1.5 py-0.5">{q.fieldKey}</span>
                     <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 capitalize">{q.answerType.replace('_', '/')}</span>
                     {q.required && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400">required</span>}
-                    {q.ghlFieldKey && (
+                    {q.crmFieldKey && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400">
-                        → {fieldName(q.ghlFieldKey)} {q.overwrite ? '(overwrite)' : '(keep first)'}
+                        → {fieldName(q.crmFieldKey)} {q.overwrite ? '(overwrite)' : '(keep first)'}
                       </span>
                     )}
                   </div>
@@ -400,10 +400,10 @@ export default function QualifyingPage() {
               <label className="block text-xs font-medium text-zinc-300 mb-1">Save answer to contact field</label>
               <p className="text-xs text-zinc-600 mb-2">When the agent gets an answer, write it directly to the contact record.</p>
               <select
-                value={form.ghlFieldKey}
+                value={form.crmFieldKey}
                 onChange={e => {
                   const val = e.target.value
-                  updateForm('ghlFieldKey', val)
+                  updateForm('crmFieldKey', val)
                   // Auto-populate internal key from field selection if not set
                   if (val && !form.fieldKey) {
                     const slug = val.replace('contact.', '').replace(/[^a-z0-9]/gi, '_').toLowerCase()
@@ -430,7 +430,7 @@ export default function QualifyingPage() {
               </select>
             </div>
 
-            {form.ghlFieldKey && (
+            {form.crmFieldKey && (
               <button
                 type="button"
                 onClick={() => updateForm('overwrite', !form.overwrite)}

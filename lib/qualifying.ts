@@ -85,7 +85,7 @@ export async function saveQualifyingAnswer(
   answer: string,
   locationId?: string
 ) {
-  // 1. Find the question to get ghlFieldKey + overwrite setting
+  // 1. Find the question to get crmFieldKey + overwrite setting
   const question = await db.qualifyingQuestion.findFirst({
     where: { agentId, fieldKey },
   })
@@ -107,18 +107,18 @@ export async function saveQualifyingAnswer(
     })
 
     // Write to GHL contact field if configured and not a sandbox contact
-    if (question?.ghlFieldKey && locationId && !contactId.startsWith('playground-')) {
+    if (question?.crmFieldKey && locationId && !contactId.startsWith('playground-')) {
       try {
         // Check if we should overwrite existing value
         if (!question.overwrite) {
           const contact = await getContact(locationId, contactId)
-          const existingVal = (contact as any)[question.ghlFieldKey] ||
-            (contact as any).customFields?.find((f: any) => f.key === question.ghlFieldKey)?.value
+          const existingVal = (contact as any)[question.crmFieldKey] ||
+            (contact as any).customFields?.find((f: any) => f.key === question.crmFieldKey)?.value
           if (existingVal) return // Keep first answer — field already has a value
         }
-        await updateContactField(locationId, contactId, question.ghlFieldKey, answer)
+        await updateContactField(locationId, contactId, question.crmFieldKey, answer)
       } catch (err) {
-        console.error(`[Qualifying] Failed to update GHL field ${question.ghlFieldKey}:`, err)
+        console.error(`[Qualifying] Failed to update GHL field ${question.crmFieldKey}:`, err)
       }
     }
   }

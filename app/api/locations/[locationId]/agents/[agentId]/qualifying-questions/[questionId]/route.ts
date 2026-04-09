@@ -19,6 +19,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.conditionVal !== undefined && { conditionVal: body.conditionVal }),
       ...(body.actionType !== undefined && { actionType: body.actionType }),
       ...(body.actionValue !== undefined && { actionValue: body.actionValue }),
+      ...(body.crmFieldKey !== undefined && { crmFieldKey: body.crmFieldKey }),
+      ...(body.overwrite !== undefined && { overwrite: body.overwrite }),
     },
   })
   return NextResponse.json({ question })

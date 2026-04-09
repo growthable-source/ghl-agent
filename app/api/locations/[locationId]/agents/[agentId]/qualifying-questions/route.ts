@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       conditionVal: body.conditionVal ?? null,
       actionType: body.actionType ?? null,
       actionValue: body.actionValue ?? null,
-      ghlFieldKey: body.ghlFieldKey ?? null,
+      crmFieldKey: body.crmFieldKey ?? null,
       overwrite: body.overwrite ?? false,
     },
   })

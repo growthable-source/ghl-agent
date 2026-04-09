@@ -106,6 +106,7 @@ model Location {
   refreshToken   String
   refreshTokenId String
   expiresAt      DateTime
+  crmProvider    String   @default("ghl")
   installedAt             DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
   onboardingCompletedAt   DateTime?
@@ -291,7 +292,7 @@ model QualifyingQuestion {
   conditionVal String?
   actionType   String?
   actionValue  String?
-  ghlFieldKey  String?
+  crmFieldKey  String?
   overwrite    Boolean  @default(false)
   createdAt    DateTime @default(now())
   @@index([agentId, order])

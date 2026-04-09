@@ -11,12 +11,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     orderBy: { createdAt: 'asc' },
   })
 
-  const location = await db.location.findUnique({ where: { id: locationId } })
+  const location = await db.location.findUnique({
+    where: { id: locationId },
+    select: { accessToken: true, crmProvider: true },
+  })
   const ghlConnected = !!(location?.accessToken)
+  const crmProvider = location?.crmProvider ?? 'ghl'
 
   const vapiActive = !!process.env.VAPI_API_KEY
 
-  return NextResponse.json({ integrations, ghlConnected, vapiActive })
+  return NextResponse.json({ integrations, ghlConnected, vapiActive, crmProvider })
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -35,4 +39,23 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
 
   return NextResponse.json({ integration }, { status: 201 })
+}
+
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { locationId } = await params
+  const body = await req.json()
+
+  if (body.crmProvider) {
+    const allowed = ['ghl', 'hubspot']
+    if (!allowed.includes(body.crmProvider)) {
+      return NextResponse.json({ error: `Invalid CRM provider. Must be one of: ${allowed.join(', ')}` }, { status: 400 })
+    }
+    await db.location.update({
+      where: { id: locationId },
+      data: { crmProvider: body.crmProvider },
+    })
+    return NextResponse.json({ crmProvider: body.crmProvider })
+  }
+
+  return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 }

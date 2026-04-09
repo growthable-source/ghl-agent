@@ -12,7 +12,14 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: `${process.env.APP_URL}/api/auth/hubspot/callback`,
-    scope: 'crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write',
+    scope: [
+      'crm.objects.contacts.read', 'crm.objects.contacts.write',
+      'crm.objects.deals.read', 'crm.objects.deals.write',
+      'crm.schemas.contacts.read',
+      'crm.objects.owners.read',
+      'conversations.read', 'conversations.write',
+      'sales-email-read',
+    ].join(' '),
     state: locationId,
   })
 
