@@ -32,7 +32,7 @@ export default function DashboardSidebar() {
   }
 
   return (
-    <div className="w-56 shrink-0 border-r border-zinc-800 flex flex-col h-full bg-black">
+    <div className="w-56 shrink-0 border-r border-sidebar-border flex flex-col h-full bg-sidebar-bg">
       {/* Logo */}
       <div className="px-4 py-5 border-b border-zinc-800">
         <Link href="/dashboard" className="flex items-center gap-2">

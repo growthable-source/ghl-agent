@@ -20,7 +20,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
 
   const data: Record<string, string> = {}
-  if (body.theme && ['dark', 'light', 'system'].includes(body.theme)) {
+  if (body.theme && ['midnight', 'soft-light', 'dim', 'sunset', 'system'].includes(body.theme)) {
     data.theme = body.theme
   }
   if (body.name !== undefined) {

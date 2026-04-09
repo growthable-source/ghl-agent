@@ -14,7 +14,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  theme         String    @default("dark")
+  theme         String    @default("midnight")
   accounts      Account[]
   sessions      Session[]
   locations     UserLocation[]

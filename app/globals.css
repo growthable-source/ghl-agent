@@ -1,68 +1,149 @@
 @import "tailwindcss";
 
-/* ─── Theme: Dark (default) ─────────────────────────────────────────── */
-:root {
-  --background: #000000;
-  --foreground: #ededed;
-  --surface: #0a0a0a;
-  --surface-secondary: #18181b;
-  --surface-tertiary: #27272a;
-  --border: #27272a;
-  --border-secondary: #3f3f46;
-  --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --text-muted: #52525b;
-  --accent-emerald: #34d399;
-  --accent-emerald-bg: rgba(6, 78, 59, 0.3);
-  --accent-amber: #fbbf24;
-  --accent-amber-bg: rgba(120, 53, 15, 0.3);
-  --accent-blue: #60a5fa;
-  --accent-blue-bg: rgba(30, 58, 138, 0.3);
-  --accent-red: #f87171;
-  --accent-red-bg: rgba(127, 29, 29, 0.3);
-  --btn-primary-bg: #ffffff;
-  --btn-primary-text: #000000;
-  --btn-primary-hover: #e4e4e7;
-  --input-bg: #18181b;
-  --input-border: #3f3f46;
-  --input-text: #ffffff;
-  --input-placeholder: #52525b;
-  --logo-bg: #ffffff;
-  --logo-text: #000000;
+/* ═══════════════════════════════════════════════════════════════════════
+   Theme Definitions
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Midnight (default) — deep blue-gray ───────────────────────────── */
+:root,
+[data-theme="midnight"] {
+  --background:          #0b0e14;
+  --foreground:          #e1e4ea;
+  --surface:             #11151e;
+  --surface-secondary:   #1a1f2b;
+  --surface-tertiary:    #252a37;
+  --border:              #252a37;
+  --border-secondary:    #353b4a;
+  --text-primary:        #f0f2f5;
+  --text-secondary:      #9ba2b2;
+  --text-tertiary:       #6b7280;
+  --text-muted:          #4b5263;
+  --accent-emerald:      #34d399;
+  --accent-emerald-bg:   rgba(6, 78, 59, 0.3);
+  --accent-amber:        #fbbf24;
+  --accent-amber-bg:     rgba(120, 53, 15, 0.3);
+  --accent-blue:         #60a5fa;
+  --accent-blue-bg:      rgba(30, 58, 138, 0.3);
+  --accent-red:          #f87171;
+  --accent-red-bg:       rgba(127, 29, 29, 0.3);
+  --btn-primary-bg:      #e8eaed;
+  --btn-primary-text:    #0b0e14;
+  --btn-primary-hover:   #cdd0d6;
+  --input-bg:            #1a1f2b;
+  --input-border:        #353b4a;
+  --input-text:          #f0f2f5;
+  --input-placeholder:   #4b5263;
+  --logo-bg:             #e8eaed;
+  --logo-text:           #0b0e14;
+  --sidebar-bg:          #080a10;
+  --sidebar-border:      #1a1f2b;
 }
 
-/* ─── Theme: Light ──────────────────────────────────────────────────── */
-[data-theme="light"] {
-  --background: #ffffff;
-  --foreground: #171717;
-  --surface: #ffffff;
-  --surface-secondary: #f4f4f5;
-  --surface-tertiary: #e4e4e7;
-  --border: #e4e4e7;
-  --border-secondary: #d4d4d8;
-  --text-primary: #09090b;
-  --text-secondary: #52525b;
-  --text-tertiary: #71717a;
-  --text-muted: #a1a1aa;
-  --accent-emerald: #059669;
-  --accent-emerald-bg: rgba(209, 250, 229, 0.6);
-  --accent-amber: #d97706;
-  --accent-amber-bg: rgba(254, 243, 199, 0.6);
-  --accent-blue: #2563eb;
-  --accent-blue-bg: rgba(219, 234, 254, 0.6);
-  --accent-red: #dc2626;
-  --accent-red-bg: rgba(254, 226, 226, 0.6);
-  --btn-primary-bg: #09090b;
-  --btn-primary-text: #ffffff;
-  --btn-primary-hover: #27272a;
-  --input-bg: #ffffff;
-  --input-border: #d4d4d8;
-  --input-text: #09090b;
-  --input-placeholder: #a1a1aa;
-  --logo-bg: #09090b;
-  --logo-text: #ffffff;
+/* ─── Sunset — warm dark with amber undertones ──────────────────────── */
+[data-theme="sunset"] {
+  --background:          #1a1412;
+  --foreground:          #e8ddd4;
+  --surface:             #221c18;
+  --surface-secondary:   #2c2420;
+  --surface-tertiary:    #382e28;
+  --border:              #382e28;
+  --border-secondary:    #4a3e36;
+  --text-primary:        #f2e8e0;
+  --text-secondary:      #b5a89d;
+  --text-tertiary:       #887b70;
+  --text-muted:          #5e544b;
+  --accent-emerald:      #4ade80;
+  --accent-emerald-bg:   rgba(22, 78, 42, 0.3);
+  --accent-amber:        #fbbf24;
+  --accent-amber-bg:     rgba(120, 53, 15, 0.35);
+  --accent-blue:         #7ab8f5;
+  --accent-blue-bg:      rgba(30, 58, 110, 0.3);
+  --accent-red:          #fb7185;
+  --accent-red-bg:       rgba(127, 29, 45, 0.3);
+  --btn-primary-bg:      #f2e8e0;
+  --btn-primary-text:    #1a1412;
+  --btn-primary-hover:   #ddd0c5;
+  --input-bg:            #2c2420;
+  --input-border:        #4a3e36;
+  --input-text:          #f2e8e0;
+  --input-placeholder:   #5e544b;
+  --logo-bg:             #f2e8e0;
+  --logo-text:           #1a1412;
+  --sidebar-bg:          #14100e;
+  --sidebar-border:      #2c2420;
 }
+
+/* ─── Dim — mid-tone, low-light comfort ─────────────────────────────── */
+[data-theme="dim"] {
+  --background:          #22272e;
+  --foreground:          #cdd9e5;
+  --surface:             #2d333b;
+  --surface-secondary:   #353c47;
+  --surface-tertiary:    #3d4450;
+  --border:              #3d4450;
+  --border-secondary:    #4d5566;
+  --text-primary:        #e6edf3;
+  --text-secondary:      #9aabb8;
+  --text-tertiary:       #768390;
+  --text-muted:          #545d68;
+  --accent-emerald:      #3fb950;
+  --accent-emerald-bg:   rgba(16, 69, 31, 0.35);
+  --accent-amber:        #d29922;
+  --accent-amber-bg:     rgba(110, 64, 8, 0.35);
+  --accent-blue:         #58a6ff;
+  --accent-blue-bg:      rgba(31, 60, 115, 0.35);
+  --accent-red:          #f85149;
+  --accent-red-bg:       rgba(120, 25, 22, 0.35);
+  --btn-primary-bg:      #e6edf3;
+  --btn-primary-text:    #22272e;
+  --btn-primary-hover:   #cdd9e5;
+  --input-bg:            #2d333b;
+  --input-border:        #4d5566;
+  --input-text:          #e6edf3;
+  --input-placeholder:   #545d68;
+  --logo-bg:             #e6edf3;
+  --logo-text:           #22272e;
+  --sidebar-bg:          #1c2128;
+  --sidebar-border:      #2d333b;
+}
+
+/* ─── Soft Light — warm off-white ───────────────────────────────────── */
+[data-theme="soft-light"] {
+  --background:          #f8f7f4;
+  --foreground:          #1c1917;
+  --surface:             #faf9f7;
+  --surface-secondary:   #f0eee9;
+  --surface-tertiary:    #e5e2dc;
+  --border:              #e0ddd6;
+  --border-secondary:    #cdc9c0;
+  --text-primary:        #1c1917;
+  --text-secondary:      #57534e;
+  --text-tertiary:       #78716c;
+  --text-muted:          #a8a29e;
+  --accent-emerald:      #059669;
+  --accent-emerald-bg:   rgba(209, 250, 229, 0.6);
+  --accent-amber:        #d97706;
+  --accent-amber-bg:     rgba(254, 243, 199, 0.6);
+  --accent-blue:         #2563eb;
+  --accent-blue-bg:      rgba(219, 234, 254, 0.6);
+  --accent-red:          #dc2626;
+  --accent-red-bg:       rgba(254, 226, 226, 0.6);
+  --btn-primary-bg:      #1c1917;
+  --btn-primary-text:    #faf9f7;
+  --btn-primary-hover:   #33302b;
+  --input-bg:            #faf9f7;
+  --input-border:        #cdc9c0;
+  --input-text:          #1c1917;
+  --input-placeholder:   #a8a29e;
+  --logo-bg:             #1c1917;
+  --logo-text:           #faf9f7;
+  --sidebar-bg:          #f1f0ec;
+  --sidebar-border:      #e0ddd6;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Tailwind v4 Theme Tokens
+   ═══════════════════════════════════════════════════════════════════════ */
 
 @theme inline {
   --color-background: var(--background);
@@ -93,6 +174,8 @@
   --color-input-placeholder: var(--input-placeholder);
   --color-logo-bg: var(--logo-bg);
   --color-logo-text: var(--logo-text);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-border: var(--sidebar-border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -103,75 +186,80 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ─── Override hardcoded Tailwind classes for light mode ─────────────
-   This remaps the zinc/black/white classes used throughout the dashboard
-   so existing components adapt without individual changes. */
+/* ═══════════════════════════════════════════════════════════════════════
+   Hardcoded Tailwind class overrides for Soft Light theme
 
-[data-theme="light"] .bg-black { background-color: var(--background) !important; }
-[data-theme="light"] .bg-zinc-950 { background-color: var(--surface) !important; }
-[data-theme="light"] .bg-zinc-900 { background-color: var(--surface-secondary) !important; }
-[data-theme="light"] .bg-zinc-900\/40 { background-color: color-mix(in srgb, var(--surface-secondary) 40%, transparent) !important; }
-[data-theme="light"] .bg-zinc-800 { background-color: var(--surface-tertiary) !important; }
-[data-theme="light"] .bg-zinc-700 { background-color: #d4d4d8 !important; }
+   Dark themes (Midnight, Dim, Sunset) share the same light-on-dark
+   direction as the hardcoded classes, so CSS vars handle them.
+   Soft Light inverts direction — needs explicit class remapping.
+   ═══════════════════════════════════════════════════════════════════════ */
 
-[data-theme="light"] .text-white { color: var(--text-primary) !important; }
-[data-theme="light"] .text-zinc-200 { color: var(--text-primary) !important; }
-[data-theme="light"] .text-zinc-300 { color: var(--text-secondary) !important; }
-[data-theme="light"] .text-zinc-400 { color: var(--text-tertiary) !important; }
-[data-theme="light"] .text-zinc-500 { color: var(--text-tertiary) !important; }
-[data-theme="light"] .text-zinc-600 { color: var(--text-muted) !important; }
-[data-theme="light"] .text-black { color: var(--btn-primary-text) !important; }
+[data-theme="soft-light"] .bg-black { background-color: var(--background) !important; }
+[data-theme="soft-light"] .bg-zinc-950 { background-color: var(--surface) !important; }
+[data-theme="soft-light"] .bg-zinc-900 { background-color: var(--surface-secondary) !important; }
+[data-theme="soft-light"] .bg-zinc-900\/40 { background-color: color-mix(in srgb, var(--surface-secondary) 40%, transparent) !important; }
+[data-theme="soft-light"] .bg-zinc-800 { background-color: var(--surface-tertiary) !important; }
+[data-theme="soft-light"] .bg-zinc-700 { background-color: #cdc9c0 !important; }
 
-[data-theme="light"] .border-zinc-800 { border-color: var(--border) !important; }
-[data-theme="light"] .border-zinc-700 { border-color: var(--border-secondary) !important; }
-[data-theme="light"] .border-zinc-600 { border-color: #a1a1aa !important; }
-[data-theme="light"] .border-zinc-500 { border-color: #71717a !important; }
-[data-theme="light"] .border-white { border-color: var(--text-primary) !important; }
+[data-theme="soft-light"] .text-white { color: var(--text-primary) !important; }
+[data-theme="soft-light"] .text-zinc-200 { color: var(--text-primary) !important; }
+[data-theme="soft-light"] .text-zinc-300 { color: var(--text-secondary) !important; }
+[data-theme="soft-light"] .text-zinc-400 { color: var(--text-tertiary) !important; }
+[data-theme="soft-light"] .text-zinc-500 { color: var(--text-tertiary) !important; }
+[data-theme="soft-light"] .text-zinc-600 { color: var(--text-muted) !important; }
+[data-theme="soft-light"] .text-black { color: var(--btn-primary-text) !important; }
+
+[data-theme="soft-light"] .border-zinc-800 { border-color: var(--border) !important; }
+[data-theme="soft-light"] .border-zinc-700 { border-color: var(--border-secondary) !important; }
+[data-theme="soft-light"] .border-zinc-600 { border-color: #a8a29e !important; }
+[data-theme="soft-light"] .border-zinc-500 { border-color: #78716c !important; }
+[data-theme="soft-light"] .border-white { border-color: var(--text-primary) !important; }
 
 /* Buttons */
-[data-theme="light"] .bg-white { background-color: var(--btn-primary-bg) !important; }
-[data-theme="light"] .bg-white.text-black { color: var(--btn-primary-text) !important; }
-[data-theme="light"] .hover\:bg-zinc-200:hover { background-color: var(--btn-primary-hover) !important; }
-[data-theme="light"] .hover\:bg-zinc-700:hover { background-color: #d4d4d8 !important; }
-[data-theme="light"] .hover\:bg-zinc-900:hover { background-color: var(--surface-secondary) !important; }
+[data-theme="soft-light"] .bg-white { background-color: var(--btn-primary-bg) !important; }
+[data-theme="soft-light"] .bg-white.text-black { color: var(--btn-primary-text) !important; }
+[data-theme="soft-light"] .hover\:bg-zinc-200:hover { background-color: var(--btn-primary-hover) !important; }
+[data-theme="soft-light"] .hover\:bg-zinc-700:hover { background-color: #e5e2dc !important; }
+[data-theme="soft-light"] .hover\:bg-zinc-900:hover { background-color: var(--surface-secondary) !important; }
 
 /* Inputs */
-[data-theme="light"] input, [data-theme="light"] textarea, [data-theme="light"] select {
+[data-theme="soft-light"] input, [data-theme="soft-light"] textarea, [data-theme="soft-light"] select {
   background-color: var(--input-bg) !important;
   border-color: var(--input-border) !important;
   color: var(--input-text) !important;
 }
-[data-theme="light"] input::placeholder,
-[data-theme="light"] textarea::placeholder {
+[data-theme="soft-light"] input::placeholder,
+[data-theme="soft-light"] textarea::placeholder {
   color: var(--input-placeholder) !important;
 }
 
 /* Hover states */
-[data-theme="light"] .hover\:text-white:hover { color: var(--text-primary) !important; }
-[data-theme="light"] .hover\:border-zinc-500:hover { border-color: #71717a !important; }
-[data-theme="light"] .hover\:border-zinc-600:hover { border-color: #a1a1aa !important; }
+[data-theme="soft-light"] .hover\:text-white:hover { color: var(--text-primary) !important; }
+[data-theme="soft-light"] .hover\:border-zinc-500:hover { border-color: #78716c !important; }
+[data-theme="soft-light"] .hover\:border-zinc-600:hover { border-color: #a8a29e !important; }
 
-/* Accent badge overrides */
-[data-theme="light"] .bg-emerald-900\/30 { background-color: var(--accent-emerald-bg) !important; }
-[data-theme="light"] .text-emerald-400 { color: var(--accent-emerald) !important; }
-[data-theme="light"] .bg-amber-900\/30 { background-color: var(--accent-amber-bg) !important; }
-[data-theme="light"] .text-amber-400 { color: var(--accent-amber) !important; }
-[data-theme="light"] .bg-blue-900\/30 { background-color: var(--accent-blue-bg) !important; }
-[data-theme="light"] .text-blue-400 { color: var(--accent-blue) !important; }
-[data-theme="light"] .bg-red-900\/30 { background-color: var(--accent-red-bg) !important; }
-[data-theme="light"] .text-red-400 { color: var(--accent-red) !important; }
+/* Accent badges */
+[data-theme="soft-light"] .bg-emerald-900\/30 { background-color: var(--accent-emerald-bg) !important; }
+[data-theme="soft-light"] .text-emerald-400 { color: var(--accent-emerald) !important; }
+[data-theme="soft-light"] .text-emerald-500\/70 { color: var(--accent-emerald) !important; }
+[data-theme="soft-light"] .bg-amber-900\/30 { background-color: var(--accent-amber-bg) !important; }
+[data-theme="soft-light"] .text-amber-400 { color: var(--accent-amber) !important; }
+[data-theme="soft-light"] .bg-blue-900\/30 { background-color: var(--accent-blue-bg) !important; }
+[data-theme="soft-light"] .text-blue-400 { color: var(--accent-blue) !important; }
+[data-theme="soft-light"] .bg-red-900\/30 { background-color: var(--accent-red-bg) !important; }
+[data-theme="soft-light"] .text-red-400 { color: var(--accent-red) !important; }
 
 /* Scrollbar */
-[data-theme="light"] ::-webkit-scrollbar-track { background: var(--surface-secondary); }
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--border-secondary); }
+[data-theme="soft-light"] ::-webkit-scrollbar-track { background: var(--surface-secondary); }
+[data-theme="soft-light"] ::-webkit-scrollbar-thumb { background: var(--border-secondary); }
 
-/* Logo in sidebar */
-[data-theme="light"] .bg-white.rounded { background-color: var(--logo-bg) !important; }
-[data-theme="light"] .bg-white.rounded .text-black { color: var(--logo-text) !important; }
+/* Logo */
+[data-theme="soft-light"] .bg-white.rounded { background-color: var(--logo-bg) !important; }
+[data-theme="soft-light"] .bg-white.rounded .text-black { color: var(--logo-text) !important; }
 
 /* Dividers */
-[data-theme="light"] .divide-zinc-800 > * + * { border-color: var(--border) !important; }
+[data-theme="soft-light"] .divide-zinc-800 > * + * { border-color: var(--border) !important; }
 
 /* Ring / focus */
-[data-theme="light"] .ring-zinc-800 { --tw-ring-color: var(--border) !important; }
-[data-theme="light"] .focus\:border-zinc-500:focus { border-color: #71717a !important; }
+[data-theme="soft-light"] .ring-zinc-800 { --tw-ring-color: var(--border) !important; }
+[data-theme="soft-light"] .focus\:border-zinc-500:focus { border-color: #78716c !important; }

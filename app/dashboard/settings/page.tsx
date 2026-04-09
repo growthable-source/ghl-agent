@@ -12,10 +12,122 @@ interface UserSettings {
 }
 
 const THEME_OPTIONS = [
-  { value: 'dark', label: 'Dark', desc: 'Dark backgrounds with light text' },
-  { value: 'light', label: 'Light', desc: 'Light backgrounds with dark text' },
-  { value: 'system', label: 'System', desc: 'Match your operating system preference' },
+  {
+    value: 'midnight',
+    label: 'Midnight',
+    desc: 'Deep blue-gray',
+    sidebar: '#080a10',
+    content: '#0b0e14',
+    surface: '#11151e',
+    border: '#353b4a',
+    bar: '#9ba2b2',
+    barMuted: '#252a37',
+  },
+  {
+    value: 'sunset',
+    label: 'Sunset',
+    desc: 'Warm amber tones',
+    sidebar: '#14100e',
+    content: '#1a1412',
+    surface: '#221c18',
+    border: '#4a3e36',
+    bar: '#b5a89d',
+    barMuted: '#382e28',
+  },
+  {
+    value: 'dim',
+    label: 'Dim',
+    desc: 'Mid-tone, easy on eyes',
+    sidebar: '#1c2128',
+    content: '#22272e',
+    surface: '#2d333b',
+    border: '#4d5566',
+    bar: '#9aabb8',
+    barMuted: '#3d4450',
+  },
+  {
+    value: 'soft-light',
+    label: 'Soft Light',
+    desc: 'Warm off-white',
+    sidebar: '#f1f0ec',
+    content: '#f8f7f4',
+    surface: '#faf9f7',
+    border: '#cdc9c0',
+    bar: '#78716c',
+    barMuted: '#e5e2dc',
+  },
+  {
+    value: 'system',
+    label: 'System',
+    desc: 'Match your OS',
+    sidebar: '',
+    content: '',
+    surface: '',
+    border: '',
+    bar: '',
+    barMuted: '',
+  },
 ] as const
+
+function ThemePreview({ opt, isActive }: { opt: typeof THEME_OPTIONS[number]; isActive: boolean }) {
+  if (opt.value === 'system') {
+    // Split preview: left = midnight, right = soft light
+    return (
+      <div className={`w-full h-20 rounded-lg border overflow-hidden ${isActive ? 'border-2' : ''}`}
+           style={{ borderColor: isActive ? 'var(--text-primary)' : 'var(--border)' }}>
+        <div className="flex h-full">
+          {/* Dark half */}
+          <div className="w-1/2 flex">
+            <div className="w-1/3 h-full" style={{ background: '#080a10' }}>
+              <div className="mx-1 mt-3 h-1 rounded-full" style={{ background: '#252a37' }} />
+              <div className="mx-1 mt-1 h-1 rounded-full" style={{ background: '#252a37' }} />
+              <div className="mx-1 mt-1 h-1 rounded-full" style={{ background: '#252a37' }} />
+            </div>
+            <div className="flex-1 p-2" style={{ background: '#0b0e14' }}>
+              <div className="h-1.5 w-3/4 rounded-full mb-1.5" style={{ background: '#252a37' }} />
+              <div className="h-1 w-1/2 rounded-full" style={{ background: '#252a37' }} />
+            </div>
+          </div>
+          {/* Light half */}
+          <div className="w-1/2 flex">
+            <div className="w-1/3 h-full" style={{ background: '#f1f0ec' }}>
+              <div className="mx-1 mt-3 h-1 rounded-full" style={{ background: '#e5e2dc' }} />
+              <div className="mx-1 mt-1 h-1 rounded-full" style={{ background: '#e5e2dc' }} />
+              <div className="mx-1 mt-1 h-1 rounded-full" style={{ background: '#e5e2dc' }} />
+            </div>
+            <div className="flex-1 p-2" style={{ background: '#f8f7f4' }}>
+              <div className="h-1.5 w-3/4 rounded-full mb-1.5" style={{ background: '#e5e2dc' }} />
+              <div className="h-1 w-1/2 rounded-full" style={{ background: '#e5e2dc' }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`w-full h-20 rounded-lg border overflow-hidden ${isActive ? 'border-2' : ''}`}
+         style={{ borderColor: isActive ? 'var(--text-primary)' : 'var(--border)' }}>
+      <div className="flex h-full">
+        {/* Mini sidebar */}
+        <div className="w-1/4 h-full" style={{ background: opt.sidebar, borderRight: `1px solid ${opt.border}` }}>
+          <div className="mx-1.5 mt-3 h-1 rounded-full" style={{ background: opt.barMuted }} />
+          <div className="mx-1.5 mt-1 h-1 rounded-full" style={{ background: opt.barMuted }} />
+          <div className="mx-1.5 mt-1 h-1 rounded-full" style={{ background: opt.barMuted }} />
+          <div className="mx-1.5 mt-1 h-1 rounded-full" style={{ background: opt.barMuted }} />
+        </div>
+        {/* Mini content */}
+        <div className="flex-1 p-2.5" style={{ background: opt.content }}>
+          <div className="h-2 w-2/3 rounded-full mb-2" style={{ background: opt.bar, opacity: 0.6 }} />
+          <div className="rounded-md p-1.5" style={{ background: opt.surface, border: `1px solid ${opt.border}` }}>
+            <div className="h-1 w-full rounded-full mb-1" style={{ background: opt.barMuted }} />
+            <div className="h-1 w-3/4 rounded-full" style={{ background: opt.barMuted }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
@@ -32,7 +144,9 @@ export default function SettingsPage() {
         if (user) {
           setUser(user)
           setName(user.name ?? '')
-          if (user.theme) setTheme(user.theme)
+          // Backward compat: map legacy theme names
+          const mapped = user.theme === 'dark' ? 'midnight' : user.theme === 'light' ? 'soft-light' : user.theme
+          if (mapped) setTheme(mapped)
         }
       })
       .finally(() => setLoading(false))
@@ -113,44 +227,19 @@ export default function SettingsPage() {
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
         <h2 className="text-sm font-medium text-zinc-200 mb-1">Appearance</h2>
         <p className="text-xs text-zinc-500 mb-4">Choose how the dashboard looks to you.</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {THEME_OPTIONS.map(opt => (
             <button
               key={opt.value}
               type="button"
               onClick={() => handleThemeChange(opt.value)}
-              className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-colors ${
-                theme === opt.value
-                  ? 'border-white bg-zinc-900'
-                  : 'border-zinc-800 hover:border-zinc-600'
-              }`}
+              className="flex flex-col gap-2 text-left group"
             >
-              {/* Theme preview */}
-              <div className={`w-full h-16 rounded-md border overflow-hidden ${
-                opt.value === 'dark'
-                  ? 'bg-zinc-950 border-zinc-700'
-                  : opt.value === 'light'
-                  ? 'bg-white border-zinc-300'
-                  : 'bg-gradient-to-r from-zinc-950 to-white border-zinc-500'
-              }`}>
-                <div className="flex h-full">
-                  {/* Mini sidebar */}
-                  <div className={`w-1/4 h-full ${
-                    opt.value === 'dark' ? 'bg-black' : opt.value === 'light' ? 'bg-zinc-100' : 'bg-gradient-to-b from-black to-zinc-100'
-                  }`}>
-                    <div className={`mx-1 mt-2 h-1 rounded-full ${opt.value === 'light' ? 'bg-zinc-300' : 'bg-zinc-700'}`} />
-                    <div className={`mx-1 mt-1 h-1 rounded-full ${opt.value === 'light' ? 'bg-zinc-300' : 'bg-zinc-700'}`} />
-                    <div className={`mx-1 mt-1 h-1 rounded-full ${opt.value === 'light' ? 'bg-zinc-300' : 'bg-zinc-700'}`} />
-                  </div>
-                  {/* Mini content */}
-                  <div className="flex-1 p-1.5">
-                    <div className={`h-1.5 w-3/4 rounded-full mb-1 ${opt.value === 'light' ? 'bg-zinc-200' : 'bg-zinc-800'}`} />
-                    <div className={`h-1 w-1/2 rounded-full ${opt.value === 'light' ? 'bg-zinc-200' : 'bg-zinc-800'}`} />
-                  </div>
-                </div>
-              </div>
-              <div className="text-center">
-                <span className="text-sm font-medium text-zinc-200">{opt.label}</span>
+              <ThemePreview opt={opt} isActive={theme === opt.value} />
+              <div className="px-0.5">
+                <span className={`text-sm font-medium ${theme === opt.value ? 'text-zinc-200' : 'text-zinc-400 group-hover:text-zinc-300'} transition-colors`}>
+                  {opt.label}
+                </span>
                 <p className="text-xs text-zinc-500 mt-0.5">{opt.desc}</p>
               </div>
             </button>
