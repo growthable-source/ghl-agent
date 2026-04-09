@@ -76,7 +76,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       agentName: agent?.name || 'Agent',
       agentPersonaName: agent?.agentPersonaName || null,
       testSystemPrompt,
-      serverUrl: `${process.env.APP_URL || 'https://voxilityai.vercel.app'}/api/vapi/webhook`,
+      serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
       _debug: {
         keyPresent: !!rawKey,
         keyLength: rawKey?.length ?? 0,
