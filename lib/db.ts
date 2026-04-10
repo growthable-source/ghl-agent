@@ -2,9 +2,6 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
-// Required for Supabase SSL — their pooler uses a self-signed cert
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-
 function createPrismaClient() {
   const connectionString =
     process.env.POSTGRES_PRISMA_URL ??
