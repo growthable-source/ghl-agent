@@ -73,11 +73,15 @@ export interface ElevenLabsVoice {
 }
 
 export async function searchElevenLabsVoices(search?: string): Promise<ElevenLabsVoice[]> {
-  // ElevenLabs v1 /voices endpoint is public for premade voices (no key needed)
+  // Try ElevenLabs API with key first (full library), then public endpoint, then curated fallback
+  const elevenLabsKey = process.env.ELEVENLABS_API_KEY
   try {
     const res = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(8000),
+      headers: {
+        Accept: 'application/json',
+        ...(elevenLabsKey ? { 'xi-api-key': elevenLabsKey } : {}),
+      },
+      signal: AbortSignal.timeout(10000),
     })
     if (!res.ok) return getCuratedVoices()
 
