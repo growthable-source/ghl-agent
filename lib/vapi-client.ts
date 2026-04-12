@@ -23,10 +23,10 @@ export async function listPhoneNumbers() {
   const items = Array.isArray(data) ? data : (data as any).results || (data as any).data || []
   return (items as any[]).map((p: any) => ({
     id: p.id,
-    number: p.number || p.phoneNumber || p.e164 || '',
-    name: p.name || p.number || p.phoneNumber || p.id,
+    number: p.number || '',
+    name: p.name || p.number || p.id,
     provider: p.provider || 'unknown',
-    _raw: p, // temporary debug — remove after verifying
+    status: p.status || 'unknown',
   }))
 }
 
