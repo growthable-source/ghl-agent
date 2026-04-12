@@ -18,10 +18,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
       }),
     ])
 
-    let phoneNumbers: { id: string; number: string; name: string }[] = []
+    let phoneNumbers: { id: string; number: string; name: string; provider?: string; status?: string }[] = []
     let vapiError: string | null = null
     try {
       phoneNumbers = await listPhoneNumbers()
+      console.log('[Vapi] phoneNumbers response:', JSON.stringify(phoneNumbers))
     } catch (err: any) {
       vapiError = err.message
       console.error('[Vapi] listPhoneNumbers failed:', err.message)

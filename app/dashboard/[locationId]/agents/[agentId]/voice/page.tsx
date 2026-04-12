@@ -401,10 +401,17 @@ export default function VoicePage() {
           )}
           {phoneNumbers.length > 0 ? (
             <select value={config.phoneNumberId || ''}
-              onChange={e => setConfig(c => ({ ...c, phoneNumberId: e.target.value }))}
+              onChange={e => {
+                const phone = phoneNumbers.find(ph => ph.id === e.target.value)
+                setConfig(c => ({ ...c, phoneNumberId: e.target.value, phoneNumber: phone?.number || null }))
+              }}
               className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500">
               <option value="">Select a phone number…</option>
-              {phoneNumbers.map(p => <option key={p.id} value={p.id}>{p.name || p.number}</option>)}
+              {phoneNumbers.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.number || p.name || p.id.slice(0, 12) + '…'}
+                </option>
+              ))}
             </select>
           ) : (
             <p className="text-xs text-zinc-500">No numbers yet. Click <span className="text-blue-400">+ Get a number</span> to provision one.</p>
