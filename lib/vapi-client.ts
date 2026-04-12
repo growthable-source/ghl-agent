@@ -20,10 +20,13 @@ async function vapiRequest(path: string, options: RequestInit = {}) {
 
 export async function listPhoneNumbers() {
   const data = await vapiRequest('/phone-number')
-  return (data as any[]).map((p: any) => ({
+  const items = Array.isArray(data) ? data : (data as any).results || (data as any).data || []
+  return (items as any[]).map((p: any) => ({
     id: p.id,
-    number: p.number,
-    name: p.name || p.number,
+    number: p.number || p.phoneNumber || p.e164 || '',
+    name: p.name || p.number || p.phoneNumber || p.id,
+    provider: p.provider || 'unknown',
+    _raw: p, // temporary debug — remove after verifying
   }))
 }
 
