@@ -21,13 +21,15 @@ async function vapiRequest(path: string, options: RequestInit = {}) {
 export async function listPhoneNumbers() {
   const data = await vapiRequest('/phone-number')
   const items = Array.isArray(data) ? data : (data as any).results || (data as any).data || []
-  return (items as any[]).map((p: any) => ({
-    id: p.id,
-    number: p.number || '',
-    name: p.name || p.number || p.id,
-    provider: p.provider || 'unknown',
-    status: p.status || 'unknown',
-  }))
+  return (items as any[])
+    .filter((p: any) => p.number) // Only show numbers with an actual phone number assigned
+    .map((p: any) => ({
+      id: p.id,
+      number: p.number,
+      name: p.name || p.number,
+      provider: p.provider || 'unknown',
+      status: p.status || 'unknown',
+    }))
 }
 
 export async function purchasePhoneNumber(areaCode: string) {
