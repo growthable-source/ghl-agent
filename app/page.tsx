@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import VoxilityLogo from '@/components/VoxilityLogo'
 
 /* ─── Icons ─── */
 function PhoneIcon({ className = 'w-5 h-5' }: { className?: string }) {
@@ -101,9 +102,8 @@ export default function LandingPage() {
       {/* ═══ Sticky Nav ═══ */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(5,8,15,0.92)', borderColor: 'rgba(18,26,43,0.8)' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between px-6 h-16">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg, #fa4d2e, #fb8e6a)' }}>V</div>
-            <span className="text-[0.9375rem] font-bold tracking-tight" style={{ color: '#f8fafc' }}>Voxility AI</span>
+          <Link href="/" className="flex items-center">
+            <VoxilityLogo size={30} />
           </Link>
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>Features</a>
@@ -489,10 +489,7 @@ export default function LandingPage() {
       {/* ═══ Footer ═══ */}
       <footer className="border-t py-8 px-6" style={{ borderColor: '#121a2b' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between text-xs" style={{ color: '#475569' }}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white" style={{ background: 'linear-gradient(135deg, #fa4d2e, #fb8e6a)' }}>V</div>
-            <span>Voxility AI</span>
-          </div>
+          <VoxilityLogo size={18} />
           <div className="flex items-center gap-6">
             <a href="https://voxility.canny.io" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Feedback</a>
             <Link href="/login" className="hover:text-white transition-colors">Log in</Link>

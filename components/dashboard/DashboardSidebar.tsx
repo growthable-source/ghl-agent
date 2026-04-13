@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import VoxilityLogo from '@/components/VoxilityLogo'
 
 export default function DashboardSidebar() {
   const pathname = usePathname()
@@ -38,11 +39,8 @@ export default function DashboardSidebar() {
     <div className="w-56 shrink-0 border-r border-sidebar-border flex flex-col h-full bg-sidebar-bg">
       {/* Logo */}
       <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fa4d2e, #fb8e6a)' }}>
-            <span className="text-white text-xs font-bold">V</span>
-          </div>
-          <span className="font-semibold text-sm text-white">Voxility</span>
+        <Link href="/dashboard" className="flex items-center">
+          <VoxilityLogo size={24} />
         </Link>
       </div>
 
