@@ -1,42 +1,60 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Theme Definitions
+   Voxility Brand — Precision Dark Theme System
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* ─── Midnight (default) — deep blue-gray ───────────────────────────── */
+/* ─── Default (Voxility) — deep navy-black with orange accent ─────── */
 :root,
 [data-theme="midnight"] {
-  --background:          #0b0e14;
-  --foreground:          #e1e4ea;
-  --surface:             #11151e;
-  --surface-secondary:   #1a1f2b;
-  --surface-tertiary:    #252a37;
-  --border:              #252a37;
-  --border-secondary:    #353b4a;
-  --text-primary:        #f0f2f5;
-  --text-secondary:      #9ba2b2;
-  --text-tertiary:       #6b7280;
-  --text-muted:          #4b5263;
-  --accent-emerald:      #34d399;
-  --accent-emerald-bg:   rgba(6, 78, 59, 0.3);
+  --background:          #05080f;
+  --foreground:          #f8fafc;
+  --surface:             #090d15;
+  --surface-secondary:   #0f1524;
+  --surface-tertiary:    #1a2540;
+  --border:              #121a2b;
+  --border-secondary:    #1f2b47;
+  --text-primary:        #f8fafc;
+  --text-secondary:      #94a3b8;
+  --text-tertiary:       #64748b;
+  --text-muted:          #475569;
+  --accent-primary:      #fa4d2e;
+  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
+  --accent-emerald:      #16a249;
+  --accent-emerald-bg:   rgba(22, 162, 73, 0.15);
   --accent-amber:        #fbbf24;
   --accent-amber-bg:     rgba(120, 53, 15, 0.3);
   --accent-blue:         #60a5fa;
   --accent-blue-bg:      rgba(30, 58, 138, 0.3);
-  --accent-red:          #f87171;
-  --accent-red-bg:       rgba(127, 29, 29, 0.3);
-  --btn-primary-bg:      #e8eaed;
-  --btn-primary-text:    #0b0e14;
-  --btn-primary-hover:   #cdd0d6;
-  --input-bg:            #1a1f2b;
-  --input-border:        #353b4a;
-  --input-text:          #f0f2f5;
-  --input-placeholder:   #4b5263;
-  --logo-bg:             #e8eaed;
-  --logo-text:           #0b0e14;
-  --sidebar-bg:          #080a10;
-  --sidebar-border:      #1a1f2b;
+  --accent-red:          #ef4343;
+  --accent-red-bg:       rgba(239, 67, 67, 0.15);
+  --btn-primary-bg:      #fa4d2e;
+  --btn-primary-text:    #f8fafc;
+  --btn-primary-hover:   #fb8e6a;
+  --input-bg:            #0f1524;
+  --input-border:        #1a2540;
+  --input-text:          #f8fafc;
+  --input-placeholder:   #94a3b8;
+  --logo-bg:             #fa4d2e;
+  --logo-text:           #f8fafc;
+  --sidebar-bg:          #05080f;
+  --sidebar-border:      #121a2b;
+
+  /* Gradients */
+  --gradient-primary:    linear-gradient(135deg, #fa4d2e, #fb8e6a);
+  --gradient-hero:       linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%);
+  --gradient-card:       linear-gradient(135deg, #090d15 0%, #0c111d 100%);
+
+  /* Shadows */
+  --shadow-primary:      0 10px 40px -10px rgba(250, 77, 46, 0.3);
+  --shadow-primary-hover: 0 14px 50px -10px rgba(250, 77, 46, 0.45);
+  --shadow-card:         0 4px 20px -4px rgba(5, 8, 15, 0.1);
+  --shadow-card-hover:   0 8px 30px rgba(250, 77, 46, 0.08);
+
+  /* Radius */
+  --radius:              0.75rem;
+  --radius-sm:           0.5rem;
+  --radius-lg:           1rem;
 }
 
 /* ─── Sunset — warm dark with amber undertones ──────────────────────── */
@@ -52,6 +70,8 @@
   --text-secondary:      #b5a89d;
   --text-tertiary:       #887b70;
   --text-muted:          #5e544b;
+  --accent-primary:      #fa4d2e;
+  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
   --accent-emerald:      #4ade80;
   --accent-emerald-bg:   rgba(22, 78, 42, 0.3);
   --accent-amber:        #fbbf24;
@@ -60,15 +80,15 @@
   --accent-blue-bg:      rgba(30, 58, 110, 0.3);
   --accent-red:          #fb7185;
   --accent-red-bg:       rgba(127, 29, 45, 0.3);
-  --btn-primary-bg:      #f2e8e0;
-  --btn-primary-text:    #1a1412;
-  --btn-primary-hover:   #ddd0c5;
+  --btn-primary-bg:      #fa4d2e;
+  --btn-primary-text:    #f8fafc;
+  --btn-primary-hover:   #fb8e6a;
   --input-bg:            #2c2420;
   --input-border:        #4a3e36;
   --input-text:          #f2e8e0;
   --input-placeholder:   #5e544b;
-  --logo-bg:             #f2e8e0;
-  --logo-text:           #1a1412;
+  --logo-bg:             #fa4d2e;
+  --logo-text:           #f8fafc;
   --sidebar-bg:          #14100e;
   --sidebar-border:      #2c2420;
 }
@@ -86,6 +106,8 @@
   --text-secondary:      #9aabb8;
   --text-tertiary:       #768390;
   --text-muted:          #545d68;
+  --accent-primary:      #fa4d2e;
+  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
   --accent-emerald:      #3fb950;
   --accent-emerald-bg:   rgba(16, 69, 31, 0.35);
   --accent-amber:        #d29922;
@@ -94,15 +116,15 @@
   --accent-blue-bg:      rgba(31, 60, 115, 0.35);
   --accent-red:          #f85149;
   --accent-red-bg:       rgba(120, 25, 22, 0.35);
-  --btn-primary-bg:      #e6edf3;
-  --btn-primary-text:    #22272e;
-  --btn-primary-hover:   #cdd9e5;
+  --btn-primary-bg:      #fa4d2e;
+  --btn-primary-text:    #f8fafc;
+  --btn-primary-hover:   #fb8e6a;
   --input-bg:            #2d333b;
   --input-border:        #4d5566;
   --input-text:          #e6edf3;
   --input-placeholder:   #545d68;
-  --logo-bg:             #e6edf3;
-  --logo-text:           #22272e;
+  --logo-bg:             #fa4d2e;
+  --logo-text:           #f8fafc;
   --sidebar-bg:          #1c2128;
   --sidebar-border:      #2d333b;
 }
@@ -120,6 +142,8 @@
   --text-secondary:      #57534e;
   --text-tertiary:       #78716c;
   --text-muted:          #a8a29e;
+  --accent-primary:      #e84425;
+  --accent-primary-bg:   rgba(232, 68, 37, 0.12);
   --accent-emerald:      #059669;
   --accent-emerald-bg:   rgba(209, 250, 229, 0.6);
   --accent-amber:        #d97706;
@@ -128,14 +152,14 @@
   --accent-blue-bg:      rgba(219, 234, 254, 0.6);
   --accent-red:          #dc2626;
   --accent-red-bg:       rgba(254, 226, 226, 0.6);
-  --btn-primary-bg:      #1c1917;
+  --btn-primary-bg:      #e84425;
   --btn-primary-text:    #faf9f7;
-  --btn-primary-hover:   #33302b;
+  --btn-primary-hover:   #c73a1f;
   --input-bg:            #faf9f7;
   --input-border:        #cdc9c0;
   --input-text:          #1c1917;
   --input-placeholder:   #a8a29e;
-  --logo-bg:             #1c1917;
+  --logo-bg:             #e84425;
   --logo-text:           #faf9f7;
   --sidebar-bg:          #f1f0ec;
   --sidebar-border:      #e0ddd6;
@@ -157,6 +181,8 @@
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
   --color-text-muted: var(--text-muted);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-primary-bg: var(--accent-primary-bg);
   --color-accent-emerald: var(--accent-emerald);
   --color-accent-emerald-bg: var(--accent-emerald-bg);
   --color-accent-amber: var(--accent-amber);
@@ -176,22 +202,179 @@
   --color-logo-text: var(--logo-text);
   --color-sidebar-bg: var(--sidebar-bg);
   --color-sidebar-border: var(--sidebar-border);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-dm-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Voxility Brand Component Classes
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Primary button — orange gradient */
+.btn-primary {
+  background: var(--gradient-primary, linear-gradient(135deg, #fa4d2e, #fb8e6a));
+  color: #f8fafc;
+  cursor: pointer;
+  box-shadow: var(--shadow-primary, 0 10px 40px -10px rgba(250,77,46,0.3));
+  border: none;
+  border-radius: var(--radius, 0.75rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-primary-hover, 0 14px 50px -10px rgba(250,77,46,0.45));
+}
+
+/* Secondary / ghost button */
+.btn-secondary {
+  color: #f8fafc;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-secondary, #1f2b47);
+  border-radius: var(--radius, 0.75rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.btn-secondary:hover {
+  background: rgba(250,77,46,0.05);
+  border-color: rgba(250,77,46,0.5);
+  transform: translateY(-1px);
+}
+
+/* Card */
+.vox-card {
+  background: var(--gradient-card, linear-gradient(135deg, #090d15 0%, #0c111d 100%));
+  border: 1px solid var(--border, #121a2b);
+  border-radius: var(--radius, 0.75rem);
+  transition: all 0.2s;
+}
+.vox-card:hover {
+  border-color: rgba(250,77,46,0.3);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover, 0 8px 30px rgba(250,77,46,0.08));
+}
+
+/* Icon box — orange */
+.icon-box {
+  color: var(--accent-primary, #fa4d2e);
+  background: var(--accent-primary-bg, rgba(250,77,46,0.15));
+  border-radius: var(--radius-sm, 0.5rem);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+/* Icon box — green */
+.icon-box-green {
+  color: var(--accent-emerald, #16a249);
+  background: var(--accent-emerald-bg, rgba(22,162,73,0.15));
+  border-radius: var(--radius-sm, 0.5rem);
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+/* Section label / eyebrow */
+.section-label {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-primary, #fa4d2e);
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Stat value */
+.stat-value {
+  background: linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Orange horizontal rule */
+.orange-rule {
+  background: linear-gradient(90deg, rgba(250,77,46,0.6), transparent);
+  border: none;
+  height: 1px;
+  margin: 0;
+}
+
+/* Hero glow */
+.hero-glow {
+  pointer-events: none;
+  background: radial-gradient(at 50% 0%, rgba(250,77,46,0.12), transparent 70%);
+  width: 80%;
+  height: 400px;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%);
+}
+
+/* Entrance animation */
+@keyframes fadeUp {
+  0%   { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards fadeUp;
+}
+.delay-100 { opacity: 0; animation-delay: 0.1s; }
+.delay-200 { opacity: 0; animation-delay: 0.2s; }
+.delay-300 { opacity: 0; animation-delay: 0.3s; }
+.delay-400 { opacity: 0; animation-delay: 0.4s; }
+
+/* Ambient glow pulse */
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.15; }
+  50%       { opacity: 0.25; }
+}
+.glow-pulse {
+  animation: 4s ease-in-out infinite glowPulse;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
    Hardcoded Tailwind class overrides for Soft Light theme
-
-   Dark themes (Midnight, Dim, Sunset) share the same light-on-dark
-   direction as the hardcoded classes, so CSS vars handle them.
-   Soft Light inverts direction — needs explicit class remapping.
    ═══════════════════════════════════════════════════════════════════════ */
 
 [data-theme="soft-light"] .bg-black { background-color: var(--background) !important; }

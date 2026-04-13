@@ -5,11 +5,11 @@ import Link from 'next/link'
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#05080f', color: '#f8fafc' }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-sm font-bold">V</div>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg, #fa4d2e, #fb8e6a)' }}>V</div>
             <span className="text-lg font-semibold">Voxility AI</span>
           </Link>
           <h1 className="text-2xl font-semibold mb-1">Welcome back</h1>

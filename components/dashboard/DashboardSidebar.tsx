@@ -24,9 +24,10 @@ export default function DashboardSidebar() {
         href={href}
         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
           active
-            ? 'bg-zinc-800 text-white'
+            ? 'text-white'
             : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
         }`}
+        style={active ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
       >
         {label}
       </Link>
@@ -36,10 +37,10 @@ export default function DashboardSidebar() {
   return (
     <div className="w-56 shrink-0 border-r border-sidebar-border flex flex-col h-full bg-sidebar-bg">
       {/* Logo */}
-      <div className="px-4 py-5 border-b border-zinc-800">
+      <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
-            <span className="text-black text-xs font-bold">V</span>
+          <div className="w-6 h-6 rounded flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fa4d2e, #fb8e6a)' }}>
+            <span className="text-white text-xs font-bold">V</span>
           </div>
           <span className="font-semibold text-sm text-white">Voxility</span>
         </Link>
@@ -88,9 +89,10 @@ export default function DashboardSidebar() {
           href="/dashboard/settings"
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
             pathname === '/dashboard/settings'
-              ? 'bg-zinc-800 text-white'
+              ? ''
               : 'text-zinc-500 hover:text-white hover:bg-zinc-900'
           }`}
+          style={pathname === '/dashboard/settings' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
         >
           Settings
         </Link>
