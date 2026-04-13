@@ -10,7 +10,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex mb-6">
-            <VoxilityLogo size={36} />
+            <VoxilityLogo height={36} />
           </Link>
           <h1 className="text-2xl font-semibold mb-1">Welcome back</h1>
           <p className="text-sm text-zinc-500">Sign in to manage your AI agents</p>

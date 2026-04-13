@@ -1,88 +1,57 @@
 'use client'
 
+import Image from 'next/image'
+
 /**
- * Voxility brand logo — waveform circle mark + wordmark.
+ * Voxility brand logo — uses the actual corporate identity SVGs.
  *
  * Variants:
- *   mark   – circle icon only
- *   full   – icon + "VOXILITY" wordmark
- *   text   – "Voxility" in DM Sans (no icon)
+ *   mark   – waveform circle icon only (/logo-mark.svg)
+ *   full   – full wordmark logo (/logo-color.svg or /logo-black.svg)
  *
- * Themes:
- *   dark   – for dark backgrounds (default)
- *   light  – for light backgrounds
+ * Theme:
+ *   dark   – color gradient on dark background (default)
+ *   light  – black version for light backgrounds
  */
 
 interface VoxilityLogoProps {
-  variant?: 'mark' | 'full' | 'text'
-  size?: number           // height in px for the mark; font scales proportionally
+  variant?: 'mark' | 'full'
+  height?: number
   className?: string
   theme?: 'dark' | 'light'
 }
 
 export default function VoxilityLogo({
   variant = 'full',
-  size = 32,
+  height = 32,
   className = '',
   theme = 'dark',
 }: VoxilityLogoProps) {
-  const gradientId = `vox-grad-${size}`
-  const textColor = theme === 'dark' ? '#f8fafc' : '#1c1917'
-
-  const mark = (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="shrink-0"
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="15" y1="0" x2="85" y2="100" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#fa4d2e" />
-          <stop offset="50%" stopColor="#fb8951" />
-          <stop offset="100%" stopColor="#fbb040" />
-        </linearGradient>
-      </defs>
-
-      {/* Outer circle */}
-      <circle cx="50" cy="50" r="44" stroke={`url(#${gradientId})`} strokeWidth="5" fill="none" />
-
-      {/* Waveform bars — 5 vertical rounded bars, varying heights */}
-      <rect x="27" y="37" width="6" height="26" rx="3" fill={`url(#${gradientId})`} />
-      <rect x="37" y="28" width="6" height="44" rx="3" fill={`url(#${gradientId})`} />
-      <rect x="47" y="22" width="6" height="56" rx="3" fill={`url(#${gradientId})`} />
-      <rect x="57" y="28" width="6" height="44" rx="3" fill={`url(#${gradientId})`} />
-      <rect x="67" y="37" width="6" height="26" rx="3" fill={`url(#${gradientId})`} />
-    </svg>
-  )
-
   if (variant === 'mark') {
-    return <span className={`inline-flex items-center ${className}`}>{mark}</span>
-  }
-
-  if (variant === 'text') {
     return (
-      <span
-        className={`inline-flex items-center font-bold tracking-tight ${className}`}
-        style={{ color: textColor, fontSize: size * 0.55 }}
-      >
-        Voxility
-      </span>
+      <Image
+        src="/logo-mark.svg"
+        alt="Voxility"
+        width={height}
+        height={height}
+        className={`shrink-0 ${className}`}
+        priority
+      />
     )
   }
 
-  // full — mark + wordmark
+  // Full wordmark — aspect ratio is ~3.32:1 (3177 x 957)
+  const width = Math.round(height * 3.32)
+  const src = theme === 'light' ? '/logo-black.svg' : '/logo-color.svg'
+
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
-      {mark}
-      <span
-        className="font-bold tracking-tight"
-        style={{ color: textColor, fontSize: size * 0.55 }}
-      >
-        Voxility
-      </span>
-    </span>
+    <Image
+      src={src}
+      alt="Voxility"
+      width={width}
+      height={height}
+      className={`shrink-0 ${className}`}
+      priority
+    />
   )
 }

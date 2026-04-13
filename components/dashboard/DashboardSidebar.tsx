@@ -39,8 +39,9 @@ export default function DashboardSidebar() {
     <div className="w-56 shrink-0 border-r border-sidebar-border flex flex-col h-full bg-sidebar-bg">
       {/* Logo */}
       <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
-        <Link href="/dashboard" className="flex items-center">
-          <VoxilityLogo size={24} />
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <VoxilityLogo variant="mark" height={26} />
+          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Voxility</span>
         </Link>
       </div>
 

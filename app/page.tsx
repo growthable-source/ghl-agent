@@ -103,7 +103,7 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(5,8,15,0.92)', borderColor: 'rgba(18,26,43,0.8)' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between px-6 h-16">
           <Link href="/" className="flex items-center">
-            <VoxilityLogo size={30} />
+            <VoxilityLogo height={28} />
           </Link>
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>Features</a>
@@ -489,7 +489,7 @@ export default function LandingPage() {
       {/* ═══ Footer ═══ */}
       <footer className="border-t py-8 px-6" style={{ borderColor: '#121a2b' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between text-xs" style={{ color: '#475569' }}>
-          <VoxilityLogo size={18} />
+          <VoxilityLogo height={16} />
           <div className="flex items-center gap-6">
             <a href="https://voxility.canny.io" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Feedback</a>
             <Link href="/login" className="hover:text-white transition-colors">Log in</Link>
