@@ -37,7 +37,28 @@ export default async function WorkspaceLayout({
       select: { id: true },
     })
 
-    if (!exists) notFound()
+    if (!exists) {
+      // Maybe this is a legacy Location ID — check if there's a Location with this ID
+      // and redirect to its parent workspace
+      const location = await db.location.findUnique({
+        where: { id: workspaceId },
+        select: { workspaceId: true },
+      })
+      if (location?.workspaceId) {
+        redirect(`/dashboard/${location.workspaceId}`)
+      }
+
+      // Also check if user has any workspace at all — redirect there
+      const membership = await db.workspaceMember.findFirst({
+        where: { userId: session.user.id },
+        select: { workspaceId: true },
+      })
+      if (membership) {
+        redirect(`/dashboard/${membership.workspaceId}`)
+      }
+
+      notFound()
+    }
 
     // Workspace exists but user doesn't have access — send them to dashboard
     redirect('/dashboard')
