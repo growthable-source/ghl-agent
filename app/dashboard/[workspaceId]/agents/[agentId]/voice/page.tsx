@@ -409,7 +409,7 @@ export default function VoicePage() {
               <option value="">Select a phone number…</option>
               {phoneNumbers.map(p => (
                 <option key={p.id} value={p.id}>
-                  {p.number || p.name || p.id.slice(0, 12) + '…'}
+                  {p.number ?? p.name}
                 </option>
               ))}
             </select>

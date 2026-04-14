@@ -21,15 +21,29 @@ async function vapiRequest(path: string, options: RequestInit = {}) {
 export async function listPhoneNumbers() {
   const data = await vapiRequest('/phone-number')
   const items = Array.isArray(data) ? data : (data as any).results || (data as any).data || []
+  if (items.length > 0) {
+    console.log('[Vapi] Raw phone number object keys:', Object.keys(items[0]))
+    console.log('[Vapi] Raw phone number sample:', JSON.stringify(items[0]).slice(0, 500))
+  }
   return (items as any[])
-    .filter((p: any) => p.number) // Only show numbers with an actual phone number assigned
-    .map((p: any) => ({
-      id: p.id,
-      number: p.number,
-      name: p.name || p.number,
-      provider: p.provider || 'unknown',
-      status: p.status || 'unknown',
-    }))
+    .map((p: any) => {
+      // Vapi returns phone number in various fields depending on provider/version
+      const number = p.number
+        || p.phoneNumber
+        || p.twilioPhoneNumber
+        || p.vonagePhoneNumber
+        || p.vapiPhoneNumber
+        || (p.sipUri ? `SIP: ${p.sipUri}` : null)
+        || null
+      return {
+        id: p.id,
+        number,
+        name: p.name || number || `Phone ${p.id.slice(0, 8)}`,
+        provider: p.provider || 'unknown',
+        status: p.status || 'unknown',
+      }
+    })
+    .filter((p) => p.number) // Only show numbers with an actual phone number assigned
 }
 
 export async function purchasePhoneNumber(areaCode: string) {
