@@ -29,14 +29,22 @@ export default async function CallsPage({
   const limit = 25
   const skip = (page - 1) * limit
 
+  // Get all location IDs for this workspace
+  const locations = await db.location.findMany({
+    where: { workspaceId },
+    select: { id: true },
+  })
+  const locationIds = locations.map(l => l.id)
+  const locationFilter = locationIds.length > 0 ? { locationId: { in: locationIds } } : { locationId: '__none__' }
+
   const [calls, total] = await Promise.all([
     db.callLog.findMany({
-      where: { locationId: workspaceId },
+      where: locationFilter,
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
     }),
-    db.callLog.count({ where: { locationId: workspaceId } }),
+    db.callLog.count({ where: locationFilter }),
   ])
 
   const pages = Math.ceil(total / limit)

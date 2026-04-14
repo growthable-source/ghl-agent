@@ -14,11 +14,11 @@ export default async function PlaygroundPage({
   const { workspaceId } = await params
   const { agentId: defaultAgentId } = await searchParams
 
-  const location = await db.location.findUnique({ where: { id: workspaceId } })
-  if (!location) notFound()
+  const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { id: true } })
+  if (!workspace) notFound()
 
   const agents = await db.agent.findMany({
-    where: { locationId: workspaceId, isActive: true },
+    where: { workspaceId, isActive: true },
     select: { id: true, name: true },
     orderBy: { createdAt: 'asc' },
   })

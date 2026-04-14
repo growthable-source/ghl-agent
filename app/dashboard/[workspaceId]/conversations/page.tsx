@@ -30,15 +30,23 @@ export default async function ConversationsPage({ params, searchParams }: PagePr
   const { workspaceId } = await params
   const { state: stateFilter } = await searchParams
 
+  // Get all location IDs for this workspace
+  const locations = await db.location.findMany({
+    where: { workspaceId },
+    select: { id: true },
+  })
+  const locationIds = locations.map(l => l.id)
+  const locationFilter = locationIds.length > 0 ? { locationId: { in: locationIds } } : { locationId: '__none__' }
+
   // Fetch all conversations (unfiltered) for tab counts, and the filtered set for display
   const [allConversations, conversations] = await Promise.all([
     db.conversationStateRecord.findMany({
-      where: { locationId: workspaceId },
+      where: locationFilter,
       select: { state: true },
     }),
     db.conversationStateRecord.findMany({
       where: {
-        locationId: workspaceId,
+        ...locationFilter,
         ...(stateFilter && stateFilter !== 'ALL' ? { state: stateFilter as 'ACTIVE' | 'PAUSED' | 'COMPLETED' } : {}),
       },
       orderBy: { updatedAt: 'desc' },

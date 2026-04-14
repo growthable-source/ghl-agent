@@ -70,11 +70,19 @@ export default async function LogsPage({
       ? (statusParam!.toUpperCase() as StatusFilter)
       : 'ALL'
 
-  const location = await db.location.findUnique({ where: { id: workspaceId } })
-  if (!location) notFound()
+  const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { id: true } })
+  if (!workspace) notFound()
+
+  // Get all location IDs for this workspace
+  const locations = await db.location.findMany({
+    where: { workspaceId },
+    select: { id: true },
+  })
+  const locationIds = locations.map(l => l.id)
+  const locationFilter = locationIds.length > 0 ? { locationId: { in: locationIds } } : { locationId: '__none__' }
 
   const whereClause = {
-    locationId: workspaceId,
+    ...locationFilter,
     ...(activeStatus !== 'ALL' ? { status: activeStatus } : {}),
   }
 
@@ -87,7 +95,7 @@ export default async function LogsPage({
       take: limit,
     }),
     db.messageLog.count({ where: whereClause }),
-    db.messageLog.count({ where: { locationId: workspaceId } }),
+    db.messageLog.count({ where: locationFilter }),
   ])
 
   const pages = Math.ceil(total / limit)

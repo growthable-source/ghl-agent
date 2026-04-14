@@ -8,8 +8,16 @@ export default async function OnboardingPage({
   params: Promise<{ workspaceId: string }>
 }) {
   const { workspaceId } = await params
-  const location = await db.location.findUnique({ where: { id: workspaceId } })
-  if (!location) redirect('/dashboard')
-  if (location.onboardingCompletedAt) redirect(`/dashboard/${workspaceId}`)
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { id: true },
+  })
+  if (!workspace) redirect('/dashboard')
+  // Check if any location under this workspace has completed onboarding
+  const completedLocation = await db.location.findFirst({
+    where: { workspaceId, onboardingCompletedAt: { not: null } },
+    select: { id: true },
+  })
+  if (completedLocation) redirect(`/dashboard/${workspaceId}`)
   return <OnboardingWizard workspaceId={workspaceId} />
 }

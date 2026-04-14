@@ -37,7 +37,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   }, [workspaceId, agentId])
 
   useEffect(() => {
-    fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/deploy`)
+    fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`)
       .then(r => r.json())
       .then(({ deployments }) => {
         if (Array.isArray(deployments)) {
@@ -81,7 +81,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
       <div className="flex items-center justify-between px-8 pt-6 pb-0 shrink-0">
         <div className="flex items-center gap-3">
           <Link
-            href={`/dashboard/${workspaceId}/agents`}
+            href={`/dashboard/${workspaceId}`}
             className="text-zinc-600 hover:text-zinc-400 transition-colors text-sm"
           >
             ← Agents
