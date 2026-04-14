@@ -16,7 +16,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {children}
         </div>
       </main>
-      {needsOnboarding && <UserOnboardingModal />}
+      {needsOnboarding && (
+        <UserOnboardingModal
+          userEmail={session.user.email ?? undefined}
+          userName={session.user.name ?? undefined}
+        />
+      )}
     </div>
   )
 }

@@ -2,16 +2,29 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import VoxilityLogo from '@/components/VoxilityLogo'
 
 export default function DashboardSidebar() {
   const pathname = usePathname()
+  const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string } | null>(null)
 
   // Extract workspaceId from path — exclude known static routes
   const STATIC_ROUTES = ['settings', 'new', 'feedback']
   const match = pathname.match(/\/dashboard\/([^\/]+)/)
   const rawSegment = match ? match[1] : null
   const workspaceId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
+
+  useEffect(() => {
+    if (!workspaceId) { setWorkspaceInfo(null); return }
+    fetch('/api/workspaces')
+      .then(r => r.json())
+      .then(data => {
+        const ws = data.workspaces?.find((w: any) => w.id === workspaceId)
+        if (ws) setWorkspaceInfo({ name: ws.name, icon: ws.icon || '🚀' })
+      })
+      .catch(() => {})
+  }, [workspaceId])
 
   // Don't show location nav for these sub-pages
   const isOnboarding = pathname.includes('/onboarding')
@@ -54,9 +67,10 @@ export default function DashboardSidebar() {
         ) : (
           // Workspace-level nav
           <>
-            <div className="px-3 py-1.5 mb-1">
-              <p className="text-xs text-zinc-600 font-medium truncate" title={workspaceId}>
-                {workspaceId.slice(0, 20)}{workspaceId.length > 20 ? '…' : ''}
+            <div className="px-3 py-1.5 mb-1 flex items-center gap-2">
+              <span className="text-base">{workspaceInfo?.icon || '🚀'}</span>
+              <p className="text-xs text-zinc-400 font-medium truncate" title={workspaceInfo?.name || workspaceId}>
+                {workspaceInfo?.name || 'Workspace'}
               </p>
             </div>
             {!isOnboarding && (

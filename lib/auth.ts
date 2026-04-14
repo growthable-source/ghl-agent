@@ -21,6 +21,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     signIn: '/login',
     error: '/login',
   },
+  events: {
+    // When a user signs in, auto-accept any pending workspace invites
+    async signIn({ user }) {
+      if (!user?.email) return
+      try {
+        const pendingInvites = await db.workspaceInvite.findMany({
+          where: { email: user.email, acceptedAt: null, expiresAt: { gt: new Date() } },
+        })
+        for (const invite of pendingInvites) {
+          await db.workspaceMember.upsert({
+            where: { userId_workspaceId: { userId: user.id!, workspaceId: invite.workspaceId } },
+            create: { userId: user.id!, workspaceId: invite.workspaceId, role: invite.role },
+            update: {},
+          })
+          await db.workspaceInvite.update({
+            where: { id: invite.id },
+            data: { acceptedAt: new Date() },
+          })
+        }
+      } catch (err) {
+        console.error('[Auth] Error auto-accepting invites:', err)
+      }
+    },
+  },
   callbacks: {
     session({ session, user }) {
       if (session.user) {

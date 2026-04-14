@@ -82,11 +82,14 @@ export default async function DashboardPage() {
               href={`/dashboard/${ws.id}`}
               className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-5 py-4 hover:border-zinc-600 transition-colors"
             >
-              <div>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{ws.icon || '🚀'}</span>
+                <div>
                 <p className="font-medium text-sm">{ws.name}</p>
                 <p className="text-zinc-500 text-xs mt-0.5">
                   {role} &middot; Created {new Date(ws.createdAt).toLocaleDateString()}
                 </p>
+                </div>
               </div>
               <div className="flex items-center gap-6 text-right">
                 <div>

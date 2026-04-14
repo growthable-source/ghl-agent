@@ -41,14 +41,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { name } = await req.json()
-  if (!name?.trim()) {
+  const body = await req.json()
+  const name = (body.name || '').trim()
+  const icon = (body.icon || '🚀').trim()
+  const domain = (body.domain || '').trim() || null
+
+  if (!name) {
     return NextResponse.json({ error: 'Name is required' }, { status: 400 })
   }
 
   // Generate a URL-safe slug
   const baseSlug = name
-    .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
@@ -58,8 +61,10 @@ export async function POST(req: NextRequest) {
 
   const workspace = await db.workspace.create({
     data: {
-      name: name.trim(),
+      name,
       slug,
+      icon,
+      domain,
       members: {
         create: {
           userId: session.user.id,

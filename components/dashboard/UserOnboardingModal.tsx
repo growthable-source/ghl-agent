@@ -1,8 +1,36 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import VoxilityLogo from '@/components/VoxilityLogo'
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const PERSONAL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'outlook.com',
+  'hotmail.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+  'mac.com', 'protonmail.com', 'proton.me', 'zoho.com', 'mail.com',
+  'yandex.com', 'fastmail.com', 'tutanota.com',
+])
+
+const ADJECTIVES = [
+  'Swift', 'Bright', 'Silent', 'Bold', 'Calm', 'Clever', 'Cosmic',
+  'Crystal', 'Golden', 'Lunar', 'Neon', 'Noble', 'Rapid', 'Stellar',
+  'Vivid', 'Arctic', 'Ember', 'Iron', 'Jade', 'Marble', 'Onyx',
+  'Pearl', 'Quantum', 'Velvet', 'Coral', 'Dusk', 'Echo', 'Frost',
+]
+const NOUNS = [
+  'Owl', 'Fox', 'Hawk', 'Wolf', 'Bear', 'Lynx', 'Crane', 'Eagle',
+  'Falcon', 'Heron', 'Jaguar', 'Panther', 'Raven', 'Sparrow', 'Tiger',
+  'Badger', 'Cobra', 'Dolphin', 'Elk', 'Gecko', 'Ibis', 'Koala',
+  'Mantis', 'Orca', 'Puma', 'Quail', 'Stag', 'Viper',
+]
+
+const WORKSPACE_ICONS = [
+  '🚀', '⚡', '🎯', '💎', '🔥', '🌊', '🏔️', '🌿',
+  '🦊', '🦅', '🐺', '🦁', '🐻', '🦉', '🐬', '🦈',
+  '🏢', '🏗️', '🎨', '🔬', '💡', '🛡️', '⭐', '🌙',
+]
 
 const SIZES = [
   { value: '1', label: 'Solo' },
@@ -23,26 +51,90 @@ const ROLES = [
   { value: 'other', label: 'Other' },
 ]
 
-const STEP_LABELS = ['Workspace', 'Profile', 'CRM', 'Get Started']
+const STEP_LABELS = ['Workspace', 'Profile', 'Team', 'Get Started']
 
 type CrmChoice = 'ghl' | 'none' | 'other' | null
 
-export default function UserOnboardingModal() {
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function generateRandomName() {
+  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
+  return `${adj} ${noun}`
+}
+
+function domainToName(domain: string): string {
+  // "acme-corp.com.au" → "Acme Corp"
+  const base = domain.split('.')[0]
+  return base
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function extractDomain(email: string): string | null {
+  const domain = email.split('@')[1]?.toLowerCase()
+  if (!domain || PERSONAL_DOMAINS.has(domain)) return null
+  return domain
+}
+
+function randomIcon() {
+  return WORKSPACE_ICONS[Math.floor(Math.random() * WORKSPACE_ICONS.length)]
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+interface Props {
+  userEmail?: string
+  userName?: string
+}
+
+export default function UserOnboardingModal({ userEmail, userName }: Props) {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [showBooking, setShowBooking] = useState(false)
 
+  // Derive smart defaults from email
+  const emailDomain = useMemo(() => userEmail ? extractDomain(userEmail) : null, [userEmail])
+
+  const defaultName = useMemo(() => {
+    if (emailDomain) return domainToName(emailDomain)
+    return generateRandomName()
+  }, [emailDomain])
+
   // Step 0 — Workspace
-  const [workspaceName, setWorkspaceName] = useState('')
+  const [workspaceName, setWorkspaceName] = useState(defaultName)
+  const [workspaceIcon, setWorkspaceIcon] = useState(randomIcon)
+  const [showIconPicker, setShowIconPicker] = useState(false)
 
   // Step 1 — Profile
   const [companyName, setCompanyName] = useState('')
   const [companySize, setCompanySize] = useState('')
   const [role, setRole] = useState('')
 
-  // Step 2 — CRM
-  const [crmChoice, setCrmChoice] = useState<CrmChoice>(null)
+  // Step 2 — Invite
+  const [inviteInput, setInviteInput] = useState('')
+  const [inviteEmails, setInviteEmails] = useState<string[]>([])
+  const [inviting, setInviting] = useState(false)
+  const [inviteResults, setInviteResults] = useState<{ email: string; status: string; crossDomain: boolean }[]>([])
+
+  function addInviteEmail() {
+    const email = inviteInput.trim().toLowerCase()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return
+    if (inviteEmails.includes(email)) return
+    if (email === userEmail?.toLowerCase()) return
+    setInviteEmails(prev => [...prev, email])
+    setInviteInput('')
+  }
+
+  function removeInviteEmail(email: string) {
+    setInviteEmails(prev => prev.filter(e => e !== email))
+  }
+
+  function isEmailCrossDomain(email: string): boolean {
+    if (!emailDomain) return false
+    return email.split('@')[1] !== emailDomain
+  }
 
   async function completeOnboarding() {
     if (!workspaceName.trim()) return
@@ -52,19 +144,32 @@ export default function UserOnboardingModal() {
       const wsRes = await fetch('/api/workspaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: workspaceName.trim() }),
+        body: JSON.stringify({
+          name: workspaceName.trim(),
+          icon: workspaceIcon,
+          domain: emailDomain,
+        }),
       })
       const wsData = await wsRes.json()
       if (!wsRes.ok) throw new Error(wsData.error || 'Failed to create workspace')
 
-      // 2. Save user profile + mark onboarding complete
+      // 2. Send invites if any
+      if (inviteEmails.length > 0) {
+        await fetch(`/api/workspaces/${wsData.workspaceId}/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emails: inviteEmails }),
+        })
+      }
+
+      // 3. Save user profile + mark onboarding complete
       await fetch('/api/user/onboarding', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyName, companySize, role }),
       })
 
-      // 3. Navigate to the new workspace
+      // 4. Navigate to the new workspace
       router.push(`/dashboard/${wsData.workspaceId}`)
       router.refresh()
     } catch (err) {
@@ -125,30 +230,81 @@ export default function UserOnboardingModal() {
                 Welcome to <span className="text-gradient">Voxility</span>
               </h2>
               <p className="text-sm" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
-                Let&apos;s create your first workspace.
+                {userName ? `Hey ${userName.split(' ')[0]}! ` : ''}Let&apos;s set up your workspace.
               </p>
             </div>
 
+            {/* Icon + Name row */}
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
-                Workspace name
+                Workspace
               </label>
-              <input
-                type="text"
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-                placeholder="e.g. Acme Corp, My Clinic, Ryan's Agency"
-                autoFocus
-                className="w-full h-10 px-3 rounded-lg text-sm outline-none transition-colors"
-                style={{
-                  background: 'var(--input-bg, #0f1524)',
-                  border: '1px solid var(--input-border, #1a2540)',
-                  color: 'var(--input-text, #f8fafc)',
-                }}
-              />
-              <p className="text-xs mt-2" style={{ color: 'var(--text-muted, #475569)' }}>
-                A workspace is where your AI agents, CRM connections, and contacts live.
-              </p>
+              <div className="flex items-center gap-3">
+                {/* Icon button */}
+                <button
+                  type="button"
+                  onClick={() => setShowIconPicker(!showIconPicker)}
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0 transition-colors"
+                  style={{
+                    background: 'var(--input-bg, #0f1524)',
+                    border: '1px solid var(--input-border, #1a2540)',
+                  }}
+                  title="Choose icon"
+                >
+                  {workspaceIcon}
+                </button>
+                {/* Name input */}
+                <input
+                  type="text"
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  placeholder="Workspace name"
+                  autoFocus
+                  className="w-full h-10 px-3 rounded-lg text-sm outline-none transition-colors"
+                  style={{
+                    background: 'var(--input-bg, #0f1524)',
+                    border: '1px solid var(--input-border, #1a2540)',
+                    color: 'var(--input-text, #f8fafc)',
+                  }}
+                />
+              </div>
+
+              {/* Icon picker grid */}
+              {showIconPicker && (
+                <div
+                  className="mt-2 p-3 rounded-lg grid grid-cols-8 gap-1"
+                  style={{
+                    background: 'var(--surface-secondary, #0f1524)',
+                    border: '1px solid var(--border, #121a2b)',
+                  }}
+                >
+                  {WORKSPACE_ICONS.map(icon => (
+                    <button
+                      key={icon}
+                      onClick={() => { setWorkspaceIcon(icon); setShowIconPicker(false) }}
+                      className="w-8 h-8 rounded-md flex items-center justify-center text-lg transition-colors hover:bg-white/10"
+                      style={
+                        workspaceIcon === icon
+                          ? { background: 'var(--accent-primary-bg)', border: '1px solid var(--accent-primary, #fa4d2e)' }
+                          : {}
+                      }
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {emailDomain && (
+                <p className="text-xs mt-2" style={{ color: 'var(--text-muted, #475569)' }}>
+                  Auto-detected from <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>{emailDomain}</span>
+                </p>
+              )}
+              {!emailDomain && (
+                <p className="text-xs mt-2" style={{ color: 'var(--text-muted, #475569)' }}>
+                  You can rename this anytime.
+                </p>
+              )}
             </div>
 
             <button
@@ -183,7 +339,7 @@ export default function UserOnboardingModal() {
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Acme Inc."
+                  placeholder={workspaceName || 'Acme Inc.'}
                   className="w-full h-10 px-3 rounded-lg text-sm outline-none transition-colors"
                   style={{
                     background: 'var(--input-bg, #0f1524)',
@@ -238,99 +394,117 @@ export default function UserOnboardingModal() {
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(0)}
-                className="btn-secondary flex-1 justify-center"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep(2)}
-                className="btn-primary flex-1 justify-center"
-              >
-                Continue
-              </button>
+              <button onClick={() => setStep(0)} className="btn-secondary flex-1 justify-center">Back</button>
+              <button onClick={() => setStep(2)} className="btn-primary flex-1 justify-center">Continue</button>
             </div>
           </div>
         )}
 
-        {/* ═══ Step 2 — CRM ═══ */}
+        {/* ═══ Step 2 — Invite Team ═══ */}
         {step === 2 && (
           <div className="space-y-6">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
-                Do you use a CRM?
+                Invite your team
               </h2>
               <p className="text-sm" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
-                Voxility works best when connected to your CRM.
+                Add teammates to collaborate on agents and conversations.
               </p>
             </div>
 
-            <div className="space-y-3">
-              <CrmCard
-                selected={crmChoice === 'ghl'}
-                onClick={() => setCrmChoice('ghl')}
-                title="I use GoHighLevel"
-                desc="Connect via our GHL Marketplace integration after setup."
-              />
-              <CrmCard
-                selected={crmChoice === 'other'}
-                onClick={() => setCrmChoice('other')}
-                title="I use another CRM"
-                desc="HubSpot support is coming soon. You can still use Voxility standalone."
-              />
-              <CrmCard
-                selected={crmChoice === 'none'}
-                onClick={() => setCrmChoice('none')}
-                title="I don't have a CRM"
-                desc="No problem — you can use Voxility standalone."
-              />
+            {/* Email input */}
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
+                Email address
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={inviteInput}
+                  onChange={(e) => setInviteInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addInviteEmail() } }}
+                  placeholder={emailDomain ? `colleague@${emailDomain}` : 'colleague@company.com'}
+                  className="w-full h-10 px-3 rounded-lg text-sm outline-none transition-colors"
+                  style={{
+                    background: 'var(--input-bg, #0f1524)',
+                    border: '1px solid var(--input-border, #1a2540)',
+                    color: 'var(--input-text, #f8fafc)',
+                  }}
+                />
+                <button
+                  onClick={addInviteEmail}
+                  disabled={!inviteInput.trim()}
+                  className="px-4 h-10 rounded-lg text-sm font-medium shrink-0 transition-colors"
+                  style={{
+                    background: 'var(--accent-primary-bg, rgba(250,77,46,0.15))',
+                    color: 'var(--accent-primary, #fa4d2e)',
+                    border: '1px solid var(--accent-primary, #fa4d2e)',
+                    opacity: inviteInput.trim() ? 1 : 0.4,
+                  }}
+                >
+                  Add
+                </button>
+              </div>
             </div>
 
-            {/* GHL trial callout */}
-            {crmChoice === 'none' && (
-              <div
-                className="rounded-lg p-4"
-                style={{
-                  background: 'var(--accent-primary-bg, rgba(250,77,46,0.15))',
-                  border: '1px solid rgba(250,77,46,0.25)',
-                }}
-              >
-                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
-                  Try GoHighLevel free for 30 days
-                </p>
-                <p className="text-xs mb-3" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
-                  GoHighLevel is the CRM that powers most Voxility users. Get a free trial to unlock the full experience.
-                </p>
-                <a
-                  href="https://www.gohighlevel.com/?fp_ref=voxility"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold transition-colors"
-                  style={{ color: 'var(--accent-primary, #fa4d2e)' }}
-                >
-                  Start free trial
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                  </svg>
-                </a>
+            {/* Queued invites */}
+            {inviteEmails.length > 0 && (
+              <div className="space-y-1.5">
+                {inviteEmails.map(email => {
+                  const cross = isEmailCrossDomain(email)
+                  return (
+                    <div
+                      key={email}
+                      className="flex items-center justify-between rounded-lg px-3 py-2"
+                      style={{
+                        background: 'var(--surface-secondary, #0f1524)',
+                        border: '1px solid var(--border, #121a2b)',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm truncate" style={{ color: 'var(--text-primary, #f8fafc)' }}>
+                          {email}
+                        </span>
+                        {cross && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
+                            style={{
+                              background: 'rgba(250, 204, 21, 0.15)',
+                              color: '#facc15',
+                              border: '1px solid rgba(250, 204, 21, 0.3)',
+                            }}
+                          >
+                            External
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeInviteEmail(email)}
+                        className="text-zinc-600 hover:text-zinc-300 transition-colors shrink-0 ml-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
+            {emailDomain && (
+              <p className="text-xs" style={{ color: 'var(--text-muted, #475569)' }}>
+                Anyone with an <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>@{emailDomain}</span> email can be invited for free.
+                {inviteEmails.some(isEmailCrossDomain) && (
+                  <span style={{ color: '#facc15' }}> External users will require a paid plan.</span>
+                )}
+              </p>
+            )}
+
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(1)}
-                className="btn-secondary flex-1 justify-center"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                className="btn-primary flex-1 justify-center"
-                disabled={!crmChoice}
-                style={!crmChoice ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-              >
-                Continue
+              <button onClick={() => setStep(1)} className="btn-secondary flex-1 justify-center">Back</button>
+              <button onClick={() => setStep(3)} className="btn-primary flex-1 justify-center">
+                {inviteEmails.length > 0 ? `Continue with ${inviteEmails.length} invite${inviteEmails.length !== 1 ? 's' : ''}` : 'Skip for now'}
               </button>
             </div>
           </div>
@@ -349,15 +523,11 @@ export default function UserOnboardingModal() {
             </div>
 
             <div className="space-y-3">
-              {/* Build it myself */}
               <button
                 onClick={completeOnboarding}
                 disabled={saving}
-                className="w-full text-left rounded-xl p-5 transition-all group"
-                style={{
-                  background: 'var(--surface-secondary, #0f1524)',
-                  border: '1px solid var(--border, #121a2b)',
-                }}
+                className="w-full text-left rounded-xl p-5 transition-all"
+                style={{ background: 'var(--surface-secondary, #0f1524)', border: '1px solid var(--border, #121a2b)' }}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-primary, #fa4d2e)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border, #121a2b)' }}
               >
@@ -378,15 +548,11 @@ export default function UserOnboardingModal() {
                 </div>
               </button>
 
-              {/* Book onboarding call */}
               <button
                 onClick={() => setShowBooking(true)}
                 disabled={saving}
                 className="w-full text-left rounded-xl p-5 transition-all"
-                style={{
-                  background: 'var(--surface-secondary, #0f1524)',
-                  border: '1px solid var(--border, #121a2b)',
-                }}
+                style={{ background: 'var(--surface-secondary, #0f1524)', border: '1px solid var(--border, #121a2b)' }}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-primary, #fa4d2e)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border, #121a2b)' }}
               >
@@ -408,12 +574,7 @@ export default function UserOnboardingModal() {
               </button>
             </div>
 
-            <button
-              onClick={() => setStep(2)}
-              className="btn-secondary w-full justify-center"
-            >
-              Back
-            </button>
+            <button onClick={() => setStep(2)} className="btn-secondary w-full justify-center">Back</button>
           </div>
         )}
 
@@ -429,10 +590,7 @@ export default function UserOnboardingModal() {
               </p>
             </div>
 
-            <div
-              className="rounded-lg overflow-hidden"
-              style={{ border: '1px solid var(--border, #121a2b)' }}
-            >
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border, #121a2b)' }}>
               <iframe
                 src="https://crm.voxility.ai/widget/bookings/voxility-conversational-ai-onb"
                 className="w-full border-0"
@@ -442,17 +600,8 @@ export default function UserOnboardingModal() {
             </div>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowBooking(false)}
-                className="btn-secondary flex-1 justify-center"
-              >
-                Back
-              </button>
-              <button
-                onClick={completeOnboarding}
-                disabled={saving}
-                className="btn-primary flex-1 justify-center"
-              >
+              <button onClick={() => setShowBooking(false)} className="btn-secondary flex-1 justify-center">Back</button>
+              <button onClick={completeOnboarding} disabled={saving} className="btn-primary flex-1 justify-center">
                 {saving ? 'Creating workspace…' : "I'm all set"}
               </button>
             </div>
@@ -471,53 +620,5 @@ export default function UserOnboardingModal() {
         )}
       </div>
     </div>
-  )
-}
-
-/* ─── Reusable CRM selection card ─── */
-function CrmCard({
-  selected,
-  onClick,
-  title,
-  desc,
-}: {
-  selected: boolean
-  onClick: () => void
-  title: string
-  desc: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full text-left rounded-xl p-4 transition-all"
-      style={
-        selected
-          ? {
-              background: 'var(--accent-primary-bg, rgba(250,77,46,0.15))',
-              border: '1px solid var(--accent-primary, #fa4d2e)',
-            }
-          : {
-              background: 'var(--surface-secondary, #0f1524)',
-              border: '1px solid var(--border, #121a2b)',
-            }
-      }
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-          style={{
-            borderColor: selected ? 'var(--accent-primary, #fa4d2e)' : 'var(--border-secondary, #1f2b47)',
-          }}
-        >
-          {selected && (
-            <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-primary, #fa4d2e)' }} />
-          )}
-        </div>
-        <div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary, #f8fafc)' }}>{title}</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary, #94a3b8)' }}>{desc}</p>
-        </div>
-      </div>
-    </button>
   )
 }

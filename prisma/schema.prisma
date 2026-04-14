@@ -76,7 +76,9 @@ model Workspace {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
-  plan        String   @default("free")    // "free" | "starter" | "pro" | "agency"
+  icon        String   @default("🚀")      // emoji avatar
+  domain      String?                       // e.g. "acmecorp.com" — for same-domain invite gating
+  plan        String   @default("free")     // "free" | "starter" | "pro" | "agency"
   agentLimit  Int      @default(1)
   messageLimit Int     @default(500)
 
@@ -87,6 +89,7 @@ model Workspace {
   stripeCurrentPeriodEnd DateTime?
 
   members     WorkspaceMember[]
+  invites     WorkspaceInvite[]
   locations   Location[]         @relation("WorkspaceLocations")
   agents      Agent[]            @relation("WorkspaceAgents")
 
@@ -103,6 +106,20 @@ model WorkspaceMember {
   role        String    @default("owner")   // "owner" | "admin" | "member"
   createdAt   DateTime  @default(now())
   @@unique([userId, workspaceId])
+}
+
+model WorkspaceInvite {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email       String
+  role        String    @default("member")  // "admin" | "member"
+  invitedBy   String                        // userId of inviter
+  acceptedAt  DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  @@unique([workspaceId, email])
+  @@index([email])
 }
 
 enum ConversationState {
