@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const locationId = searchParams.get('locationId')
+  const workspaceId = searchParams.get('workspaceId')
 
-  if (!locationId) return NextResponse.json({ error: 'locationId required' }, { status: 400 })
+  if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
   const clientId = process.env.HUBSPOT_CLIENT_ID
   if (!clientId) return NextResponse.json({ error: 'HUBSPOT_CLIENT_ID not set' }, { status: 500 })
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       'conversations.read', 'conversations.write',
       'sales-email-read',
     ].join(' '),
-    state: locationId,
+    state: workspaceId,
   })
 
   return NextResponse.redirect(`https://app.hubspot.com/oauth/authorize?${params}`)

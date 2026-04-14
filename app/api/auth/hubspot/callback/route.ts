@@ -4,15 +4,15 @@ import { db } from '@/lib/db'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
-  const locationId = searchParams.get('state')
+  const workspaceId = searchParams.get('state')
 
-  if (!code || !locationId) return NextResponse.redirect(new URL('/dashboard', req.url))
+  if (!code || !workspaceId) return NextResponse.redirect(new URL('/dashboard', req.url))
 
   const clientId = process.env.HUBSPOT_CLIENT_ID
   const clientSecret = process.env.HUBSPOT_CLIENT_SECRET
 
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(new URL(`/dashboard/${locationId}/integrations?error=hubspot_not_configured`, req.url))
+    return NextResponse.redirect(new URL(`/dashboard/${workspaceId}/integrations?error=hubspot_not_configured`, req.url))
   }
 
   const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
@@ -28,10 +28,17 @@ export async function GET(req: NextRequest) {
   })
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(new URL(`/dashboard/${locationId}/integrations?error=hubspot_auth_failed`, req.url))
+    return NextResponse.redirect(new URL(`/dashboard/${workspaceId}/integrations?error=hubspot_auth_failed`, req.url))
   }
 
   const tokens = await tokenRes.json()
+
+  // Find the first location in this workspace to store the integration
+  const location = await db.location.findFirst({
+    where: { workspaceId },
+    select: { id: true },
+  })
+  const locationId = location?.id ?? workspaceId
 
   const existing = await db.integration.findFirst({ where: { locationId, type: 'hubspot' } })
 
@@ -58,5 +65,5 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  return NextResponse.redirect(new URL(`/dashboard/${locationId}/integrations`, req.url))
+  return NextResponse.redirect(new URL(`/dashboard/${workspaceId}/integrations`, req.url))
 }

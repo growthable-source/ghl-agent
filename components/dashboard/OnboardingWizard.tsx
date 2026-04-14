@@ -18,7 +18,7 @@ const TEMPLATES = [
   },
 ]
 
-export default function OnboardingWizard({ locationId }: { locationId: string }) {
+export default function OnboardingWizard({ workspaceId }: { workspaceId: string }) {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [agentName, setAgentName] = useState('')
@@ -29,7 +29,7 @@ export default function OnboardingWizard({ locationId }: { locationId: string })
 
   async function createAgent() {
     setSaving(true)
-    const res = await fetch(`/api/locations/${locationId}/agents`, {
+    const res = await fetch(`/api/workspaces/${workspaceId}/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -41,7 +41,7 @@ export default function OnboardingWizard({ locationId }: { locationId: string })
     const { agent } = await res.json()
 
     // Add ALL routing rule
-    await fetch(`/api/locations/${locationId}/agents/${agent.id}/rules`, {
+    await fetch(`/api/workspaces/${workspaceId}/agents/${agent.id}/rules`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ruleType: 'ALL', priority: 999 }),
@@ -53,8 +53,8 @@ export default function OnboardingWizard({ locationId }: { locationId: string })
   }
 
   async function complete() {
-    await fetch(`/api/locations/${locationId}/onboarding-complete`, { method: 'PATCH' })
-    router.push(`/dashboard/${locationId}`)
+    await fetch(`/api/workspaces/${workspaceId}/onboarding-complete`, { method: 'PATCH' })
+    router.push(`/dashboard/${workspaceId}`)
   }
 
   const steps = [
@@ -98,8 +98,8 @@ export default function OnboardingWizard({ locationId }: { locationId: string })
             </p>
             <div className="rounded-lg border border-zinc-800 px-4 py-3 mb-8">
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Location ID</span>
-                <span className="font-mono text-zinc-300">{locationId.slice(0, 16)}…</span>
+                <span className="text-zinc-500">Workspace ID</span>
+                <span className="font-mono text-zinc-300">{workspaceId.slice(0, 16)}…</span>
               </div>
             </div>
             <button
@@ -187,7 +187,7 @@ export default function OnboardingWizard({ locationId }: { locationId: string })
               </button>
               {agentId && (
                 <a
-                  href={`/dashboard/${locationId}/playground?agentId=${agentId}`}
+                  href={`/dashboard/${workspaceId}/playground?agentId=${agentId}`}
                   className="w-full inline-flex items-center justify-center rounded-lg border border-zinc-700 text-zinc-300 font-medium text-sm h-11 px-6 hover:border-zinc-500 hover:text-white transition-colors"
                 >
                   Test in Playground

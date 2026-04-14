@@ -14,11 +14,11 @@ interface Message {
 }
 
 export default function PlaygroundPanel({
-  locationId,
+  workspaceId,
   agents,
   defaultAgentId,
 }: {
-  locationId: string
+  workspaceId: string
   agents: Agent[]
   defaultAgentId?: string
 }) {
@@ -48,7 +48,7 @@ export default function PlaygroundPanel({
     }))
 
     try {
-      const res = await fetch(`/api/locations/${locationId}/playground`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/playground`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

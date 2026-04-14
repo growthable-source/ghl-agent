@@ -59,40 +59,68 @@ export async function GET(req: NextRequest) {
 
     const tokenData: OAuthTokenResponse = await tokenRes.json()
 
-    // Store using locationId as key (or companyId for Agency tokens)
+    // Store using GHL locationId as key (or companyId for Agency tokens)
     const storeKey = tokenData.locationId ?? tokenData.companyId
     await saveTokens(storeKey, tokenData)
 
     console.log(`[OAuth] Token saved for ${tokenData.userType}: ${storeKey}`)
 
-    // If state param is a workspace ID (from connect flow), link GHL location to that workspace
-    const workspaceId = searchParams.get('state')
-    if (workspaceId && workspaceId.startsWith('ws_') && workspaceId !== storeKey) {
-      // Move agents and user links from the temp workspace to the real GHL location
-      try {
-        // Link users from the temp workspace to the real location
-        const userLinks = await db.userLocation.findMany({ where: { locationId: workspaceId } })
-        for (const link of userLinks) {
-          await db.userLocation.upsert({
-            where: { userId_locationId: { userId: link.userId, locationId: storeKey } },
-            create: { userId: link.userId, locationId: storeKey, role: link.role },
-            update: {},
-          })
-        }
-        // Clean up temp workspace
-        await db.userLocation.deleteMany({ where: { locationId: workspaceId } })
-        await db.location.delete({ where: { id: workspaceId } }).catch(() => {})
-      } catch (err) {
-        console.error('[OAuth] Error linking workspace:', err)
-      }
-      return NextResponse.redirect(new URL(`/dashboard/${storeKey}/integrations?success=crm_connected`, req.url))
+    // Check if a workspaceId was passed via the state param (from connect flow)
+    const stateWorkspaceId = searchParams.get('state')
+    let workspaceId: string | null = null
+
+    // Upsert the GHL Location record with token data
+    const locationData = {
+      companyId: tokenData.companyId ?? storeKey,
+      userId: tokenData.userId ?? '',
+      userType: tokenData.userType ?? 'Location',
+      scope: Array.isArray(tokenData.scope) ? tokenData.scope.join(' ') : (tokenData.scope ?? ''),
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      refreshTokenId: tokenData.refreshTokenId ?? '',
+      expiresAt: new Date(Date.now() + (tokenData.expires_in ?? 86400) * 1000),
+      workspaceId: stateWorkspaceId || undefined,
+    }
+
+    await db.location.upsert({
+      where: { id: storeKey },
+      create: { id: storeKey, ...locationData },
+      update: locationData,
+    })
+
+    if (stateWorkspaceId) {
+      // Came from the integrations connect flow — go back to integrations
+      return NextResponse.redirect(
+        new URL(`/dashboard/${stateWorkspaceId}/integrations?success=crm_connected`, req.url)
+      )
+    }
+
+    // No workspace context — find existing workspace for this location, or create one
+    const existingLocation = await db.location.findUnique({
+      where: { id: storeKey },
+      select: { workspaceId: true },
+    })
+
+    if (existingLocation?.workspaceId) {
+      workspaceId = existingLocation.workspaceId
+    } else {
+      // Create a new workspace for this GHL install
+      const slug = `ws-${storeKey.slice(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '')}-${Math.random().toString(36).slice(2, 8)}`
+      const workspace = await db.workspace.create({
+        data: {
+          name: `Workspace`,
+          slug,
+          locations: { connect: { id: storeKey } },
+        },
+      })
+      workspaceId = workspace.id
     }
 
     // New installs go to onboarding, reinstalls go to dashboard
-    const agentCount = await db.agent.count({ where: { locationId: storeKey } })
+    const agentCount = await db.agent.count({ where: { workspaceId } })
     const redirectPath = agentCount === 0
-      ? `/dashboard/${storeKey}/onboarding`
-      : `/dashboard/${storeKey}`
+      ? `/dashboard/${workspaceId}/onboarding`
+      : `/dashboard/${workspaceId}`
     return NextResponse.redirect(new URL(redirectPath, req.url))
   } catch (err) {
     console.error('[OAuth] Unexpected error:', err)

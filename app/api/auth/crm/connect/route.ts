@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const locationId = searchParams.get('locationId')
+  const workspaceId = searchParams.get('workspaceId')
 
-  if (!locationId) {
-    return NextResponse.json({ error: 'locationId required' }, { status: 400 })
+  if (!workspaceId) {
+    return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
   }
 
   const clientId = process.env.OAUTH_CLIENT_ID
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     redirect_uri: `${process.env.APP_URL}/api/auth/callback`,
     client_id: clientId,
     scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.write calendars.readonly locations/customFields.readonly locations/customFields.write',
-    state: locationId,
+    state: workspaceId,
   })
 
   if (versionId) params.set('version_id', versionId)

@@ -39,9 +39,9 @@ export default function Breadcrumbs() {
     path += `/${seg}`
 
     if (seg === 'dashboard') {
-      crumbs.push({ label: 'Locations', href: '/dashboard' })
+      crumbs.push({ label: 'Workspaces', href: '/dashboard' })
     } else if (segments[i - 1] === 'dashboard') {
-      // This is locationId
+      // This is workspaceId
       crumbs.push({ label: seg.slice(0, 12) + (seg.length > 12 ? '...' : ''), href: path })
     } else if (segments[i - 1] === 'agents' && seg !== 'new') {
       // This is an agentId

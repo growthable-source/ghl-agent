@@ -7,11 +7,11 @@ import VoxilityLogo from '@/components/VoxilityLogo'
 export default function DashboardSidebar() {
   const pathname = usePathname()
 
-  // Extract locationId from path — exclude known static routes
+  // Extract workspaceId from path — exclude known static routes
   const STATIC_ROUTES = ['settings', 'new', 'feedback']
   const match = pathname.match(/\/dashboard\/([^\/]+)/)
   const rawSegment = match ? match[1] : null
-  const locationId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
+  const workspaceId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
 
   // Don't show location nav for these sub-pages
   const isOnboarding = pathname.includes('/onboarding')
@@ -19,7 +19,7 @@ export default function DashboardSidebar() {
   if (isOnboarding) return null
 
   function navLink(href: string, label: string) {
-    const active = pathname === href || (href !== `/dashboard/${locationId}` && pathname.startsWith(href))
+    const active = pathname === href || (href !== `/dashboard/${workspaceId}` && pathname.startsWith(href))
     return (
       <Link
         href={href}
@@ -46,27 +46,27 @@ export default function DashboardSidebar() {
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {!locationId || locationId === 'undefined' ? (
+        {!workspaceId || workspaceId === 'undefined' ? (
           // Top-level nav
           <>
-            {navLink('/dashboard', 'All Locations')}
+            {navLink('/dashboard', 'All Workspaces')}
           </>
         ) : (
-          // Location-level nav
+          // Workspace-level nav
           <>
             <div className="px-3 py-1.5 mb-1">
-              <p className="text-xs text-zinc-600 font-medium truncate" title={locationId}>
-                {locationId.slice(0, 20)}{locationId.length > 20 ? '…' : ''}
+              <p className="text-xs text-zinc-600 font-medium truncate" title={workspaceId}>
+                {workspaceId.slice(0, 20)}{workspaceId.length > 20 ? '…' : ''}
               </p>
             </div>
             {!isOnboarding && (
               <>
-                {navLink(`/dashboard/${locationId}`, 'Overview')}
-                {navLink(`/dashboard/${locationId}/playground`, 'Playground')}
-                {navLink(`/dashboard/${locationId}/logs`, 'Logs')}
-                {navLink(`/dashboard/${locationId}/conversations`, 'Conversations')}
-                {navLink(`/dashboard/${locationId}/calls`, 'Calls')}
-                {navLink(`/dashboard/${locationId}/integrations`, 'Integrations')}
+                {navLink(`/dashboard/${workspaceId}`, 'Overview')}
+                {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
+                {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
+                {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
+                {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
+                {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
               </>
             )}
           </>
@@ -99,7 +99,7 @@ export default function DashboardSidebar() {
           href="/dashboard"
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white transition-colors"
         >
-          ← All Locations
+          ← All Workspaces
         </Link>
       </div>
     </div>
