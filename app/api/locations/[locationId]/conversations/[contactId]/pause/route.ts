@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { pauseConversation, resumeConversation } from '@/lib/conversation-state'
+import { requireLocationAccess } from '@/lib/require-access'
 
 type Params = { params: Promise<{ locationId: string; contactId: string }> }
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const { contactId } = await params
+  const { locationId, contactId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const body = await req.json()
   const { agentId, reason } = body
   if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 })
@@ -13,7 +16,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const { contactId } = await params
+  const { locationId, contactId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const body = await req.json()
   const { agentId } = body
   if (!agentId) return NextResponse.json({ error: 'agentId required' }, { status: 400 })

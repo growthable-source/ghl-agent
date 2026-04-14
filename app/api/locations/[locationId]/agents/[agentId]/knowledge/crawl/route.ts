@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { stripHtml, extractTitle, chunkText, estimateTokens } from '@/lib/chunker'
+import { requireLocationAccess } from '@/lib/require-access'
 
 async function fetchWithJinaFallback(url: string): Promise<{ title: string; text: string }> {
   // Try direct fetch first
@@ -53,7 +54,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ locationId: string; agentId: string }> }
 ) {
-  const { agentId } = await params
+  const { locationId, agentId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const { url } = await req.json()
 
   if (!url || !url.startsWith('http')) {

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireLocationAccess } from '@/lib/require-access'
 
 type Params = { params: Promise<{ locationId: string; agentId: string; questionId: string }> }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const { questionId } = await params
+  const { locationId, questionId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const body = await req.json()
   const question = await db.qualifyingQuestion.update({
     where: { id: questionId },
@@ -27,7 +30,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const { questionId } = await params
+  const { locationId, questionId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   await db.qualifyingQuestion.delete({ where: { id: questionId } })
   return NextResponse.json({ success: true })
 }

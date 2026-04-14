@@ -3,12 +3,15 @@ import { db } from '@/lib/db'
 import { getTokens } from '@/lib/token-store'
 import { buildKnowledgeBlock } from '@/lib/rag'
 import { runAgent } from '@/lib/ai-agent'
+import { requireLocationAccess } from '@/lib/require-access'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ locationId: string }> }
 ) {
   const { locationId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const { agentId, message, contactId, messageHistory } = await req.json()
 
   if (!agentId || !message) {

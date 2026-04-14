@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { initiateOutboundCall } from '@/lib/outbound-call'
+import { requireLocationAccess } from '@/lib/require-access'
 
 export async function POST(
   req: NextRequest,
@@ -13,6 +14,8 @@ export async function POST(
   }
 
   const { locationId, agentId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const body = await req.json()
   const { contactId, contactPhone, contactName } = body
 

@@ -3,12 +3,15 @@ import { db } from '@/lib/db'
 import { listPhoneNumbers, purchasePhoneNumber } from '@/lib/vapi-client'
 import { getAllQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { buildPersonaBlock } from '@/lib/persona'
+import { requireLocationAccess } from '@/lib/require-access'
 
 type Params = { params: Promise<{ locationId: string; agentId: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
+  const { locationId, agentId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   try {
-    const { agentId } = await params
 
     const [config, agent] = await Promise.all([
       db.vapiConfig.findUnique({ where: { agentId } }),
@@ -96,7 +99,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
-  const { agentId } = await params
+  const { locationId, agentId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const body = await req.json()
 
   const config = await db.vapiConfig.upsert({
@@ -110,7 +115,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 // POST — purchase a new phone number
 export async function POST(req: NextRequest, { params }: Params) {
-  await params
+  const { locationId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const body = await req.json()
   const { areaCode } = body
 

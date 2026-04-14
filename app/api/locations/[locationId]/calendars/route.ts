@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getValidAccessToken } from '@/lib/token-store'
+import { requireLocationAccess } from '@/lib/require-access'
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ locationId: string }> }
 ) {
   const { locationId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const token = await getValidAccessToken(locationId)
   if (!token) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
 

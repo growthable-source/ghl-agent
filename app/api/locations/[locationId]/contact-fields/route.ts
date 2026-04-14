@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCustomFields } from '@/lib/crm-client'
+import { requireLocationAccess } from '@/lib/require-access'
 
 type Params = { params: Promise<{ locationId: string }> }
 
@@ -22,6 +23,8 @@ const STANDARD_FIELDS = [
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { locationId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
 
   const customFields = await getCustomFields(locationId)
 

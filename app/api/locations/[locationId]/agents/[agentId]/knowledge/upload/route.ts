@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { chunkText, estimateTokens } from '@/lib/chunker'
+import { requireLocationAccess } from '@/lib/require-access'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ locationId: string; agentId: string }> }
 ) {
-  const { agentId } = await params
+  const { locationId, agentId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
 
   const formData = await req.formData()
   const file = formData.get('file') as File | null

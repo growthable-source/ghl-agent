@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireLocationAccess } from '@/lib/require-access'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ locationId: string }> }) {
   const { locationId } = await params
+  const access = await requireLocationAccess(locationId)
+  if (access instanceof NextResponse) return access
   const { searchParams } = new URL(req.url)
   const page = parseInt(searchParams.get('page') ?? '1')
   const limit = parseInt(searchParams.get('limit') ?? '25')
