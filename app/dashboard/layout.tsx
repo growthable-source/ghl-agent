@@ -1,7 +1,12 @@
+import { auth } from '@/lib/auth'
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar'
 import Breadcrumbs from '@/components/dashboard/Breadcrumbs'
+import UserOnboardingModal from '@/components/dashboard/UserOnboardingModal'
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth()
+  const needsOnboarding = session?.user && !session.user.onboardingCompletedAt
+
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
       <DashboardSidebar />
@@ -11,6 +16,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </div>
       </main>
+      {needsOnboarding && <UserOnboardingModal />}
     </div>
   )
 }

@@ -9,17 +9,21 @@ datasource db {
 // ─── NextAuth Models ──────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  theme         String    @default("midnight")
-  accounts      Account[]
-  sessions      Session[]
-  locations     UserLocation[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  name                  String?
+  email                 String?   @unique
+  emailVerified         DateTime?
+  image                 String?
+  theme                 String    @default("midnight")
+  companyName           String?
+  companySize           String?
+  role                  String?
+  onboardingCompletedAt DateTime?
+  accounts              Account[]
+  sessions              Session[]
+  locations             UserLocation[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 model Account {
