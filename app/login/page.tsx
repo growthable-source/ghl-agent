@@ -1,10 +1,16 @@
 'use client'
 
 import { signIn } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import VoxilityLogo from '@/components/VoxilityLogo'
+import { Suspense } from 'react'
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams()
+  const mode = searchParams.get('mode') // 'signup' or null (default = sign in)
+  const isSignUp = mode === 'signup'
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#05080f', color: '#f8fafc' }}>
       <div className="w-full max-w-sm">
@@ -12,8 +18,14 @@ export default function LoginPage() {
           <Link href="/" className="inline-flex mb-6">
             <VoxilityLogo height={36} />
           </Link>
-          <h1 className="text-2xl font-semibold mb-1">Welcome back</h1>
-          <p className="text-sm text-zinc-500">Sign in to manage your AI agents</p>
+          <h1 className="text-2xl font-semibold mb-1">
+            {isSignUp ? 'Create your account' : 'Welcome back'}
+          </h1>
+          <p className="text-sm text-zinc-500">
+            {isSignUp
+              ? 'Get started with AI-powered conversations'
+              : 'Sign in to manage your AI agents'}
+          </p>
         </div>
 
         <div className="space-y-3">
@@ -41,10 +53,34 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <p className="text-xs text-zinc-600 text-center mt-8">
+        <p className="text-sm text-zinc-500 text-center mt-6">
+          {isSignUp ? (
+            <>Already have an account?{' '}
+              <Link href="/login" className="text-white hover:underline">Sign in</Link>
+            </>
+          ) : (
+            <>Don&apos;t have an account?{' '}
+              <Link href="/login?mode=signup" className="text-white hover:underline">Sign up</Link>
+            </>
+          )}
+        </p>
+
+        <p className="text-xs text-zinc-600 text-center mt-4">
           By continuing, you agree to our Terms of Service and Privacy Policy.
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#05080f' }}>
+        <p className="text-zinc-500 text-sm">Loading…</p>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }

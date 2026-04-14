@@ -23,7 +23,7 @@ const ROLES = [
   { value: 'other', label: 'Other' },
 ]
 
-const STEP_LABELS = ['Profile', 'CRM', 'Get Started']
+const STEP_LABELS = ['Workspace', 'Profile', 'CRM', 'Get Started']
 
 type CrmChoice = 'ghl' | 'none' | 'other' | null
 
@@ -33,22 +33,42 @@ export default function UserOnboardingModal() {
   const [saving, setSaving] = useState(false)
   const [showBooking, setShowBooking] = useState(false)
 
-  // Form state
+  // Step 0 — Workspace
+  const [workspaceName, setWorkspaceName] = useState('')
+
+  // Step 1 — Profile
   const [companyName, setCompanyName] = useState('')
   const [companySize, setCompanySize] = useState('')
   const [role, setRole] = useState('')
+
+  // Step 2 — CRM
   const [crmChoice, setCrmChoice] = useState<CrmChoice>(null)
 
   async function completeOnboarding() {
+    if (!workspaceName.trim()) return
     setSaving(true)
     try {
+      // 1. Create the workspace
+      const wsRes = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: workspaceName.trim() }),
+      })
+      const wsData = await wsRes.json()
+      if (!wsRes.ok) throw new Error(wsData.error || 'Failed to create workspace')
+
+      // 2. Save user profile + mark onboarding complete
       await fetch('/api/user/onboarding', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyName, companySize, role }),
       })
+
+      // 3. Navigate to the new workspace
+      router.push(`/dashboard/${wsData.workspaceId}`)
       router.refresh()
-    } catch {
+    } catch (err) {
+      console.error('Onboarding error:', err)
       setSaving(false)
     }
   }
@@ -86,7 +106,7 @@ export default function UserOnboardingModal() {
               </div>
               {i < STEP_LABELS.length - 1 && (
                 <div
-                  className="w-10 h-px"
+                  className="w-8 h-px"
                   style={{ background: i < step ? 'var(--accent-primary, #fa4d2e)' : 'var(--border, #121a2b)' }}
                 />
               )}
@@ -94,7 +114,7 @@ export default function UserOnboardingModal() {
           ))}
         </div>
 
-        {/* ═══ Step 0 — Profile ═══ */}
+        {/* ═══ Step 0 — Workspace ═══ */}
         {step === 0 && (
           <div className="space-y-6">
             <div className="text-center">
@@ -105,7 +125,52 @@ export default function UserOnboardingModal() {
                 Welcome to <span className="text-gradient">Voxility</span>
               </h2>
               <p className="text-sm" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
-                Tell us a bit about you so we can set things up.
+                Let&apos;s create your first workspace.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
+                Workspace name
+              </label>
+              <input
+                type="text"
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+                placeholder="e.g. Acme Corp, My Clinic, Ryan's Agency"
+                autoFocus
+                className="w-full h-10 px-3 rounded-lg text-sm outline-none transition-colors"
+                style={{
+                  background: 'var(--input-bg, #0f1524)',
+                  border: '1px solid var(--input-border, #1a2540)',
+                  color: 'var(--input-text, #f8fafc)',
+                }}
+              />
+              <p className="text-xs mt-2" style={{ color: 'var(--text-muted, #475569)' }}>
+                A workspace is where your AI agents, CRM connections, and contacts live.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setStep(1)}
+              disabled={!workspaceName.trim()}
+              className="btn-primary w-full justify-center"
+              style={!workspaceName.trim() ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            >
+              Continue
+            </button>
+          </div>
+        )}
+
+        {/* ═══ Step 1 — Profile ═══ */}
+        {step === 1 && (
+          <div className="space-y-6">
+            <div className="text-center">
+              <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
+                Tell us about you
+              </h2>
+              <p className="text-sm" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
+                This helps us personalize your experience.
               </p>
             </div>
 
@@ -172,17 +237,25 @@ export default function UserOnboardingModal() {
               </div>
             </div>
 
-            <button
-              onClick={() => setStep(1)}
-              className="btn-primary w-full justify-center"
-            >
-              Continue
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(0)}
+                className="btn-secondary flex-1 justify-center"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setStep(2)}
+                className="btn-primary flex-1 justify-center"
+              >
+                Continue
+              </button>
+            </div>
           </div>
         )}
 
-        {/* ═══ Step 1 — CRM ═══ */}
-        {step === 1 && (
+        {/* ═══ Step 2 — CRM ═══ */}
+        {step === 2 && (
           <div className="space-y-6">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
@@ -246,13 +319,13 @@ export default function UserOnboardingModal() {
 
             <div className="flex gap-3">
               <button
-                onClick={() => setStep(0)}
+                onClick={() => setStep(1)}
                 className="btn-secondary flex-1 justify-center"
               >
                 Back
               </button>
               <button
-                onClick={() => setStep(2)}
+                onClick={() => setStep(3)}
                 className="btn-primary flex-1 justify-center"
                 disabled={!crmChoice}
                 style={!crmChoice ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
@@ -263,8 +336,8 @@ export default function UserOnboardingModal() {
           </div>
         )}
 
-        {/* ═══ Step 2 — Get started ═══ */}
-        {step === 2 && !showBooking && (
+        {/* ═══ Step 3 — Get started ═══ */}
+        {step === 3 && !showBooking && (
           <div className="space-y-6">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
@@ -296,7 +369,7 @@ export default function UserOnboardingModal() {
                   </div>
                   <div>
                     <p className="font-semibold text-sm mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
-                      Build it myself
+                      {saving ? 'Creating workspace…' : 'Build it myself'}
                     </p>
                     <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
                       Jump straight into your workspace and create your first AI agent. Takes about 5 minutes.
@@ -336,7 +409,7 @@ export default function UserOnboardingModal() {
             </div>
 
             <button
-              onClick={() => setStep(1)}
+              onClick={() => setStep(2)}
               className="btn-secondary w-full justify-center"
             >
               Back
@@ -344,8 +417,8 @@ export default function UserOnboardingModal() {
           </div>
         )}
 
-        {/* ═══ Step 2b — Booking view ═══ */}
-        {step === 2 && showBooking && (
+        {/* ═══ Step 3b — Booking view ═══ */}
+        {step === 3 && showBooking && (
           <div className="space-y-5">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
@@ -380,7 +453,7 @@ export default function UserOnboardingModal() {
                 disabled={saving}
                 className="btn-primary flex-1 justify-center"
               >
-                {saving ? 'Saving...' : "I'm all set"}
+                {saving ? 'Creating workspace…' : "I'm all set"}
               </button>
             </div>
 

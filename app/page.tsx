@@ -113,7 +113,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             <Link href="/login" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>Log in</Link>
-            <Link href="/login" className="btn-primary text-sm py-2 px-5">Get started</Link>
+            <Link href="/login?mode=signup" className="btn-primary text-sm py-2 px-5">Get started</Link>
           </div>
         </div>
       </nav>
@@ -136,7 +136,7 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/login" className="btn-primary">
+            <Link href="/login?mode=signup" className="btn-primary">
               Start building free
               <ArrowIcon />
             </Link>
@@ -394,7 +394,7 @@ export default function LandingPage() {
         <div className="relative z-10 max-w-3xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-4">Ready to stop missing calls?</h2>
           <p className="mb-8 text-[0.9375rem]" style={{ color: '#94a3b8' }}>Create your first AI agent in under 5 minutes. Free while in beta.</p>
-          <Link href="/login" className="btn-primary">
+          <Link href="/login?mode=signup" className="btn-primary">
             Start building free
             <ArrowIcon />
           </Link>
@@ -479,7 +479,7 @@ export default function LandingPage() {
           <p className="mb-10 text-[1.125rem] leading-[1.7]" style={{ color: '#94a3b8' }}>
             Build your first AI agent in under 5 minutes. Free while in beta.
           </p>
-          <Link href="/login" className="btn-primary text-base py-3 px-8">
+          <Link href="/login?mode=signup" className="btn-primary text-base py-3 px-8">
             Get started free
             <ArrowIcon />
           </Link>

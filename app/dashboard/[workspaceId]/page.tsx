@@ -27,56 +27,70 @@ function timeAgo(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export default async function LocationPage({ params }: { params: Promise<{ workspaceId: string }> }) {
+export default async function WorkspacePage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
-  const location = await db.location.findUnique({
+
+  const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
+    select: { id: true, name: true },
+  })
+  if (!workspace) notFound()
+
+  // Get agents for this workspace
+  const agents = await db.agent.findMany({
+    where: { workspaceId },
     include: {
-      agents: {
-        include: {
-          channelDeployments: { where: { isActive: true }, select: { channel: true } },
-          _count: {
-            select: {
-              messageLogs: true,
-              conversationStates: true,
-              knowledgeEntries: true,
-            },
-          },
+      channelDeployments: { where: { isActive: true }, select: { channel: true } },
+      _count: {
+        select: {
+          messageLogs: true,
+          conversationStates: true,
+          knowledgeEntries: true,
         },
-        orderBy: { createdAt: 'asc' },
       },
     },
+    orderBy: { createdAt: 'asc' },
   })
 
-  if (!location) notFound()
-
-  // Get last message time per agent in one query
-  const lastMessages = await db.messageLog.groupBy({
-    by: ['agentId'],
-    where: { locationId: workspaceId, agentId: { not: null } },
-    _max: { createdAt: true },
+  // Get all locationIds for this workspace (for cross-location queries)
+  const locations = await db.location.findMany({
+    where: { workspaceId },
+    select: { id: true },
   })
+  const locationIds = locations.map(l => l.id)
+
+  // Get last message time per agent
+  const lastMessages = locationIds.length > 0
+    ? await db.messageLog.groupBy({
+        by: ['agentId'],
+        where: { locationId: { in: locationIds }, agentId: { not: null } },
+        _max: { createdAt: true },
+      })
+    : []
   const lastMessageMap = new Map(
     lastMessages.map(m => [m.agentId, m._max.createdAt])
   )
 
   // Get active conversation counts per agent
-  const activeConvos = await db.conversationStateRecord.groupBy({
-    by: ['agentId'],
-    where: { locationId: workspaceId, state: 'ACTIVE' },
-    _count: true,
-  })
+  const activeConvos = locationIds.length > 0
+    ? await db.conversationStateRecord.groupBy({
+        by: ['agentId'],
+        where: { locationId: { in: locationIds }, state: 'ACTIVE' },
+        _count: true,
+      })
+    : []
   const activeConvoMap = new Map(
     activeConvos.map(c => [c.agentId, c._count])
   )
 
   // 7-day stats
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const locationFilter = locationIds.length > 0 ? { locationId: { in: locationIds } } : { locationId: '__none__' }
   const [agentCount, recentMessages, recentSuccess, totalTokens] = await Promise.all([
-    db.agent.count({ where: { locationId: workspaceId, isActive: true } }),
-    db.messageLog.count({ where: { locationId: workspaceId, createdAt: { gte: sevenDaysAgo } } }),
-    db.messageLog.count({ where: { locationId: workspaceId, status: 'SUCCESS', createdAt: { gte: sevenDaysAgo } } }),
-    db.messageLog.aggregate({ where: { locationId: workspaceId, createdAt: { gte: sevenDaysAgo } }, _sum: { tokensUsed: true } }),
+    db.agent.count({ where: { workspaceId, isActive: true } }),
+    db.messageLog.count({ where: { ...locationFilter, createdAt: { gte: sevenDaysAgo } } }),
+    db.messageLog.count({ where: { ...locationFilter, status: 'SUCCESS', createdAt: { gte: sevenDaysAgo } } }),
+    db.messageLog.aggregate({ where: { ...locationFilter, createdAt: { gte: sevenDaysAgo } }, _sum: { tokensUsed: true } }),
   ])
   const successRate = recentMessages > 0 ? Math.round((recentSuccess / recentMessages) * 100) : 0
 
@@ -120,7 +134,7 @@ export default async function LocationPage({ params }: { params: Promise<{ works
         </div>
 
         {/* Agent list */}
-        {location.agents.length === 0 ? (
+        {agents.length === 0 ? (
           <div className="rounded-xl border border-zinc-800 p-12 text-center">
             <p className="text-zinc-400 mb-2">No agents yet</p>
             <p className="text-zinc-600 text-sm mb-6">
@@ -135,11 +149,10 @@ export default async function LocationPage({ params }: { params: Promise<{ works
           </div>
         ) : (
           <div className="space-y-3">
-            {location.agents.map((agent) => {
+            {agents.map((agent) => {
               const channels = agent.channelDeployments.map(d => d.channel)
               const lastMsg = lastMessageMap.get(agent.id)
               const activeCount = activeConvoMap.get(agent.id) ?? 0
-              const hasVoice = !!agent.calendarId // rough proxy — agents with calendars tend to have voice
 
               return (
                 <Link
