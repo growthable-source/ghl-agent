@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
+import { htmlToText, looksLikeHtml } from '@/lib/html-to-text'
 
 type LogWithAgent = Awaited<ReturnType<typeof db.messageLog.findMany<{
   include: { agent: { select: { name: true } } }
@@ -8,22 +9,24 @@ type LogWithAgent = Awaited<ReturnType<typeof db.messageLog.findMany<{
 
 export const dynamic = 'force-dynamic'
 
-const statusColors: Record<string, string> = {
-  SUCCESS: 'text-emerald-400',
-  ERROR: 'text-red-400',
-  SKIPPED: 'text-zinc-500',
-  PENDING: 'text-yellow-400',
-}
-
-const statusBgColors: Record<string, string> = {
-  SUCCESS: 'bg-emerald-400/10 border-emerald-400/20',
-  ERROR: 'bg-red-400/10 border-red-400/20',
-  SKIPPED: 'bg-zinc-400/10 border-zinc-400/20',
-  PENDING: 'bg-yellow-400/10 border-yellow-400/20',
+const STATUS_STYLE: Record<string, { dot: string; text: string; label: string }> = {
+  SUCCESS: { dot: 'bg-emerald-400', text: 'text-emerald-400', label: 'Success' },
+  ERROR:   { dot: 'bg-red-400',     text: 'text-red-400',     label: 'Error' },
+  SKIPPED: { dot: 'bg-zinc-500',    text: 'text-zinc-500',    label: 'Skipped' },
+  PENDING: { dot: 'bg-yellow-400',  text: 'text-yellow-400',  label: 'Pending' },
 }
 
 const STATUS_TABS = ['ALL', 'SUCCESS', 'ERROR', 'SKIPPED'] as const
 type StatusFilter = (typeof STATUS_TABS)[number]
+
+/** Truncate text to maxLen chars, stripping HTML first if needed */
+function cleanPreview(raw: string, maxLen = 140): string {
+  const text = looksLikeHtml(raw) ? htmlToText(raw) : raw
+  // Collapse whitespace
+  const oneLine = text.replace(/\s+/g, ' ').trim()
+  if (oneLine.length <= maxLen) return oneLine
+  return oneLine.slice(0, maxLen).trimEnd() + '…'
+}
 
 function relativeTime(date: Date): string {
   const now = new Date()
@@ -39,6 +42,16 @@ function relativeTime(date: Date): string {
   if (diffDays < 7) return `${diffDays}d ago`
   if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
   return `${Math.floor(diffDays / 30)}mo ago`
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
 }
 
 function buildHref(
@@ -161,65 +174,77 @@ export default async function LogsPage({
           </div>
         ) : (
           <>
-            <div className="space-y-2">
+            {/* Table header */}
+            <div className="grid grid-cols-[auto_1fr_auto] gap-x-4 px-4 pb-2 text-xs text-zinc-600 font-medium">
+              <span className="w-[180px]">Time</span>
+              <span>Message</span>
+              <span className="w-[80px] text-right">Status</span>
+            </div>
+
+            <div className="space-y-1">
               {logs.map((log: LogWithAgent) => {
                 const createdAt = new Date(log.createdAt)
+                const style = STATUS_STYLE[log.status] ?? STATUS_STYLE.PENDING
+
                 return (
                   <Link
                     key={log.id}
                     href={`/dashboard/${workspaceId}/logs/${log.id}`}
-                    className="block rounded-lg border border-zinc-800 px-5 py-4 hover:border-zinc-600 transition-colors"
+                    className="grid grid-cols-[auto_1fr_auto] gap-x-4 items-start rounded-lg border border-zinc-800/60 bg-zinc-950/50 px-4 py-3 hover:border-zinc-700 hover:bg-zinc-900/30 transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-4 mb-2">
-                      <div className="flex items-center gap-3 text-xs">
-                        {/* Agent name — prominent */}
-                        {log.agent && (
-                          <span className="text-zinc-300 font-medium">
-                            {log.agent.name}
-                          </span>
-                        )}
-                        {/* Contact ID — styled with label */}
-                        <span className="text-zinc-500">
-                          <span className="text-zinc-600">Contact </span>
+                    {/* Left: timestamp + meta */}
+                    <div className="w-[180px] shrink-0">
+                      <p className="text-xs text-zinc-400" title={createdAt.toISOString()}>
+                        {formatTime(createdAt)}
+                      </p>
+                      <p className="text-[11px] text-zinc-600 mt-0.5">
+                        {relativeTime(createdAt)}
+                      </p>
+                      {log.agent && (
+                        <p className="text-[11px] text-zinc-500 mt-1 font-medium truncate">
+                          {log.agent.name}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Center: message preview */}
+                    <div className="min-w-0">
+                      <p className="text-sm text-zinc-300 leading-relaxed">
+                        {cleanPreview(log.inboundMessage)}
+                      </p>
+                      {log.outboundReply && (
+                        <p className="text-sm text-zinc-500 mt-1 leading-relaxed">
+                          <span className="text-zinc-600 font-medium">Reply: </span>
+                          {cleanPreview(log.outboundReply, 100)}
+                        </p>
+                      )}
+                      {log.errorMessage && (
+                        <p className="text-xs text-red-400/80 mt-1 truncate">
+                          {log.errorMessage}
+                        </p>
+                      )}
+                      {/* Meta row */}
+                      <div className="flex items-center gap-3 mt-1.5 text-[11px] text-zinc-600">
+                        <span className="font-mono truncate max-w-[140px]" title={log.contactId}>
                           {log.contactId}
                         </span>
-                        {/* Timestamps */}
-                        <span className="text-zinc-600" title={createdAt.toLocaleString()}>
-                          {relativeTime(createdAt)}
-                          <span className="hidden sm:inline">
-                            {' '}&middot; {createdAt.toLocaleString()}
+                        {log.tokensUsed > 0 && (
+                          <span>{log.tokensUsed.toLocaleString()} tokens</span>
+                        )}
+                        {log.actionsPerformed.length > 0 && (
+                          <span className="truncate max-w-[200px]">
+                            {log.actionsPerformed.join(', ')}
                           </span>
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
-                            statusBgColors[log.status] ?? 'bg-zinc-400/10 border-zinc-400/20'
-                          } ${statusColors[log.status] ?? 'text-zinc-400'}`}
-                        >
-                          {log.status}
-                        </span>
-                        <span className="text-zinc-600 text-xs">&rarr;</span>
+                        )}
                       </div>
                     </div>
-                    <p className="text-sm text-zinc-300 mb-1">
-                      <span className="text-zinc-600">IN: </span>
-                      {log.inboundMessage}
-                    </p>
-                    {log.outboundReply && (
-                      <p className="text-sm text-zinc-400">
-                        <span className="text-zinc-600">OUT: </span>
-                        {log.outboundReply}
-                      </p>
-                    )}
-                    {log.errorMessage && (
-                      <p className="text-sm text-red-400 mt-1">{log.errorMessage}</p>
-                    )}
-                    <div className="flex items-center gap-3 mt-2 text-xs text-zinc-600">
-                      {log.tokensUsed > 0 && <span>{log.tokensUsed} tokens</span>}
-                      {log.actionsPerformed.length > 0 && (
-                        <span>{log.actionsPerformed.join(', ')}</span>
-                      )}
+
+                    {/* Right: status */}
+                    <div className="w-[80px] text-right pt-0.5">
+                      <span className={`inline-flex items-center gap-1.5 text-xs ${style.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                        {style.label}
+                      </span>
                     </div>
                   </Link>
                 )

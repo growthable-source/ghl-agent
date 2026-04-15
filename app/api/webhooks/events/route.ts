@@ -22,6 +22,7 @@ import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualif
 import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
 import { debounceMessage } from '@/lib/message-debounce'
 import { buildPersonaBlock } from '@/lib/persona'
+import { htmlToText } from '@/lib/html-to-text'
 import {
   SUPPORTED_CHANNELS,
   type WebhookEventType,
@@ -97,7 +98,8 @@ export async function POST(req: NextRequest) {
           break
         }
 
-        const inboundMessage = debounced.combinedMessage
+        // Strip HTML from email bodies (GHL sends raw HTML for email channel)
+        const inboundMessage = htmlToText(debounced.combinedMessage)
 
         // Create pending log
         const log = await db.messageLog.create({
