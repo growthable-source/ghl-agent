@@ -81,6 +81,7 @@ export default function DashboardSidebar() {
                 {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
                 {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
                 {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
+                {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
               </>
             )}
           </>
@@ -107,7 +108,7 @@ export default function DashboardSidebar() {
           }`}
           style={pathname === '/dashboard/settings' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
         >
-          Settings
+          Profile
         </Link>
         <Link
           href="/dashboard"
