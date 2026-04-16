@@ -76,6 +76,7 @@ export default function DashboardSidebar() {
             {!isOnboarding && (
               <>
                 {navLink(`/dashboard/${workspaceId}`, 'Overview')}
+                {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
                 {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
                 {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
                 {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}

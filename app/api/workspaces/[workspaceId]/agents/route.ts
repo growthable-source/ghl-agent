@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { canCreateAgent, isTrialExpired } from '@/lib/plans'
+import { canCreateAgent, isTrialExpired, getPlanFeatures } from '@/lib/plans'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -11,11 +11,35 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   const agents = await db.agent.findMany({
     where: { workspaceId },
     include: {
-      _count: { select: { knowledgeEntries: true, routingRules: true, messageLogs: true } },
+      _count: { select: { knowledgeEntries: true, routingRules: true, messageLogs: true, conversationStates: true } },
+      channelDeployments: { where: { isActive: true }, select: { channel: true } },
+      vapiConfig: { select: { isActive: true, phoneNumber: true } },
     },
     orderBy: { createdAt: 'asc' },
   })
-  return NextResponse.json({ agents })
+
+  // Get workspace plan info for agent limit display
+  let planInfo: { plan: string; agentLimit: number; extraAgentCount: number } | null = null
+  try {
+    planInfo = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { plan: true, agentLimit: true, extraAgentCount: true },
+    })
+  } catch {
+    // Billing columns may not exist yet
+  }
+
+  const features = planInfo ? getPlanFeatures(planInfo.plan) : null
+  const maxAgents = features ? features.agents + (planInfo?.extraAgentCount ?? 0) : null
+
+  return NextResponse.json({
+    agents,
+    meta: {
+      total: agents.length,
+      limit: maxAgents,
+      plan: planInfo?.plan ?? 'trial',
+    },
+  })
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
