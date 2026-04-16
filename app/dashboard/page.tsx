@@ -23,11 +23,6 @@ export default async function DashboardPage() {
     orderBy: { createdAt: 'desc' },
   })
 
-  // If user has exactly one workspace, go straight to it
-  if (workspaceMembers.length === 1) {
-    redirect(`/dashboard/${workspaceMembers[0].workspaceId}`)
-  }
-
   // Determine workspace limit based on best plan
   const plans = workspaceMembers.map(m => m.workspace.plan)
   const bestPlan = (['scale', 'growth', 'starter', 'trial'] as const).find(p => plans.includes(p)) || 'trial'
