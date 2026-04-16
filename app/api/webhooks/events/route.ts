@@ -23,6 +23,7 @@ import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-sch
 import { debounceMessage } from '@/lib/message-debounce'
 import { buildPersonaBlock } from '@/lib/persona'
 import { htmlToText } from '@/lib/html-to-text'
+import { trackMessageUsage } from '@/lib/usage'
 import {
   SUPPORTED_CHANNELS,
   type WebhookEventType,
@@ -237,6 +238,13 @@ export async function POST(req: NextRequest) {
           })
 
           console.log(`[Agent] ${agent.name} replied to ${p.contactId}: "${result.reply?.slice(0, 60)}"`)
+
+          // Track message usage for billing
+          if (agent.workspaceId) {
+            trackMessageUsage(agent.workspaceId, agent.id).catch(err =>
+              console.error(`[Usage] Failed to track message:`, err.message)
+            )
+          }
 
           // Save messages to persistent history
           await saveMessages(agent.id, p.locationId, p.contactId, p.conversationId, [

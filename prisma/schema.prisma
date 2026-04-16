@@ -78,23 +78,48 @@ model Workspace {
   slug        String   @unique
   icon        String   @default("🚀")      // emoji avatar
   domain      String?                       // e.g. "acmecorp.com" — for same-domain invite gating
-  plan        String   @default("free")     // "free" | "starter" | "pro" | "agency"
-  agentLimit  Int      @default(1)
-  messageLimit Int     @default(500)
 
-  // Stripe billing
-  stripeCustomerId     String?   @unique
-  stripeSubscriptionId String?   @unique
-  stripePriceId        String?
+  // ─── Plan & Limits ───
+  plan                    String   @default("trial")  // "trial" | "starter" | "growth" | "scale"
+  planSelectedDuringTrial String?                      // "starter" | "growth" | "scale"
+  billingPeriod           String   @default("monthly") // "monthly" | "annual"
+  agentLimit              Int      @default(3)
+  messageLimit            Int      @default(1500)      // AI messages per billing period
+  messageUsage            Int      @default(0)         // current period usage
+  voiceMinuteLimit        Int      @default(0)         // voice minutes per billing period (seconds stored)
+  voiceMinuteUsage        Int      @default(0)         // current period voice usage in seconds
+  extraAgentCount         Int      @default(0)         // agents beyond plan inclusion
+  trialEndsAt             DateTime?                    // set to now+7d on signup
+
+  // ─── Stripe Billing ───
+  stripeCustomerId       String?   @unique
+  stripeSubscriptionId   String?   @unique
+  stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
 
-  members     WorkspaceMember[]
-  invites     WorkspaceInvite[]
-  locations   Location[]         @relation("WorkspaceLocations")
-  agents      Agent[]            @relation("WorkspaceAgents")
+  members      WorkspaceMember[]
+  invites      WorkspaceInvite[]
+  locations    Location[]         @relation("WorkspaceLocations")
+  agents       Agent[]            @relation("WorkspaceAgents")
+  usageRecords UsageRecord[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model UsageRecord {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type               String                         // "message" | "voice_minute"
+  quantity           Int                             // 1 for messages, seconds for voice
+  agentId            String?                         // which agent generated the usage
+  billingPeriod      String                          // e.g. "2026-04"
+  stripeUsageRecordId String?                        // after reporting to Stripe
+  createdAt          DateTime  @default(now())
+
+  @@index([workspaceId, billingPeriod])
+  @@index([workspaceId, type, createdAt])
 }
 
 model WorkspaceMember {

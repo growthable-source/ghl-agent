@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { canInviteCrossDomain, canAddTeamMember, isTrialExpired } from '@/lib/plans'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -47,11 +48,27 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No valid emails provided' }, { status: 400 })
   }
 
-  // Get workspace domain for same-domain check
+  // Get workspace for plan checks
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
-    select: { domain: true },
+    select: { domain: true, plan: true, trialEndsAt: true },
   })
+
+  // ─── Feature gating: team member limit & cross-domain ───
+  if (workspace?.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
+    return NextResponse.json({
+      error: 'Your trial has expired. Please upgrade to invite team members.',
+      code: 'TRIAL_EXPIRED',
+    }, { status: 403 })
+  }
+
+  const currentMemberCount = await db.workspaceMember.count({ where: { workspaceId } })
+  if (!canAddTeamMember(workspace?.plan || 'trial', currentMemberCount)) {
+    return NextResponse.json({
+      error: 'Team member limit reached. Upgrade your plan to add more members.',
+      code: 'MEMBER_LIMIT',
+    }, { status: 403 })
+  }
 
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
   const results: { email: string; status: string; crossDomain: boolean }[] = []
@@ -59,6 +76,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   for (const email of emails) {
     const emailDomain = email.split('@')[1]
     const crossDomain = workspace?.domain ? emailDomain !== workspace.domain : false
+
+    // Check cross-domain invite permission
+    if (crossDomain && !canInviteCrossDomain(workspace?.plan || 'trial')) {
+      results.push({ email, status: 'cross_domain_not_allowed', crossDomain })
+      continue
+    }
 
     // Check if already a member
     const existingUser = await db.user.findUnique({ where: { email }, select: { id: true } })

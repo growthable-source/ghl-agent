@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { canCreateWorkspace } from '@/lib/plans'
 
 /**
  * GET /api/workspaces — list workspaces for the current user
@@ -50,6 +51,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Name is required' }, { status: 400 })
   }
 
+  // ─── Feature gating: workspace limit ───
+  // Check how many workspaces the user already owns/belongs to
+  const existingMemberships = await db.workspaceMember.findMany({
+    where: { userId: session.user.id },
+    include: { workspace: { select: { plan: true } } },
+  })
+  // Use the highest-tier plan among their workspaces for workspace limit check
+  const plans = existingMemberships.map(m => m.workspace.plan)
+  const bestPlan = ['scale', 'growth', 'starter', 'trial'].find(p => plans.includes(p)) || 'trial'
+  if (!canCreateWorkspace(bestPlan, existingMemberships.length)) {
+    return NextResponse.json({
+      error: 'Workspace limit reached. Upgrade your plan to create more workspaces.',
+      code: 'WORKSPACE_LIMIT',
+    }, { status: 403 })
+  }
+
   // Generate a URL-safe slug
   const baseSlug = name
     .toLowerCase()
@@ -65,6 +82,9 @@ export async function POST(req: NextRequest) {
       slug,
       icon,
       domain,
+      // New workspaces start on trial with 7-day expiry
+      plan: 'trial',
+      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       members: {
         create: {
           userId: session.user.id,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 
 const WORKSPACE_ICONS = [
   '🚀', '⚡', '🎯', '💎', '🔥', '🌊', '🏔️', '🌿',
@@ -173,6 +174,18 @@ export default function WorkspaceSettingsPage() {
           </div>
         </div>
       </form>
+
+      {/* ─── Billing ─── */}
+      <Link
+        href={`/dashboard/${workspaceId}/settings/billing`}
+        className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6 flex items-center justify-between group hover:border-zinc-700 transition-colors"
+      >
+        <div>
+          <h2 className="text-sm font-medium text-zinc-200 mb-1">Billing & Usage</h2>
+          <p className="text-xs text-zinc-500">Manage your plan, view usage, and update payment details.</p>
+        </div>
+        <span className="text-zinc-600 group-hover:text-zinc-400 transition-colors">→</span>
+      </Link>
 
       {/* ─── Team Members ─── */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">

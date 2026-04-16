@@ -238,6 +238,19 @@ export async function POST(req: NextRequest) {
           })
         }
 
+        // Track voice usage for billing
+        if (durationSecs > 0 && agentId) {
+          try {
+            const agent = await db.agent.findUnique({ where: { id: agentId }, select: { workspaceId: true } })
+            if (agent?.workspaceId) {
+              const { trackVoiceUsage } = await import('@/lib/usage')
+              await trackVoiceUsage(agent.workspaceId, agentId, durationSecs)
+            }
+          } catch (usageErr) {
+            console.error('[Vapi] Error tracking voice usage:', usageErr)
+          }
+        }
+
         if (summary && agentId && callerPhone) {
           try {
             const { searchContacts: sc4 } = await import('@/lib/crm-client')

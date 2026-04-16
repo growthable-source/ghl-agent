@@ -82,6 +82,7 @@ export default function DashboardSidebar() {
                 {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
                 {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
                 {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
+                {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
               </>
             )}
           </>
