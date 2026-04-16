@@ -24,30 +24,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   if (access instanceof NextResponse) return access
 
   // ─── Feature gating: check agent limit ───
-  const workspace = await db.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { plan: true, agentLimit: true, extraAgentCount: true, trialEndsAt: true },
-  })
-  if (!workspace) {
-    return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+  let workspace: { plan: string; agentLimit: number; extraAgentCount: number; trialEndsAt: Date | null } | null = null
+  try {
+    workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { plan: true, agentLimit: true, extraAgentCount: true, trialEndsAt: true },
+    })
+  } catch {
+    // Columns may not exist yet if billing migration hasn't been run — skip gating
+    console.warn('[Agents] Feature gating query failed (migration pending?) — allowing agent creation')
   }
 
-  // Block expired trials
-  if (workspace.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
-    return NextResponse.json({
-      error: 'Your trial has expired. Please upgrade to continue creating agents.',
-      code: 'TRIAL_EXPIRED',
-    }, { status: 403 })
-  }
+  if (workspace) {
+    // Block expired trials
+    if (workspace.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
+      return NextResponse.json({
+        error: 'Your trial has expired. Please upgrade to continue creating agents.',
+        code: 'TRIAL_EXPIRED',
+      }, { status: 403 })
+    }
 
-  const currentAgentCount = await db.agent.count({ where: { workspaceId } })
-  if (!canCreateAgent(workspace.plan, currentAgentCount, workspace.extraAgentCount)) {
-    return NextResponse.json({
-      error: `Agent limit reached (${currentAgentCount}/${workspace.agentLimit}). Upgrade your plan or add extra agent slots.`,
-      code: 'AGENT_LIMIT',
-      currentCount: currentAgentCount,
-      limit: workspace.agentLimit,
-    }, { status: 403 })
+    const currentAgentCount = await db.agent.count({ where: { workspaceId } })
+    if (!canCreateAgent(workspace.plan, currentAgentCount, workspace.extraAgentCount ?? 0)) {
+      return NextResponse.json({
+        error: `Agent limit reached (${currentAgentCount}/${workspace.agentLimit}). Upgrade your plan or add extra agent slots.`,
+        code: 'AGENT_LIMIT',
+        currentCount: currentAgentCount,
+        limit: workspace.agentLimit,
+      }, { status: 403 })
+    }
   }
 
   const body = await req.json()

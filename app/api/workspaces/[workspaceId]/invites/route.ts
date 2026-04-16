@@ -49,10 +49,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Get workspace for plan checks
-  const workspace = await db.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { domain: true, plan: true, trialEndsAt: true },
-  })
+  let workspace: { domain: string | null; plan: string; trialEndsAt: Date | null } | null = null
+  try {
+    workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { domain: true, plan: true, trialEndsAt: true },
+    })
+  } catch {
+    // trialEndsAt may not exist yet — fall back to domain-only query
+    const ws = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { domain: true, plan: true },
+    })
+    if (ws) workspace = { ...ws, trialEndsAt: null }
+  }
 
   // ─── Feature gating: team member limit & cross-domain ───
   if (workspace?.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
@@ -63,7 +73,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const currentMemberCount = await db.workspaceMember.count({ where: { workspaceId } })
-  if (!canAddTeamMember(workspace?.plan || 'trial', currentMemberCount)) {
+  if (!canAddTeamMember(workspace?.plan || 'free', currentMemberCount)) {
     return NextResponse.json({
       error: 'Team member limit reached. Upgrade your plan to add more members.',
       code: 'MEMBER_LIMIT',

@@ -52,19 +52,22 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── Feature gating: workspace limit ───
-  // Check how many workspaces the user already owns/belongs to
-  const existingMemberships = await db.workspaceMember.findMany({
-    where: { userId: session.user.id },
-    include: { workspace: { select: { plan: true } } },
-  })
-  // Use the highest-tier plan among their workspaces for workspace limit check
-  const plans = existingMemberships.map(m => m.workspace.plan)
-  const bestPlan = ['scale', 'growth', 'starter', 'trial'].find(p => plans.includes(p)) || 'trial'
-  if (!canCreateWorkspace(bestPlan, existingMemberships.length)) {
-    return NextResponse.json({
-      error: 'Workspace limit reached. Upgrade your plan to create more workspaces.',
-      code: 'WORKSPACE_LIMIT',
-    }, { status: 403 })
+  try {
+    const existingMemberships = await db.workspaceMember.findMany({
+      where: { userId: session.user.id },
+      include: { workspace: { select: { plan: true } } },
+    })
+    const plans = existingMemberships.map(m => m.workspace.plan)
+    const bestPlan = (['scale', 'growth', 'starter', 'free', 'trial'] as const).find(p => plans.includes(p)) || 'trial'
+    if (!canCreateWorkspace(bestPlan, existingMemberships.length)) {
+      return NextResponse.json({
+        error: 'Workspace limit reached. Upgrade your plan to create more workspaces.',
+        code: 'WORKSPACE_LIMIT',
+      }, { status: 403 })
+    }
+  } catch {
+    // If gating query fails (migration pending), allow workspace creation
+    console.warn('[Workspaces] Feature gating check failed — allowing creation')
   }
 
   // Generate a URL-safe slug
@@ -76,23 +79,34 @@ export async function POST(req: NextRequest) {
   const uniqueSuffix = Math.random().toString(36).slice(2, 8)
   const slug = `${baseSlug}-${uniqueSuffix}`
 
-  const workspace = await db.workspace.create({
-    data: {
-      name,
-      slug,
-      icon,
-      domain,
-      // New workspaces start on trial with 7-day expiry
-      plan: 'trial',
-      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      members: {
-        create: {
-          userId: session.user.id,
-          role: 'owner',
-        },
+  // Build create data — handle case where billing columns may not exist yet
+  const createData: any = {
+    name,
+    slug,
+    icon,
+    domain,
+    members: {
+      create: {
+        userId: session.user.id,
+        role: 'owner',
       },
     },
-  })
+  }
+
+  // Try to set billing fields (may fail if migration hasn't run)
+  let workspace
+  try {
+    workspace = await db.workspace.create({
+      data: {
+        ...createData,
+        plan: 'trial',
+        trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    })
+  } catch {
+    // Billing columns may not exist yet — create without them
+    workspace = await db.workspace.create({ data: createData })
+  }
 
   return NextResponse.json({ workspace, workspaceId: workspace.id }, { status: 201 })
 }

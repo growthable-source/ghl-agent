@@ -5,7 +5,7 @@
  * Trial gives full Growth-tier access for 7 days.
  */
 
-export type PlanId = 'trial' | 'starter' | 'growth' | 'scale'
+export type PlanId = 'free' | 'trial' | 'starter' | 'growth' | 'scale'
 
 export interface PlanFeatures {
   label: string
@@ -88,6 +88,31 @@ const ALL_TOOLS = [
 // ─── Plan definitions ───────────────────────────────────────────────────────
 
 export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
+  // Legacy plan — treat same as trial (pre-migration workspaces)
+  free: {
+    label: 'Free',
+    monthlyPrice: 0,
+    annualPrice: 0,
+    agents: 3,
+    messagesPerMonth: 1500,
+    voiceMinutes: 30,
+    workspaces: 10,
+    teamMembers: 3,
+    knowledgeEntries: 50,
+    channels: ALL_CHANNELS,
+    tools: ALL_TOOLS,
+    crossDomainInvites: true,
+    voiceEnabled: true,
+    leadScoring: true,
+    sentimentDetection: true,
+    followUpSequences: true,
+    triggers: true,
+    customPersona: true,
+    extraAgentPrice: 0,
+    messageOveragePrice: 0,
+    voiceOveragePrice: 0,
+  },
+
   trial: {
     label: 'Trial',
     monthlyPrice: 0,
@@ -95,7 +120,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     agents: 3,
     messagesPerMonth: 1500,
     voiceMinutes: 30,
-    workspaces: 1,
+    workspaces: 10,
     teamMembers: 3,
     knowledgeEntries: 50,
     channels: ALL_CHANNELS,
