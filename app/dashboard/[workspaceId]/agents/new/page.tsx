@@ -223,12 +223,14 @@ export default function NewAgentWizard() {
           ...(selectedTemplate && { enabledTools: selectedTemplate.enabledTools }),
         }),
       })
-      if (!res.ok) throw new Error('Failed to create agent')
-      const { agent } = await res.json()
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to create agent (${res.status})`)
+      }
 
       // Save channel deployments
       if (selectedChannels.length > 0) {
-        await fetch(`/api/workspaces/${workspaceId}/agents/${agent.id}/channels`, {
+        await fetch(`/api/workspaces/${workspaceId}/agents/${data.agent.id}/channels`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -237,9 +239,9 @@ export default function NewAgentWizard() {
         })
       }
 
-      router.push(`/dashboard/${workspaceId}/agents/${agent.id}/deploy`)
-    } catch {
-      setError('Something went wrong. Please try again.')
+      router.push(`/dashboard/${workspaceId}/agents/${data.agent.id}/deploy`)
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong. Please try again.')
       setSaving(false)
     }
   }

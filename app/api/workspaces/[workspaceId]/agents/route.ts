@@ -55,17 +55,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     }
   }
 
-  const body = await req.json()
-  const location = await db.location.findFirst({ where: { workspaceId }, select: { id: true } })
-  const agent = await db.agent.create({
-    data: {
-      workspaceId,
-      locationId: location?.id ?? workspaceId,
-      name: body.name,
-      systemPrompt: body.systemPrompt,
-      instructions: body.instructions ?? null,
-      ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
-    },
-  })
-  return NextResponse.json({ agent }, { status: 201 })
+  let body
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+
+  try {
+    const location = await db.location.findFirst({ where: { workspaceId }, select: { id: true } })
+    const agent = await db.agent.create({
+      data: {
+        workspaceId,
+        locationId: location?.id ?? workspaceId,
+        name: body.name,
+        systemPrompt: body.systemPrompt,
+        instructions: body.instructions ?? null,
+        ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
+      },
+    })
+    return NextResponse.json({ agent }, { status: 201 })
+  } catch (err: any) {
+    console.error('[Agents] Failed to create agent:', err.message)
+    return NextResponse.json({ error: err.message || 'Failed to create agent' }, { status: 500 })
+  }
 }
