@@ -79,6 +79,7 @@ export default function NextActionsPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [agentFilter, setAgentFilter] = useState<string>('all')
   const [cancelConfirm, setCancelConfirm] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'timeline' | 'calendar'>('timeline')
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -173,11 +174,34 @@ export default function NextActionsPage() {
       <div className="max-w-6xl mx-auto">
 
         {/* ─── Header ──────────────────────────────────────────────────── */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Next Actions</h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Scheduled follow-ups from your agents — auto-cancel when contacts respond.
-          </p>
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Next Actions</h1>
+            <p className="text-sm text-zinc-400 mt-1">
+              Scheduled follow-ups from your agents — auto-cancel when contacts respond.
+            </p>
+          </div>
+          {/* View toggle */}
+          <div className="flex gap-1 p-1 rounded-lg bg-zinc-900 border border-zinc-800">
+            <button
+              onClick={() => setViewMode('timeline')}
+              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
+                viewMode === 'timeline' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              style={viewMode === 'timeline' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+            >
+              Timeline
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
+                viewMode === 'calendar' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+              style={viewMode === 'calendar' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+            >
+              Calendar
+            </button>
+          </div>
         </div>
 
         {/* ─── Summary tiles ───────────────────────────────────────────── */}
@@ -254,6 +278,9 @@ export default function NextActionsPage() {
               Configure agent follow-ups →
             </Link>
           </div>
+        ) : viewMode === 'calendar' ? (
+          /* ─── Calendar view (next 14 days) ───────────────────────────── */
+          <CalendarView jobs={jobs} workspaceId={workspaceId} onCancel={cancelJob} />
         ) : (
           /* ─── Timeline view ──────────────────────────────────────────── */
           <div className="space-y-6">
@@ -404,6 +431,119 @@ export default function NextActionsPage() {
             Auto-refreshing every 30 seconds · Follow-ups cancel automatically when contacts reply
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Calendar View ─────────────────────────────────────────────────────────
+
+function CalendarView({
+  jobs,
+  workspaceId,
+  onCancel,
+}: {
+  jobs: NextActionJob[]
+  workspaceId: string
+  onCancel: (id: string) => void
+}) {
+  // Build a 14-day grid starting from today
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const days: { date: Date; jobs: NextActionJob[] }[] = []
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    const dayStart = d.getTime()
+    const dayEnd = dayStart + 86400000
+    const dayJobs = jobs.filter(j => {
+      const t = new Date(j.scheduledAt).getTime()
+      return t >= dayStart && t < dayEnd
+    })
+    days.push({ date: d, jobs: dayJobs })
+  }
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  return (
+    <div>
+      {/* Day-of-week header for first row */}
+      <div className="grid grid-cols-7 gap-2 mb-2">
+        {Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date(today)
+          d.setDate(today.getDate() + i)
+          return (
+            <div key={i} className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 text-center">
+              {dayNames[d.getDay()]}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 14 day grid as two weeks */}
+      <div className="grid grid-cols-7 gap-2">
+        {days.map((day, i) => {
+          const isToday = i === 0
+          const dayNum = day.date.getDate()
+          const monthName = day.date.toLocaleString('en-US', { month: 'short' })
+          return (
+            <div
+              key={i}
+              className={`min-h-[120px] p-2 rounded-lg border transition-colors ${
+                isToday
+                  ? 'border-orange-500/40 bg-orange-500/5'
+                  : day.jobs.length > 0
+                  ? 'border-zinc-700 bg-zinc-900/60'
+                  : 'border-zinc-800 bg-zinc-900/30'
+              }`}
+            >
+              <div className="flex items-baseline justify-between mb-2">
+                <span className={`text-xs font-semibold ${isToday ? 'text-orange-400' : 'text-zinc-400'}`}>
+                  {dayNum}
+                </span>
+                {day.date.getDate() === 1 && (
+                  <span className="text-[10px] text-zinc-500">{monthName}</span>
+                )}
+                {day.jobs.length > 0 && (
+                  <span className="text-[10px] font-bold text-zinc-500">{day.jobs.length}</span>
+                )}
+              </div>
+              <div className="space-y-1">
+                {day.jobs.slice(0, 4).map(job => {
+                  const time = new Date(job.scheduledAt)
+                  const hhmm = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                  return (
+                    <div
+                      key={job.id}
+                      className="group relative text-[10px] px-1.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors truncate"
+                      title={`${hhmm} · ${job.agent?.name} · ${job.sequence.name}`}
+                    >
+                      <span className="text-zinc-400">{hhmm}</span>{' '}
+                      <span className="text-zinc-300 truncate">{job.agent?.name || '—'}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onCancel(job.id) }}
+                        className="absolute top-0.5 right-0.5 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Cancel"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })}
+                {day.jobs.length > 4 && (
+                  <Link
+                    href={`/dashboard/${workspaceId}/next-actions`}
+                    className="block text-[10px] text-orange-400 font-medium text-center py-0.5"
+                  >
+                    +{day.jobs.length - 4} more
+                  </Link>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

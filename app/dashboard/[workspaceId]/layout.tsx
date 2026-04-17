@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import TrialBanner from '@/components/dashboard/TrialBanner'
+import PauseBanner from '@/components/dashboard/PauseBanner'
 
 /**
  * Workspace-level layout — enforces that the current user has access to
@@ -68,6 +69,7 @@ export default async function WorkspaceLayout({
   return (
     <>
       <TrialBanner workspaceId={workspaceId} />
+      <PauseBanner />
       {children}
     </>
   )

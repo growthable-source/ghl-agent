@@ -77,7 +77,22 @@ export default function DashboardSidebar() {
               <>
                 {navLink(`/dashboard/${workspaceId}`, 'Overview')}
                 {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
+                {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
+                {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention')}
                 {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
+                {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals')}
+
+                <div className="pt-2 pb-1 px-3">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Insights</p>
+                </div>
+                {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
+                {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
+                {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
+                {navLink(`/dashboard/${workspaceId}/corrections`, 'Corrections')}
+
+                <div className="pt-2 pb-1 px-3">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Tools</p>
+                </div>
                 {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
                 {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
                 {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}

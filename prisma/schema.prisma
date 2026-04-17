@@ -97,6 +97,11 @@ model Workspace {
   stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
 
+  // ─── Emergency Pause ───
+  isPaused   Boolean   @default(false)
+  pausedAt   DateTime?
+  pausedBy   String?                       // userId who paused the workspace
+
   members      WorkspaceMember[]
   invites      WorkspaceInvite[]
   locations    Location[]         @relation("WorkspaceLocations")
@@ -235,6 +240,21 @@ model Agent {
   typingDelayMaxMs    Int              @default(3000)
   languages           String[]         @default(["en"])
 
+  // ─── Working Hours & Quiet Periods ───
+  workingHoursEnabled Boolean          @default(false)
+  workingHoursStart   Int              @default(0)    // hour 0-23 (contact-local)
+  workingHoursEnd     Int              @default(24)   // hour 0-24
+  workingDays         String[]         @default(["mon","tue","wed","thu","fri","sat","sun"])
+  timezone            String?                         // IANA, e.g. "America/New_York"
+
+  // ─── Emergency Pause ───
+  isPaused            Boolean          @default(false)
+  pausedAt            DateTime?
+
+  // ─── Approval Queue ───
+  requireApproval     Boolean          @default(false)
+  approvalRules       Json?                           // { lowSentiment: true, firstContact: true, ... }
+
   knowledgeEntries KnowledgeEntry[]
   routingRules     RoutingRule[]
   messageLogs      MessageLog[]
@@ -303,8 +323,19 @@ model MessageLog {
   errorMessage     String?   @db.Text
   createdAt        DateTime  @default(now())
 
+  // ─── Approval Queue ───
+  needsApproval    Boolean   @default(false)
+  approvalStatus   String?                    // "pending" | "approved" | "rejected" | "auto_sent"
+  approvedBy       String?                    // userId
+  approvedAt       DateTime?
+  approvalReason   String?                    // why it was flagged (e.g. "low_sentiment", "first_contact")
+
+  // ─── Inline Correction ───
+  corrections      MessageCorrection[]
+
   @@index([locationId, createdAt(sort: Desc)])
   @@index([agentId, createdAt(sort: Desc)])
+  @@index([needsApproval, approvalStatus])
 }
 
 enum LogStatus {
@@ -312,6 +343,19 @@ enum LogStatus {
   SUCCESS
   ERROR
   SKIPPED
+}
+
+model MessageCorrection {
+  id             String     @id @default(cuid())
+  messageLogId   String
+  messageLog     MessageLog @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
+  originalText   String     @db.Text
+  correctedText  String     @db.Text
+  correctedBy    String                       // userId
+  reason         String?    @db.Text          // optional note for training
+  createdAt      DateTime   @default(now())
+  @@index([messageLogId])
+  @@index([correctedBy, createdAt(sort: Desc)])
 }
 
 model StopCondition {

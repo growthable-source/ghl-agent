@@ -46,6 +46,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.qualifyingStyle !== undefined && { qualifyingStyle: body.qualifyingStyle }),
       ...(body.fallbackBehavior !== undefined && { fallbackBehavior: body.fallbackBehavior }),
       ...(body.fallbackMessage !== undefined && { fallbackMessage: body.fallbackMessage }),
+      ...(body.workingHoursEnabled !== undefined && { workingHoursEnabled: body.workingHoursEnabled }),
+      ...(body.workingHoursStart !== undefined && { workingHoursStart: body.workingHoursStart }),
+      ...(body.workingHoursEnd !== undefined && { workingHoursEnd: body.workingHoursEnd }),
+      ...(body.workingDays !== undefined && { workingDays: body.workingDays }),
+      ...(body.timezone !== undefined && { timezone: body.timezone }),
+      ...(body.isPaused !== undefined && { isPaused: body.isPaused, pausedAt: body.isPaused ? new Date() : null }),
+      ...(body.requireApproval !== undefined && { requireApproval: body.requireApproval }),
+      ...(body.approvalRules !== undefined && { approvalRules: body.approvalRules }),
     },
   })
   return NextResponse.json({ agent })
