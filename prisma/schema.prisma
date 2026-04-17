@@ -353,9 +353,179 @@ model MessageCorrection {
   correctedText  String     @db.Text
   correctedBy    String                       // userId
   reason         String?    @db.Text          // optional note for training
+  savedAsKnowledge Boolean  @default(false)
   createdAt      DateTime   @default(now())
   @@index([messageLogId])
   @@index([correctedBy, createdAt(sort: Desc)])
+}
+
+// ─── Agent Prompt Versioning ───────────────────────────────────────────────
+model AgentPromptVersion {
+  id             String   @id @default(cuid())
+  agentId        String
+  systemPrompt   String   @db.Text
+  instructions   String?  @db.Text
+  changeNote     String?  @db.Text
+  editedBy       String                       // userId
+  isRollback     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  @@index([agentId, createdAt(sort: Desc)])
+}
+
+// ─── Agent Evaluation (Test Suite) ─────────────────────────────────────────
+model AgentEvaluation {
+  id                 String   @id @default(cuid())
+  agentId            String
+  name               String
+  scenario           String   @db.Text          // inbound message to test
+  expectedContains   String[] @default([])      // substrings that SHOULD be in reply
+  expectedNotContains String[] @default([])     // substrings that SHOULD NOT
+  expectedTool       String?                    // specific tool that should be called
+  createdAt          DateTime @default(now())
+  runs               AgentEvaluationRun[]
+  @@index([agentId])
+}
+
+model AgentEvaluationRun {
+  id             String          @id @default(cuid())
+  evaluationId   String
+  evaluation     AgentEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  actualResponse String?         @db.Text
+  passed         Boolean
+  failureReasons String[]        @default([])
+  toolsCalled    String[]        @default([])
+  runBy          String                          // userId
+  runAt          DateTime        @default(now())
+  @@index([evaluationId, runAt(sort: Desc)])
+}
+
+// ─── Agent Goals + Win/Loss ────────────────────────────────────────────────
+model AgentGoal {
+  id          String   @id @default(cuid())
+  agentId     String
+  name        String
+  goalType    String                              // "appointment_booked" | "tag_added" | "opportunity_moved" | "custom"
+  value       String?                             // e.g. the tag name or stage name for matching
+  isActive    Boolean  @default(true)
+  maxTurns    Int?                                // optional: win only counts if hit within N turns
+  createdAt   DateTime @default(now())
+  events      AgentGoalEvent[]
+  @@index([agentId])
+}
+
+model AgentGoalEvent {
+  id             String   @id @default(cuid())
+  goalId         String
+  goal           AgentGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  contactId      String
+  conversationId String?
+  achievedAt     DateTime @default(now())
+  turnsToAchieve Int?
+  @@index([goalId, achievedAt(sort: Desc)])
+  @@index([contactId])
+}
+
+// ─── Audit Log ─────────────────────────────────────────────────────────────
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorId     String                              // userId who performed the action
+  action      String                              // "agent.paused" | "message.approved" | ...
+  targetType  String?                             // "agent" | "message" | "workspace" | ...
+  targetId    String?
+  metadata    Json?                               // free-form context
+  createdAt   DateTime @default(now())
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+}
+
+// ─── Consent Tracking (TCPA / GDPR) ────────────────────────────────────────
+model ContactConsent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  locationId  String
+  contactId   String
+  channel     String                              // "SMS" | "Email" | "WhatsApp" | ...
+  status      String                              // "opted_in" | "opted_out" | "unknown"
+  source      String?                             // "manual" | "keyword" | "webform" | ...
+  detail      String?  @db.Text                   // e.g. the keyword that triggered opt-out
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([contactId, channel, workspaceId])
+  @@index([workspaceId, status])
+}
+
+// ─── Live Takeover ─────────────────────────────────────────────────────────
+model LiveTakeover {
+  id             String   @id @default(cuid())
+  agentId        String
+  contactId      String
+  conversationId String?
+  locationId     String
+  takenOverBy    String                           // userId
+  reason         String?  @db.Text
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  @@index([agentId, endedAt])
+  @@index([contactId, endedAt])
+}
+
+// ─── Webhook Subscriptions ─────────────────────────────────────────────────
+model WebhookSubscription {
+  id          String   @id @default(cuid())
+  workspaceId String
+  url         String
+  events      String[] @default([])              // ["message.sent","appointment.booked",...]
+  secret      String                              // for HMAC signing
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deliveries  WebhookDelivery[]
+  @@index([workspaceId])
+}
+
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  event          String
+  payload        Json
+  statusCode     Int?
+  responseBody   String?  @db.Text
+  attempts       Int      @default(1)
+  succeeded      Boolean  @default(false)
+  deliveredAt    DateTime @default(now())
+  @@index([subscriptionId, deliveredAt(sort: Desc)])
+}
+
+// ─── Agent Templates Marketplace ───────────────────────────────────────────
+model AgentTemplate {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  description        String   @db.Text
+  category           String                       // "sales" | "support" | "real_estate" | ...
+  icon               String   @default("🤖")
+  systemPrompt       String   @db.Text
+  suggestedTools     String[] @default([])
+  suggestedChannels  String[] @default([])
+  sampleQualifyingQuestions Json?
+  isOfficial         Boolean  @default(false)
+  installCount       Int      @default(0)
+  createdAt          DateTime @default(now())
+  @@index([category])
+}
+
+// ─── Notification Channels (Slack + Email) ─────────────────────────────────
+model NotificationChannel {
+  id          String   @id @default(cuid())
+  workspaceId String
+  type        String                              // "slack" | "email"
+  config      Json                                // { webhookUrl?: string, email?: string }
+  events      String[] @default([])              // ["needs_attention","approval_pending",...]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([workspaceId, type])
 }
 
 model StopCondition {

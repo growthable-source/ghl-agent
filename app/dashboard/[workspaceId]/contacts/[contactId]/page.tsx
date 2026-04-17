@@ -76,9 +76,18 @@ export default function ContactTimelinePage() {
           ← Back to conversations
         </Link>
 
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Contact Timeline</h1>
-          <p className="text-sm text-zinc-500 mt-1 font-mono">{contactId}</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Contact Timeline</h1>
+            <p className="text-sm text-zinc-500 mt-1 font-mono">{contactId}</p>
+          </div>
+          {summary?.agentsInvolved && summary.agentsInvolved[0] && (
+            <TakeoverControl
+              workspaceId={workspaceId}
+              contactId={contactId}
+              agentId={summary.agentsInvolved[0].id}
+            />
+          )}
         </div>
 
         {/* Summary */}
@@ -198,5 +207,69 @@ function Tile({ label, value }: { label: string; value: number }) {
       <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
       <p className="text-xl font-bold text-white">{value}</p>
     </div>
+  )
+}
+
+function TakeoverControl({ workspaceId, contactId, agentId }: {
+  workspaceId: string; contactId: string; agentId: string
+}) {
+  const [active, setActive] = useState<any>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/workspaces/${workspaceId}/takeover`)
+      .then(r => r.json())
+      .then(data => {
+        const match = (data.takeovers || []).find((t: any) => t.contactId === contactId && !t.endedAt)
+        setActive(match || null)
+      })
+      .catch(() => {})
+  }, [workspaceId, contactId])
+
+  async function start() {
+    setBusy(true)
+    const reason = prompt('Why are you taking over? (optional)') || undefined
+    const res = await fetch(`/api/workspaces/${workspaceId}/takeover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, contactId, reason }),
+    })
+    if (res.ok) setActive((await res.json()).takeover)
+    setBusy(false)
+  }
+
+  async function end() {
+    if (!active) return
+    setBusy(true)
+    await fetch(`/api/workspaces/${workspaceId}/takeover/${active.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'end' }),
+    })
+    setActive(null)
+    setBusy(false)
+  }
+
+  if (active) {
+    return (
+      <button
+        onClick={end}
+        disabled={busy}
+        className="text-xs font-semibold px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 transition-colors"
+      >
+        {busy ? '...' : 'Hand back to agent'}
+      </button>
+    )
+  }
+
+  return (
+    <button
+      onClick={start}
+      disabled={busy}
+      className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors"
+      style={{ background: '#fa4d2e' }}
+    >
+      {busy ? '...' : 'Take over conversation'}
+    </button>
   )
 }

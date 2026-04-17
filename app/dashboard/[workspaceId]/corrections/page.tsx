@@ -11,6 +11,7 @@ interface Correction {
   correctedText: string
   reason: string | null
   correctedBy: string
+  savedAsKnowledge?: boolean
   messageLog: {
     id: string
     createdAt: string
@@ -123,6 +124,39 @@ export default function CorrectionsPage() {
                     <span className="text-zinc-400">Reason:</span> {c.reason}
                   </p>
                 )}
+
+                <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between">
+                  {c.savedAsKnowledge ? (
+                    <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                      ✓ Saved to knowledge base
+                    </span>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        const title = prompt('Knowledge entry title:', c.messageLog.inboundMessage.slice(0, 60))
+                        if (!title) return
+                        const res = await fetch(`/api/workspaces/${workspaceId}/corrections/${c.id}/save-as-knowledge`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ title }),
+                        })
+                        if (res.ok) {
+                          setCorrections(prev => prev.map(p => p.id === c.id ? { ...p, savedAsKnowledge: true } : p))
+                        }
+                      }}
+                      className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-colors text-white"
+                      style={{ background: '#fa4d2e' }}
+                    >
+                      + Save as knowledge entry
+                    </button>
+                  )}
+                  <Link
+                    href={`/dashboard/${workspaceId}/replay/${c.messageLog.id}`}
+                    className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                  >
+                    View full conversation →
+                  </Link>
+                </div>
               </div>
             ))}
           </div>
