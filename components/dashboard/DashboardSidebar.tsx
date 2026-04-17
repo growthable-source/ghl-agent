@@ -77,6 +77,7 @@ export default function DashboardSidebar() {
               <>
                 {navLink(`/dashboard/${workspaceId}`, 'Overview')}
                 {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
+                {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
                 {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
                 {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
                 {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}

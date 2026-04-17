@@ -18,6 +18,43 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     orderBy: { createdAt: 'asc' },
   })
 
+  // Aggregate next-action counts per agent from scheduled follow-up jobs
+  const agentIds = agents.map(a => a.id)
+  const nextActionsByAgent: Record<string, { count: number; nextAt: string | null }> = {}
+  if (agentIds.length > 0) {
+    try {
+      const jobs = await db.followUpJob.findMany({
+        where: {
+          status: 'SCHEDULED',
+          sequence: { agentId: { in: agentIds } },
+        },
+        select: {
+          scheduledAt: true,
+          sequence: { select: { agentId: true } },
+        },
+      })
+      for (const job of jobs) {
+        const aid = job.sequence.agentId
+        if (!nextActionsByAgent[aid]) {
+          nextActionsByAgent[aid] = { count: 0, nextAt: null }
+        }
+        nextActionsByAgent[aid].count++
+        const ts = new Date(job.scheduledAt).toISOString()
+        if (!nextActionsByAgent[aid].nextAt || ts < nextActionsByAgent[aid].nextAt!) {
+          nextActionsByAgent[aid].nextAt = ts
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Agents] Next actions aggregation failed:', err.message)
+    }
+  }
+
+  // Inline nextActions onto each agent for the UI
+  const agentsWithNextActions = agents.map(a => ({
+    ...a,
+    nextActions: nextActionsByAgent[a.id] ?? { count: 0, nextAt: null },
+  }))
+
   // Get workspace plan info for agent limit display
   let planInfo: { plan: string; agentLimit: number; extraAgentCount: number } | null = null
   try {
@@ -33,7 +70,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   const maxAgents = features ? features.agents + (planInfo?.extraAgentCount ?? 0) : null
 
   return NextResponse.json({
-    agents,
+    agents: agentsWithNextActions,
     meta: {
       total: agents.length,
       limit: maxAgents,
