@@ -30,17 +30,25 @@ export async function POST(
   const tokens = await getTokens(locationId)
   if (!tokens) return NextResponse.json({ error: 'Location not connected' }, { status: 401 })
 
+  // Use a test contact ID if not provided
+  const testContactId = contactId || `playground-${Date.now()}`
+
   let fullPrompt = agent.systemPrompt
   fullPrompt += await buildObjectivesBlockForAgent(agent.id, message)
   if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
   fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, message)
 
   if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
-    fullPrompt += `\n\n## Calendar Configuration\nCalendar ID for booking: ${agent.calendarId}`
-  }
+    fullPrompt += `\n\n## Calendar Configuration
+Calendar ID for booking: ${agent.calendarId}
+Contact ID for this conversation: ${testContactId}
 
-  // Use a test contact ID if not provided
-  const testContactId = contactId || `playground-${Date.now()}`
+BOOKING PROCEDURE — when the contact wants to schedule:
+1. Call get_available_slots with this Calendar ID.
+2. Propose ONE specific slot in your reply.
+3. On confirmation, IMMEDIATELY call book_appointment in the same turn using the EXACT startTime from get_available_slots.
+4. Only say "I've booked" AFTER book_appointment returns success.`
+  }
 
   try {
     const result = await runAgent({

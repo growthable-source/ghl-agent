@@ -194,7 +194,19 @@ export async function POST(req: NextRequest) {
 
         // Inject calendar ID if booking tools are enabled and a calendar is configured
         if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
-          fullPrompt += `\n\n## Calendar Configuration\nCalendar ID for booking: ${agent.calendarId}\nAlways use this calendar ID when checking availability or booking appointments.`
+          fullPrompt += `\n\n## Calendar Configuration
+Calendar ID for booking: ${agent.calendarId}
+Contact ID for this conversation: ${p.contactId}
+
+BOOKING PROCEDURE — follow this exactly when the contact wants to schedule:
+1. Call \`get_available_slots\` with the Calendar ID above and a date range starting from today.
+2. Propose ONE specific slot in your reply (don't list 10 — be decisive). Example: "I can do Thursday at 2pm your time — does that work?"
+3. When the contact confirms ("yes", "that works", "perfect", etc.), IMMEDIATELY call \`book_appointment\` in the same turn using:
+   - calendarId: ${agent.calendarId}
+   - contactId: ${p.contactId}
+   - startTime: the EXACT string returned by get_available_slots
+4. After the tool returns success, confirm the booked time to the contact. DO NOT say "I've booked" without calling book_appointment — the booking won't exist.
+5. Optionally call \`create_appointment_note\` to log context from the conversation.`
         }
 
         // Memory context and qualifying questions

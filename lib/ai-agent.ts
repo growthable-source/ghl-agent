@@ -102,28 +102,29 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_available_slots',
-    description: 'Get available appointment slots for a calendar on a given date range.',
+    description: 'Step 1 of booking: Fetch available appointment slots. ALWAYS follow this call with a book_appointment call once the contact has picked (or you have proposed) a specific time. Never just list slots and ask the contact to "let you know" — propose a specific slot in your reply.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        calendarId: { type: 'string', description: 'The GHL calendar ID' },
-        startDate: { type: 'string', description: 'Start date in ISO format (YYYY-MM-DD)' },
-        endDate: { type: 'string', description: 'End date in ISO format (YYYY-MM-DD)' },
+        calendarId: { type: 'string', description: 'The GHL calendar ID — this is provided in your Calendar Configuration section' },
+        startDate: { type: 'string', description: 'Start of search window in ISO format (YYYY-MM-DD or full ISO datetime). Default to today.' },
+        endDate: { type: 'string', description: 'End of search window in ISO format (YYYY-MM-DD or full ISO datetime). Default to 7 days after startDate.' },
       },
       required: ['calendarId', 'startDate', 'endDate'],
     },
   },
   {
     name: 'book_appointment',
-    description: 'Book an appointment for the contact on a calendar.',
+    description: 'Step 2 of booking: ACTUALLY book the appointment. Call this tool to commit the booking — do not just tell the contact "I\'ve scheduled that" without calling this tool, because nothing will be booked. Use the exact startTime string returned by get_available_slots. Preferred flow: (1) get_available_slots → (2) propose a specific slot in your reply → (3) on contact confirmation, call book_appointment IMMEDIATELY in the same turn.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        calendarId: { type: 'string', description: 'The GHL calendar ID' },
-        contactId: { type: 'string' },
-        startTime: { type: 'string', description: 'Start time in ISO format' },
-        title: { type: 'string', description: 'Appointment title' },
-        notes: { type: 'string', description: 'Optional notes for the appointment' },
+        calendarId: { type: 'string', description: 'The GHL calendar ID — provided in your Calendar Configuration section' },
+        contactId: { type: 'string', description: 'The contact ID for whom the appointment is booked — this is the current conversation\'s contact' },
+        startTime: { type: 'string', description: 'Start time — use the exact startTime string returned by get_available_slots (do not reformat it)' },
+        endTime: { type: 'string', description: 'Optional. Defaults to startTime + 30 minutes if omitted.' },
+        title: { type: 'string', description: 'Short appointment title like "Demo with Acme" or "Sales Call"' },
+        notes: { type: 'string', description: 'Brief context from the conversation — what the contact wants to discuss' },
       },
       required: ['calendarId', 'contactId', 'startTime'],
     },
@@ -406,18 +407,49 @@ async function executeTool(
         let endTime = (input.endTime as string) || ''
         if (!endTime && startTime) {
           const end = new Date(startTime)
+          if (isNaN(end.getTime())) {
+            return JSON.stringify({
+              success: false,
+              error: `Invalid startTime format: "${startTime}". Use the exact ISO string returned by get_available_slots.`,
+              action: 'Call get_available_slots first, then use the exact startTime from the response.',
+            })
+          }
           end.setMinutes(end.getMinutes() + 30)
           endTime = end.toISOString()
         }
-        const result = await crm.bookAppointment({
-          calendarId: input.calendarId as string,
-          contactId: input.contactId as string,
-          startTime,
-          endTime,
-          title: input.title as string | undefined,
-          notes: input.notes as string | undefined,
-        })
-        return JSON.stringify({ success: true, ...result })
+        try {
+          const result = await crm.bookAppointment({
+            calendarId: input.calendarId as string,
+            contactId: input.contactId as string,
+            startTime,
+            endTime,
+            title: input.title as string | undefined,
+            notes: input.notes as string | undefined,
+          })
+          // Surface the booked time + appointment ID clearly so Claude can confirm
+          // the exact slot to the contact and optionally call create_appointment_note
+          return JSON.stringify({
+            success: true,
+            appointmentId: result?.id || result?.appointmentId || null,
+            bookedStartTime: startTime,
+            bookedEndTime: endTime,
+            message: 'Appointment successfully booked. Confirm the exact time to the contact in your next message, and optionally call create_appointment_note to log context.',
+            ...(result || {}),
+          })
+        } catch (err: any) {
+          // Detect common failures and give Claude actionable guidance
+          const msg = err?.message || 'Unknown error'
+          const hint = /slot/i.test(msg) ? 'That slot may no longer be available — call get_available_slots again and propose a different time.'
+            : /calendarId/i.test(msg) ? 'The calendarId appears invalid — use the ID from your Calendar Configuration section exactly.'
+            : /contactId/i.test(msg) ? 'The contactId is invalid — use the current conversation contactId (passed in your context).'
+            : /timezone|format/i.test(msg) ? 'The startTime format is wrong — use the exact string returned by get_available_slots.'
+            : 'Booking failed. Apologize to the contact, try once more with a different slot, or offer to have someone follow up.'
+          return JSON.stringify({
+            success: false,
+            error: msg,
+            hint,
+          })
+        }
       }
       case 'create_appointment_note': {
         const noteResult = await crm.createAppointmentNote(
@@ -705,9 +737,19 @@ export async function runAgent(opts: {
   }
 
   // Filter tools based on agent configuration
-  // Normalize: if agent has send_sms enabled, also enable send_reply
+  // Normalize: ensure dependent tool pairs are always enabled together.
+  //  - send_sms → send_reply (legacy back-compat)
+  //  - get_available_slots ↔ book_appointment (so the agent can always
+  //    actually commit a booking after reading slots)
+  //  - book_appointment → get_available_slots (same reason, the other way)
+  //  - book_appointment → create_appointment_note (so agent can log context)
   const normalizedTools = enabledTools
-    ? [...new Set([...enabledTools, ...(enabledTools.includes('send_sms') ? ['send_reply'] : [])])]
+    ? [...new Set([
+        ...enabledTools,
+        ...(enabledTools.includes('send_sms') ? ['send_reply'] : []),
+        ...(enabledTools.includes('get_available_slots') ? ['book_appointment'] : []),
+        ...(enabledTools.includes('book_appointment') ? ['get_available_slots', 'create_appointment_note'] : []),
+      ])]
     : undefined
   const tools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS
 

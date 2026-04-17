@@ -225,11 +225,21 @@ export class GhlAdapter implements CrmAdapter {
     endDate: string,
     timezone?: string
   ): Promise<Array<{ startTime: string; endTime: string }>> {
-    const params = new URLSearchParams({ startDate, endDate })
+    // GHL expects millisecond timestamps on this endpoint, not ISO dates.
+    const toMs = (s: string): string => {
+      if (/^\d+$/.test(s)) return s  // already numeric
+      const d = new Date(s)
+      return isNaN(d.getTime()) ? s : d.getTime().toString()
+    }
+    const params = new URLSearchParams({
+      startDate: toMs(startDate),
+      endDate: toMs(endDate),
+    })
     if (timezone) params.set('timezone', timezone)
 
     const data = await this.apiFetch<Record<string, any>>(
-      `/calendars/${calendarId}/free-slots?${params}`
+      `/calendars/${calendarId}/free-slots?${params}`,
+      { headers: { 'Version': '2021-04-15' } },
     )
 
     const slots: Array<{ startTime: string; endTime: string }> = []
@@ -250,20 +260,45 @@ export class GhlAdapter implements CrmAdapter {
   }
 
   async bookAppointment(payload: BookAppointmentPayload): Promise<any> {
-    return this.apiFetch('/calendars/events/appointments', {
-      method: 'POST',
-      body: JSON.stringify({
+    // GHL calendar endpoints require Version 2021-04-15, not the default 2021-07-28.
+    // The default was a primary reason bookings were silently failing upstream.
+    const body: Record<string, unknown> = {
+      calendarId: payload.calendarId,
+      locationId: this.locationId,
+      contactId: payload.contactId,
+      startTime: payload.startTime,
+      title: payload.title || 'Appointment',
+      // 'new' is the default and most permissive; 'confirmed' is rejected by some
+      // calendar configurations. Upstream can override via payload if needed.
+      appointmentStatus: (payload as any).appointmentStatus || 'new',
+      // Notify the contact automatically — otherwise agents book invisible slots
+      toNotify: true,
+      // Skip GHL's availability double-check. We already fetched free-slots; this
+      // avoids races where a slot was valid a second ago but now appears "taken"
+      // due to cache lag.
+      ignoreFreeSlotValidation: true,
+    }
+    if (payload.endTime) body.endTime = payload.endTime
+    if (payload.selectedTimezone) body.selectedTimezone = payload.selectedTimezone
+    if (payload.notes) body.notes = payload.notes
+
+    try {
+      const result = await this.apiFetch<any>('/calendars/events/appointments', {
+        method: 'POST',
+        headers: { 'Version': '2021-04-15' },
+        body: JSON.stringify(body),
+      })
+      console.log(`[GHL] Appointment booked: ${result?.id ?? 'unknown'} for contact ${payload.contactId}`)
+      return result
+    } catch (err: any) {
+      console.error('[GHL] bookAppointment FAILED', {
         calendarId: payload.calendarId,
-        locationId: this.locationId,
         contactId: payload.contactId,
         startTime: payload.startTime,
-        endTime: payload.endTime,
-        title: payload.title || 'Appointment',
-        appointmentStatus: 'confirmed',
-        ...(payload.selectedTimezone ? { selectedTimezone: payload.selectedTimezone } : {}),
-        ...(payload.notes ? { notes: payload.notes } : {}),
-      }),
-    })
+        error: err.message,
+      })
+      throw err
+    }
   }
 
   async getAppointment(eventId: string): Promise<any> {
