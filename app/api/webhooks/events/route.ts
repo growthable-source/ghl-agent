@@ -24,6 +24,9 @@ import { debounceMessage } from '@/lib/message-debounce'
 import { buildPersonaBlock } from '@/lib/persona'
 import { htmlToText } from '@/lib/html-to-text'
 import { trackMessageUsage } from '@/lib/usage'
+import { evaluateApprovalNeed, recordGoalAchievements, isContactBlocked } from '@/lib/approval-rules'
+import { fireWebhook } from '@/lib/webhooks'
+import { notify } from '@/lib/notifications'
 import {
   SUPPORTED_CHANNELS,
   type WebhookEventType,
@@ -135,6 +138,41 @@ export async function POST(req: NextRequest) {
           break
         }
 
+        // ─── Emergency pause check (workspace + agent level) ───
+        if (agent.workspaceId) {
+          try {
+            const workspace = await db.workspace.findUnique({
+              where: { id: agent.workspaceId },
+              select: { isPaused: true },
+            })
+            if (workspace?.isPaused) {
+              await db.messageLog.update({
+                where: { id: log.id },
+                data: { agentId: agent.id, status: 'SKIPPED', errorMessage: 'Workspace paused' },
+              })
+              console.log(`[Webhook] Workspace paused — skipping reply for ${p.contactId}`)
+              break
+            }
+          } catch {}
+        }
+        if ((agent as any).isPaused) {
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: { agentId: agent.id, status: 'SKIPPED', errorMessage: 'Agent paused' },
+          })
+          break
+        }
+
+        // ─── Consent check — don't reply to opted-out contacts ───
+        if (agent.workspaceId && await isContactBlocked(agent.workspaceId, p.contactId, channel)) {
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: { agentId: agent.id, status: 'SKIPPED', errorMessage: `Contact opted out of ${channel}` },
+          })
+          console.log(`[Webhook] Contact ${p.contactId} opted out of ${channel} — skipping`)
+          break
+        }
+
         // Check conversation state
         const convState = await getOrCreateConversationState(agent.id, p.locationId, p.contactId, p.conversationId)
         if (convState.state === 'PAUSED') {
@@ -225,6 +263,17 @@ export async function POST(req: NextRequest) {
             },
           })
 
+          // ─── Approval queue — flag if rules match ───
+          const { needsApproval, reason: approvalReason } = evaluateApprovalNeed({
+            requireApproval: !!(agent as any).requireApproval,
+            approvalRules: ((agent as any).approvalRules as any) || null,
+            contactId: p.contactId,
+            agentId: agent.id,
+            inboundMessage,
+            outboundReply: result.reply,
+            priorMessageCount: convState.messageCount,
+          })
+
           await db.messageLog.update({
             where: { id: log.id },
             data: {
@@ -234,8 +283,68 @@ export async function POST(req: NextRequest) {
               tokensUsed: result.tokensUsed,
               status: 'SUCCESS',
               toolCallTrace: result.toolCallTrace as any,
-            },
+              needsApproval,
+              approvalStatus: needsApproval ? 'pending' : (agent as any).requireApproval ? 'auto_sent' : null,
+              approvalReason,
+            } as any,
+          }).catch(async () => {
+            // Fallback for pre-migration DB — retry without approval fields
+            await db.messageLog.update({
+              where: { id: log.id },
+              data: {
+                agentId: agent.id,
+                outboundReply: result.reply,
+                actionsPerformed: result.actionsPerformed,
+                tokensUsed: result.tokensUsed,
+                status: 'SUCCESS',
+                toolCallTrace: result.toolCallTrace as any,
+              },
+            })
           })
+
+          // ─── Notify + webhooks ───
+          if (needsApproval && agent.workspaceId) {
+            notify({
+              workspaceId: agent.workspaceId,
+              event: 'approval_pending',
+              title: `${agent.name} wants approval`,
+              body: result.reply?.slice(0, 200) || '',
+              severity: 'warning',
+            }).catch(() => {})
+          }
+          if (agent.workspaceId) {
+            fireWebhook({
+              workspaceId: agent.workspaceId,
+              event: 'message.sent',
+              payload: {
+                agentId: agent.id,
+                contactId: p.contactId,
+                channel,
+                reply: result.reply,
+                actionsPerformed: result.actionsPerformed,
+                needsApproval,
+              },
+            }).catch(() => {})
+          }
+
+          // ─── Goal tracking — credit any wins from this turn ───
+          if (result.actionsPerformed?.length) {
+            recordGoalAchievements({
+              agentId: agent.id,
+              contactId: p.contactId,
+              conversationId: p.conversationId,
+              actionsPerformed: result.actionsPerformed,
+              priorMessageCount: convState.messageCount,
+            }).catch(() => {})
+
+            if (result.actionsPerformed.includes('book_appointment') && agent.workspaceId) {
+              fireWebhook({
+                workspaceId: agent.workspaceId,
+                event: 'appointment.booked',
+                payload: { agentId: agent.id, contactId: p.contactId },
+              }).catch(() => {})
+            }
+          }
 
           console.log(`[Agent] ${agent.name} replied to ${p.contactId}: "${result.reply?.slice(0, 60)}"`)
 
@@ -297,6 +406,21 @@ export async function POST(req: NextRequest) {
             data: { agentId: agent.id, status: 'ERROR', errorMessage: err.message },
           })
           console.error(`[Agent] Error:`, err)
+          // Fire error notification + webhook
+          if (agent.workspaceId) {
+            notify({
+              workspaceId: agent.workspaceId,
+              event: 'agent_error',
+              title: `${agent.name} errored`,
+              body: err.message?.slice(0, 200) || 'Unknown error',
+              severity: 'error',
+            }).catch(() => {})
+            fireWebhook({
+              workspaceId: agent.workspaceId,
+              event: 'message.error',
+              payload: { agentId: agent.id, contactId: p.contactId, error: err.message },
+            }).catch(() => {})
+          }
         }
         break
       }

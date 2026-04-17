@@ -11,12 +11,31 @@ export async function getOrCreateConversationState(agentId: string, locationId: 
 
 export async function pauseConversation(agentId: string, contactId: string, reason: string) {
   try {
-    return await db.conversationStateRecord.update({
+    const updated = await db.conversationStateRecord.update({
       where: { agentId_contactId: { agentId, contactId } },
       data: { state: 'PAUSED', pauseReason: reason, pausedAt: new Date() },
     })
+
+    // Fire needs-attention notification for human-triggered stop conditions
+    try {
+      const agent = await db.agent.findUnique({
+        where: { id: agentId },
+        select: { name: true, workspaceId: true },
+      })
+      if (agent?.workspaceId && reason !== 'human_takeover') {
+        const { notify } = await import('./notifications')
+        notify({
+          workspaceId: agent.workspaceId,
+          event: 'needs_attention',
+          title: `${agent.name} paused a conversation`,
+          body: `Reason: ${reason.replace(/_/g, ' ')} — contact ${contactId.slice(-6)} needs your attention`,
+          severity: 'warning',
+        }).catch(() => {})
+      }
+    } catch {}
+
+    return updated
   } catch {
-    // Record doesn't exist yet — should not happen, but handle gracefully
     console.warn(`[ConvState] No state record to pause for agent=${agentId} contact=${contactId}`)
     return null
   }

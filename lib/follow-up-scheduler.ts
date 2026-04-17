@@ -1,5 +1,6 @@
 import { db } from './db'
 import { sendMessage } from './crm-client'
+import { shiftToWorkingHours } from './working-hours'
 import type { MessageChannelType } from '@/types'
 
 export async function scheduleFollowUp(
@@ -17,11 +18,44 @@ export async function scheduleFollowUp(
   if (!sequence?.isActive || sequence.steps.length === 0) return
 
   const firstStep = sequence.steps[0]
-  const scheduledAt = new Date(Date.now() + firstStep.delayHours * 60 * 60 * 1000)
+  let scheduledAt = new Date(Date.now() + firstStep.delayHours * 60 * 60 * 1000)
+
+  // Apply agent working hours if configured
+  try {
+    const agent = await db.agent.findUnique({
+      where: { id: agentId },
+      select: {
+        workingHoursEnabled: true, workingHoursStart: true, workingHoursEnd: true,
+        workingDays: true, timezone: true,
+      },
+    }) as any
+    if (agent?.workingHoursEnabled) {
+      scheduledAt = shiftToWorkingHours({
+        workingHoursEnabled: true,
+        workingHoursStart: agent.workingHoursStart,
+        workingHoursEnd: agent.workingHoursEnd,
+        workingDays: agent.workingDays,
+        timezone: agent.timezone,
+      }, scheduledAt)
+    }
+  } catch {}
 
   await db.followUpJob.create({
     data: { sequenceId, locationId, contactId, conversationId, channel, currentStep: 1, scheduledAt },
   })
+
+  // Fire webhook for follow_up.scheduled
+  try {
+    const agent = await db.agent.findUnique({ where: { id: agentId }, select: { workspaceId: true } })
+    if (agent?.workspaceId) {
+      const { fireWebhook } = await import('./webhooks')
+      fireWebhook({
+        workspaceId: agent.workspaceId,
+        event: 'follow_up.scheduled',
+        payload: { agentId, contactId, conversationId, channel, scheduledAt, sequenceId },
+      }).catch(() => {})
+    }
+  } catch {}
 }
 
 export async function cancelFollowUpsForContact(locationId: string, contactId: string) {
@@ -67,11 +101,65 @@ export async function processDueFollowUps(): Promise<number> {
         continue
       }
 
+      // Re-check agent working hours at send time — if outside window, bump scheduledAt forward
+      try {
+        const agent = await db.agent.findUnique({
+          where: { id: job.sequence.agentId },
+          select: {
+            workingHoursEnabled: true, workingHoursStart: true, workingHoursEnd: true,
+            workingDays: true, timezone: true, isPaused: true, workspaceId: true,
+          },
+        }) as any
+        if (agent?.isPaused) {
+          await db.followUpJob.update({ where: { id: job.id }, data: { status: 'CANCELLED', cancelledAt: new Date() } })
+          continue
+        }
+        if (agent?.workingHoursEnabled) {
+          const { isWithinWorkingHours, shiftToWorkingHours } = await import('./working-hours')
+          const cfg = {
+            workingHoursEnabled: true,
+            workingHoursStart: agent.workingHoursStart,
+            workingHoursEnd: agent.workingHoursEnd,
+            workingDays: agent.workingDays,
+            timezone: agent.timezone,
+          }
+          if (!isWithinWorkingHours(cfg)) {
+            const next = shiftToWorkingHours(cfg, new Date())
+            await db.followUpJob.update({ where: { id: job.id }, data: { scheduledAt: next } })
+            continue
+          }
+        }
+        // Workspace pause check
+        if (agent?.workspaceId) {
+          const ws = await db.workspace.findUnique({ where: { id: agent.workspaceId }, select: { isPaused: true } }).catch(() => null)
+          if ((ws as any)?.isPaused) {
+            // Bump forward 1 hour — try again later
+            await db.followUpJob.update({ where: { id: job.id }, data: { scheduledAt: new Date(Date.now() + 60 * 60 * 1000) } })
+            continue
+          }
+        }
+      } catch {}
+
       await sendMessage(job.locationId, {
         type: (job.channel || 'SMS') as MessageChannelType,
         contactId: job.contactId,
         message: step.message,
       })
+
+      // Fire follow_up.sent webhook
+      try {
+        const agentForWebhook = await db.agent.findUnique({
+          where: { id: job.sequence.agentId }, select: { workspaceId: true },
+        })
+        if (agentForWebhook?.workspaceId) {
+          const { fireWebhook } = await import('./webhooks')
+          fireWebhook({
+            workspaceId: agentForWebhook.workspaceId,
+            event: 'follow_up.sent',
+            payload: { agentId: job.sequence.agentId, contactId: job.contactId, channel: job.channel, step: job.currentStep },
+          }).catch(() => {})
+        }
+      } catch {}
 
       const nextStep = job.sequence.steps.find(s => s.stepNumber === job.currentStep + 1)
 

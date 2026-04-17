@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { audit } from '@/lib/audit'
+import { sendMessage } from '@/lib/crm-client'
+import type { MessageChannelType } from '@/types'
 
 type Params = { params: Promise<{ workspaceId: string; messageId: string }> }
 
@@ -46,9 +49,27 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     },
   })
 
-  // If approved, downstream send-message pipeline will detect status transition
-  // and deliver the outboundReply via the CRM client. Rejected messages will be
-  // discarded (nothing sent to the contact).
+  // If approved, actually send the reply now via the CRM
+  if (body.action === 'approve' && updated.outboundReply) {
+    try {
+      await sendMessage(updated.locationId, {
+        type: 'SMS' as MessageChannelType, // fallback channel — ideally stored per log
+        contactId: updated.contactId,
+        message: updated.outboundReply,
+      })
+    } catch (err: any) {
+      console.warn('[Approvals] Failed to send approved message:', err.message)
+    }
+  }
+
+  audit({
+    workspaceId,
+    actorId: access.session.user.id,
+    action: body.action === 'approve' ? 'message.approved' : 'message.rejected',
+    targetType: 'message',
+    targetId: messageId,
+    metadata: body.editedReply ? { edited: true } : undefined,
+  }).catch(() => {})
 
   return NextResponse.json({ log: updated })
 }

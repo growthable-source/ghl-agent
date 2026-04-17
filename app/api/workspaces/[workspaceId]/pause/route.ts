@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { audit } from '@/lib/audit'
+import { notify } from '@/lib/notifications'
+import { fireWebhook } from '@/lib/webhooks'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -52,6 +55,30 @@ export async function POST(req: NextRequest, { params }: Params) {
       },
       select: { isPaused: true, pausedAt: true, pausedBy: true },
     })
+
+    // Audit + notify + webhook
+    audit({
+      workspaceId,
+      actorId: access.session.user.id,
+      action: paused ? 'workspace.pause' : 'workspace.resume',
+      targetType: 'workspace',
+      targetId: workspaceId,
+    }).catch(() => {})
+
+    notify({
+      workspaceId,
+      event: paused ? 'pause_activated' : 'pause_deactivated',
+      title: paused ? 'All agents paused' : 'Agents resumed',
+      body: paused ? 'No new messages will be sent until resumed.' : 'Agents are now replying again.',
+      severity: paused ? 'warning' : 'info',
+    }).catch(() => {})
+
+    fireWebhook({
+      workspaceId,
+      event: paused ? 'agent.paused' : 'agent.resumed',
+      payload: { scope: 'workspace', pausedBy: access.session.user.id },
+    }).catch(() => {})
+
     return NextResponse.json(ws)
   } catch (err: any) {
     console.error('[Pause] Failed:', err.message)
