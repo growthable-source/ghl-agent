@@ -1,0 +1,282 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { useParams } from 'next/navigation'
+import Link from 'next/link'
+
+const EVENT_OPTIONS = [
+  { value: 'needs_attention',     label: 'Needs attention' },
+  { value: 'approval_pending',    label: 'Approval pending' },
+  { value: 'agent_error',         label: 'Agent error' },
+  { value: 'pause_activated',     label: 'Pause activated' },
+  { value: 'message.sent',        label: 'Message sent' },
+  { value: 'appointment.booked',  label: 'Appointment booked' },
+  { value: 'follow_up.scheduled', label: 'Follow-up scheduled' },
+  { value: 'follow_up.sent',      label: 'Follow-up sent' },
+  { value: 'goal.achieved',       label: 'Goal achieved' },
+]
+
+export default function IntegrationsPage() {
+  const params = useParams()
+  const workspaceId = params.workspaceId as string
+  const [channels, setChannels] = useState<any[]>([])
+  const [webhooks, setWebhooks] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'notifications' | 'webhooks'>('notifications')
+
+  const [newSlackUrl, setNewSlackUrl] = useState('')
+  const [newEmail, setNewEmail] = useState('')
+  const [newWebhookUrl, setNewWebhookUrl] = useState('')
+  const [newWebhookEvents, setNewWebhookEvents] = useState<string[]>([])
+
+  const fetchAll = useCallback(async () => {
+    const [n, w] = await Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/notifications`).then(r => r.json()),
+      fetch(`/api/workspaces/${workspaceId}/webhooks`).then(r => r.json()),
+    ])
+    setChannels(n.channels || [])
+    setWebhooks(w.subscriptions || [])
+    setLoading(false)
+  }, [workspaceId])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  async function addSlack() {
+    if (!newSlackUrl) return
+    await fetch(`/api/workspaces/${workspaceId}/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'slack', config: { webhookUrl: newSlackUrl }, events: [] }),
+    })
+    setNewSlackUrl('')
+    fetchAll()
+  }
+
+  async function addEmail() {
+    if (!newEmail) return
+    await fetch(`/api/workspaces/${workspaceId}/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'email', config: { email: newEmail }, events: [] }),
+    })
+    setNewEmail('')
+    fetchAll()
+  }
+
+  async function testChannel(id: string) {
+    await fetch(`/api/workspaces/${workspaceId}/notifications/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'test' }),
+    })
+    alert('Test sent')
+  }
+
+  async function deleteChannel(id: string) {
+    if (!confirm('Remove this notification channel?')) return
+    await fetch(`/api/workspaces/${workspaceId}/notifications/${id}`, { method: 'DELETE' })
+    fetchAll()
+  }
+
+  async function addWebhook() {
+    if (!newWebhookUrl) return
+    await fetch(`/api/workspaces/${workspaceId}/webhooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: newWebhookUrl, events: newWebhookEvents }),
+    })
+    setNewWebhookUrl(''); setNewWebhookEvents([])
+    fetchAll()
+  }
+
+  async function testWebhook(id: string) {
+    await fetch(`/api/workspaces/${workspaceId}/webhooks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'test' }),
+    })
+    alert('Test event fired — check deliveries in a moment')
+  }
+
+  async function deleteWebhook(id: string) {
+    if (!confirm('Remove this webhook?')) return
+    await fetch(`/api/workspaces/${workspaceId}/webhooks/${id}`, { method: 'DELETE' })
+    fetchAll()
+  }
+
+  if (loading) return <div className="p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+
+  return (
+    <div className="flex-1 p-8 overflow-y-auto">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-white">Notifications &amp; Webhooks</h1>
+          <p className="text-sm text-zinc-400 mt-1">Get alerted in Slack/email and fire events into your own systems.</p>
+        </div>
+
+        <div className="flex gap-1 p-1 rounded-xl bg-zinc-900/60 border border-zinc-800 mb-6 w-fit">
+          <button onClick={() => setTab('notifications')}
+            className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${tab === 'notifications' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+            style={tab === 'notifications' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+          >
+            Notifications ({channels.length})
+          </button>
+          <button onClick={() => setTab('webhooks')}
+            className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${tab === 'webhooks' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+            style={tab === 'webhooks' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+          >
+            Webhooks ({webhooks.length})
+          </button>
+        </div>
+
+        {tab === 'notifications' && (
+          <div>
+            {/* Existing channels */}
+            {channels.length > 0 && (
+              <div className="space-y-2 mb-6">
+                {channels.map(c => (
+                  <div key={c.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 flex items-center gap-3">
+                    <span className="text-lg">{c.type === 'slack' ? '💬' : '📧'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white capitalize">{c.type}</p>
+                      <p className="text-xs text-zinc-500 truncate">
+                        {c.type === 'slack' ? c.config.webhookUrl?.replace(/(hooks.slack.com\/services\/).*/, '$1...') : c.config.email}
+                      </p>
+                      {c.events.length > 0 && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {c.events.slice(0, 3).map((e: string) => (
+                            <span key={e} className="text-[10px] text-zinc-500 px-1.5 py-0.5 bg-zinc-800 rounded">{e}</span>
+                          ))}
+                          {c.events.length > 3 && <span className="text-[10px] text-zinc-500">+{c.events.length - 3}</span>}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => testChannel(c.id)} className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors">
+                      Test
+                    </button>
+                    <button onClick={() => deleteChannel(c.id)} className="text-zinc-500 hover:text-red-400 p-1">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3">
+              <p className="text-sm font-semibold text-white mb-3">💬 Add Slack</p>
+              <p className="text-xs text-zinc-500 mb-3">
+                Create an incoming webhook in Slack (<a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer" className="text-orange-400 hover:underline">how</a>) and paste the URL.
+              </p>
+              <div className="flex gap-2">
+                <input value={newSlackUrl} onChange={e => setNewSlackUrl(e.target.value)}
+                  placeholder="https://hooks.slack.com/services/T.../B.../..."
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono"
+                />
+                <button onClick={addSlack} disabled={!newSlackUrl}
+                  className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
+                  style={{ background: '#fa4d2e' }}>
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+              <p className="text-sm font-semibold text-white mb-3">📧 Add Email</p>
+              <p className="text-xs text-zinc-500 mb-3">Email dispatch is stubbed — UI ready, sender needs wiring.</p>
+              <div className="flex gap-2">
+                <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                  placeholder="you@company.com" type="email"
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white" />
+                <button onClick={addEmail} disabled={!newEmail}
+                  className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
+                  style={{ background: '#fa4d2e' }}>
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'webhooks' && (
+          <div>
+            {webhooks.length > 0 && (
+              <div className="space-y-2 mb-6">
+                {webhooks.map(w => (
+                  <div key={w.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-2 h-2 rounded-full"
+                        style={{ background: w.isActive ? '#22c55e' : '#3f3f46' }} />
+                      <p className="text-sm font-mono text-white truncate flex-1">{w.url}</p>
+                      <button onClick={() => testWebhook(w.id)} className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors">
+                        Test fire
+                      </button>
+                      <button onClick={() => deleteWebhook(w.id)} className="text-zinc-500 hover:text-red-400 p-1">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {w.events.map((e: string) => (
+                        <span key={e} className="text-[10px] font-medium text-purple-400 px-2 py-0.5 rounded-full bg-purple-500/10">{e}</span>
+                      ))}
+                    </div>
+                    {w.deliveries?.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-zinc-800">
+                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Recent deliveries</p>
+                        <div className="flex gap-1 flex-wrap">
+                          {w.deliveries.map((d: any) => (
+                            <span key={d.id} className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              d.succeeded ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                            }`}>
+                              {d.event} {d.statusCode || 'err'}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+              <p className="text-sm font-semibold text-white mb-2">🔌 New webhook endpoint</p>
+              <p className="text-xs text-zinc-500 mb-3">
+                Payloads are HMAC-SHA256 signed — check the <code className="text-orange-400">X-Voxility-Signature</code> header.
+              </p>
+              <input value={newWebhookUrl} onChange={e => setNewWebhookUrl(e.target.value)}
+                placeholder="https://your-app.com/webhooks/voxility"
+                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono mb-3"
+              />
+              <p className="text-xs text-zinc-400 mb-2">Events to subscribe to:</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+                {EVENT_OPTIONS.map(e => (
+                  <label key={e.value} className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={newWebhookEvents.includes(e.value)}
+                      onChange={ev => {
+                        if (ev.target.checked) setNewWebhookEvents([...newWebhookEvents, e.value])
+                        else setNewWebhookEvents(newWebhookEvents.filter(x => x !== e.value))
+                      }}
+                      className="w-3 h-3 accent-orange-500"
+                    />
+                    {e.label}
+                  </label>
+                ))}
+              </div>
+              <button onClick={addWebhook} disabled={!newWebhookUrl || newWebhookEvents.length === 0}
+                className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
+                style={{ background: '#fa4d2e' }}>
+                Add webhook
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

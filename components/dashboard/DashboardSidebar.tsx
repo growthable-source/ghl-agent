@@ -49,7 +49,7 @@ export default function DashboardSidebar() {
   }
 
   return (
-    <div className="w-56 shrink-0 border-r border-sidebar-border flex flex-col h-full bg-sidebar-bg">
+    <div className="hidden md:flex w-56 shrink-0 border-r border-sidebar-border flex-col h-full bg-sidebar-bg">
       {/* Logo */}
       <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
         <Link href="/dashboard" className="flex items-center gap-2.5">
@@ -77,6 +77,7 @@ export default function DashboardSidebar() {
               <>
                 {navLink(`/dashboard/${workspaceId}`, 'Overview')}
                 {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
+                {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                 {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
                 {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention')}
                 {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
@@ -86,6 +87,7 @@ export default function DashboardSidebar() {
                   <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Insights</p>
                 </div>
                 {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
+                {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
                 {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
                 {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
                 {navLink(`/dashboard/${workspaceId}/corrections`, 'Corrections')}
@@ -98,7 +100,18 @@ export default function DashboardSidebar() {
                 {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
                 {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
                 {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
+
+                <div className="pt-2 pb-1 px-3">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Trust</p>
+                </div>
+                {navLink(`/dashboard/${workspaceId}/audit-log`, 'Audit Log')}
+                {navLink(`/dashboard/${workspaceId}/consent`, 'Consent')}
+
+                <div className="pt-2 pb-1 px-3">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Account</p>
+                </div>
                 {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
+                {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Notifications')}
                 {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
               </>
             )}

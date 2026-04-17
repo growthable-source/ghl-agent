@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import TrialBanner from '@/components/dashboard/TrialBanner'
 import PauseBanner from '@/components/dashboard/PauseBanner'
+import MobileNav from '@/components/dashboard/MobileNav'
 
 /**
  * Workspace-level layout — enforces that the current user has access to
@@ -70,7 +71,8 @@ export default async function WorkspaceLayout({
     <>
       <TrialBanner workspaceId={workspaceId} />
       <PauseBanner />
-      {children}
+      <div className="pb-16 md:pb-0">{children}</div>
+      <MobileNav />
     </>
   )
 }
