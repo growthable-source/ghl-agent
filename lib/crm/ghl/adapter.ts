@@ -105,6 +105,39 @@ export class GhlAdapter implements CrmAdapter {
     }
   }
 
+  /**
+   * List all tags for the connected location.
+   * GET /locations/{locationId}/tags → { tags: [{ id, name, locationId }] }
+   */
+  async getTags(): Promise<Array<{ id: string; name: string }>> {
+    try {
+      const data = await this.apiFetch<{ tags: Array<{ id: string; name: string }> }>(
+        `/locations/${this.locationId}/tags`
+      )
+      return data.tags ?? []
+    } catch (err) {
+      console.error('[GHL] getTags failed:', err)
+      return []
+    }
+  }
+
+  /**
+   * Create a new tag in the location.
+   * POST /locations/{locationId}/tags → { tag: { id, name, locationId } }
+   */
+  async createTag(name: string): Promise<{ id: string; name: string } | null> {
+    try {
+      const data = await this.apiFetch<{ tag: { id: string; name: string } }>(
+        `/locations/${this.locationId}/tags`,
+        { method: 'POST', body: JSON.stringify({ name }) },
+      )
+      return data.tag ?? null
+    } catch (err) {
+      console.error('[GHL] createTag failed:', err)
+      return null
+    }
+  }
+
   // ─── Conversations & Messaging ───────────────────────────────────────
 
   async searchConversations(opts: { contactId?: string; limit?: number } = {}): Promise<Conversation[]> {

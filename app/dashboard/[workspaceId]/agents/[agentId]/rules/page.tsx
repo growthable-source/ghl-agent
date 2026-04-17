@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import TagCombobox from '@/components/TagCombobox'
 
 type RuleType = 'ALL' | 'TAG' | 'PIPELINE_STAGE' | 'KEYWORD'
 
@@ -19,6 +20,7 @@ export default function RulesPage() {
 
   const [loading, setLoading] = useState(true)
   const [rules, setRules] = useState<RoutingRule[]>([])
+  const [locationId, setLocationId] = useState<string>('')
   const [ruleType, setRuleType] = useState<RuleType>('ALL')
   const [ruleValue, setRuleValue] = useState('')
   const [addingRule, setAddingRule] = useState(false)
@@ -26,7 +28,10 @@ export default function RulesPage() {
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
       .then(r => r.json())
-      .then(({ agent }) => setRules(agent.routingRules ?? []))
+      .then(({ agent }) => {
+        setRules(agent.routingRules ?? [])
+        setLocationId(agent.locationId || '')
+      })
       .finally(() => setLoading(false))
   }, [workspaceId, agentId])
 
@@ -95,13 +100,21 @@ export default function RulesPage() {
             <option value="PIPELINE_STAGE">Contact in pipeline stage</option>
             <option value="KEYWORD">Message contains keyword(s)</option>
           </select>
-          {ruleType !== 'ALL' && (
+          {ruleType === 'TAG' && locationId ? (
+            <TagCombobox
+              workspaceId={workspaceId}
+              locationId={locationId}
+              value={ruleValue}
+              onChange={setRuleValue}
+              required
+              placeholder="Search existing tags or create a new one"
+            />
+          ) : ruleType !== 'ALL' && (
             <input
               type="text"
               value={ruleValue}
               onChange={e => setRuleValue(e.target.value)}
               placeholder={
-                ruleType === 'TAG' ? 'e.g. hot-lead' :
                 ruleType === 'PIPELINE_STAGE' ? 'Pipeline stage ID' :
                 'e.g. price, cost, how much (comma separated)'
               }

@@ -281,10 +281,31 @@ model KnowledgeEntry {
   source        String   @default("manual")
   sourceUrl     String?
   tokenEstimate Int      @default(0)
+  status        String   @default("ready")    // "pending" | "indexing" | "ready" | "failed"
+  contentHash   String?                        // for crawl dedupe / change detection
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([agentId])
+  @@index([agentId, status])
+}
+
+// ─── Recurring crawl schedule ──────────────────────────────────────────────
+model CrawlSchedule {
+  id          String   @id @default(cuid())
+  agentId     String
+  url         String
+  frequency   String                              // "daily" | "weekly" | "monthly"
+  isActive    Boolean  @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime
+  lastStatus  String?                             // "success" | "failed" | "no_changes"
+  lastError   String?  @db.Text
+  newChunks   Int      @default(0)                // total new chunks across all runs
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([agentId])
+  @@index([isActive, nextRunAt])
 }
 
 model RoutingRule {

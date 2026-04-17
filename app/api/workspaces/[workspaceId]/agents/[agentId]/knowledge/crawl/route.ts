@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { stripHtml, extractTitle, chunkText, estimateTokens } from '@/lib/chunker'
+import { crawlAndIndex } from '@/lib/crawler'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 
 async function fetchWithJinaFallback(url: string): Promise<{ title: string; text: string }> {
@@ -64,29 +65,13 @@ export async function POST(
   }
 
   try {
-    const { title, text } = await fetchWithJinaFallback(url)
-    const chunks = chunkText(text)
-
-    const entries = await Promise.all(
-      chunks.map((chunk, i) =>
-        db.knowledgeEntry.create({
-          data: {
-            agentId,
-            title: chunks.length === 1 ? title : `${title} (${i + 1}/${chunks.length})`,
-            content: chunk,
-            source: 'url',
-            sourceUrl: url,
-            tokenEstimate: estimateTokens(chunk),
-          },
-        })
-      )
-    )
+    const { title, chunksAdded, totalTokens } = await crawlAndIndex({ agentId, url, source: 'url' })
 
     return NextResponse.json({
       success: true,
-      chunks: entries.length,
+      chunks: chunksAdded,
       title,
-      totalTokens: entries.reduce((sum, e) => sum + e.tokenEstimate, 0),
+      totalTokens,
     })
   } catch (err: any) {
     if (err.name === 'TimeoutError' || err.name === 'AbortError') {
