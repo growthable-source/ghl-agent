@@ -37,6 +37,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
         value: g.value,
         isActive: g.isActive,
         maxTurns: g.maxTurns,
+        isPrimary: (g as any).isPrimary ?? false,
+        aggressiveness: (g as any).aggressiveness ?? 'moderate',
+        triggerPhrases: (g as any).triggerPhrases ?? [],
+        preferredTool: (g as any).preferredTool ?? null,
+        instruction: (g as any).instruction ?? null,
+        priority: (g as any).priority ?? 10,
         createdAt: g.createdAt,
         winsLast14: last14,
         winsLast30: last30,
@@ -64,6 +70,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
+    // If this is a new primary objective, demote any existing primary
+    if (body.isPrimary === true) {
+      await db.agentGoal.updateMany({
+        where: { agentId, isPrimary: true },
+        data: { isPrimary: false } as any,
+      }).catch(() => {})
+    }
+
     const goal = await db.agentGoal.create({
       data: {
         agentId,
@@ -71,7 +85,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         goalType: body.goalType,
         value: body.value || null,
         maxTurns: body.maxTurns || null,
-      },
+        ...(body.isPrimary !== undefined && { isPrimary: !!body.isPrimary }),
+        ...(body.aggressiveness && { aggressiveness: body.aggressiveness }),
+        ...(Array.isArray(body.triggerPhrases) && { triggerPhrases: body.triggerPhrases }),
+        ...(body.preferredTool !== undefined && { preferredTool: body.preferredTool || null }),
+        ...(body.instruction !== undefined && { instruction: body.instruction || null }),
+        ...(body.priority !== undefined && { priority: body.priority }),
+      } as any,
     })
     return NextResponse.json({ goal })
   } catch (err: any) {

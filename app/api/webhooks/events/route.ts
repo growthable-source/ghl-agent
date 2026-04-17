@@ -25,6 +25,7 @@ import { buildPersonaBlock } from '@/lib/persona'
 import { htmlToText } from '@/lib/html-to-text'
 import { trackMessageUsage } from '@/lib/usage'
 import { evaluateApprovalNeed, recordGoalAchievements, isContactBlocked } from '@/lib/approval-rules'
+import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'
 import { fireWebhook } from '@/lib/webhooks'
 import { notify } from '@/lib/notifications'
 import {
@@ -185,6 +186,9 @@ export async function POST(req: NextRequest) {
 
         // Build full system prompt with RAG
         let fullPrompt = agent.systemPrompt
+        // Primary objectives are injected FIRST (after the base prompt) so the
+        // model sees them before anything else and reaches for the right tool.
+        fullPrompt += await buildObjectivesBlockForAgent(agent.id, inboundMessage)
         if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
         fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, inboundMessage)
 

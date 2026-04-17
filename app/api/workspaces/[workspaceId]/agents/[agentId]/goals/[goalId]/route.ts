@@ -12,6 +12,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   let body: any = {}
   try { body = await req.json() } catch {}
 
+  // Demote other primaries if this one is being set to primary
+  if (body.isPrimary === true) {
+    const current = await db.agentGoal.findUnique({ where: { id: goalId }, select: { agentId: true } })
+    if (current) {
+      await db.agentGoal.updateMany({
+        where: { agentId: current.agentId, isPrimary: true, id: { not: goalId } },
+        data: { isPrimary: false } as any,
+      }).catch(() => {})
+    }
+  }
+
   const goal = await db.agentGoal.update({
     where: { id: goalId },
     data: {
@@ -19,7 +30,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.isActive !== undefined && { isActive: body.isActive }),
       ...(body.value !== undefined && { value: body.value }),
       ...(body.maxTurns !== undefined && { maxTurns: body.maxTurns }),
-    },
+      ...(body.isPrimary !== undefined && { isPrimary: !!body.isPrimary }),
+      ...(body.aggressiveness !== undefined && { aggressiveness: body.aggressiveness }),
+      ...(body.triggerPhrases !== undefined && { triggerPhrases: body.triggerPhrases }),
+      ...(body.preferredTool !== undefined && { preferredTool: body.preferredTool || null }),
+      ...(body.instruction !== undefined && { instruction: body.instruction || null }),
+      ...(body.priority !== undefined && { priority: body.priority }),
+    } as any,
   })
   return NextResponse.json({ goal })
 }

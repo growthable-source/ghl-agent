@@ -4,6 +4,7 @@ import { getTokens } from '@/lib/token-store'
 import { buildKnowledgeBlock } from '@/lib/rag'
 import { runAgent } from '@/lib/ai-agent'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'
 
 export async function POST(
   req: NextRequest,
@@ -30,6 +31,7 @@ export async function POST(
   if (!tokens) return NextResponse.json({ error: 'Location not connected' }, { status: 401 })
 
   let fullPrompt = agent.systemPrompt
+  fullPrompt += await buildObjectivesBlockForAgent(agent.id, message)
   if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
   fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, message)
 

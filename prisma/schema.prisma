@@ -429,9 +429,17 @@ model AgentGoal {
   value       String?                             // e.g. the tag name or stage name for matching
   isActive    Boolean  @default(true)
   maxTurns    Int?                                // optional: win only counts if hit within N turns
-  createdAt   DateTime @default(now())
-  events      AgentGoalEvent[]
+  // ─── Behavioural (how the agent should pursue the goal) ───
+  isPrimary      Boolean  @default(false)         // primary objective — pinned to top of system prompt
+  priority       Int      @default(10)            // lower = more important (secondary objectives)
+  aggressiveness String   @default("moderate")    // "soft" | "moderate" | "aggressive"
+  triggerPhrases String[] @default([])            // phrases that should immediately pursue this goal
+  preferredTool  String?                          // tool to use when pursuing (e.g. "book_appointment")
+  instruction    String?  @db.Text                // custom instruction appended to the prompt
+  createdAt      DateTime @default(now())
+  events         AgentGoalEvent[]
   @@index([agentId])
+  @@index([agentId, isPrimary, priority])
 }
 
 model AgentGoalEvent {
