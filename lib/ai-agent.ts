@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getCrmAdapter } from './crm/factory'
 import type { CrmAdapter } from './crm/types'
 import { buildPersonaBlock, applyTypos, calculateTypingDelay, type PersonaSettings } from './persona'
+import { detectFalseActionClaim, safeFallbackReply } from './action-claim-detector'
 import type { AgentContext, Message } from '@/types'
 
 const client = new Anthropic()
@@ -755,7 +756,10 @@ export async function runAgent(opts: {
 
   // Agentic loop — keeps going until Claude stops calling tools
   let currentMessages = [...messages]
-  const MAX_ITERATIONS = 5
+  const MAX_ITERATIONS = 6
+  const availableToolNames = tools.map(t => t.name)
+  let hallucinationRetries = 0
+  const MAX_HALLUCINATION_RETRIES = 2
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await client.messages.create({
@@ -776,6 +780,44 @@ export async function runAgent(opts: {
     if (response.stop_reason === 'end_turn' || toolUseBlocks.length === 0) {
       // Done — extract any final text
       const finalText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('\n')
+
+      // ─── Hallucination guardrail ───
+      // Detect replies that CLAIM an action happened when the matching tool
+      // was never called. Force the model to either call the tool or correct.
+      const falseClaim = finalText
+        ? detectFalseActionClaim(finalText, actionsPerformed, availableToolNames)
+        : null
+      if (falseClaim && hallucinationRetries < MAX_HALLUCINATION_RETRIES) {
+        hallucinationRetries++
+        console.warn(`[Agent] ⚠ Hallucination detected (retry ${hallucinationRetries}/${MAX_HALLUCINATION_RETRIES}):`,
+          `claimed ${falseClaim.tool} without calling it. Reply: "${falseClaim.phrase}"`)
+        // Push the model's claim + a corrective user turn, then continue looping
+        currentMessages = [
+          ...currentMessages,
+          { role: 'assistant', content: response.content },
+          { role: 'user', content: falseClaim.correction },
+        ]
+        continue
+      }
+      if (falseClaim && hallucinationRetries >= MAX_HALLUCINATION_RETRIES) {
+        // Out of retries — replace the lying reply with a safe fallback so we
+        // don't send a fabricated confirmation to the contact.
+        console.error(`[Agent] ❌ Hallucination persists after ${MAX_HALLUCINATION_RETRIES} retries. Replacing false claim.`)
+        actionsPerformed.push(`hallucination_blocked:${falseClaim.tool}`)
+        const fallbackText = safeFallbackReply(falseClaim)
+        if (!smsSent && crm) {
+          await crm.sendMessage({
+            type: (channel || 'SMS') as import('@/types').MessageChannelType,
+            contactId,
+            conversationProviderId,
+            message: fallbackText,
+          })
+          smsSent = fallbackText
+          actionsPerformed.push(`send_reply (fallback, ${channel})`)
+        }
+        break
+      }
+
       if (finalText && !smsSent) {
         // If Claude wrote a reply but didn't use send_reply, send it now on the correct channel
         let msgToSend = finalText
