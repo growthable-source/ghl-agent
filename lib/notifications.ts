@@ -2,13 +2,14 @@ import { db } from './db'
 
 /**
  * Dispatch a notification to all configured channels for a workspace.
- * Currently supports Slack webhooks. Email is a stub for future wiring.
+ * Supports Slack webhooks and email via Resend.
  *
  * Event types:
  *   - needs_attention
  *   - approval_pending
  *   - agent_error
  *   - pause_activated
+ *   - test
  */
 export async function notify(params: {
   workspaceId: string
@@ -37,8 +38,7 @@ export async function notify(params: {
       if (channel.type === 'slack') {
         await dispatchSlack(channel.config, params)
       } else if (channel.type === 'email') {
-        // Stub: email requires a transactional service (Resend/SES) wired.
-        console.log('[Notify] Email not yet wired:', params.title)
+        await dispatchEmail(channel.config, params)
       }
     } catch (err: any) {
       console.warn(`[Notify] ${channel.type} dispatch failed:`, err.message)
@@ -69,4 +69,91 @@ async function dispatchSlack(
       }],
     }),
   })
+}
+
+/**
+ * Email dispatch via Resend (https://resend.com).
+ * Requires env: RESEND_API_KEY and NOTIFICATION_FROM_EMAIL (verified domain).
+ */
+async function dispatchEmail(
+  config: { email?: string },
+  params: { event: string; title: string; body?: string; link?: string; severity?: string }
+) {
+  const to = config.email
+  if (!to) return
+
+  const apiKey = process.env.RESEND_API_KEY
+  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Voxility <notifications@voxility.app>'
+
+  if (!apiKey) {
+    console.warn('[Notify] RESEND_API_KEY not set — email to', to, 'skipped:', params.title)
+    return
+  }
+
+  const severityBadge = params.severity === 'error'
+    ? '<span style="display:inline-block;padding:2px 8px;background:#fee2e2;color:#b91c1c;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.5px;">ERROR</span>'
+    : params.severity === 'warning'
+    ? '<span style="display:inline-block;padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.5px;">WARNING</span>'
+    : ''
+  const accent = params.severity === 'error' ? '#ef4444'
+    : params.severity === 'warning' ? '#f59e0b'
+    : '#fa4d2e'
+
+  const html = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <tr>
+            <td style="padding:24px 28px;border-top:4px solid ${accent};">
+              ${severityBadge}
+              <h1 style="margin:${severityBadge ? '12px' : '0'} 0 8px;font-size:20px;color:#111827;line-height:1.3;font-weight:600;">${escapeHtml(params.title)}</h1>
+              ${params.body ? `<p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.6;">${escapeHtml(params.body)}</p>` : ''}
+              ${params.link ? `<a href="${escapeAttr(params.link)}" style="display:inline-block;padding:10px 18px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Open in Voxility</a>` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 28px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;">
+              Sent by Voxility · <a href="${process.env.APP_URL || ''}/dashboard" style="color:#9ca3af;">Manage notifications</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  const text = `${params.title}\n\n${params.body || ''}${params.link ? '\n\nOpen: ' + params.link : ''}\n\n— Voxility`
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject: params.title,
+      html,
+      text,
+    }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Resend ${res.status}: ${body.slice(0, 200)}`)
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]!))
+}
+function escapeAttr(s: string): string {
+  return escapeHtml(s)
 }

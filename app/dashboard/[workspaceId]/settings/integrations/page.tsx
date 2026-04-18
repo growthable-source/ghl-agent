@@ -184,7 +184,7 @@ export default function IntegrationsPage() {
 
             <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
               <p className="text-sm font-semibold text-white mb-3">📧 Add Email</p>
-              <p className="text-xs text-zinc-500 mb-3">Email dispatch is stubbed — UI ready, sender needs wiring.</p>
+              <p className="text-xs text-zinc-500 mb-3">Receive notifications via email. Powered by Resend — requires <code className="text-orange-400">RESEND_API_KEY</code> in server env.</p>
               <div className="flex gap-2">
                 <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
                   placeholder="you@company.com" type="email"
