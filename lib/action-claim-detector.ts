@@ -25,7 +25,15 @@ const OPPORTUNITY_CLAIM = /\b(i'?ve|i have)\s+(created|opened|started|made)\s+(a
 
 const NOTE_CLAIM = /\b(i'?ve|i have)\s+(added|saved|recorded|logged)\s+(a|the)\s+note\b/i
 
-const FOLLOWUP_CLAIM = /\bi'?ll\s+(follow\s+up|circle\s+back|check\s+in|remind\s+you)\s+(in|on|at|tomorrow|next)\b|\bi'?ve\s+scheduled\s+a\s+follow[\s-]?up\b/i
+const FOLLOWUP_CLAIM = /\bi'?ve\s+scheduled\s+a\s+follow[\s-]?up\b|\bi'?ll\s+(follow\s+up|circle\s+back|check\s+in|remind\s+you)\s+(in|on|at|tomorrow|next)\s+\d/i
+
+// ─── Deferred action — promises to do something "later" that the agent
+// cannot actually do later because this is a synchronous turn. The agent
+// has no async mechanism to come back unless a follow-up is scheduled.
+// These patterns force the agent to do it NOW in this same turn.
+const DEFERRED_CHECK_AVAILABILITY = /\b(let me\s+(check|see|find|look|pull\s+up|grab|get)|i'?ll\s+(check|see|find|look|pull\s+up|grab|get|go\s+(check|find|look))|one\s+(moment|sec|second|minute)\s+while\s+i\s+(check|find|look|pull))\b[^.!?]{0,80}\b(time|times|slot|slots|availability|available|calendar|schedule|options|opening|openings)\b|\bchecking\s+(for|the|our|your|other|some|more)\s+[^.!?]{0,60}\b(time|times|slot|slots|availability|available)\b|\blet me\s+(get back to you|come back to you|reach back)\s+[^.!?]*(options|times|slots|availability)/i
+
+const DEFERRED_GENERIC = /\bi'?ll\s+(get back to you|come back to you|reach back|follow up with you|be back in touch|be right back|get right back|check on that|look into (that|it)|find out)\s*(shortly|soon|in a (bit|moment|minute|sec|second)|momentarily)?\b|\blet me\s+(get back to you|come back to you|reach back)\b|\bgive me\s+(a|one)\s+(moment|sec|second|minute)\b(?![^.!?]*\btool\b)/i
 
 /**
  * If the reply claims an action but no matching tool was called, return a
@@ -115,6 +123,59 @@ export function detectFalseActionClaim(
     }
   }
 
+  // ─── Deferred availability check — "let me check other times" ───
+  // Specific case: the agent promises to look up more slots but didn't
+  // actually call get_available_slots in this turn.
+  if (
+    DEFERRED_CHECK_AVAILABILITY.test(reply) &&
+    availableTools.includes('get_available_slots') &&
+    !actionsPerformed.includes('get_available_slots')
+  ) {
+    const match = reply.match(DEFERRED_CHECK_AVAILABILITY)
+    return {
+      tool: 'get_available_slots',
+      phrase: match?.[0] || '',
+      correction:
+        `CRITICAL: Your reply said "${match?.[0]?.trim() || 'let me check'}" but you did NOT call get_available_slots. ` +
+        `This is a SYNCHRONOUS conversation — you cannot come back later. You have no async mechanism to "get back to" the contact. ` +
+        `If you promise to check availability, you MUST call get_available_slots RIGHT NOW in this same turn and propose specific times in your reply. ` +
+        `Never tell the contact to wait — act now. Call get_available_slots with the calendarId from your Calendar Configuration section, then propose ONE specific time.`,
+    }
+  }
+
+  // ─── Deferred generic — "I'll get back to you" ───
+  // Agent says it'll return later, but there is no return mechanism in a
+  // synchronous SMS/chat turn. Either the agent needs to schedule a
+  // follow-up (if the tool is available) or it needs to answer now.
+  if (DEFERRED_GENERIC.test(reply)) {
+    const match = reply.match(DEFERRED_GENERIC)
+    const canScheduleFollowUp = availableTools.includes('schedule_followup')
+    const canCheckSlots = availableTools.includes('get_available_slots')
+
+    if (canScheduleFollowUp && !actionsPerformed.includes('schedule_followup')) {
+      return {
+        tool: 'schedule_followup',
+        phrase: match?.[0] || '',
+        correction:
+          `You said "${match?.[0]?.trim() || "you'd get back"}" but you have no async mechanism to return to this contact without scheduling a follow-up. ` +
+          `Either: (a) answer the contact's question RIGHT NOW using your available tools and knowledge — no "getting back later"; OR ` +
+          `(b) if you truly can't answer now, call schedule_followup to schedule a concrete follow-up, then tell the contact exactly when they'll hear back (e.g. "tomorrow at 10am"). ` +
+          `Never promise to come back without scheduling it — this is a synchronous conversation.`,
+      }
+    }
+
+    // No follow-up tool? Must answer now.
+    return {
+      tool: canCheckSlots ? 'get_available_slots' : 'send_reply',
+      phrase: match?.[0] || '',
+      correction:
+        `You said "${match?.[0]?.trim() || "you'd get back"}" but this is a synchronous conversation — there is no way for you to return to the contact later. ` +
+        `You cannot say "I'll get back to you" because you won't. ` +
+        `Use your available tools RIGHT NOW (${availableTools.slice(0, 5).join(', ')}${availableTools.length > 5 ? '…' : ''}) to answer the contact's question in this turn, or reply with a concrete answer/offer based on what you already know. ` +
+        `Never promise future action you cannot deliver.`,
+    }
+  }
+
   return null
 }
 
@@ -126,12 +187,16 @@ export function detectFalseActionClaim(
 export function safeFallbackReply(detection: ClaimDetection): string {
   switch (detection.tool) {
     case 'book_appointment':
-      return "Let me get that scheduled for you — one moment while I pull up availability."
+      return "I'm having a little trouble pulling up our calendar right now — can you let me know what day and time works best for you, and I'll get it confirmed?"
+    case 'get_available_slots':
+      return "Our calendar system is slow at the moment — what day and rough time would work best for you? I'll get back to you with confirmation as soon as I can."
     case 'update_contact_tags':
       return "Got it — noted."
     case 'create_opportunity':
       return "Thanks — I'll get that set up on our side."
+    case 'schedule_followup':
+      return "What's the best time for me to reach out with an update — later today, or tomorrow morning?"
     default:
-      return "One moment while I take care of that."
+      return "Let me rethink that — could you tell me a bit more about what you're looking for?"
   }
 }

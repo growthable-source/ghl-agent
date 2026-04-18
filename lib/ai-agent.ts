@@ -620,6 +620,13 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: P
 - If a lead is clearly interested, move their opportunity stage forward
 - Use send_reply to respond — it automatically sends on the correct channel (${ch})
 
+## CRITICAL: This is a Synchronous Turn
+- You have EXACTLY ONE opportunity to act in this turn. After you stop calling tools, the conversation ends until the contact replies again.
+- NEVER say "let me check", "I'll get back to you", "one moment while I look", "let me pull that up", "checking for other times", or any variant that defers action to later. You have NO mechanism to come back.
+- If you promise to do something — BOOK, CHECK, CREATE, TAG, NOTE — you must call the corresponding TOOL in this same turn. Saying the words without calling the tool is a LIE to the contact.
+- If a user asks for alternative times and you have get_available_slots available, CALL IT NOW. Do not say "checking for other available times" unless you have just actually called the tool in this same turn.
+- If you genuinely cannot answer now, be honest: propose a concrete follow-up ("I can have our team reach out tomorrow at 10am — does that work?") rather than vague "I'll get back to you shortly".
+
 ## Booking Appointments
 - BEFORE booking, always collect: the contact's name, email address, and what the meeting is about
 - If you don't have their email, ask for it — you need it for the calendar invite
