@@ -12,6 +12,7 @@ import { saveMessages } from './conversation-memory'
 import { getOrCreateConversationState } from './conversation-state'
 import { buildKnowledgeBlock } from './rag'
 import { buildPersonaBlock } from './persona'
+import { isWithinWorkingHours, shiftToWorkingHours } from './working-hours'
 import type { MessageChannelType } from '@/types'
 
 interface TriggerEvent {
@@ -98,6 +99,38 @@ export async function processContactTrigger(event: TriggerEvent) {
       )
       if (!deployed) {
         console.log(`[Trigger] Agent "${agent.name}" not deployed on channel ${trigger.channel}, skipping`)
+        continue
+      }
+    }
+
+    // 5b. Working hours guard — triggers are PROACTIVE (agent reaches out
+    // first), so they must respect the agent's working window. If outside
+    // the window, record a pending-trigger row that re-fires when hours open.
+    // (Inbound replies don't go through this path — they respond to an active
+    // contact conversation and always send immediately.)
+    if ((agent as any).workingHoursEnabled) {
+      const whCfg = {
+        workingHoursEnabled: true,
+        workingHoursStart: (agent as any).workingHoursStart ?? 0,
+        workingHoursEnd: (agent as any).workingHoursEnd ?? 24,
+        workingDays: (agent as any).workingDays ?? ['mon','tue','wed','thu','fri','sat','sun'],
+        timezone: (agent as any).timezone ?? null,
+      }
+      if (!isWithinWorkingHours(whCfg)) {
+        const nextSendAt = shiftToWorkingHours(whCfg, new Date())
+        console.log(`[Trigger] Outside working hours for agent "${agent.name}" — deferring until ${nextSendAt.toISOString()}`)
+        // Log the skip so the dashboard shows what happened
+        try {
+          await db.messageLog.create({
+            data: {
+              locationId, agentId: agent.id, contactId,
+              conversationId: '',
+              inboundMessage: `[Trigger: ${eventType}${trigger.tagFilter ? ` tag=${trigger.tagFilter}` : ''}]`,
+              status: 'SKIPPED',
+              errorMessage: `Outside working hours — would have fired at ${nextSendAt.toISOString()}. Triggers do not auto-defer; manually re-fire or wait for next matching event.`,
+            },
+          })
+        } catch {}
         continue
       }
     }

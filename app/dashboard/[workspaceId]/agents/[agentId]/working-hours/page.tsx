@@ -87,8 +87,13 @@ export default function WorkingHoursPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Working Hours</h1>
           <p className="text-sm text-zinc-400 mt-1">
-            Restrict when this agent can send outbound messages. Scheduled follow-ups
-            outside this window auto-shift to the next valid slot.
+            Restrict when this agent can <strong className="text-zinc-300">proactively reach out</strong>.
+            This applies to scheduled follow-ups (auto-shifted to the next valid slot)
+            and trigger-fired outbound messages (skipped outside hours).
+          </p>
+          <p className="text-xs text-zinc-500 mt-2">
+            Inbound replies are <em>always</em> sent immediately — your agent will still respond to
+            contacts who message during off-hours so they&apos;re not left hanging.
           </p>
         </div>
 
