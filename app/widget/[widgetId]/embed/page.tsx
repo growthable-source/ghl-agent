@@ -45,9 +45,13 @@ export default function WidgetEmbedPage() {
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const [voiceState, setVoiceState] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle')
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [voiceCallId, setVoiceCallId] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
+  const vapiRef = useRef<any>(null)
 
   // Generate/restore stable cookieId
   function getCookieId(): string {
@@ -307,23 +311,136 @@ export default function WidgetEmbedPage() {
         </>
       )}
 
-      {/* Voice modal (wave 5 will wire this up) */}
       {voiceOpen && (
-        <div className="absolute inset-0 bg-zinc-950/95 flex flex-col items-center justify-center p-6 z-10">
-          <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4" style={{ background: `${accent}20` }}>
-            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke={accent} strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-            </svg>
-          </div>
-          <p className="text-sm font-semibold mb-1">Voice calling</p>
-          <p className="text-xs text-zinc-500 text-center mb-5 max-w-xs">Coming in the next update — click to call will go live when voice is fully wired.</p>
+        <VoiceModal
+          accent={accent}
+          state={voiceState}
+          error={voiceError}
+          onStart={async () => {
+            if (!conversationId) return
+            setVoiceState('connecting'); setVoiceError(null)
+            try {
+              const res = await fetch(`/api/widget/${widgetId}/voice/start?pk=${publicKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ conversationId }),
+              })
+              const data = await res.json()
+              if (!res.ok) throw new Error(data.error || 'Failed to start call')
+              // Dynamic import so the widget bundle stays light for text-only users
+              const Vapi = (await import('@vapi-ai/web')).default
+              const vapi = new Vapi(data.vapiPublicKey)
+              vapiRef.current = vapi
+              setVoiceCallId(data.callId)
+              vapi.on('call-start', () => setVoiceState('live'))
+              vapi.on('call-end', () => {
+                setVoiceState('idle')
+                // Notify server so transcript gets written via VAPI webhook
+                if (data.callId) {
+                  fetch(`/api/widget/${widgetId}/voice/end?pk=${publicKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ callId: data.callId }),
+                  }).catch(() => {})
+                }
+                vapiRef.current = null
+                setVoiceCallId(null)
+              })
+              vapi.on('error', (e: any) => {
+                setVoiceState('error')
+                setVoiceError(e?.message || 'Voice error')
+              })
+              await vapi.start(data.assistant)
+            } catch (e: any) {
+              setVoiceState('error')
+              setVoiceError(e.message || 'Failed to start voice')
+            }
+          }}
+          onHangup={() => {
+            if (vapiRef.current) {
+              try { vapiRef.current.stop() } catch {}
+            }
+            setVoiceState('idle')
+          }}
+          onClose={() => {
+            if (voiceState === 'live' && vapiRef.current) {
+              try { vapiRef.current.stop() } catch {}
+            }
+            setVoiceOpen(false)
+            setVoiceState('idle')
+            setVoiceError(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function VoiceModal({
+  accent, state, error, onStart, onHangup, onClose,
+}: {
+  accent: string
+  state: 'idle' | 'connecting' | 'live' | 'error'
+  error: string | null
+  onStart: () => void
+  onHangup: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="absolute inset-0 bg-zinc-950/95 backdrop-blur flex flex-col items-center justify-center p-6 z-10">
+      <div
+        className={`w-24 h-24 rounded-full flex items-center justify-center mb-5 transition-transform ${state === 'live' ? 'animate-pulse' : ''}`}
+        style={{
+          background: state === 'live' ? accent : `${accent}25`,
+          boxShadow: state === 'live' ? `0 0 0 12px ${accent}20` : 'none',
+        }}
+      >
+        <svg className={`w-10 h-10 ${state === 'live' ? 'text-white' : ''}`} fill="none" viewBox="0 0 24 24"
+          stroke={state === 'live' ? '#fff' : accent} strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+        </svg>
+      </div>
+
+      <p className="text-sm font-semibold mb-1">
+        {state === 'idle' && 'Ready to call'}
+        {state === 'connecting' && 'Connecting…'}
+        {state === 'live' && 'On the call'}
+        {state === 'error' && 'Call error'}
+      </p>
+      <p className="text-xs text-zinc-500 text-center mb-5 max-w-xs">
+        {state === 'idle' && 'You\'ll talk with our AI voice assistant. You can hang up any time.'}
+        {state === 'connecting' && 'Starting a secure connection…'}
+        {state === 'live' && 'Speak naturally. The assistant is listening.'}
+        {state === 'error' && (error || 'Something went wrong. Please try again.')}
+      </p>
+
+      {state === 'idle' || state === 'error' ? (
+        <div className="flex gap-2">
           <button
-            onClick={() => setVoiceOpen(false)}
-            className="text-xs px-4 py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
+            onClick={onStart}
+            className="text-sm font-semibold px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-colors"
+            style={{ background: accent }}
+          >
+            {state === 'error' ? 'Retry' : 'Start call'}
+          </button>
+          <button
+            onClick={onClose}
+            className="text-sm font-medium px-5 py-2.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
           >
             Back to chat
           </button>
         </div>
+      ) : state === 'connecting' ? (
+        <button onClick={onClose} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+          Cancel
+        </button>
+      ) : (
+        <button
+          onClick={onHangup}
+          className="text-sm font-semibold px-5 py-2.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+        >
+          Hang up
+        </button>
       )}
     </div>
   )
