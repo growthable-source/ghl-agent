@@ -33,6 +33,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.isActive !== undefined && { isActive: body.isActive }),
       ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
       ...(body.calendarId !== undefined && { calendarId: body.calendarId }),
+      ...(body.addToWorkflowsPick !== undefined && { addToWorkflowsPick: body.addToWorkflowsPick }),
+      ...(body.removeFromWorkflowsPick !== undefined && { removeFromWorkflowsPick: body.removeFromWorkflowsPick }),
       ...(body.agentPersonaName !== undefined && { agentPersonaName: body.agentPersonaName }),
       ...(body.responseLength !== undefined && { responseLength: body.responseLength }),
       ...(body.formalityLevel !== undefined && { formalityLevel: body.formalityLevel }),

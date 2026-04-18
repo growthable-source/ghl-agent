@@ -63,6 +63,10 @@ CANCEL/RESCHEDULE:
       messageHistory: messageHistory ?? [],
       systemPrompt: fullPrompt,
       enabledTools: agent.enabledTools,
+      workflowPicks: {
+        addTo: ((agent as any).addToWorkflowsPick ?? undefined) as any,
+        removeFrom: ((agent as any).removeFromWorkflowsPick ?? undefined) as any,
+      },
       sandbox: true,
     })
 

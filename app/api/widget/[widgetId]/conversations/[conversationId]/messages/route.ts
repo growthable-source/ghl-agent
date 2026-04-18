@@ -168,6 +168,10 @@ Note: This conversation is happening on a website chat widget. When booking, use
       messageHistory: history,
       systemPrompt: fullPrompt,
       enabledTools: agent.enabledTools,
+      workflowPicks: {
+        addTo: ((agent as any).addToWorkflowsPick ?? undefined) as any,
+        removeFrom: ((agent as any).removeFromWorkflowsPick ?? undefined) as any,
+      },
       persona: {
         agentPersonaName: agent.agentPersonaName,
         responseLength: agent.responseLength,

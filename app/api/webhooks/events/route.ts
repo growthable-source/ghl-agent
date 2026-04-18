@@ -275,6 +275,10 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
             messageHistory,
             systemPrompt: fullPrompt,
             enabledTools: agent.enabledTools,
+            workflowPicks: {
+              addTo: ((agent as any).addToWorkflowsPick ?? undefined) as any,
+              removeFrom: ((agent as any).removeFromWorkflowsPick ?? undefined) as any,
+            },
             qualifyingStyle: (agent as any).qualifyingStyle ?? 'strict',
             fallback: {
               behavior: (agent as any).fallbackBehavior ?? 'message',

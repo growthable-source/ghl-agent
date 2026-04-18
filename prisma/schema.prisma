@@ -225,6 +225,15 @@ model Agent {
   enabledTools     String[] @default(["get_contact_details", "send_reply", "send_sms", "send_email", "update_contact_tags", "remove_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note", "get_available_slots", "book_appointment", "cancel_appointment", "reschedule_appointment", "create_appointment_note", "get_calendar_events", "find_contact_by_email_or_phone", "upsert_contact", "create_task", "add_to_workflow", "remove_from_workflow", "cancel_scheduled_message", "list_contact_conversations", "mark_opportunity_won", "mark_opportunity_lost", "upsert_opportunity", "list_pipelines"])
   calendarId       String?
 
+  // ─── Workflow picker ───
+  // When add_to_workflow / remove_from_workflow tools are enabled, the user
+  // pins which published workflows the agent is allowed to act on. Stored
+  // with denormalized names so the agent's tool schema can show them without
+  // hitting GHL on every invocation. Empty/null = tool is effectively disabled
+  // (we drop it from the published tool list at runtime).
+  addToWorkflowsPick       Json?   // Array<{ id: string; name: string }>
+  removeFromWorkflowsPick  Json?   // Array<{ id: string; name: string }>
+
   qualifyingStyle     String   @default("strict")    // "strict" | "natural"
   fallbackBehavior    String   @default("message")  // "message" | "transfer" | "message_and_transfer"
   fallbackMessage     String?  @db.Text

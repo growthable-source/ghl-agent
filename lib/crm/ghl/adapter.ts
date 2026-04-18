@@ -209,6 +209,24 @@ export class GhlAdapter implements CrmAdapter {
 
   // ─── Campaigns + Workflows ─────────────────────────────────────────
 
+  /**
+   * List all workflows for this location. The tools page calls this to
+   * populate the add_to_workflow / remove_from_workflow pickers. We filter
+   * to published workflows only — drafts shouldn't be offered as enrollment
+   * targets.
+   *
+   * Endpoint uses Version 2021-07-28 (not the 2021-04-15 used by calendars
+   * and conversations). Scope required: workflows.readonly.
+   */
+  async listWorkflows(): Promise<Array<{ id: string; name: string; status: string }>> {
+    const data = await this.apiFetch<{ workflows?: Array<{ id: string; name: string; status: string }> }>(
+      `/workflows/?locationId=${this.locationId}`,
+      { headers: { Version: '2021-07-28' } },
+    )
+    const all = data.workflows ?? []
+    return all.filter(w => w.status === 'published')
+  }
+
   async addContactToCampaign(contactId: string, campaignId: string): Promise<void> {
     await this.apiFetch(`/contacts/${contactId}/campaigns/${campaignId}`, {
       method: 'POST',

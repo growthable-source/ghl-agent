@@ -462,6 +462,52 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
 ]
 
+// ─── Workflow tool constraint ──────────────────────────────────────────────
+/**
+ * Rewrite add_to_workflow / remove_from_workflow at runtime so `workflowId`
+ * is an enum of the IDs the user has actually picked in the dashboard.
+ *
+ * - If picks is undefined, the user has not configured the picker yet —
+ *   keep the tool as-is (legacy behavior) so existing agents don't break.
+ * - If picks is an empty array, the user explicitly has no workflows
+ *   selected — drop the tool entirely. The enum would be empty and any
+ *   call would fail; better to not advertise the capability.
+ * - Otherwise, constrain `workflowId` to an enum and list the names in
+ *   the description so the agent can pick by intent, not by blind ID.
+ */
+function constrainWorkflowTool(
+  tool: Anthropic.Tool,
+  picks: Array<{ id: string; name: string }> | undefined,
+  verb: 'enroll' | 'remove',
+): Anthropic.Tool[] {
+  if (picks === undefined) return [tool]
+  if (picks.length === 0) return []
+
+  const idEnum = picks.map(p => p.id)
+  const directory = picks.map(p => `- ${p.id} — ${p.name}`).join('\n')
+  const props = (tool.input_schema as any).properties ?? {}
+
+  return [{
+    ...tool,
+    description:
+      `${tool.description}\n\n` +
+      `Allowed workflows (pick by name, pass the id):\n${directory}`,
+    input_schema: {
+      ...tool.input_schema,
+      properties: {
+        ...props,
+        workflowId: {
+          ...(props.workflowId ?? { type: 'string' }),
+          enum: idEnum,
+          description:
+            `Which workflow to ${verb === 'enroll' ? 'enroll the contact in' : 'remove the contact from'}. ` +
+            `Must be one of the IDs listed in the description above.`,
+        },
+      },
+    },
+  }]
+}
+
 // ─── Tool execution ────────────────────────────────────────────────────────
 
 function executeSandboxTool(toolName: string, input: Record<string, unknown>): string {
@@ -1222,8 +1268,23 @@ export async function runAgent(opts: {
    * Returns `deferredCapture` on the response when anything was captured.
    */
   deferSend?: boolean
+  /**
+   * Which published workflows the agent is allowed to enroll contacts in / remove
+   * contacts from. When provided, the matching tool's `workflowId` property is
+   * rewritten to an `enum` of the pinned IDs so the agent physically can't
+   * pick an arbitrary (hallucinated) workflow. Empty/missing arrays drop the
+   * corresponding tool from the published set.
+   *
+   * Names are included alongside IDs so we can enrich the tool description
+   * with a human-readable list — e.g. "id_abc — Lead Nurture" — without
+   * forcing a live GHL round-trip on every agent invocation.
+   */
+  workflowPicks?: {
+    addTo?: Array<{ id: string; name: string }>
+    removeFrom?: Array<{ id: string; name: string }>
+  }
 }): Promise<AgentResponse> {
-  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend } = opts
+  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend, workflowPicks } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Resolve CRM adapter: explicit override > sandbox-null > default lookup
@@ -1293,7 +1354,22 @@ export async function runAgent(opts: {
           : []),
       ])]
     : undefined
-  const tools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS
+  const filteredTools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS
+
+  // ─── Workflow-picker enforcement ───
+  // When the user has pinned specific workflows in the UI, rewrite the tool
+  // schema so the agent can only pick from that whitelist. If nothing is
+  // pinned for a given tool, drop the tool entirely — publishing it with no
+  // valid target just invites hallucinated workflowIds that 404 against GHL.
+  const tools = filteredTools.flatMap(t => {
+    if (t.name === 'add_to_workflow') {
+      return constrainWorkflowTool(t, workflowPicks?.addTo, 'enroll')
+    }
+    if (t.name === 'remove_from_workflow') {
+      return constrainWorkflowTool(t, workflowPicks?.removeFrom, 'remove')
+    }
+    return [t]
+  })
 
   // Agentic loop — keeps going until Claude stops calling tools
   let currentMessages = [...messages]
