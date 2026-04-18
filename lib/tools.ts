@@ -40,6 +40,8 @@ export const ALL_TOOLS: ToolDefinition[] = [
   { name: 'create_task', label: 'Create Task', description: 'Create a follow-up task with a due date for a team member', category: 'contacts' },
   { name: 'add_to_workflow', label: 'Add to Workflow', description: 'Enroll the contact in a GHL automation workflow', category: 'automation' },
   { name: 'remove_from_workflow', label: 'Remove from Workflow', description: 'Stop a contact\'s progression through a workflow', category: 'automation' },
+  { name: 'cancel_scheduled_message', label: 'Cancel Scheduled Message', description: 'Cancel an SMS/email that was scheduled to send later', category: 'messaging' },
+  { name: 'list_contact_conversations', label: 'List Conversations', description: 'List contact conversation threads filtered by channel/status', category: 'messaging' },
 
   // Intelligence
   { name: 'score_lead', label: 'Score Lead', description: 'Score a lead 1-100 based on conversation signals and save to CRM', category: 'intelligence' },

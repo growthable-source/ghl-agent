@@ -293,40 +293,238 @@ export class GhlAdapter implements CrmAdapter {
   }
 
   // ─── Conversations & Messaging ───────────────────────────────────────
+  // All /conversations/* endpoints require Version: 2021-04-15 per spec.
 
-  async searchConversations(opts: { contactId?: string; limit?: number } = {}): Promise<Conversation[]> {
+  async searchConversations(opts: {
+    contactId?: string
+    assignedTo?: string           // user IDs (comma-separated) or "unassigned"
+    status?: 'all' | 'read' | 'unread' | 'starred' | 'recents'
+    lastMessageType?: string      // TYPE_SMS, TYPE_EMAIL, TYPE_CALL, etc.
+    lastMessageDirection?: 'inbound' | 'outbound'
+    query?: string
+    sort?: 'asc' | 'desc'
+    sortBy?: 'last_manual_message_date' | 'last_message_date' | 'score_profile'
+    limit?: number
+  } = {}): Promise<Conversation[]> {
     const params = new URLSearchParams({
       locationId: this.locationId,
       limit: String(opts.limit ?? 20),
-      ...(opts.contactId ? { contactId: opts.contactId } : {}),
     })
-    const data = await this.apiFetch<{ conversations: Conversation[] }>(
-      `/conversations/search?${params}`
+    if (opts.contactId) params.set('contactId', opts.contactId)
+    if (opts.assignedTo) params.set('assignedTo', opts.assignedTo)
+    if (opts.status) params.set('status', opts.status)
+    if (opts.lastMessageType) params.set('lastMessageType', opts.lastMessageType)
+    if (opts.lastMessageDirection) params.set('lastMessageDirection', opts.lastMessageDirection)
+    if (opts.query) params.set('query', opts.query)
+    if (opts.sort) params.set('sort', opts.sort)
+    if (opts.sortBy) params.set('sortBy', opts.sortBy)
+
+    const data = await this.apiFetch<{ conversations: Conversation[]; total?: number }>(
+      `/conversations/search?${params}`,
+      { headers: { 'Version': '2021-04-15' } },
     )
     return data.conversations ?? []
   }
 
   async getConversation(conversationId: string): Promise<Conversation> {
-    const data = await this.apiFetch<{ conversation: Conversation }>(
-      `/conversations/${conversationId}`
+    const data = await this.apiFetch<Conversation>(
+      `/conversations/${conversationId}`,
+      { headers: { 'Version': '2021-04-15' } },
+    )
+    // Spec returns the conversation directly at the root, not wrapped.
+    return (data as any).conversation ?? (data as Conversation)
+  }
+
+  /**
+   * Create a new conversation thread. Useful when we need to bootstrap a
+   * thread between a widget visitor (who just converted into a GHL contact)
+   * and an agent before posting the first message.
+   */
+  async createConversation(contactId: string): Promise<{ id: string; dateAdded: string }> {
+    const data = await this.apiFetch<{ success: boolean; conversation: { id: string; dateAdded: string } }>(
+      '/conversations/',
+      {
+        method: 'POST',
+        headers: { 'Version': '2021-04-15' },
+        body: JSON.stringify({ locationId: this.locationId, contactId }),
+      },
     )
     return data.conversation
   }
 
-  async getMessages(conversationId: string, limit = 20): Promise<Message[]> {
+  async updateConversation(conversationId: string, updates: {
+    unreadCount?: number
+    starred?: boolean
+    feedback?: Record<string, unknown>
+  }): Promise<void> {
+    await this.apiFetch(`/conversations/${conversationId}`, {
+      method: 'PUT',
+      headers: { 'Version': '2021-04-15' },
+      body: JSON.stringify({ locationId: this.locationId, ...updates }),
+    })
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    await this.apiFetch(`/conversations/${conversationId}`, {
+      method: 'DELETE',
+      headers: { 'Version': '2021-04-15' },
+    })
+  }
+
+  /**
+   * Message types per spec — all 35+ types a GHL conversation can carry.
+   * Exposed as a type alias so callers get autocomplete.
+   */
+  static MESSAGE_TYPES = [
+    'TYPE_CALL', 'TYPE_SMS', 'TYPE_EMAIL', 'TYPE_FACEBOOK', 'TYPE_GMB',
+    'TYPE_INSTAGRAM', 'TYPE_WHATSAPP', 'TYPE_ACTIVITY_APPOINTMENT',
+    'TYPE_ACTIVITY_CONTACT', 'TYPE_ACTIVITY_INVOICE', 'TYPE_ACTIVITY_PAYMENT',
+    'TYPE_ACTIVITY_OPPORTUNITY', 'TYPE_LIVE_CHAT', 'TYPE_INTERNAL_COMMENTS',
+    'TYPE_ACTIVITY_EMPLOYEE_ACTION_LOG',
+  ] as const
+
+  async getMessages(conversationId: string, limit = 20, opts: {
+    type?: string | string[]   // filter to specific message types, comma-separated
+    lastMessageId?: string      // pagination cursor
+  } = {}): Promise<Message[]> {
     const params = new URLSearchParams({ limit: String(limit) })
-    const data = await this.apiFetch<{ messages: { messages: Message[] } }>(
-      `/conversations/${conversationId}/messages?${params}`
+    if (opts.type) {
+      params.set('type', Array.isArray(opts.type) ? opts.type.join(',') : opts.type)
+    }
+    if (opts.lastMessageId) params.set('lastMessageId', opts.lastMessageId)
+
+    const data = await this.apiFetch<{ messages: { messages: Message[]; lastMessageId?: string; nextPage?: boolean } }>(
+      `/conversations/${conversationId}/messages?${params}`,
+      { headers: { 'Version': '2021-04-15' } },
     )
     return data.messages?.messages ?? []
+  }
+
+  /** Fetch a single message by its ID */
+  async getMessage(messageId: string): Promise<Message | null> {
+    try {
+      const data = await this.apiFetch<Message>(
+        `/conversations/messages/${messageId}`,
+        { headers: { 'Version': '2021-04-15' } },
+      )
+      return data
+    } catch { return null }
   }
 
   async sendMessage(payload: SendMessagePayload): Promise<{ messageId: string; conversationId: string }> {
     console.log(`[GHL] sendMessage type=${payload.type} contact=${payload.contactId} provId=${payload.conversationProviderId ?? 'none'}`)
     return this.apiFetch('/conversations/messages', {
       method: 'POST',
+      headers: { 'Version': '2021-04-15' },
       body: JSON.stringify(payload),
     })
+  }
+
+  /**
+   * Record an inbound message that arrived through a third-party channel
+   * (used when we receive an external SMS/Email and need to persist it to
+   * the GHL thread as an inbound).
+   */
+  async recordInboundMessage(payload: {
+    type: string
+    conversationId: string
+    conversationProviderId: string
+    message?: string
+    subject?: string
+    html?: string
+    attachments?: string[]
+    direction?: 'inbound' | 'outbound'
+    date?: string
+    altId?: string
+  }): Promise<{ success: boolean; conversationId: string; messageId: string }> {
+    return this.apiFetch('/conversations/messages/inbound', {
+      method: 'POST',
+      headers: { 'Version': '2021-04-15' },
+      body: JSON.stringify({ direction: 'inbound', ...payload }),
+    })
+  }
+
+  async updateMessageStatus(messageId: string, status: 'delivered' | 'failed' | 'pending' | 'read', extras: {
+    emailMessageId?: string
+    error?: { code: string; type: string; message: string }
+  } = {}): Promise<void> {
+    await this.apiFetch(`/conversations/messages/${messageId}/status`, {
+      method: 'PUT',
+      headers: { 'Version': '2021-04-15' },
+      body: JSON.stringify({ status, ...extras }),
+    })
+  }
+
+  async cancelScheduledMessage(messageId: string): Promise<void> {
+    await this.apiFetch(`/conversations/messages/${messageId}/schedule`, {
+      method: 'DELETE',
+      headers: { 'Version': '2021-04-15' },
+    })
+  }
+
+  async cancelScheduledEmail(emailMessageId: string): Promise<void> {
+    await this.apiFetch(`/conversations/messages/email/${emailMessageId}/schedule`, {
+      method: 'DELETE',
+      headers: { 'Version': '2021-04-15' },
+    })
+  }
+
+  /** Returns the message's audio recording as a Blob — callers can stream or save. */
+  async getMessageRecording(messageId: string): Promise<Response> {
+    const token = await getValidAccessToken(this.locationId)
+    if (!token) throw new Error('No valid token')
+    return fetch(
+      `${BASE_URL}/conversations/messages/${messageId}/locations/${this.locationId}/recording`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Version': '2021-04-15',
+        },
+      },
+    )
+  }
+
+  async getMessageTranscription(messageId: string): Promise<Array<{
+    mediaChannel: number
+    sentenceIndex: number
+    startTime: number
+    endTime: number
+    transcript: string
+    confidence: number
+  }>> {
+    try {
+      const data = await this.apiFetch<any>(
+        `/conversations/locations/${this.locationId}/messages/${messageId}/transcription`,
+        { headers: { 'Version': '2021-04-15' } },
+      )
+      return Array.isArray(data) ? data : []
+    } catch { return [] }
+  }
+
+  /**
+   * Live-chat typing indicator for GHL's native chat widget. Different from
+   * Voxility's widget — this is used when an agent is typing into a GHL-
+   * hosted chat session and we want the contact to see typing bubbles.
+   */
+  async sendLiveChatTyping(params: {
+    visitorId: string
+    conversationId: string
+    isTyping: boolean
+  }): Promise<void> {
+    try {
+      await this.apiFetch('/conversations/providers/live-chat/typing', {
+        method: 'POST',
+        headers: { 'Version': '2021-04-15' },
+        body: JSON.stringify({
+          locationId: this.locationId,
+          visitorId: params.visitorId,
+          conversationId: params.conversationId,
+          isTyping: params.isTyping,
+        }),
+      })
+    } catch (err: any) {
+      console.warn('[GHL] sendLiveChatTyping failed:', err.message)
+    }
   }
 
   // ─── Opportunities / Deals ───────────────────────────────────────────

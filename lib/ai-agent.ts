@@ -221,6 +221,31 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'cancel_scheduled_message',
+    description: 'Cancel a previously-scheduled SMS or email so it never sends. Use when plans change — e.g. a contact books a meeting and the scheduled "follow-up tomorrow" message is no longer needed.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        messageId: { type: 'string', description: 'The scheduled message ID (returned when you scheduled it)' },
+      },
+      required: ['messageId'],
+    },
+  },
+  {
+    name: 'list_contact_conversations',
+    description: 'List the contact\'s conversation threads across all channels (SMS/email/chat/etc). Use to check history or find a specific thread\'s conversationId before continuing a conversation.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        lastMessageType: { type: 'string', description: 'Optional filter: TYPE_SMS, TYPE_EMAIL, TYPE_CALL, TYPE_WHATSAPP, TYPE_LIVE_CHAT, etc.' },
+        status: { type: 'string', enum: ['all', 'read', 'unread', 'starred', 'recents'], description: 'Default: all' },
+        limit: { type: 'number', description: 'Default 20, max 50' },
+      },
+      required: ['contactId'],
+    },
+  },
+  {
     name: 'create_contact',
     description: 'Create a new contact in the CRM.',
     input_schema: {
@@ -421,6 +446,10 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ success: true, note: '[Sandbox: Not actually enrolled in workflow]' })
     case 'remove_from_workflow':
       return JSON.stringify({ success: true, note: '[Sandbox: Not actually removed from workflow]' })
+    case 'cancel_scheduled_message':
+      return JSON.stringify({ success: true, messageId: input.messageId, note: '[Sandbox: Scheduled message not actually cancelled]' })
+    case 'list_contact_conversations':
+      return JSON.stringify([{ id: 'conv-sandbox', lastMessageType: 'TYPE_SMS', lastMessageBody: 'Test thread (sandbox)', unreadCount: 0 }])
     case 'cancel_appointment':
       return JSON.stringify({ success: true, appointmentId: input.appointmentId, status: 'cancelled', note: '[Sandbox: Appointment not actually cancelled]' })
     case 'reschedule_appointment':
@@ -743,6 +772,37 @@ async function executeTool(
         }
         await (crm as any).removeContactFromWorkflow(input.contactId as string, input.workflowId as string)
         return JSON.stringify({ success: true })
+      }
+      case 'cancel_scheduled_message': {
+        if (!(crm as any).cancelScheduledMessage) {
+          return JSON.stringify({ error: 'Scheduled message cancellation not supported on this CRM adapter' })
+        }
+        try {
+          await (crm as any).cancelScheduledMessage(input.messageId as string)
+          return JSON.stringify({ success: true, messageId: input.messageId })
+        } catch (err: any) {
+          return JSON.stringify({
+            success: false,
+            error: err.message,
+            hint: /already\s+(sent|dispatched)/i.test(err.message)
+              ? 'Message has already been sent — cancellation no longer possible.'
+              : 'Check the messageId; it should be the ID returned when scheduling.',
+          })
+        }
+      }
+      case 'list_contact_conversations': {
+        const conversations = await crm.searchConversations({
+          contactId: input.contactId as string,
+          ...(input.lastMessageType ? { lastMessageType: input.lastMessageType as string } : {}),
+          ...(input.status ? { status: input.status as any } : {}),
+          limit: Math.min((input.limit as number) || 20, 50),
+        })
+        return JSON.stringify(conversations.map((c: any) => ({
+          id: c.id,
+          lastMessageType: c.lastMessageType,
+          lastMessageBody: c.lastMessageBody?.slice(0, 100),
+          unreadCount: c.unreadCount,
+        })))
       }
       case 'create_contact': {
         const contact = await crm.createContact({
