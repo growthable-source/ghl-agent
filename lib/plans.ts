@@ -270,6 +270,22 @@ export function canAddTeamMember(plan: string, currentMemberCount: number): bool
   return currentMemberCount < max
 }
 
+/** Widget limits per plan */
+const WIDGETS_PER_PLAN: Record<string, number> = {
+  free: 1,
+  trial: 3,
+  starter: 1,
+  growth: 3,
+  scale: Infinity,
+}
+export function canCreateWidget(plan: string, currentWidgetCount: number): boolean {
+  const max = WIDGETS_PER_PLAN[plan] ?? 1
+  return currentWidgetCount < max
+}
+export function widgetLimit(plan: string): number {
+  return WIDGETS_PER_PLAN[plan] ?? 1
+}
+
 /** Check if a feature flag is enabled */
 export function canUseFeature(plan: string, feature: keyof PlanFeatures): boolean {
   const val = getPlanFeatures(plan)[feature]

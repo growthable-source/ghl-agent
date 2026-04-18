@@ -78,6 +78,8 @@ export default function DashboardSidebar() {
                 {navLink(`/dashboard/${workspaceId}`, 'Overview')}
                 {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
                 {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
+                {navLink(`/dashboard/${workspaceId}/widgets`, 'Chat Widgets')}
+                {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox')}
                 {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
                 {navLink(`/dashboard/${workspaceId}/routing-diagnostic`, 'Routing Diagnostic')}
                 {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention')}

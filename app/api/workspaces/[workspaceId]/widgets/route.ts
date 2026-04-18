@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { generatePublicKey } from '@/lib/widget-auth'
+import { canCreateWidget, widgetLimit } from '@/lib/plans'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -34,6 +35,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
   const name = (body.name || '').trim() || 'New Widget'
+
+  // Plan gating — graceful fallback if plan column / widget table doesn't exist
+  try {
+    const ws = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { plan: true },
+    })
+    if (ws) {
+      const current = await db.chatWidget.count({ where: { workspaceId } })
+      if (!canCreateWidget(ws.plan, current)) {
+        return NextResponse.json({
+          error: `Widget limit reached on the ${ws.plan} plan (${current}/${widgetLimit(ws.plan)}). Upgrade to create more.`,
+          code: 'WIDGET_LIMIT',
+        }, { status: 403 })
+      }
+    }
+  } catch {
+    // Pre-migration — allow
+  }
 
   try {
     const widget = await db.chatWidget.create({

@@ -45,6 +45,8 @@ const ROUTE_LABELS: Record<string, string> = {
   'working-hours': 'Working Hours',
   contacts: 'Contact',
   replay: 'Replay',
+  widgets: 'Chat Widgets',
+  inbox: 'Inbox',
 }
 
 // Reserved segments that are NOT a workspaceId
