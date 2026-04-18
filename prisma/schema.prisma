@@ -222,7 +222,7 @@ model Agent {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  enabledTools     String[] @default(["get_contact_details", "send_reply", "send_sms", "update_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note", "get_available_slots", "book_appointment", "create_appointment_note", "cancel_appointment", "reschedule_appointment", "get_calendar_events"])
+  enabledTools     String[] @default(["get_contact_details", "send_reply", "send_sms", "send_email", "update_contact_tags", "remove_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note", "get_available_slots", "book_appointment", "cancel_appointment", "reschedule_appointment", "create_appointment_note", "get_calendar_events", "find_contact_by_email_or_phone", "upsert_contact", "create_task", "add_to_workflow", "remove_from_workflow", "cancel_scheduled_message", "list_contact_conversations", "mark_opportunity_won", "mark_opportunity_lost", "upsert_opportunity", "list_pipelines"])
   calendarId       String?
 
   qualifyingStyle     String   @default("strict")    // "strict" | "natural"
