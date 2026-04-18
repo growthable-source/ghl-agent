@@ -327,8 +327,12 @@ export class GhlAdapter implements CrmAdapter {
       startTime: payload.startTime,
       title: payload.title || 'Appointment',
       // GHL enum: "new" | "confirmed" | "cancelled" | "showed" | "noshow" | "invalid"
-      // "new" is the safest default; many calendars reject direct "confirmed".
-      appointmentStatus: (payload as any).appointmentStatus || 'new',
+      // We default to "confirmed" because the lead has already picked a slot and
+      // said yes — leaving it on "new" forces the operator to manually confirm
+      // every booked appointment in GHL, which misses the point of automation.
+      // Callers can override via payload.appointmentStatus if a specific calendar
+      // rejects "confirmed".
+      appointmentStatus: (payload as any).appointmentStatus || 'confirmed',
       // Spec: "If set to false, the automations will not run"
       toNotify: true,
       // Spec: "If true the time slot validation would be avoided for any
@@ -347,14 +351,38 @@ export class GhlAdapter implements CrmAdapter {
         headers: { 'Version': '2021-04-15' },
         body: JSON.stringify(body),
       })
-      console.log(`[GHL] Appointment booked: ${result?.id ?? 'unknown'} for contact ${payload.contactId} at ${payload.startTime} (assigned=${assignedUserId ?? 'none'})`)
+      console.log(`[GHL] Appointment booked: ${result?.id ?? 'unknown'} for contact ${payload.contactId} at ${payload.startTime} (assigned=${assignedUserId ?? 'none'}, status=${body.appointmentStatus})`)
       return result
     } catch (err: any) {
+      // If GHL rejected "confirmed" specifically (some calendars require manual
+      // confirmation workflows and 422 with an appointmentStatus complaint),
+      // retry once with "new" so the booking still lands.
+      const isStatusReject =
+        (payload as any).appointmentStatus === undefined &&
+        body.appointmentStatus === 'confirmed' &&
+        /appointmentStatus|appointment_status|status/i.test(err.message || '')
+      if (isStatusReject) {
+        console.warn(`[GHL] "confirmed" rejected for calendar ${payload.calendarId} — retrying with "new"`)
+        body.appointmentStatus = 'new'
+        try {
+          const result = await this.apiFetch<any>('/calendars/events/appointments', {
+            method: 'POST',
+            headers: { 'Version': '2021-04-15' },
+            body: JSON.stringify(body),
+          })
+          console.log(`[GHL] Appointment booked (fallback status=new): ${result?.id ?? 'unknown'}`)
+          return result
+        } catch (retryErr: any) {
+          console.error('[GHL] bookAppointment FAILED after status retry', { error: retryErr.message })
+          throw retryErr
+        }
+      }
       console.error('[GHL] bookAppointment FAILED', {
         calendarId: payload.calendarId,
         contactId: payload.contactId,
         startTime: payload.startTime,
         assignedUserId,
+        appointmentStatus: body.appointmentStatus,
         error: err.message,
       })
       throw err
