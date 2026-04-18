@@ -106,7 +106,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   results.push({ step: 'Token is valid (refresh works)', status: 'ok', detail: 'token refreshed successfully' })
 
   // ─── 6. List calendars from GHL ───
-  const crm = getCrmAdapter(agent.locationId) as any
+  const crm = (await getCrmAdapter(agent.locationId)) as any
   let ghlCalendars: any[] = []
   try {
     // Hit the list-calendars route's underlying path directly
