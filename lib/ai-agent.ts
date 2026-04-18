@@ -142,6 +142,85 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'find_contact_by_email_or_phone',
+    description: 'Look up an existing contact by exact email and/or phone match. Returns the contact if found, null otherwise. Use this BEFORE create_contact to avoid duplicates.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Exact email to match' },
+        phone: { type: 'string', description: 'Phone in E.164 format (e.g. +14155550100)' },
+      },
+    },
+  },
+  {
+    name: 'upsert_contact',
+    description: 'Create or update a contact by email/phone following the location\'s duplicate-detection settings. Preferred over create_contact when you\'re not sure if the contact exists. Returns { contact, isNew }.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        firstName: { type: 'string' },
+        lastName: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string', description: 'Phone in E.164 format' },
+        companyName: { type: 'string' },
+        source: { type: 'string', description: 'Where did this contact originate — e.g. "website chat"' },
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  },
+  {
+    name: 'remove_contact_tags',
+    description: 'Remove one or more tags from the contact. Use when qualifying a lead out ("not qualified") or when a tagged state no longer applies.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags to remove' },
+      },
+      required: ['contactId', 'tags'],
+    },
+  },
+  {
+    name: 'create_task',
+    description: 'Create a follow-up task for a team member. Use when a human needs to do something for this contact — a call-back, a document to send, a quote to prepare. ALWAYS include a dueDate in ISO format.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        title: { type: 'string', description: 'Short task title' },
+        body: { type: 'string', description: 'Longer description / context from the conversation' },
+        dueDate: { type: 'string', description: 'ISO 8601 datetime — when the task is due (e.g. "2026-04-25T09:00:00Z")' },
+        assignedTo: { type: 'string', description: 'GHL user ID to assign to (optional)' },
+      },
+      required: ['contactId', 'title', 'dueDate'],
+    },
+  },
+  {
+    name: 'add_to_workflow',
+    description: 'Enroll the contact in a GHL automation workflow. Use when a specific nurture/follow-up sequence should start — e.g. "interested but not ready" → nurture workflow.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        workflowId: { type: 'string', description: 'GHL workflow ID' },
+        eventStartTime: { type: 'string', description: 'Optional ISO start time if the workflow has a time-based trigger' },
+      },
+      required: ['contactId', 'workflowId'],
+    },
+  },
+  {
+    name: 'remove_from_workflow',
+    description: 'Stop a contact\'s progression through a GHL workflow. Use when the contact\'s state changes (e.g. "booked" means the nurture workflow should stop).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        workflowId: { type: 'string' },
+      },
+      required: ['contactId', 'workflowId'],
+    },
+  },
+  {
     name: 'create_contact',
     description: 'Create a new contact in the CRM.',
     input_schema: {
@@ -330,6 +409,22 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ success: true, note: '[Sandbox: Stage not actually moved]' })
     case 'add_contact_note':
       return JSON.stringify({ success: true, note: '[Sandbox: Note not actually saved]' })
+    case 'find_contact_by_email_or_phone':
+      return JSON.stringify(null)
+    case 'upsert_contact':
+      return JSON.stringify({ contact: { id: 'upserted-sandbox', firstName: input.firstName, lastName: input.lastName, email: input.email, phone: input.phone }, isNew: true, note: '[Sandbox: Contact not actually upserted]' })
+    case 'remove_contact_tags':
+      return JSON.stringify({ success: true, removed: input.tags, note: '[Sandbox: Tags not actually removed]' })
+    case 'create_task':
+      return JSON.stringify({ success: true, task: { id: 'task-sandbox', title: input.title, dueDate: input.dueDate }, note: '[Sandbox: Task not actually created]' })
+    case 'add_to_workflow':
+      return JSON.stringify({ success: true, note: '[Sandbox: Not actually enrolled in workflow]' })
+    case 'remove_from_workflow':
+      return JSON.stringify({ success: true, note: '[Sandbox: Not actually removed from workflow]' })
+    case 'cancel_appointment':
+      return JSON.stringify({ success: true, appointmentId: input.appointmentId, status: 'cancelled', note: '[Sandbox: Appointment not actually cancelled]' })
+    case 'reschedule_appointment':
+      return JSON.stringify({ success: true, appointmentId: input.appointmentId, newStartTime: input.startTime, note: '[Sandbox: Not actually rescheduled]' })
     case 'get_available_slots': {
       // Generate realistic-looking future slots starting 2 days from now
       // (avoids the old hardcoded 2025 dates that misled the agent)
@@ -585,6 +680,69 @@ async function executeTool(
       case 'search_contacts': {
         const contacts = await crm.searchContacts(input.query as string)
         return JSON.stringify(contacts)
+      }
+      case 'find_contact_by_email_or_phone': {
+        if (!(crm as any).findDuplicateContact) {
+          return JSON.stringify({ error: 'This CRM adapter does not support duplicate lookup' })
+        }
+        const contact = await (crm as any).findDuplicateContact({
+          email: input.email as string | undefined,
+          phone: input.phone as string | undefined,
+        })
+        return JSON.stringify(contact || null)
+      }
+      case 'upsert_contact': {
+        if (!(crm as any).upsertContact) {
+          // Fallback for adapters that don't implement upsert — try find then update/create
+          return JSON.stringify({ error: 'Upsert not supported on this CRM adapter — use create_contact instead' })
+        }
+        const result = await (crm as any).upsertContact({
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          phone: input.phone,
+          companyName: input.companyName,
+          source: input.source,
+          tags: input.tags,
+        })
+        return JSON.stringify(result)
+      }
+      case 'remove_contact_tags': {
+        if (!(crm as any).removeTags) {
+          return JSON.stringify({ error: 'Tag removal not supported on this CRM adapter' })
+        }
+        await (crm as any).removeTags(input.contactId as string, input.tags as string[])
+        return JSON.stringify({ success: true, removed: input.tags })
+      }
+      case 'create_task': {
+        if (!(crm as any).createContactTask) {
+          return JSON.stringify({ error: 'Task creation not supported on this CRM adapter' })
+        }
+        const task = await (crm as any).createContactTask(input.contactId as string, {
+          title: input.title as string,
+          body: input.body as string | undefined,
+          dueDate: input.dueDate as string,
+          assignedTo: input.assignedTo as string | undefined,
+        })
+        return JSON.stringify({ success: true, task })
+      }
+      case 'add_to_workflow': {
+        if (!(crm as any).addContactToWorkflow) {
+          return JSON.stringify({ error: 'Workflow enrollment not supported on this CRM adapter' })
+        }
+        await (crm as any).addContactToWorkflow(
+          input.contactId as string,
+          input.workflowId as string,
+          input.eventStartTime as string | undefined,
+        )
+        return JSON.stringify({ success: true, workflowId: input.workflowId })
+      }
+      case 'remove_from_workflow': {
+        if (!(crm as any).removeContactFromWorkflow) {
+          return JSON.stringify({ error: 'Workflow removal not supported on this CRM adapter' })
+        }
+        await (crm as any).removeContactFromWorkflow(input.contactId as string, input.workflowId as string)
+        return JSON.stringify({ success: true })
       }
       case 'create_contact': {
         const contact = await crm.createContact({

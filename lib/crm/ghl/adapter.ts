@@ -51,10 +51,50 @@ export class GhlAdapter implements CrmAdapter {
     return data.contact
   }
 
-  async searchContacts(query: string): Promise<Contact[]> {
-    const params = new URLSearchParams({ locationId: this.locationId, query, limit: '20' })
-    const data = await this.apiFetch<{ contacts: Contact[] }>(`/contacts/?${params}`)
-    return data.contacts ?? []
+  /**
+   * Search contacts via POST /contacts/search (the current, non-deprecated
+   * endpoint). The old GET /contacts/?query=... is deprecated per spec.
+   * Body supports complex filters — we expose a simple { query, limit }
+   * wrapper here but the raw searchBody shape is pass-through.
+   */
+  async searchContacts(query: string, opts: { limit?: number } = {}): Promise<Contact[]> {
+    try {
+      const data = await this.apiFetch<{ contacts: Contact[]; total?: number }>(
+        '/contacts/search',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            locationId: this.locationId,
+            pageLimit: opts.limit ?? 20,
+            // Search across common text fields; GHL accepts a simple top-level
+            // `query` string alongside filters.
+            ...(query ? { query } : {}),
+          }),
+        },
+      )
+      return data.contacts ?? []
+    } catch (err: any) {
+      console.warn('[GHL] searchContacts failed:', err.message)
+      return []
+    }
+  }
+
+  /**
+   * Find a contact by exact phone or email — uses GHL's canonical duplicate
+   * lookup. Returns null if nothing matches.
+   */
+  async findDuplicateContact(opts: { email?: string; phone?: string }): Promise<Contact | null> {
+    const params = new URLSearchParams({ locationId: this.locationId })
+    if (opts.email) params.set('email', opts.email)
+    if (opts.phone) params.set('number', opts.phone)
+    try {
+      const data = await this.apiFetch<{ contact?: Contact | null }>(
+        `/contacts/search/duplicate?${params}`,
+      )
+      return data.contact ?? null
+    } catch {
+      return null
+    }
   }
 
   async createContact(payload: Partial<Contact>): Promise<Contact> {
@@ -65,6 +105,19 @@ export class GhlAdapter implements CrmAdapter {
     return data.contact
   }
 
+  /**
+   * Upsert — create-or-update a contact by email/phone following the location's
+   * duplicate-detection settings. Good for widget→CRM sync when a visitor
+   * shares their contact info.
+   */
+  async upsertContact(payload: Partial<Contact> & { email?: string; phone?: string }): Promise<{ contact: Contact; isNew: boolean }> {
+    const data = await this.apiFetch<{ contact: Contact; new: boolean }>('/contacts/upsert', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, locationId: this.locationId }),
+    })
+    return { contact: data.contact, isNew: data.new }
+  }
+
   async updateContact(contactId: string, payload: Partial<Contact>): Promise<Contact> {
     const data = await this.apiFetch<{ contact: Contact }>(`/contacts/${contactId}`, {
       method: 'PUT',
@@ -73,10 +126,111 @@ export class GhlAdapter implements CrmAdapter {
     return data.contact
   }
 
+  async deleteContact(contactId: string): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}`, { method: 'DELETE' })
+  }
+
   async addTags(contactId: string, tags: string[]): Promise<void> {
     await this.apiFetch(`/contacts/${contactId}/tags`, {
       method: 'POST',
       body: JSON.stringify({ tags }),
+    })
+  }
+
+  async removeTags(contactId: string, tags: string[]): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}/tags`, {
+      method: 'DELETE',
+      body: JSON.stringify({ tags }),
+    })
+  }
+
+  // ─── Notes (per-contact) ───────────────────────────────────────────
+
+  async getContactNotes(contactId: string): Promise<Array<{ id: string; body: string; dateAdded: string; userId?: string }>> {
+    try {
+      const data = await this.apiFetch<{ notes: Array<{ id: string; body: string; dateAdded: string; userId?: string }> }>(
+        `/contacts/${contactId}/notes`,
+      )
+      return data.notes ?? []
+    } catch {
+      return []
+    }
+  }
+
+  async createContactNote(contactId: string, body: string, userId?: string): Promise<{ id: string }> {
+    const data = await this.apiFetch<{ note: { id: string } }>(
+      `/contacts/${contactId}/notes`,
+      { method: 'POST', body: JSON.stringify({ body, ...(userId ? { userId } : {}) }) },
+    )
+    return data.note
+  }
+
+  async deleteContactNote(contactId: string, noteId: string): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}/notes/${noteId}`, { method: 'DELETE' })
+  }
+
+  // ─── Tasks (per-contact) ───────────────────────────────────────────
+
+  async getContactTasks(contactId: string): Promise<any[]> {
+    try {
+      const data = await this.apiFetch<{ tasks: any[] }>(`/contacts/${contactId}/tasks`)
+      return data.tasks ?? []
+    } catch {
+      return []
+    }
+  }
+
+  async createContactTask(contactId: string, payload: {
+    title: string
+    body?: string
+    dueDate: string
+    completed?: boolean
+    assignedTo?: string
+  }): Promise<any> {
+    const data = await this.apiFetch<{ task: any }>(`/contacts/${contactId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify({
+        title: payload.title,
+        body: payload.body,
+        dueDate: payload.dueDate,
+        completed: payload.completed ?? false,
+        ...(payload.assignedTo ? { assignedTo: payload.assignedTo } : {}),
+      }),
+    })
+    return data.task
+  }
+
+  async markContactTaskComplete(contactId: string, taskId: string, completed = true): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}/tasks/${taskId}/completed`, {
+      method: 'PUT',
+      body: JSON.stringify({ completed }),
+    })
+  }
+
+  // ─── Campaigns + Workflows ─────────────────────────────────────────
+
+  async addContactToCampaign(contactId: string, campaignId: string): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}/campaigns/${campaignId}`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+  }
+
+  async removeContactFromCampaign(contactId: string, campaignId: string): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}/campaigns/${campaignId}`, { method: 'DELETE' })
+  }
+
+  async addContactToWorkflow(contactId: string, workflowId: string, eventStartTime?: string): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}/workflow/${workflowId}`, {
+      method: 'POST',
+      body: JSON.stringify(eventStartTime ? { eventStartTime } : {}),
+    })
+  }
+
+  async removeContactFromWorkflow(contactId: string, workflowId: string): Promise<void> {
+    await this.apiFetch(`/contacts/${contactId}/workflow/${workflowId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({}),
     })
   }
 

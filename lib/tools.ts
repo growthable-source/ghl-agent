@@ -33,6 +33,14 @@ export const ALL_TOOLS: ToolDefinition[] = [
   { name: 'get_calendar_events', label: 'Get Calendar Events', description: 'List upcoming appointments for a contact', category: 'calendar' },
   { name: 'create_appointment_note', label: 'Add Appointment Note', description: 'Attach a note with context to an appointment', category: 'calendar' },
 
+  // Contacts (extended — from GHL Contacts spec)
+  { name: 'find_contact_by_email_or_phone', label: 'Find by Email/Phone', description: 'Dedupe check — look up existing contact by exact email/phone', category: 'contacts' },
+  { name: 'upsert_contact', label: 'Upsert Contact', description: 'Create-or-update a contact by email/phone (respects duplicate rules)', category: 'contacts' },
+  { name: 'remove_contact_tags', label: 'Remove Tags', description: 'Remove one or more tags from a contact', category: 'contacts' },
+  { name: 'create_task', label: 'Create Task', description: 'Create a follow-up task with a due date for a team member', category: 'contacts' },
+  { name: 'add_to_workflow', label: 'Add to Workflow', description: 'Enroll the contact in a GHL automation workflow', category: 'automation' },
+  { name: 'remove_from_workflow', label: 'Remove from Workflow', description: 'Stop a contact\'s progression through a workflow', category: 'automation' },
+
   // Intelligence
   { name: 'score_lead', label: 'Score Lead', description: 'Score a lead 1-100 based on conversation signals and save to CRM', category: 'intelligence' },
   { name: 'detect_sentiment', label: 'Detect Sentiment', description: 'Analyse conversation sentiment and escalate if negative', category: 'intelligence' },
