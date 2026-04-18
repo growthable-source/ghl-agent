@@ -1,0 +1,159 @@
+/**
+ * WidgetAdapter — satisfies CrmAdapter but intercepts outbound messaging so
+ * agent replies flow over our SSE stream to the browser widget instead of
+ * going out through GHL/HubSpot.
+ *
+ * Calendar + opportunity methods delegate to an optional underlying CRM
+ * adapter (if the workspace has a CRM connected). That lets widget visitors
+ * still book real appointments etc. once they've shared their contact info.
+ * Contact ops are stubbed — widget visitors live in WidgetVisitor, not in
+ * the CRM unless they explicitly convert.
+ */
+
+import type {
+  CrmAdapter, CrmProvider, CustomField,
+  BookAppointmentPayload, CreateOpportunityPayload,
+} from './crm/types'
+import type {
+  Contact, Conversation, Message, Opportunity, SendMessagePayload,
+} from '@/types'
+import { db } from './db'
+import { broadcast } from './widget-sse'
+
+export class WidgetAdapter implements CrmAdapter {
+  provider: CrmProvider = 'ghl'   // pretend to be GHL so tool gating behaves normally
+  locationId: string              // synthetic: "widget:<widgetId>"
+  conversationId: string           // WidgetConversation.id
+  inner: CrmAdapter | null         // optional real CRM for calendar/opportunity passthrough
+
+  constructor(params: {
+    widgetId: string
+    conversationId: string
+    inner?: CrmAdapter | null
+  }) {
+    this.locationId = `widget:${params.widgetId}`
+    this.conversationId = params.conversationId
+    this.inner = params.inner ?? null
+  }
+
+  // ─── Messaging — the whole reason this adapter exists ────────────────
+
+  async sendMessage(payload: SendMessagePayload): Promise<{ messageId: string; conversationId: string }> {
+    // Persist the outbound reply
+    const msg = await db.widgetMessage.create({
+      data: {
+        conversationId: this.conversationId,
+        role: 'agent',
+        content: payload.message,
+        kind: 'text',
+      },
+    })
+    await db.widgetConversation.update({
+      where: { id: this.conversationId },
+      data: { lastMessageAt: new Date() },
+    })
+
+    // Push to every SSE subscriber listening to this conversation.
+    broadcast(this.conversationId, {
+      type: 'agent_message',
+      id: msg.id,
+      content: payload.message,
+      createdAt: msg.createdAt.toISOString(),
+    })
+
+    return { messageId: msg.id, conversationId: this.conversationId }
+  }
+
+  // ─── Contact ops — stubbed (widget visitors aren't CRM contacts) ──────
+
+  async getContact(_contactId: string): Promise<Contact> {
+    return { id: _contactId, firstName: 'Visitor', lastName: null, email: null, phone: null, tags: [], source: 'widget' } as any
+  }
+  async searchContacts(_query: string): Promise<Contact[]> { return [] }
+  async createContact(payload: Partial<Contact>): Promise<Contact> {
+    return { id: `visitor-${Date.now()}`, firstName: payload.firstName ?? null, lastName: payload.lastName ?? null, email: payload.email ?? null, phone: payload.phone ?? null, tags: [], source: 'widget' } as any
+  }
+  async updateContact(contactId: string, _payload: Partial<Contact>): Promise<Contact> {
+    return this.getContact(contactId)
+  }
+  async addTags(_contactId: string, tags: string[]): Promise<void> {
+    // Best-effort: store tags on the visitor's email if we have one (future)
+    console.log(`[widget] addTags ignored (widget visitor has no CRM contact):`, tags)
+  }
+  async updateContactField(_contactId: string, fieldKey: string, value: string): Promise<void> {
+    console.log(`[widget] updateContactField ignored:`, fieldKey, value)
+  }
+  async getCustomFields(): Promise<CustomField[]> {
+    return this.inner?.getCustomFields() ?? []
+  }
+
+  // ─── Conversations ───────────────────────────────────────────────────
+
+  async searchConversations(): Promise<Conversation[]> { return [] }
+  async getConversation(conversationId: string): Promise<Conversation> {
+    return { id: conversationId, contactId: '', lastMessageAt: new Date().toISOString() } as any
+  }
+  async getMessages(conversationId: string, limit = 20): Promise<Message[]> {
+    const msgs = await db.widgetMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    })
+    return msgs.map(m => ({
+      id: m.id,
+      conversationId,
+      locationId: this.locationId,
+      contactId: '',
+      body: m.content,
+      direction: m.role === 'visitor' ? 'inbound' as const : 'outbound' as const,
+    })) as any
+  }
+
+  // ─── Opportunities — passthrough if real CRM connected, else stub ─────
+
+  async getOpportunitiesForContact(contactId: string): Promise<Opportunity[]> {
+    return this.inner?.getOpportunitiesForContact(contactId) ?? []
+  }
+  async updateOpportunityStage(opportunityId: string, stageId: string): Promise<Opportunity> {
+    if (this.inner) return this.inner.updateOpportunityStage(opportunityId, stageId)
+    throw new Error('No CRM connected — cannot update opportunity from widget')
+  }
+  async createOpportunity(payload: CreateOpportunityPayload): Promise<any> {
+    if (this.inner) return this.inner.createOpportunity(payload)
+    throw new Error('No CRM connected — cannot create opportunity from widget')
+  }
+  async updateOpportunityValue(opportunityId: string, monetaryValue: number): Promise<any> {
+    if (this.inner) return this.inner.updateOpportunityValue(opportunityId, monetaryValue)
+    throw new Error('No CRM connected')
+  }
+
+  // ─── Calendar — passthrough to real CRM if available ──────────────────
+
+  async getFreeSlots(calendarId: string, startDate: string, endDate: string, timezone?: string) {
+    if (!this.inner) throw new Error('No CRM connected — calendar unavailable')
+    return this.inner.getFreeSlots(calendarId, startDate, endDate, timezone)
+  }
+  async bookAppointment(payload: BookAppointmentPayload): Promise<any> {
+    if (!this.inner) throw new Error('No CRM connected — cannot book appointments from widget')
+    return this.inner.bookAppointment(payload)
+  }
+  async getAppointment(eventId: string): Promise<any> {
+    if (!this.inner) return { id: eventId }
+    return this.inner.getAppointment(eventId)
+  }
+  async updateAppointment(eventId: string, payload: any): Promise<any> {
+    if (!this.inner) throw new Error('No CRM connected')
+    return this.inner.updateAppointment(eventId, payload)
+  }
+  async getCalendarEvents(contactId: string): Promise<any> {
+    return this.inner?.getCalendarEvents(contactId) ?? { events: [] }
+  }
+  async createAppointmentNote(appointmentId: string, body: string): Promise<any> {
+    if (!this.inner) return { success: false, note: 'No CRM — note skipped' }
+    return this.inner.createAppointmentNote(appointmentId, body)
+  }
+  async updateAppointmentNote(appointmentId: string, noteId: string, body: string): Promise<any> {
+    if (!this.inner) return { success: false }
+    return this.inner.updateAppointmentNote(appointmentId, noteId, body)
+  }
+}

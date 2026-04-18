@@ -804,3 +804,93 @@ model Integration {
   updatedAt   DateTime @updatedAt
   @@index([locationId, type])
 }
+
+// ─── Chat Widgets (Intercom-clone) ──────────────────────────────────────────
+
+model ChatWidget {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  name              String
+  publicKey         String   @unique
+  // Appearance
+  primaryColor      String   @default("#fa4d2e")
+  logoUrl           String?
+  title             String   @default("Chat with us")
+  subtitle          String   @default("We typically reply within a minute")
+  welcomeMessage    String   @db.Text @default("Hi! How can we help?")
+  position          String   @default("bottom-right")
+  // Identity
+  requireEmail      Boolean  @default(false)
+  askForNameEmail   Boolean  @default(true)
+  // Voice
+  voiceEnabled      Boolean  @default(false)
+  voiceAgentId      String?
+  // Routing
+  defaultAgentId    String?
+  allowedDomains    String[] @default([])
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  visitors          WidgetVisitor[]
+  conversations     WidgetConversation[]
+  @@index([workspaceId])
+}
+
+model WidgetVisitor {
+  id            String   @id @default(cuid())
+  widgetId      String
+  widget        ChatWidget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  cookieId      String
+  email         String?
+  name          String?
+  phone         String?
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  crmContactId  String?
+  userAgent     String?
+  ipAddress     String?
+  conversations WidgetConversation[]
+  @@unique([widgetId, cookieId])
+  @@index([widgetId, lastSeenAt])
+}
+
+model WidgetConversation {
+  id            String   @id @default(cuid())
+  widgetId      String
+  widget        ChatWidget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  visitorId     String
+  visitor       WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  agentId       String?
+  status        String   @default("active")
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  messages      WidgetMessage[]
+  voiceCalls    WidgetVoiceCall[]
+  @@index([widgetId, lastMessageAt(sort: Desc)])
+  @@index([visitorId])
+  @@index([agentId, status])
+}
+
+model WidgetMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   WidgetConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String   @db.Text
+  kind           String   @default("text")
+  createdAt      DateTime @default(now())
+  @@index([conversationId, createdAt(sort: Asc)])
+}
+
+model WidgetVoiceCall {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   WidgetConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  vapiCallId     String?
+  status         String   @default("requested")
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  durationSecs   Int?
+  transcript     String?  @db.Text
+  @@index([conversationId])
+}
