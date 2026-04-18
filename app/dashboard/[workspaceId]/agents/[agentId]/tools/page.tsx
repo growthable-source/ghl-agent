@@ -47,10 +47,21 @@ export default function ToolsPage() {
 
   async function saveCalendarId(id: string) {
     setCalendarId(id)
+
+    // Auto-enable booking tools when a calendar is selected. Without these
+    // tools, setting a calendar ID is a no-op — the agent has no way to use it.
+    const autoEnable = ['get_available_slots', 'book_appointment', 'create_appointment_note']
+    const missing = autoEnable.filter(t => !enabledTools.includes(t))
+    const updatedTools = missing.length > 0 ? [...enabledTools, ...missing] : enabledTools
+    if (missing.length > 0) setEnabledTools(updatedTools)
+
     await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ calendarId: id }),
+      body: JSON.stringify({
+        calendarId: id,
+        ...(missing.length > 0 ? { enabledTools: updatedTools } : {}),
+      }),
     })
   }
 
@@ -103,16 +114,38 @@ export default function ToolsPage() {
               })}
             </div>
 
-            {category === 'calendar' && calendarToolsEnabled && (
-              <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-4 mt-3">
-                <label className="block text-sm font-medium text-zinc-300 mb-1">Connected Calendar</label>
+            {category === 'calendar' && (
+              <div className={`rounded-lg border px-4 py-4 mt-3 ${
+                calendarId
+                  ? 'border-emerald-500/30 bg-emerald-500/5'
+                  : calendarToolsEnabled
+                  ? 'border-amber-500/40 bg-amber-500/5'
+                  : 'border-zinc-700 bg-zinc-900/50'
+              }`}>
+                <div className="flex items-start gap-2 mb-1">
+                  <label className="block text-sm font-medium text-zinc-300">Connected Calendar</label>
+                  {calendarId && (
+                    <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10">
+                      ✓ Configured
+                    </span>
+                  )}
+                  {!calendarId && calendarToolsEnabled && (
+                    <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10">
+                      ⚠ Required
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-zinc-500 mb-3">
-                  The agent will use this calendar to check availability and book appointments.
+                  {calendarId
+                    ? 'The agent will use this calendar to check availability and book appointments.'
+                    : calendarToolsEnabled
+                    ? 'Your agent has booking tools enabled but no calendar to use. Pick one below — booking will not work without it.'
+                    : 'Select a calendar to enable booking. The booking tools will be enabled automatically when you pick one.'}
                 </p>
                 {loadingCalendars ? (
                   <p className="text-sm text-zinc-500">Loading…</p>
                 ) : calendars.length === 0 ? (
-                  <p className="text-sm text-red-400">No calendars found for this location.</p>
+                  <p className="text-sm text-red-400">No calendars found in this GHL location. Create one in GoHighLevel first, then come back here.</p>
                 ) : (
                   <select
                     value={calendarId}

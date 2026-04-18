@@ -23,8 +23,10 @@ export interface ClaimDetection {
   correction: string
 }
 
-// Regex patterns that strongly suggest a completed action (past / perfect / stative)
-const BOOKING_CLAIM = /\b(i'?ve|i have|you'?re|you are|we'?re|we have)\s+(now\s+|all\s+|just\s+|successfully\s+|already\s+)?(booked|scheduled|confirmed|reserved|set\s+up|got\s+(you|us)\s+(in|down|on|scheduled)|locked\s+in)\b|\byour\s+(appointment|call|meeting|demo|consultation|slot)\s+(is|has\s+been)\s+(booked|scheduled|confirmed|set)\b|\bappointment\s+(is\s+)?confirmed\b|\ball\s+(booked|scheduled|set)\b|\bsee\s+you\s+(then|on)\b/i
+// Regex patterns that strongly suggest a completed OR in-progress booking action
+// Catches past ("I've booked"), present-continuous ("I'm booking you for"), and
+// stative ("you're scheduled") framings.
+const BOOKING_CLAIM = /\b(i'?ve|i have|you'?re|you are|we'?re|we have|i'?m|i am|we'?re)\s+(now\s+|all\s+|just\s+|successfully\s+|already\s+|going\s+to\s+be\s+)?(booked|booking|scheduled|scheduling|confirmed|confirming|reserved|reserving|set\s+up|setting\s+up|got\s+(you|us)\s+(in|down|on|scheduled)|locked\s+in|locking\s+(you|us)\s+in)\b|\bbooking\s+(you|us)\s+(in|for)\b|\byour\s+(appointment|call|meeting|demo|consultation|slot)\s+(is|has\s+been|will\s+be)\s+(booked|scheduled|confirmed|set)\b|\bappointment\s+(is\s+)?confirmed\b|\ball\s+(booked|scheduled|set)\b|\bsee\s+you\s+(then|on)\b/i
 
 const TAG_CLAIM = /\b(i'?ve|i have)\s+(added|tagged|marked|flagged|labeled)\b|\btagged\s+you\s+(as|with)\b|\badded\s+the\s+[a-z0-9-]+\s+tag\b/i
 
@@ -38,7 +40,12 @@ const FOLLOWUP_CLAIM = /\bi'?ve\s+scheduled\s+a\s+follow[\s-]?up\b|\bi'?ll\s+(fo
 // cannot actually do later because this is a synchronous turn. The agent
 // has no async mechanism to come back unless a follow-up is scheduled.
 // These patterns force the agent to do it NOW in this same turn.
-const DEFERRED_CHECK_AVAILABILITY = /\b(let me\s+(check|see|find|look|pull\s+up|grab|get)|i'?ll\s+(check|see|find|look|pull\s+up|grab|get|go\s+(check|find|look))|one\s+(moment|sec|second|minute)\s+while\s+i\s+(check|find|look|pull))\b[^.!?]{0,80}\b(time|times|slot|slots|availability|available|calendar|schedule|options|opening|openings)\b|\bchecking\s+(for|the|our|your|other|some|more)\s+[^.!?]{0,60}\b(time|times|slot|slots|availability|available)\b|\blet me\s+(get back to you|come back to you|reach back)\s+[^.!?]*(options|times|slots|availability)/i
+const DEFERRED_CHECK_AVAILABILITY = /\b(let me\s+(check|see|find|look|pull\s+up|grab|get)|i'?ll\s+(check|see|find|look|pull\s+up|grab|get|go\s+(check|find|look))|one\s+(moment|sec|second|minute)\s+while\s+i\s+(check|find|look|pull)|i'?m\s+(checking|looking|searching|pulling|finding)|i'?m\s+having\s+(trouble|difficulty)\s+(finding|locating|checking))\b[^.!?]{0,80}\b(time|times|slot|slots|availability|available|calendar|schedule|options|opening|openings)\b|\bchecking\s+(the|our|your|other|some|more|for\s+(other|some|more))?\s*(calendar|availability|times|slots|schedule)\b|\blet me\s+(get back to you|come back to you|reach back)\s+[^.!?]*(options|times|slots|availability)/i
+
+// Claims about calendar STATE (fully booked, no availability, etc) without
+// having actually called get_available_slots to verify. The model is
+// fabricating the tool's result.
+const FAKE_CALENDAR_RESULT = /\b(i'?ve|i have)\s+(checked|looked\s+at|searched|reviewed|pulled\s+up)\s+(the\s+)?(calendar|schedule|availability|next\s+few|our\s+calendar|the\s+schedule)\b|\b(the\s+)?(calendar|schedule)\s+(is|appears\s+to\s+be|seems)\s+(fully\s+booked|booked\s+(up|out|solid)|full|unavailable|packed)\b|\b(no|zero)\s+(open|available|free)\s+(slots|times|openings|appointments)\b|\b(all|every)\s+(slots|times)\s+(are\s+)?(booked|taken|full|unavailable)\b|\b(can'?t|cannot|couldn'?t|can\s+not)\s+find\s+(any\s+)?(available|open)\s+(slots|times|openings)\b|\bnothing\s+(is\s+)?available\s+(this|next)\s+(week|month)\b|\bbooked\s+(solid|up|out)\s+(this|next|for)\s+(week|month)\b/i
 
 const DEFERRED_GENERIC = /\bi'?ll\s+(get back to you|come back to you|reach back|follow up with you|be back in touch|be right back|get right back|check on that|look into (that|it)|find out)\s*(shortly|soon|in a (bit|moment|minute|sec|second)|momentarily)?\b|\blet me\s+(get back to you|come back to you|reach back)\b|\bgive me\s+(a|one)\s+(moment|sec|second|minute)\b(?![^.!?]*\btool\b)/i
 
@@ -127,6 +134,28 @@ export function detectFalseActionClaim(
       phrase: reply.match(FOLLOWUP_CLAIM)?.[0] || '',
       correction:
         `Your reply said you'd follow up, but you didn't schedule one via the schedule_followup tool. Call it now.`,
+    }
+  }
+
+  // ─── Fake calendar result — "I've checked, nothing available" ───
+  // The agent fabricates a tool result. Most dangerous — it looks like a
+  // real answer, but it's a hallucination of the calendar state.
+  if (
+    FAKE_CALENDAR_RESULT.test(reply) &&
+    availableTools.includes('get_available_slots') &&
+    !actionsPerformed.includes('get_available_slots')
+  ) {
+    const match = reply.match(FAKE_CALENDAR_RESULT)
+    return {
+      tool: 'get_available_slots',
+      phrase: match?.[0] || '',
+      correction:
+        `STOP. You just told the contact "${match?.[0]?.trim() || 'that'}" but you have NOT called get_available_slots even once. You are fabricating the calendar state. The real calendar may be wide open — you have no idea, because you haven't checked. ` +
+        `Call get_available_slots RIGHT NOW with:\n` +
+        `- calendarId: from your Calendar Configuration section\n` +
+        `- startDate: today (ISO format)\n` +
+        `- endDate: 4 weeks from today\n` +
+        `Then read the actual result and propose a SPECIFIC time from it. Never invent a calendar result.`,
     }
   }
 

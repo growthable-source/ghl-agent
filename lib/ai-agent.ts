@@ -773,15 +773,53 @@ export async function runAgent(opts: {
   const availableToolNames = tools.map(t => t.name)
   let hallucinationRetries = 0
   const MAX_HALLUCINATION_RETRIES = 2
+  let forceToolNextIteration: string | null = null
+
+  // ─── Decide initial tool_choice ───
+  // If the inbound message strongly signals intent to book (and the booking
+  // tools are available), force Claude to call A tool on the first turn.
+  // This breaks the "let me check and get back to you" non-action reply.
+  const incomingLower = (incomingMessage || '').toLowerCase()
+  const BOOKING_INTENT_PATTERNS = [
+    'speak to sales', 'talk to sales', 'book a call', 'book a meeting', 'book a demo',
+    'schedule a call', 'schedule a meeting', 'schedule a demo', 'set up a call',
+    'hop on a call', 'get on a call', 'have a call', 'have a meeting',
+    'what times', 'available times', 'other times', 'another time', 'different time',
+    'next available', 'whats next', "what's next", 'other options', 'something else',
+    'have access to the calendar', 'check the calendar', 'any availability',
+    'can we chat', 'quick chat', 'jump on', 'catch up',
+    "i need another", 'need another time', 'need a different',
+    "haven't heard", "havent heard", 'any update',
+  ]
+  const hasBookingIntent = BOOKING_INTENT_PATTERNS.some(p => incomingLower.includes(p))
+  const hasBookingTools = availableToolNames.includes('get_available_slots') || availableToolNames.includes('book_appointment')
+  const initialForceAny = hasBookingIntent && hasBookingTools
+
+  if (initialForceAny) {
+    console.log(`[Agent] Booking intent detected in "${incomingMessage?.slice(0, 60)}" — forcing tool_choice: any`)
+  }
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const response = await client.messages.create({
+    // Compute tool_choice for THIS iteration
+    let toolChoice: { type: string; name?: string } | undefined
+    if (forceToolNextIteration) {
+      toolChoice = { type: 'tool', name: forceToolNextIteration }
+      console.log(`[Agent] Forcing specific tool: ${forceToolNextIteration}`)
+      forceToolNextIteration = null
+    } else if (i === 0 && initialForceAny) {
+      toolChoice = { type: 'any' }
+    }
+
+    const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
       system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel),
       tools,
       messages: currentMessages,
-    })
+    }
+    if (toolChoice) createParams.tool_choice = toolChoice
+
+    const response = await client.messages.create(createParams)
 
     totalInputTokens += response.usage.input_tokens
     totalOutputTokens += response.usage.output_tokens
@@ -804,6 +842,11 @@ export async function runAgent(opts: {
         hallucinationRetries++
         console.warn(`[Agent] ⚠ Hallucination detected (retry ${hallucinationRetries}/${MAX_HALLUCINATION_RETRIES}):`,
           `claimed ${falseClaim.tool} without calling it. Reply: "${falseClaim.phrase}"`)
+        // Force the specific tool on the next iteration — this physically
+        // prevents Claude from ending the turn without calling it.
+        if (falseClaim.tool && availableToolNames.includes(falseClaim.tool)) {
+          forceToolNextIteration = falseClaim.tool
+        }
         // Push the model's claim + a corrective user turn, then continue looping
         currentMessages = [
           ...currentMessages,
