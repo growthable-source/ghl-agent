@@ -350,6 +350,10 @@ model MessageLog {
   approvedBy       String?                    // userId
   approvedAt       DateTime?
   approvalReason   String?                    // why it was flagged (e.g. "low_sentiment", "first_contact")
+  // Channel + conversationProviderId captured at agent-run time so the
+  // approval release can send on the same channel the inbound arrived on.
+  approvalChannel          String?
+  approvalConversationProviderId String?
 
   // ─── Inline Correction ───
   corrections      MessageCorrection[]

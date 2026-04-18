@@ -259,6 +259,10 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
             }))
           : history
 
+        // ─── Approval gating: if the agent requires approval, defer the
+        // actual send until rules are evaluated on the generated reply ───
+        const shouldDeferForApproval = !!(agent as any).requireApproval
+
         try {
           const result = await runAgent({
             locationId: p.locationId,
@@ -288,11 +292,12 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
               typingDelayMaxMs: agent.typingDelayMaxMs,
               languages: agent.languages,
             },
+            deferSend: shouldDeferForApproval,
           })
 
           // ─── Approval queue — flag if rules match ───
           const { needsApproval, reason: approvalReason } = evaluateApprovalNeed({
-            requireApproval: !!(agent as any).requireApproval,
+            requireApproval: shouldDeferForApproval,
             approvalRules: ((agent as any).approvalRules as any) || null,
             contactId: p.contactId,
             agentId: agent.id,
@@ -300,6 +305,27 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
             outboundReply: result.reply,
             priorMessageCount: convState.messageCount,
           })
+
+          // ─── Release or queue the deferred send ───
+          // If the agent captured a message AND approval is not required,
+          // deliver it now. If approval IS required, leave captured so the
+          // approvals UI can release it after human review.
+          if (shouldDeferForApproval && result.deferredCapture && !needsApproval) {
+            try {
+              const { sendMessage } = await import('@/lib/crm-client')
+              await sendMessage(p.locationId, {
+                type: result.deferredCapture.channel as any,
+                contactId: result.deferredCapture.contactId,
+                conversationProviderId: result.deferredCapture.conversationProviderId,
+                message: result.deferredCapture.message,
+              })
+              console.log(`[Approval] Auto-released captured message for ${p.contactId} (rules matched none)`)
+            } catch (err: any) {
+              console.error('[Approval] Auto-release send failed:', err.message)
+            }
+          } else if (needsApproval && result.deferredCapture) {
+            console.log(`[Approval] HELD for approval: "${result.deferredCapture.message.slice(0, 60)}..." reason=${approvalReason}`)
+          }
 
           await db.messageLog.update({
             where: { id: log.id },
@@ -313,6 +339,12 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
               needsApproval,
               approvalStatus: needsApproval ? 'pending' : (agent as any).requireApproval ? 'auto_sent' : null,
               approvalReason,
+              // Persist channel + conversationProviderId so the approve
+              // endpoint can send on the exact channel the inbound arrived on.
+              ...(result.deferredCapture ? {
+                approvalChannel: result.deferredCapture.channel,
+                approvalConversationProviderId: result.deferredCapture.conversationProviderId || null,
+              } : {}),
             } as any,
           }).catch(async () => {
             // Fallback for pre-migration DB — retry without approval fields

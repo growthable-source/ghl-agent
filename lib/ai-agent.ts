@@ -566,6 +566,20 @@ const SAFE_READ_ONLY_TOOLS = new Set([
   'search_contacts',
 ])
 
+/**
+ * Captures the message an agent *wants* to send when sends are deferred
+ * for human approval. The caller receives the captured text after
+ * runAgent() returns so it can either deliver or queue.
+ */
+export interface DeferredSendCapture {
+  captured: null | {
+    channel: string
+    contactId: string
+    message: string
+    conversationProviderId?: string
+  }
+}
+
 async function executeTool(
   toolName: string,
   input: Record<string, unknown>,
@@ -574,7 +588,9 @@ async function executeTool(
   agentId?: string,
   channel?: string,
   conversationProviderId?: string,
-  adapter?: CrmAdapter
+  adapter?: CrmAdapter,
+  /** If provided, send_reply / send_sms write to this capture instead of calling the CRM. */
+  deferredSend?: DeferredSendCapture,
 ): Promise<string> {
   // In sandbox, allow read-only tools to hit the real CRM so the agent
   // sees actual data. Writes (send_reply, book_appointment, update_*,
@@ -592,20 +608,49 @@ async function executeTool(
       }
       case 'send_reply': {
         const replyChannel = (channel || 'SMS') as import('@/types').MessageChannelType
+        const msg = input.message as string
+        // Deferred send path — capture the intended message, don't deliver.
+        // Used when the agent is configured with requireApproval: the caller
+        // (webhook handler) will check approval rules and decide whether to
+        // release the capture or queue for human review.
+        if (deferredSend) {
+          deferredSend.captured = {
+            channel: replyChannel,
+            contactId: input.contactId as string,
+            message: msg,
+            conversationProviderId: conversationProviderId || input.conversationProviderId as string | undefined,
+          }
+          return JSON.stringify({
+            success: true,
+            channel: replyChannel,
+            deferred: true,
+            message: 'Message captured for approval — not yet sent to the contact.',
+          })
+        }
         const result = await crm.sendMessage({
           type: replyChannel,
           contactId: input.contactId as string,
           conversationProviderId: conversationProviderId || input.conversationProviderId as string | undefined,
-          message: input.message as string,
+          message: msg,
         })
         return JSON.stringify({ success: true, channel: replyChannel, ...result })
       }
       case 'send_sms': {
+        const msg = input.message as string
+        if (deferredSend) {
+          deferredSend.captured = {
+            channel: 'SMS',
+            contactId: input.contactId as string,
+            message: msg,
+            conversationProviderId,
+          }
+          return JSON.stringify({ success: true, deferred: true, message: 'Captured for approval' })
+        }
         const result = await crm.sendMessage({
           type: 'SMS',
           contactId: input.contactId as string,
           conversationProviderId,
-          message: input.message as string,
+          message: msg,
         })
         return JSON.stringify({ success: true, ...result })
       }
@@ -1147,6 +1192,8 @@ export interface AgentResponse {
   actionsPerformed: string[]  // List of tools that were called
   tokensUsed: number
   toolCallTrace: ToolCallEntry[]
+  /** If deferSend was true AND the agent tried to send something, captures what it wanted to send. */
+  deferredCapture?: DeferredSendCapture['captured']
 }
 
 export async function runAgent(opts: {
@@ -1168,12 +1215,22 @@ export async function runAgent(opts: {
   // sendMessage through SSE instead of GHL/HubSpot. When provided, this
   // overrides the default adapter lookup for the given locationId.
   adapter?: CrmAdapter
+  /**
+   * When true, the agent's outbound reply is CAPTURED rather than sent.
+   * Used by the approval-queue flow: we let the agent generate its reply,
+   * then let the caller decide whether to release or queue for human review.
+   * Returns `deferredCapture` on the response when anything was captured.
+   */
+  deferSend?: boolean
 }): Promise<AgentResponse> {
-  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter } = opts
+  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Resolve CRM adapter: explicit override > sandbox-null > default lookup
   const crm = adapter ?? (isSandbox ? null : await getCrmAdapter(locationId))
+
+  // Capture slot for deferred sends (approval queue)
+  const deferredSend: DeferredSendCapture | undefined = deferSend ? { captured: null } : undefined
 
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
@@ -1332,15 +1389,26 @@ export async function runAgent(opts: {
         console.error(`[Agent] ❌ Hallucination persists after ${MAX_HALLUCINATION_RETRIES} retries. Replacing false claim.`)
         actionsPerformed.push(`hallucination_blocked:${falseClaim.tool}`)
         const fallbackText = safeFallbackReply(falseClaim)
-        if (!smsSent && crm) {
-          await crm.sendMessage({
-            type: (channel || 'SMS') as import('@/types').MessageChannelType,
-            contactId,
-            conversationProviderId,
-            message: fallbackText,
-          })
-          smsSent = fallbackText
-          actionsPerformed.push(`send_reply (fallback, ${channel})`)
+        if (!smsSent) {
+          if (deferredSend) {
+            deferredSend.captured = {
+              channel: channel || 'SMS',
+              contactId,
+              message: fallbackText,
+              conversationProviderId,
+            }
+            smsSent = fallbackText
+            actionsPerformed.push(`send_reply (fallback, ${channel}, deferred)`)
+          } else if (crm) {
+            await crm.sendMessage({
+              type: (channel || 'SMS') as import('@/types').MessageChannelType,
+              contactId,
+              conversationProviderId,
+              message: fallbackText,
+            })
+            smsSent = fallbackText
+            actionsPerformed.push(`send_reply (fallback, ${channel})`)
+          }
         }
         break
       }
@@ -1353,16 +1421,26 @@ export async function runAgent(opts: {
           const delay = calculateTypingDelay(msgToSend, persona.typingDelayMinMs, persona.typingDelayMaxMs)
           await new Promise(resolve => setTimeout(resolve, delay))
         }
-        if (crm) {
+        if (deferredSend) {
+          // Deferred: capture instead of sending
+          deferredSend.captured = {
+            channel: channel || 'SMS',
+            contactId,
+            message: msgToSend,
+            conversationProviderId,
+          }
+          smsSent = msgToSend
+          actionsPerformed.push(`send_reply (auto, ${channel}, deferred)`)
+        } else if (crm) {
           await crm.sendMessage({
             type: (channel || 'SMS') as import('@/types').MessageChannelType,
             contactId,
             conversationProviderId,
             message: msgToSend,
           })
+          smsSent = msgToSend
+          actionsPerformed.push(`send_reply (auto, ${channel})`)
         }
-        smsSent = msgToSend
-        actionsPerformed.push(`send_reply (auto, ${channel})`)
       }
       break
     }
@@ -1381,7 +1459,8 @@ export async function runAgent(opts: {
         agentId,
         channel,
         conversationProviderId,
-        crm ?? undefined
+        crm ?? undefined,
+        deferredSend,
       )
       toolCallTrace.push({
         tool: toolBlock.name,
@@ -1420,5 +1499,6 @@ export async function runAgent(opts: {
     actionsPerformed,
     tokensUsed: totalInputTokens + totalOutputTokens,
     toolCallTrace,
+    deferredCapture: deferredSend?.captured ?? undefined,
   }
 }

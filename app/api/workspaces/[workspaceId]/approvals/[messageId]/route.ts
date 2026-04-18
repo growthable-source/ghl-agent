@@ -33,10 +33,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const log = await db.messageLog.findUnique({
     where: { id: messageId },
-    select: { id: true, locationId: true, needsApproval: true, approvalStatus: true, outboundReply: true },
-  })
+    select: {
+      id: true, locationId: true, contactId: true,
+      needsApproval: true, approvalStatus: true, outboundReply: true,
+      approvalChannel: true, approvalConversationProviderId: true,
+    } as any,
+  }) as any
   if (!log || !locationIds.includes(log.locationId)) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 })
+  }
+
+  // Idempotency — don't re-send if already approved/rejected
+  if (log.approvalStatus && log.approvalStatus !== 'pending') {
+    return NextResponse.json({ error: `Already ${log.approvalStatus}` }, { status: 409 })
   }
 
   const updated = await db.messageLog.update({
@@ -49,16 +58,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     },
   })
 
-  // If approved, actually send the reply now via the CRM
+  // If approved, ACTUALLY SEND the reply — this is the critical moment.
+  // The message was captured at runAgent time but held in the queue;
+  // now we release it. If the send fails, revert status so the user
+  // can retry.
   if (body.action === 'approve' && updated.outboundReply) {
     try {
       await sendMessage(updated.locationId, {
-        type: 'SMS' as MessageChannelType, // fallback channel — ideally stored per log
+        type: ((log as any).approvalChannel || 'SMS') as MessageChannelType,
         contactId: updated.contactId,
+        conversationProviderId: (log as any).approvalConversationProviderId || undefined,
         message: updated.outboundReply,
       })
     } catch (err: any) {
-      console.warn('[Approvals] Failed to send approved message:', err.message)
+      console.error('[Approvals] Failed to send approved message:', err.message)
+      // Revert status so the user can retry from the UI
+      await db.messageLog.update({
+        where: { id: messageId },
+        data: { approvalStatus: 'pending', approvedBy: null, approvedAt: null },
+      })
+      return NextResponse.json({
+        error: `Failed to send: ${err.message}. Approval reverted — try again or edit the message.`,
+      }, { status: 502 })
     }
   }
 
