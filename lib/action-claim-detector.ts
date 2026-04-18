@@ -1,13 +1,20 @@
 /**
- * Detects when the agent's reply CLAIMS an action was taken but no
- * corresponding tool was actually called. This is a common LLM failure
- * mode — the model confidently says "I've booked you for Tuesday at 2pm"
- * without ever invoking `book_appointment`, which means nothing actually
- * happened in the CRM.
+ * Detects when the agent's reply CLAIMS an action or promises future action
+ * without actually committing to it through a real mechanism.
  *
- * Returns a corrective instruction string that can be fed back into the
- * agent loop as a user message to force it to either (a) call the tool
- * or (b) correct its reply.
+ * Two failure modes:
+ *
+ * 1. Past-tense hallucination — "I've booked you for Tuesday at 2pm"
+ *    without ever calling book_appointment. Pure lie.
+ *
+ * 2. Unanchored future promise — "Let me get back to you with options
+ *    shortly" without (a) scheduling a follow-up, (b) creating a task
+ *    for a human, or (c) any other concrete commitment.
+ *
+ *    The agent DOES have mechanisms to come back: schedule_followup,
+ *    agent triggers, new inbound webhooks. But it has to USE one of
+ *    them. Saying "I'll be back" without reaching for any mechanism
+ *    is the same as not coming back.
  */
 
 export interface ClaimDetection {
@@ -124,8 +131,9 @@ export function detectFalseActionClaim(
   }
 
   // ─── Deferred availability check — "let me check other times" ───
-  // Specific case: the agent promises to look up more slots but didn't
-  // actually call get_available_slots in this turn.
+  // If the agent promises to look up slots but has `get_available_slots`
+  // available right now, it should just use the tool in this turn. No
+  // reason to defer what can be done instantly.
   if (
     DEFERRED_CHECK_AVAILABILITY.test(reply) &&
     availableTools.includes('get_available_slots') &&
@@ -136,43 +144,44 @@ export function detectFalseActionClaim(
       tool: 'get_available_slots',
       phrase: match?.[0] || '',
       correction:
-        `CRITICAL: Your reply said "${match?.[0]?.trim() || 'let me check'}" but you did NOT call get_available_slots. ` +
-        `This is a SYNCHRONOUS conversation — you cannot come back later. You have no async mechanism to "get back to" the contact. ` +
-        `If you promise to check availability, you MUST call get_available_slots RIGHT NOW in this same turn and propose specific times in your reply. ` +
-        `Never tell the contact to wait — act now. Call get_available_slots with the calendarId from your Calendar Configuration section, then propose ONE specific time.`,
+        `You said "${match?.[0]?.trim() || 'let me check'}" but you did NOT call get_available_slots. ` +
+        `The get_available_slots tool is instant — there is no reason to defer this to "later". ` +
+        `Call get_available_slots RIGHT NOW using the calendarId from your Calendar Configuration section, then propose ONE specific time in your reply. ` +
+        `The contact should see the new options in the same message, not "I'll get back to you".`,
     }
   }
 
-  // ─── Deferred generic — "I'll get back to you" ───
-  // Agent says it'll return later, but there is no return mechanism in a
-  // synchronous SMS/chat turn. Either the agent needs to schedule a
-  // follow-up (if the tool is available) or it needs to answer now.
+  // ─── Unanchored future promise — "I'll get back to you" ───
+  // The agent CAN come back — via schedule_followup, triggers, or when
+  // the contact replies again. But making a vague promise without any
+  // concrete mechanism (no tool called, no time committed) leaves the
+  // contact hanging. If schedule_followup is available, use it. Otherwise
+  // be honest about when/how they'll hear back.
   if (DEFERRED_GENERIC.test(reply)) {
     const match = reply.match(DEFERRED_GENERIC)
     const canScheduleFollowUp = availableTools.includes('schedule_followup')
-    const canCheckSlots = availableTools.includes('get_available_slots')
 
     if (canScheduleFollowUp && !actionsPerformed.includes('schedule_followup')) {
       return {
         tool: 'schedule_followup',
         phrase: match?.[0] || '',
         correction:
-          `You said "${match?.[0]?.trim() || "you'd get back"}" but you have no async mechanism to return to this contact without scheduling a follow-up. ` +
-          `Either: (a) answer the contact's question RIGHT NOW using your available tools and knowledge — no "getting back later"; OR ` +
-          `(b) if you truly can't answer now, call schedule_followup to schedule a concrete follow-up, then tell the contact exactly when they'll hear back (e.g. "tomorrow at 10am"). ` +
-          `Never promise to come back without scheduling it — this is a synchronous conversation.`,
+          `You said "${match?.[0]?.trim() || "you'd get back"}" but you did not actually schedule a follow-up. ` +
+          `You CAN come back to this contact — but only by scheduling it. Either: ` +
+          `(a) call schedule_followup NOW to commit to a concrete return time, then tell the contact exactly when they'll hear back (e.g. "I'll check in tomorrow at 10am"); OR ` +
+          `(b) answer their question in this turn using the tools and knowledge you already have. ` +
+          `Don't make a vague promise without the schedule_followup tool backing it up.`,
       }
     }
 
-    // No follow-up tool? Must answer now.
+    // No follow-up tool — the agent must either answer now or escalate to a human.
     return {
-      tool: canCheckSlots ? 'get_available_slots' : 'send_reply',
+      tool: 'send_reply',
       phrase: match?.[0] || '',
       correction:
-        `You said "${match?.[0]?.trim() || "you'd get back"}" but this is a synchronous conversation — there is no way for you to return to the contact later. ` +
-        `You cannot say "I'll get back to you" because you won't. ` +
-        `Use your available tools RIGHT NOW (${availableTools.slice(0, 5).join(', ')}${availableTools.length > 5 ? '…' : ''}) to answer the contact's question in this turn, or reply with a concrete answer/offer based on what you already know. ` +
-        `Never promise future action you cannot deliver.`,
+        `You said "${match?.[0]?.trim() || "you'd get back"}" but you don't have schedule_followup enabled, so you have no way to guarantee a return. ` +
+        `Either answer the contact's question in this turn using your available tools (${availableTools.slice(0, 5).join(', ')}${availableTools.length > 5 ? '…' : ''}) and knowledge base, ` +
+        `OR be explicit about the handoff: "I'll have someone from our team reach out to you directly." Don't leave a vague open-ended promise.`,
     }
   }
 
