@@ -73,14 +73,26 @@ export async function GET(req: NextRequest, { params }: Params) {
   const events: Event[] = []
 
   for (const m of messages) {
+    // Label + icon should reflect what ACTUALLY happened — skipped messages
+    // were never replied to, they were dropped (paused agent, no matching
+    // agent, consent opt-out, etc.). Surfacing them as "Replied" was wrong.
+    const label = m.status === 'ERROR' ? 'Error processing message'
+      : m.status === 'SKIPPED' ? `Skipped${m.errorMessage ? ` — ${m.errorMessage}` : ' (no matching agent)'}`
+      : m.status === 'PENDING' ? 'Processing…'
+      : m.outboundReply ? 'Replied'
+      : 'Received (no reply)'
+    const icon = m.status === 'ERROR' ? '⚠'
+      : m.status === 'SKIPPED' ? '⊘'
+      : m.status === 'PENDING' ? '⋯'
+      : '💬'
     events.push({
       id: `msg-${m.id}`,
       type: 'message',
       at: m.createdAt.toISOString(),
       agent: m.agent,
       contactId: m.contactId,
-      icon: m.status === 'ERROR' ? '⚠' : '💬',
-      label: m.status === 'ERROR' ? 'Error processing message' : 'Replied',
+      icon,
+      label,
       detail: m.outboundReply?.slice(0, 100) || m.inboundMessage?.slice(0, 100),
       status: m.status,
       conversationId: m.conversationId,
