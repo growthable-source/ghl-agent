@@ -219,6 +219,31 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'cancel_appointment',
+    description: 'ACTUALLY cancel an existing appointment in the calendar. Use this when the contact says they want to cancel/remove/drop/delete their meeting. Step 1: if you don\'t know the appointmentId, call get_calendar_events first to find it. Step 2: call this tool with the appointmentId. Do NOT just tell the contact "I\'ve cancelled that" without calling this tool — nothing will actually happen in the calendar.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        appointmentId: { type: 'string', description: 'The appointment/event ID to cancel — get it from get_calendar_events' },
+        reason: { type: 'string', description: 'Optional short reason — stored as a description on the cancelled event' },
+      },
+      required: ['appointmentId'],
+    },
+  },
+  {
+    name: 'reschedule_appointment',
+    description: 'Move an existing appointment to a new time. Use when the contact asks to change their meeting time. Step 1: get_calendar_events to find the appointmentId. Step 2: get_available_slots for the new window. Step 3: call this tool with the new startTime. Do NOT fabricate a new time — use the exact string from get_available_slots.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        appointmentId: { type: 'string', description: 'The appointment/event ID to reschedule' },
+        startTime: { type: 'string', description: 'New start time — use the exact ISO string returned by get_available_slots' },
+        endTime: { type: 'string', description: 'Optional new end time; defaults to startTime + 30 minutes' },
+      },
+      required: ['appointmentId', 'startTime'],
+    },
+  },
+  {
     name: 'save_qualifying_answer',
     description: 'Save a qualifying question answer for this contact. Call this whenever the contact answers one of the qualifying questions.',
     input_schema: {
@@ -487,6 +512,75 @@ async function executeTool(
           input.body as string
         )
         return JSON.stringify({ success: true, ...noteResult })
+      }
+      case 'cancel_appointment': {
+        const appointmentId = input.appointmentId as string
+        const reason = input.reason as string | undefined
+        if (!appointmentId) {
+          return JSON.stringify({
+            success: false,
+            error: 'appointmentId is required',
+            hint: 'Call get_calendar_events first to find the appointmentId for this contact, then pass it to cancel_appointment.',
+          })
+        }
+        try {
+          const result = await crm.updateAppointment(appointmentId, {
+            appointmentStatus: 'cancelled',
+            ...(reason ? { description: reason } : {}),
+          })
+          return JSON.stringify({
+            success: true,
+            appointmentId,
+            status: 'cancelled',
+            message: 'Appointment cancelled in the calendar. Confirm this to the contact in your next reply.',
+            ...(result || {}),
+          })
+        } catch (err: any) {
+          const msg = err?.message || 'Unknown error'
+          const hint = /not found|404/i.test(msg) ? 'That appointmentId no longer exists — call get_calendar_events to refresh.'
+            : /403|forbidden/i.test(msg) ? 'Missing calendars/events.write scope — the workspace needs to reinstall the GHL app.'
+            : 'Cancellation failed. Apologize to the contact and offer to have someone from the team handle it manually.'
+          return JSON.stringify({ success: false, error: msg, hint })
+        }
+      }
+      case 'reschedule_appointment': {
+        const appointmentId = input.appointmentId as string
+        const startTime = input.startTime as string
+        if (!appointmentId || !startTime) {
+          return JSON.stringify({
+            success: false,
+            error: 'appointmentId and startTime are required',
+            hint: 'Call get_calendar_events to find the appointmentId, then get_available_slots to pick a new time. Use the exact ISO startTime returned by get_available_slots.',
+          })
+        }
+        let endTime = (input.endTime as string) || ''
+        if (!endTime) {
+          const end = new Date(startTime)
+          if (!isNaN(end.getTime())) {
+            end.setMinutes(end.getMinutes() + 30)
+            endTime = end.toISOString()
+          }
+        }
+        try {
+          const result = await crm.updateAppointment(appointmentId, {
+            startTime,
+            ...(endTime ? { endTime } : {}),
+            appointmentStatus: 'confirmed',
+          })
+          return JSON.stringify({
+            success: true,
+            appointmentId,
+            newStartTime: startTime,
+            message: 'Appointment rescheduled. Confirm the new time to the contact in your next reply.',
+            ...(result || {}),
+          })
+        } catch (err: any) {
+          const msg = err?.message || 'Unknown error'
+          const hint = /not found|404/i.test(msg) ? 'That appointmentId no longer exists — call get_calendar_events to refresh.'
+            : /slot/i.test(msg) ? 'The new slot isn\'t valid — call get_available_slots again and pick a different time.'
+            : 'Reschedule failed. Apologize and offer an alternative.'
+          return JSON.stringify({ success: false, error: msg, hint })
+        }
       }
       case 'search_contacts': {
         const contacts = await crm.searchContacts(input.query as string)
@@ -803,7 +897,9 @@ export async function runAgent(opts: {
         ...enabledTools,
         ...(enabledTools.includes('send_sms') ? ['send_reply'] : []),
         ...(enabledTools.includes('get_available_slots') ? ['book_appointment'] : []),
-        ...(enabledTools.includes('book_appointment') ? ['get_available_slots', 'create_appointment_note'] : []),
+        ...(enabledTools.includes('book_appointment')
+          ? ['get_available_slots', 'create_appointment_note', 'cancel_appointment', 'reschedule_appointment', 'get_calendar_events']
+          : []),
       ])]
     : undefined
   const tools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS

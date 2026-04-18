@@ -34,6 +34,12 @@ const OPPORTUNITY_CLAIM = /\b(i'?ve|i have)\s+(created|opened|started|made)\s+(a
 
 const NOTE_CLAIM = /\b(i'?ve|i have)\s+(added|saved|recorded|logged)\s+(a|the)\s+note\b/i
 
+// Cancellation: "I've cancelled your appointment", "your meeting has been cancelled"
+const CANCEL_CLAIM = /\b(i'?ve|i have|you'?re|you are|we'?re|we have|i'?m|i am)\s+(now\s+|just\s+|successfully\s+|already\s+)?(cancell?ed|removed|deleted|dropped)\s+(your|the|that)\s+(appointment|meeting|call|booking|demo|consultation)\b|\b(your|the|that)\s+(appointment|meeting|call|booking|demo|consultation)\s+(is|has\s+been|was)\s+(now\s+)?(cancell?ed|removed|deleted|dropped)\b|\ball\s+(cancell?ed|sorted|done)\b.*\b(appointment|meeting|call|booking)\b|\b(i'?ve|i have)\s+(taken\s+that\s+off|removed\s+that\s+from)\s+the\s+calendar\b/i
+
+// Reschedule: "I've moved your appointment to..." without the tool
+const RESCHEDULE_CLAIM = /\b(i'?ve|i have|we'?ve|we have)\s+(moved|rescheduled|shifted|changed|updated)\s+(your|the|that)\s+(appointment|meeting|call|booking|demo)\b|\b(your|the|that)\s+(appointment|meeting|call|booking)\s+(is|has\s+been)\s+(moved|rescheduled|shifted|changed|updated)\s+to\b/i
+
 const FOLLOWUP_CLAIM = /\bi'?ve\s+scheduled\s+a\s+follow[\s-]?up\b|\bi'?ll\s+(follow\s+up|circle\s+back|check\s+in|remind\s+you)\s+(in|on|at|tomorrow|next)\s+\d/i
 
 // ─── Deferred action — promises to do something "later" that the agent
@@ -120,6 +126,44 @@ export function detectFalseActionClaim(
       phrase: reply.match(NOTE_CLAIM)?.[0] || '',
       correction:
         `Your reply claimed you recorded a note, but you did not call add_contact_note. Call it now.`,
+    }
+  }
+
+  // Cancel appointment — "I've cancelled that" without the tool
+  if (
+    CANCEL_CLAIM.test(reply) &&
+    availableTools.includes('cancel_appointment') &&
+    !actionsPerformed.includes('cancel_appointment')
+  ) {
+    const match = reply.match(CANCEL_CLAIM)
+    return {
+      tool: 'cancel_appointment',
+      phrase: match?.[0] || '',
+      correction:
+        `CRITICAL: Your reply said "${match?.[0]?.trim() || 'you cancelled it'}" but you did NOT call cancel_appointment. NOTHING has been cancelled — the appointment is still on the calendar and the contact will expect the meeting to happen.\n\n` +
+        `To actually cancel:\n` +
+        `1. If you don't know the appointmentId yet, call get_calendar_events with the current contactId to find it.\n` +
+        `2. Then call cancel_appointment with that appointmentId.\n` +
+        `Do not send another reply to the contact until cancel_appointment returns success.`,
+    }
+  }
+
+  // Reschedule — "I've moved your appointment to Tuesday" without the tool
+  if (
+    RESCHEDULE_CLAIM.test(reply) &&
+    availableTools.includes('reschedule_appointment') &&
+    !actionsPerformed.includes('reschedule_appointment') &&
+    !actionsPerformed.includes('book_appointment')
+  ) {
+    const match = reply.match(RESCHEDULE_CLAIM)
+    return {
+      tool: 'reschedule_appointment',
+      phrase: match?.[0] || '',
+      correction:
+        `You said "${match?.[0]?.trim() || 'you moved the appointment'}" but did not call reschedule_appointment. The original time is still on the calendar and the new time was never saved.\n\n` +
+        `1. Call get_calendar_events to find the existing appointmentId.\n` +
+        `2. Call get_available_slots to pick a real new time.\n` +
+        `3. Call reschedule_appointment with the appointmentId + the exact startTime from step 2.`,
     }
   }
 
@@ -234,6 +278,10 @@ export function safeFallbackReply(detection: ClaimDetection): string {
       return "Thanks — I'll get that set up on our side."
     case 'schedule_followup':
       return "What's the best time for me to reach out with an update — later today, or tomorrow morning?"
+    case 'cancel_appointment':
+      return "I'm having trouble reaching the calendar system. Could you confirm which appointment you'd like to cancel (date + time), and I'll make sure it's handled?"
+    case 'reschedule_appointment':
+      return "I can't access the calendar right now. Let me know which appointment you'd like to move and what day/time works, and I'll get it rescheduled."
     default:
       return "Let me rethink that — could you tell me a bit more about what you're looking for?"
   }

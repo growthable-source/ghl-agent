@@ -28,7 +28,10 @@ export const ALL_TOOLS: ToolDefinition[] = [
   // Calendar
   { name: 'get_available_slots', label: 'Get Available Slots', description: 'Check calendar availability for booking', category: 'calendar' },
   { name: 'book_appointment', label: 'Book Appointment', description: 'Book an appointment on a calendar', category: 'calendar' },
+  { name: 'cancel_appointment', label: 'Cancel Appointment', description: 'Cancel an existing appointment', category: 'calendar' },
+  { name: 'reschedule_appointment', label: 'Reschedule Appointment', description: 'Move an appointment to a new time', category: 'calendar' },
   { name: 'get_calendar_events', label: 'Get Calendar Events', description: 'List upcoming appointments for a contact', category: 'calendar' },
+  { name: 'create_appointment_note', label: 'Add Appointment Note', description: 'Attach a note with context to an appointment', category: 'calendar' },
 
   // Intelligence
   { name: 'score_lead', label: 'Score Lead', description: 'Score a lead 1-100 based on conversation signals and save to CRM', category: 'intelligence' },

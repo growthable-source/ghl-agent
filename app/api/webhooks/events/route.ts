@@ -206,7 +206,18 @@ BOOKING PROCEDURE — follow this exactly when the contact wants to schedule:
    - contactId: ${p.contactId}
    - startTime: the EXACT string returned by get_available_slots
 4. After the tool returns success, confirm the booked time to the contact. DO NOT say "I've booked" without calling book_appointment — the booking won't exist.
-5. Optionally call \`create_appointment_note\` to log context from the conversation.`
+5. Optionally call \`create_appointment_note\` to log context from the conversation.
+
+CANCELLATION PROCEDURE — when the contact asks to cancel/remove/drop a meeting:
+1. Call \`get_calendar_events\` with contactId=${p.contactId} to find the appointmentId.
+2. Call \`cancel_appointment\` with that appointmentId. DO NOT say "I've cancelled" without calling the tool — the meeting stays on the calendar and the contact will show up.
+3. Confirm cancellation to the contact after the tool returns success.
+
+RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
+1. Call \`get_calendar_events\` to find the existing appointmentId.
+2. Call \`get_available_slots\` for the new window the contact wants.
+3. Propose one specific slot; on confirmation call \`reschedule_appointment\` with the appointmentId + exact startTime from get_available_slots.
+4. Confirm the NEW time to the contact. Never say "I've moved it" without calling reschedule_appointment.`
         }
 
         // Memory context and qualifying questions

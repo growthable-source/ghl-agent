@@ -47,7 +47,11 @@ BOOKING PROCEDURE — when the contact wants to schedule:
 1. Call get_available_slots with this Calendar ID.
 2. Propose ONE specific slot in your reply.
 3. On confirmation, IMMEDIATELY call book_appointment in the same turn using the EXACT startTime from get_available_slots.
-4. Only say "I've booked" AFTER book_appointment returns success.`
+4. Only say "I've booked" AFTER book_appointment returns success.
+
+CANCEL/RESCHEDULE:
+- To cancel: get_calendar_events → cancel_appointment(appointmentId). Never say "cancelled" without calling the tool.
+- To reschedule: get_calendar_events → get_available_slots → reschedule_appointment(appointmentId, new startTime).`
   }
 
   try {
