@@ -165,6 +165,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
       detail: `${found.name} (${found.id})`,
     })
 
+    // ─── 7b. Calendar has a team member (required for booking) ───
+    try {
+      const teamUserId = await crm.pickCalendarTeamMember(agent.calendarId)
+      if (teamUserId) {
+        results.push({
+          step: 'Calendar has an assignable team member',
+          status: 'ok',
+          detail: `Team member userId: ${teamUserId} (auto-assigned to new bookings)`,
+        })
+      } else {
+        results.push({
+          step: 'Calendar has an assignable team member',
+          status: 'fail',
+          detail: 'This calendar has NO team members configured. GHL will reject every booking with "A team member needs to be selected" (422).',
+          fix: 'In GHL: open this calendar → Team & Availability tab → add at least one team member. Then retry booking.',
+        })
+      }
+    } catch (err: any) {
+      results.push({
+        step: 'Calendar has an assignable team member',
+        status: 'warn',
+        detail: `Could not check team members: ${err.message}`,
+      })
+    }
+
     // ─── 8. Free slots query succeeds ───
     try {
       const slots = await crm.getFreeSlots(

@@ -285,7 +285,39 @@ export class GhlAdapter implements CrmAdapter {
     return slots
   }
 
+  /**
+   * Fetch a calendar's eligible team members. Used to auto-fill assignedUserId
+   * when the calendar requires one. Cached per adapter instance.
+   */
+  private calendarTeamCache: Map<string, string | null> = new Map()
+  async pickCalendarTeamMember(calendarId: string): Promise<string | null> {
+    if (this.calendarTeamCache.has(calendarId)) {
+      return this.calendarTeamCache.get(calendarId) ?? null
+    }
+    try {
+      const data = await this.apiFetch<any>(`/calendars/${calendarId}`, {
+        headers: { 'Version': '2021-04-15' },
+      })
+      // GHL calendar response has `teamMembers: [{ userId, priority, ... }]`
+      const members: any[] = data?.calendar?.teamMembers || data?.teamMembers || []
+      // Prefer the highest-priority (lowest priority number) team member
+      const sorted = members.slice().sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+      const pick = sorted[0]?.userId ?? null
+      this.calendarTeamCache.set(calendarId, pick)
+      return pick
+    } catch (err: any) {
+      console.warn(`[GHL] pickCalendarTeamMember failed for ${calendarId}:`, err.message)
+      this.calendarTeamCache.set(calendarId, null)
+      return null
+    }
+  }
+
   async bookAppointment(payload: BookAppointmentPayload): Promise<any> {
+    // Auto-pick a team member if the caller didn't specify one — many GHL
+    // calendars reject with 422 "A team member needs to be selected" otherwise.
+    const assignedUserId = payload.assignedUserId
+      ?? (await this.pickCalendarTeamMember(payload.calendarId))
+
     // Body matches the GHL AppointmentCreateSchema exactly.
     // Required: calendarId, locationId, contactId, startTime.
     const body: Record<string, unknown> = {
@@ -307,6 +339,7 @@ export class GhlAdapter implements CrmAdapter {
     // Spec uses `description` for freeform body text, not `notes`.
     // Our caller passes the conversation context as `notes` for clarity; map it.
     if (payload.notes) body.description = payload.notes
+    if (assignedUserId) body.assignedUserId = assignedUserId
 
     try {
       const result = await this.apiFetch<any>('/calendars/events/appointments', {
@@ -314,13 +347,14 @@ export class GhlAdapter implements CrmAdapter {
         headers: { 'Version': '2021-04-15' },
         body: JSON.stringify(body),
       })
-      console.log(`[GHL] Appointment booked: ${result?.id ?? 'unknown'} for contact ${payload.contactId} at ${payload.startTime}`)
+      console.log(`[GHL] Appointment booked: ${result?.id ?? 'unknown'} for contact ${payload.contactId} at ${payload.startTime} (assigned=${assignedUserId ?? 'none'})`)
       return result
     } catch (err: any) {
       console.error('[GHL] bookAppointment FAILED', {
         calendarId: payload.calendarId,
         contactId: payload.contactId,
         startTime: payload.startTime,
+        assignedUserId,
         error: err.message,
       })
       throw err

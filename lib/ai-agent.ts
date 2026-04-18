@@ -469,6 +469,7 @@ async function executeTool(
           // Detect common failures and give Claude actionable guidance
           const msg = err?.message || 'Unknown error'
           const hint = /slot/i.test(msg) ? 'That slot may no longer be available — call get_available_slots again and propose a different time.'
+            : /assignedUserId|team member/i.test(msg) ? 'This calendar requires a team member. The system should auto-assign one — if this persists, a team member needs to be added to the calendar in GHL (Calendar settings → Team & availability).'
             : /calendarId/i.test(msg) ? 'The calendarId appears invalid — use the ID from your Calendar Configuration section exactly.'
             : /contactId/i.test(msg) ? 'The contactId is invalid — use the current conversation contactId (passed in your context).'
             : /timezone|format/i.test(msg) ? 'The startTime format is wrong — use the exact string returned by get_available_slots.'

@@ -25,6 +25,13 @@ export interface BookAppointmentPayload {
   title?: string
   notes?: string
   selectedTimezone?: string
+  /**
+   * GHL user ID to assign the appointment to. Required by calendars that
+   * have team members configured — GHL returns 422 if omitted. If not
+   * provided, the adapter will auto-pick the first eligible team member
+   * from the calendar's configuration.
+   */
+  assignedUserId?: string
 }
 
 export interface CreateOpportunityPayload {
