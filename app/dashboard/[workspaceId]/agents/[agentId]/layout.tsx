@@ -76,13 +76,26 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
     return section.label
   }
 
+  // Compute status:
+  //   - Live: isActive=true AND at least one channel deployed
+  //   - Active but idle: isActive=true but no channels deployed (agent won't receive anything)
+  //   - Paused: isActive=false
+  const isActive = agent?.isActive ?? false
+  const hasChannels = (channelCount ?? 0) > 0
+  const statusKey = !isActive ? 'paused' : !hasChannels ? 'idle' : 'live'
+  const statusConfig = {
+    live: { label: 'Live', color: 'emerald', tooltip: 'Agent is active and deployed on at least one channel.' },
+    idle: { label: 'Active · No channels', color: 'amber', tooltip: 'Agent is active but not deployed on any channel. Add one in the Channels tab to start receiving messages.' },
+    paused: { label: 'Paused', color: 'zinc', tooltip: 'Agent is paused — it won\'t respond to any inbounds until you activate it.' },
+  }[statusKey]
+
   return (
     <div className="flex flex-col h-full">
       {/* Agent header */}
       <div className="flex items-center justify-between px-8 pt-6 pb-0 shrink-0">
         <div className="flex items-center gap-3">
           <Link
-            href={`/dashboard/${workspaceId}`}
+            href={`/dashboard/${workspaceId}/agents`}
             className="text-zinc-600 hover:text-zinc-400 transition-colors text-sm"
           >
             ← Agents
@@ -92,13 +105,21 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
             <>
               <h1 className="text-lg font-semibold">{agent.name}</h1>
               <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                  agent.isActive
+                title={statusConfig.tooltip}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium cursor-help ${
+                  statusConfig.color === 'emerald'
                     ? 'bg-emerald-400/10 text-emerald-400 ring-1 ring-inset ring-emerald-400/30'
+                    : statusConfig.color === 'amber'
+                    ? 'bg-amber-400/10 text-amber-400 ring-1 ring-inset ring-amber-400/30'
                     : 'bg-zinc-400/10 text-zinc-400 ring-1 ring-inset ring-zinc-400/30'
                 }`}
               >
-                {agent.isActive ? 'Live' : 'Inactive'}
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  statusConfig.color === 'emerald' ? 'bg-emerald-400'
+                  : statusConfig.color === 'amber' ? 'bg-amber-400'
+                  : 'bg-zinc-400'
+                }`} />
+                {statusConfig.label}
               </span>
             </>
           ) : (
@@ -115,13 +136,14 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
           <button
             onClick={toggleActive}
             disabled={toggling || !agent}
+            title={agent?.isActive ? 'Pause this agent — it will stop responding to inbounds' : 'Activate this agent so it starts responding to inbounds'}
             className={`text-xs border rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 ${
               agent?.isActive
                 ? 'border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600'
                 : 'border-emerald-800 text-emerald-400 hover:border-emerald-600'
             }`}
           >
-            {toggling ? '...' : agent?.isActive ? 'Deactivate' : 'Activate'}
+            {toggling ? '...' : agent?.isActive ? 'Pause' : 'Activate'}
           </button>
         </div>
       </div>

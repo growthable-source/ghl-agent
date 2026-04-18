@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useDirtyForm } from '@/lib/use-dirty-form'
+import SaveBar from '@/components/dashboard/SaveBar'
 
 interface PersonaData {
-  agentPersonaName: string | null
+  agentPersonaName: string
   responseLength: string
   formalityLevel: string
   useEmojis: boolean
@@ -29,83 +31,71 @@ export default function PersonaPage() {
   const agentId = params.agentId as string
 
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saveMsg, setSaveMsg] = useState('')
-
-  const [personaName, setPersonaName] = useState('')
-  const [responseLength, setResponseLength] = useState('MODERATE')
-  const [formalityLevel, setFormalityLevel] = useState('NEUTRAL')
-  const [useEmojis, setUseEmojis] = useState(false)
-  const [simulateTypos, setSimulateTypos] = useState(false)
-  const [typingDelayEnabled, setTypingDelayEnabled] = useState(false)
-  const [typingDelayMinMs, setTypingDelayMinMs] = useState(500)
-  const [typingDelayMaxMs, setTypingDelayMaxMs] = useState(3000)
-  const [neverSayList, setNeverSayList] = useState<string[]>([])
+  const [initial, setInitial] = useState<PersonaData | null>(null)
   const [neverSayInput, setNeverSayInput] = useState('')
-  const [languages, setLanguages] = useState<string[]>(['en'])
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
       .then(r => r.json())
       .then(({ agent }) => {
-        setPersonaName(agent.agentPersonaName ?? '')
-        setResponseLength(agent.responseLength ?? 'MODERATE')
-        setFormalityLevel(agent.formalityLevel ?? 'NEUTRAL')
-        setUseEmojis(agent.useEmojis ?? false)
-        setSimulateTypos(agent.simulateTypos ?? false)
-        setTypingDelayEnabled(agent.typingDelayEnabled ?? false)
-        setTypingDelayMinMs(agent.typingDelayMinMs ?? 500)
-        setTypingDelayMaxMs(agent.typingDelayMaxMs ?? 3000)
-        setNeverSayList(agent.neverSayList ?? [])
-        setLanguages(agent.languages ?? ['en'])
+        setInitial({
+          agentPersonaName: agent.agentPersonaName ?? '',
+          responseLength: agent.responseLength ?? 'MODERATE',
+          formalityLevel: agent.formalityLevel ?? 'NEUTRAL',
+          useEmojis: agent.useEmojis ?? false,
+          simulateTypos: agent.simulateTypos ?? false,
+          typingDelayEnabled: agent.typingDelayEnabled ?? false,
+          typingDelayMinMs: agent.typingDelayMinMs ?? 500,
+          typingDelayMaxMs: agent.typingDelayMaxMs ?? 3000,
+          neverSayList: agent.neverSayList ?? [],
+          languages: agent.languages ?? ['en'],
+        })
       })
       .finally(() => setLoading(false))
   }, [workspaceId, agentId])
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setSaveMsg('')
-    await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentPersonaName: personaName || null,
-        responseLength,
-        formalityLevel,
-        useEmojis,
-        simulateTypos,
-        typingDelayEnabled,
-        typingDelayMinMs,
-        typingDelayMaxMs,
-        neverSayList,
-        languages,
-      }),
-    })
-    setSaving(false)
-    setSaveMsg('Saved')
-    setTimeout(() => setSaveMsg(''), 2000)
-  }
+  const { draft, set, dirty, saving, savedAt, error, save, reset } = useDirtyForm<PersonaData>({
+    initial,
+    onSave: async (d) => {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentPersonaName: d.agentPersonaName || null,
+          responseLength: d.responseLength,
+          formalityLevel: d.formalityLevel,
+          useEmojis: d.useEmojis,
+          simulateTypos: d.simulateTypos,
+          typingDelayEnabled: d.typingDelayEnabled,
+          typingDelayMinMs: d.typingDelayMinMs,
+          typingDelayMaxMs: d.typingDelayMaxMs,
+          neverSayList: d.neverSayList,
+          languages: d.languages,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error || 'Save failed')
+    },
+  })
 
   function addNeverSay(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && neverSayInput.trim()) {
       e.preventDefault()
-      if (!neverSayList.includes(neverSayInput.trim())) {
-        setNeverSayList([...neverSayList, neverSayInput.trim()])
+      if (!draft.neverSayList.includes(neverSayInput.trim())) {
+        set({ neverSayList: [...draft.neverSayList, neverSayInput.trim()] })
       }
       setNeverSayInput('')
     }
   }
 
   function toggleLanguage(code: string) {
-    if (languages.includes(code)) {
-      setLanguages(languages.filter(l => l !== code))
-    } else {
-      setLanguages([...languages, code])
-    }
+    set({
+      languages: draft.languages.includes(code)
+        ? draft.languages.filter(l => l !== code)
+        : [...draft.languages, code],
+    })
   }
 
-  if (loading) return (
+  if (loading || !initial) return (
     <div className="flex items-center justify-center h-64">
       <p className="text-zinc-500 text-sm">Loading…</p>
     </div>
@@ -113,22 +103,20 @@ export default function PersonaPage() {
 
   return (
     <div className="p-8">
-      <div className="max-w-2xl">
-        <form onSubmit={save} className="space-y-8">
-          {/* Agent Name */}
+      <div className="max-w-2xl pb-24">
+        <div className="space-y-8">
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">Agent Persona Name</label>
             <input
               type="text"
-              value={personaName}
-              onChange={e => setPersonaName(e.target.value)}
+              value={draft.agentPersonaName}
+              onChange={e => set({ agentPersonaName: e.target.value })}
               placeholder="e.g. Alex"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
             />
             <p className="text-xs text-zinc-600 mt-1">Leave blank to use no specific name.</p>
           </div>
 
-          {/* Response Length */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-3">Response Length</label>
             <div className="space-y-2">
@@ -142,8 +130,8 @@ export default function PersonaPage() {
                     type="radio"
                     name="responseLength"
                     value={opt.value}
-                    checked={responseLength === opt.value}
-                    onChange={() => setResponseLength(opt.value)}
+                    checked={draft.responseLength === opt.value}
+                    onChange={() => set({ responseLength: opt.value })}
                     className="mt-0.5"
                   />
                   <div>
@@ -155,7 +143,6 @@ export default function PersonaPage() {
             </div>
           </div>
 
-          {/* Formality */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-3">Formality Level</label>
             <div className="space-y-2">
@@ -169,8 +156,8 @@ export default function PersonaPage() {
                     type="radio"
                     name="formalityLevel"
                     value={opt.value}
-                    checked={formalityLevel === opt.value}
-                    onChange={() => setFormalityLevel(opt.value)}
+                    checked={draft.formalityLevel === opt.value}
+                    onChange={() => set({ formalityLevel: opt.value })}
                     className="mt-0.5"
                   />
                   <div>
@@ -182,7 +169,6 @@ export default function PersonaPage() {
             </div>
           </div>
 
-          {/* Toggles */}
           <div className="space-y-4">
             <label className="flex items-center justify-between cursor-pointer">
               <div>
@@ -191,10 +177,10 @@ export default function PersonaPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setUseEmojis(!useEmojis)}
-                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${useEmojis ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                onClick={() => set({ useEmojis: !draft.useEmojis })}
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${draft.useEmojis ? 'bg-emerald-500' : 'bg-zinc-700'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${useEmojis ? 'translate-x-4' : 'translate-x-0'}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${draft.useEmojis ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </label>
 
@@ -205,10 +191,10 @@ export default function PersonaPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setSimulateTypos(!simulateTypos)}
-                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${simulateTypos ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                onClick={() => set({ simulateTypos: !draft.simulateTypos })}
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${draft.simulateTypos ? 'bg-emerald-500' : 'bg-zinc-700'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${simulateTypos ? 'translate-x-4' : 'translate-x-0'}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${draft.simulateTypos ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </label>
 
@@ -220,41 +206,35 @@ export default function PersonaPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setTypingDelayEnabled(!typingDelayEnabled)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${typingDelayEnabled ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                  onClick={() => set({ typingDelayEnabled: !draft.typingDelayEnabled })}
+                  className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${draft.typingDelayEnabled ? 'bg-emerald-500' : 'bg-zinc-700'}`}
                 >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${typingDelayEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${draft.typingDelayEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
                 </button>
               </label>
-              {typingDelayEnabled && (
+              {draft.typingDelayEnabled && (
                 <div className="mt-4 space-y-3 pl-1">
                   <div>
                     <div className="flex justify-between text-xs text-zinc-400 mb-1">
                       <span>Min delay</span>
-                      <span>{typingDelayMinMs}ms</span>
+                      <span>{draft.typingDelayMinMs}ms</span>
                     </div>
                     <input
-                      type="range"
-                      min={0}
-                      max={8000}
-                      step={100}
-                      value={typingDelayMinMs}
-                      onChange={e => setTypingDelayMinMs(Number(e.target.value))}
+                      type="range" min={0} max={8000} step={100}
+                      value={draft.typingDelayMinMs}
+                      onChange={e => set({ typingDelayMinMs: Number(e.target.value) })}
                       className="w-full"
                     />
                   </div>
                   <div>
                     <div className="flex justify-between text-xs text-zinc-400 mb-1">
                       <span>Max delay</span>
-                      <span>{typingDelayMaxMs}ms</span>
+                      <span>{draft.typingDelayMaxMs}ms</span>
                     </div>
                     <input
-                      type="range"
-                      min={0}
-                      max={8000}
-                      step={100}
-                      value={typingDelayMaxMs}
-                      onChange={e => setTypingDelayMaxMs(Number(e.target.value))}
+                      type="range" min={0} max={8000} step={100}
+                      value={draft.typingDelayMaxMs}
+                      onChange={e => set({ typingDelayMaxMs: Number(e.target.value) })}
                       className="w-full"
                     />
                   </div>
@@ -263,7 +243,6 @@ export default function PersonaPage() {
             </div>
           </div>
 
-          {/* Never Say List */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-2">Never Say List</label>
             <input
@@ -274,13 +253,13 @@ export default function PersonaPage() {
               placeholder="Type a word or phrase and press Enter"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
             />
-            {neverSayList.length > 0 && (
+            {draft.neverSayList.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
-                {neverSayList.map(word => (
+                {draft.neverSayList.map(word => (
                   <span key={word} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs rounded-full px-3 py-1">
                     {word}
-                    <button type="button" onClick={() => setNeverSayList(neverSayList.filter(w => w !== word))} className="text-zinc-500 hover:text-red-400">
-                      x
+                    <button type="button" onClick={() => set({ neverSayList: draft.neverSayList.filter(w => w !== word) })} className="text-zinc-500 hover:text-red-400">
+                      ×
                     </button>
                   </span>
                 ))}
@@ -288,7 +267,6 @@ export default function PersonaPage() {
             )}
           </div>
 
-          {/* Languages */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-3">Languages</label>
             <div className="space-y-2">
@@ -296,7 +274,7 @@ export default function PersonaPage() {
                 <label key={lang.code} className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={languages.includes(lang.code)}
+                    checked={draft.languages.includes(lang.code)}
                     onChange={() => toggleLanguage(lang.code)}
                   />
                   <span className="text-sm text-zinc-200">{lang.label}</span>
@@ -304,18 +282,9 @@ export default function PersonaPage() {
               ))}
             </div>
           </div>
+        </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={saving}
-              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 px-5 hover:bg-zinc-200 transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save Persona'}
-            </button>
-            {saveMsg && <span className="text-emerald-400 text-sm">{saveMsg}</span>}
-          </div>
-        </form>
+        <SaveBar dirty={dirty} saving={saving} savedAt={savedAt} error={error} onSave={save} onReset={reset} />
       </div>
     </div>
   )

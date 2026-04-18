@@ -7,12 +7,18 @@ import {
   SmsIcon, WhatsAppIcon, FacebookIcon, InstagramIcon,
   GoogleIcon, LiveChatIcon, EmailIcon, PhoneIcon,
 } from '@/components/icons/brand-icons'
+import { useDirtyForm } from '@/lib/use-dirty-form'
+import SaveBar from '@/components/dashboard/SaveBar'
 
 interface ChannelDeployment {
   id: string
   channel: string
   isActive: boolean
   config: any
+}
+
+interface DeployState {
+  deployments: ChannelDeployment[]
 }
 
 const CHANNELS = [
@@ -30,59 +36,52 @@ export default function DeployPage() {
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
 
-  const [deployments, setDeployments] = useState<ChannelDeployment[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [initial, setInitial] = useState<DeployState | null>(null)
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`)
       .then(r => r.json())
-      .then(({ deployments: d }) => setDeployments(d ?? []))
+      .then(({ deployments: d }) => setInitial({ deployments: d ?? [] }))
       .finally(() => setLoading(false))
   }, [workspaceId, agentId])
 
+  const { draft, set, dirty, saving, savedAt, error, save, reset } = useDirtyForm<DeployState>({
+    initial,
+    onSave: async (d) => {
+      const channels = CHANNELS.map(ch => {
+        const dep = d.deployments.find(x => x.channel === ch.key)
+        return {
+          channel: ch.key,
+          isActive: dep?.isActive ?? false,
+          config: dep?.config ?? null,
+        }
+      })
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channels }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error || 'Save failed')
+    },
+  })
+
   function isChannelActive(channel: string): boolean {
-    const d = deployments.find(dep => dep.channel === channel)
+    const d = draft.deployments.find(dep => dep.channel === channel)
     return d ? d.isActive : false
   }
 
   function toggleChannel(channel: string) {
-    setDeployments(prev => {
-      const existing = prev.find(d => d.channel === channel)
-      if (existing) {
-        return prev.map(d => d.channel === channel ? { ...d, isActive: !d.isActive } : d)
-      }
-      return [...prev, { id: '', channel, isActive: true, config: null }]
-    })
+    const existing = draft.deployments.find(d => d.channel === channel)
+    const next = existing
+      ? draft.deployments.map(d => d.channel === channel ? { ...d, isActive: !d.isActive } : d)
+      : [...draft.deployments, { id: '', channel, isActive: true, config: null }]
+    set({ deployments: next })
   }
 
-  async function save() {
-    setSaving(true)
-    const channels = CHANNELS.map(ch => {
-      const dep = deployments.find(d => d.channel === ch.key)
-      return {
-        channel: ch.key,
-        isActive: dep?.isActive ?? false,
-        config: dep?.config ?? null,
-      }
-    })
+  const activeCount = draft?.deployments?.filter(d => d.isActive).length ?? 0
 
-    const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channels }),
-    })
-    const { deployments: updated } = await res.json()
-    setDeployments(updated)
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  const activeCount = deployments.filter(d => d.isActive).length
-
-  if (loading) return (
+  if (loading || !initial) return (
     <div className="flex items-center justify-center h-64">
       <p className="text-zinc-500 text-sm">Loading...</p>
     </div>
@@ -175,13 +174,7 @@ export default function DeployPage() {
         </p>
       </div>
 
-      <button
-        onClick={save}
-        disabled={saving}
-        className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
-      >
-        {saving ? 'Saving...' : saved ? 'Saved' : 'Save Deployment'}
-      </button>
+      <SaveBar dirty={dirty} saving={saving} savedAt={savedAt} error={error} onSave={save} onReset={reset} />
     </div>
   )
 }
