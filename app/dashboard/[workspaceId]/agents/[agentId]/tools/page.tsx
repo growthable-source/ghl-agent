@@ -65,6 +65,19 @@ export default function ToolsPage() {
     })
   }
 
+  const [diag, setDiag] = useState<{ ok: boolean; results: Array<{ step: string; status: string; detail: string; fix?: string }> } | null>(null)
+  const [runningDiag, setRunningDiag] = useState(false)
+
+  async function runDiagnostic() {
+    setRunningDiag(true)
+    setDiag(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/calendar-diagnostic`)
+      const data = await res.json()
+      setDiag(data)
+    } finally { setRunningDiag(false) }
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-48">
       <p className="text-zinc-500 text-sm">Loading…</p>
@@ -159,6 +172,52 @@ export default function ToolsPage() {
                   </select>
                 )}
                 {calendarId && <p className="text-xs text-zinc-600 mt-2 font-mono">{calendarId}</p>}
+
+                {/* Diagnostic */}
+                <div className="mt-4 pt-3 border-t border-zinc-800">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-zinc-400">
+                      Booking not working? Run a full connection test.
+                    </p>
+                    <button
+                      onClick={runDiagnostic}
+                      disabled={runningDiag}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors disabled:opacity-50"
+                    >
+                      {runningDiag ? 'Testing…' : 'Test calendar connection'}
+                    </button>
+                  </div>
+
+                  {diag && (
+                    <div className={`mt-3 p-3 rounded-lg border ${
+                      diag.ok ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-red-500/40 bg-red-500/5'
+                    }`}>
+                      <p className={`text-xs font-semibold mb-2 ${diag.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {diag.ok ? '✓ Calendar integration is working' : '✗ Something is blocking booking'}
+                      </p>
+                      <div className="space-y-1.5">
+                        {diag.results.map((r, i) => (
+                          <div key={i} className="flex items-start gap-2 text-[11px]">
+                            <span className={`mt-0.5 shrink-0 ${
+                              r.status === 'ok' ? 'text-emerald-400'
+                              : r.status === 'warn' ? 'text-amber-400'
+                              : 'text-red-400'
+                            }`}>
+                              {r.status === 'ok' ? '✓' : r.status === 'warn' ? '⚠' : '✗'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-zinc-200 font-medium">{r.step}</p>
+                              <p className="text-zinc-500 break-words">{r.detail}</p>
+                              {r.fix && (
+                                <p className="text-amber-300 mt-0.5">→ {r.fix}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
