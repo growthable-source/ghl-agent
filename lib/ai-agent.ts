@@ -305,12 +305,22 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ success: true, note: '[Sandbox: Stage not actually moved]' })
     case 'add_contact_note':
       return JSON.stringify({ success: true, note: '[Sandbox: Note not actually saved]' })
-    case 'get_available_slots':
-      return JSON.stringify([
-        { startTime: '2025-01-15T09:00:00Z', endTime: '2025-01-15T09:30:00Z' },
-        { startTime: '2025-01-15T10:00:00Z', endTime: '2025-01-15T10:30:00Z' },
-        { startTime: '2025-01-15T14:00:00Z', endTime: '2025-01-15T14:30:00Z' },
-      ])
+    case 'get_available_slots': {
+      // Generate realistic-looking future slots starting 2 days from now
+      // (avoids the old hardcoded 2025 dates that misled the agent)
+      const base = new Date()
+      base.setDate(base.getDate() + 2)
+      base.setUTCHours(14, 0, 0, 0)
+      const slot = (dayOffset: number, hours: number) => {
+        const d = new Date(base)
+        d.setUTCDate(d.getUTCDate() + dayOffset)
+        d.setUTCHours(hours, 0, 0, 0)
+        const end = new Date(d)
+        end.setUTCMinutes(end.getUTCMinutes() + 30)
+        return { startTime: d.toISOString(), endTime: end.toISOString() }
+      }
+      return JSON.stringify([slot(0, 14), slot(0, 15), slot(1, 10), slot(1, 14)])
+    }
     case 'book_appointment':
       return JSON.stringify({ success: true, note: '[Sandbox: Appointment not actually booked]', startTime: input.startTime })
     case 'search_contacts':
@@ -338,6 +348,19 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
   }
 }
 
+// Read-only tools are safe to run against the real CRM even in the
+// playground — they don't change state, and mocking them makes the
+// playground useless for testing calendar availability, opportunity
+// lookups, contact details, etc. The agent sees REAL data and reasons
+// correctly about it.
+const SAFE_READ_ONLY_TOOLS = new Set([
+  'get_contact_details',
+  'get_opportunities',
+  'get_available_slots',
+  'get_calendar_events',
+  'search_contacts',
+])
+
 async function executeTool(
   toolName: string,
   input: Record<string, unknown>,
@@ -348,7 +371,12 @@ async function executeTool(
   conversationProviderId?: string,
   adapter?: CrmAdapter
 ): Promise<string> {
-  if (sandbox) return executeSandboxTool(toolName, input)
+  // In sandbox, allow read-only tools to hit the real CRM so the agent
+  // sees actual data. Writes (send_reply, book_appointment, update_*,
+  // create_*, etc.) stay sandboxed.
+  if (sandbox && !SAFE_READ_ONLY_TOOLS.has(toolName)) {
+    return executeSandboxTool(toolName, input)
+  }
   // Resolve adapter if not provided (backward compat)
   const crm = adapter ?? (await getCrmAdapter(locationId))
   try {
@@ -601,6 +629,11 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: P
   const ch = channel || 'SMS'
   const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`
 
+  const now = new Date()
+  const todayISO = now.toISOString().slice(0, 10)
+  const in4WeeksISO = new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const nowHuman = now.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+
   let prompt = `${base}
 
 ## Current Conversation Context
@@ -610,6 +643,9 @@ function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: P
 - Source: ${ctx.contact?.source ?? 'unknown'}
 - Location ID: ${ctx.locationId}
 - Channel: ${ch}
+- Current date/time: ${nowHuman} (today is ${todayISO})
+
+When calling get_available_slots, pass startDate="${todayISO}" and endDate="${in4WeeksISO}" (or narrower if the contact specified a window). NEVER pass dates from last year or next year — the current date is ${todayISO}.
 
 ## Your Behaviour
 - Keep replies concise (1–3 sentences max) — this is a ${ch} conversation
