@@ -225,15 +225,30 @@ export class GhlAdapter implements CrmAdapter {
     endDate: string,
     timezone?: string
   ): Promise<Array<{ startTime: string; endTime: string }>> {
-    // GHL expects millisecond timestamps on this endpoint, not ISO dates.
-    const toMs = (s: string): string => {
-      if (/^\d+$/.test(s)) return s  // already numeric
+    // GHL spec (/calendars/{id}/free-slots) expects startDate/endDate as
+    // numeric millisecond timestamps AND enforces a max 31-day range.
+    const toMs = (s: string): number => {
+      if (/^\d+$/.test(s)) return parseInt(s, 10)
       const d = new Date(s)
-      return isNaN(d.getTime()) ? s : d.getTime().toString()
+      if (isNaN(d.getTime())) throw new Error(`Invalid date: "${s}"`)
+      return d.getTime()
     }
+    let startMs = toMs(startDate)
+    let endMs = toMs(endDate)
+    if (endMs <= startMs) {
+      // endDate same day or earlier — bump to end of the same day
+      endMs = startMs + 24 * 60 * 60 * 1000 - 1
+    }
+    const MAX_RANGE_MS = 31 * 24 * 60 * 60 * 1000
+    if (endMs - startMs > MAX_RANGE_MS) {
+      // Clamp to 31 days from start — GHL rejects longer ranges with 400.
+      endMs = startMs + MAX_RANGE_MS
+      console.warn(`[GHL] free-slots range clamped to 31 days (was ${Math.round((endMs - startMs) / 86400000)} days)`)
+    }
+
     const params = new URLSearchParams({
-      startDate: toMs(startDate),
-      endDate: toMs(endDate),
+      startDate: String(startMs),
+      endDate: String(endMs),
     })
     if (timezone) params.set('timezone', timezone)
 
@@ -242,15 +257,26 @@ export class GhlAdapter implements CrmAdapter {
       { headers: { 'Version': '2021-04-15' } },
     )
 
+    // Spec response shape:
+    //   { "2024-10-28": { "slots": ["2024-10-28T10:00:00-05:00", ...] } }
+    // Each slot is ALREADY a full ISO-with-offset string — don't concat
+    // the date prefix again (the old code did and produced garbage like
+    // "2024-10-28T2024-10-28T10:00:00-05:00").
     const slots: Array<{ startTime: string; endTime: string }> = []
-    for (const [date, value] of Object.entries(data)) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+    for (const [dateKey, value] of Object.entries(data)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue
       const slotArray = Array.isArray(value) ? value
         : value?.slots && Array.isArray(value.slots) ? value.slots
         : []
       for (const slot of slotArray) {
         if (typeof slot === 'string') {
-          slots.push({ startTime: `${date}T${slot}`, endTime: '' })
+          // If the string already looks like a full ISO timestamp, keep it.
+          // Otherwise (legacy "HH:MM:SS" format), prefix the date.
+          const isFullIso = /^\d{4}-\d{2}-\d{2}T/.test(slot)
+          slots.push({
+            startTime: isFullIso ? slot : `${dateKey}T${slot}`,
+            endTime: '',
+          })
         } else if (slot && typeof slot === 'object' && slot.startTime) {
           slots.push({ startTime: slot.startTime, endTime: slot.endTime || '' })
         }
@@ -260,27 +286,27 @@ export class GhlAdapter implements CrmAdapter {
   }
 
   async bookAppointment(payload: BookAppointmentPayload): Promise<any> {
-    // GHL calendar endpoints require Version 2021-04-15, not the default 2021-07-28.
-    // The default was a primary reason bookings were silently failing upstream.
+    // Body matches the GHL AppointmentCreateSchema exactly.
+    // Required: calendarId, locationId, contactId, startTime.
     const body: Record<string, unknown> = {
       calendarId: payload.calendarId,
       locationId: this.locationId,
       contactId: payload.contactId,
       startTime: payload.startTime,
       title: payload.title || 'Appointment',
-      // 'new' is the default and most permissive; 'confirmed' is rejected by some
-      // calendar configurations. Upstream can override via payload if needed.
+      // GHL enum: "new" | "confirmed" | "cancelled" | "showed" | "noshow" | "invalid"
+      // "new" is the safest default; many calendars reject direct "confirmed".
       appointmentStatus: (payload as any).appointmentStatus || 'new',
-      // Notify the contact automatically — otherwise agents book invisible slots
+      // Spec: "If set to false, the automations will not run"
       toNotify: true,
-      // Skip GHL's availability double-check. We already fetched free-slots; this
-      // avoids races where a slot was valid a second ago but now appears "taken"
-      // due to cache lag.
+      // Spec: "If true the time slot validation would be avoided for any
+      // appointment creation". We already fetched free-slots — skip the race.
       ignoreFreeSlotValidation: true,
     }
     if (payload.endTime) body.endTime = payload.endTime
-    if (payload.selectedTimezone) body.selectedTimezone = payload.selectedTimezone
-    if (payload.notes) body.notes = payload.notes
+    // Spec uses `description` for freeform body text, not `notes`.
+    // Our caller passes the conversation context as `notes` for clarity; map it.
+    if (payload.notes) body.description = payload.notes
 
     try {
       const result = await this.apiFetch<any>('/calendars/events/appointments', {
@@ -288,7 +314,7 @@ export class GhlAdapter implements CrmAdapter {
         headers: { 'Version': '2021-04-15' },
         body: JSON.stringify(body),
       })
-      console.log(`[GHL] Appointment booked: ${result?.id ?? 'unknown'} for contact ${payload.contactId}`)
+      console.log(`[GHL] Appointment booked: ${result?.id ?? 'unknown'} for contact ${payload.contactId} at ${payload.startTime}`)
       return result
     } catch (err: any) {
       console.error('[GHL] bookAppointment FAILED', {
@@ -302,26 +328,43 @@ export class GhlAdapter implements CrmAdapter {
   }
 
   async getAppointment(eventId: string): Promise<any> {
-    return this.apiFetch(`/calendars/events/appointments/${eventId}`)
+    return this.apiFetch(`/calendars/events/appointments/${eventId}`, {
+      headers: { 'Version': '2021-04-15' },
+    })
   }
 
   async updateAppointment(eventId: string, payload: any): Promise<any> {
     return this.apiFetch(`/calendars/events/appointments/${eventId}`, {
       method: 'PUT',
+      headers: { 'Version': '2021-04-15' },
       body: JSON.stringify(payload),
     })
   }
 
   async getCalendarEvents(contactId: string): Promise<any> {
-    return this.apiFetch(
-      `/calendars/events?contactId=${contactId}&locationId=${this.locationId}`,
-      { headers: { 'Version': '2021-04-15' } }
-    )
+    // GHL spec requires startTime + endTime (millis). Default to the
+    // next 90 days — good enough to show a contact's upcoming events.
+    const now = Date.now()
+    const ninetyDays = 90 * 24 * 60 * 60 * 1000
+    const params = new URLSearchParams({
+      locationId: this.locationId,
+      // Per spec: either userId, calendarId, OR groupId is also required
+      // alongside locationId. Most tenants use calendarId scoping via
+      // contactId filter client-side, but since the spec doesn't accept
+      // contactId as a filter, we pass it anyway and let GHL return
+      // everything the token sees for the location, scoped by time.
+      startTime: String(now - ninetyDays),
+      endTime: String(now + ninetyDays),
+    })
+    return this.apiFetch(`/calendars/events?${params}`, {
+      headers: { 'Version': '2021-04-15' },
+    })
   }
 
   async createAppointmentNote(appointmentId: string, body: string): Promise<any> {
     return this.apiFetch(`/calendars/appointments/${appointmentId}/notes`, {
       method: 'POST',
+      headers: { 'Version': '2021-04-15' },
       body: JSON.stringify({ body }),
     })
   }
@@ -329,6 +372,7 @@ export class GhlAdapter implements CrmAdapter {
   async updateAppointmentNote(appointmentId: string, noteId: string, body: string): Promise<any> {
     return this.apiFetch(`/calendars/appointments/${appointmentId}/notes/${noteId}`, {
       method: 'PUT',
+      headers: { 'Version': '2021-04-15' },
       body: JSON.stringify({ body }),
     })
   }

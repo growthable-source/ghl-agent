@@ -18,7 +18,13 @@ export async function GET(req: NextRequest) {
     response_type: 'code',
     redirect_uri: `${process.env.APP_URL}/api/auth/callback`,
     client_id: clientId,
-    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.write calendars.readonly locations/customFields.readonly locations/customFields.write',
+    // Per GHL OpenAPI spec, each endpoint requires its matching scope:
+    //   calendars.readonly           → list calendars, read free-slots
+    //   calendars.write              → create/update/delete calendars
+    //   calendars/events.readonly    → read appointments, get notes
+    //   calendars/events.write       → CREATE APPOINTMENTS, edit, create notes
+    // We were missing the /events.* pair — bookings returned 401 silently.
+    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.readonly calendars.write calendars/events.readonly calendars/events.write locations/customFields.readonly locations/customFields.write',
     state: workspaceId,
   })
 

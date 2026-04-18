@@ -72,23 +72,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
   results.push({ step: 'OAuth token stored', status: 'ok', detail: `Expires ${new Date(tokens.expiresAt).toISOString()}` })
 
-  // Check scope string
+  // Check scope string — booking requires BOTH:
+  //   calendars.readonly   → read calendars + free-slots
+  //   calendars/events.write → CREATE appointments
   const scope = (tokens as any).scope || ''
-  if (!scope.includes('calendars.readonly') && !scope.includes('calendars.write')) {
+  const haveCalRead = scope.includes('calendars.readonly')
+  const haveCalWrite = scope.includes('calendars.write')
+  const haveEventsRead = scope.includes('calendars/events.readonly')
+  const haveEventsWrite = scope.includes('calendars/events.write')
+
+  const missingScopes: string[] = []
+  if (!haveCalRead) missingScopes.push('calendars.readonly')
+  if (!haveEventsWrite) missingScopes.push('calendars/events.write')
+
+  if (missingScopes.length > 0) {
     results.push({
       step: 'Calendar scopes granted',
       status: 'fail',
-      detail: `Token scope is: "${scope}". Missing calendars.readonly / calendars.write.`,
-      fix: 'Reinstall the GHL app — the current token was issued before calendar scopes were requested.',
+      detail: `Missing scope(s): ${missingScopes.join(', ')}. Current scopes: "${scope.slice(0, 200)}..."`,
+      fix: `Reinstall the GHL app at Integrations — the current token was issued before all required calendar scopes were requested. calendars/events.write is needed to CREATE appointments (not just read calendars).`,
     })
   } else {
-    const haveRead = scope.includes('calendars.readonly')
-    const haveWrite = scope.includes('calendars.write')
     results.push({
       step: 'Calendar scopes granted',
-      status: haveRead && haveWrite ? 'ok' : 'warn',
-      detail: `Scopes: ${[haveRead && 'readonly', haveWrite && 'write'].filter(Boolean).join(' + ')}`,
-      ...(!haveWrite ? { fix: 'Missing calendars.write — reinstall to grant it.' } : {}),
+      status: 'ok',
+      detail: `All scopes present: calendars.readonly ✓, calendars.write ${haveCalWrite ? '✓' : '—'}, calendars/events.readonly ${haveEventsRead ? '✓' : '—'}, calendars/events.write ✓`,
     })
   }
 
