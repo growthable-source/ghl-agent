@@ -40,6 +40,8 @@ export interface CreateOpportunityPayload {
   pipelineId: string
   pipelineStageId: string
   monetaryValue?: number
+  status?: 'open' | 'won' | 'lost' | 'abandoned'
+  assignedTo?: string
 }
 
 export interface CrmAdapter {

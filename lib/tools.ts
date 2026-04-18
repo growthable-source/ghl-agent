@@ -43,6 +43,12 @@ export const ALL_TOOLS: ToolDefinition[] = [
   { name: 'cancel_scheduled_message', label: 'Cancel Scheduled Message', description: 'Cancel an SMS/email that was scheduled to send later', category: 'messaging' },
   { name: 'list_contact_conversations', label: 'List Conversations', description: 'List contact conversation threads filtered by channel/status', category: 'messaging' },
 
+  // Opportunities (extended — from GHL Opportunities spec)
+  { name: 'mark_opportunity_won', label: 'Mark Won', description: 'Mark an opportunity as closed-won', category: 'pipeline' },
+  { name: 'mark_opportunity_lost', label: 'Mark Lost', description: 'Mark an opportunity as lost with optional reason', category: 'pipeline' },
+  { name: 'upsert_opportunity', label: 'Upsert Opportunity', description: 'Create-or-update an opportunity for a contact', category: 'pipeline' },
+  { name: 'list_pipelines', label: 'List Pipelines', description: 'Get all pipelines + their stages (for IDs)', category: 'pipeline' },
+
   // Intelligence
   { name: 'score_lead', label: 'Score Lead', description: 'Score a lead 1-100 based on conversation signals and save to CRM', category: 'intelligence' },
   { name: 'detect_sentiment', label: 'Detect Sentiment', description: 'Analyse conversation sentiment and escalate if negative', category: 'intelligence' },

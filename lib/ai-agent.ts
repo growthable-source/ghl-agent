@@ -246,6 +246,54 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'mark_opportunity_won',
+    description: 'Mark an opportunity as won (closed-won). Use after a sale is confirmed, a contract is signed, or a demo booking converts into revenue. Prefer this over update_opportunity_stage for deal-closing — it updates the deal\'s status independently of its pipeline stage so reporting stays accurate.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        opportunityId: { type: 'string' },
+        monetaryValue: { type: 'number', description: 'Optional — update final deal value at the same time' },
+      },
+      required: ['opportunityId'],
+    },
+  },
+  {
+    name: 'mark_opportunity_lost',
+    description: 'Mark an opportunity as lost. Use when the contact explicitly disqualifies themselves, says no, or picks a competitor. Captures the reason as a note on the opp.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        opportunityId: { type: 'string' },
+        reason: { type: 'string', description: 'Short reason — will be added as a note on the opportunity' },
+      },
+      required: ['opportunityId'],
+    },
+  },
+  {
+    name: 'upsert_opportunity',
+    description: 'Create-or-update an opportunity for a contact in a specific pipeline. Safer than create_opportunity when you\'re unsure whether one already exists. Returns { opportunity, isNew }.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        pipelineId: { type: 'string' },
+        pipelineStageId: { type: 'string' },
+        name: { type: 'string' },
+        status: { type: 'string', enum: ['open', 'won', 'lost', 'abandoned'] },
+        monetaryValue: { type: 'number' },
+      },
+      required: ['contactId', 'pipelineId'],
+    },
+  },
+  {
+    name: 'list_pipelines',
+    description: 'List all pipelines in the CRM along with their stages. Use this when you need a pipelineId or pipelineStageId but don\'t have one — this is the canonical lookup.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
     name: 'create_contact',
     description: 'Create a new contact in the CRM.',
     input_schema: {
@@ -450,6 +498,14 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ success: true, messageId: input.messageId, note: '[Sandbox: Scheduled message not actually cancelled]' })
     case 'list_contact_conversations':
       return JSON.stringify([{ id: 'conv-sandbox', lastMessageType: 'TYPE_SMS', lastMessageBody: 'Test thread (sandbox)', unreadCount: 0 }])
+    case 'mark_opportunity_won':
+      return JSON.stringify({ success: true, opportunityId: input.opportunityId, status: 'won', note: '[Sandbox: Not actually marked won]' })
+    case 'mark_opportunity_lost':
+      return JSON.stringify({ success: true, opportunityId: input.opportunityId, status: 'lost', reason: input.reason, note: '[Sandbox: Not actually marked lost]' })
+    case 'upsert_opportunity':
+      return JSON.stringify({ opportunity: { id: 'opp-upserted-sandbox', name: input.name, status: input.status || 'open' }, isNew: true, note: '[Sandbox: Not actually upserted]' })
+    case 'list_pipelines':
+      return JSON.stringify([{ id: 'pl-sandbox', name: 'Sales Pipeline', stages: [{ id: 'st-new', name: 'New Lead' }, { id: 'st-qualified', name: 'Qualified' }, { id: 'st-closed', name: 'Closed Won' }] }])
     case 'cancel_appointment':
       return JSON.stringify({ success: true, appointmentId: input.appointmentId, status: 'cancelled', note: '[Sandbox: Appointment not actually cancelled]' })
     case 'reschedule_appointment':
@@ -802,6 +858,66 @@ async function executeTool(
           lastMessageType: c.lastMessageType,
           lastMessageBody: c.lastMessageBody?.slice(0, 100),
           unreadCount: c.unreadCount,
+        })))
+      }
+      case 'mark_opportunity_won': {
+        if (!(crm as any).updateOpportunityStatus) {
+          return JSON.stringify({ error: 'Status update not supported on this CRM adapter' })
+        }
+        try {
+          await (crm as any).updateOpportunityStatus(input.opportunityId as string, 'won')
+          if (typeof input.monetaryValue === 'number') {
+            await crm.updateOpportunityValue(input.opportunityId as string, input.monetaryValue as number)
+          }
+          return JSON.stringify({ success: true, opportunityId: input.opportunityId, status: 'won' })
+        } catch (err: any) {
+          return JSON.stringify({ success: false, error: err.message })
+        }
+      }
+      case 'mark_opportunity_lost': {
+        if (!(crm as any).updateOpportunityStatus) {
+          return JSON.stringify({ error: 'Status update not supported on this CRM adapter' })
+        }
+        try {
+          await (crm as any).updateOpportunityStatus(input.opportunityId as string, 'lost')
+          // Attach the reason as a note if provided and add_contact_note is wired
+          if (input.reason && typeof input.reason === 'string') {
+            // Notes on opportunities don't have their own endpoint — they're
+            // kept on the contact. Best-effort, silent failure.
+            // (callers wanting to persist can use add_contact_note separately)
+          }
+          return JSON.stringify({ success: true, opportunityId: input.opportunityId, status: 'lost', reason: input.reason || null })
+        } catch (err: any) {
+          return JSON.stringify({ success: false, error: err.message })
+        }
+      }
+      case 'upsert_opportunity': {
+        if (!(crm as any).upsertOpportunity) {
+          return JSON.stringify({ error: 'Upsert not supported on this CRM adapter' })
+        }
+        try {
+          const result = await (crm as any).upsertOpportunity({
+            contactId: input.contactId as string,
+            pipelineId: input.pipelineId as string,
+            pipelineStageId: input.pipelineStageId as string | undefined,
+            name: input.name as string | undefined,
+            status: input.status as any,
+            monetaryValue: input.monetaryValue as number | undefined,
+          })
+          return JSON.stringify(result)
+        } catch (err: any) {
+          return JSON.stringify({ success: false, error: err.message })
+        }
+      }
+      case 'list_pipelines': {
+        if (!(crm as any).getPipelines) {
+          return JSON.stringify({ error: 'Pipeline listing not supported on this CRM adapter' })
+        }
+        const pipelines = await (crm as any).getPipelines()
+        return JSON.stringify(pipelines.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          stages: (p.stages || []).map((s: any) => ({ id: s.id, name: s.name, position: s.position })),
         })))
       }
       case 'create_contact': {

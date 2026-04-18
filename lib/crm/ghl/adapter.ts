@@ -529,12 +529,76 @@ export class GhlAdapter implements CrmAdapter {
 
   // ─── Opportunities / Deals ───────────────────────────────────────────
 
-  async getOpportunitiesForContact(contactId: string): Promise<Opportunity[]> {
-    const params = new URLSearchParams({ contact_id: contactId, location_id: this.locationId })
+  async getOpportunitiesForContact(contactId: string, status: 'open' | 'won' | 'lost' | 'abandoned' | 'all' = 'all'): Promise<Opportunity[]> {
+    const params = new URLSearchParams({
+      contact_id: contactId,
+      location_id: this.locationId,
+      status,
+    })
     const data = await this.apiFetch<{ opportunities: Opportunity[] }>(
-      `/opportunities/search?${params}`
+      `/opportunities/search?${params}`,
     )
     return data.opportunities ?? []
+  }
+
+  /**
+   * General-purpose opportunity search — agents + dashboard can slice by
+   * pipeline, stage, status, assignee, etc.
+   */
+  async searchOpportunities(opts: {
+    q?: string                                            // free-text
+    pipelineId?: string
+    pipelineStageId?: string
+    contactId?: string
+    status?: 'open' | 'won' | 'lost' | 'abandoned' | 'all'
+    assignedTo?: string
+    page?: number
+    limit?: number                                        // max 100
+    order?: string                                        // e.g. "added_desc"
+    getTasks?: boolean
+    getNotes?: boolean
+  } = {}): Promise<{ opportunities: Opportunity[]; meta: any }> {
+    const params = new URLSearchParams({ location_id: this.locationId })
+    if (opts.q) params.set('q', opts.q)
+    if (opts.pipelineId) params.set('pipeline_id', opts.pipelineId)
+    if (opts.pipelineStageId) params.set('pipeline_stage_id', opts.pipelineStageId)
+    if (opts.contactId) params.set('contact_id', opts.contactId)
+    if (opts.status) params.set('status', opts.status)
+    if (opts.assignedTo) params.set('assigned_to', opts.assignedTo)
+    if (opts.page) params.set('page', String(opts.page))
+    if (opts.limit) params.set('limit', String(Math.min(opts.limit, 100)))
+    if (opts.order) params.set('order', opts.order)
+    if (opts.getTasks) params.set('getTasks', 'true')
+    if (opts.getNotes) params.set('getNotes', 'true')
+
+    const data = await this.apiFetch<{ opportunities: Opportunity[]; meta: any }>(
+      `/opportunities/search?${params}`,
+    )
+    return { opportunities: data.opportunities ?? [], meta: data.meta ?? {} }
+  }
+
+  async getOpportunity(opportunityId: string): Promise<Opportunity | null> {
+    try {
+      const data = await this.apiFetch<{ opportunity: Opportunity }>(
+        `/opportunities/${opportunityId}`,
+      )
+      return data.opportunity
+    } catch {
+      return null
+    }
+  }
+
+  async getPipelines(): Promise<Array<{ id: string; name: string; stages: any[]; locationId: string }>> {
+    try {
+      const params = new URLSearchParams({ locationId: this.locationId })
+      const data = await this.apiFetch<{ pipelines: any[] }>(
+        `/opportunities/pipelines?${params}`,
+      )
+      return data.pipelines ?? []
+    } catch (err: any) {
+      console.warn('[GHL] getPipelines failed:', err.message)
+      return []
+    }
   }
 
   async updateOpportunityStage(opportunityId: string, pipelineStageId: string): Promise<Opportunity> {
@@ -548,24 +612,97 @@ export class GhlAdapter implements CrmAdapter {
     return data.opportunity
   }
 
+  /**
+   * Update opportunity status independently of the stage — won / lost /
+   * abandoned etc. GHL treats status separately from pipeline stage.
+   */
+  async updateOpportunityStatus(opportunityId: string, status: 'open' | 'won' | 'lost' | 'abandoned'): Promise<void> {
+    await this.apiFetch(`/opportunities/${opportunityId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    })
+  }
+
   async createOpportunity(payload: CreateOpportunityPayload): Promise<any> {
+    // Spec: required fields are pipelineId, locationId, name, status, contactId
+    // BUG FIX: we were sending `title:` — spec requires `name:`
+    const body: Record<string, unknown> = {
+      name: payload.name,
+      contactId: payload.contactId,
+      pipelineId: payload.pipelineId,
+      pipelineStageId: payload.pipelineStageId,
+      locationId: this.locationId,
+      status: payload.status || 'open',
+    }
+    if (payload.monetaryValue !== undefined) body.monetaryValue = payload.monetaryValue
+    if (payload.assignedTo) body.assignedTo = payload.assignedTo
+
     return this.apiFetch('/opportunities/', {
       method: 'POST',
-      body: JSON.stringify({
-        title: payload.name,
-        contactId: payload.contactId,
-        pipelineId: payload.pipelineId,
-        pipelineStageId: payload.pipelineStageId,
-        monetaryValue: payload.monetaryValue,
-        locationId: this.locationId,
-      }),
+      body: JSON.stringify(body),
     })
+  }
+
+  /**
+   * Upsert by pipelineId + locationId + contactId — if an opportunity with
+   * that (pipeline, contact) pair exists, update it; otherwise create.
+   */
+  async upsertOpportunity(payload: {
+    contactId: string
+    pipelineId: string
+    pipelineStageId?: string
+    name?: string
+    status?: 'open' | 'won' | 'lost' | 'abandoned'
+    monetaryValue?: number
+    assignedTo?: string
+  }): Promise<{ opportunity: any; isNew: boolean }> {
+    const data = await this.apiFetch<{ opportunity: any; new: boolean }>(
+      '/opportunities/upsert',
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...payload, locationId: this.locationId }),
+      },
+    )
+    return { opportunity: data.opportunity, isNew: data.new }
   }
 
   async updateOpportunityValue(opportunityId: string, monetaryValue: number): Promise<any> {
     return this.apiFetch(`/opportunities/${opportunityId}`, {
       method: 'PUT',
       body: JSON.stringify({ monetaryValue }),
+    })
+  }
+
+  async updateOpportunity(opportunityId: string, updates: {
+    name?: string
+    pipelineId?: string
+    pipelineStageId?: string
+    status?: 'open' | 'won' | 'lost' | 'abandoned'
+    monetaryValue?: number
+    assignedTo?: string
+    customFields?: Array<{ id?: string; key?: string; field_value: any }>
+  }): Promise<any> {
+    return this.apiFetch(`/opportunities/${opportunityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    })
+  }
+
+  async deleteOpportunity(opportunityId: string): Promise<void> {
+    await this.apiFetch(`/opportunities/${opportunityId}`, { method: 'DELETE' })
+  }
+
+  async addOpportunityFollowers(opportunityId: string, followers: string[]): Promise<void> {
+    await this.apiFetch(`/opportunities/${opportunityId}/followers`, {
+      method: 'POST',
+      body: JSON.stringify({ followers }),
+    })
+  }
+
+  async removeOpportunityFollowers(opportunityId: string, followers: string[]): Promise<void> {
+    await this.apiFetch(`/opportunities/${opportunityId}/followers`, {
+      method: 'DELETE',
+      body: JSON.stringify({ followers }),
     })
   }
 
