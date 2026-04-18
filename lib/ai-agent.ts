@@ -735,12 +735,16 @@ export async function runAgent(opts: {
   fallback?: FallbackConfig
   qualifyingStyle?: 'strict' | 'natural'
   sandbox?: boolean
+  // Optional injected CRM adapter — used by the widget runtime to route
+  // sendMessage through SSE instead of GHL/HubSpot. When provided, this
+  // overrides the default adapter lookup for the given locationId.
+  adapter?: CrmAdapter
 }): Promise<AgentResponse> {
-  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox } = opts
+  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
-  // Resolve CRM adapter once for the entire agent run
-  const crm = isSandbox ? null : await getCrmAdapter(locationId)
+  // Resolve CRM adapter: explicit override > sandbox-null > default lookup
+  const crm = adapter ?? (isSandbox ? null : await getCrmAdapter(locationId))
 
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
