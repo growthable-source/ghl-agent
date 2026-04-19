@@ -67,6 +67,19 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'update_contact_memory',
+    description: 'Capture a piece of context the contact volunteered into your memory of this contact. Use when the contact mentions something that fits one of your Listening Categories (see that section of the prompt if present). The content goes into a private notebook you consult on future turns — it does NOT get written to any CRM field and is NOT visible in the GHL UI.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        category: { type: 'string', description: 'One of the Listening Categories exactly as listed in the system prompt — e.g. "Family context", "Pain points".' },
+        content: { type: 'string', description: 'A brief factual note summarising what was said, in your own words. 1–2 short sentences.' },
+      },
+      required: ['contactId', 'category', 'content'],
+    },
+  },
+  {
     name: 'update_contact_tags',
     description: 'Add tags to a contact to categorise or flag them.',
     input_schema: {
@@ -537,6 +550,8 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ success: true, note: `[Sandbox: Tags "${(input.tags as string[]).join(', ')}" not actually applied]` })
     case 'update_contact_field':
       return JSON.stringify({ success: true, fieldKey: input.fieldKey, value: input.value, note: `[Sandbox: Field "${input.fieldKey}" not actually updated]` })
+    case 'update_contact_memory':
+      return JSON.stringify({ success: true, category: input.category, content: input.content, note: `[Sandbox: Memory not actually written]` })
     case 'get_opportunities':
       return JSON.stringify([{ id: 'opp-sandbox', name: 'Test Opportunity', pipelineStageId: 'stage-1', monetaryValue: 1000 }])
     case 'move_opportunity_stage':
@@ -759,6 +774,20 @@ async function executeTool(
 
         await crm.updateContactField(contactId, fieldKey, value)
         return JSON.stringify({ success: true, fieldKey, value })
+      }
+      case 'update_contact_memory': {
+        if (!agentId) {
+          return JSON.stringify({ error: 'update_contact_memory requires an agentId on the runAgent call' })
+        }
+        const { writeMemoryCategory } = await import('./listening-rules')
+        await writeMemoryCategory({
+          agentId,
+          locationId,
+          contactId: input.contactId as string,
+          category: input.category as string,
+          content: input.content as string,
+        })
+        return JSON.stringify({ success: true, category: input.category })
       }
       case 'get_opportunities': {
         const opps = await crm.getOpportunitiesForContact(input.contactId as string)
@@ -1200,7 +1229,7 @@ export interface FallbackConfig {
   message?: string | null
 }
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string, listeningRulesBlock?: string, contactMemoryBlock?: string): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const ch = channel || 'SMS'
   const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`
@@ -1275,6 +1304,17 @@ Professional but warm. Match the contact's energy.`
 
   if (detectionRulesBlock) {
     prompt += detectionRulesBlock
+  }
+
+  if (listeningRulesBlock) {
+    prompt += listeningRulesBlock
+  }
+
+  // Memory block goes last among context blocks so prior-knowledge is the
+  // last thing the agent sees before its instructions wrap up — easier for
+  // it to recall and cite when composing the reply.
+  if (contactMemoryBlock) {
+    prompt += contactMemoryBlock
   }
 
   if (persona) {
@@ -1410,6 +1450,37 @@ export async function runAgent(opts: {
     fieldOverwriteMap = buildFieldOverwriteMap(rules)
   }
 
+  // Load listening rules — categories the agent watches for passively.
+  // Also surface anything we already know about this contact (prior summary
+  // + categorised memory entries) so the agent has continuity across turns.
+  let listeningRulesBlock = ''
+  let contactMemoryBlock = ''
+  let hasListeningRules = false
+  if (agentId) {
+    const { getActiveListeningRules, buildListeningRulesBlock, buildContactMemoryBlock } = await import('./listening-rules')
+    const listening = await getActiveListeningRules(agentId)
+    listeningRulesBlock = buildListeningRulesBlock(listening)
+    hasListeningRules = listening.length > 0
+
+    // Pull existing memory for this contact (summary + categories).
+    // Safe in sandbox — the table is keyed by (agentId, playground-contactId)
+    // and stays isolated from real data.
+    try {
+      const memory = await (await import('./db')).db.contactMemory.findUnique({
+        where: { agentId_contactId: { agentId, contactId } },
+        select: { summary: true, categories: true },
+      })
+      if (memory) {
+        contactMemoryBlock = buildContactMemoryBlock({
+          summary: memory.summary,
+          categories: memory.categories as Record<string, string> | null,
+        })
+      }
+    } catch {
+      // Non-fatal — proceed without memory context.
+    }
+  }
+
   // Filter tools based on agent configuration
   // Normalize: ensure dependent tool pairs are always enabled together.
   //  - send_sms → send_reply (legacy back-compat)
@@ -1429,6 +1500,8 @@ export async function runAgent(opts: {
         // rule exists, regardless of what's in enabledTools. Saves the user
         // from having to manually enable the tool when they author a rule.
         ...(detectionRulesBlock ? ['update_contact_field'] : []),
+        // Same for listening rules → update_contact_memory.
+        ...(hasListeningRules ? ['update_contact_memory'] : []),
       ])]
     : undefined
   const filteredTools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS
@@ -1494,7 +1567,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock),
+      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock),
       tools,
       messages: currentMessages,
     }

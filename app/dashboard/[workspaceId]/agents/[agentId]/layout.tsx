@@ -10,6 +10,7 @@ const SECTIONS = [
   { key: 'knowledge',   label: 'Knowledge',   path: '/knowledge' },
   { key: 'routing',     label: 'Routing',     path: '/routing' },
   { key: 'rules',       label: 'Rules',       path: '/rules' },
+  { key: 'listening',   label: 'Listening',   path: '/listening' },
   { key: 'tools',       label: 'Tools',       path: '/tools' },
   { key: 'qualifying',  label: 'Qualifying',  path: '/qualifying' },
   { key: 'persona',     label: 'Persona',     path: '/persona' },

@@ -267,6 +267,7 @@ model Agent {
   knowledgeEntries KnowledgeEntry[]
   routingRules     RoutingRule[]
   detectionRules   AgentRule[]
+  listeningRules   AgentListeningRule[]
   messageLogs      MessageLog[]
   stopConditions      StopCondition[]
   followUpSequences   FollowUpSequence[]
@@ -707,13 +708,38 @@ model ConversationMessage {
   @@index([conversationId, createdAt(sort: Asc)])
 }
 
+// ─── Listening Rules ──────────────────────────────────────────────────────
+// "IF the contact mentions something in category X, THEN capture it in the
+// agent's memory of this contact." Unlike detection rules (AgentRule) which
+// write a known value to a known field, listening rules capture free-text
+// context the user couldn't have anticipated — family news, health issues,
+// personal preferences. The agent writes the content; the user only
+// declares what categories are worth listening for.
+model AgentListeningRule {
+  id                    String   @id @default(cuid())
+  agentId               String
+  agent                 Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  name                  String                 // "Family context", "Pain points"
+  description           String   @db.Text      // "family members, health issues, life events"
+  examples              String[] @default([])  // illustrative phrases
+
+  isActive              Boolean  @default(true)
+  order                 Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([agentId, isActive, order])
+}
+
 model ContactMemory {
   id         String   @id @default(cuid())
   agentId    String
   agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   locationId String
   contactId  String
-  summary    String   @db.Text
+  summary    String?  @db.Text                 // auto-generated conversation summary
+  categories Json?                              // { "Family context": "mum is sick", ... } — keyed by listening rule name
   updatedAt  DateTime @updatedAt
   createdAt  DateTime @default(now())
   @@unique([agentId, contactId])
