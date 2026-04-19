@@ -54,6 +54,19 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'update_contact_field',
+    description: 'Update a single field on the contact record. Use when a detection rule fires (see Detection Rules section if present) or when the conversation reveals a known-good value (e.g. the contact volunteers their company name). fieldKey is either a standard slug like "firstName" / "email" / "phone" or a custom field key prefixed with "custom." / "contact.". If you are unsure whether a value is correct, DO NOT overwrite — ask.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contactId: { type: 'string' },
+        fieldKey: { type: 'string', description: 'e.g. "firstName", "custom.out_of_town", "contact.company"' },
+        value: { type: 'string', description: 'The new value. Booleans should be passed as "true" / "false".' },
+      },
+      required: ['contactId', 'fieldKey', 'value'],
+    },
+  },
+  {
     name: 'update_contact_tags',
     description: 'Add tags to a contact to categorise or flag them.',
     input_schema: {
@@ -522,6 +535,8 @@ function executeSandboxTool(toolName: string, input: Record<string, unknown>): s
       return JSON.stringify({ success: true, note: '[Sandbox: Email not actually sent]' })
     case 'update_contact_tags':
       return JSON.stringify({ success: true, note: `[Sandbox: Tags "${(input.tags as string[]).join(', ')}" not actually applied]` })
+    case 'update_contact_field':
+      return JSON.stringify({ success: true, fieldKey: input.fieldKey, value: input.value, note: `[Sandbox: Field "${input.fieldKey}" not actually updated]` })
     case 'get_opportunities':
       return JSON.stringify([{ id: 'opp-sandbox', name: 'Test Opportunity', pipelineStageId: 'stage-1', monetaryValue: 1000 }])
     case 'move_opportunity_stage':
@@ -637,6 +652,14 @@ async function executeTool(
   adapter?: CrmAdapter,
   /** If provided, send_reply / send_sms write to this capture instead of calling the CRM. */
   deferredSend?: DeferredSendCapture,
+  /**
+   * Map of fieldKey → overwrite flag for this agent's detection rules.
+   * When the agent calls update_contact_field with a fieldKey that matches
+   * a rule with overwrite=false, we check the current contact value first
+   * and skip the write if it already has content (keep first answer).
+   * Fields not in this map follow standard write-through behavior.
+   */
+  fieldOverwriteMap?: Record<string, boolean>,
 ): Promise<string> {
   // In sandbox, allow read-only tools to hit the real CRM so the agent
   // sees actual data. Writes (send_reply, book_appointment, update_*,
@@ -703,6 +726,39 @@ async function executeTool(
       case 'update_contact_tags': {
         await crm.addTags(input.contactId as string, input.tags as string[])
         return JSON.stringify({ success: true })
+      }
+      case 'update_contact_field': {
+        const fieldKey = input.fieldKey as string
+        const value = input.value as string
+        const contactId = input.contactId as string
+
+        // Enforce first-answer semantics when this field is governed by a
+        // detection rule with overwrite=false. Fields outside the rule set
+        // write through directly.
+        const ruleOverwrite = fieldOverwriteMap?.[fieldKey]
+        if (ruleOverwrite === false) {
+          try {
+            const contact = await crm.getContact(contactId)
+            const existing =
+              (contact as any)[fieldKey] ||
+              (contact as any).customFields?.find((f: any) => f.key === fieldKey || f.id === fieldKey)?.value
+            if (existing) {
+              return JSON.stringify({
+                success: true,
+                skipped: true,
+                reason: 'Field already has a value and rule is set to keep-first-answer.',
+                fieldKey,
+                existingValue: existing,
+              })
+            }
+          } catch (err) {
+            // Non-fatal — if we can't read the contact we still try the write
+            console.error(`[update_contact_field] pre-read failed for ${contactId}/${fieldKey}:`, err)
+          }
+        }
+
+        await crm.updateContactField(contactId, fieldKey, value)
+        return JSON.stringify({ success: true, fieldKey, value })
       }
       case 'get_opportunities': {
         const opps = await crm.getOpportunitiesForContact(input.contactId as string)
@@ -1144,7 +1200,7 @@ export interface FallbackConfig {
   message?: string | null
 }
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const ch = channel || 'SMS'
   const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`
@@ -1215,6 +1271,10 @@ Professional but warm. Match the contact's energy.`
 
   if (qualifyingBlock) {
     prompt += qualifyingBlock
+  }
+
+  if (detectionRulesBlock) {
+    prompt += detectionRulesBlock
   }
 
   if (persona) {
@@ -1337,6 +1397,19 @@ export async function runAgent(opts: {
     }
   }
 
+  // Load detection rules — natural-language "if the contact says X, set
+  // field Y to Z" rules that the agent evaluates against every inbound.
+  // The block goes into the system prompt; the field→overwrite map lets
+  // executeTool enforce keep-first-answer semantics on rule-governed fields.
+  let detectionRulesBlock = ''
+  let fieldOverwriteMap: Record<string, boolean> = {}
+  if (agentId) {
+    const { getActiveDetectionRules, buildDetectionRulesBlock, buildFieldOverwriteMap } = await import('./detection-rules')
+    const rules = await getActiveDetectionRules(agentId)
+    detectionRulesBlock = buildDetectionRulesBlock(rules)
+    fieldOverwriteMap = buildFieldOverwriteMap(rules)
+  }
+
   // Filter tools based on agent configuration
   // Normalize: ensure dependent tool pairs are always enabled together.
   //  - send_sms → send_reply (legacy back-compat)
@@ -1352,6 +1425,10 @@ export async function runAgent(opts: {
         ...(enabledTools.includes('book_appointment')
           ? ['get_available_slots', 'create_appointment_note', 'cancel_appointment', 'reschedule_appointment', 'get_calendar_events']
           : []),
+        // Detection rules require update_contact_field — auto-enable if any
+        // rule exists, regardless of what's in enabledTools. Saves the user
+        // from having to manually enable the tool when they author a rule.
+        ...(detectionRulesBlock ? ['update_contact_field'] : []),
       ])]
     : undefined
   const filteredTools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS
@@ -1417,7 +1494,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel),
+      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock),
       tools,
       messages: currentMessages,
     }
@@ -1537,6 +1614,7 @@ export async function runAgent(opts: {
         conversationProviderId,
         crm ?? undefined,
         deferredSend,
+        fieldOverwriteMap,
       )
       toolCallTrace.push({
         tool: toolBlock.name,

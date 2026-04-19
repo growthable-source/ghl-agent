@@ -137,10 +137,10 @@ export default function RoutingDiagnosticPage() {
                         Channels
                       </Link>
                       <Link
-                        href={`/dashboard/${workspaceId}/agents/${agent.id}/rules`}
+                        href={`/dashboard/${workspaceId}/agents/${agent.id}/routing`}
                         className="text-[11px] px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
                       >
-                        Rules
+                        Routing
                       </Link>
                     </div>
                   </div>

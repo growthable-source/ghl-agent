@@ -266,6 +266,7 @@ model Agent {
 
   knowledgeEntries KnowledgeEntry[]
   routingRules     RoutingRule[]
+  detectionRules   AgentRule[]
   messageLogs      MessageLog[]
   stopConditions      StopCondition[]
   followUpSequences   FollowUpSequence[]
@@ -334,6 +335,36 @@ enum RuleType {
   TAG
   PIPELINE_STAGE
   KEYWORD
+}
+
+// ─── Detection Rules ──────────────────────────────────────────────────────
+// User-authored "IF the contact says X, THEN update field Y to value Z" rules.
+// The condition is a natural-language description plus few-shot examples —
+// the agent evaluates it semantically against each inbound message and uses
+// the update_contact_field tool when it fires.
+//
+// Overwrite semantics match QualifyingQuestion.overwrite:
+//   overwrite=false → only set if the field is currently empty (keep first)
+//   overwrite=true  → always apply the latest value
+model AgentRule {
+  id                    String   @id @default(cuid())
+  agentId               String
+  agent                 Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  name                  String                 // "Out of town"
+  conditionDescription  String   @db.Text      // "contact indicates they are out of town or traveling"
+  examples              String[] @default([])  // few-shot phrases
+
+  targetFieldKey        String                 // "custom.out_of_town" | "contact.firstName"
+  targetValue           String                 // "true", "Yes", "Away until Monday"
+  overwrite             Boolean  @default(false)
+
+  isActive              Boolean  @default(true)
+  order                 Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([agentId, isActive, order])
 }
 
 model MessageLog {

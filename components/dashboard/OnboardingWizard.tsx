@@ -41,7 +41,7 @@ export default function OnboardingWizard({ workspaceId }: { workspaceId: string 
     const { agent } = await res.json()
 
     // Add ALL routing rule
-    await fetch(`/api/workspaces/${workspaceId}/agents/${agent.id}/rules`, {
+    await fetch(`/api/workspaces/${workspaceId}/agents/${agent.id}/routing`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ruleType: 'ALL', priority: 999 }),
