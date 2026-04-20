@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 const EVENT_OPTIONS = [
@@ -19,14 +19,18 @@ const EVENT_OPTIONS = [
 
 export default function IntegrationsPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const workspaceId = params.workspaceId as string
   const [channels, setChannels] = useState<any[]>([])
   const [webhooks, setWebhooks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'notifications' | 'webhooks'>('notifications')
 
-  const [newSlackUrl, setNewSlackUrl] = useState('')
-  const [newDiscordUrl, setNewDiscordUrl] = useState('')
+  // Banners from OAuth round-trips (?connected=slack, ?error=slack:access_denied, etc.)
+  const connected = searchParams.get('connected')
+  const flashError = searchParams.get('error')
+
   const [newEmail, setNewEmail] = useState('')
   const [newSmsNumber, setNewSmsNumber] = useState('')
   const [newWebhookUrl, setNewWebhookUrl] = useState('')
@@ -44,15 +48,14 @@ export default function IntegrationsPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  async function addSlack() {
-    if (!newSlackUrl) return
-    await fetch(`/api/workspaces/${workspaceId}/notifications`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'slack', config: { webhookUrl: newSlackUrl }, events: [] }),
-    })
-    setNewSlackUrl('')
-    fetchAll()
+  // Slack + Discord are now OAuth — the dashboard kicks off the flow, the
+  // callback handler (app/api/auth/slack/callback, /discord/callback)
+  // creates the NotificationChannel and redirects back with ?connected=…
+  function connectSlack() {
+    window.location.href = `/api/auth/slack/connect?workspaceId=${workspaceId}`
+  }
+  function connectDiscord() {
+    window.location.href = `/api/auth/discord/connect?workspaceId=${workspaceId}`
   }
 
   async function addEmail() {
@@ -63,17 +66,6 @@ export default function IntegrationsPage() {
       body: JSON.stringify({ type: 'email', config: { email: newEmail }, events: [] }),
     })
     setNewEmail('')
-    fetchAll()
-  }
-
-  async function addDiscord() {
-    if (!newDiscordUrl) return
-    await fetch(`/api/workspaces/${workspaceId}/notifications`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'discord', config: { webhookUrl: newDiscordUrl }, events: [] }),
-    })
-    setNewDiscordUrl('')
     fetchAll()
   }
 
@@ -145,6 +137,27 @@ export default function IntegrationsPage() {
           <p className="text-sm text-zinc-400 mt-1">Get alerted in Slack/email and fire events into your own systems.</p>
         </div>
 
+        {connected && (
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            <span>
+              ✓ Connected <span className="font-semibold capitalize">{connected}</span>. You can pick which events it receives below.
+            </span>
+            <button
+              onClick={() => router.replace(`/dashboard/${workspaceId}/settings/integrations`)}
+              className="text-emerald-200 hover:text-white text-xs"
+            >Dismiss</button>
+          </div>
+        )}
+        {flashError && (
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <span>Couldn&apos;t connect: <span className="font-mono">{flashError}</span></span>
+            <button
+              onClick={() => router.replace(`/dashboard/${workspaceId}/settings/integrations`)}
+              className="text-red-200 hover:text-white text-xs"
+            >Dismiss</button>
+          </div>
+        )}
+
         <div className="flex gap-1 p-1 rounded-xl bg-zinc-900/60 border border-zinc-800 mb-6 w-fit">
           <button onClick={() => setTab('notifications')}
             className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${tab === 'notifications' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
@@ -174,12 +187,18 @@ export default function IntegrationsPage() {
                       : '📧'
                     }</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white capitalize">{c.type}</p>
+                      <p className="text-sm font-semibold text-white capitalize">
+                        {c.type === 'slack' && c.config.teamName
+                          ? `Slack · ${c.config.teamName}`
+                          : c.type === 'discord' && c.config.guildName
+                          ? `Discord · ${c.config.guildName}`
+                          : c.type}
+                      </p>
                       <p className="text-xs text-zinc-500 truncate">
                         {c.type === 'slack'
-                          ? c.config.webhookUrl?.replace(/(hooks.slack.com\/services\/).*/, '$1...')
+                          ? (c.config.channel ? `#${c.config.channel}` : c.config.webhookUrl?.replace(/(hooks.slack.com\/services\/).*/, '$1...'))
                           : c.type === 'discord'
-                          ? c.config.webhookUrl?.replace(/(discord.com\/api\/webhooks\/).*/, '$1...')
+                          ? (c.config.webhookName ? `via “${c.config.webhookName}”` : c.config.webhookUrl?.replace(/(discord.com\/api\/webhooks\/).*/, '$1...'))
                           : c.type === 'sms'
                           ? c.config.phoneNumber
                           : c.config.email}
@@ -206,22 +225,19 @@ export default function IntegrationsPage() {
               </div>
             )}
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3">
-              <p className="text-sm font-semibold text-white mb-3">💬 Add Slack</p>
-              <p className="text-xs text-zinc-500 mb-3">
-                Create an incoming webhook in Slack (<a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noreferrer" className="text-orange-400 hover:underline">how</a>) and paste the URL.
-              </p>
-              <div className="flex gap-2">
-                <input value={newSlackUrl} onChange={e => setNewSlackUrl(e.target.value)}
-                  placeholder="https://hooks.slack.com/services/T.../B.../..."
-                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono"
-                />
-                <button onClick={addSlack} disabled={!newSlackUrl}
-                  className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
-                  style={{ background: '#fa4d2e' }}>
-                  Add
-                </button>
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3 flex items-start gap-4">
+              <span className="text-2xl">💬</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white">Slack</p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Connect a channel via OAuth. You&apos;ll pick which channel Voxility posts to during install — nothing to paste.
+                </p>
               </div>
+              <button onClick={connectSlack}
+                className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors shrink-0"
+                style={{ background: '#4A154B' }}>
+                Add to Slack
+              </button>
             </div>
 
             <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3">
@@ -239,23 +255,19 @@ export default function IntegrationsPage() {
               </div>
             </div>
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3">
-              <p className="text-sm font-semibold text-white mb-3">🎮 Add Discord</p>
-              <p className="text-xs text-zinc-500 mb-3">
-                Create a channel webhook in Discord: Server Settings → Integrations → Webhooks → New Webhook, then copy the URL.
-                <a href="https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks" target="_blank" rel="noreferrer" className="text-orange-400 hover:underline ml-1">Guide</a>
-              </p>
-              <div className="flex gap-2">
-                <input value={newDiscordUrl} onChange={e => setNewDiscordUrl(e.target.value)}
-                  placeholder="https://discord.com/api/webhooks/…"
-                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono"
-                />
-                <button onClick={addDiscord} disabled={!newDiscordUrl}
-                  className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
-                  style={{ background: '#fa4d2e' }}>
-                  Add
-                </button>
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3 flex items-start gap-4">
+              <span className="text-2xl">🎮</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white">Discord</p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Connect a server and channel via OAuth. Discord walks you through the server and channel picker — no webhook URL to copy.
+                </p>
               </div>
+              <button onClick={connectDiscord}
+                className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors shrink-0"
+                style={{ background: '#5865F2' }}>
+                Add to Discord
+              </button>
             </div>
 
             <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
