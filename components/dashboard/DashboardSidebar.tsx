@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { signOut } from 'next-auth/react'
 import VoxilityLogo from '@/components/VoxilityLogo'
 
 export default function DashboardSidebar() {
   const pathname = usePathname()
   const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string } | null>(null)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
 
   useEffect(() => {
     // Cheap check — is the signed-in user a Voxility super-admin? If yes
@@ -16,6 +18,12 @@ export default function DashboardSidebar() {
     fetch('/api/me/super')
       .then(r => r.json())
       .then(d => setIsSuperAdmin(!!d.isSuperAdmin))
+      .catch(() => {})
+    // Pull the current session's email so users can see which account
+    // they're signed in as (and confirm a re-sign-in took effect).
+    fetch('/api/auth/session')
+      .then(r => r.json())
+      .then(s => setUserEmail(s?.user?.email ?? null))
       .catch(() => {})
   }, [])
 
@@ -194,6 +202,25 @@ export default function DashboardSidebar() {
         >
           ← All Workspaces
         </Link>
+
+        {/* Signed-in-as + sign out. Showing the email here is how users
+            verify their session reflects the Google account they meant to
+            use — earlier users hit confusion signing in with a second
+            Google account while still holding the first session cookie. */}
+        {userEmail && (
+          <div className="pt-2 mt-1 border-t border-zinc-800 space-y-0.5">
+            <div className="px-3 py-1.5 text-[10px] text-zinc-600 truncate" title={userEmail}>
+              {userEmail}
+            </div>
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-red-400 hover:bg-zinc-900 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
