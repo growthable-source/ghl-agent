@@ -179,6 +179,13 @@ export default function NewAgentWizard() {
   const [instructions, setInstructions] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Track whether the user has hand-edited the name. Template changes only
+  // overwrite the name while it's still template-derived — otherwise we'd
+  // clobber a name the user typed. Previously this used `if (!name)` which
+  // locked the name to whatever template was picked FIRST, even if the user
+  // later switched templates (e.g. Outbound → Inbound Assistant stuck as
+  // "Outbound Assistant Agent").
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
 
   const currentIdx = STEPS.findIndex(s => s.key === step)
 
@@ -194,7 +201,10 @@ export default function NewAgentWizard() {
 
   function selectTemplate(t: AgentTemplate) {
     setSelectedTemplate(t)
-    if (!name) setName(t.name + ' Agent')
+    // Update the name to match the new template unless the user has typed
+    // their own name. System prompt and instructions always follow the
+    // template — those are expected to reset on template change.
+    if (!nameManuallyEdited) setName(t.name + ' Agent')
     setSystemPrompt(t.systemPrompt)
     setInstructions(t.instructions)
   }
@@ -447,7 +457,8 @@ export default function NewAgentWizard() {
             <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Agent Name</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)}
+                <input type="text" value={name}
+                  onChange={e => { setName(e.target.value); setNameManuallyEdited(true) }}
                   placeholder="e.g. Sales Assistant"
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
               </div>
