@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState, forwardRef } from 'react'
+import { useParams } from 'next/navigation'
+import Link from 'next/link'
 import { MERGE_FIELDS, type MergeFieldSpec } from '@/lib/merge-fields'
 
 /**
@@ -131,6 +133,11 @@ export default function MergeFieldHelper({
 }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
+  // The popover lives inside dashboard routes — grab the workspace id so we
+  // can link to the full reference page. If we're somehow rendered outside
+  // a workspace route, the link is hidden.
+  const params = useParams()
+  const workspaceId = (params?.workspaceId as string | undefined) ?? ''
 
   // Close on outside click — the popover is fixed-positioned but still
   // dismissed like a native menu.
@@ -221,6 +228,17 @@ export default function MergeFieldHelper({
               </div>
             )
           })}
+          {workspaceId && (
+            <div className="border-t border-zinc-800 px-3 py-2">
+              <Link
+                href={`/dashboard/${workspaceId}/help/merge-fields`}
+                className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                Full reference →
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>
