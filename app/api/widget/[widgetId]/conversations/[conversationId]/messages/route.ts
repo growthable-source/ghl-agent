@@ -7,6 +7,14 @@ import { runAgent } from '@/lib/ai-agent'
 import { findMatchingAgent } from '@/lib/routing'
 import { buildKnowledgeBlock } from '@/lib/rag'
 import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'
+import {
+  getOrCreateConversationState,
+  checkStopConditions,
+  pauseConversation,
+  incrementMessageCount,
+} from '@/lib/conversation-state'
+import { notify } from '@/lib/notifications'
+import { resolveHandoverLink } from '@/lib/handover-link'
 
 type Params = { params: Promise<{ widgetId: string; conversationId: string }> }
 
@@ -47,14 +55,52 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers })
 
+  // Detect "new conversation" BEFORE persisting the visitor message so the
+  // count reflects prior visitor messages, not this one. First visitor
+  // message on an unclaimed thread fires widget.new_conversation so whoever
+  // monitors the inbox can jump in.
+  const priorVisitorCount = await db.widgetMessage.count({
+    where: { conversationId, role: 'visitor' },
+  })
+  const isFirstVisitorMessage = priorVisitorCount === 0
+
   // Persist the visitor message
   const visitorMsg = await db.widgetMessage.create({
     data: { conversationId, role: 'visitor', content, kind: 'text' },
   })
   await db.widgetConversation.update({
     where: { id: conversationId },
-    data: { lastMessageAt: new Date() },
+    // Clear staleNotifiedAt so the stale-cron can page again next time this
+    // thread goes quiet. Without this the cron debounce would persist
+    // forever across multiple quiet periods.
+    data: { lastMessageAt: new Date(), staleNotifiedAt: null },
   })
+
+  // Fire new-conversation notification — fire-and-forget so the widget
+  // never waits on Slack/Discord/etc.
+  if (isFirstVisitorMessage && convo.widget.workspaceId) {
+    ;(async () => {
+      try {
+        const link = resolveHandoverLink({
+          workspaceId: convo.widget.workspaceId,
+          locationId: `widget:${widgetId}`,
+          conversationId,
+          channel: 'Live_Chat',
+        })
+        const preview = content.length > 120 ? content.slice(0, 117) + '…' : content
+        await notify({
+          workspaceId: convo.widget.workspaceId,
+          event: 'widget.new_conversation',
+          title: `New chat on ${convo.widget.name || 'your widget'}`,
+          body: `Visitor said: "${preview}"`,
+          link,
+          severity: 'info',
+        })
+      } catch (err: any) {
+        console.warn('[widget] new-conversation notify failed:', err?.message)
+      }
+    })()
+  }
 
   // Echo the visitor message back via SSE so other tabs/subscribers see it
   broadcast(conversationId, {
@@ -157,11 +203,18 @@ Note: This conversation is happening on a website chat widget. When booking, use
     inner: null, // TODO: pass real CRM adapter if workspace has one + agent has calendarId
   })
 
+  // Ensure conversation state exists + message count stays accurate for
+  // stop-condition evaluation (MESSAGE_COUNT rules rely on the count).
+  const widgetLocationId = `widget:${convo.widgetId}`
+  const widgetContactId = `visitor:${convo.visitorId}`
+  await getOrCreateConversationState(agent.id, widgetLocationId, widgetContactId, convo.id).catch(() => null)
+  await incrementMessageCount(agent.id, widgetContactId).catch(() => null)
+
   try {
-    await runAgent({
-      locationId: `widget:${convo.widgetId}`,
+    const result = await runAgent({
+      locationId: widgetLocationId,
       agentId: agent.id,
-      contactId: `visitor:${convo.visitorId}`,
+      contactId: widgetContactId,
       conversationId: convo.id,
       channel: 'Live_Chat',
       incomingMessage: content,
@@ -186,6 +239,23 @@ Note: This conversation is happening on a website chat widget. When booking, use
       },
       adapter,
     } as any)
+
+    // Stop-condition evaluation — same pattern the webhook handler uses for
+    // SMS/WhatsApp/etc. so widget threads pause consistently when a rule
+    // fires, and pauseConversation() fires the needs_attention notification.
+    try {
+      const stopCheck = await checkStopConditions(
+        agent,
+        widgetContactId,
+        content,
+        result?.actionsPerformed ?? [],
+      )
+      if (stopCheck.shouldPause) {
+        await pauseConversation(agent.id, widgetContactId, stopCheck.reason ?? 'condition_met')
+      }
+    } catch (err: any) {
+      console.warn('[widget] stop-condition check failed:', err?.message)
+    }
   } finally {
     broadcast(convo.id, { type: 'agent_typing', isTyping: false })
   }

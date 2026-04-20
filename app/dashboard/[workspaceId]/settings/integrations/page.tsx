@@ -5,16 +5,18 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 const EVENT_OPTIONS = [
-  { value: 'human_handover',      label: 'Human handover (agent escalated)' },
-  { value: 'needs_attention',     label: 'Needs attention' },
-  { value: 'approval_pending',    label: 'Approval pending' },
-  { value: 'agent_error',         label: 'Agent error' },
-  { value: 'pause_activated',     label: 'Pause activated' },
-  { value: 'message.sent',        label: 'Message sent' },
-  { value: 'appointment.booked',  label: 'Appointment booked' },
-  { value: 'follow_up.scheduled', label: 'Follow-up scheduled' },
-  { value: 'follow_up.sent',      label: 'Follow-up sent' },
-  { value: 'goal.achieved',       label: 'Goal achieved' },
+  { value: 'human_handover',          label: 'Human handover (agent escalated)' },
+  { value: 'widget.new_conversation', label: 'Widget · new conversation started' },
+  { value: 'conversation.stale',      label: 'Widget · conversation went quiet (10+ min)' },
+  { value: 'needs_attention',         label: 'Needs attention' },
+  { value: 'approval_pending',        label: 'Approval pending' },
+  { value: 'agent_error',             label: 'Agent error' },
+  { value: 'pause_activated',         label: 'Pause activated' },
+  { value: 'message.sent',            label: 'Message sent' },
+  { value: 'appointment.booked',      label: 'Appointment booked' },
+  { value: 'follow_up.scheduled',     label: 'Follow-up scheduled' },
+  { value: 'follow_up.sent',          label: 'Follow-up sent' },
+  { value: 'goal.achieved',           label: 'Goal achieved' },
 ]
 
 export default function IntegrationsPage() {

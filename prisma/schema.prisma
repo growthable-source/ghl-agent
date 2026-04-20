@@ -955,17 +955,20 @@ model WidgetVisitor {
 }
 
 model WidgetConversation {
-  id            String   @id @default(cuid())
-  widgetId      String
-  widget        ChatWidget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
-  visitorId     String
-  visitor       WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
-  agentId       String?
-  status        String   @default("active")
-  lastMessageAt DateTime @default(now())
-  createdAt     DateTime @default(now())
-  messages      WidgetMessage[]
-  voiceCalls    WidgetVoiceCall[]
+  id               String   @id @default(cuid())
+  widgetId         String
+  widget           ChatWidget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  visitorId        String
+  visitor          WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  agentId          String?
+  status           String   @default("active")
+  lastMessageAt    DateTime @default(now())
+  // Cron debounce for conversation.stale — set when we've already paged
+  // about this thread so we don't notify again until the visitor replies.
+  staleNotifiedAt  DateTime?
+  createdAt        DateTime @default(now())
+  messages         WidgetMessage[]
+  voiceCalls       WidgetVoiceCall[]
   @@index([widgetId, lastMessageAt(sort: Desc)])
   @@index([visitorId])
   @@index([agentId, status])
