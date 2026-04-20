@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
 
 interface VapiConfig {
   phoneNumberId: string | null
@@ -512,17 +513,19 @@ export default function VoicePage() {
           <p className="text-sm font-medium text-zinc-200">Call Messages</p>
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1.5">Opening Message</label>
-            <textarea value={config.firstMessage || ''}
+            <MergeFieldTextarea value={config.firstMessage || ''}
               onChange={e => setConfig(c => ({ ...c, firstMessage: e.target.value }))}
-              placeholder="Hi there! How can I help you today?"
+              onValueChange={v => setConfig(c => ({ ...c, firstMessage: v }))}
+              placeholder="Hi {{contact.first_name|there}}! How can I help you today?"
               rows={2}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none" />
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none" />
             <p className="text-xs text-zinc-600 mt-1">First thing the agent says when the call connects.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1.5">Closing Message</label>
-            <input type="text" value={config.endCallMessage || ''}
+            <MergeFieldInput value={config.endCallMessage || ''}
               onChange={e => setConfig(c => ({ ...c, endCallMessage: e.target.value }))}
+              onValueChange={v => setConfig(c => ({ ...c, endCallMessage: v }))}
               placeholder="Thanks for calling. Have a great day!"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
           </div>

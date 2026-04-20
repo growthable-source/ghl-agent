@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 
 interface FollowUpStep {
   stepNumber: number
@@ -244,13 +245,14 @@ export default function FollowUpsPage() {
                       />
                       <span className="text-xs text-zinc-500">hours</span>
                     </div>
-                    <textarea
+                    <MergeFieldTextarea
                       value={step.message}
                       onChange={e => updateStep(idx, 'message', e.target.value)}
-                      placeholder="Message to send…"
+                      onValueChange={v => updateStep(idx, 'message', v)}
+                      placeholder="Message to send… (try {{contact.first_name|there}})"
                       required
                       rows={2}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
                     />
                   </div>
                 ))}

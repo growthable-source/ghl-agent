@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 import SaveBar from '@/components/dashboard/SaveBar'
+import { MergeFieldInput } from '@/components/MergeFieldHelper'
 
 type FallbackBehavior = 'message' | 'transfer' | 'message_and_transfer'
 
@@ -128,11 +129,11 @@ export default function AgentSettingsPage() {
           {(draft.fallbackBehavior === 'message' || draft.fallbackBehavior === 'message_and_transfer') && (
             <div>
               <label className="block text-xs text-zinc-500 mb-1.5">Fallback message</label>
-              <input
-                type="text"
+              <MergeFieldInput
                 value={draft.fallbackMessage}
                 onChange={e => set({ fallbackMessage: e.target.value })}
-                placeholder="That's a great question — let me find out and get back to you."
+                onValueChange={v => set({ fallbackMessage: v })}
+                placeholder="{{contact.first_name|There}}, great question — let me find out and get back to you."
                 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
               />
             </div>

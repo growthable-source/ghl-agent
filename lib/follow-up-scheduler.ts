@@ -140,10 +140,27 @@ export async function processDueFollowUps(): Promise<number> {
         }
       } catch {}
 
+      // Render merge fields against the live contact + agent. Templates are
+      // authored with {{contact.first_name|there}} etc. — they'd be sent
+      // verbatim without this step.
+      const { renderMergeFields } = await import('./merge-fields')
+      const { getContact } = await import('./crm-client')
+      let contact: Awaited<ReturnType<typeof getContact>> | null = null
+      try { contact = await getContact(job.locationId, job.contactId) } catch { /* non-fatal */ }
+      const agentForMerge = await db.agent.findUnique({
+        where: { id: job.sequence.agentId },
+        select: { name: true, timezone: true },
+      }).catch(() => null)
+      const renderedMessage = renderMergeFields(step.message, {
+        contact,
+        agent: agentForMerge ? { name: agentForMerge.name } : null,
+        timezone: agentForMerge?.timezone ?? null,
+      })
+
       await sendMessage(job.locationId, {
         type: (job.channel || 'SMS') as MessageChannelType,
         contactId: job.contactId,
-        message: step.message,
+        message: renderedMessage,
       })
 
       // Fire follow_up.sent webhook

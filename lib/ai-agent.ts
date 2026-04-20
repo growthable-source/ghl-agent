@@ -1285,14 +1285,21 @@ If you claim an action was completed ("I've booked you for Tuesday"), you MUST h
 If a contact asks something you genuinely do not have the information for — do NOT guess, fabricate, or make up an answer. This is critical.
 ${(() => {
   if (!fallback) return '- Acknowledge that you don\'t have that information and offer to connect them with someone who does.'
+  // Render merge fields so {{contact.first_name|there}} becomes a real name
+  // before the LLM quotes the message. Imported lazily to avoid a top-level
+  // cycle with the prompt builder.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { renderMergeFields } = require('./merge-fields') as typeof import('./merge-fields')
+  const mergeCtx = { contact: (ctx as any).contact ?? null, agent: null, timezone: null }
+  const rendered = fallback.message ? renderMergeFields(fallback.message, mergeCtx) : null
   switch (fallback.behavior) {
     case 'transfer':
       return '- Immediately transfer the conversation to a human using the transfer_to_human tool. Do not attempt to answer.'
     case 'message_and_transfer':
-      return `- Say: "${fallback.message || "That\'s a great question — let me connect you with someone who can help."}" and then use transfer_to_human to escalate.`
+      return `- Say: "${rendered || "That\'s a great question — let me connect you with someone who can help."}" and then use transfer_to_human to escalate.`
     case 'message':
     default:
-      return `- Say: "${fallback.message || "That\'s a great question — let me find out and get back to you."}" Do not attempt to answer beyond this.`
+      return `- Say: "${rendered || "That\'s a great question — let me find out and get back to you."}" Do not attempt to answer beyond this.`
   }
 })()}
 

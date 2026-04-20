@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 
 interface Widget {
   id: string
@@ -196,9 +197,12 @@ export default function WidgetEditorPage() {
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white" />
               </Field>
               <Field label="Welcome message">
-                <textarea value={widget.welcomeMessage} onChange={e => update('welcomeMessage', e.target.value)}
+                <MergeFieldTextarea value={widget.welcomeMessage}
+                  onChange={e => update('welcomeMessage', e.target.value)}
+                  onValueChange={v => update('welcomeMessage', v)}
+                  placeholder="Hi {{contact.first_name|there}}, how can we help?"
                   rows={2}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white" />
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded pl-3 pr-3 pt-8 pb-2 text-sm text-white" />
               </Field>
               <Field label="Logo URL (optional)">
                 <input type="url" value={widget.logoUrl || ''} onChange={e => update('logoUrl', e.target.value || null as any)}

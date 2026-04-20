@@ -152,10 +152,20 @@ export async function processContactTrigger(event: TriggerEvent) {
 
       if (trigger.messageMode === 'FIXED' && trigger.fixedMessage) {
         // ── FIXED MODE: send static message directly ──
+        // Render merge fields — the template is authored with placeholders
+        // like {{contact.first_name|there}} and would otherwise ship the
+        // braces verbatim.
+        const { renderMergeFields } = await import('./merge-fields')
+        const renderedFixed = renderMergeFields(trigger.fixedMessage, {
+          contact: contact ?? null,
+          agent: { name: agent.name },
+          timezone: (agent as any).timezone ?? null,
+        })
+
         const result = await sendMessage(locationId, {
           type: trigger.channel as MessageChannelType,
           contactId,
-          message: trigger.fixedMessage,
+          message: renderedFixed,
         })
 
         await db.messageLog.create({
@@ -165,7 +175,7 @@ export async function processContactTrigger(event: TriggerEvent) {
             contactId,
             conversationId: result.conversationId || '',
             inboundMessage: `[Trigger: ${eventType}${trigger.tagFilter ? ` tag=${trigger.tagFilter}` : ''}]`,
-            outboundReply: trigger.fixedMessage,
+            outboundReply: renderedFixed,
             actionsPerformed: ['trigger_fixed_message'],
             status: 'SUCCESS',
           },
@@ -174,11 +184,11 @@ export async function processContactTrigger(event: TriggerEvent) {
         // Save to conversation history so future messages have context
         if (result.conversationId) {
           await saveMessages(agent.id, locationId, contactId, result.conversationId, [
-            { role: 'assistant', content: trigger.fixedMessage },
+            { role: 'assistant', content: renderedFixed },
           ])
         }
 
-        console.log(`[Trigger] Sent fixed message to ${contactId}: "${trigger.fixedMessage.slice(0, 60)}"`)
+        console.log(`[Trigger] Sent fixed message to ${contactId}: "${renderedFixed.slice(0, 60)}"`)
 
       } else {
         // ── AI_GENERATE MODE: run the agent with context ──

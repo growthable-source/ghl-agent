@@ -46,6 +46,22 @@ export async function POST(req: NextRequest) {
     const locationId = agent.locationId
     const systemPrompt = await buildVoiceSystemPrompt(agent, agent.knowledgeEntries, callerPhone, locationId, vapiConfig.voiceTools as any[])
 
+    // Resolve the caller to a contact so merge fields in first/end messages
+    // can render. Inbound voice calls often come from unknown numbers — if
+    // the lookup fails we pass null and fallback syntax kicks in.
+    let voiceContact: any = null
+    try {
+      const { searchContacts } = await import('@/lib/crm-client')
+      const matches = callerPhone ? await searchContacts(locationId, callerPhone) : []
+      voiceContact = matches.find(c => c.phone === callerPhone) ?? matches[0] ?? null
+    } catch { /* non-fatal */ }
+    const { renderMergeFields } = await import('@/lib/merge-fields')
+    const mergeCtx = {
+      contact: voiceContact,
+      agent: { name: agent.agentPersonaName || agent.name },
+      timezone: (agent as any).timezone ?? null,
+    }
+
     return NextResponse.json({
       assistant: {
         name: agent.name,
@@ -67,8 +83,14 @@ export async function POST(req: NextRequest) {
           style: vapiConfig.style,
           ...(vapiConfig.language ? { language: vapiConfig.language } : {}),
         } as any,
-        firstMessage: vapiConfig.firstMessage || `Hi there! This is ${agent.agentPersonaName || agent.name}. How can I help you today?`,
-        endCallMessage: vapiConfig.endCallMessage || 'Thanks for calling. Have a great day!',
+        firstMessage: renderMergeFields(
+          vapiConfig.firstMessage || `Hi there! This is ${agent.agentPersonaName || agent.name}. How can I help you today?`,
+          mergeCtx,
+        ),
+        endCallMessage: renderMergeFields(
+          vapiConfig.endCallMessage || 'Thanks for calling. Have a great day!',
+          mergeCtx,
+        ),
         maxDurationSeconds: vapiConfig.maxDurationSecs,
         recordingEnabled: vapiConfig.recordCalls,
         ...(vapiConfig.backgroundSound ? { backgroundSound: vapiConfig.backgroundSound } : {}),

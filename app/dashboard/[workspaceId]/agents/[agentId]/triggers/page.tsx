@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 
 interface AgentTrigger {
   id: string
@@ -262,13 +263,14 @@ export default function TriggersPage() {
               {messageMode === 'FIXED' && (
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1.5">Message to send</label>
-                  <textarea
+                  <MergeFieldTextarea
                     value={fixedMessage}
                     onChange={e => setFixedMessage(e.target.value)}
-                    placeholder="Hi! Thanks for reaching out. How can I help you today?"
+                    onValueChange={setFixedMessage}
+                    placeholder="Hi {{contact.first_name|there}}! Thanks for reaching out."
                     required
                     rows={3}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
                   />
                 </div>
               )}

@@ -21,6 +21,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: v.status, headers })
 
   const w = v.widget
+
+  // Render merge fields on the welcome message. Widget visitors are usually
+  // anonymous at config-load time, so contact-scoped tokens resolve to their
+  // fallbacks — e.g. `Welcome back {{contact.first_name|friend}}` becomes
+  // `Welcome back friend`. If the widget later identifies a returning
+  // visitor we can re-render client-side.
+  const { renderMergeFields } = await import('@/lib/merge-fields')
+  const renderedWelcome = w.welcomeMessage
+    ? renderMergeFields(w.welcomeMessage, { contact: null, agent: null, timezone: null })
+    : w.welcomeMessage
+
   return NextResponse.json({
     id: w.id,
     name: w.name,
@@ -28,7 +39,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     logoUrl: w.logoUrl,
     title: w.title,
     subtitle: w.subtitle,
-    welcomeMessage: w.welcomeMessage,
+    welcomeMessage: renderedWelcome,
     position: w.position,
     requireEmail: w.requireEmail,
     askForNameEmail: w.askForNameEmail,
