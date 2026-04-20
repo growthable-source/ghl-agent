@@ -827,6 +827,11 @@ model VapiConfig {
   agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   phoneNumberId   String?
   phoneNumber     String?
+  // Which TTS provider powers this agent's voice. The VoiceAdapter factory
+  // keys off this to pick Vapi vs. XAI (or future providers). Vapi is the
+  // only provider that can do phone calls today — other providers are
+  // browser/widget-only until we ship the Twilio bridge.
+  ttsProvider     String   @default("vapi")
   voiceProvider   String   @default("elevenlabs")
   voiceId         String   @default("EXAVITQu4vr4xnSDxMaL")
   voiceName       String?

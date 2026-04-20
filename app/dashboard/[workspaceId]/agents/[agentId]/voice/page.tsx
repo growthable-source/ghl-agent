@@ -4,10 +4,18 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
+import XaiTestCall from '@/components/dashboard/XaiTestCall'
 
 interface VapiConfig {
   phoneNumberId: string | null
   phoneNumber: string | null
+  /**
+   * Which TTS adapter drives this agent. 'vapi' is ElevenLabs via Vapi;
+   * 'xai' is Grok. The UI below hides/shows sections based on what the
+   * selected provider's capabilities report — e.g. XAI has no phone
+   * support today, so the phone-number section collapses for XAI agents.
+   */
+  ttsProvider: 'vapi' | 'xai'
   voiceId: string
   voiceName: string | null
   stability: number
@@ -23,6 +31,23 @@ interface VapiConfig {
   language: string | null
   voiceTools: any[] | null
   isActive: boolean
+}
+
+interface ProviderCapabilities {
+  phoneCalls: boolean
+  realtimeBrowser: boolean
+  ttsBatch: boolean
+  voicePreview: boolean
+  widgetVoice: boolean
+}
+
+interface ProviderMeta {
+  id: 'vapi' | 'xai'
+  name: string
+  description: string
+  envVar: string
+  configured: boolean
+  capabilities: ProviderCapabilities
 }
 
 interface PhoneNumber {
@@ -89,6 +114,7 @@ export default function VoicePage() {
 
   const [config, setConfig] = useState<VapiConfig>({
     phoneNumberId: null, phoneNumber: null,
+    ttsProvider: 'vapi',
     voiceId: 'EXAVITQu4vr4xnSDxMaL', voiceName: 'Sarah',
     stability: 0.5, similarityBoost: 0.75, speed: 1.0, style: 0.0,
     firstMessage: '', endCallMessage: '',
@@ -97,6 +123,13 @@ export default function VoicePage() {
     voiceTools: null,
     isActive: false,
   })
+  // Provider metadata for all known voice providers + live capability map
+  // for the currently-selected one. Loaded once on mount.
+  const [providers, setProviders] = useState<ProviderMeta[]>([])
+  const currentProvider = providers.find(p => p.id === config.ttsProvider) ?? null
+  const caps = currentProvider?.capabilities ?? {
+    phoneCalls: true, realtimeBrowser: true, ttsBatch: true, voicePreview: true, widgetVoice: true,
+  }
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
   const [voices, setVoices] = useState<Voice[]>([])
   const [voiceSearch, setVoiceSearch] = useState('')
@@ -138,7 +171,7 @@ export default function VoicePage() {
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`)
         .then(r => r.json())
         .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready, vapiError: ve, vapiPublicKey: pk, testSystemPrompt: sp, agentName: an, serverUrl: su }) => {
-          if (cfg) setConfig({ ...cfg, voiceTools: cfg.voiceTools || null })
+          if (cfg) setConfig({ ...cfg, ttsProvider: cfg.ttsProvider ?? 'vapi', voiceTools: cfg.voiceTools || null })
           setPhoneNumbers(phones || [])
           setVapiReady(ready)
           setVapiError(ve || null)
@@ -147,12 +180,30 @@ export default function VoicePage() {
           if (an) setAgentName(an)
           if (su) setServerUrl(su)
         }),
+      fetch('/api/voice/providers')
+        .then(r => r.json())
+        .then(({ providers: ps }) => setProviders(ps ?? []))
+        .catch(() => {}),
+      // Initial voice list uses whatever provider the stored config has —
+      // if it's missing we default to vapi. When the user later switches
+      // providers, the provider-picker handler re-fetches.
       fetch('/api/voices')
         .then(r => r.json())
         .then(({ voices: v }) => setVoices(v || []))
         .catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [workspaceId, agentId])
+
+  // Re-fetch voices whenever the TTS provider changes. Keeps the voice
+  // list honest (ElevenLabs catalogue vs. Grok's 5) without reloading
+  // the whole page.
+  useEffect(() => {
+    if (loading) return
+    fetch(`/api/voices?provider=${config.ttsProvider}`)
+      .then(r => r.json())
+      .then(({ voices: v }) => setVoices(v || []))
+      .catch(() => {})
+  }, [config.ttsProvider, loading])
 
   // Cleanup test call on unmount
   useEffect(() => {
@@ -165,21 +216,26 @@ export default function VoicePage() {
   }, [])
 
   const searchVoices = useCallback((term: string) => {
-    fetch(`/api/voices?search=${encodeURIComponent(term)}`)
+    fetch(`/api/voices?provider=${config.ttsProvider}&search=${encodeURIComponent(term)}`)
       .then(r => r.json())
       .then(({ voices: v }) => setVoices(v || []))
       .catch(() => {})
-  }, [])
+  }, [config.ttsProvider])
 
   function playPreview(voiceId: string, previewUrl: string | null) {
-    if (!previewUrl) return
+    // XAI voices don't come with a static preview URL — synthesise one
+    // on-demand through /api/voice/xai/preview so the click-to-play
+    // experience still works. Vapi/ElevenLabs always ships a preview_url.
+    const url = previewUrl
+      ?? (config.ttsProvider === 'xai' ? `/api/voice/xai/preview?voice=${encodeURIComponent(voiceId)}` : null)
+    if (!url) return
     if (playingId === voiceId) {
       audioRef.current?.pause()
       setPlayingId(null)
       return
     }
     if (audioRef.current) audioRef.current.pause()
-    const audio = new Audio(previewUrl)
+    const audio = new Audio(url)
     audio.onended = () => setPlayingId(null)
     audio.play()
     audioRef.current = audio
@@ -373,51 +429,96 @@ export default function VoicePage() {
           </button>
         </div>
 
-        {/* ── Phone number ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-zinc-200">Phone Number</p>
-            {vapiReady && (
-              <button type="button" onClick={() => { setShowBuyForm(!showBuyForm); setBuyError('') }}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                {showBuyForm ? 'Cancel' : '+ Get a number'}
-              </button>
+        {/* ── TTS provider picker ── */}
+        {providers.length > 0 && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Voice Provider</p>
+              <p className="text-xs text-zinc-500 mt-0.5">Which TTS stack powers this agent&apos;s voice. Each provider exposes different voices and capabilities.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {providers.map(p => {
+                const selected = config.ttsProvider === p.id
+                return (
+                  <button key={p.id} type="button"
+                    onClick={() => setConfig(c => ({ ...c, ttsProvider: p.id }))}
+                    className={`text-left rounded-lg border p-3 transition-colors ${
+                      selected ? 'border-white bg-zinc-900' : 'border-zinc-800 hover:border-zinc-600'
+                    } ${!p.configured ? 'opacity-70' : ''}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-zinc-100">{p.name}</span>
+                      {!p.configured && (
+                        <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">Needs {p.envVar}</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">{p.description}</p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {p.capabilities.phoneCalls && <Chip>Phone</Chip>}
+                      {p.capabilities.widgetVoice && <Chip>Widget</Chip>}
+                      {p.capabilities.realtimeBrowser && <Chip>Browser</Chip>}
+                      {p.capabilities.ttsBatch && <Chip>TTS</Chip>}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+            {!caps.phoneCalls && (
+              <p className="text-[11px] text-amber-400">
+                {currentProvider?.name ?? 'This provider'} doesn&apos;t support phone calls yet — the phone-number section below is hidden.
+                Use Vapi for phone, or keep this one for widget + browser voice.
+              </p>
             )}
           </div>
-          {showBuyForm && (
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
-              <p className="text-xs text-zinc-500">Provision a US phone number via Vapi. Optionally specify a preferred area code.</p>
-              <div className="flex gap-2">
-                <input type="text" value={areaCode}
-                  onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                  placeholder="Area code (optional, e.g. 415)"
-                  className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
-                <button type="button" onClick={buyNumber} disabled={buying}
-                  className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 whitespace-nowrap">
-                  {buying ? 'Provisioning…' : 'Get number'}
+        )}
+
+        {/* ── Phone number (hidden when the selected provider can't do phone) ── */}
+        {caps.phoneCalls && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-zinc-200">Phone Number</p>
+              {vapiReady && (
+                <button type="button" onClick={() => { setShowBuyForm(!showBuyForm); setBuyError('') }}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                  {showBuyForm ? 'Cancel' : '+ Get a number'}
                 </button>
-              </div>
-              {buyError && <p className="text-xs text-red-400 mt-2">{buyError}</p>}
+              )}
             </div>
-          )}
-          {phoneNumbers.length > 0 ? (
-            <select value={config.phoneNumberId || ''}
-              onChange={e => {
-                const phone = phoneNumbers.find(ph => ph.id === e.target.value)
-                setConfig(c => ({ ...c, phoneNumberId: e.target.value, phoneNumber: phone?.number || null }))
-              }}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500">
-              <option value="">Select a phone number…</option>
-              {phoneNumbers.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.number ?? p.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <p className="text-xs text-zinc-500">No numbers yet. Click <span className="text-blue-400">+ Get a number</span> to provision one.</p>
-          )}
-        </div>
+            {showBuyForm && (
+              <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
+                <p className="text-xs text-zinc-500">Provision a US phone number via Vapi. Optionally specify a preferred area code.</p>
+                <div className="flex gap-2">
+                  <input type="text" value={areaCode}
+                    onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    placeholder="Area code (optional, e.g. 415)"
+                    className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+                  <button type="button" onClick={buyNumber} disabled={buying}
+                    className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 whitespace-nowrap">
+                    {buying ? 'Provisioning…' : 'Get number'}
+                  </button>
+                </div>
+                {buyError && <p className="text-xs text-red-400 mt-2">{buyError}</p>}
+              </div>
+            )}
+            {phoneNumbers.length > 0 ? (
+              <select value={config.phoneNumberId || ''}
+                onChange={e => {
+                  const phone = phoneNumbers.find(ph => ph.id === e.target.value)
+                  setConfig(c => ({ ...c, phoneNumberId: e.target.value, phoneNumber: phone?.number || null }))
+                }}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500">
+                <option value="">Select a phone number…</option>
+                {phoneNumbers.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.number ?? p.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-zinc-500">No numbers yet. Click <span className="text-blue-400">+ Get a number</span> to provision one.</p>
+            )}
+          </div>
+        )}
 
         {/* ── Voice selection ── */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
@@ -649,8 +750,18 @@ export default function VoicePage() {
         </button>
       </form>
 
-      {/* ── Test Call Panel (outside form) ── */}
-      {vapiReady && vapiPublicKey && (
+      {/* ── Test Call Panel: XAI branch uses its own realtime WebSocket client ── */}
+      {config.ttsProvider === 'xai' && (
+        <XaiTestCall
+          voiceId={config.voiceId}
+          agentName={agentName}
+          systemPrompt={testSystemPrompt}
+          firstMessage={config.firstMessage}
+        />
+      )}
+
+      {/* ── Test Call Panel (Vapi) ── */}
+      {config.ttsProvider === 'vapi' && vapiReady && vapiPublicKey && (
         <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -721,5 +832,14 @@ export default function VoicePage() {
         </div>
       )}
     </div>
+  )
+}
+
+// Small capability chip used in the provider picker cards.
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[10px] font-medium text-zinc-400 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">
+      {children}
+    </span>
   )
 }
