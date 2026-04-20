@@ -21,6 +21,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ rules })
 }
 
+const VALID_ACTIONS = new Set([
+  'update_contact_field',
+  'update_contact_tags', 'remove_contact_tags',
+  'add_to_workflow', 'remove_from_workflow',
+  'opportunity_status', 'opportunity_value',
+  'dnd_channel',
+])
+
 export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId, agentId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
@@ -29,8 +37,18 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (!body.name?.trim()) return NextResponse.json({ error: 'name required' }, { status: 400 })
   if (!body.conditionDescription?.trim()) return NextResponse.json({ error: 'conditionDescription required' }, { status: 400 })
-  if (!body.targetFieldKey?.trim()) return NextResponse.json({ error: 'targetFieldKey required' }, { status: 400 })
-  if (body.targetValue === undefined || body.targetValue === null) return NextResponse.json({ error: 'targetValue required' }, { status: 400 })
+
+  const actionType = typeof body.actionType === 'string' && VALID_ACTIONS.has(body.actionType)
+    ? body.actionType
+    : 'update_contact_field'
+
+  // update_contact_field still requires its old-shape validation — the
+  // other action types use actionParams instead, and the rules executor
+  // gracefully no-ops if params are missing (UI enforces required params).
+  if (actionType === 'update_contact_field') {
+    if (!body.targetFieldKey?.trim()) return NextResponse.json({ error: 'targetFieldKey required' }, { status: 400 })
+    if (body.targetValue === undefined || body.targetValue === null) return NextResponse.json({ error: 'targetValue required' }, { status: 400 })
+  }
 
   const rule = await (db as any).agentRule.create({
     data: {
@@ -38,8 +56,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       name: body.name.trim(),
       conditionDescription: body.conditionDescription.trim(),
       examples: Array.isArray(body.examples) ? body.examples.filter((e: any) => typeof e === 'string' && e.trim()) : [],
-      targetFieldKey: body.targetFieldKey.trim(),
-      targetValue: String(body.targetValue),
+      actionType,
+      actionParams: body.actionParams ?? null,
+      // Legacy columns — only populated for update_contact_field; empty
+      // string for other actions so the NOT NULL constraint stays happy.
+      targetFieldKey: actionType === 'update_contact_field' ? String(body.targetFieldKey).trim() : '',
+      targetValue:    actionType === 'update_contact_field' ? String(body.targetValue)    : '',
       overwrite: body.overwrite ?? false,
       isActive: body.isActive ?? true,
       order: body.order ?? 0,

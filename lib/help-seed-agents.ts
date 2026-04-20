@@ -321,12 +321,12 @@ Use both.`,
 
   {
     slug: 'rules',
-    title: 'Rules: IF the contact says X, update field Y',
-    summary: 'Passive detection rules that set CRM fields based on what the contact says.',
+    title: 'Rules: IF the contact says X, THEN do Y',
+    summary: 'Passive detection rules that run CRM actions — update fields, add tags, enroll in workflows, change opportunities, mark DND — based on what the contact says.',
     order: 60,
-    body: `Rules let you teach the agent to detect things in conversation and update
-contact fields automatically. The agent evaluates every inbound message
-against every rule.
+    body: `Rules let you teach the agent to detect things in conversation and take
+automatic action. The agent evaluates every inbound message against every
+active rule.
 
 ## Anatomy of a rule
 
@@ -335,16 +335,42 @@ Each rule has four parts:
 1. **Name** — a short label so you can find it later (e.g. "Out of town")
 2. **When the contact…** — a plain-English description of the condition
 3. **Example phrases** — real phrases from your audience that should match
-4. **Then update this contact field** — which field gets set to what value
+4. **Then…** — the action that fires when the rule matches
 
-## Example
+## Actions (the THEN)
+
+The action picker covers every CRM action the agent can take based on
+conversation. Each one has its own parameter panel below the picker:
+
+- **Update contact field** — write a value to a standard or custom field.
+  Gets the "keep first / always update" toggle.
+- **Add tag(s) to contact** — apply one or more tags
+- **Remove tag(s) from contact** — strip tags
+- **Enrol contact in workflow(s)** — add to one or more published GHL
+  workflows (multi-select, same picker as the Tools tab)
+- **Remove contact from workflow(s)** — opposite
+- **Change opportunity status** — won / lost / abandoned / open
+- **Set opportunity value** — update the monetary value
+- **Mark contact as Do Not Disturb** — block the current conversation
+  channel, or pick a specific one
+
+## Example: update a field
 
 | Field | Value |
 |---|---|
 | Name | Out of Town |
 | When the contact… | indicates they are out of town, traveling, away, or otherwise unreachable |
 | Example phrases | \`im out of town\`, \`im away sorry\`, \`back next week\` |
-| Then update | \`custom.out_of_town\` → \`Yes\` |
+| Then | Update field \`custom.out_of_town\` → \`Yes\`, keep first |
+
+## Example: enrol in a workflow
+
+| Field | Value |
+|---|---|
+| Name | Interested in Service X |
+| When the contact… | asks about Service X pricing, shows interest in booking Service X |
+| Example phrases | \`how much for Service X\`, \`can I book Service X\`, \`what's your Service X package\` |
+| Then | Enrol in workflow: "Service X nurture" |
 
 ## How the agent matches
 
@@ -352,30 +378,37 @@ The condition is evaluated **semantically**, not by keyword match. It
 handles paraphrases, typos, and indirect answers. The example phrases are
 illustrative, not exhaustive — give 3–5 good ones and the agent generalises.
 
-## Overwrite semantics
+## Tools auto-enable
 
-Two modes on each rule:
+When you author a rule with an action (e.g. enrol in workflow), the
+underlying tool (\`add_to_workflow\`) is enabled on the agent
+automatically — you don't need to go to the Tools tab and toggle it
+separately. Authoring the rule is consent.
 
-- **Keep first** (default) — only set the field if it's currently empty. Good
-  for "first answer wins" signals like \`buy_or_rent = Buyer\`.
+## Overwrite semantics (update_contact_field only)
+
+Two modes when the action is "Update contact field":
+
+- **Keep first** (default) — only set the field if it's currently empty.
+  Good for "first answer wins" signals like \`buy_or_rent = Buyer\`.
 - **Always update** — overwrite every time the rule fires. Good for state
   that changes (out-of-town, next_available_date).
 
 ## When to use Rules vs [Listening](/help/a/listening)
 
-- **Rules** = structured field write. You know the field and value.
+- **Rules** = structured CRM action. You know what should happen.
 - **Listening** = free-text note to agent memory. Info is too variable for
   a fixed field.
 
 The full comparison lives in [Rules vs Listening](/help/a/rules-vs-listening).
 
-## What to build first
+## Common patterns to build first
 
-Common early-wins:
-- \`out_of_town\` — paused for travel
-- \`interested_in\` — specific product/service signal
-- \`timeline\` — urgency category
-- \`budget_confirmed\` — boolean once they share a number`,
+- Out-of-town → update \`out_of_town\` field
+- Interested in Service X → enrol in "Service X nurture" workflow
+- Asks to unsubscribe / stop → mark DND on channel + remove from nurture workflow
+- Budget confirmed ≥ $N → set opportunity value
+- "No longer interested" → mark opportunity as Lost + add \`cold\` tag`,
   },
 
   {

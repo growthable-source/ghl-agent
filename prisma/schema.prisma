@@ -350,14 +350,23 @@ enum RuleType {
 }
 
 // ─── Detection Rules ──────────────────────────────────────────────────────
-// User-authored "IF the contact says X, THEN update field Y to value Z" rules.
+// User-authored "IF the contact says X, THEN do Y" rules.
 // The condition is a natural-language description plus few-shot examples —
-// the agent evaluates it semantically against each inbound message and uses
-// the update_contact_field tool when it fires.
+// the agent evaluates it semantically against each inbound message.
 //
-// Overwrite semantics match QualifyingQuestion.overwrite:
-//   overwrite=false → only set if the field is currently empty (keep first)
-//   overwrite=true  → always apply the latest value
+// actionType controls what Y is:
+//   update_contact_field (default) → set targetFieldKey to targetValue
+//   update_contact_tags            → add tags listed in actionParams.tags
+//   remove_contact_tags            → remove tags listed in actionParams.tags
+//   add_to_workflow                → enroll in actionParams.workflowIds
+//   remove_from_workflow           → remove from actionParams.workflowIds
+//   opportunity_status             → set opp status (won/lost/abandoned/open)
+//   opportunity_value              → set opp monetaryValue
+//   dnd_channel                    → mark DND on actionParams.channel
+//
+// Legacy rows predate actionType — they have targetFieldKey/targetValue set
+// and actionType='update_contact_field' by migration default, so the
+// executor can run them unchanged.
 model AgentRule {
   id                    String   @id @default(cuid())
   agentId               String
@@ -367,8 +376,13 @@ model AgentRule {
   conditionDescription  String   @db.Text      // "contact indicates they are out of town or traveling"
   examples              String[] @default([])  // few-shot phrases
 
-  targetFieldKey        String                 // "custom.out_of_town" | "contact.firstName"
-  targetValue           String                 // "true", "Yes", "Away until Monday"
+  // Action. update_contact_field uses the three legacy columns below;
+  // every other actionType reads from actionParams.
+  actionType            String   @default("update_contact_field")
+  actionParams          Json?
+
+  targetFieldKey        String                 // used by update_contact_field only; empty string otherwise
+  targetValue           String                 // used by update_contact_field only; empty string otherwise
   overwrite             Boolean  @default(false)
 
   isActive              Boolean  @default(true)

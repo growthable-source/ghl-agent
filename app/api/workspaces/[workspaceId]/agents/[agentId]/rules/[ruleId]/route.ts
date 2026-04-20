@@ -16,6 +16,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.name !== undefined && { name: String(body.name).trim() }),
       ...(body.conditionDescription !== undefined && { conditionDescription: String(body.conditionDescription).trim() }),
       ...(body.examples !== undefined && { examples: Array.isArray(body.examples) ? body.examples.filter((e: any) => typeof e === 'string' && e.trim()) : [] }),
+      ...(body.actionType !== undefined && { actionType: String(body.actionType) }),
+      ...(body.actionParams !== undefined && { actionParams: body.actionParams }),
       ...(body.targetFieldKey !== undefined && { targetFieldKey: String(body.targetFieldKey).trim() }),
       ...(body.targetValue !== undefined && { targetValue: String(body.targetValue) }),
       ...(body.overwrite !== undefined && { overwrite: !!body.overwrite }),

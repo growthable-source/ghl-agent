@@ -1482,11 +1482,16 @@ export async function runAgent(opts: {
   // executeTool enforce keep-first-answer semantics on rule-governed fields.
   let detectionRulesBlock = ''
   let fieldOverwriteMap: Record<string, boolean> = {}
+  // Tools the rules themselves require (add_to_workflow, update_contact_tags,
+  // etc). Auto-enabled below so users don't have to toggle both the rule
+  // AND the underlying tool.
+  let ruleRequiredTools: string[] = []
   if (agentId) {
-    const { getActiveDetectionRules, buildDetectionRulesBlock, buildFieldOverwriteMap } = await import('./detection-rules')
+    const { getActiveDetectionRules, buildDetectionRulesBlock, buildFieldOverwriteMap, requiredToolsForRules } = await import('./detection-rules')
     const rules = await getActiveDetectionRules(agentId)
     detectionRulesBlock = buildDetectionRulesBlock(rules)
     fieldOverwriteMap = buildFieldOverwriteMap(rules)
+    ruleRequiredTools = requiredToolsForRules(rules)
   }
 
   // Load listening rules — categories the agent watches for passively.
@@ -1535,10 +1540,11 @@ export async function runAgent(opts: {
         ...(enabledTools.includes('book_appointment')
           ? ['get_available_slots', 'create_appointment_note', 'cancel_appointment', 'reschedule_appointment', 'get_calendar_events']
           : []),
-        // Detection rules require update_contact_field — auto-enable if any
-        // rule exists, regardless of what's in enabledTools. Saves the user
-        // from having to manually enable the tool when they author a rule.
-        ...(detectionRulesBlock ? ['update_contact_field'] : []),
+        // Detection rules pull in whichever tools their actions need
+        // (update_contact_field / update_contact_tags / add_to_workflow /
+        // etc). Auto-enabled so authoring a rule is consent for its tool —
+        // users don't have to toggle both.
+        ...ruleRequiredTools,
         // Same for listening rules → update_contact_memory.
         ...(hasListeningRules ? ['update_contact_memory'] : []),
       ])]
