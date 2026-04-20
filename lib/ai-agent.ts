@@ -490,24 +490,29 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
 
 // ─── Workflow tool constraint ──────────────────────────────────────────────
 /**
- * Rewrite add_to_workflow / remove_from_workflow at runtime so `workflowId`
- * is an enum of the IDs the user has actually picked in the dashboard.
+ * Optionally constrain add_to_workflow / remove_from_workflow's `workflowId`
+ * to an enum of user-pinned workflow IDs.
  *
- * - If picks is undefined, the user has not configured the picker yet —
- *   keep the tool as-is (legacy behavior) so existing agents don't break.
- * - If picks is an empty array, the user explicitly has no workflows
- *   selected — drop the tool entirely. The enum would be empty and any
- *   call would fail; better to not advertise the capability.
- * - Otherwise, constrain `workflowId` to an enum and list the names in
- *   the description so the agent can pick by intent, not by blind ID.
+ * This is a legacy codepath kept for back-compat. The Rules tab now names
+ * the exact workflow per rule, so the primary source of truth for which
+ * workflow a tool call targets is the rule's prompt instruction — not an
+ * enum on the tool schema. When `picks` is empty or undefined we publish
+ * the tool as-is; rules will steer it correctly.
+ *
+ * If a customer HAS specified picks via the legacy Agent.addToWorkflowsPick /
+ * removeFromWorkflowsPick columns, we still honour them — that was a hard
+ * safety net some accounts rely on.
  */
 function constrainWorkflowTool(
   tool: Anthropic.Tool,
   picks: Array<{ id: string; name: string }> | undefined,
   verb: 'enroll' | 'remove',
 ): Anthropic.Tool[] {
-  if (picks === undefined) return [tool]
-  if (picks.length === 0) return []
+  // No picks configured → publish as-is. Rules drive the workflow target
+  // via the system prompt now. Previous behaviour was to drop the tool
+  // when picks was explicitly [], which meant any rule that wanted to
+  // enrol in a workflow silently did nothing — not what users expected.
+  if (!picks || picks.length === 0) return [tool]
 
   const idEnum = picks.map(p => p.id)
   const directory = picks.map(p => `- ${p.id} — ${p.name}`).join('\n')

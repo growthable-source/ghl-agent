@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { ALL_TOOLS } from '@/lib/tools'
 
-type WorkflowPick = { id: string; name: string }
-
 export default function ToolsPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
@@ -17,23 +15,12 @@ export default function ToolsPage() {
   const [calendars, setCalendars] = useState<Array<{ id: string; name: string }>>([])
   const [loadingCalendars, setLoadingCalendars] = useState(false)
 
-  // Workflow picker state. The user picks one or more published workflows
-  // per tool — the agent's tool schema is then constrained to those IDs so
-  // it can't enroll a contact in a hallucinated workflow.
-  const [addToWorkflowsPick, setAddToWorkflowsPick] = useState<WorkflowPick[]>([])
-  const [removeFromWorkflowsPick, setRemoveFromWorkflowsPick] = useState<WorkflowPick[]>([])
-  const [workflows, setWorkflows] = useState<WorkflowPick[]>([])
-  const [loadingWorkflows, setLoadingWorkflows] = useState(false)
-  const [workflowsError, setWorkflowsError] = useState<string | null>(null)
-
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
       .then(r => r.json())
       .then(({ agent }) => {
         setEnabledTools(agent.enabledTools ?? [])
         setCalendarId(agent.calendarId ?? '')
-        setAddToWorkflowsPick(Array.isArray(agent.addToWorkflowsPick) ? agent.addToWorkflowsPick : [])
-        setRemoveFromWorkflowsPick(Array.isArray(agent.removeFromWorkflowsPick) ? agent.removeFromWorkflowsPick : [])
       })
       .finally(() => setLoading(false))
 
@@ -44,23 +31,6 @@ export default function ToolsPage() {
       .then(({ calendars }) => setCalendars(calendars ?? []))
       .catch(() => {})
       .finally(() => setLoadingCalendars(false))
-
-    // Preload published workflows. 401 usually means the OAuth scope
-    // `workflows.readonly` is missing — the endpoint surfaces a friendly
-    // hint in that case.
-    setLoadingWorkflows(true)
-    fetch(`/api/workspaces/${workspaceId}/workflows`)
-      .then(async r => {
-        if (!r.ok) {
-          const body = await r.json().catch(() => ({}))
-          setWorkflowsError(body.error || `Failed to load workflows (${r.status})`)
-          return { workflows: [] }
-        }
-        return r.json()
-      })
-      .then(({ workflows }) => setWorkflows(workflows ?? []))
-      .catch(err => setWorkflowsError(err?.message ?? 'Failed to load workflows'))
-      .finally(() => setLoadingWorkflows(false))
   }, [workspaceId, agentId])
 
   async function toggleTool(toolName: string) {
@@ -72,23 +42,6 @@ export default function ToolsPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabledTools: updated }),
-    })
-  }
-
-  async function updateWorkflowPick(
-    which: 'addTo' | 'removeFrom',
-    next: WorkflowPick[],
-  ) {
-    if (which === 'addTo') setAddToWorkflowsPick(next)
-    else setRemoveFromWorkflowsPick(next)
-    await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(
-        which === 'addTo'
-          ? { addToWorkflowsPick: next }
-          : { removeFromWorkflowsPick: next },
-      ),
     })
   }
 
@@ -144,23 +97,29 @@ export default function ToolsPage() {
             <div className="space-y-2">
               {categoryTools.map(tool => {
                 const isEnabled = enabledTools.includes(tool.name)
+                // add_to_workflow / remove_from_workflow used to expose a
+                // workflow-picker here. That's redundant now — Rules (and
+                // Qualifying actions) name the specific workflow when they
+                // fire, so this toggle is a plain enable/disable again.
+                // See the Rules page for per-rule workflow selection.
                 const isWorkflowTool = tool.name === 'add_to_workflow' || tool.name === 'remove_from_workflow'
-                const which: 'addTo' | 'removeFrom' | null =
-                  tool.name === 'add_to_workflow' ? 'addTo' :
-                  tool.name === 'remove_from_workflow' ? 'removeFrom' : null
-                const pick = which === 'addTo' ? addToWorkflowsPick : which === 'removeFrom' ? removeFromWorkflowsPick : []
                 return (
                   <div key={tool.name}>
                     <div
                       className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${
                         isEnabled ? 'border-zinc-700 bg-zinc-900/50' : 'border-zinc-800'
-                      } ${isWorkflowTool && isEnabled && pick.length === 0 ? 'rounded-b-none border-b-0' : ''}`}
+                      }`}
                     >
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium ${isEnabled ? 'text-zinc-100' : 'text-zinc-500'}`}>
                           {tool.label}
                         </p>
                         <p className="text-xs text-zinc-600 mt-0.5">{tool.description}</p>
+                        {isWorkflowTool && isEnabled && (
+                          <p className="text-[11px] text-zinc-500 mt-1.5">
+                            Pick the specific workflow on the <a href={`/dashboard/${workspaceId}/agents/${agentId}/rules`} className="text-blue-400 hover:text-blue-300">Rules tab</a> — rules fire this tool with the right workflow.
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => toggleTool(tool.name)}
@@ -175,17 +134,6 @@ export default function ToolsPage() {
                         }`} />
                       </button>
                     </div>
-
-                    {which && isEnabled && (
-                      <WorkflowPicker
-                        verb={which === 'addTo' ? 'enroll in' : 'remove from'}
-                        pick={pick}
-                        workflows={workflows}
-                        loading={loadingWorkflows}
-                        error={workflowsError}
-                        onChange={next => updateWorkflowPick(which, next)}
-                      />
-                    )}
                   </div>
                 )
               })}
@@ -291,100 +239,3 @@ export default function ToolsPage() {
   )
 }
 
-// ─── Workflow picker panel ───────────────────────────────────────────────
-// Renders below an enabled add_to_workflow / remove_from_workflow toggle.
-// Warns when no selection is made — the tool is effectively disabled in
-// that case (ai-agent.ts drops the tool from the published set entirely
-// when the pick array is empty).
-function WorkflowPicker({
-  verb,
-  pick,
-  workflows,
-  loading,
-  error,
-  onChange,
-}: {
-  verb: string
-  pick: WorkflowPick[]
-  workflows: WorkflowPick[]
-  loading: boolean
-  error: string | null
-  onChange: (next: WorkflowPick[]) => void
-}) {
-  const pickedIds = new Set(pick.map(p => p.id))
-  const available = workflows.filter(w => !pickedIds.has(w.id))
-  const noSelection = pick.length === 0
-
-  return (
-    <div className={`rounded-b-lg border border-t-0 px-4 py-3 space-y-3 ${
-      noSelection ? 'border-amber-500/40 bg-amber-500/5' : 'border-zinc-700 bg-zinc-950/50'
-    }`}>
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-xs font-medium text-zinc-300">
-            Workflows the agent can {verb}
-          </p>
-          <p className="text-xs text-zinc-600 mt-0.5">
-            {noSelection
-              ? `Pick at least one workflow — the agent can't ${verb} any contacts until you do.`
-              : `The agent can only ${verb} these workflows. Nothing else is reachable.`}
-          </p>
-        </div>
-        {noSelection && (
-          <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 whitespace-nowrap">
-            ⚠ Required
-          </span>
-        )}
-      </div>
-
-      {error ? (
-        <p className="text-xs text-red-400">{error}</p>
-      ) : loading ? (
-        <p className="text-xs text-zinc-500">Loading workflows…</p>
-      ) : workflows.length === 0 ? (
-        <p className="text-xs text-zinc-500">
-          No published workflows in this location. Publish one in GoHighLevel, then refresh.
-        </p>
-      ) : (
-        <>
-          {pick.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {pick.map(w => (
-                <span
-                  key={w.id}
-                  className="inline-flex items-center gap-1.5 bg-zinc-800 text-zinc-200 text-xs rounded-full pl-3 pr-1.5 py-1"
-                >
-                  {w.name}
-                  <button
-                    type="button"
-                    onClick={() => onChange(pick.filter(p => p.id !== w.id))}
-                    className="w-4 h-4 flex items-center justify-center rounded-full text-zinc-500 hover:text-red-400 hover:bg-zinc-700 transition-colors"
-                    aria-label={`Remove ${w.name}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {available.length > 0 && (
-            <select
-              value=""
-              onChange={e => {
-                const wf = workflows.find(w => w.id === e.target.value)
-                if (wf) onChange([...pick, wf])
-              }}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
-            >
-              <option value="">{pick.length === 0 ? 'Select a workflow…' : 'Add another workflow…'}</option>
-              {available.map(w => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
-          )}
-        </>
-      )}
-    </div>
-  )
-}

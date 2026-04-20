@@ -529,15 +529,17 @@ take. Each tool is a verb the agent can call during a conversation.
 - \`score_lead\`, \`detect_sentiment\`
 - \`save_qualifying_answer\` — fires automatically as [qualifying questions](/help/a/qualifying) get answered
 
-## Workflow picker (important)
+## Workflow tools
 
-When you enable \`add_to_workflow\` or \`remove_from_workflow\`, a picker
-appears below the toggle. **You must select which published workflows the
-agent is allowed to act on.** The agent can ONLY enroll/remove from those
-— anything else is unreachable.
+Enable \`add_to_workflow\` / \`remove_from_workflow\` to allow the agent to
+enrol contacts in (or remove them from) GHL workflows. The specific
+workflow to use is picked per-rule on the [Rules tab](/help/a/rules) —
+that's where you say "when the contact asks about Service X, enrol them
+in the Service X nurture". The toggle here just grants the capability.
 
-If you don't select any, the tool is effectively disabled at runtime so
-the agent can't hallucinate a workflow ID.
+The same applies to any rule-driven action: \`update_contact_tags\`,
+\`opportunity_status\`, \`dnd_channel\`, etc. Rules author the specific
+action; the Tools tab is consent that the tool exists.
 
 ## Calendar setup
 
