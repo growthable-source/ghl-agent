@@ -49,6 +49,13 @@ export default function TriggersPage() {
   const [triggers, setTriggers] = useState<AgentTrigger[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Test-fire state — keyed by triggerId so several panels can be open
+  // at once. `contact` is a free-form input: contactId, phone, or email.
+  const [testPanel, setTestPanel] = useState<string | null>(null)
+  const [testContact, setTestContact] = useState<Record<string, string>>({})
+  const [testBusy, setTestBusy] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; msg: string }>>({})
+
   // New trigger form
   const [showForm, setShowForm] = useState(false)
   const [eventType, setEventType] = useState<EventType>('ContactCreate')
@@ -80,6 +87,40 @@ export default function TriggersPage() {
   async function deleteTrigger(id: string) {
     await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers/${id}`, { method: 'DELETE' })
     setTriggers(prev => prev.filter(x => x.id !== id))
+  }
+
+  async function testFire(triggerId: string) {
+    const contact = (testContact[triggerId] ?? '').trim()
+    if (!contact) return
+    setTestBusy(triggerId)
+    setTestResult(prev => ({ ...prev, [triggerId]: { ok: false, msg: '' } }))
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/agents/${agentId}/triggers/${triggerId}/test-fire`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contact }),
+        },
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Test fire failed (${res.status})`)
+      // Summarise: how many fired, how many skipped, and why. A single
+      // trigger means fired is 0 or 1, but we still render the full
+      // skip-reasons list so operators can see exactly why it didn't go.
+      const parts: string[] = []
+      if (data.fired > 0) parts.push(`Fired ✓ on contact ${data.contactId}`)
+      if (data.skipped > 0) parts.push(`Skipped: ${data.skipReasons.join('; ')}`)
+      if (!data.fired && !data.skipped) parts.push('Nothing happened. Check that this trigger is active and its agent is active.')
+      setTestResult(prev => ({
+        ...prev,
+        [triggerId]: { ok: data.fired > 0, msg: parts.join(' · ') },
+      }))
+    } catch (err: any) {
+      setTestResult(prev => ({ ...prev, [triggerId]: { ok: false, msg: err.message || 'Test fire failed' } }))
+    } finally {
+      setTestBusy(null)
+    }
   }
 
   async function createTrigger(e: React.FormEvent) {
@@ -140,12 +181,21 @@ export default function TriggersPage() {
                       <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition ${t.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
                     </button>
                   </div>
-                  <button
-                    onClick={() => deleteTrigger(t.id)}
-                    className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setTestPanel(testPanel === t.id ? null : t.id)}
+                      className="text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded px-2 py-1 transition-colors"
+                      title="Dry-run this trigger against a specific contact — skips the 60s dedupe so you can fire repeatedly while testing"
+                    >
+                      Test fire
+                    </button>
+                    <button
+                      onClick={() => deleteTrigger(t.id)}
+                      className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-1 text-xs text-zinc-500">
                   <div className="flex gap-4">
@@ -163,6 +213,41 @@ export default function TriggersPage() {
                     </p>
                   )}
                 </div>
+
+                {/* Test-fire panel (inline, collapsible). Runs the real
+                    trigger against a real contact — skipping only the 60s
+                    per-contact dedupe so repeated tests don't no-op. Real
+                    SMS/email will send to that contact. */}
+                {testPanel === t.id && (
+                  <div className="mt-3 rounded-lg bg-zinc-900/50 border border-zinc-700 p-3 space-y-2">
+                    <p className="text-xs text-zinc-400">
+                      Fires this trigger against a real contact as a dry-run. The message will actually send — use a test contact you own.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={testContact[t.id] ?? ''}
+                        onChange={e => setTestContact(prev => ({ ...prev, [t.id]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter' && !testBusy) { e.preventDefault(); testFire(t.id) } }}
+                        placeholder="Contact ID, phone (E.164), or email"
+                        className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => testFire(t.id)}
+                        disabled={!!testBusy || !(testContact[t.id] ?? '').trim()}
+                        className="text-xs font-medium bg-white text-black rounded px-3 py-1.5 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                      >
+                        {testBusy === t.id ? 'Firing…' : 'Fire'}
+                      </button>
+                    </div>
+                    {testResult[t.id]?.msg && (
+                      <p className={`text-xs ${testResult[t.id].ok ? 'text-emerald-400' : 'text-amber-300'}`}>
+                        {testResult[t.id].msg}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

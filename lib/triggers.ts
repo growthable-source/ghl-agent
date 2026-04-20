@@ -20,16 +20,36 @@ interface TriggerEvent {
   locationId: string
   contactId: string
   tags: string[]
+  /**
+   * When set, only triggers with these IDs are considered — used by the
+   * "Test fire" UI to dry-run a single trigger. Omitted in production
+   * webhook handling, which fires every matching trigger for the event.
+   */
+  triggerIds?: string[]
+  /**
+   * Dry-run mode. Skips the 60s per-contact dedupe so repeated tests
+   * from the UI don't silently no-op. The actual send/agent call still
+   * hits the CRM — the only thing this bypasses is the rate guard.
+   */
+  isTest?: boolean
 }
 
-export async function processContactTrigger(event: TriggerEvent) {
-  const { eventType, locationId, contactId, tags } = event
+export async function processContactTrigger(event: TriggerEvent): Promise<{
+  fired: number
+  skipped: number
+  skipReasons: string[]
+}> {
+  const { eventType, locationId, contactId, tags, triggerIds, isTest } = event
+  const skipReasons: string[] = []
+  let fired = 0
+  let skipped = 0
 
   // 1. Verify tokens exist for this location
   const tokens = await getTokens(locationId)
   if (!tokens) {
     console.log(`[Trigger] No tokens for location ${locationId}, skipping`)
-    return
+    skipReasons.push(`No tokens for location ${locationId}`)
+    return { fired, skipped: skipped + 1, skipReasons }
   }
 
   // 2. Find all matching triggers across all agents for this location
@@ -40,6 +60,7 @@ export async function processContactTrigger(event: TriggerEvent) {
         eventType,
         isActive: true,
         agent: { locationId, isActive: true },
+        ...(triggerIds && triggerIds.length > 0 ? { id: { in: triggerIds } } : {}),
       },
       include: {
         agent: {
@@ -54,31 +75,42 @@ export async function processContactTrigger(event: TriggerEvent) {
     // If AgentTrigger table doesn't exist yet, skip gracefully
     if (err.code === 'P2021' || err.message?.includes('AgentTrigger')) {
       console.warn(`[Trigger] AgentTrigger table may not exist yet, skipping`)
-      return
+      skipReasons.push('AgentTrigger table missing (migration pending)')
+      return { fired, skipped, skipReasons }
     }
     throw err
   }
 
   if (triggers.length === 0) {
     console.log(`[Trigger] No matching triggers for ${eventType} at location ${locationId}`)
-    return
+    skipReasons.push(
+      triggerIds?.length
+        ? 'Trigger not found, inactive, or its agent is inactive'
+        : `No active ${eventType} triggers on any agent in this location`,
+    )
+    return { fired, skipped, skipReasons }
   }
 
-  console.log(`[Trigger] Found ${triggers.length} trigger(s) for ${eventType} at location ${locationId}`)
+  console.log(`[Trigger] Found ${triggers.length} trigger(s) for ${eventType} at location ${locationId}${isTest ? ' (test fire)' : ''}`)
 
-  // 3. Deduplicate — check if we already sent a trigger message to this contact recently
-  const recentTriggerLog = await db.messageLog.findFirst({
-    where: {
-      locationId,
-      contactId,
-      inboundMessage: { startsWith: '[Trigger:' },
-      status: 'SUCCESS',
-      createdAt: { gte: new Date(Date.now() - 60_000) }, // within last 60s
-    },
-  })
-  if (recentTriggerLog) {
-    console.log(`[Trigger] Already sent a trigger message to contact ${contactId} within 60s, skipping duplicates`)
-    return
+  // 3. Deduplicate — check if we already sent a trigger message to this
+  //    contact recently. Skipped for test fires so repeated clicks from
+  //    the UI don't silently no-op.
+  if (!isTest) {
+    const recentTriggerLog = await db.messageLog.findFirst({
+      where: {
+        locationId,
+        contactId,
+        inboundMessage: { startsWith: '[Trigger:' },
+        status: 'SUCCESS',
+        createdAt: { gte: new Date(Date.now() - 60_000) }, // within last 60s
+      },
+    })
+    if (recentTriggerLog) {
+      console.log(`[Trigger] Already sent a trigger message to contact ${contactId} within 60s, skipping duplicates`)
+      skipReasons.push('A trigger fired for this contact within the last 60 seconds')
+      return { fired, skipped: skipped + triggers.length, skipReasons }
+    }
   }
 
   for (const trigger of triggers) {
@@ -88,6 +120,8 @@ export async function processContactTrigger(event: TriggerEvent) {
     if (trigger.eventType === 'ContactTagUpdate' && trigger.tagFilter) {
       if (!tags.includes(trigger.tagFilter)) {
         console.log(`[Trigger] Tag filter "${trigger.tagFilter}" not in tags [${tags.join(', ')}], skipping trigger ${trigger.id}`)
+        skipped++
+        skipReasons.push(`Tag "${trigger.tagFilter}" not on contact (has: ${tags.length ? tags.join(', ') : 'no tags'})`)
         continue
       }
     }
@@ -99,6 +133,8 @@ export async function processContactTrigger(event: TriggerEvent) {
       )
       if (!deployed) {
         console.log(`[Trigger] Agent "${agent.name}" not deployed on channel ${trigger.channel}, skipping`)
+        skipped++
+        skipReasons.push(`Agent "${agent.name}" is not deployed on channel ${trigger.channel}`)
         continue
       }
     }
@@ -131,6 +167,8 @@ export async function processContactTrigger(event: TriggerEvent) {
             },
           })
         } catch {}
+        skipped++
+        skipReasons.push(`Outside working hours for agent "${agent.name}" — would fire at ${nextSendAt.toISOString()}`)
         continue
       }
     }
@@ -278,8 +316,12 @@ export async function processContactTrigger(event: TriggerEvent) {
         await getOrCreateConversationState(agent.id, locationId, contactId)
       } catch { /* non-critical */ }
 
+      fired++
+
     } catch (err: any) {
       console.error(`[Trigger] Error processing trigger ${trigger.id}:`, err.message)
+      skipped++
+      skipReasons.push(`Error firing trigger on agent "${agent.name}": ${err.message}`)
       try {
         await db.messageLog.create({
           data: {
@@ -295,4 +337,6 @@ export async function processContactTrigger(event: TriggerEvent) {
       } catch { /* logging failed, move on */ }
     }
   }
+
+  return { fired, skipped, skipReasons }
 }
