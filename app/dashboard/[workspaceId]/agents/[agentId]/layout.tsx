@@ -8,7 +8,7 @@ const SECTIONS = [
   { key: 'settings',    label: 'Settings',    path: '' },
   { key: 'deploy',      label: 'Channels',    path: '/deploy' },
   { key: 'knowledge',   label: 'Knowledge',   path: '/knowledge' },
-  { key: 'routing',     label: 'Routing',     path: '/routing' },
+  { key: 'routing',     label: 'Deploy',      path: '/routing' },
   { key: 'rules',       label: 'Rules',       path: '/rules' },
   { key: 'listening',   label: 'Listening',   path: '/listening' },
   { key: 'tools',       label: 'Tools',       path: '/tools' },

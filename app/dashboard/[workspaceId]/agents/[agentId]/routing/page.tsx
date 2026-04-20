@@ -64,7 +64,7 @@ export default function RoutingPage() {
   return (
     <div className="p-8 max-w-2xl space-y-6">
       <p className="text-sm text-zinc-400">
-        Rules are evaluated in priority order. The first matching rule activates this agent.
+        These rules decide which conversations this agent runs on. Evaluated in priority order — the first matching rule deploys the agent onto the conversation.
       </p>
 
       {rules.length > 0 && (
