@@ -324,8 +324,19 @@ model RoutingRule {
   agentId   String
   agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   priority  Int      @default(10)
+
+  // Legacy single-condition shape. Kept for back-compat with existing rows.
+  // The evaluator falls back to this when `conditions` is null.
   ruleType  RuleType
   value     String?
+
+  // Compound condition tree. When present, overrides ruleType/value.
+  // Shape: { clauses: [{ ruleType: 'TAG', values: ['a','b'] }, ...] }
+  //   - Implicit AND between clauses (all must match for the rule to fire)
+  //   - Implicit OR within a clause's `values` (any value matches that clause)
+  // Kept as Json so the shape can evolve without further migrations.
+  conditions Json?
+
   createdAt DateTime @default(now())
 
   @@index([agentId, priority])

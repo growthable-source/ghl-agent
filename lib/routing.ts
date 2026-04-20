@@ -95,36 +95,62 @@ export async function findMatchingAgent(
     return opportunities ?? []
   }
 
+  // ── Evaluate a single clause (one ruleType + one or more acceptable values)
+  //    Values are OR'd — any matching value makes the clause match.
+  async function evaluateClause(ruleType: string, values: string[]): Promise<boolean> {
+    switch (ruleType) {
+      case 'ALL':
+        return true
+
+      case 'TAG': {
+        const c = await getContactData()
+        const tags = c?.tags ?? []
+        return values.some(v => tags.includes(v))
+      }
+
+      case 'PIPELINE_STAGE': {
+        const opps = await getOpportunities()
+        return values.some(v => opps.some((o: any) => o.pipelineStageId === v))
+      }
+
+      case 'KEYWORD': {
+        const body = messageBody.toLowerCase()
+        // Each `value` may itself be a comma-separated list (legacy convenience).
+        // Flatten then match any keyword against the message body.
+        const keywords = values
+          .flatMap(v => v.split(','))
+          .map(k => k.trim().toLowerCase())
+          .filter(Boolean)
+        return keywords.some(k => body.includes(k))
+      }
+
+      default:
+        return false
+    }
+  }
+
   for (const agent of eligibleAgents) {
     for (const rule of agent.routingRules) {
+      // New shape: compound conditions. All clauses must match (AND); values
+      // within a clause are OR'd (handled by evaluateClause).
+      const conditions = (rule as any).conditions as
+        | { clauses?: Array<{ ruleType: string; values?: string[] }> }
+        | null
+        | undefined
+
       let matched = false
 
-      switch (rule.ruleType) {
-        case 'ALL':
-          matched = true
-          break
-
-        case 'TAG': {
-          const c = await getContactData()
-          matched = !!(c?.tags?.includes(rule.value ?? ''))
-          break
+      if (conditions?.clauses && conditions.clauses.length > 0) {
+        matched = true
+        for (const clause of conditions.clauses) {
+          const ok = await evaluateClause(clause.ruleType, clause.values ?? [])
+          if (!ok) { matched = false; break }
         }
-
-        case 'PIPELINE_STAGE': {
-          const opps = await getOpportunities()
-          matched = opps.some((o: any) => o.pipelineStageId === rule.value)
-          break
-        }
-
-        case 'KEYWORD': {
-          const keywords = (rule.value ?? '')
-            .split(',')
-            .map((k: string) => k.trim().toLowerCase())
-            .filter(Boolean)
-          const body = messageBody.toLowerCase()
-          matched = keywords.some((k: string) => body.includes(k))
-          break
-        }
+      } else {
+        // Legacy single-field shape — unchanged behavior.
+        // A single `value` becomes a one-element list so it flows through the
+        // same evaluator.
+        matched = await evaluateClause(rule.ruleType, rule.value ? [rule.value] : [])
       }
 
       if (matched) return agent as AgentWithDetails

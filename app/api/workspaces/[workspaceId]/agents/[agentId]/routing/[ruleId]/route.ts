@@ -9,13 +9,34 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
   const body = await req.json()
+
+  // If the caller sends `conditions`, we write the compound shape and clear
+  // the legacy `value`. The required `ruleType` column is kept in sync with
+  // the first clause so DB queries that still read ruleType (for display,
+  // sorting, etc.) stay sensible.
+  const conditions = body.conditions as
+    | { clauses?: Array<{ ruleType: string; values?: string[] }> }
+    | null
+    | undefined
+
+  const data: any = {
+    ...(body.priority !== undefined && { priority: body.priority }),
+  }
+
+  if (conditions !== undefined) {
+    data.conditions = conditions
+    if (conditions?.clauses?.[0]?.ruleType) {
+      data.ruleType = conditions.clauses[0].ruleType
+    }
+    data.value = null
+  } else {
+    if (body.ruleType !== undefined) data.ruleType = body.ruleType
+    if (body.value !== undefined) data.value = body.value
+  }
+
   const rule = await db.routingRule.update({
     where: { id: ruleId },
-    data: {
-      ...(body.ruleType !== undefined && { ruleType: body.ruleType }),
-      ...(body.value !== undefined && { value: body.value }),
-      ...(body.priority !== undefined && { priority: body.priority }),
-    },
+    data,
   })
   return NextResponse.json({ rule })
 }
