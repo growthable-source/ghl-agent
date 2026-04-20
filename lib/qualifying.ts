@@ -1,5 +1,11 @@
 import { db } from './db'
-import { updateContactField, getContact, addTagsToContact } from './crm-client'
+import {
+  updateContactField, getContact, addTagsToContact,
+  updateOpportunityStatus, updateOpportunityValue,
+  addContactToWorkflow, removeContactFromWorkflow,
+  markContactDnd,
+  getOpportunitiesForContact,
+} from './crm-client'
 import type { QualifyingQuestion } from '@prisma/client'
 
 export async function getAllQuestions(agentId: string): Promise<QualifyingQuestion[]> {
@@ -29,6 +35,9 @@ export async function getUnansweredQuestions(agentId: string, contactId: string)
 function describeCondition(q: QualifyingQuestion): string {
   if (!q.conditionOp || !q.actionType) return ''
 
+  const params = (q as any).actionParams as Record<string, any> | null
+  const multi = (q as any).conditionValues as string[] | undefined
+
   const conditionDesc = (() => {
     switch (q.conditionOp) {
       case 'is_yes': return 'they say yes'
@@ -38,6 +47,12 @@ function describeCondition(q: QualifyingQuestion): string {
       case 'gt': return `their answer is greater than ${q.conditionVal}`
       case 'lt': return `their answer is less than ${q.conditionVal}`
       case 'any': return 'they answer'
+      case 'is_any_of': {
+        const list = multi ?? []
+        if (list.length === 0) return 'they answer'
+        if (list.length === 1) return `their answer is "${list[0]}"`
+        return `their answer is any of: ${list.map(v => `"${v}"`).join(', ')}`
+      }
       default: return ''
     }
   })()
@@ -49,6 +64,19 @@ function describeCondition(q: QualifyingQuestion): string {
       case 'book': return 'proceed to book an appointment'
       case 'stop': return 'stop and hand off to a human'
       case 'continue': return 'continue normally'
+      case 'add_to_workflow': {
+        const names = (params?.workflowNames as string[]) ?? []
+        if (names.length === 0) return 'add the contact to a workflow'
+        return `enrol the contact in ${names.map(n => `"${n}"`).join(', ')}`
+      }
+      case 'remove_from_workflow': {
+        const names = (params?.workflowNames as string[]) ?? []
+        if (names.length === 0) return 'remove the contact from a workflow'
+        return `remove the contact from ${names.map(n => `"${n}"`).join(', ')}`
+      }
+      case 'opportunity_status': return `mark the opportunity as ${params?.status ?? 'updated'}`
+      case 'opportunity_value': return `set the opportunity value to ${params?.monetaryValue ?? 0}`
+      case 'dnd_channel': return `mark the contact DND on ${params?.channel ?? 'this channel'}`
       default: return ''
     }
   })()
@@ -129,7 +157,10 @@ export async function executeQualifyingAction(
   fieldKey: string,
   answer: string,
   contactId: string,
-  locationId: string
+  locationId: string,
+  /** Channel the conversation is currently on — used by dnd_channel when
+   *  the action doesn't specify one. Safe to omit. */
+  currentChannel?: string,
 ): Promise<{ actionType: string; actionValue?: string } | null> {
   const question = await db.qualifyingQuestion.findFirst({
     where: { agentId, fieldKey },
@@ -139,6 +170,7 @@ export async function executeQualifyingAction(
 
   // Evaluate condition
   const normalised = answer.trim().toLowerCase()
+  const multi = ((question as any).conditionValues as string[] | undefined) ?? []
   let conditionMet = false
   switch (question.conditionOp) {
     case 'any':      conditionMet = true; break
@@ -148,11 +180,18 @@ export async function executeQualifyingAction(
     case 'equals':   conditionMet = !!question.conditionVal && normalised === question.conditionVal.toLowerCase(); break
     case 'gt':       conditionMet = !!question.conditionVal && parseFloat(answer) > parseFloat(question.conditionVal); break
     case 'lt':       conditionMet = !!question.conditionVal && parseFloat(answer) < parseFloat(question.conditionVal); break
+    case 'is_any_of':
+      // Case-insensitive match against one of the configured allowed values.
+      conditionMet = multi.some(v => v.trim().toLowerCase() === normalised)
+      break
   }
 
   if (!conditionMet) return null
 
-  // Execute action
+  const params = ((question as any).actionParams as Record<string, any> | null) ?? {}
+
+  // Execute action. Errors are logged but not thrown — a misconfigured
+  // action should never break the agent's reply path.
   try {
     switch (question.actionType) {
       case 'tag':
@@ -160,13 +199,64 @@ export async function executeQualifyingAction(
           await addTagsToContact(locationId, contactId, [question.actionValue])
         }
         break
+
       case 'stop':
-        // Signal to caller that we should stop/hand off — the agent will handle this
-        break
       case 'book':
       case 'continue':
-        // These are handled by the agent itself based on the returned action
+        // Handled by the agent based on the returned actionType.
         break
+
+      case 'add_to_workflow': {
+        const ids = (params.workflowIds as string[]) ?? []
+        for (const id of ids) {
+          try { await addContactToWorkflow(locationId, contactId, id) }
+          catch (err) { console.error(`[Qualifying] add_to_workflow ${id} failed:`, err) }
+        }
+        break
+      }
+
+      case 'remove_from_workflow': {
+        const ids = (params.workflowIds as string[]) ?? []
+        for (const id of ids) {
+          try { await removeContactFromWorkflow(locationId, contactId, id) }
+          catch (err) { console.error(`[Qualifying] remove_from_workflow ${id} failed:`, err) }
+        }
+        break
+      }
+
+      case 'opportunity_status': {
+        // Applies to every open opportunity for the contact — a contact
+        // typically has 0 or 1, but we iterate to be safe.
+        const status = (params.status as 'open' | 'won' | 'lost' | 'abandoned' | undefined) ?? 'won'
+        const opps = await getOpportunitiesForContact(locationId, contactId).catch(() => [])
+        for (const opp of opps ?? []) {
+          try { await updateOpportunityStatus(locationId, opp.id, status) }
+          catch (err) { console.error(`[Qualifying] opportunity_status ${opp.id} failed:`, err) }
+        }
+        break
+      }
+
+      case 'opportunity_value': {
+        const value = typeof params.monetaryValue === 'number'
+          ? params.monetaryValue
+          : parseFloat(String(params.monetaryValue ?? ''))
+        if (!Number.isFinite(value)) break
+        const opps = await getOpportunitiesForContact(locationId, contactId).catch(() => [])
+        for (const opp of opps ?? []) {
+          try { await updateOpportunityValue(locationId, opp.id, value) }
+          catch (err) { console.error(`[Qualifying] opportunity_value ${opp.id} failed:`, err) }
+        }
+        break
+      }
+
+      case 'dnd_channel': {
+        // Action-specified channel wins; otherwise use the conversation's
+        // current channel. If neither is known, mark global DND.
+        const channel = (params.channel as string | undefined) ?? currentChannel
+        try { await markContactDnd(locationId, contactId, channel) }
+        catch (err) { console.error(`[Qualifying] dnd_channel failed:`, err) }
+        break
+      }
     }
   } catch (err) {
     console.error(`[Qualifying] Failed to execute action ${question.actionType}:`, err)

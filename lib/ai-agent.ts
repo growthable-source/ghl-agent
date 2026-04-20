@@ -1150,7 +1150,8 @@ async function executeTool(
             input.fieldKey as string,
             input.answer as string,
             input.contactId as string,
-            locationId
+            locationId,
+            channel,
           )
           return JSON.stringify({ success: true, action: actionResult })
         }

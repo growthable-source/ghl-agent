@@ -676,10 +676,29 @@ model QualifyingQuestion {
   order        Int      @default(0)
   answerType   String   @default("text")
   choices      String[] @default([])
-  conditionOp  String?
-  conditionVal String?
+
+  // ── Conditional action — "if the answer X, then do Y" ─────────────────
+  // conditionOp defines what X is. Historical ops (is_yes / is_no / contains
+  // / equals / gt / lt / any) still work unchanged. New op:
+  //   is_any_of     — answer exactly matches one of `conditionValues` (used
+  //                   for multi-choice questions so the user picks allowed
+  //                   answers instead of typing a single word).
+  conditionOp     String?
+  conditionVal    String?    // legacy single-value string, kept for back-compat
+  conditionValues String[] @default([])   // new: multi-value for is_any_of
+
+  // actionType is the verb. Historical: tag / stage / book / stop / continue.
+  // New:
+  //   add_to_workflow       — params: { workflowIds: [string], workflowNames: [string] }
+  //   remove_from_workflow  — params: { workflowIds: [string], workflowNames: [string] }
+  //   opportunity_status    — params: { status: 'won' | 'lost' | 'abandoned' | 'open' }
+  //   opportunity_value     — params: { monetaryValue: number }
+  //   dnd_channel           — params: { channel?: string }  (defaults to the
+  //                           channel the conversation is on)
   actionType   String?
-  actionValue  String?
+  actionValue  String?     // legacy single-string param, kept for back-compat
+  actionParams Json?       // typed params for newer actions
+
   crmFieldKey  String?
   overwrite    Boolean  @default(false)
   createdAt    DateTime @default(now())

@@ -130,6 +130,44 @@ export class GhlAdapter implements CrmAdapter {
     await this.apiFetch(`/contacts/${contactId}`, { method: 'DELETE' })
   }
 
+  /**
+   * Mark a contact as Do Not Disturb.
+   *   - Per-channel: pass a channel string (e.g. 'SMS', 'Email', 'WhatsApp')
+   *     and GHL's dndSettings for that channel flips to "permanent" block.
+   *     Maps inbound channel names to GHL's dndSettings keys. Unknown
+   *     channels fall back to setting the global `dnd` flag.
+   *   - Global: omit channel to set the global dnd boolean on the contact.
+   */
+  async markContactDnd(contactId: string, channel?: string): Promise<void> {
+    if (!channel) {
+      await this.updateContact(contactId, { dnd: true } as any)
+      return
+    }
+
+    // GHL's dndSettings keys differ from our internal channel codes — this
+    // map covers the common cases. Unknown channels flip the global flag.
+    const GHL_DND_KEY: Record<string, string> = {
+      SMS:       'SMS',
+      Email:     'Email',
+      WhatsApp:  'WhatsApp',
+      FB:        'FB',
+      IG:        'IG',
+      GMB:       'GMB',
+      Live_Chat: 'Live Chat',
+    }
+    const key = GHL_DND_KEY[channel]
+    if (!key) {
+      await this.updateContact(contactId, { dnd: true } as any)
+      return
+    }
+
+    await this.updateContact(contactId, {
+      dndSettings: {
+        [key]: { status: 'active', message: 'Marked DND by agent rule', code: 'contact_request' },
+      },
+    } as any)
+  }
+
   async addTags(contactId: string, tags: string[]): Promise<void> {
     await this.apiFetch(`/contacts/${contactId}/tags`, {
       method: 'POST',

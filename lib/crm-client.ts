@@ -69,6 +69,26 @@ export async function updateOpportunityStage(locationId: string, opportunityId: 
   return new GhlAdapter(locationId).updateOpportunityStage(opportunityId, stageId)
 }
 
+export async function updateOpportunityStatus(locationId: string, opportunityId: string, status: 'open' | 'won' | 'lost' | 'abandoned'): Promise<void> {
+  return new GhlAdapter(locationId).updateOpportunityStatus(opportunityId, status)
+}
+
+export async function updateOpportunityValue(locationId: string, opportunityId: string, monetaryValue: number): Promise<any> {
+  return new GhlAdapter(locationId).updateOpportunityValue(opportunityId, monetaryValue)
+}
+
+export async function addContactToWorkflow(locationId: string, contactId: string, workflowId: string, eventStartTime?: string): Promise<void> {
+  return (new GhlAdapter(locationId) as any).addContactToWorkflow(contactId, workflowId, eventStartTime)
+}
+
+export async function removeContactFromWorkflow(locationId: string, contactId: string, workflowId: string): Promise<void> {
+  return (new GhlAdapter(locationId) as any).removeContactFromWorkflow(contactId, workflowId)
+}
+
+export async function markContactDnd(locationId: string, contactId: string, channel?: string): Promise<void> {
+  return (new GhlAdapter(locationId) as any).markContactDnd(contactId, channel)
+}
+
 export async function getFreeSlots(locationId: string, calendarId: string, startDate: string, endDate: string, timezone?: string) {
   return new GhlAdapter(locationId).getFreeSlots(calendarId, startDate, endDate, timezone)
 }
