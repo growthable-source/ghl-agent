@@ -338,6 +338,13 @@ export default function KnowledgePage() {
     setUploading(false)
   }
 
+  // Hooks must be called on every render in the same order. `useMemo` used
+  // to live below the `if (loading) return …` early-return — so on the first
+  // render React saw N hooks, and on the second render it saw N+1, crashing
+  // with React #310 ("Rendered more hooks than during the previous render").
+  // Keep it above any conditional return.
+  const groups = useMemo(() => groupEntries(entries), [entries])
+
   if (loading) return (
     <div className="flex items-center justify-center h-48">
       <p className="text-zinc-500 text-sm">Loading…</p>
@@ -346,7 +353,6 @@ export default function KnowledgePage() {
 
   const totalTokens = entries.reduce((s, e) => s + (e.tokenEstimate || 0), 0)
   const indexingCount = entries.filter(e => e.status === 'indexing' || e.status === 'pending').length
-  const groups = useMemo(() => groupEntries(entries), [entries])
 
   return (
     <div className="p-8 max-w-2xl space-y-6">
