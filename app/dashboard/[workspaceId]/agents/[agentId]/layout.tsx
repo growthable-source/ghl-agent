@@ -44,7 +44,9 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
       .then(r => r.json())
       .then(({ deployments }) => {
         if (Array.isArray(deployments)) {
-          const active = deployments.filter((d: { enabled?: boolean }) => d.enabled !== false)
+          // Channels are keyed by `isActive`, not `enabled` — old code used
+          // the wrong field and counted inactive deployments as live.
+          const active = deployments.filter((d: { isActive?: boolean }) => d.isActive === true)
           setChannelCount(active.length)
         }
       })

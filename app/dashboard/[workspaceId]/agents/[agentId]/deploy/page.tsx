@@ -67,21 +67,28 @@ export default function DeployPage() {
   })
 
   function isChannelActive(channel: string): boolean {
-    const d = draft.deployments.find(dep => dep.channel === channel)
+    const d = draft?.deployments?.find(dep => dep.channel === channel)
     return d ? d.isActive : false
   }
 
   function toggleChannel(channel: string) {
-    const existing = draft.deployments.find(d => d.channel === channel)
+    const list = draft?.deployments ?? []
+    const existing = list.find(d => d.channel === channel)
     const next = existing
-      ? draft.deployments.map(d => d.channel === channel ? { ...d, isActive: !d.isActive } : d)
-      : [...draft.deployments, { id: '', channel, isActive: true, config: null }]
+      ? list.map(d => d.channel === channel ? { ...d, isActive: !d.isActive } : d)
+      : [...list, { id: '', channel, isActive: true, config: null }]
     set({ deployments: next })
   }
 
   const activeCount = draft?.deployments?.filter(d => d.isActive).length ?? 0
 
-  if (loading || !initial) return (
+  // Guard must also check draft.deployments — useDirtyForm initialises its
+  // internal draft to `{}` before the sync-with-initial effect runs, so there
+  // is a one-render window where initial is truthy but draft still has no
+  // deployments array. Without this, the channel map would call .find on
+  // undefined and crash the whole page (Chrome surfaces that as "This page
+  // couldn't load" since there's no error boundary here).
+  if (loading || !initial || !draft?.deployments) return (
     <div className="flex items-center justify-center h-64">
       <p className="text-zinc-500 text-sm">Loading...</p>
     </div>
