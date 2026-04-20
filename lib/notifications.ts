@@ -2,13 +2,18 @@ import { db } from './db'
 
 /**
  * Dispatch a notification to all configured channels for a workspace.
- * Supports Slack webhooks and email via Resend.
+ * Supports Slack, Discord, email (Resend), and SMS (Twilio).
  *
  * Event types:
  *   - needs_attention
  *   - approval_pending
  *   - agent_error
  *   - pause_activated
+ *   - human_handover    — fires when the agent escalates to a human
+ *                         (transfer_to_human tool, or message_and_transfer
+ *                         fallback). Payload includes a deep link to the
+ *                         conversation so whoever is on-call can jump
+ *                         straight in.
  *   - test
  */
 export async function notify(params: {
@@ -37,8 +42,12 @@ export async function notify(params: {
     try {
       if (channel.type === 'slack') {
         await dispatchSlack(channel.config, params)
+      } else if (channel.type === 'discord') {
+        await dispatchDiscord(channel.config, params)
       } else if (channel.type === 'email') {
         await dispatchEmail(channel.config, params)
+      } else if (channel.type === 'sms') {
+        await dispatchSms(params.workspaceId, channel.config, params)
       }
     } catch (err: any) {
       console.warn(`[Notify] ${channel.type} dispatch failed:`, err.message)
@@ -156,4 +165,111 @@ function escapeHtml(s: string): string {
 }
 function escapeAttr(s: string): string {
   return escapeHtml(s)
+}
+
+/**
+ * Discord incoming webhook. Discord accepts the "embeds" array so we get
+ * a proper card with a clickable title rather than a plain text blob.
+ */
+async function dispatchDiscord(
+  config: { webhookUrl?: string },
+  params: { event: string; title: string; body?: string; link?: string; severity?: string }
+) {
+  if (!config.webhookUrl) return
+  // Discord uses integer decimal colors. Keep the palette in sync with Slack.
+  const color = params.severity === 'error' ? 0xef4444
+    : params.severity === 'warning' ? 0xf59e0b
+    : 0xfa4d2e
+
+  await fetch(config.webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      embeds: [{
+        title: params.title,
+        description: params.body || '',
+        color,
+        ...(params.link ? { url: params.link } : {}),
+        footer: { text: 'Voxility' },
+        timestamp: new Date().toISOString(),
+      }],
+    }),
+  })
+}
+
+/**
+ * SMS via Twilio. Reuses the workspace's existing Twilio integration when
+ * present (same creds that power inbound SMS), and falls back to top-level
+ * env vars for workspaces that haven't connected Twilio yet. Config on
+ * the channel only carries the destination phone number.
+ *
+ * Deliberately short body — SMS has a ~160 char sweet spot. Long alerts
+ * truncate and include the deep link so whoever gets paged can jump in.
+ */
+async function dispatchSms(
+  workspaceId: string,
+  config: { phoneNumber?: string; from?: string },
+  params: { event: string; title: string; body?: string; link?: string; severity?: string }
+) {
+  const to = config.phoneNumber
+  if (!to) return
+
+  // Prefer workspace-scoped Twilio creds (same integration that powers
+  // inbound SMS). Fall back to env for single-tenant setups.
+  let accountSid: string | undefined
+  let authToken: string | undefined
+  let from = config.from
+
+  try {
+    // Integration is location-scoped. Resolve all locations in this
+    // workspace, then look for a Twilio integration attached to any of
+    // them. Workspaces typically have one location, so in practice this
+    // is a single round trip.
+    const locations = await db.location.findMany({
+      where: { workspaceId }, select: { id: true },
+    })
+    if (locations.length > 0) {
+      const integ = await db.integration.findFirst({
+        where: { locationId: { in: locations.map(l => l.id) }, type: 'twilio' },
+      })
+      if (integ) {
+        const creds = integ.credentials as any
+        accountSid = creds?.accountSid
+        authToken = creds?.authToken
+        if (!from) from = creds?.fromNumber || creds?.from
+      }
+    }
+  } catch { /* fall through to env */ }
+
+  if (!accountSid) accountSid = process.env.TWILIO_ACCOUNT_SID
+  if (!authToken)  authToken  = process.env.TWILIO_AUTH_TOKEN
+  if (!from)       from       = process.env.TWILIO_FROM_NUMBER
+
+  if (!accountSid || !authToken || !from) {
+    console.warn('[Notify] SMS skipped — no Twilio creds for workspace', workspaceId, 'to', to)
+    return
+  }
+
+  // Compose: title + (short body) + link. Keep under 320 chars to avoid
+  // excessive segmentation on carriers that charge per segment.
+  const bodyLine = params.body ? ` — ${params.body}` : ''
+  const linkLine = params.link ? `\n${params.link}` : ''
+  const raw = `[Voxility] ${params.title}${bodyLine}${linkLine}`
+  const message = raw.length > 320 ? raw.slice(0, 317) + '…' : raw
+
+  const res = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ To: to, From: from, Body: message }),
+    }
+  )
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Twilio ${res.status}: ${body.slice(0, 200)}`)
+  }
 }

@@ -656,6 +656,21 @@ export interface DeferredSendCapture {
   }
 }
 
+/**
+ * When the agent calls transfer_to_human, the executor records the reason
+ * and context summary here. runAgent reads it after the tool loop exits
+ * and fires a `human_handover` notification with a deep link — we do it
+ * post-loop rather than inline so we have the full conversationId / channel
+ * context runAgent owns.
+ */
+export interface HandoverCapture {
+  captured: null | {
+    contactId: string
+    reason: string
+    contextSummary: string
+  }
+}
+
 async function executeTool(
   toolName: string,
   input: Record<string, unknown>,
@@ -675,6 +690,8 @@ async function executeTool(
    * Fields not in this map follow standard write-through behavior.
    */
   fieldOverwriteMap?: Record<string, boolean>,
+  /** transfer_to_human writes here — runAgent fires notify() afterwards. */
+  handoverCapture?: HandoverCapture,
 ): Promise<string> {
   // In sandbox, allow read-only tools to hit the real CRM so the agent
   // sees actual data. Writes (send_reply, book_appointment, update_*,
@@ -1207,6 +1224,16 @@ async function executeTool(
             data: { state: 'PAUSED', pauseReason: `Transfer to human: ${input.reason}`, pausedAt: new Date() },
           })
         }
+        // Record the handover so runAgent can emit the notification after
+        // the tool loop completes — we have richer context there
+        // (conversationId / workspaceId / channel) for the deep link.
+        if (handoverCapture) {
+          handoverCapture.captured = {
+            contactId: input.contactId as string,
+            reason: (input.reason as string) || '',
+            contextSummary: (input.contextSummary as string) || '',
+          }
+        }
         return JSON.stringify({
           success: true,
           reason: input.reason,
@@ -1400,6 +1427,10 @@ export async function runAgent(opts: {
 
   // Capture slot for deferred sends (approval queue)
   const deferredSend: DeferredSendCapture | undefined = deferSend ? { captured: null } : undefined
+
+  // Capture slot for transfer_to_human — fires a `human_handover`
+  // notification after the tool loop completes.
+  const handoverCapture: HandoverCapture = { captured: null }
 
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
@@ -1696,6 +1727,7 @@ export async function runAgent(opts: {
         crm ?? undefined,
         deferredSend,
         fieldOverwriteMap,
+        handoverCapture,
       )
       toolCallTrace.push({
         tool: toolBlock.name,
@@ -1727,6 +1759,45 @@ export async function runAgent(opts: {
       { role: 'assistant', content: response.content },
       { role: 'user', content: toolResults },
     ]
+  }
+
+  // ── Human-handover notification ──────────────────────────────────────
+  // When the agent called transfer_to_human we notify everyone who's
+  // subscribed to the `human_handover` event on this workspace. Fire and
+  // forget — a notification failure must never break the agent reply.
+  if (!isSandbox && handoverCapture.captured && agentId) {
+    ;(async () => {
+      try {
+        const { db: prisma } = await import('./db')
+        const agentRow = await prisma.agent.findUnique({
+          where: { id: agentId }, select: { workspaceId: true, name: true },
+        })
+        if (!agentRow?.workspaceId) return
+
+        const { notify } = await import('./notifications')
+        const { resolveHandoverLink } = await import('./handover-link')
+        const link = resolveHandoverLink({
+          workspaceId: agentRow.workspaceId,
+          locationId, contactId, conversationId, channel,
+        })
+
+        const cap = handoverCapture.captured
+        if (!cap) return
+        await notify({
+          workspaceId: agentRow.workspaceId,
+          event: 'human_handover',
+          title: `${agentRow.name || 'Agent'} needs a human on ${channel}`,
+          body: [
+            cap.reason ? `Reason: ${cap.reason}` : null,
+            cap.contextSummary ? `Context: ${cap.contextSummary}` : null,
+          ].filter(Boolean).join('\n'),
+          link,
+          severity: 'warning',
+        })
+      } catch (err: any) {
+        console.warn('[Handover] notify failed:', err?.message)
+      }
+    })()
   }
 
   return {

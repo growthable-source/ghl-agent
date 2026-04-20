@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
 const EVENT_OPTIONS = [
+  { value: 'human_handover',      label: 'Human handover (agent escalated)' },
   { value: 'needs_attention',     label: 'Needs attention' },
   { value: 'approval_pending',    label: 'Approval pending' },
   { value: 'agent_error',         label: 'Agent error' },
@@ -25,7 +26,9 @@ export default function IntegrationsPage() {
   const [tab, setTab] = useState<'notifications' | 'webhooks'>('notifications')
 
   const [newSlackUrl, setNewSlackUrl] = useState('')
+  const [newDiscordUrl, setNewDiscordUrl] = useState('')
   const [newEmail, setNewEmail] = useState('')
+  const [newSmsNumber, setNewSmsNumber] = useState('')
   const [newWebhookUrl, setNewWebhookUrl] = useState('')
   const [newWebhookEvents, setNewWebhookEvents] = useState<string[]>([])
 
@@ -60,6 +63,34 @@ export default function IntegrationsPage() {
       body: JSON.stringify({ type: 'email', config: { email: newEmail }, events: [] }),
     })
     setNewEmail('')
+    fetchAll()
+  }
+
+  async function addDiscord() {
+    if (!newDiscordUrl) return
+    await fetch(`/api/workspaces/${workspaceId}/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'discord', config: { webhookUrl: newDiscordUrl }, events: [] }),
+    })
+    setNewDiscordUrl('')
+    fetchAll()
+  }
+
+  async function addSms() {
+    if (!newSmsNumber) return
+    // Basic E.164-ish validation — lets Twilio reject anything weird.
+    const cleaned = newSmsNumber.trim()
+    if (!/^\+?[1-9]\d{6,14}$/.test(cleaned.replace(/\s|-|\(|\)/g, ''))) {
+      alert('Phone number looks invalid. Use E.164 format like +14155551234.')
+      return
+    }
+    await fetch(`/api/workspaces/${workspaceId}/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'sms', config: { phoneNumber: cleaned }, events: [] }),
+    })
+    setNewSmsNumber('')
     fetchAll()
   }
 
@@ -136,11 +167,22 @@ export default function IntegrationsPage() {
               <div className="space-y-2 mb-6">
                 {channels.map(c => (
                   <div key={c.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 flex items-center gap-3">
-                    <span className="text-lg">{c.type === 'slack' ? '💬' : '📧'}</span>
+                    <span className="text-lg">{
+                      c.type === 'slack' ? '💬'
+                      : c.type === 'discord' ? '🎮'
+                      : c.type === 'sms' ? '📱'
+                      : '📧'
+                    }</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-white capitalize">{c.type}</p>
                       <p className="text-xs text-zinc-500 truncate">
-                        {c.type === 'slack' ? c.config.webhookUrl?.replace(/(hooks.slack.com\/services\/).*/, '$1...') : c.config.email}
+                        {c.type === 'slack'
+                          ? c.config.webhookUrl?.replace(/(hooks.slack.com\/services\/).*/, '$1...')
+                          : c.type === 'discord'
+                          ? c.config.webhookUrl?.replace(/(discord.com\/api\/webhooks\/).*/, '$1...')
+                          : c.type === 'sms'
+                          ? c.config.phoneNumber
+                          : c.config.email}
                       </p>
                       {c.events.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
@@ -182,7 +224,7 @@ export default function IntegrationsPage() {
               </div>
             </div>
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3">
               <p className="text-sm font-semibold text-white mb-3">📧 Add Email</p>
               <p className="text-xs text-zinc-500 mb-3">Receive notifications via email. Powered by Resend — requires <code className="text-orange-400">RESEND_API_KEY</code> in server env.</p>
               <div className="flex gap-2">
@@ -190,6 +232,44 @@ export default function IntegrationsPage() {
                   placeholder="you@company.com" type="email"
                   className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white" />
                 <button onClick={addEmail} disabled={!newEmail}
+                  className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
+                  style={{ background: '#fa4d2e' }}>
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3">
+              <p className="text-sm font-semibold text-white mb-3">🎮 Add Discord</p>
+              <p className="text-xs text-zinc-500 mb-3">
+                Create a channel webhook in Discord: Server Settings → Integrations → Webhooks → New Webhook, then copy the URL.
+                <a href="https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks" target="_blank" rel="noreferrer" className="text-orange-400 hover:underline ml-1">Guide</a>
+              </p>
+              <div className="flex gap-2">
+                <input value={newDiscordUrl} onChange={e => setNewDiscordUrl(e.target.value)}
+                  placeholder="https://discord.com/api/webhooks/…"
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono"
+                />
+                <button onClick={addDiscord} disabled={!newDiscordUrl}
+                  className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
+                  style={{ background: '#fa4d2e' }}>
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+              <p className="text-sm font-semibold text-white mb-3">📱 Add SMS</p>
+              <p className="text-xs text-zinc-500 mb-3">
+                Get paged via SMS when an agent hands over. Sends through your workspace&apos;s existing Twilio connection
+                (or <code className="text-orange-400">TWILIO_ACCOUNT_SID</code> / <code className="text-orange-400">TWILIO_AUTH_TOKEN</code> env vars).
+                Use E.164 format.
+              </p>
+              <div className="flex gap-2">
+                <input value={newSmsNumber} onChange={e => setNewSmsNumber(e.target.value)}
+                  placeholder="+14155551234" type="tel"
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono" />
+                <button onClick={addSms} disabled={!newSmsNumber}
                   className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
                   style={{ background: '#fa4d2e' }}>
                   Add
