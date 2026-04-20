@@ -8,6 +8,16 @@ import VoxilityLogo from '@/components/VoxilityLogo'
 export default function DashboardSidebar() {
   const pathname = usePathname()
   const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string } | null>(null)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+
+  useEffect(() => {
+    // Cheap check — is the signed-in user a Voxility super-admin? If yes
+    // we render an extra "Help Center · Admin" entry near the bottom.
+    fetch('/api/me/super')
+      .then(r => r.json())
+      .then(d => setIsSuperAdmin(!!d.isSuperAdmin))
+      .catch(() => {})
+  }, [])
 
   // Extract workspaceId from path — exclude known static routes
   const STATIC_ROUTES = ['settings', 'new', 'feedback']
@@ -124,6 +134,14 @@ export default function DashboardSidebar() {
 
       {/* Bottom */}
       <div className="p-3 border-t border-zinc-800 space-y-0.5">
+        <Link
+          href="/help"
+          target="_blank"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
+        >
+          Help Center
+          <span className="text-zinc-700 text-[10px]">↗</span>
+        </Link>
         {workspaceId && workspaceId !== 'undefined' && (
           <Link
             href={`/dashboard/${workspaceId}/help`}
@@ -134,7 +152,20 @@ export default function DashboardSidebar() {
             }`}
             style={pathname.startsWith(`/dashboard/${workspaceId}/help`) ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
           >
-            Help &amp; reference
+            Feature reference
+          </Link>
+        )}
+        {isSuperAdmin && (
+          <Link
+            href="/dashboard/help-admin"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
+              pathname.startsWith('/dashboard/help-admin')
+                ? ''
+                : 'text-zinc-500 hover:text-white hover:bg-zinc-900'
+            }`}
+            style={pathname.startsWith('/dashboard/help-admin') ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+          >
+            Help Center · Admin
           </Link>
         )}
         <a

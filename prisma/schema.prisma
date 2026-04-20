@@ -994,3 +994,40 @@ model WidgetVoiceCall {
   transcript     String?  @db.Text
   @@index([conversationId])
 }
+
+// ─── Help Center ─────────────────────────────────────────────────────────
+// Public, crawlable help articles. Authored by super-admins (emails ending
+// in @voxility.ai). No per-workspace scoping — the help center is
+// product-global, served at /help and indexable.
+model HelpCategory {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  icon        String?                                  // emoji or icon key
+  order       Int      @default(0)
+  articles    HelpArticle[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([order])
+}
+
+model HelpArticle {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  summary     String?  @db.Text
+  body        String   @db.Text                        // markdown
+  videoUrl    String?                                  // YouTube / Vimeo / mp4
+  categoryId  String?
+  category    HelpCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  status      String   @default("draft")               // "draft" | "published"
+  publishedAt DateTime?
+  authorEmail String?                                  // whoever last saved it
+  order       Int      @default(0)
+  viewCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([categoryId, order])
+  @@index([status, publishedAt])
+}
