@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -139,9 +139,14 @@ You are warm, conversational, and efficient.`,
   },
 ]
 
+// Static descriptor — `connected` state is resolved per-workspace at
+// render time from /api/workspaces/:id/integrations. The previous
+// hardcoded `connected: true` meant every new user saw "Already connected
+// via OAuth" the very first time they hit the wizard, before they'd ever
+// clicked Connect.
 const CRM_OPTIONS = [
-  { id: 'ghl', name: 'GoHighLevel', desc: 'Already connected via OAuth', icon: <GoHighLevelIcon className="w-8 h-8" />, connected: true },
-  { id: 'none', name: 'No CRM', desc: 'Skip for now — you can connect later', icon: null, connected: false },
+  { id: 'ghl', name: 'GoHighLevel', icon: <GoHighLevelIcon className="w-8 h-8" /> },
+  { id: 'none', name: 'No CRM', desc: 'Skip for now — you can connect later', icon: null },
 ]
 
 const CALENDAR_OPTIONS = [
@@ -172,6 +177,17 @@ export default function NewAgentWizard() {
   const [selectedCrm, setSelectedCrm] = useState<string>('ghl')
   const [selectedCalendar, setSelectedCalendar] = useState<string>('ghl')
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['SMS'])
+
+  // Real GHL connection status for this workspace. New users haven't
+  // installed yet — show them a Connect button; returning users see
+  // "Connected" and continue.
+  const [ghlConnected, setGhlConnected] = useState<boolean | null>(null)
+  useEffect(() => {
+    fetch(`/api/workspaces/${workspaceId}/integrations`)
+      .then(r => r.json())
+      .then(d => setGhlConnected(!!d.ghlConnected))
+      .catch(() => setGhlConnected(false))
+  }, [workspaceId])
 
   // Build step
   const [name, setName] = useState('')
@@ -349,25 +365,52 @@ export default function NewAgentWizard() {
             <h1 className="text-2xl font-semibold mb-2">Connect your CRM</h1>
             <p className="text-zinc-400 text-sm mb-6">Your agent will read contacts, update tags, and manage pipelines through your CRM.</p>
             <div className="space-y-3">
-              {CRM_OPTIONS.map(opt => (
-                <button key={opt.id} type="button" onClick={() => setSelectedCrm(opt.id)}
-                  className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
-                    selectedCrm === opt.id
-                      ? 'border-white bg-zinc-900'
-                      : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-                  }`}>
-                  <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl text-zinc-500">--</span>}</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-zinc-200">{opt.name}</p>
-                    <p className="text-xs text-zinc-500">{opt.desc}</p>
+              {CRM_OPTIONS.map(opt => {
+                // Render GHL with real connection state: "Connected" when
+                // the workspace has an install, otherwise a Connect CTA
+                // that kicks off the OAuth flow inline. The 'none' option
+                // always shows its static description.
+                const isGhl = opt.id === 'ghl'
+                const isConnected = isGhl && ghlConnected === true
+                const isChecking = isGhl && ghlConnected === null
+                const desc = isGhl
+                  ? (isChecking ? 'Checking…' : isConnected ? 'Connected via OAuth' : 'Not connected yet — click Connect below')
+                  : (opt as any).desc
+                return (
+                  <div key={opt.id}>
+                    <button type="button" onClick={() => setSelectedCrm(opt.id)}
+                      className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
+                        selectedCrm === opt.id
+                          ? 'border-white bg-zinc-900'
+                          : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
+                      }`}>
+                      <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl text-zinc-500">--</span>}</span>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-zinc-200">{opt.name}</p>
+                        <p className={`text-xs ${isGhl && !isConnected && !isChecking ? 'text-amber-400' : 'text-zinc-500'}`}>{desc}</p>
+                      </div>
+                      {isConnected && (
+                        <span className="text-xs font-medium text-emerald-400 mr-2">✓</span>
+                      )}
+                      {selectedCrm === opt.id && (
+                        <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center">
+                          <span className="w-2 h-2 rounded-full bg-black" />
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Inline connect CTA when GHL is selected but not connected */}
+                    {isGhl && selectedCrm === 'ghl' && ghlConnected === false && (
+                      <a
+                        href={`/api/auth/crm/connect?workspaceId=${workspaceId}`}
+                        className="mt-2 inline-flex items-center rounded-lg bg-white text-black font-medium text-sm px-4 h-9 hover:bg-zinc-200 transition-colors"
+                      >
+                        Connect GoHighLevel →
+                      </a>
+                    )}
                   </div>
-                  {selectedCrm === opt.id && (
-                    <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center">
-                      <span className="w-2 h-2 rounded-full bg-black" />
-                    </span>
-                  )}
-                </button>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

@@ -6,7 +6,11 @@
 
 import type { Contact, Conversation, Message, Opportunity, SendMessagePayload } from '@/types'
 
-export type CrmProvider = 'ghl' | 'hubspot'
+// 'none' is the sentinel for placeholder Locations — a workspace that has
+// never connected a real CRM but still needs a Location row for Agent FK
+// purposes. Methods on a NoCrmAdapter throw a clear "CRM not connected"
+// error so misconfigurations are visible.
+export type CrmProvider = 'ghl' | 'hubspot' | 'none'
 
 export interface CustomField {
   id: string

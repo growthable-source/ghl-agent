@@ -8,6 +8,14 @@ import { GhlAdapter } from './ghl/adapter'
 import type { CrmAdapter } from './types'
 
 export async function getCrmAdapter(locationId: string): Promise<CrmAdapter> {
+  // Placeholder locations (created when a workspace builds an agent before
+  // connecting GHL) short-circuit to the no-op adapter — we don't even
+  // hit the DB for them.
+  if (locationId.startsWith('placeholder:')) {
+    const { NoCrmAdapter } = await import('./none/adapter')
+    return new NoCrmAdapter(locationId)
+  }
+
   let provider = 'ghl'
   try {
     const location = await db.location.findUnique({
@@ -21,6 +29,10 @@ export async function getCrmAdapter(locationId: string): Promise<CrmAdapter> {
   }
 
   switch (provider) {
+    case 'none': {
+      const { NoCrmAdapter } = await import('./none/adapter')
+      return new NoCrmAdapter(locationId)
+    }
     case 'hubspot': {
       const { HubSpotAdapter } = await import('./hubspot/adapter')
       return new HubSpotAdapter(locationId)

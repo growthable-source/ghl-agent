@@ -169,8 +169,10 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
         body: JSON.stringify({ companyName, companySize, role }),
       })
 
-      // 4. Navigate to the new workspace
-      router.push(`/dashboard/${wsData.workspaceId}`)
+      // 4. Navigate to the new-agent wizard. New users finish onboarding
+      //    expecting to build their first agent — the dashboard overview
+      //    isn't a useful landing when there's nothing to look at yet.
+      router.push(`/dashboard/${wsData.workspaceId}/agents/new`)
       router.refresh()
     } catch (err) {
       console.error('Onboarding error:', err)

@@ -124,11 +124,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   }
 
   try {
-    const location = await db.location.findFirst({ where: { workspaceId }, select: { id: true } })
+    // Resolve the locationId the new agent FKs to. Three cases:
+    //   1. Workspace has a real GHL Location (OAuth installed) → use it
+    //   2. Workspace has a placeholder Location from a previous no-CRM
+    //      agent create → reuse it
+    //   3. No Location at all → create a placeholder. Placeholders exist
+    //      purely as FK targets; they're flagged crmProvider='none' so the
+    //      CRM factory routes them to a no-op adapter.
+    // Previously this fell back to `locationId: workspaceId`, which
+    // violated the Location FK because workspaceId isn't a Location.id —
+    // that's the bug new users hit the first time they tried to create
+    // an agent before connecting GHL.
+    let location = await db.location.findFirst({
+      where: { workspaceId },
+      select: { id: true },
+      // Prefer the most-recent install (real GHL location wins over any old placeholder)
+      orderBy: { installedAt: 'desc' },
+    })
+    if (!location) {
+      const placeholderId = `placeholder:${workspaceId}`
+      location = await db.location.upsert({
+        where: { id: placeholderId },
+        create: {
+          id: placeholderId,
+          workspaceId,
+          // OAuth fields are non-null in the schema but meaningless for a
+          // placeholder — empty strings satisfy the constraint without
+          // claiming any real credentials.
+          companyId: '',
+          userId: '',
+          userType: '',
+          scope: '',
+          accessToken: '',
+          refreshToken: '',
+          refreshTokenId: '',
+          expiresAt: new Date(0),
+          crmProvider: 'none',
+        },
+        update: {},
+        select: { id: true },
+      })
+    }
+
     const agent = await db.agent.create({
       data: {
         workspaceId,
-        locationId: location?.id ?? workspaceId,
+        locationId: location.id,
         name: body.name,
         systemPrompt: body.systemPrompt,
         instructions: body.instructions ?? null,
