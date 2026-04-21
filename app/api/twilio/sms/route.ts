@@ -32,9 +32,27 @@ export async function POST(req: NextRequest) {
     const contactId = `twilio-${from.replace(/\D/g, '')}`
     const conversationId = `twilio-conv-${from.replace(/\D/g, '')}`
 
-    // Find matching agent (use ALL rule fallback)
+    // Hard pre-filter: refuse to respond to any inbound if NO agent on
+    // this location has any routing rules. Prevents silent replies from
+    // rule-less agents (the "why is my agent answering everything?"
+    // footgun). Same guard as /api/webhooks/events.
+    const agentsWithRules = await db.agent.count({
+      where: { locationId, isActive: true, routingRules: { some: {} } },
+    })
+    if (agentsWithRules === 0) {
+      console.log(`[Twilio] ✗ No active agent on ${locationId} has any Deploy rules — dropping inbound from ${from}`)
+      return new NextResponse('', { status: 200 })
+    }
+
+    // Find matching agent. No implicit fallback — agents with zero rules
+    // don't match by design.
     const agent = await findMatchingAgent(locationId, contactId, body)
     if (!agent) return new NextResponse('', { status: 200 })
+    // Defensive: reject any agent that slipped through without rules.
+    if (!(agent as any).routingRules || (agent as any).routingRules.length === 0) {
+      console.error(`[Twilio] ✗ Refusing to run agent "${agent.name}" — returned with zero routing rules`)
+      return new NextResponse('', { status: 200 })
+    }
 
     // Check conversation state
     const state = await getOrCreateConversationState(agent.id, locationId, contactId, conversationId)

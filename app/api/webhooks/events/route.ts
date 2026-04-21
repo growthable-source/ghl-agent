@@ -117,6 +117,35 @@ export async function POST(req: NextRequest) {
           },
         })
 
+        // ─── HARD PRE-FILTER ────────────────────────────────────────────
+        // Before any routing machinery runs, count how many active agents
+        // on this location have AT LEAST ONE routing rule. If zero, drop
+        // the inbound immediately with a clear log. This is belt-and-
+        // braces defence: even if findMatchingAgent had a bug or was
+        // stale, this check guarantees no agent replies without explicit
+        // operator intent.
+        const activeAgentsWithRules = await db.agent.count({
+          where: {
+            locationId: p.locationId,
+            isActive: true,
+            routingRules: { some: {} },   // at least one rule exists
+          },
+        })
+        if (activeAgentsWithRules === 0) {
+          const hadAnyAgents = await db.agent.count({
+            where: { locationId: p.locationId, isActive: true },
+          })
+          const reason = hadAnyAgents === 0
+            ? 'No active agents on this location.'
+            : `${hadAnyAgents} active agent(s) but NONE have any Deploy rules — inbound dropped by design.`
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: { status: 'SKIPPED', errorMessage: reason },
+          })
+          console.log(`[Webhook] ✗ Pre-filter blocked inbound: ${reason}`)
+          break
+        }
+
         // Find matching agent that is deployed on this channel
         let agent: Awaited<ReturnType<typeof findMatchingAgent>>
         try {
@@ -126,6 +155,25 @@ export async function POST(req: NextRequest) {
           await db.messageLog.update({
             where: { id: log.id },
             data: { status: 'ERROR', errorMessage: `Routing error: ${routingErr.message}` },
+          })
+          break
+        }
+
+        // ─── SECOND-LINE GUARD ──────────────────────────────────────────
+        // Defense in depth: even if findMatchingAgent returned something,
+        // re-check that the chosen agent actually has at least one
+        // routing rule. If it doesn't, refuse to run it. This catches the
+        // case where somehow a stale in-memory agent object slips
+        // through with routingRules missing.
+        if (agent && (!agent.routingRules || agent.routingRules.length === 0)) {
+          console.error(`[Webhook] ✗ Refusing to run agent "${agent.name}" — zero routing rules despite being returned by findMatchingAgent. This is a bug; please report.`)
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: {
+              agentId: agent.id,
+              status: 'SKIPPED',
+              errorMessage: 'Agent returned by routing engine has no Deploy rules. Pre-filter should have blocked this — treating as defensive skip.',
+            },
           })
           break
         }
