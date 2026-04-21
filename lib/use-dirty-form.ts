@@ -101,7 +101,25 @@ export function useDirtyForm<T extends Record<string, any>>(params: {
     setError(null)
   }, [])
 
-  return { draft, set, replace, dirty, saving, savedAt, error, save, reset }
+  // Render-gap protection: when the page's initial state first loads
+  // (params.initial flips from null → T), there's a single render where
+  // `draft` is still the empty {} from useState's initializer because the
+  // sync useEffect hasn't run yet. If the form body reads
+  // `draft.someArray.length` or `draft.someArray.includes(...)` in that
+  // window, it crashes with TypeError and the component disappears into
+  // an error boundary — which presents as a "404-looking page." Until the
+  // setDraft from the effect commits, fall through to params.initial so
+  // the first post-load render sees real data, not {}.
+  //
+  // Scope: only when draft is empty and we're not dirty. Once `set()` has
+  // been called (draft non-empty) or `initial` is null again, we return
+  // draft unchanged — the normal path.
+  const draftIsEmpty = !draft || Object.keys(draft).length === 0
+  const effectiveDraft: T = (draftIsEmpty && params.initial && !dirty)
+    ? params.initial
+    : draft
+
+  return { draft: effectiveDraft, set, replace, dirty, saving, savedAt, error, save, reset }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
