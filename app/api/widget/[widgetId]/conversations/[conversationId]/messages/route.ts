@@ -10,6 +10,7 @@ import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'
 import {
   getOrCreateConversationState,
   checkStopConditions,
+  executeStopConditionActions,
   pauseConversation,
   incrementMessageCount,
 } from '@/lib/conversation-state'
@@ -250,6 +251,17 @@ Note: This conversation is happening on a website chat widget. When booking, use
         content,
         result?.actionsPerformed ?? [],
       )
+      if (stopCheck.matched && !agent.locationId.startsWith('widget:')) {
+        // Only run CRM side-effects (needs-attention tag + workflow
+        // enrol/remove) when there's a real GHL location behind the
+        // agent. Widget-only agents don't have a CRM target for these.
+        await executeStopConditionActions({
+          matched: stopCheck.matched,
+          locationId: agent.locationId,
+          contactId: widgetContactId,
+          reason: stopCheck.reason ?? 'condition_met',
+        }).catch(() => {})
+      }
       if (stopCheck.shouldPause) {
         await pauseConversation(agent.id, widgetContactId, stopCheck.reason ?? 'condition_met')
       }

@@ -26,6 +26,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       conditionType: body.conditionType,
       value: body.value ?? null,
       pauseAgent: body.pauseAgent ?? true,
+      // Side-effects — tag needs-attention defaults ON to match schema,
+      // workflow enrol/remove IDs default null.
+      tagNeedsAttention: body.tagNeedsAttention ?? true,
+      enrollWorkflowId: body.enrollWorkflowId || null,
+      removeWorkflowId: body.removeWorkflowId || null,
     },
   })
   return NextResponse.json({ condition }, { status: 201 })

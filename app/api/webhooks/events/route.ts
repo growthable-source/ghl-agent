@@ -16,7 +16,7 @@ import { processContactTrigger } from '@/lib/triggers'
 import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
 import { buildKnowledgeBlock } from '@/lib/rag'
-import { getOrCreateConversationState, checkStopConditions, pauseConversation, incrementMessageCount } from '@/lib/conversation-state'
+import { getOrCreateConversationState, checkStopConditions, executeStopConditionActions, pauseConversation, incrementMessageCount } from '@/lib/conversation-state'
 import { saveMessages, getMessageHistory, getMemorySummary, updateContactMemorySummary } from '@/lib/conversation-memory'
 import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
@@ -427,8 +427,20 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
           // Increment message count
           await incrementMessageCount(agent.id, p.contactId)
 
-          // Check stop conditions
+          // Check stop conditions. A matched condition runs its configured
+          // side-effects (tag needs-attention + optional workflow
+          // enrol/remove) regardless of whether we pause the agent — so an
+          // operator can use a non-pausing SENTIMENT condition purely to
+          // surface angry contacts without stopping the reply flow.
           const stopCheck = await checkStopConditions(agent as any, p.contactId, inboundMessage, result.actionsPerformed)
+          if (stopCheck.matched) {
+            await executeStopConditionActions({
+              matched: stopCheck.matched,
+              locationId: p.locationId,
+              contactId: p.contactId,
+              reason: stopCheck.reason ?? 'condition_met',
+            }).catch(() => {})
+          }
           if (stopCheck.shouldPause) {
             await pauseConversation(agent.id, p.contactId, stopCheck.reason ?? 'condition_met')
           }

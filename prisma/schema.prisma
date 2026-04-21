@@ -164,6 +164,11 @@ enum StopConditionType {
   KEYWORD
   MESSAGE_COUNT
   OPPORTUNITY_STAGE
+  // Matches hostile / angry / threatening language in inbound messages.
+  // Uses a built-in regex plus any extra keywords the operator adds via
+  // `value`. When tripped, pauses the agent and (via the action columns
+  // on StopCondition) tags needs-attention / enrols workflows.
+  SENTIMENT
 }
 
 enum FollowUpStatus {
@@ -660,13 +665,24 @@ model NotificationChannel {
 }
 
 model StopCondition {
-  id            String            @id @default(cuid())
-  agentId       String
-  agent         Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  conditionType StopConditionType
-  value         String?
-  pauseAgent    Boolean           @default(true)
-  createdAt     DateTime          @default(now())
+  id                String            @id @default(cuid())
+  agentId           String
+  agent             Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conditionType     StopConditionType
+  value             String?
+  pauseAgent        Boolean           @default(true)
+  // Side-effect actions that fire when this specific condition trips.
+  // All optional; default behaviour (tag needs-attention) is on so
+  // operators don't have to opt into surfacing flagged conversations.
+  tagNeedsAttention Boolean           @default(true)
+  // GHL workflow IDs. When set, the contact is enrolled into / removed
+  // from the workflow the moment this condition matches — useful for
+  // auto-starting a "hostile customer recovery" sequence or removing
+  // someone from a nurture drip the moment they ask to unsubscribe.
+  // Requires the workspace to have a GHL connection with workflows.readonly.
+  enrollWorkflowId  String?
+  removeWorkflowId  String?
+  createdAt         DateTime          @default(now())
   @@index([agentId])
 }
 
