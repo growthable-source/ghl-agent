@@ -1101,3 +1101,50 @@ model HelpArticle {
   @@index([categoryId, order])
   @@index([status, publishedAt])
 }
+
+// ─── Super-admin backend ──────────────────────────────────────────────────
+//
+// The /admin area is the software-company cockpit — cross-workspace visibility
+// into users, logs, and usage, plus CSV / webhook export for support and
+// billing investigations. Separate auth path (Credentials provider) so admins
+// don't need OAuth to troubleshoot, and a dedicated table so the allowlist
+// lives in the DB rather than env vars (which are harder to rotate safely).
+
+model SuperAdmin {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  // bcrypt hash. Raw passwords never hit the DB. See scripts/create-admin.mjs
+  // for the bootstrap flow.
+  passwordHash String
+  name         String?
+  // null until first login. Used by the admin dashboard to spot stale
+  // accounts and by the CLI to detect "has this admin ever logged in?".
+  lastLoginAt  DateTime?
+  // Defaults true; set false to revoke without deleting (preserves audit
+  // trail that references this row).
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  auditLogs    AdminAuditLog[]
+  @@index([email])
+}
+
+// Audit trail for every meaningful admin action. Growing this catches
+// two classes of problem: (a) an ops teammate exported data they
+// shouldn't have, (b) debugging "who paused that workspace at 2am?".
+// Never pruned automatically — retention is a policy call, not a default.
+model AdminAuditLog {
+  id          String      @id @default(cuid())
+  adminId     String?
+  admin       SuperAdmin? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminEmail  String                                   // denormalised so deletes don't lose context
+  action      String                                   // e.g. "login", "export_users_csv", "fire_webhook"
+  target      String?                                  // workspaceId / userId / "all" / etc.
+  meta        Json?                                    // arbitrary context (row count, filter, url)
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+  @@index([adminId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}
