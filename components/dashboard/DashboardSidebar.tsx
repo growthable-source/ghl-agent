@@ -5,9 +5,28 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
 import VoxilityLogo from '@/components/VoxilityLogo'
+import { NavCountsProvider, useNavCounts, NavBadge } from './useNavCounts'
 
 export default function DashboardSidebar() {
   const pathname = usePathname()
+  // Extract workspaceId up front so the counts-provider can scope its
+  // polling. We still compute it again inside the inner component for
+  // the nav-link construction because the logic there handles static
+  // routes like /dashboard/settings.
+  const preMatch = pathname.match(/\/dashboard\/([^\/]+)/)
+  const STATIC = ['settings', 'new', 'feedback']
+  const pollingWorkspaceId = preMatch && !STATIC.includes(preMatch[1]) ? preMatch[1] : null
+
+  return (
+    <NavCountsProvider workspaceId={pollingWorkspaceId}>
+      <SidebarBody />
+    </NavCountsProvider>
+  )
+}
+
+function SidebarBody() {
+  const pathname = usePathname()
+  const counts = useNavCounts()
   const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string } | null>(null)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -49,7 +68,7 @@ export default function DashboardSidebar() {
 
   if (isOnboarding) return null
 
-  function navLink(href: string, label: string) {
+  function navLink(href: string, label: string, badgeCount?: number | null) {
     const active = pathname === href || (href !== `/dashboard/${workspaceId}` && pathname.startsWith(href))
     return (
       <Link
@@ -61,7 +80,8 @@ export default function DashboardSidebar() {
         }`}
         style={active ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
       >
-        {label}
+        <span className="flex-1 truncate">{label}</span>
+        <NavBadge count={badgeCount} />
       </Link>
     )
   }
@@ -100,9 +120,9 @@ export default function DashboardSidebar() {
                 {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox')}
                 {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
                 {navLink(`/dashboard/${workspaceId}/routing-diagnostic`, 'Routing Diagnostic')}
-                {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention')}
+                {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
                 {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
-                {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals')}
+                {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals', counts.approvalsPending)}
 
                 <div className="pt-2 pb-1 px-3">
                   <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Insights</p>

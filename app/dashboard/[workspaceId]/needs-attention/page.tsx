@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import HandoffActionModal, { type HandoffAction } from '@/components/dashboard/HandoffActionModal'
+import { humanizePauseReason } from '@/lib/humanize-pause-reason'
 
 interface AttentionItem {
   type: 'paused' | 'error' | 'fallback' | 'stalled'
@@ -42,6 +44,16 @@ export default function NeedsAttentionPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
 
+  // Modal state for take-over / resume actions. One modal reused across
+  // every row — keeps the tree light and ensures only one can be open.
+  const [modal, setModal] = useState<{
+    action: HandoffAction
+    agentId: string
+    agentName: string
+    contactId: string
+    pauseReason: string | null
+  } | null>(null)
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/needs-attention`)
@@ -56,6 +68,17 @@ export default function NeedsAttentionPage() {
     const i = setInterval(fetchData, 30000)
     return () => clearInterval(i)
   }, [fetchData])
+
+  function openAction(action: HandoffAction, item: AttentionItem) {
+    if (!item.agent) return
+    setModal({
+      action,
+      agentId: item.agent.id,
+      agentName: item.agent.name,
+      contactId: item.contactId,
+      pauseReason: item.reason,
+    })
+  }
 
   const filtered = filter === 'all' ? items : items.filter(i => i.type === filter)
 
@@ -114,6 +137,9 @@ export default function NeedsAttentionPage() {
           <div className="space-y-2">
             {filtered.map((item, i) => {
               const sev = SEVERITY[item.severity]
+              // Only PAUSED items carry a real pauseReason we can humanise;
+              // errors and stalled items get their raw reason shown as-is.
+              const humanised = item.type === 'paused' ? humanizePauseReason(item.reason) : null
               return (
                 <div
                   key={`${item.contactId}-${i}`}
@@ -128,7 +154,7 @@ export default function NeedsAttentionPage() {
                         <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
                           style={{ color: sev.color, background: sev.bg }}
                         >
-                          {item.label}
+                          {humanised?.short ?? item.label}
                         </span>
                         {item.agent && (
                           <Link
@@ -140,7 +166,9 @@ export default function NeedsAttentionPage() {
                         )}
                         <span className="ml-auto text-xs text-zinc-500">{timeAgo(item.at)}</span>
                       </div>
-                      <p className="text-sm text-zinc-300 mb-1">{item.reason}</p>
+                      <p className="text-sm text-zinc-300 mb-1 leading-relaxed">
+                        {humanised?.long ?? item.reason}
+                      </p>
                       {item.lastMessage && (
                         <p className="text-xs text-zinc-500 italic truncate">
                           Last from contact: &ldquo;{item.lastMessage}&rdquo;
@@ -150,12 +178,35 @@ export default function NeedsAttentionPage() {
                         <p className="text-xs text-zinc-500">{item.messageCount} messages exchanged</p>
                       )}
                     </div>
-                    <Link
-                      href={`/dashboard/${workspaceId}/contacts/${item.contactId}`}
-                      className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
-                    >
-                      Take over
-                    </Link>
+                    {/* Actions — Take over (pauses the agent under a human
+                        name) vs Resume (hands it back to the agent with an
+                        optional context note). Both open the same modal. */}
+                    <div className="flex-shrink-0 flex flex-col gap-1.5 items-stretch">
+                      {item.type === 'paused' && item.agent && (
+                        <button
+                          type="button"
+                          onClick={() => openAction('resume', item)}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                        >
+                          Resume agent
+                        </button>
+                      )}
+                      {item.agent && (
+                        <button
+                          type="button"
+                          onClick={() => openAction('takeover', item)}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
+                        >
+                          Take over
+                        </button>
+                      )}
+                      <Link
+                        href={`/dashboard/${workspaceId}/contacts/${item.contactId}`}
+                        className="text-[11px] text-zinc-500 hover:text-zinc-300 text-center"
+                      >
+                        View contact
+                      </Link>
+                    </div>
                   </div>
                 </div>
               )
@@ -165,6 +216,20 @@ export default function NeedsAttentionPage() {
 
         <p className="text-xs text-zinc-600 text-center mt-8">Auto-refreshing every 30 seconds</p>
       </div>
+
+      {modal && (
+        <HandoffActionModal
+          open={!!modal}
+          action={modal.action}
+          workspaceId={workspaceId}
+          agentId={modal.agentId}
+          agentName={modal.agentName}
+          contactId={modal.contactId}
+          pauseReason={modal.pauseReason}
+          onClose={() => setModal(null)}
+          onDone={() => { setModal(null); fetchData() }}
+        />
+      )}
     </div>
   )
 }
