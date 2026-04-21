@@ -119,17 +119,24 @@ Every time the agent replies, in addition to the usual prompt, it sees:
    the listed sale price in USD."
 2. **The contact's custom fields** — only the ones with values. Shown
    as \`field_key: value\` pairs.
-3. **Active opportunities** — up to **8 most recent** inquiries that
-   are not won/lost/abandoned, from the last **~6 months**. Each one
-   includes the name, monetary value in USD, stage, and any custom
-   fields on that opportunity (like \`vehicle_color=red\`,
-   \`vehicle_miles=42000\`).
-4. **Recent closed opportunities** — up to **5 most recent** won, lost,
-   or abandoned deals inside the same 6-month window. Useful so the
-   agent knows "we already sold them a car last quarter" or "they
-   passed on the Tacoma".
+3. **Open opportunities** — up to **8 most recent** live inquiries
+   (anything not won/lost/abandoned) from the last **~6 months**.
+   The section header includes the **subtotal** of every open
+   opportunity's monetary value so the agent sees revenue still in
+   play at a glance. Each line shows the name, price in USD, current
+   pipeline stage, and any custom fields on that opportunity
+   (\`vehicle_color=red\`, \`vehicle_miles=42000\`, etc.).
+4. **Won deals** — up to **5 most recent** completed sales within
+   the window, with a subtotal showing captured lifetime value.
+   Tells the agent "we've already earned $X from this contact" and
+   prevents it from pitching things the contact already bought.
+5. **Lost / abandoned** — up to **5 most recent** closed-lost or
+   abandoned deals in the window, with a subtotal showing missed
+   revenue. Each line says whether the status was \`lost\` (the
+   contact actively passed) or \`abandoned\` (went dark), so the
+   agent treats a re-pitch appropriately.
 
-If the contact has more opportunities than fit in the snapshot, the
+If any bucket has more opportunities than fit in its slice, the
 agent is told the exact number that were dropped and that it can call
 \`get_opportunities\` for anything it can't see directly.
 
@@ -137,7 +144,8 @@ agent is told the exact number that were dropped and that it can call
 
 To make this concrete — here's the exact block that gets injected
 into the system prompt for an Advanced agent at a used car dealer,
-where the contact has three active inquiries:
+where the contact has three live inquiries, one closed sale earlier
+this year, and one deal they passed on:
 
 \`\`\`
 ## Business Context
@@ -150,18 +158,35 @@ price in USD. Custom fields starting with vehicle_ describe the car…
 - budget_cap: 40000
 - preferred_body_style: Truck
 
-### Active inquiries (3 of 3)
-1. 2019 Ford F-150 4x4 — $45,000 (open) stage: test_drive_scheduled
+### Open opportunities — 3 live inquiries, $132,000 still in play
+1. 2019 Ford F-150 4x4 — $45,000 — stage: test_drive_scheduled
    vehicle_color=red, vehicle_year=2019, vehicle_miles=42000
-2. 2021 Toyota RAV4 LE — $35,000 (open) stage: interested
+2. 2021 Toyota RAV4 LE — $35,000 — stage: interested
    vehicle_color=silver, vehicle_year=2021, vehicle_miles=18000
-3. 2020 Ford F-250 — $52,000 (open) stage: new
+3. 2020 Ford F-250 — $52,000 — stage: new
    vehicle_color=white, vehicle_year=2020, vehicle_miles=60000
+
+### Won deals — 1 closed in last 6 months, $18,500 captured
+1. 2015 Hyundai Accent — $18,500 — sold 2025-12-04
+   vehicle_color=blue, vehicle_year=2015, vehicle_miles=95000
+
+### Lost / abandoned — 1 in last 6 months, $22,000 missed
+1. 2018 Honda Accord — $22,000 — lost 2025-11-12
 \`\`\`
 
-The agent sees all of that on **every** reply, so it can write things
-like *"The F-150 is $5k over your budget — want me to pull some
-trucks under $40k to compare?"* without calling a tool.
+The three-bucket split gives the agent explicit revenue context:
+
+- **$132,000 still in play** — pipeline the agent can move forward
+- **$18,500 captured** — don't re-offer what they already own, but
+  it's useful for "how's the Accent treating you?" small talk
+- **$22,000 missed** — the Accord is off the table, don't pitch it
+  again; use it as a signal about their taste
+
+With that visible on every turn, the agent can write things like
+*"The F-150 is $5k over your budget — want me to pull some trucks
+under $40k to compare?"* or *"I see the Accord wasn't the right fit
+last month — is size what pushed you toward trucks?"* without
+calling a tool.
 
 ## Using merge fields against this data
 

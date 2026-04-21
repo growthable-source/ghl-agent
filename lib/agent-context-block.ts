@@ -5,15 +5,15 @@
  * markdown-ish block that's injected into the system prompt on every turn,
  * giving the LLM:
  *   - the contact's custom fields (only those with values)
- *   - the contact's opportunities within the last 2 quarters (~6 months),
- *     split into Active / Closed, with monetaryValue + any opportunity
- *     custom fields surfaced inline
+ *   - the contact's opportunities from the last 2 quarters (~6 months),
+ *     SPLIT BY STATUS — Open (revenue potential), Won (captured LTV),
+ *     Lost/Abandoned (ruled out) — each with a subtotal so the agent
+ *     can reason about how much is still on the table vs banked vs gone.
  *   - the operator's businessContext glossary at the top, so the LLM
  *     interprets the data through the right business lens
  *
- * The block is capped (top 8 active, top 5 closed within the window) to
- * keep token cost predictable — the `get_opportunities` tool remains
- * available for deeper drill-down beyond what's pre-loaded.
+ * Per-bucket caps keep token cost predictable — the `get_opportunities`
+ * tool remains available for deeper drill-down beyond what's pre-loaded.
  */
 
 import type { Contact, Opportunity } from '@/types'
@@ -22,8 +22,11 @@ import { hydrateContactCustomFields, hydrateOpportunityCustomFields } from './me
 
 // Keep the footprint predictable. The tool path covers anything beyond.
 const WINDOW_DAYS = 182                 // ~2 quarters
-const MAX_ACTIVE_OPPS = 8
-const MAX_CLOSED_OPPS = 5
+const MAX_OPEN_OPPS = 8
+const MAX_WON_OPPS = 5
+const MAX_LOST_OPPS = 5
+
+type Bucket = 'open' | 'won' | 'lost'
 
 interface BuildOpts {
   adapter: CrmAdapter
@@ -57,30 +60,46 @@ export async function buildContactContextBlock({
     const ts = Date.parse(o.updatedAt || o.createdAt || '') || 0
     return ts >= cutoffMs
   })
-  // Active = anything not won/lost/abandoned. Sort newest-first.
-  const active = windowed
-    .filter(o => !/(won|lost|abandoned)/i.test(o.status ?? ''))
-    .sort(byUpdatedDesc)
-    .slice(0, MAX_ACTIVE_OPPS)
-  const closed = windowed
-    .filter(o => /(won|lost|abandoned)/i.test(o.status ?? ''))
-    .sort(byUpdatedDesc)
-    .slice(0, MAX_CLOSED_OPPS)
 
-  const hydratedOpps = await hydrateOpportunityCustomFields(adapter, [...active, ...closed])
-    .catch(() => [...active, ...closed])
-  const hActive = hydratedOpps.slice(0, active.length)
-  const hClosed = hydratedOpps.slice(active.length)
+  // Three buckets. Open = live opportunity (revenue still in play);
+  // Won = captured revenue / lifetime value; Lost/Abandoned = ruled
+  // out. Sort each newest-first so the most recent activity in each
+  // bucket wins the cap when we truncate.
+  const openAll = windowed.filter(o => bucketOf(o) === 'open').sort(byUpdatedDesc)
+  const wonAll = windowed.filter(o => bucketOf(o) === 'won').sort(byUpdatedDesc)
+  const lostAll = windowed.filter(o => bucketOf(o) === 'lost').sort(byUpdatedDesc)
+
+  const openShown = openAll.slice(0, MAX_OPEN_OPPS)
+  const wonShown = wonAll.slice(0, MAX_WON_OPPS)
+  const lostShown = lostAll.slice(0, MAX_LOST_OPPS)
+
+  const hydratedOpps = await hydrateOpportunityCustomFields(adapter, [
+    ...openShown, ...wonShown, ...lostShown,
+  ]).catch(() => [...openShown, ...wonShown, ...lostShown])
+  const hOpen = hydratedOpps.slice(0, openShown.length)
+  const hWon = hydratedOpps.slice(openShown.length, openShown.length + wonShown.length)
+  const hLost = hydratedOpps.slice(openShown.length + wonShown.length)
+
+  // Totals run across the *full* bucket (not just the shown slice) so the
+  // agent sees the real revenue-potential / LTV / lost-revenue numbers,
+  // even when a bucket has more entries than we inline.
+  const openTotal = sumMonetary(openAll)
+  const wonTotal = sumMonetary(wonAll)
+  const lostTotal = sumMonetary(lostAll)
 
   // Assemble
   const parts: string[] = []
   if (businessContext && businessContext.trim()) parts.push(wrapGlossary(businessContext))
 
   const customFieldLines = formatContactCustomFields(hydratedContact as Contact)
-  const activeLines = formatOpportunities(hActive)
-  const closedLines = formatOpportunities(hClosed)
+  const openLines = formatOpportunities(hOpen, 'open')
+  const wonLines = formatOpportunities(hWon, 'won')
+  const lostLines = formatOpportunities(hLost, 'lost')
 
-  if (customFieldLines.length === 0 && activeLines.length === 0 && closedLines.length === 0) {
+  if (customFieldLines.length === 0
+      && openLines.length === 0
+      && wonLines.length === 0
+      && lostLines.length === 0) {
     // No business data to share — just return the glossary (or nothing).
     return parts.join('\n\n')
   }
@@ -91,21 +110,56 @@ export async function buildContactContextBlock({
     parts.push('### Custom fields\n' + customFieldLines.join('\n'))
   }
 
-  if (activeLines.length > 0) {
-    parts.push(`### Active inquiries (${active.length} of ${rawOpps.filter(o => !/(won|lost|abandoned)/i.test(o.status ?? '')).length})\n` + activeLines.join('\n'))
+  // Each bucket gets its own heading with a subtotal so the agent can
+  // reason about revenue status at a glance:
+  //   - Open = still-closable pipeline value
+  //   - Won  = captured LTV (how much we've earned from this contact)
+  //   - Lost = missed / ruled-out revenue (don't re-pitch these outright)
+  if (openLines.length > 0) {
+    const header = `### Open opportunities — ${openAll.length} live inquir${openAll.length === 1 ? 'y' : 'ies'}, ${formatMoney(openTotal)} still in play`
+    parts.push(`${header}\n${openLines.join('\n')}`)
   }
 
-  if (closedLines.length > 0) {
-    parts.push(`### Recent past inquiries (last ${Math.round(WINDOW_DAYS / 30)} months)\n` + closedLines.join('\n'))
+  if (wonLines.length > 0) {
+    const header = `### Won deals — ${wonAll.length} closed in last ${monthsLabel()}, ${formatMoney(wonTotal)} captured`
+    parts.push(`${header}\n${wonLines.join('\n')}`)
   }
 
-  // Hint the agent about the tool when we've truncated.
-  const totalOppsInWindow = windowed.length
-  if (totalOppsInWindow > active.length + closed.length) {
-    parts.push(`> Note: ${totalOppsInWindow - active.length - closed.length} additional opportunit${totalOppsInWindow - active.length - closed.length === 1 ? 'y exists' : 'ies exist'} in this window. Call \`get_opportunities\` if the contact references something not listed above.`)
+  if (lostLines.length > 0) {
+    const header = `### Lost / abandoned — ${lostAll.length} in last ${monthsLabel()}, ${formatMoney(lostTotal)} missed`
+    parts.push(`${header}\n${lostLines.join('\n')}`)
+  }
+
+  // Hint the agent about the tool when we've truncated any bucket.
+  const hidden = (openAll.length - openShown.length)
+    + (wonAll.length - wonShown.length)
+    + (lostAll.length - lostShown.length)
+  if (hidden > 0) {
+    parts.push(`> Note: ${hidden} additional opportunit${hidden === 1 ? 'y exists' : 'ies exist'} in this window (older entries within each bucket). Call \`get_opportunities\` if the contact references something not listed above.`)
   }
 
   return parts.join('\n\n')
+}
+
+function bucketOf(o: Opportunity): Bucket {
+  const s = (o.status ?? '').toLowerCase()
+  if (s === 'won') return 'won'
+  if (s === 'lost' || s === 'abandoned') return 'lost'
+  // Anything else (open / undefined / unknown statuses) counts as live
+  // so we don't hide revenue potential behind a typo.
+  return 'open'
+}
+
+function sumMonetary(opps: Opportunity[]): number {
+  return opps.reduce((acc, o) => {
+    const v = typeof o.monetaryValue === 'number' ? o.monetaryValue : 0
+    return acc + (Number.isFinite(v) ? v : 0)
+  }, 0)
+}
+
+function monthsLabel(): string {
+  const months = Math.round(WINDOW_DAYS / 30)
+  return `${months} months`
 }
 
 // ─── helpers ───────────────────────────────────────────────────────────────
@@ -134,15 +188,40 @@ function formatContactCustomFields(contact: Contact | null | undefined): string[
     .map(f => `- ${f.key ?? f.id ?? 'unknown'}: ${stringifyValue(f.value)}`)
 }
 
-function formatOpportunities(opps: Opportunity[]): string[] {
+function formatOpportunities(opps: Opportunity[], bucket: Bucket): string[] {
   return opps.map((o, i) => {
     const price = formatMoney(o.monetaryValue)
-    const stage = o.pipelineStageId ? ` stage: ${o.pipelineStageId}` : ''
-    const status = o.status ? ` (${o.status})` : ''
-    const headline = `${i + 1}. ${o.name || 'Unnamed opportunity'} — ${price}${status}${stage}`
+    // What we tack onto the end of the headline varies by bucket so the
+    // reading experience matches the relevance of the detail:
+    //   open → current stage (what's the next step?)
+    //   won  → close date (when did we bank this?)
+    //   lost → close date + explicit status subtype (lost vs abandoned)
+    let trailer = ''
+    if (bucket === 'open') {
+      if (o.pipelineStageId) trailer = ` — stage: ${o.pipelineStageId}`
+    } else if (bucket === 'won') {
+      const d = shortDate(o.updatedAt || o.createdAt)
+      trailer = d ? ` — sold ${d}` : ''
+    } else {
+      // lost / abandoned — differentiate them, the agent behaves
+      // differently depending on whether the contact actively bailed
+      // or just went dark.
+      const sub = (o.status ?? '').toLowerCase() === 'abandoned' ? 'abandoned' : 'lost'
+      const d = shortDate(o.updatedAt || o.createdAt)
+      trailer = d ? ` — ${sub} ${d}` : ` — ${sub}`
+    }
+    const headline = `${i + 1}. ${o.name || 'Unnamed opportunity'} — ${price}${trailer}`
     const fieldLines = formatOpportunityCustomFields(o.customFields as any)
     return fieldLines.length > 0 ? `${headline}\n   ${fieldLines.join(', ')}` : headline
   })
+}
+
+function shortDate(iso: string | undefined): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (!t) return ''
+  // YYYY-MM-DD — compact, unambiguous, locale-independent.
+  return new Date(t).toISOString().slice(0, 10)
 }
 
 function formatOpportunityCustomFields(fields: Array<{ key?: string; id?: string; value?: any }> | undefined): string[] {
