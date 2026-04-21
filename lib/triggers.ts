@@ -192,11 +192,16 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
         // ── FIXED MODE: send static message directly ──
         // Render merge fields — the template is authored with placeholders
         // like {{contact.first_name|there}} and would otherwise ship the
-        // braces verbatim.
-        const { renderMergeFields } = await import('./merge-fields')
+        // braces verbatim. Pre-resolve the assigned user so {{user.*}}
+        // tokens work; adapter is cheap to instantiate here.
+        const { renderMergeFields, resolveAssignedUser } = await import('./merge-fields')
+        const { GhlAdapter } = await import('./crm/ghl/adapter')
+        const adapter = new GhlAdapter(locationId)
+        const assignedUser = await resolveAssignedUser(adapter, contact)
         const renderedFixed = renderMergeFields(trigger.fixedMessage, {
           contact: contact ?? null,
           agent: { name: agent.name },
+          user: assignedUser,
           timezone: (agent as any).timezone ?? null,
         })
 

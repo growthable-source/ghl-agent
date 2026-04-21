@@ -101,6 +101,7 @@ export function buildQualifyingPromptBlock(
   mergeCtx?: {
     contact?: any
     agent?: { name?: string | null } | null
+    user?: any
     timezone?: string | null
   },
 ): string {
@@ -115,6 +116,7 @@ export function buildQualifyingPromptBlock(
       ? renderMergeFields(q.question, {
           contact: mergeCtx.contact ?? null,
           agent: mergeCtx.agent ?? null,
+          user: mergeCtx.user ?? null,
           timezone: mergeCtx.timezone ?? null,
         })
       : q.question

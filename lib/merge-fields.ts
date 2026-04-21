@@ -15,6 +15,7 @@
  *   {{contact.first_name|there}}     → "Ryan" or "there" if empty
  *   {{custom.quote_total|TBD}}       → GHL custom field by key, with fallback
  *   {{agent.name|our team}}          → agent display name
+ *   {{user.name|our team}}           → assigned-user display name
  *   {{date.today}}                   → "Saturday, November 8"
  *
  * ── Supported tokens ──────────────────────────────────────────────────────
@@ -23,19 +24,47 @@
  *   contact.tags                              → comma-joined
  *   custom.<fieldKey>                         → resolved from GHL customFields
  *   agent.name                                → agent display name
+ *   user.name | first_name | last_name        → assigned team member (CRM user)
+ *   user.email | phone | extension
  *   date.today         | date.tomorrow        → locale-friendly dates
  *
  * Unknown tokens render as empty string unless a fallback is given, in which
  * case the fallback is used. The raw `{{token}}` is never left in the output.
  */
 
-import type { Contact } from '@/types'
+import type { Contact, CrmUser } from '@/types'
+import type { CrmAdapter } from './crm/types'
 
 export interface MergeFieldContext {
   contact?: Partial<Contact> | null
   agent?: { name?: string | null } | null
+  /**
+   * Assigned team member — powers {{user.*}} tokens. Callers that have an
+   * adapter available should pre-resolve this via resolveAssignedUser()
+   * before calling renderMergeFields(), since the renderer itself is
+   * synchronous.
+   */
+  user?: Partial<CrmUser> | null
   /** Contact timezone / locale if you have it, used for date formatting. */
   timezone?: string | null
+}
+
+/**
+ * Fetch the assigned user for a contact via the CRM adapter. Non-fatal —
+ * returns null if the contact has no assignment, if the adapter doesn't
+ * implement getUser, or if the API call fails (e.g. missing users.readonly
+ * scope on an older token). Intended as a one-liner bridge between the
+ * message-sending call sites and the synchronous renderMergeFields.
+ */
+export async function resolveAssignedUser(
+  adapter: Pick<CrmAdapter, 'getUser'> | null | undefined,
+  contact: Partial<Contact> | null | undefined,
+): Promise<CrmUser | null> {
+  if (!adapter?.getUser) return null
+  const userId = (contact as any)?.assignedTo
+  if (!userId || typeof userId !== 'string') return null
+  try { return await adapter.getUser(userId) }
+  catch { return null }
 }
 
 // Regex captures: whole match, token path, optional |fallback.
@@ -57,6 +86,7 @@ export function renderMergeFields(template: string, ctx: MergeFieldContext): str
 function resolveToken(path: string, ctx: MergeFieldContext): string | null {
   const contact = ctx.contact ?? null
   const agent = ctx.agent ?? null
+  const user = ctx.user ?? null
   const [ns, ...rest] = path.split('.')
   const key = rest.join('.')
 
@@ -68,10 +98,31 @@ function resolveToken(path: string, ctx: MergeFieldContext): string | null {
     case 'agent':
       if (key === 'name') return agent?.name ?? null
       return null
+    case 'user':
+      return userToken(user, key)
     case 'date':
       return dateToken(key, ctx.timezone ?? undefined)
     default:
       return null
+  }
+}
+
+function userToken(user: Partial<CrmUser> | null, key: string): string | null {
+  if (!user) return null
+  switch (key) {
+    case 'first_name':
+    case 'firstname':
+      return user.firstName ?? extractFirst(user.name ?? undefined) ?? null
+    case 'last_name':
+    case 'lastname':
+      return user.lastName ?? extractLast(user.name ?? undefined) ?? null
+    case 'full_name':
+    case 'name':
+      return user.name ?? joinName(user.firstName, user.lastName)
+    case 'email':     return user.email ?? null
+    case 'phone':     return user.phone ?? null
+    case 'extension': return user.extension ?? null
+    default:          return null
   }
 }
 
@@ -149,21 +200,28 @@ export interface MergeFieldSpec {
   token: string
   label: string
   example: string
-  group: 'Contact' | 'Custom' | 'Agent' | 'Date'
+  group: 'Contact' | 'Custom' | 'Agent' | 'User' | 'Date'
 }
 
 export const MERGE_FIELDS: MergeFieldSpec[] = [
-  { token: '{{contact.first_name}}', label: 'First name',  example: 'Ryan',                    group: 'Contact' },
-  { token: '{{contact.last_name}}',  label: 'Last name',   example: 'Johnson',                 group: 'Contact' },
-  { token: '{{contact.full_name}}',  label: 'Full name',   example: 'Ryan Johnson',            group: 'Contact' },
-  { token: '{{contact.email}}',      label: 'Email',       example: 'ryan@example.com',        group: 'Contact' },
-  { token: '{{contact.phone}}',      label: 'Phone',       example: '+14155551234',            group: 'Contact' },
-  { token: '{{contact.company}}',    label: 'Company',     example: 'Acme Corp',               group: 'Contact' },
-  { token: '{{contact.city}}',       label: 'City',        example: 'Brisbane',                group: 'Contact' },
-  { token: '{{contact.state}}',      label: 'State',       example: 'QLD',                     group: 'Contact' },
-  { token: '{{contact.country}}',    label: 'Country',     example: 'Australia',               group: 'Contact' },
-  { token: '{{contact.tags}}',       label: 'Tags',        example: 'hot-lead, vip',           group: 'Contact' },
-  { token: '{{agent.name}}',         label: 'Agent name',  example: 'Alex',                    group: 'Agent'   },
-  { token: '{{date.today}}',         label: 'Today',       example: 'Saturday, November 8',    group: 'Date'    },
-  { token: '{{date.tomorrow}}',      label: 'Tomorrow',    example: 'Sunday, November 9',      group: 'Date'    },
+  { token: '{{contact.first_name}}', label: 'First name',      example: 'Ryan',                 group: 'Contact' },
+  { token: '{{contact.last_name}}',  label: 'Last name',       example: 'Johnson',              group: 'Contact' },
+  { token: '{{contact.full_name}}',  label: 'Full name',       example: 'Ryan Johnson',         group: 'Contact' },
+  { token: '{{contact.email}}',      label: 'Email',           example: 'ryan@example.com',     group: 'Contact' },
+  { token: '{{contact.phone}}',      label: 'Phone',           example: '+14155551234',         group: 'Contact' },
+  { token: '{{contact.company}}',    label: 'Company',         example: 'Acme Corp',            group: 'Contact' },
+  { token: '{{contact.city}}',       label: 'City',            example: 'Brisbane',             group: 'Contact' },
+  { token: '{{contact.state}}',      label: 'State',           example: 'QLD',                  group: 'Contact' },
+  { token: '{{contact.country}}',    label: 'Country',         example: 'Australia',            group: 'Contact' },
+  { token: '{{contact.tags}}',       label: 'Tags',            example: 'hot-lead, vip',        group: 'Contact' },
+  { token: '{{agent.name}}',         label: 'Agent name',      example: 'Alex',                 group: 'Agent'   },
+  // Assigned team member — CRM "owner" of the contact, resolved from
+  // contact.assignedTo via the adapter. Empty if nothing is assigned.
+  { token: '{{user.name}}',          label: 'Assigned user',   example: 'Jamie Lee',            group: 'User'    },
+  { token: '{{user.first_name}}',    label: 'Assigned first',  example: 'Jamie',                group: 'User'    },
+  { token: '{{user.last_name}}',     label: 'Assigned last',   example: 'Lee',                  group: 'User'    },
+  { token: '{{user.email}}',         label: 'Assigned email',  example: 'jamie@acme.com',       group: 'User'    },
+  { token: '{{user.phone}}',         label: 'Assigned phone',  example: '+14155559876',         group: 'User'    },
+  { token: '{{date.today}}',         label: 'Today',           example: 'Saturday, November 8', group: 'Date'    },
+  { token: '{{date.tomorrow}}',      label: 'Tomorrow',        example: 'Sunday, November 9',   group: 'Date'    },
 ]

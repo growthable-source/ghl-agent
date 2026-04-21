@@ -4,7 +4,7 @@
  */
 
 import { getHubSpotAccessToken } from './token-manager'
-import type { Contact, Conversation, Message, Opportunity, SendMessagePayload } from '@/types'
+import type { Contact, Conversation, CrmUser, Message, Opportunity, SendMessagePayload } from '@/types'
 import type { CrmAdapter, CustomField, BookAppointmentPayload, CreateOpportunityPayload } from '../types'
 
 const BASE_URL = 'https://api.hubspot.com'
@@ -500,5 +500,32 @@ export class HubSpotAdapter implements CrmAdapter {
         properties: { hs_note_body: body },
       }),
     })
+  }
+
+  /**
+   * Fetch a HubSpot owner (contact.assignedTo → hubspot_owner_id) and
+   * normalise it into our CrmUser shape. Non-fatal: returns null on any
+   * error so merge-field rendering just skips the user tokens.
+   */
+  async getUser(userId: string): Promise<CrmUser | null> {
+    if (!userId) return null
+    try {
+      const data = await this.apiFetch<{
+        id: string
+        firstName?: string
+        lastName?: string
+        email?: string
+      }>(`/crm/v3/owners/${userId}`)
+      return {
+        id: data.id,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        name: [data.firstName, data.lastName].filter(Boolean).join(' ') || undefined,
+        email: data.email,
+      }
+    } catch (err) {
+      console.warn(`[HubSpot] getUser(${userId}) failed:`, err)
+      return null
+    }
   }
 }

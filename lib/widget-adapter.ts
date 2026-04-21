@@ -15,7 +15,7 @@ import type {
   BookAppointmentPayload, CreateOpportunityPayload,
 } from './crm/types'
 import type {
-  Contact, Conversation, Message, Opportunity, SendMessagePayload,
+  Contact, Conversation, CrmUser, Message, Opportunity, SendMessagePayload,
 } from '@/types'
 import { db } from './db'
 import { broadcast } from './widget-sse'
@@ -155,5 +155,12 @@ export class WidgetAdapter implements CrmAdapter {
   async updateAppointmentNote(appointmentId: string, noteId: string, body: string): Promise<any> {
     if (!this.inner) return { success: false }
     return this.inner.updateAppointmentNote(appointmentId, noteId, body)
+  }
+
+  // Widget visitors don't have an assigned CRM user of their own, but if a
+  // real CRM is wrapped we pass through so widget-hosted agents can still
+  // render {{user.*}} tokens when they eventually interact with real contacts.
+  async getUser(userId: string): Promise<CrmUser | null> {
+    return this.inner?.getUser ? this.inner.getUser(userId) : null
   }
 }

@@ -4,7 +4,7 @@
  * Implementations: GhlAdapter, HubSpotAdapter (future)
  */
 
-import type { Contact, Conversation, Message, Opportunity, SendMessagePayload } from '@/types'
+import type { Contact, Conversation, CrmUser, Message, Opportunity, SendMessagePayload } from '@/types'
 
 // 'none' is the sentinel for placeholder Locations — a workspace that has
 // never connected a real CRM but still needs a Location row for Agent FK
@@ -81,4 +81,13 @@ export interface CrmAdapter {
   getCalendarEvents(contactId: string): Promise<any>
   createAppointmentNote(appointmentId: string, body: string): Promise<any>
   updateAppointmentNote(appointmentId: string, noteId: string, body: string): Promise<any>
+
+  // ─── Users / Team Members ────────────────────────────────────────────
+  /**
+   * Fetch a single team member by ID. Used to resolve the assigned user
+   * on a contact for merge-field rendering ({{user.name}} / {{user.email}}
+   * / {{user.phone}}). Implementations should return null on 404 or when
+   * the CRM doesn't expose user records to this token's scope.
+   */
+  getUser(userId: string): Promise<CrmUser | null>
 }

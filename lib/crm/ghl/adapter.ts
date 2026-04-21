@@ -5,7 +5,7 @@
  */
 
 import { getValidAccessToken } from '@/lib/token-store'
-import type { Contact, Conversation, Message, Opportunity, SendMessagePayload } from '@/types'
+import type { Contact, Conversation, CrmUser, Message, Opportunity, SendMessagePayload } from '@/types'
 import type { CrmAdapter, CustomField, BookAppointmentPayload, CreateOpportunityPayload } from '../types'
 
 const BASE_URL = 'https://services.leadconnectorhq.com'
@@ -344,6 +344,39 @@ export class GhlAdapter implements CrmAdapter {
       return data.tag ?? null
     } catch (err) {
       console.error('[GHL] createTag failed:', err)
+      return null
+    }
+  }
+
+  // ─── Users / Team Members ──────────────────────────────────────────
+  // Requires users.readonly scope. Returns null on 404 / missing scope so
+  // merge-field rendering degrades gracefully instead of blowing up.
+
+  async getUser(userId: string): Promise<CrmUser | null> {
+    if (!userId) return null
+    try {
+      const data = await this.apiFetch<{
+        id: string
+        name?: string
+        firstName?: string
+        lastName?: string
+        email?: string
+        phone?: string
+        extension?: string
+      }>(`/users/${userId}`)
+      return {
+        id: data.id,
+        name: data.name ?? ([data.firstName, data.lastName].filter(Boolean).join(' ') || undefined),
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        extension: data.extension,
+      }
+    } catch (err) {
+      // 401 (missing scope) / 404 (user doesn't exist or cross-location) —
+      // don't block the send, just skip the user tokens.
+      console.warn(`[GHL] getUser(${userId}) failed:`, err)
       return null
     }
   }

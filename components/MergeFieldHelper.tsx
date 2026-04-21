@@ -181,7 +181,7 @@ export default function MergeFieldHelper({
     group: 'Custom' as const,
   }))
   const all = [...MERGE_FIELDS, ...customSpecs]
-  const groups: MergeFieldSpec['group'][] = ['Contact', 'Custom', 'Agent', 'Date']
+  const groups: MergeFieldSpec['group'][] = ['Contact', 'Custom', 'Agent', 'User', 'Date']
 
   return (
     <div ref={wrapRef} className="relative inline-block">

@@ -42,6 +42,26 @@ export interface Contact {
   customFields?: Array<{ id: string; value: string }>
   dateAdded?: string
   dateUpdated?: string
+  /**
+   * GHL user ID of the team member the contact is assigned to. Powers
+   * {{user.name}} / {{user.email}} / {{user.phone}} merge fields — the
+   * renderer resolves this into a full user record on demand.
+   */
+  assignedTo?: string
+}
+
+/**
+ * CRM user / team member record. Exposed to merge-field rendering so
+ * messages can reference the owner of the assigned contact.
+ */
+export interface CrmUser {
+  id: string
+  name?: string
+  firstName?: string
+  lastName?: string
+  email?: string
+  phone?: string
+  extension?: string
 }
 
 export interface Conversation {

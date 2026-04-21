@@ -14,7 +14,7 @@
 import type {
   CrmAdapter, BookAppointmentPayload, CreateOpportunityPayload, CustomField, CrmProvider,
 } from '../types'
-import type { Contact, Conversation, Message, Opportunity, SendMessagePayload } from '@/types'
+import type { Contact, Conversation, CrmUser, Message, Opportunity, SendMessagePayload } from '@/types'
 
 function missing(): never {
   throw new Error(
@@ -55,4 +55,8 @@ export class NoCrmAdapter implements CrmAdapter {
   getCalendarEvents(_contactId: string): Promise<any> { missing() }
   createAppointmentNote(_appointmentId: string, _body: string): Promise<any> { missing() }
   updateAppointmentNote(_appointmentId: string, _noteId: string, _body: string): Promise<any> { missing() }
+
+  // User merge fields are a nicety, not a hard requirement — returning null
+  // rather than throwing keeps widget-only / placeholder workspaces working.
+  async getUser(_userId: string): Promise<CrmUser | null> { return null }
 }

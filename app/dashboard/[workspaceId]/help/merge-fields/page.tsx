@@ -14,7 +14,7 @@ export default function MergeFieldsHelpPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
 
-  const groups: MergeFieldSpec['group'][] = ['Contact', 'Agent', 'Date']
+  const groups: MergeFieldSpec['group'][] = ['Contact', 'Agent', 'User', 'Date']
 
   return (
     <div className="p-8 max-w-3xl space-y-10">
