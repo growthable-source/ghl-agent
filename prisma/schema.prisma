@@ -76,7 +76,13 @@ model Workspace {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
-  icon        String   @default("🚀")      // emoji avatar
+  icon        String   @default("🚀")      // emoji avatar — fallback when logoUrl is unset
+  // Optional hosted logo image. When set, the UI renders this instead of
+  // the emoji everywhere the workspace avatar appears (sidebar, switcher,
+  // workspace list). Either a Vercel Blob URL (from our upload endpoint)
+  // or any arbitrary https URL the user pasted — we don't proxy or copy,
+  // so broken external URLs just render as a broken image.
+  logoUrl     String?
   domain      String?                       // e.g. "acmecorp.com" — for same-domain invite gating
 
   // ─── Plan & Limits ───

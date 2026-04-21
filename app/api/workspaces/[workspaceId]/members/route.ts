@@ -49,6 +49,24 @@ export async function PATCH(
   if (body.icon && typeof body.icon === 'string') {
     data.icon = body.icon.trim().slice(0, 4)
   }
+  // logoUrl: explicit null clears (fall back to emoji), non-empty string
+  // sets, empty string also clears. Undefined leaves it alone. Capped at
+  // 2000 chars so someone can't jam a massive data: URL in here; https://
+  // validation is soft — we only require the protocol, not reachability,
+  // since the image element handles 404s naturally.
+  if (Object.prototype.hasOwnProperty.call(body, 'logoUrl')) {
+    if (body.logoUrl === null || body.logoUrl === '') {
+      data.logoUrl = null
+    } else if (typeof body.logoUrl === 'string') {
+      const trimmed = body.logoUrl.trim().slice(0, 2000)
+      if (!/^https?:\/\//i.test(trimmed)) {
+        return NextResponse.json({
+          error: 'logoUrl must be an http(s) URL. Upload a file via /logo/upload instead if you meant to attach one.',
+        }, { status: 400 })
+      }
+      data.logoUrl = trimmed
+    }
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })

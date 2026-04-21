@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
 import VoxilityLogo from '@/components/VoxilityLogo'
 import { NavCountsProvider, useNavCounts, NavBadge } from './useNavCounts'
+import WorkspaceAvatar from './WorkspaceAvatar'
 
 export default function DashboardSidebar() {
   const pathname = usePathname()
@@ -27,7 +28,7 @@ export default function DashboardSidebar() {
 function SidebarBody() {
   const pathname = usePathname()
   const counts = useNavCounts()
-  const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string } | null>(null)
+  const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string; logoUrl: string | null } | null>(null)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
 
@@ -58,7 +59,11 @@ function SidebarBody() {
       .then(r => r.json())
       .then(data => {
         const ws = data.workspaces?.find((w: any) => w.id === workspaceId)
-        if (ws) setWorkspaceInfo({ name: ws.name, icon: ws.icon || '🚀' })
+        if (ws) setWorkspaceInfo({
+          name: ws.name,
+          icon: ws.icon || '🚀',
+          logoUrl: ws.logoUrl ?? null,
+        })
       })
       .catch(() => {})
   }, [workspaceId])
@@ -106,7 +111,12 @@ function SidebarBody() {
           // Workspace-level nav
           <>
             <div className="px-3 py-1.5 mb-1 flex items-center gap-2">
-              <span className="text-base">{workspaceInfo?.icon || '🚀'}</span>
+              <WorkspaceAvatar
+                logoUrl={workspaceInfo?.logoUrl}
+                icon={workspaceInfo?.icon}
+                size={20}
+                title={workspaceInfo?.name || workspaceId}
+              />
               <p className="text-xs text-zinc-400 font-medium truncate" title={workspaceInfo?.name || workspaceId}>
                 {workspaceInfo?.name || 'Workspace'}
               </p>

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { getPlanFeatures } from '@/lib/plans'
+import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,7 +112,13 @@ export default async function DashboardPage() {
                 className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-5 py-4 hover:border-zinc-600 transition-colors group"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-2xl shrink-0">{ws.icon || '🚀'}</span>
+                  <WorkspaceAvatar
+                    logoUrl={(ws as any).logoUrl}
+                    icon={ws.icon}
+                    size={32}
+                    title={ws.name}
+                    className="bg-zinc-900 border border-zinc-800 rounded-lg"
+                  />
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">{ws.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">

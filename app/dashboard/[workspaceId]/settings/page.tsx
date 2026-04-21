@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
 
 const WORKSPACE_ICONS = [
   '🚀', '⚡', '🎯', '💎', '🔥', '🌊', '🏔️', '🌿',
@@ -35,7 +36,12 @@ export default function WorkspaceSettingsPage() {
   // Workspace info
   const [wsName, setWsName] = useState('')
   const [wsIcon, setWsIcon] = useState('🚀')
-  const [showIconPicker, setShowIconPicker] = useState(false)
+  const [wsLogoUrl, setWsLogoUrl] = useState<string | null>(null)
+  const [logoMode, setLogoMode] = useState<'emoji' | 'upload' | 'url'>('emoji')
+  const [pendingUrl, setPendingUrl] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [logoError, setLogoError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [savingWs, setSavingWs] = useState(false)
   const [wsSaved, setWsSaved] = useState(false)
 
@@ -59,6 +65,13 @@ export default function WorkspaceSettingsPage() {
       if (ws) {
         setWsName(ws.name)
         setWsIcon(ws.icon || '🚀')
+        setWsLogoUrl(ws.logoUrl ?? null)
+        // Start on whichever mode the workspace is currently using so
+        // the operator lands on the relevant controls without clicking.
+        if (ws.logoUrl) {
+          setLogoMode(ws.logoUrl.startsWith('http') ? 'url' : 'upload')
+          setPendingUrl(ws.logoUrl)
+        }
       }
       setMembers(memberData.members || [])
       setInvites(inviteData.invites || [])
@@ -78,6 +91,67 @@ export default function WorkspaceSettingsPage() {
     setSavingWs(false)
     setWsSaved(true)
     setTimeout(() => setWsSaved(false), 2000)
+  }
+
+  // Upload a file from the picker. On success updates wsLogoUrl so the
+  // avatar swaps immediately without a save-and-reload round-trip.
+  async function uploadLogo(file: File) {
+    setUploading(true)
+    setLogoError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/workspaces/${workspaceId}/logo/upload`, {
+        method: 'POST',
+        body: form,
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Upload failed (${res.status})`)
+      }
+      const data = await res.json()
+      setWsLogoUrl(data.logoUrl)
+      setPendingUrl(data.logoUrl)
+    } catch (err: any) {
+      setLogoError(err.message ?? 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // Apply a pasted URL via the existing workspace PATCH. Uses the same
+  // endpoint as name/icon edits so role gating is consistent.
+  async function applyUrlLogo() {
+    setLogoError(null)
+    const url = pendingUrl.trim()
+    if (!url) { setLogoError('Enter a URL first.'); return }
+    const res = await fetch(`/api/workspaces/${workspaceId}/members`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logoUrl: url }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setLogoError(body.error || `Failed (${res.status})`)
+      return
+    }
+    setWsLogoUrl(url)
+  }
+
+  // Clear back to emoji. Uses the DELETE on the upload endpoint for
+  // consistency (same gate + audit as the upload path), but could use
+  // PATCH { logoUrl: null } — either is fine.
+  async function removeLogo() {
+    setLogoError(null)
+    const res = await fetch(`/api/workspaces/${workspaceId}/logo/upload`, { method: 'DELETE' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setLogoError(body.error || `Remove failed (${res.status})`)
+      return
+    }
+    setWsLogoUrl(null)
+    setPendingUrl('')
+    setLogoMode('emoji')
   }
 
   async function sendInvite(e: React.FormEvent) {
@@ -129,15 +203,14 @@ export default function WorkspaceSettingsPage() {
         <h2 className="text-sm font-medium text-zinc-200 mb-4">General</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Workspace name & icon</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Workspace name</label>
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowIconPicker(!showIconPicker)}
-                className="w-11 h-11 rounded-lg flex items-center justify-center text-xl shrink-0 bg-zinc-900 border border-zinc-700 hover:border-zinc-500 transition-colors"
-              >
-                {wsIcon}
-              </button>
+              <WorkspaceAvatar
+                logoUrl={wsLogoUrl}
+                icon={wsIcon}
+                size={44}
+                className="bg-zinc-900 border border-zinc-700 rounded-lg"
+              />
               <input
                 type="text"
                 value={wsName}
@@ -145,21 +218,107 @@ export default function WorkspaceSettingsPage() {
                 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
               />
             </div>
-            {showIconPicker && (
-              <div className="mt-2 p-3 rounded-lg bg-zinc-900 border border-zinc-800 grid grid-cols-8 gap-1">
+          </div>
+
+          {/* ── Logo / icon picker ──
+              Three modes — emoji (existing 24-option grid), upload
+              (Vercel Blob), or paste a URL. A "Remove logo" button
+              appears whenever a logoUrl is set so operators can go
+              back to the emoji cleanly. */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Brand avatar</label>
+            <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-0.5 text-[11px] mb-2">
+              {(['emoji', 'upload', 'url'] as const).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setLogoMode(m); setLogoError(null) }}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    logoMode === m ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {m === 'emoji' ? 'Emoji' : m === 'upload' ? 'Upload' : 'Paste URL'}
+                </button>
+              ))}
+            </div>
+
+            {logoMode === 'emoji' && (
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 grid grid-cols-8 gap-1">
                 {WORKSPACE_ICONS.map(ic => (
                   <button
                     key={ic}
                     type="button"
-                    onClick={() => { setWsIcon(ic); setShowIconPicker(false) }}
+                    onClick={() => setWsIcon(ic)}
                     className={`w-9 h-9 rounded-md flex items-center justify-center text-lg transition-colors hover:bg-zinc-700 ${
-                      wsIcon === ic ? 'bg-zinc-700 ring-1 ring-zinc-500' : ''
+                      wsIcon === ic && !wsLogoUrl ? 'bg-zinc-700 ring-1 ring-zinc-500' : ''
                     }`}
                   >
                     {ic}
                   </button>
                 ))}
+                <p className="col-span-8 text-[11px] text-zinc-600 mt-1">
+                  The emoji shows when no logo image is set. Click Save below to persist
+                  the choice.
+                </p>
               </div>
+            )}
+
+            {logoMode === 'upload' && (
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (f) uploadLogo(f)
+                  }}
+                  className="block w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-zinc-800 file:text-white hover:file:bg-zinc-700"
+                />
+                <p className="text-[11px] text-zinc-600">
+                  PNG, JPEG, WebP, SVG, or GIF up to 2 MB. Square images look best in the sidebar.
+                </p>
+                {uploading && <p className="text-[11px] text-zinc-400">Uploading…</p>}
+              </div>
+            )}
+
+            {logoMode === 'url' && (
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={pendingUrl}
+                    onChange={e => setPendingUrl(e.target.value)}
+                    placeholder="https://example.com/logo.png"
+                    className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyUrlLogo}
+                    className="rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-xs px-3 transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+                <p className="text-[11px] text-zinc-600">
+                  Must be a publicly-reachable https URL. If the URL 404s or changes later,
+                  the sidebar falls back to the emoji automatically.
+                </p>
+              </div>
+            )}
+
+            {logoError && (
+              <p className="text-[11px] text-red-400 mt-2">{logoError}</p>
+            )}
+
+            {wsLogoUrl && (
+              <button
+                type="button"
+                onClick={removeLogo}
+                className="mt-2 text-[11px] text-zinc-500 hover:text-red-400 transition-colors"
+              >
+                Remove logo · fall back to emoji
+              </button>
             )}
           </div>
           <div className="flex items-center gap-3">
