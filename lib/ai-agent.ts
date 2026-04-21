@@ -475,7 +475,16 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'transfer_to_human',
-    description: 'Escalate the conversation to a human agent. Use this when the AI cannot resolve the issue, the contact explicitly asks for a human, or sentiment is very negative.',
+    description: 'Escalate the conversation to a human agent. The conversation is PAUSED when you call this — the agent stops replying until an operator manually resumes it. Use SPARINGLY, only when:\n' +
+      '  (a) the contact explicitly asks to speak to a human / manager / real person, OR\n' +
+      '  (b) sentiment is hostile and you genuinely cannot de-escalate, OR\n' +
+      '  (c) the contact asks something completely outside your scope that no tool or knowledge entry can resolve.\n\n' +
+      'Do NOT call this for:\n' +
+      '  - A single tool error (retry the tool or offer a manual fallback first)\n' +
+      '  - A calendar hiccup ("I can\'t pull up the calendar" is a tool blip — ask for their preferred time and promise a human will confirm, don\'t transfer)\n' +
+      '  - Not knowing the answer to one question (use the fallback flow, not transfer)\n' +
+      '  - The contact asking a pricing / scheduling / product question you have tools or knowledge for — try first\n\n' +
+      'The `reason` field becomes the pause reason that the operator sees. Be specific and actionable: "Contact asked for Joe directly" beats "unable to help".',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -839,12 +848,32 @@ async function executeTool(
         return JSON.stringify({ success: true, note: input.note })
       }
       case 'get_available_slots': {
-        const slots = await crm.getFreeSlots(
-          input.calendarId as string,
-          input.startDate as string,
-          input.endDate as string
-        )
-        return JSON.stringify(slots)
+        // Wrap in try/catch so transient GHL failures return a structured
+        // response with hints instead of throwing. Without this, a single
+        // 500 from GHL kills the whole runAgent turn → the model sees no
+        // tool result on retry → it fabricates ("the calendar is fully
+        // booked") → hallucination guard intervenes → eventually the
+        // model reaches for transfer_to_human with a reason mentioning
+        // "calendar issues" and the conversation pauses. That's how an
+        // operator ends up seeing "agent paused citing calendar
+        // connection issues" when the calendar is actually fine.
+        try {
+          const slots = await crm.getFreeSlots(
+            input.calendarId as string,
+            input.startDate as string,
+            input.endDate as string,
+          )
+          return JSON.stringify({ success: true, slots })
+        } catch (err: any) {
+          const msg = err?.message || 'Unknown error'
+          const hint = /401|unauthor/i.test(msg) ? 'The GHL connection may have expired — ask the operator to reconnect from Integrations. Do not transfer to human just for this; offer to have someone follow up manually.'
+            : /404|not\s*found/i.test(msg) ? 'The calendarId was not found. The operator probably deleted or renamed the calendar since this agent was configured. Don\'t transfer — tell the contact you\'ll have someone from the team confirm the time manually.'
+            : /403|forbidden|scope/i.test(msg) ? 'Missing calendar read scope on the GHL token. The operator needs to reconnect the GHL app to grant calendars.readonly.'
+            : /timeout|ETIMEDOUT|ECONN/i.test(msg) ? 'Transient network hiccup reaching GHL. Retry once before doing anything else.'
+            : 'Unexpected calendar error. Ask the contact for their preferred time and confirm that a human will verify it — do NOT call transfer_to_human, this is a tool blip, not an insurmountable block.'
+          console.warn(`[Agent] get_available_slots failed: ${msg}`)
+          return JSON.stringify({ success: false, error: msg, hint })
+        }
       }
       case 'book_appointment': {
         const startTime = input.startTime as string
@@ -1255,10 +1284,20 @@ async function executeTool(
         return JSON.stringify({ success: true, scheduledAt: scheduledAt.toISOString(), message: input.message })
       }
       case 'transfer_to_human': {
-        // Same policy — only apply these tags if the operator has
-        // created them in GHL. The handover notification + conversation
-        // pause + audit trail still fire regardless; the tags are just
-        // a nice-to-have for folks who segment on them in GHL.
+        // Log LOUDLY so operators can see in Vercel that the agent
+        // reached for transfer + the reason it gave. Paired with the
+        // tightened tool description, this makes it obvious when the
+        // agent is over-transferring (e.g. on calendar hiccups) and
+        // lets operators spot the pattern without digging through the
+        // MessageLog.
+        console.warn(
+          `[Agent] 🖐 transfer_to_human called — contact ${input.contactId}, reason: "${input.reason}". Conversation will be paused until an operator resumes it.`,
+        )
+        // Same policy as other agent tools — only apply these tags if
+        // the operator has created them in GHL. The handover
+        // notification + conversation pause + audit trail still fire
+        // regardless; the tags are just a nice-to-have for folks who
+        // segment on them in GHL.
         const { addExistingTagsOnly } = await import('./tag-policy')
         await addExistingTagsOnly(
           crm as any,
