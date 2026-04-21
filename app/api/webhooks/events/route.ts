@@ -133,11 +133,18 @@ export async function POST(req: NextRequest) {
         if (!agent) {
           await db.messageLog.update({
             where: { id: log.id },
-            data: { status: 'SKIPPED' },
+            data: {
+              status: 'SKIPPED',
+              errorMessage: 'No agent matched this inbound. Every agent on this location was either inactive, not deployed on this channel, or had no Deploy rules that matched. See Routing Diagnostic.',
+            },
           })
-          console.log(`[Webhook] No matching agent for location ${p.locationId} on channel ${channel}`)
+          console.log(`[Webhook] ✗ No matching agent for location ${p.locationId} on channel ${channel} — inbound SKIPPED. See [Routing] lines above for per-agent trace.`)
           break
         }
+        // Log the winner so operators can confirm the right agent caught
+        // the inbound. Useful when multiple agents are competing and you
+        // want to know which Deploy rule won.
+        console.log(`[Webhook] ✓ Inbound routed to "${agent.name}" (${agent.id}) on channel ${channel}`)
 
         // ─── Emergency pause check (workspace + agent level) ───
         if (agent.workspaceId) {

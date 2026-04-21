@@ -210,6 +210,29 @@ export default function RoutingPage() {
         These rules decide which conversations this agent runs on. Rules are evaluated in priority order — the first matching rule deploys the agent. Inside a rule: conditions in the same group must all match (AND), any group matching wins (OR), and each condition can be negated (NOT).
       </p>
 
+      {/* Loud warning when the agent has no rules at all. The routing
+          engine denies by default (no rules → no inbounds match), so
+          without this the agent is silently broken. Make it unmissable. */}
+      {rules.length === 0 && (
+        <div className="rounded-xl border-2 border-red-500/40 bg-red-500/[0.07] p-4">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-300">
+                This agent has no Deploy rules — it won&apos;t receive any inbound messages.
+              </p>
+              <p className="text-xs text-red-200/80 mt-1 leading-relaxed">
+                Every agent in Voxility is deny-by-default: if you don&apos;t tell it which
+                conversations to take, it takes none. Add at least one rule below. For a
+                catch-all, pick <span className="font-mono">All inbound messages</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Existing rules */}
       {rules.length > 0 && (
         <div className="space-y-3">

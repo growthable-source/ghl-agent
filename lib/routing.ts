@@ -149,6 +149,17 @@ export async function findMatchingAgent(
   }
 
   for (const agent of eligibleAgents) {
+    // Explicit deny-by-default: an agent with zero routing rules receives
+    // zero inbound messages. No implicit "single agent = catch-all"
+    // fallback, no legacy backwards-compat magic. If you want an agent to
+    // answer everything, create an "All inbound messages" rule on the
+    // Deploy tab. Logged loudly so the webhook trace in Vercel tells the
+    // story when a user asks "why isn't my agent replying?".
+    if (agent.routingRules.length === 0) {
+      console.log(`[Routing] Agent "${agent.name}" (${agent.id}) has NO routing rules — skipping. Add at least one rule on the Deploy tab.`)
+      continue
+    }
+
     for (const rule of agent.routingRules) {
       // Shapes supported, most specific first:
       //   conditions.groups[]     → OR across groups, AND within each
@@ -163,22 +174,34 @@ export async function findMatchingAgent(
         | undefined
 
       let matched = false
+      let shape: string
 
       if (conditions?.groups && conditions.groups.length > 0) {
+        shape = `groups(${conditions.groups.length})`
         // ANY group matches → rule matches
         for (const g of conditions.groups) {
           if (await evalGroup(g.clauses ?? [])) { matched = true; break }
         }
       } else if (conditions?.clauses && conditions.clauses.length > 0) {
+        shape = `clauses(${conditions.clauses.length})`
         matched = await evalGroup(conditions.clauses)
       } else {
         // Legacy single-field shape — unchanged behavior.
+        shape = `legacy(${rule.ruleType})`
         matched = await evaluateClause(rule.ruleType, rule.value ? [rule.value] : [])
       }
 
-      if (matched) return agent as AgentWithDetails
+      console.log(
+        `[Routing] Agent "${agent.name}" rule ${rule.id} (priority ${rule.priority}, ${shape}) → ${matched ? 'MATCH' : 'no match'}`,
+      )
+
+      if (matched) {
+        console.log(`[Routing] ✓ Routed to agent "${agent.name}" (${agent.id})`)
+        return agent as AgentWithDetails
+      }
     }
   }
 
+  console.log(`[Routing] ✗ No agent matched inbound (channel=${channel ?? 'any'}, eligible=${eligibleAgents.length})`)
   return null
 }
