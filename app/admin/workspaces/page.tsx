@@ -127,8 +127,10 @@ export default async function AdminWorkspacesPage({ searchParams }: { searchPara
             {rows.map(w => (
               <tr key={w.id} className="hover:bg-zinc-900/50">
                 <td className="px-4 py-2.5">
-                  <div className="text-zinc-200">{w.name}</div>
-                  <div className="text-zinc-600 font-mono">{w.slug} · {w.id.slice(-8)}</div>
+                  <Link href={`/admin/workspaces/${w.id}`} className="block">
+                    <div className="text-zinc-200 hover:text-white">{w.name}</div>
+                    <div className="text-zinc-600 font-mono">{w.slug} · {w.id.slice(-8)}</div>
+                  </Link>
                 </td>
                 <td className="px-4 py-2.5">
                   <span className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 ${

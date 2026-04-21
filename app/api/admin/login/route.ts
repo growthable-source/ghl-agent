@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { verifyPassword, signAdminToken, setAdminCookie, logAdminAction } from '@/lib/admin-auth'
+import { verifyPassword, signAdminToken, setAdminCookie, logAdminAction, type AdminRole } from '@/lib/admin-auth'
 
-// Simple in-memory rate limit per email to slow down brute-force attempts.
-// Resets on server restart, which is fine — the audit trail captures every
-// attempt regardless, and a real bad actor gets locked out well before the
-// process recycles.
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000
 const MAX_ATTEMPTS = 5
 const attempts = new Map<string, { count: number; firstAt: number }>()
@@ -44,10 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = await db.superAdmin.findUnique({ where: { email } })
-  // Same generic error for missing-user vs wrong-password so we don't leak
-  // which super-admin emails exist. Timing is close enough via bcrypt.
   if (!admin || !admin.isActive) {
-    // Still run a bcrypt compare against a dummy hash to level timing.
     await verifyPassword(password, '$2a$12$C6UzMDM.H6dfI/f/IKxGhuUGvFwZ9z9z9z9z9z9z9z9z9z9z9z9z9').catch(() => {})
     return NextResponse.json({
       error: `Invalid credentials. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
@@ -61,16 +54,39 @@ export async function POST(req: NextRequest) {
     }, { status: 401 })
   }
 
-  // Success. Wipe the throttle, sign a token, set cookie, log it.
   clearAttempts(email)
-  const session = { adminId: admin.id, email: admin.email, name: admin.name ?? null }
+
+  // Password check passed. If 2FA is enrolled + verified, issue a
+  // "half-session" cookie (twoFactorVerified=false) and tell the client
+  // to prompt for the TOTP code. Otherwise issue the full-access cookie.
+  const role = (admin.role === 'viewer' || admin.role === 'admin' || admin.role === 'super')
+    ? admin.role as AdminRole
+    : 'admin'
+  const requires2fa = !!admin.twoFactorVerifiedAt
+
+  const session = {
+    adminId: admin.id,
+    email: admin.email,
+    name: admin.name ?? null,
+    role,
+    twoFactorVerified: !requires2fa,  // true when no 2FA is enrolled yet
+  }
   const token = await signAdminToken(session)
   await setAdminCookie(token)
-  db.superAdmin.update({
-    where: { id: admin.id },
-    data: { lastLoginAt: new Date() },
-  }).catch(() => {})
-  logAdminAction({ admin: session, action: 'login' }).catch(() => {})
 
-  return NextResponse.json({ ok: true, admin: { email: admin.email, name: admin.name } })
+  if (!requires2fa) {
+    db.superAdmin.update({
+      where: { id: admin.id },
+      data: { lastLoginAt: new Date() },
+    }).catch(() => {})
+    logAdminAction({ admin: session, action: 'login' }).catch(() => {})
+  } else {
+    logAdminAction({ admin: session, action: 'login_password_ok_awaiting_2fa' }).catch(() => {})
+  }
+
+  return NextResponse.json({
+    ok: true,
+    requires2fa,
+    admin: { email: admin.email, name: admin.name, role },
+  })
 }

@@ -101,13 +101,22 @@ export async function POST(req: NextRequest) {
   try {
     const hash = await hashPassword(password)
     const admin = await db.superAdmin.create({
-      data: { email, name, passwordHash: hash, isActive: true },
+      // First-setup admin is always super so there's at least one account
+      // that can create more admins and change system settings.
+      data: { email, name, passwordHash: hash, isActive: true, role: 'super' },
     })
 
     // Sign the new admin in immediately so they land on /admin on the
     // next navigation. No separate login step — they just typed the
-    // password anyway.
-    const session = { adminId: admin.id, email: admin.email, name: admin.name ?? null }
+    // password anyway. twoFactorVerified=true because first-setup hasn't
+    // enrolled 2FA yet (they can turn it on from /admin/2fa later).
+    const session = {
+      adminId: admin.id,
+      email: admin.email,
+      name: admin.name ?? null,
+      role: 'super' as const,
+      twoFactorVerified: true,
+    }
     const jwt = await signAdminToken(session)
     await setAdminCookie(jwt)
     await db.superAdmin.update({

@@ -1123,10 +1123,38 @@ model SuperAdmin {
   // Defaults true; set false to revoke without deleting (preserves audit
   // trail that references this row).
   isActive     Boolean   @default(true)
+
+  // ─── Role levels ─────────────────────────────────────────────────
+  // "viewer" — read-only: browse every page, no exports/webhooks/admin-mgmt
+  // "admin"  — everything except managing other admins + system settings
+  // "super"  — god mode: create/disable admins, edit settings
+  // First-setup admin is always promoted to "super" so someone has the keys.
+  role         String    @default("admin")
+
+  // ─── TOTP 2FA ────────────────────────────────────────────────────
+  // Secret is stored raw (base32). It's protected by the app DB and is
+  // only meaningful alongside a valid password, so encrypting-at-app
+  // buys little over DB-at-rest encryption.
+  twoFactorSecret     String?
+  // Set once the admin confirms the enrollment code. Presence of this
+  // timestamp is the "2FA required on login" flag.
+  twoFactorVerifiedAt DateTime?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   auditLogs    AdminAuditLog[]
   @@index([email])
+}
+
+// System-wide config the admin UI owns. Typed as JSON so we can add new
+// keys without a migration. Current keys:
+//   auditRetentionDays: number   (null/absent = keep forever)
+// The /api/cron/prune-audit-log route reads this every run.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
 }
 
 // Audit trail for every meaningful admin action. Growing this catches

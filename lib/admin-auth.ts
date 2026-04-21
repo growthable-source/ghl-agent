@@ -39,16 +39,35 @@ function secret(): Uint8Array {
   return new TextEncoder().encode(raw)
 }
 
+export type AdminRole = 'viewer' | 'admin' | 'super'
+
 export interface AdminSession {
   adminId: string
   email: string
   name: string | null
+  role: AdminRole
+  // True once TOTP has been verified on the current browser session.
+  // When an admin has 2FA enrolled, the first login phase issues a token
+  // with twoFactorVerified=false and a restricted cookie; full admin
+  // access only unlocks after a successful /api/admin/2fa/login.
+  twoFactorVerified: boolean
+}
+
+export function roleHas(role: AdminRole, required: AdminRole): boolean {
+  // super > admin > viewer
+  const rank: Record<AdminRole, number> = { viewer: 1, admin: 2, super: 3 }
+  return rank[role] >= rank[required]
 }
 
 // ─── Token helpers ──────────────────────────────────────────────────────────
 
 export async function signAdminToken(admin: AdminSession): Promise<string> {
-  return new SignJWT({ ...admin })
+  return new SignJWT({
+    email: admin.email,
+    name: admin.name,
+    role: admin.role,
+    twoFactorVerified: admin.twoFactorVerified,
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
@@ -60,10 +79,16 @@ async function verifyAdminToken(token: string): Promise<AdminSession | null> {
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'] })
     if (!payload.sub || typeof payload.email !== 'string') return null
+    const rawRole = typeof payload.role === 'string' ? payload.role : 'admin'
+    const role: AdminRole = (rawRole === 'viewer' || rawRole === 'admin' || rawRole === 'super')
+      ? rawRole as AdminRole
+      : 'admin'
     return {
       adminId: String(payload.sub),
       email: String(payload.email),
       name: typeof payload.name === 'string' ? payload.name : null,
+      role,
+      twoFactorVerified: !!payload.twoFactorVerified,
     }
   } catch {
     return null
@@ -86,8 +111,13 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 
 /**
  * Reads and verifies the admin cookie. Also cross-checks the admin still
- * exists and is active in the DB so revoked admins can't ride a valid
- * JWT until natural expiry.
+ * exists, is active, and has the latest role in the DB so revoked admins
+ * can't ride a valid JWT until natural expiry.
+ *
+ * Note: this returns the session even when 2FA hasn't been verified yet —
+ * downstream callers (layout, gates) check `twoFactorVerified` themselves
+ * and bounce to /admin/login/2fa when needed. This keeps the 2FA dance
+ * out of the cookie parsing layer.
  */
 export async function getAdminSession(): Promise<AdminSession | null> {
   const jar = await cookies()
@@ -97,19 +127,47 @@ export async function getAdminSession(): Promise<AdminSession | null> {
   if (!payload) return null
   const admin = await db.superAdmin.findUnique({
     where: { id: payload.adminId },
-    select: { id: true, email: true, name: true, isActive: true },
+    select: { id: true, email: true, name: true, isActive: true, role: true, twoFactorVerifiedAt: true },
   })
   if (!admin || !admin.isActive) return null
-  return { adminId: admin.id, email: admin.email, name: admin.name }
+  const dbRole: AdminRole = (admin.role === 'viewer' || admin.role === 'admin' || admin.role === 'super')
+    ? admin.role as AdminRole
+    : 'admin'
+  // If the admin has 2FA enrolled but the cookie says unverified, keep
+  // that flag. If the admin has no 2FA enrolled, we always treat them
+  // as verified (there's nothing else to check).
+  const has2fa = !!admin.twoFactorVerifiedAt
+  return {
+    adminId: admin.id,
+    email: admin.email,
+    name: admin.name,
+    role: dbRole,
+    twoFactorVerified: has2fa ? payload.twoFactorVerified : true,
+  }
 }
 
 /**
  * Page-level guard. Call at the top of server components / route handlers.
- * Returns the session or throws a redirect via Next.js navigation. Pages
- * should check for null and redirect themselves.
+ * Returns the session only if the admin is fully authenticated AND 2FA
+ * is satisfied. Anything else → null (caller decides what to redirect to).
  */
 export async function requireAdminOrNull(): Promise<AdminSession | null> {
-  return getAdminSession()
+  const s = await getAdminSession()
+  if (!s) return null
+  if (!s.twoFactorVerified) return null
+  return s
+}
+
+/**
+ * Role gate. Returns null if the current session doesn't satisfy the
+ * required role. Use in server components / route handlers that should
+ * be hidden from viewer-tier admins.
+ */
+export async function requireAdminRole(required: AdminRole): Promise<AdminSession | null> {
+  const s = await requireAdminOrNull()
+  if (!s) return null
+  if (!roleHas(s.role, required)) return null
+  return s
 }
 
 export async function setAdminCookie(token: string): Promise<void> {

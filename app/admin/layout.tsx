@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getAdminSession } from '@/lib/admin-auth'
+import { getAdminSession, roleHas } from '@/lib/admin-auth'
 
 export const metadata = {
   title: 'Voxility Admin',
@@ -34,7 +34,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect('/admin/login')
   }
 
-  if (!session) {
+  // Password OK but 2FA pending — bounce to /admin/login so the 2FA
+  // phase UI can render. /admin/2fa is ALSO allowed here so someone who
+  // just enrolled can reach the setup page.
+  if (session && !session.twoFactorVerified && !isPublicAdminRoute && !pathname.startsWith('/admin/2fa')) {
+    redirect('/admin/login')
+  }
+
+  if (!session || !session.twoFactorVerified) {
     // Login + setup pages render full-bleed without the sidebar.
     return <div className="min-h-screen bg-zinc-950 text-zinc-100">{children}</div>
   }
@@ -54,12 +61,27 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <NavLink href="/admin/users" label="Users" />
           <NavLink href="/admin/logs" label="Message logs" />
           <NavLink href="/admin/audit" label="Audit trail" />
+          <div className="pt-3 mt-2 border-t border-zinc-800">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+              Account
+            </p>
+            <NavLink href="/admin/2fa" label="Two-factor auth" />
+            {roleHas(session.role, 'super') && (
+              <>
+                <NavLink href="/admin/admins" label="Admins" />
+                <NavLink href="/admin/settings" label="Settings" />
+              </>
+            )}
+          </div>
         </nav>
         <div className="border-t border-zinc-800 p-3 text-[11px] space-y-1">
           <p className="text-zinc-400 truncate" title={session.email}>
             {session.name ?? session.email}
           </p>
           {session.name && <p className="text-zinc-600 truncate">{session.email}</p>}
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80">
+            {session.role}
+          </p>
           <form action="/api/admin/logout" method="post">
             <button
               type="submit"

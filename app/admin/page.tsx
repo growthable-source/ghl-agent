@@ -2,12 +2,15 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { bucketByDay } from '@/lib/admin-timeseries'
+import { Sparkline } from '@/components/admin/Sparkline'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminOverviewPage() {
   const session = await getAdminSession()
   if (!session) redirect('/admin/login')
+  if (!session.twoFactorVerified) redirect('/admin/login')
 
   // Broad cross-workspace counts. Most of these are indexed one-column
   // COUNTs — cheap even at scale. We do them in parallel so the total
@@ -28,6 +31,12 @@ export default async function AdminOverviewPage() {
     needsApprovalCount,
     recentErrors,
     recentSignups,
+    // 30-day time series — one createdAt-only query per metric, bucketed
+    // in JS. Cheap at normal scale, and falling back to COUNT+GROUP BY
+    // would mean three extra SQL queries for nothing.
+    messagesByDay,
+    errorsByDay,
+    signupsByDay,
   ] = await Promise.all([
     db.workspace.count(),
     db.user.count(),
@@ -50,7 +59,23 @@ export default async function AdminOverviewPage() {
       take: 8,
       select: { id: true, name: true, email: true, createdAt: true, companyName: true },
     }),
+    db.messageLog.findMany({
+      where: { createdAt: { gte: since30d } },
+      select: { createdAt: true },
+    }),
+    db.messageLog.findMany({
+      where: { createdAt: { gte: since30d }, status: 'ERROR' },
+      select: { createdAt: true },
+    }),
+    db.user.findMany({
+      where: { createdAt: { gte: since30d } },
+      select: { createdAt: true },
+    }),
   ])
+
+  const messagesSeries = bucketByDay(messagesByDay.map(r => r.createdAt), 30)
+  const errorsSeries = bucketByDay(errorsByDay.map(r => r.createdAt), 30)
+  const signupsSeries = bucketByDay(signupsByDay.map(r => r.createdAt), 30)
 
   logAdminAction({ admin: session, action: 'view_overview' }).catch(() => {})
 
@@ -89,6 +114,22 @@ export default async function AdminOverviewPage() {
           tone={messagesLast7d > 0 && errorsLast7d / messagesLast7d > 0.02 ? 'warn' : 'muted'}
         />
         <Stat label="Paid %" value={workspaceCount > 0 ? `${Math.round((paidPlanCount / workspaceCount) * 100)}%` : '—'} />
+      </section>
+
+      {/* 30-day time series */}
+      <section>
+        <h2 className="text-sm font-medium text-zinc-200 mb-3">Last 30 days</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+            <Sparkline title="Messages / day" data={messagesSeries} accent="blue" />
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+            <Sparkline title="Errors / day" data={errorsSeries} accent="red" />
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+            <Sparkline title="Signups / day" data={signupsSeries} accent="emerald" />
+          </div>
+        </div>
       </section>
 
       {/* Recent errors */}
