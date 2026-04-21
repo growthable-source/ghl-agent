@@ -43,10 +43,35 @@ export interface LoadedDetectionRule {
 
 /** Load active detection rules for an agent, in display order. */
 export async function getActiveDetectionRules(agentId: string): Promise<LoadedDetectionRule[]> {
-  const rows = await (db as any).agentRule.findMany({
-    where: { agentId, isActive: true },
-    orderBy: { order: 'asc' },
-  })
+  let rows: any[]
+  try {
+    rows = await (db as any).agentRule.findMany({
+      where: { agentId, isActive: true },
+      orderBy: { order: 'asc' },
+    })
+  } catch (err: any) {
+    // Missing table (P2021) or missing column (P2022) means a manual
+    // migration hasn't run in this environment. Log loudly so operators
+    // know *which* migration to run, then return empty so the agent
+    // still responds to the inbound instead of throwing and killing the
+    // whole webhook turn. This was the root cause of "agent didn't fire
+    // after my inbound message" — the detection-rules query threw and
+    // the caller had no rescue path.
+    if (
+      err?.code === 'P2021'
+      || err?.code === 'P2022'
+      || /column .* does not exist/i.test(err?.message ?? '')
+      || /relation .* does not exist/i.test(err?.message ?? '')
+    ) {
+      console.error(
+        '[DetectionRules] AgentRule table/column missing — skipping rules for this agent. '
+        + 'Run prisma/migrations/manual_rule_actions.sql on the database. Err:',
+        err.message,
+      )
+      return []
+    }
+    throw err
+  }
   return rows.map((r: any) => ({
     id: r.id,
     name: r.name,

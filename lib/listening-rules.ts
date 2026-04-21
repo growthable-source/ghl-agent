@@ -25,10 +25,31 @@ export interface LoadedListeningRule {
 }
 
 export async function getActiveListeningRules(agentId: string): Promise<LoadedListeningRule[]> {
-  const rows = await (db as any).agentListeningRule.findMany({
-    where: { agentId, isActive: true },
-    orderBy: { order: 'asc' },
-  })
+  // Same defensive pattern as getActiveDetectionRules — a missing table
+  // or column (migration not applied) shouldn't kill the whole webhook
+  // turn, just fall back to "no listening rules" so the agent still
+  // responds to the inbound.
+  let rows: any[]
+  try {
+    rows = await (db as any).agentListeningRule.findMany({
+      where: { agentId, isActive: true },
+      orderBy: { order: 'asc' },
+    })
+  } catch (err: any) {
+    if (
+      err?.code === 'P2021'
+      || err?.code === 'P2022'
+      || /column .* does not exist/i.test(err?.message ?? '')
+      || /relation .* does not exist/i.test(err?.message ?? '')
+    ) {
+      console.error(
+        '[ListeningRules] AgentListeningRule table/column missing — skipping. Err:',
+        err.message,
+      )
+      return []
+    }
+    throw err
+  }
   return rows.map((r: any) => ({
     id: r.id,
     name: r.name,
