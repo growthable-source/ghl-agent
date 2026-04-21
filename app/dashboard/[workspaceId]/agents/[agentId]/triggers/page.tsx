@@ -3,6 +3,41 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
+import TagCombobox from '@/components/TagCombobox'
+
+/**
+ * Decompose a raw second count into {days, hours, minutes, seconds} so the
+ * human-friendly duration widget can round-trip. Minutes/seconds fall out
+ * of the modulo chain — no precision loss.
+ */
+function secondsToParts(total: number) {
+  const t = Math.max(0, Math.floor(total))
+  return {
+    days: Math.floor(t / 86400),
+    hours: Math.floor((t % 86400) / 3600),
+    minutes: Math.floor((t % 3600) / 60),
+    seconds: t % 60,
+  }
+}
+
+function partsToSeconds(p: { days: number; hours: number; minutes: number; seconds: number }) {
+  return (
+    Math.max(0, p.days) * 86400 +
+    Math.max(0, p.hours) * 3600 +
+    Math.max(0, p.minutes) * 60 +
+    Math.max(0, p.seconds)
+  )
+}
+
+function formatDuration(total: number): string {
+  const { days, hours, minutes, seconds } = secondsToParts(total)
+  const parts: string[] = []
+  if (days) parts.push(`${days}d`)
+  if (hours) parts.push(`${hours}h`)
+  if (minutes) parts.push(`${minutes}m`)
+  if (seconds || parts.length === 0) parts.push(`${seconds}s`)
+  return parts.join(' ')
+}
 
 interface AgentTrigger {
   id: string
@@ -48,6 +83,9 @@ export default function TriggersPage() {
 
   const [triggers, setTriggers] = useState<AgentTrigger[]>([])
   const [loading, setLoading] = useState(true)
+  // locationId is needed for TagCombobox — fetched lazily off the agent
+  // record so we don't have to thread it through the URL.
+  const [locationId, setLocationId] = useState<string>('')
 
   // Test-fire state — keyed by triggerId so several panels can be open
   // at once. `contact` is a free-form input: contactId, phone, or email.
@@ -72,6 +110,11 @@ export default function TriggersPage() {
       .then(r => r.json())
       .then(({ triggers }) => setTriggers(triggers ?? []))
       .finally(() => setLoading(false))
+    // Separate call so we can surface tag picker without blocking triggers.
+    fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
+      .then(r => r.json())
+      .then(({ agent }) => setLocationId(agent?.locationId || ''))
+      .catch(() => {})
   }, [workspaceId, agentId])
 
   async function toggleActive(t: AgentTrigger) {
@@ -202,7 +245,7 @@ export default function TriggersPage() {
                     <span>Event: <span className="text-zinc-400">{t.eventType === 'ContactCreate' ? 'New contact' : 'Tag update'}</span></span>
                     {t.tagFilter && <span>Tag: <span className="text-zinc-400">{t.tagFilter}</span></span>}
                     <span>Channel: <span className="text-zinc-400">{t.channel}</span></span>
-                    {t.delaySeconds > 0 && <span>Delay: <span className="text-zinc-400">{t.delaySeconds}s</span></span>}
+                    {t.delaySeconds > 0 && <span>Delay: <span className="text-zinc-400">{formatDuration(t.delaySeconds)}</span></span>}
                   </div>
                   {t.messageMode === 'FIXED' && t.fixedMessage && (
                     <p className="text-zinc-600 mt-1 line-clamp-2 pl-2 border-l border-zinc-800">{t.fixedMessage}</p>
@@ -273,31 +316,66 @@ export default function TriggersPage() {
               <div>
                 <label className="block text-xs font-medium text-zinc-400 mb-2">When should this fire?</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {EVENT_OPTIONS.map(opt => (
-                    <button key={opt.value} type="button" onClick={() => { setEventType(opt.value); setTagFilter('') }}
-                      className={`flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors ${
-                        eventType === opt.value
-                          ? 'border-white bg-zinc-900'
-                          : 'border-zinc-800 hover:border-zinc-600'
-                      }`}>
-                      <span className="text-xs font-medium text-zinc-200">{opt.label}</span>
-                      <span className="text-[11px] text-zinc-500 leading-tight">{opt.desc}</span>
-                    </button>
-                  ))}
+                  {EVENT_OPTIONS.map(opt => {
+                    const isDanger = opt.value === 'ContactCreate'
+                    const isSelected = eventType === opt.value
+                    return (
+                      <button key={opt.value} type="button" onClick={() => { setEventType(opt.value); setTagFilter('') }}
+                        className={`relative flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors ${
+                          isSelected
+                            ? isDanger
+                              ? 'border-amber-500/60 bg-amber-500/5'
+                              : 'border-white bg-zinc-900'
+                            : isDanger
+                              ? 'border-amber-500/25 hover:border-amber-500/50'
+                              : 'border-zinc-800 hover:border-zinc-600'
+                        }`}>
+                        <span className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
+                          {isDanger && <span aria-hidden>⚠️</span>}
+                          {opt.label}
+                        </span>
+                        <span className="text-[11px] text-zinc-500 leading-tight">{opt.desc}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
+
+              {/* Danger banner: ContactCreate fires on EVERY new contact
+                  created in GHL — no tag, no filter. Operators have lit
+                  up their entire pipeline with this. Make it loud. */}
+              {eventType === 'ContactCreate' && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                  <p className="text-xs font-medium text-amber-300 mb-1">⚠️ This fires on every new contact</p>
+                  <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                    There is no filter — <strong>any</strong> contact created in this GHL location (form submissions, imports, manual adds, API calls, other workflows) will trigger the agent. If you only want to fire for a specific source, use <strong>Tag added to contact</strong> instead and tag leads from your intended source.
+                  </p>
+                </div>
+              )}
 
               {/* Tag filter (only for ContactTagUpdate) */}
               {eventType === 'ContactTagUpdate' && (
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1.5">Tag name to match</label>
-                  <input
-                    type="text"
-                    value={tagFilter}
-                    onChange={e => setTagFilter(e.target.value)}
-                    placeholder="e.g. new-lead, form-submitted, hot-prospect"
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-                  />
+                  {locationId ? (
+                    <TagCombobox
+                      workspaceId={workspaceId}
+                      locationId={locationId}
+                      value={tagFilter}
+                      onChange={setTagFilter}
+                      placeholder="e.g. new-lead, form-submitted, hot-prospect"
+                    />
+                  ) : (
+                    // No GHL connection yet — fall back to plain input so the
+                    // trigger can still be saved; tags API would 401 anyway.
+                    <input
+                      type="text"
+                      value={tagFilter}
+                      onChange={e => setTagFilter(e.target.value)}
+                      placeholder="e.g. new-lead, form-submitted, hot-prospect"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    />
+                  )}
                   <p className="text-[11px] text-zinc-600 mt-1">Leave empty to trigger on any tag addition</p>
                 </div>
               )}
@@ -375,19 +453,41 @@ export default function TriggersPage() {
                 </div>
               )}
 
-              {/* Delay */}
+              {/* Delay — serialized as seconds under the hood, but the form
+                  exposes d / h / m / s inputs so humans don't have to do
+                  mental math for "wait 2 days before pinging". */}
               <div>
                 <label className="block text-xs text-zinc-400 mb-1.5">Delay before sending</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    value={delaySeconds}
-                    onChange={e => setDelaySeconds(Number(e.target.value))}
-                    className="w-24 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
-                  />
-                  <span className="text-xs text-zinc-500">seconds (0 = immediate)</span>
-                </div>
+                {(() => {
+                  const parts = secondsToParts(delaySeconds)
+                  const setPart = (key: 'days' | 'hours' | 'minutes' | 'seconds', v: number) => {
+                    setDelaySeconds(partsToSeconds({ ...parts, [key]: v }))
+                  }
+                  const field = (label: string, val: number, onChange: (n: number) => void, max?: number) => (
+                    <div className="flex flex-col items-center">
+                      <input
+                        type="number"
+                        min={0}
+                        max={max}
+                        value={val}
+                        onChange={e => onChange(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-16 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white text-center focus:outline-none focus:border-zinc-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-[10px] text-zinc-500 mt-1 uppercase tracking-wide">{label}</span>
+                    </div>
+                  )
+                  return (
+                    <div className="flex items-start gap-2">
+                      {field('Days', parts.days, v => setPart('days', v))}
+                      {field('Hours', parts.hours, v => setPart('hours', v), 23)}
+                      {field('Minutes', parts.minutes, v => setPart('minutes', v), 59)}
+                      {field('Seconds', parts.seconds, v => setPart('seconds', v), 59)}
+                    </div>
+                  )
+                })()}
+                <p className="text-[11px] text-zinc-600 mt-2">
+                  {delaySeconds === 0 ? 'Sends immediately.' : `Waits ${formatDuration(delaySeconds)} after the event before sending.`}
+                </p>
               </div>
 
               {/* Submit */}

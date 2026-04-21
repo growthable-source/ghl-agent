@@ -25,8 +25,10 @@ export async function GET(req: NextRequest) {
     //   calendars/events.write       → CREATE APPOINTMENTS, edit, create notes
     //   workflows.readonly           → list workflows for the picker;
     //                                  enroll/remove already work without it
+    //   locations/tags.readonly      → list tags for the trigger-tag picker
+    //   locations/tags.write         → create new tags from the picker
     // We were missing the /events.* pair — bookings returned 401 silently.
-    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.readonly calendars.write calendars/events.readonly calendars/events.write locations/customFields.readonly locations/customFields.write workflows.readonly',
+    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.readonly calendars.write calendars/events.readonly calendars/events.write locations/customFields.readonly locations/customFields.write locations/tags.readonly locations/tags.write workflows.readonly',
     state: workspaceId,
   })
 
