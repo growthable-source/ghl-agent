@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function AdminLoginPage() {
@@ -9,6 +9,17 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // If this deployment has zero admins, bounce to the setup page so the
+  // first-time visitor can create an account instead of staring at a
+  // login form that can't work.
+  useEffect(() => {
+    fetch('/api/admin/setup').then(r => r.json()).then(s => {
+      if (s.ready && !s.alreadyConfigured) {
+        window.location.replace('/admin/setup')
+      }
+    }).catch(() => {})
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()

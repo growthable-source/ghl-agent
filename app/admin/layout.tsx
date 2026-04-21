@@ -21,16 +21,21 @@ export const dynamic = 'force-dynamic'
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const h = await headers()
   const pathname = h.get('x-invoke-path') ?? h.get('x-matched-path') ?? h.get('next-url') ?? ''
-  const isLoginRoute = pathname.startsWith('/admin/login')
+  // Two routes are reachable without a session: the login page (for
+  // everyone) and the one-time setup page (for the very first admin).
+  // Everything else under /admin/* bounces to /admin/login.
+  const isPublicAdminRoute =
+    pathname.startsWith('/admin/login') ||
+    pathname.startsWith('/admin/setup')
 
   const session = await getAdminSession()
 
-  if (!session && !isLoginRoute) {
+  if (!session && !isPublicAdminRoute) {
     redirect('/admin/login')
   }
 
   if (!session) {
-    // Login page renders full-bleed without the sidebar.
+    // Login + setup pages render full-bleed without the sidebar.
     return <div className="min-h-screen bg-zinc-950 text-zinc-100">{children}</div>
   }
 
