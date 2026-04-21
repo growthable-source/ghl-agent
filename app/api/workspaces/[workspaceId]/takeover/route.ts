@@ -45,11 +45,24 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'agentId and contactId required' }, { status: 400 })
   }
 
-  const agent = await db.agent.findFirst({
-    where: { id: body.agentId, workspaceId },
-    select: { locationId: true },
+  // Look up the agent by id, then verify workspace access via the
+  // location FK — handles legacy rows where Agent.workspaceId is null
+  // (the old direct-filter path returned "Agent not found" for those).
+  const agent = await db.agent.findUnique({
+    where: { id: body.agentId },
+    select: {
+      locationId: true,
+      workspaceId: true,
+      location: { select: { workspaceId: true } },
+    },
   })
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  const inWorkspace =
+    agent.workspaceId === workspaceId ||
+    agent.location?.workspaceId === workspaceId
+  if (!inWorkspace) {
+    return NextResponse.json({ error: 'Agent not in this workspace' }, { status: 403 })
+  }
 
   try {
     // Pause the agent's conversation state for this contact (so it won't auto-reply)

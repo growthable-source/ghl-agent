@@ -48,17 +48,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     return NextResponse.json({ error: 'agentId and contactId required' }, { status: 400 })
   }
 
-  // Load the agent with everything runAgent will need downstream. Cheap
-  // vs the two round-trips we'd do if we only fetched scalar fields now
-  // and re-queried for the follow-up run below.
-  const agent = await db.agent.findFirst({
-    where: { id: agentId, workspaceId },
+  // Look the agent up by id alone, then verify workspace access via the
+  // location → workspace chain. Filtering directly by `{ id, workspaceId }`
+  // silently breaks when Agent.workspaceId is null (legacy rows from
+  // before the workspace-architecture migration) — the agent exists, the
+  // URL workspaceId is right, but the scalar field is blank so findFirst
+  // returns null. Result: "Agent not found" even though the Needs
+  // Attention page was happy to show that exact agent. Verify via either
+  // the scalar field or the location FK and it works both pre- and
+  // post-migration.
+  const agent = await db.agent.findUnique({
+    where: { id: agentId },
     include: {
       knowledgeEntries: true,
       channelDeployments: true,
+      location: { select: { id: true, workspaceId: true } },
     },
   })
-  if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  if (!agent) {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  }
+  const inWorkspace =
+    agent.workspaceId === workspaceId ||
+    agent.location?.workspaceId === workspaceId
+  if (!inWorkspace) {
+    return NextResponse.json({ error: 'Agent not in this workspace' }, { status: 403 })
+  }
 
   const now = new Date()
 
