@@ -132,7 +132,9 @@ export default function MergeFieldHelper({
   customFields?: Array<{ name: string; fieldKey: string }>
 }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const wrapRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   // The popover lives inside dashboard routes — grab the workspace id so we
   // can link to the full reference page. If we're somehow rendered outside
   // a workspace route, the link is hidden.
@@ -149,6 +151,16 @@ export default function MergeFieldHelper({
     }
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+
+  // Focus the search box when the popover opens; clear the query on close
+  // so it doesn't persist stale state across opens.
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => searchRef.current?.focus())
+    } else {
+      setQuery('')
+    }
   }, [open])
 
   function insertToken(token: string) {
@@ -194,53 +206,95 @@ export default function MergeFieldHelper({
         {'{{'}…{'}}'} Insert value
       </button>
 
-      {open && (
-        <div className="absolute right-0 mt-1 z-40 w-80 max-h-96 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl">
-          <div className="px-3 py-2 border-b border-zinc-800 text-[11px] text-zinc-500">
-            Click a field to insert it at the cursor. Tokens render at send time using live contact data. Add a fallback like <span className="font-mono text-zinc-400">{'{{'}contact.first_name|there{'}}'}</span>.
-          </div>
-          {groups.map(group => {
-            const items = all.filter(f => f.group === group)
-            if (items.length === 0) return null
-            return (
-              <div key={group} className="py-1">
-                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                  {group}
-                </div>
-                {items.map(f => (
-                  <button
-                    key={f.token}
-                    type="button"
-                    onClick={() => insertToken(f.token)}
-                    className="w-full flex items-center justify-between gap-3 px-3 py-1.5 text-left hover:bg-zinc-900 transition-colors"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-xs text-zinc-200 truncate">{f.label}</div>
-                      <div className="text-[10px] text-zinc-600 font-mono truncate">{f.token}</div>
-                    </div>
-                    {f.example && (
-                      <div className="text-[10px] text-zinc-600 italic truncate max-w-[100px]">
-                        {f.example}
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
+      {open && (() => {
+        // Substring filter over label + token (case-insensitive). Groups
+        // with zero matches are hidden entirely so the list collapses
+        // naturally as the user types.
+        const q = query.trim().toLowerCase()
+        const matches = q
+          ? all.filter(f =>
+              f.label.toLowerCase().includes(q) ||
+              f.token.toLowerCase().includes(q) ||
+              f.group.toLowerCase().includes(q),
             )
-          })}
-          {workspaceId && (
-            <div className="border-t border-zinc-800 px-3 py-2">
-              <Link
-                href={`/dashboard/${workspaceId}/help/merge-fields`}
-                className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
-                onClick={() => setOpen(false)}
-              >
-                Full reference →
-              </Link>
+          : all
+        return (
+          <div className="absolute right-0 mt-1 z-40 w-80 max-h-[28rem] flex flex-col rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl">
+            {/* Search — sticky at top, always visible as the list scrolls */}
+            <div className="border-b border-zinc-800 p-2 shrink-0">
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { e.preventDefault(); setOpen(false) }
+                  // Enter inserts the first match so power users can type + hit enter.
+                  if (e.key === 'Enter' && matches[0]) { e.preventDefault(); insertToken(matches[0].token) }
+                }}
+                placeholder="Search merge fields…"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+              />
             </div>
-          )}
-        </div>
-      )}
+            <div className="px-3 py-2 border-b border-zinc-800 text-[11px] text-zinc-500 shrink-0">
+              Click a field to insert. Tokens render at send time. Add a fallback like <span className="font-mono text-zinc-400">{'{{'}contact.first_name|there{'}}'}</span>.
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {matches.length === 0 && (
+                <div className="px-3 py-6 text-center text-[11px] text-zinc-600">
+                  No merge fields match &ldquo;{query}&rdquo;.
+                </div>
+              )}
+              {groups.map(group => {
+                const items = matches.filter(f => f.group === group)
+                if (items.length === 0) return null
+                return (
+                  <div key={group} className="py-1">
+                    <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600 sticky top-0 bg-zinc-950">
+                      {group}
+                    </div>
+                    {items.map(f => (
+                      <button
+                        key={f.token}
+                        type="button"
+                        onClick={() => insertToken(f.token)}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-1.5 text-left hover:bg-zinc-900 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs text-zinc-200 truncate">{f.label}</div>
+                          <div className="text-[10px] text-zinc-600 font-mono truncate">{f.token}</div>
+                        </div>
+                        {f.example && (
+                          <div className="text-[10px] text-zinc-600 italic truncate max-w-[100px]">
+                            {f.example}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+            {workspaceId && (
+              <div className="border-t border-zinc-800 px-3 py-2 shrink-0">
+                {/* Opens in a new tab — users often want to keep the form
+                    in-flight and cross-reference the docs side by side. */}
+                <Link
+                  href={`/dashboard/${workspaceId}/help/merge-fields`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center gap-1"
+                >
+                  Full reference
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </Link>
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
