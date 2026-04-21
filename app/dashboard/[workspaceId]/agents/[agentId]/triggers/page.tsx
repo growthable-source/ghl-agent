@@ -94,8 +94,11 @@ export default function TriggersPage() {
   const [testBusy, setTestBusy] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; msg: string }>>({})
 
-  // New trigger form
+  // Trigger form — used for both create and edit. editingId holds the
+  // trigger being edited (or null if we're creating a new one). showForm
+  // reveals the form, editingId decides POST vs PATCH at submit time.
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [eventType, setEventType] = useState<EventType>('ContactCreate')
   const [tagFilter, setTagFilter] = useState('')
   const [channel, setChannel] = useState('SMS')
@@ -104,6 +107,34 @@ export default function TriggersPage() {
   const [aiInstructions, setAiInstructions] = useState('')
   const [delaySeconds, setDelaySeconds] = useState(0)
   const [creating, setCreating] = useState(false)
+
+  function resetForm() {
+    setShowForm(false)
+    setEditingId(null)
+    setEventType('ContactCreate')
+    setTagFilter('')
+    setChannel('SMS')
+    setMessageMode('AI_GENERATE')
+    setFixedMessage('')
+    setAiInstructions('')
+    setDelaySeconds(0)
+  }
+
+  function startEdit(t: AgentTrigger) {
+    setEditingId(t.id)
+    setShowForm(true)
+    setEventType((t.eventType as EventType) ?? 'ContactCreate')
+    setTagFilter(t.tagFilter ?? '')
+    setChannel(t.channel ?? 'SMS')
+    setMessageMode((t.messageMode as MessageMode) ?? 'AI_GENERATE')
+    setFixedMessage(t.fixedMessage ?? '')
+    setAiInstructions(t.aiInstructions ?? '')
+    setDelaySeconds(t.delaySeconds ?? 0)
+    // Scroll the form into view so the context switch is obvious.
+    if (typeof window !== 'undefined') {
+      requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }))
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers`)
@@ -166,33 +197,31 @@ export default function TriggersPage() {
     }
   }
 
-  async function createTrigger(e: React.FormEvent) {
+  async function saveTrigger(e: React.FormEvent) {
     e.preventDefault()
     setCreating(true)
-    const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers`, {
-      method: 'POST',
+    const payload = {
+      eventType,
+      tagFilter: eventType === 'ContactTagUpdate' ? tagFilter.trim() : null,
+      channel,
+      messageMode,
+      fixedMessage: messageMode === 'FIXED' ? fixedMessage : null,
+      aiInstructions: messageMode === 'AI_GENERATE' ? aiInstructions : null,
+      delaySeconds,
+    }
+    const url = editingId
+      ? `/api/workspaces/${workspaceId}/agents/${agentId}/triggers/${editingId}`
+      : `/api/workspaces/${workspaceId}/agents/${agentId}/triggers`
+    const res = await fetch(url, {
+      method: editingId ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        eventType,
-        tagFilter: eventType === 'ContactTagUpdate' ? tagFilter.trim() : null,
-        channel,
-        messageMode,
-        fixedMessage: messageMode === 'FIXED' ? fixedMessage : null,
-        aiInstructions: messageMode === 'AI_GENERATE' ? aiInstructions : null,
-        delaySeconds,
-      }),
+      body: JSON.stringify(payload),
     })
     const { trigger } = await res.json()
-    setTriggers(prev => [...prev, trigger])
-    // Reset form
-    setShowForm(false)
-    setEventType('ContactCreate')
-    setTagFilter('')
-    setChannel('SMS')
-    setMessageMode('AI_GENERATE')
-    setFixedMessage('')
-    setAiInstructions('')
-    setDelaySeconds(0)
+    setTriggers(prev => editingId
+      ? prev.map(x => x.id === editingId ? trigger : x)
+      : [...prev, trigger])
+    resetForm()
     setCreating(false)
   }
 
@@ -225,6 +254,13 @@ export default function TriggersPage() {
                     </button>
                   </div>
                   <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => startEdit(t)}
+                      className="text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded px-2 py-1 transition-colors"
+                      title="Change the event, tag, channel, message, or delay on this trigger"
+                    >
+                      Edit
+                    </button>
                     <button
                       onClick={() => setTestPanel(testPanel === t.id ? null : t.id)}
                       className="text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded px-2 py-1 transition-colors"
@@ -299,7 +335,7 @@ export default function TriggersPage() {
         {/* Add trigger button / form */}
         {!showForm ? (
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => { setEditingId(null); setShowForm(true) }}
             className="text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg px-4 py-2 transition-colors"
           >
             + New Trigger
@@ -307,10 +343,10 @@ export default function TriggersPage() {
         ) : (
           <div className="rounded-lg border border-zinc-800 p-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-zinc-300">New Trigger</p>
-              <button onClick={() => setShowForm(false)} className="text-xs text-zinc-500 hover:text-zinc-300">Cancel</button>
+              <p className="text-sm font-medium text-zinc-300">{editingId ? 'Edit Trigger' : 'New Trigger'}</p>
+              <button onClick={resetForm} className="text-xs text-zinc-500 hover:text-zinc-300">Cancel</button>
             </div>
-            <form onSubmit={createTrigger} className="space-y-5">
+            <form onSubmit={saveTrigger} className="space-y-5">
 
               {/* Event type */}
               <div>
@@ -497,7 +533,9 @@ export default function TriggersPage() {
                   disabled={creating || (messageMode === 'FIXED' && !fixedMessage.trim())}
                   className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
                 >
-                  {creating ? 'Creating…' : 'Create Trigger'}
+                  {creating
+                    ? (editingId ? 'Saving…' : 'Creating…')
+                    : (editingId ? 'Save Changes' : 'Create Trigger')}
                 </button>
               </div>
             </form>
