@@ -83,6 +83,348 @@ personalise: \`Hi {{contact.first_name|there}}, let me check on that for you.\`
   },
 
   {
+    slug: 'simple-vs-advanced-agents',
+    title: 'Simple vs Advanced agents: picking a context level',
+    summary: 'Advanced agents pre-load the contact\'s opportunities and custom fields into every turn. When to flip it on, what it costs, and when not to.',
+    order: 12,
+    body: `Every agent is one of two context levels. It's set when you create the
+agent, shown on the agent's settings page, and can be flipped at any time —
+no data migration, no downtime.
+
+## The short version
+
+- **Simple** — the default. The agent sees the contact's name, tags, and
+  conversation history. That's it. Zero extra tokens per turn, zero extra
+  API calls to GoHighLevel.
+- **Advanced** — also sees the contact's recent opportunities and custom
+  fields on every turn, plus a [Business Context](/help/a/business-context-glossary)
+  glossary you write once. Costs more tokens per reply, but the agent can
+  reason about specific deals, products, or pricing without having to
+  stop and call a tool.
+
+If your agent only handles generic questions ("what are your hours?",
+"can I book an appointment?"), **use Simple**. If your agent needs to
+discuss specific things the contact has already shown interest in
+(vehicles, properties, courses, product SKUs, pending quotes), **use
+Advanced**.
+
+## What Advanced actually loads
+
+Every time the agent replies, in addition to the usual prompt, it sees:
+
+1. **Your Business Context glossary** — the plain-English explanation
+   you wrote telling the agent what your custom fields and opportunities
+   represent. This is where you say things like "Each opportunity is a
+   specific vehicle the contact has inquired about. monetaryValue is
+   the listed sale price in USD."
+2. **The contact's custom fields** — only the ones with values. Shown
+   as \`field_key: value\` pairs.
+3. **Active opportunities** — up to **8 most recent** inquiries that
+   are not won/lost/abandoned, from the last **~6 months**. Each one
+   includes the name, monetary value in USD, stage, and any custom
+   fields on that opportunity (like \`vehicle_color=red\`,
+   \`vehicle_miles=42000\`).
+4. **Recent closed opportunities** — up to **5 most recent** won, lost,
+   or abandoned deals inside the same 6-month window. Useful so the
+   agent knows "we already sold them a car last quarter" or "they
+   passed on the Tacoma".
+
+If the contact has more opportunities than fit in the snapshot, the
+agent is told the exact number that were dropped and that it can call
+\`get_opportunities\` for anything it can't see directly.
+
+## What stays the same regardless
+
+Both Simple and Advanced agents see:
+
+- The contact's basic fields (name, phone, email, tags)
+- Your agent's system prompt and extra instructions
+- [Qualifying questions](/help/a/qualifying), [Rules](/help/a/rules),
+  [Listening rules](/help/a/listening), [Tools](/help/a/tools)
+- Prior conversation history
+- Agent persona + working hours
+
+Advanced doesn't replace any of this — it adds commercial context on
+top. Everything you'd tune on a Simple agent tunes the same way on an
+Advanced one.
+
+## When to use Simple
+
+- Customer support — the contact's issue is in the message, not in the
+  CRM record
+- Booking-only agents — time-slot lookups don't need past-deal context
+- FAQ agents — the answers are in your knowledge base, not in the
+  contact's opportunities
+- High-volume outbound where token cost matters
+- Any agent where the contact is usually brand-new and has no deal
+  history to reason over
+
+## When to use Advanced
+
+- Car dealers — each opportunity is a vehicle, custom fields are specs,
+  monetary value is the listed price
+- Real estate agents — opportunities are properties shown, custom fields
+  are square footage / bedrooms / price band
+- B2B sales reps — opportunities are deals at different stages, custom
+  fields are deal attributes (seat count, contract length)
+- Quote-based services (trades, event vendors) — opportunities carry the
+  itemised quote, custom fields carry specs
+- Course and coaching providers — opportunities are programs the contact
+  has looked at
+- Anywhere a contact accumulates a **pipeline of specific things** and
+  the agent needs to reference them by detail ("the red one", "the 2br")
+
+## What it costs
+
+Advanced is an opt-in because it isn't free:
+
+- **Tokens per turn** — expect a few hundred extra tokens per reply,
+  depending on how many opportunities and custom fields the contact has.
+  On a lean contact (1–2 opportunities, a handful of fields), it's
+  negligible. On a maxed-out snapshot (8 active + 5 closed with lots of
+  custom fields each), it can add ~800–1500 tokens.
+- **CRM API calls** — three extra calls on each turn: fetch
+  opportunities, fetch contact custom-field definitions (to hydrate
+  keys), fetch opportunity custom-field definitions. All three are
+  parallelised, so they add about one round-trip of latency in the
+  worst case.
+
+No billing impact beyond normal token usage. If you hit GHL's rate
+limit it'll be from a different workflow — the extra reads are light.
+
+## How to switch
+
+From the agent's base **Settings** page, the **Context Level** section
+has a Simple / Advanced toggle. Flip it and hit Save. Changes take
+effect on the *next* inbound — no downtime, no re-indexing.
+
+Advanced-only fields (like your Business Context glossary) stick around
+in the database even if you flip back to Simple, so you can toggle
+freely during testing. When the agent is Simple, the glossary is just
+dormant.
+
+## When to pick at creation vs later
+
+You'll pick a level in the new-agent wizard's **Build** step. Default
+is Simple. There's no penalty to starting Simple and upgrading later,
+and no penalty to starting Advanced and discovering you don't need it.
+Pick whichever matches how you imagine the agent's first real
+conversation going — you can always swap.
+
+## Duplicating keeps the level
+
+When you [duplicate an agent](/help/a/settings-system-prompt-fallback)
+or save it as a template, both the Context Level and the Business
+Context glossary come with it. Great for multi-location setups where
+every dealership or every clinic uses the same glossary with minor
+tweaks.
+
+## Tool use isn't replaced
+
+Even with Advanced on, your agent still has its normal tool palette
+(\`get_opportunities\`, \`get_contact_details\`, etc.). Advanced is
+about what the agent **knows without having to ask**. Tools are still
+there for anything outside the pre-loaded snapshot (deeper history,
+fresh stage lookups, cross-contact searches). The trade-off isn't
+"context vs tools" — it's "start with context *then* tools if
+needed."`,
+  },
+
+  {
+    slug: 'business-context-glossary',
+    title: 'Writing a Business Context glossary',
+    summary: 'The free-text block that tells your Advanced agent what your custom fields and opportunities mean in your business.',
+    order: 14,
+    body: `The **Business Context** textarea only appears for
+[Advanced agents](/help/a/simple-vs-advanced-agents). It's a free-text
+explanation of your business that gets injected at the top of the
+agent's system prompt on every turn, right before the contact data.
+
+Its job is to turn raw CRM values into meaningful information. Without
+a glossary, the agent sees this:
+
+\`\`\`
+Opportunity: 2019 Ford F-150 4x4 — $45,000 (open) stage: 8H2aKLmq
+  vehicle_color=red, vehicle_year=2019, vehicle_miles=42000
+\`\`\`
+
+...and has to guess what any of it means. With a glossary, it knows
+that monetaryValue is the listed sale price in USD, that
+\`vehicle_*\` custom fields are car specs, and that the stage ID
+corresponds to "Test Drive Scheduled".
+
+## What to include
+
+A good glossary answers these questions:
+
+1. **What is your business?** One sentence. *"We are a used car
+   dealership in Brisbane."*
+2. **What does an opportunity represent?** Especially when it's not
+   obviously a "deal." *"Each opportunity is a specific vehicle the
+   contact has inquired about. One contact usually has 2–5 active
+   opportunities as they compare cars."*
+3. **What does monetaryValue mean?** *"Listed sale price in USD, not
+   the negotiated price."*
+4. **What do your custom field groups mean?** *"Custom fields starting
+   with vehicle_ describe the car: vehicle_stock_id, vehicle_vin,
+   vehicle_make, vehicle_model, vehicle_year, vehicle_color,
+   vehicle_miles."*
+5. **What are your pipeline stages?** *"Stages progress: New Inquiry →
+   Test Drive Scheduled → Test Driven → Offer Made → Financing → Sold.
+   A 'lost' status means they bought elsewhere or decided against."*
+6. **How should the agent reference things naturally?** *"When the
+   contact says 'that truck' or 'the silver one', cross-reference their
+   active inquiries and pick the match by vehicle_color."*
+
+You don't have to hit every one of those. Include only what the agent
+will actually trip on without.
+
+## Worked example: used car dealer
+
+\`\`\`
+We are a used car dealership. Each opportunity is a specific vehicle
+the contact has inquired about — a single contact will usually have
+2–5 active opportunities as they compare options. monetaryValue is
+the listed sale price in USD (not the negotiated price).
+
+Custom fields on opportunities describe the vehicle:
+- vehicle_stock_id: our internal stock number (always starts with "S-")
+- vehicle_make, vehicle_model, vehicle_year: self-explanatory
+- vehicle_color, vehicle_miles: self-explanatory
+
+Contact-level custom fields:
+- budget_cap: contact's max budget in USD
+- preferred_body_style: sedan / SUV / truck / wagon
+- trade_in_vehicle: free-text description of what they're trading
+
+Pipeline stages (in order): New Inquiry → Viewing Scheduled →
+Viewed → Test Drive Scheduled → Test Driven → Offer Made →
+Financing → Sold. A "lost" opportunity means they went elsewhere or
+passed on it. A "won" opportunity is a completed sale.
+
+When the contact says "that truck", "the red one", "the silver RAV4",
+etc., cross-reference their active inquiries and pick the match.
+If they ask about a vehicle not in their active inquiries, call
+search_opportunities to see if it's in stock.
+\`\`\`
+
+## Worked example: B2B SaaS sales rep
+
+\`\`\`
+We sell a team productivity SaaS on monthly and annual plans. Each
+opportunity is a deal in a specific pipeline stage; monetaryValue is
+the annualised contract value in USD.
+
+Opportunity custom fields:
+- seat_count: number of user licences being discussed
+- plan_tier: "Starter", "Pro", or "Enterprise"
+- contract_length_months: typically 12 or 36
+- primary_use_case: the main workflow they want to solve
+
+Contact custom fields:
+- role: usually "Founder", "Ops Manager", or "VP Engineering"
+- company_size_band: 1-10, 11-50, 51-200, 201+
+- current_tool: what they're using today (often Asana, Monday, or none)
+
+Stages: Discovery → Demo Scheduled → Demo Done → Proposal Sent →
+Verbal Yes → Legal Review → Signed. Lost usually means they went
+with a competitor (logged in current_tool on close).
+
+If the contact references "the proposal", check for an opportunity in
+stage Proposal Sent and cite its monetaryValue + contract_length_months.
+If they're weighing tiers, the plan_tier field tells you which one
+they're considering on each open deal.
+\`\`\`
+
+## Worked example: trades / quote-based service
+
+\`\`\`
+We're a residential plumbing contractor. Opportunities are itemised
+quotes — monetaryValue is the total quoted price in USD including GST.
+
+Opportunity custom fields:
+- job_type: "Emergency", "Renovation", "Maintenance", "New install"
+- address: service address (not always the contact's home address)
+- materials_cost: parts-only portion of the total
+- labour_hours_estimated: our crew time estimate
+
+Contact custom fields:
+- preferred_contact_window: contact-provided time they want a call
+- access_notes: keys, gate codes, dogs, parking — free text the tech
+  needs before arrival
+- property_type: "House", "Apartment", "Commercial"
+
+Stages: Quote Requested → Quoted → Quote Accepted → Scheduled →
+In Progress → Complete → Invoice Sent → Paid. A "lost" opportunity
+means they went with another quote.
+
+When the contact references "the quote" or "the bathroom job", pick
+the most recently quoted opportunity. If they ask for a timeline,
+check the stage first — "Scheduled" opportunities have an associated
+appointment you can look up.
+\`\`\`
+
+## How to write it well
+
+- **Be specific, not decorative.** The glossary is a reference doc for
+  the agent, not marketing copy. Skip adjectives, include field names.
+- **Name the fields exactly as they appear.** If your GHL custom field
+  key is \`contact.inquired_vehicle_id\`, use that exact string. The
+  agent matches on the keys it sees in the data.
+- **Describe the units.** "USD" beats "dollars". "monthly" beats
+  "recurring". "mm/dd/yyyy" beats "a date".
+- **Give the agent permission to cross-reference.** Say things like
+  "When the contact says X, look at Y." Without the hint, the agent
+  often won't make the connection.
+- **Keep it under ~500 words.** It's injected every turn, so shorter
+  is cheaper. If you need more structure, split it into sections with
+  \`##\` markdown headers.
+
+## Common mistakes
+
+- **Writing it as persona instructions.** The glossary describes the
+  *data*, not the *voice*. Tone, formality, emojis, and style belong
+  on the [Persona](/help/a/persona) page, not here.
+- **Listing every field in GHL.** Only fields the agent will encounter
+  are worth documenting. If no contact has a \`second_drivers_licence\`
+  field populated, the agent never sees it and the glossary line is
+  wasted.
+- **Hardcoding pricing.** Put prices in your [Knowledge base](/help/a/knowledge),
+  not here. Pricing changes — you don't want to re-save every agent
+  when a tier goes up $5.
+- **Describing workflow instead of data.** "When the contact agrees to
+  a demo, book a slot" is a behaviour instruction, not a glossary
+  entry. That belongs in **Extra Instructions**.
+
+## When to update it
+
+Update the glossary when:
+
+- You add a new custom field category in GHL that opportunities will
+  carry
+- You rename a pipeline stage
+- The meaning of an existing field shifts (e.g. monetaryValue starts
+  including tax when it didn't before)
+- Your agent misinterprets something the same way twice — odds are
+  the glossary didn't tell it how
+
+You don't need to touch it when:
+
+- Your knowledge base updates (it's a separate layer)
+- Rules or listening categories change
+- You add a new channel or adjust working hours
+
+## Testing
+
+Use the Playground to simulate a conversation with a real contact ID.
+The agent's system prompt (including your glossary and the live
+contact data) is deterministic — if the agent can't answer "how much
+is the red one?" when the red F-150 is clearly in the contact's
+inquiries, the fix is almost always in the glossary or the custom
+field names.`,
+  },
+
+  {
     slug: 'channels',
     title: 'Channels: where your agent runs',
     summary: 'SMS, WhatsApp, Instagram, Facebook, Google Business, Live Chat, Email. Pick the channels your agent listens on.',
