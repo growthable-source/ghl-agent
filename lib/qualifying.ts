@@ -87,11 +87,38 @@ function describeCondition(q: QualifyingQuestion): string {
 
 export type QualifyingStyle = 'strict' | 'natural'
 
-export function buildQualifyingPromptBlock(unanswered: QualifyingQuestion[], style: QualifyingStyle = 'strict'): string {
+/**
+ * Optional merge-field context. When provided, each question string is
+ * rendered through renderMergeFields so tokens like
+ * {{contact.first_name|there}} become real names before the agent
+ * quotes the question. Callers without contact info (sandbox, missing
+ * CRM) pass undefined — the LLM sees tokens verbatim and may or may
+ * not paper over them.
+ */
+export function buildQualifyingPromptBlock(
+  unanswered: QualifyingQuestion[],
+  style: QualifyingStyle = 'strict',
+  mergeCtx?: {
+    contact?: any
+    agent?: { name?: string | null } | null
+    timezone?: string | null
+  },
+): string {
   if (unanswered.length === 0) return ''
 
+  // Lazy-require the renderer so the zero-questions fast path stays cheap.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { renderMergeFields } = require('./merge-fields') as typeof import('./merge-fields')
+
   const list = unanswered.map((q, i) => {
-    let line = `${i + 1}. ${q.question} (field: ${q.fieldKey})`
+    const rendered = mergeCtx
+      ? renderMergeFields(q.question, {
+          contact: mergeCtx.contact ?? null,
+          agent: mergeCtx.agent ?? null,
+          timezone: mergeCtx.timezone ?? null,
+        })
+      : q.question
+    let line = `${i + 1}. ${rendered} (field: ${q.fieldKey})`
     if (q.answerType === 'yes_no') line += ' [Expected: yes or no]'
     if (q.answerType === 'number') line += ' [Expected: a number]'
     if (q.answerType === 'choice' && q.choices?.length) line += ` [Options: ${q.choices.join(', ')}]`

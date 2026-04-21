@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 
 interface QualifyingQuestion {
   id: string
@@ -402,17 +403,25 @@ export default function QualifyingPage() {
           )}
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-5">
-          {/* Question */}
+          {/* Question — merge-field aware. Tokens like
+              {{contact.first_name|there}} render to the live contact's
+              data before the agent asks the question. Custom GHL fields
+              available via the {{…}} Insert value popover. */}
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1.5">Question</label>
-            <textarea
+            <MergeFieldTextarea
               value={form.question}
               onChange={e => updateForm('question', e.target.value)}
-              placeholder="e.g. Are you looking to buy or rent?"
+              onValueChange={v => updateForm('question', v)}
+              customFields={contactFields.map(f => ({ name: f.name, fieldKey: f.fieldKey }))}
+              placeholder="Hi {{contact.first_name|there}}, are you looking to buy or rent?"
               required
               rows={2}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
             />
+            <p className="text-[11px] text-zinc-600 mt-1">
+              Use <span className="font-mono">{'{{'}contact.first_name|there{'}}'}</span> or any custom field to personalise — resolved at send time.
+            </p>
           </div>
 
           {/* Answer Type */}

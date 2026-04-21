@@ -1437,6 +1437,18 @@ export async function runAgent(opts: {
   // notification after the tool loop completes.
   const handoverCapture: HandoverCapture = { captured: null }
 
+  // Load the contact once up front. Used for merge-field rendering in
+  // qualifying questions + fallback message + anywhere else that
+  // personalises pre-written text. Previously the system prompt's
+  // "Current Conversation Context" block read ctx.contact but nothing
+  // ever populated it — contacts appeared as "unknown" every time.
+  // Widget visitors and failed lookups land as null and fallback syntax
+  // ({{contact.first_name|there}}) picks up the slack.
+  let loadedContact: any = null
+  if (!isSandbox && crm) {
+    try { loadedContact = await crm.getContact(contactId) } catch { /* ignore */ }
+  }
+
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
 
@@ -1470,14 +1482,22 @@ export async function runAgent(opts: {
   // In production: only show unanswered required questions
   let qualifyingBlock = ''
   if (agentId) {
+    // Merge context for rendering {{contact.first_name|there}} etc. in
+    // question text. Persona provides agent.name; timezone comes from
+    // the caller's persona opt if set.
+    const mergeCtx = {
+      contact: loadedContact,
+      agent: { name: persona?.agentPersonaName ?? null },
+      timezone: null,
+    }
     if (isSandbox) {
       const { getAllQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
       const questions = await getAllQuestions(agentId)
-      qualifyingBlock = buildQualifyingPromptBlock(questions, qualifyingStyle ?? 'strict')
+      qualifyingBlock = buildQualifyingPromptBlock(questions, qualifyingStyle ?? 'strict', mergeCtx)
     } else {
       const { getUnansweredQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
       const unanswered = await getUnansweredQuestions(agentId, contactId)
-      qualifyingBlock = buildQualifyingPromptBlock(unanswered, qualifyingStyle ?? 'strict')
+      qualifyingBlock = buildQualifyingPromptBlock(unanswered, qualifyingStyle ?? 'strict', mergeCtx)
     }
   }
 
@@ -1617,7 +1637,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock),
+      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock),
       tools,
       messages: currentMessages,
     }
