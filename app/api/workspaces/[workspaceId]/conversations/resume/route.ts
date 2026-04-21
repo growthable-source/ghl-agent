@@ -2,22 +2,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { audit } from '@/lib/audit'
+import type { MessageChannelType } from '@/types'
+
+export const dynamic = 'force-dynamic'
 
 /**
  * Resume a paused conversation and hand it back to the agent.
  *
- * Works for all pause paths:
- *   - Stop conditions (SENTIMENT, KEYWORD, APPOINTMENT_BOOKED, etc.)
- *   - transfer_to_human tool calls from the agent itself
- *   - Explicit human takeover
+ * Two outcomes, depending on `sendFollowUpNow`:
  *
- * If a LiveTakeover record exists, it's ended. If the operator provided
- * a note, it's stashed into ContactMemory under `handoff_context` so the
- * agent sees it on its next turn ("A human just handed this back to you
- * with this context: <note>"). The existing contact-memory injection
- * block surfaces this automatically — no separate prompt wiring needed.
+ *   1. (default) Unpause + save handoff note → agent responds only when
+ *      the contact's next inbound arrives. Good when the human finished
+ *      the exchange and just wants the agent available for future.
  *
- * Body: { agentId, contactId, note? }
+ *   2. `sendFollowUpNow=true` → unpause + save note + immediately run
+ *      the agent to compose and send an outbound follow-up message,
+ *      picking up where the human left off. Mirrors the AI_GENERATE
+ *      trigger path so behaviour is consistent across outbound entry
+ *      points (triggers, follow-up scheduler, manual resume).
+ *
+ * Body:
+ *   {
+ *     agentId: string,
+ *     contactId: string,
+ *     note?: string,               // goes into ContactMemory.handoff_context
+ *     sendFollowUpNow?: boolean,   // default false
+ *     channel?: 'SMS'|'Email'|...  // required only when sendFollowUpNow; defaults to SMS
+ *   }
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -31,14 +42,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   const agentId = String(body?.agentId ?? '').trim()
   const contactId = String(body?.contactId ?? '').trim()
   const note = typeof body?.note === 'string' ? body.note.trim() : ''
+  const sendFollowUpNow = !!body?.sendFollowUpNow
+  const channel = (typeof body?.channel === 'string' && body.channel) || 'SMS'
   if (!agentId || !contactId) {
     return NextResponse.json({ error: 'agentId and contactId required' }, { status: 400 })
   }
 
-  // Verify the agent is in this workspace before mutating anything.
+  // Load the agent with everything runAgent will need downstream. Cheap
+  // vs the two round-trips we'd do if we only fetched scalar fields now
+  // and re-queried for the follow-up run below.
   const agent = await db.agent.findFirst({
     where: { id: agentId, workspaceId },
-    select: { id: true, locationId: true },
+    include: {
+      knowledgeEntries: true,
+      channelDeployments: true,
+    },
   })
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
@@ -64,7 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   }
 
   // 3. If the operator left a handoff note, drop it into ContactMemory
-  //    so the next agent turn sees it. Keep the most recent note only —
+  //    so the next agent turn sees it. Keep only the most recent note —
   //    categories JSON is a flat key/value, we don't want this to grow.
   if (note) {
     try {
@@ -88,10 +106,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         update: { categories: nextCategories },
       })
     } catch (err) {
-      // Memory write is best-effort — missing table on older DBs
-      // shouldn't block the resume.
       console.warn('[resume] writing handoff_context failed:', err)
     }
+  }
+
+  // 4. If the operator asked for a follow-up now, kick the agent so it
+  //    composes + sends an outbound message using the handoff context.
+  //    Reuses the AI_GENERATE trigger pattern so behaviour matches
+  //    triggers and follow-ups — same prompt scaffold, same logging.
+  let followUpResult: { reply: string | null; sent: boolean; skipReason?: string } | null = null
+  if (sendFollowUpNow) {
+    followUpResult = await sendFollowUp({
+      agent,
+      contactId,
+      note,
+      channel: channel as MessageChannelType,
+    })
   }
 
   await audit({
@@ -100,8 +130,131 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     action: 'conversation.resume',
     targetType: 'contact',
     targetId: contactId,
-    metadata: { agentId, hasNote: !!note },
+    metadata: {
+      agentId,
+      hasNote: !!note,
+      sentFollowUp: !!followUpResult?.sent,
+      followUpSkipReason: followUpResult?.skipReason ?? null,
+    },
   }).catch(() => {})
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({
+    ok: true,
+    followUp: followUpResult,
+  })
+}
+
+/**
+ * Build the AI_GENERATE prompt, call runAgent, send the outbound, and
+ * log it. Kept as a local helper rather than shared-with-triggers.ts
+ * because the inputs are different shape — could be extracted later if
+ * a third outbound entry point shows up.
+ */
+async function sendFollowUp(params: {
+  agent: any
+  contactId: string
+  note: string
+  channel: MessageChannelType
+}): Promise<{ reply: string | null; sent: boolean; skipReason?: string }> {
+  const { agent, contactId, note, channel } = params
+
+  // Working hours — same contract as triggers. Out of window → skip.
+  if (agent.workingHoursEnabled) {
+    try {
+      const { isWithinWorkingHours } = await import('@/lib/working-hours')
+      const whCfg = {
+        workingHoursEnabled: true,
+        workingHoursStart: agent.workingHoursStart ?? 0,
+        workingHoursEnd: agent.workingHoursEnd ?? 24,
+        workingDays: agent.workingDays ?? ['mon','tue','wed','thu','fri','sat','sun'],
+        timezone: agent.timezone ?? null,
+      }
+      if (!isWithinWorkingHours(whCfg)) {
+        console.log(`[Resume] outside working hours for agent ${agent.id} — follow-up skipped`)
+        return { reply: null, sent: false, skipReason: 'outside_working_hours' }
+      }
+    } catch {}
+  }
+
+  try {
+    const { runAgent } = await import('@/lib/ai-agent')
+    const { buildKnowledgeBlock } = await import('@/lib/rag')
+    const { buildPersonaBlock } = await import('@/lib/persona')
+
+    // Prompt scaffold — same structure as AI_GENERATE triggers.
+    let fullPrompt = agent.systemPrompt
+    if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
+    fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries ?? [], '')
+
+    fullPrompt += `\n\n## Handoff Context`
+    fullPrompt += `\nThis is an OUTBOUND follow-up. A human was handling this conversation and has just handed it back to you.`
+    if (note) fullPrompt += `\nTheir note: "${note}"`
+    fullPrompt += `\n\nIMPORTANT: Compose a single brief follow-up message using the send_reply tool that picks up naturally from where the human left off. Don't re-greet the contact, don't restart the conversation, don't repeat topics the human has already addressed. Keep it short.`
+
+    fullPrompt += buildPersonaBlock({
+      agentPersonaName: agent.agentPersonaName,
+      responseLength: agent.responseLength,
+      formalityLevel: agent.formalityLevel,
+      useEmojis: agent.useEmojis,
+      neverSayList: agent.neverSayList,
+      simulateTypos: agent.simulateTypos,
+      typingDelayEnabled: agent.typingDelayEnabled,
+      typingDelayMinMs: agent.typingDelayMinMs,
+      typingDelayMaxMs: agent.typingDelayMaxMs,
+      languages: agent.languages,
+    })
+
+    // Synthetic "inbound" so the agent-loop has something to respond to.
+    // The prompt already says it's outbound; the synthetic message just
+    // kicks the model off.
+    const syntheticInbound = note
+      ? `[System: Human handed conversation back. Context: "${note}". Send the follow-up now.]`
+      : `[System: Human handed conversation back. Send the follow-up now.]`
+
+    const result = await runAgent({
+      locationId: agent.locationId,
+      agentId: agent.id,
+      contactId,
+      channel,
+      incomingMessage: syntheticInbound,
+      messageHistory: [],
+      systemPrompt: fullPrompt,
+      enabledTools: agent.enabledTools,
+      workflowPicks: {
+        addTo: (agent.addToWorkflowsPick ?? undefined) as any,
+        removeFrom: (agent.removeFromWorkflowsPick ?? undefined) as any,
+      },
+      persona: {
+        agentPersonaName: agent.agentPersonaName,
+        responseLength: agent.responseLength,
+        formalityLevel: agent.formalityLevel,
+        useEmojis: agent.useEmojis,
+        neverSayList: agent.neverSayList,
+        simulateTypos: agent.simulateTypos,
+        typingDelayEnabled: agent.typingDelayEnabled,
+        typingDelayMinMs: agent.typingDelayMinMs,
+        typingDelayMaxMs: agent.typingDelayMaxMs,
+        languages: agent.languages,
+      },
+    })
+
+    await db.messageLog.create({
+      data: {
+        locationId: agent.locationId,
+        agentId: agent.id,
+        contactId,
+        conversationId: '',
+        inboundMessage: `[Resume: human handoff follow-up]`,
+        outboundReply: result.reply,
+        actionsPerformed: ['resume_follow_up', ...(result.actionsPerformed ?? [])],
+        tokensUsed: result.tokensUsed,
+        status: 'SUCCESS',
+      },
+    }).catch(() => {})
+
+    return { reply: result.reply ?? null, sent: true }
+  } catch (err: any) {
+    console.error('[Resume] follow-up send failed:', err)
+    return { reply: null, sent: false, skipReason: err?.message ?? 'send_failed' }
+  }
 }

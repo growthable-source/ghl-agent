@@ -2034,6 +2034,50 @@ modal:
 Click Resume. The agent unpauses and sees your note on its very
 next reply. It continues the conversation with full context.
 
+## Two ways to resume — wait vs send now
+
+The Resume modal has a **"Send a follow-up message now"** checkbox.
+This is the key control that decides what happens immediately
+after Resume:
+
+- **Unchecked (default) — wait for the next inbound.** The agent
+  flips to ACTIVE state, your handoff note is saved to memory, but
+  nothing visible happens yet. When the contact's next message
+  arrives, the agent reads it + your note, then replies. Use this
+  when the conversation was already paused waiting for the
+  contact's response.
+
+- **Checked — agent sends a follow-up now.** The agent composes
+  an outbound message using the handoff note as context and sends
+  it on the channel you pick in the dropdown. Mirrors the
+  AI-generated [trigger](/help/a/triggers) flow — same prompt
+  scaffolding, same working-hours guard. Use this when you need
+  the agent to reach out proactively, e.g. after you finished a
+  phone call with the contact and want the agent to follow up by
+  SMS.
+
+If [working hours](/help/a/working-hours) are enabled on the
+agent and the current time is outside the window, the follow-up
+is **skipped** (the agent is still unpaused; the note is still
+saved). The modal tells you this so you can choose whether to
+wait for the next window or disable working hours.
+
+### When to leave "Send now" off
+
+- The contact was mid-sentence when the pause fired — they'll
+  reply again on their own
+- You just took over for 5 minutes, you're handing back before
+  the contact has noticed the pause
+- You want the agent ready-but-quiet
+
+### When to tick "Send now"
+
+- The conversation has been idle for hours and you want momentum
+- You finished a phone call with the contact and the agent
+  should reinforce what you agreed on by text
+- The contact never messaged back after the stop-condition hit
+  and you need the agent to break the silence
+
 ## Take over — when the agent shouldn't come back alone
 
 Use **Take over** when you want to handle this conversation
