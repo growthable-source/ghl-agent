@@ -55,16 +55,24 @@ export async function POST(req: NextRequest) {
       const matches = callerPhone ? await searchContacts(locationId, callerPhone) : []
       voiceContact = matches.find(c => c.phone === callerPhone) ?? matches[0] ?? null
     } catch { /* non-fatal */ }
-    const { renderMergeFields, resolveAssignedUser } = await import('@/lib/merge-fields')
-    // Resolve the contact's assigned team member so {{user.*}} tokens
-    // render in the voice opener/closer. Best-effort.
+    const { renderMergeFields, resolveAssignedUser, hydrateContactCustomFields } = await import('@/lib/merge-fields')
+    // Resolve the contact's assigned team member + hydrate custom field
+    // keys so {{user.*}} and {{custom.*}} tokens render in the voice
+    // opener/closer. Both best-effort.
     let assignedUser: Awaited<ReturnType<typeof resolveAssignedUser>> = null
+    let hydratedContact = voiceContact
     try {
       const { GhlAdapter } = await import('@/lib/crm/ghl/adapter')
-      assignedUser = await resolveAssignedUser(new GhlAdapter(locationId), voiceContact)
+      const adapter = new GhlAdapter(locationId)
+      const [u, c] = await Promise.all([
+        resolveAssignedUser(adapter, voiceContact),
+        hydrateContactCustomFields(adapter, voiceContact),
+      ])
+      assignedUser = u
+      hydratedContact = c ?? voiceContact
     } catch { /* non-fatal */ }
     const mergeCtx = {
-      contact: voiceContact,
+      contact: hydratedContact,
       agent: { name: agent.agentPersonaName || agent.name },
       user: assignedUser,
       timezone: (agent as any).timezone ?? null,

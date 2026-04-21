@@ -67,6 +67,50 @@ export async function resolveAssignedUser(
   catch { return null }
 }
 
+/**
+ * Decorate a contact's customFields with their stable fieldKey values.
+ *
+ * GHL's /contacts/:id endpoint returns customFields as [{ id, value }] —
+ * no fieldKey. Our tokens use the fieldKey ({{custom.quote_total}}), so
+ * the renderer can never match without a lookup. This helper fetches
+ * the location's custom-field definitions once, builds an id→fieldKey
+ * map, and returns a new contact object where each customFields entry
+ * carries its key alongside the id+value.
+ *
+ * Non-fatal: on error or missing customFields, returns the contact
+ * unchanged so standard tokens still work.
+ */
+export async function hydrateContactCustomFields(
+  adapter: Pick<CrmAdapter, 'getCustomFields'> | null | undefined,
+  contact: Partial<Contact> | null | undefined,
+): Promise<Partial<Contact> | null | undefined> {
+  if (!adapter?.getCustomFields || !contact) return contact
+  const fields = (contact as any).customFields as
+    | Array<{ id?: string; key?: string; fieldKey?: string; value?: string }>
+    | undefined
+  if (!Array.isArray(fields) || fields.length === 0) return contact
+  // If every entry already has a key/fieldKey, skip the lookup.
+  if (fields.every(f => f.key || f.fieldKey)) return contact
+  try {
+    const defs = await adapter.getCustomFields()
+    if (!defs?.length) return contact
+    const idToKey = new Map<string, string>()
+    for (const d of defs) {
+      if (d.id && d.fieldKey) idToKey.set(d.id, d.fieldKey)
+    }
+    if (idToKey.size === 0) return contact
+    return {
+      ...contact,
+      customFields: fields.map(f => ({
+        ...f,
+        key: f.key ?? (f.id ? idToKey.get(f.id) : undefined) ?? f.fieldKey,
+      })) as any,
+    }
+  } catch {
+    return contact
+  }
+}
+
 // Regex captures: whole match, token path, optional |fallback.
 // Allows dots, underscores, dashes, letters, digits in both parts.
 // Non-greedy fallback capture so `}}` terminates cleanly.

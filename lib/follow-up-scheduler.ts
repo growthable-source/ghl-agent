@@ -143,7 +143,7 @@ export async function processDueFollowUps(): Promise<number> {
       // Render merge fields against the live contact + agent. Templates are
       // authored with {{contact.first_name|there}} etc. — they'd be sent
       // verbatim without this step.
-      const { renderMergeFields, resolveAssignedUser } = await import('./merge-fields')
+      const { renderMergeFields, resolveAssignedUser, hydrateContactCustomFields } = await import('./merge-fields')
       const { getContact } = await import('./crm-client')
       let contact: Awaited<ReturnType<typeof getContact>> | null = null
       try { contact = await getContact(job.locationId, job.contactId) } catch { /* non-fatal */ }
@@ -151,12 +151,17 @@ export async function processDueFollowUps(): Promise<number> {
         where: { id: job.sequence.agentId },
         select: { name: true, timezone: true },
       }).catch(() => null)
-      // Pre-resolve the assigned user so {{user.*}} tokens render. Best-
-      // effort — if the location has no users.readonly scope we just skip.
+      // Pre-resolve the assigned user so {{user.*}} tokens render, and
+      // hydrate custom field keys so {{custom.*}} tokens actually match.
+      // Both best-effort — degrade to empty merges on any failure.
       const { GhlAdapter } = await import('./crm/ghl/adapter')
-      const assignedUser = await resolveAssignedUser(new GhlAdapter(job.locationId), contact)
+      const adapter = new GhlAdapter(job.locationId)
+      const [assignedUser, hydratedContact] = await Promise.all([
+        resolveAssignedUser(adapter, contact),
+        hydrateContactCustomFields(adapter, contact),
+      ])
       const renderedMessage = renderMergeFields(step.message, {
-        contact,
+        contact: hydratedContact ?? null,
         agent: agentForMerge ? { name: agentForMerge.name } : null,
         user: assignedUser,
         timezone: agentForMerge?.timezone ?? null,

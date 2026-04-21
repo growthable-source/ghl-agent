@@ -1484,17 +1484,26 @@ export async function runAgent(opts: {
   if (agentId) {
     // Merge context for rendering {{contact.first_name|there}} etc. in
     // question text. Persona provides agent.name; timezone comes from
-    // the caller's persona opt if set. Resolve the assigned user too so
-    // {{user.*}} tokens work in qualifying questions.
-    const { resolveAssignedUser } = await import('./merge-fields')
+    // the caller's persona opt if set. Resolve the assigned user + hydrate
+    // custom field keys so {{user.*}} and {{custom.*}} both render.
+    const { resolveAssignedUser, hydrateContactCustomFields } = await import('./merge-fields')
     const { GhlAdapter } = await import('./crm/ghl/adapter')
     let assignedUser: Awaited<ReturnType<typeof resolveAssignedUser>> = null
+    let hydratedContact = loadedContact
     try {
       const locId = (loadedContact as any)?.locationId
-      if (locId) assignedUser = await resolveAssignedUser(new GhlAdapter(locId), loadedContact)
+      if (locId) {
+        const adapter = new GhlAdapter(locId)
+        const [u, c] = await Promise.all([
+          resolveAssignedUser(adapter, loadedContact),
+          hydrateContactCustomFields(adapter, loadedContact),
+        ])
+        assignedUser = u
+        hydratedContact = (c as typeof loadedContact) ?? loadedContact
+      }
     } catch { /* non-fatal */ }
     const mergeCtx = {
-      contact: loadedContact,
+      contact: hydratedContact,
       agent: { name: persona?.agentPersonaName ?? null },
       user: assignedUser,
       timezone: null,

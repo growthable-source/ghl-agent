@@ -193,13 +193,17 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
         // Render merge fields — the template is authored with placeholders
         // like {{contact.first_name|there}} and would otherwise ship the
         // braces verbatim. Pre-resolve the assigned user so {{user.*}}
-        // tokens work; adapter is cheap to instantiate here.
-        const { renderMergeFields, resolveAssignedUser } = await import('./merge-fields')
+        // tokens work, and hydrate custom fields so {{custom.*}} tokens
+        // resolve (GHL returns customFields with only id+value, not key).
+        const { renderMergeFields, resolveAssignedUser, hydrateContactCustomFields } = await import('./merge-fields')
         const { GhlAdapter } = await import('./crm/ghl/adapter')
         const adapter = new GhlAdapter(locationId)
-        const assignedUser = await resolveAssignedUser(adapter, contact)
+        const [assignedUser, hydratedContact] = await Promise.all([
+          resolveAssignedUser(adapter, contact),
+          hydrateContactCustomFields(adapter, contact),
+        ])
         const renderedFixed = renderMergeFields(trigger.fixedMessage, {
-          contact: contact ?? null,
+          contact: hydratedContact ?? null,
           agent: { name: agent.name },
           user: assignedUser,
           timezone: (agent as any).timezone ?? null,
