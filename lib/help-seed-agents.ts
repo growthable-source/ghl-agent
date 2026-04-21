@@ -664,7 +664,7 @@ caching — next inbound message, it's gone from the agent's context.`,
   {
     slug: 'deploy-rules',
     title: 'Deploy rules: when the agent runs',
-    summary: 'Decide which conversations this agent picks up. Build AND/OR queries across tags, stages, keywords.',
+    summary: 'Decide which conversations this agent picks up. AND, OR, and NOT across tags, stages, keywords.',
     order: 40,
     body: `The **Deploy** tab defines *when* this agent runs on an inbound message.
 Think of it as the door policy — who gets let in.
@@ -680,27 +680,48 @@ Think of it as the door policy — who gets let in.
 
 ## Rule shape
 
-Each rule is a list of **conditions** joined by **AND** (all must match).
-Within each condition, you can list multiple **values** joined by **OR**
-(any one matches).
+Each rule is one or more **groups**. The boolean logic is:
 
-**Example — one rule, two conditions:**
+- **Within a group → AND.** Every condition in the group must match.
+- **Between groups → OR.** Any one group matching is enough.
+- **Each condition → NOT (optional).** Click the NOT toggle on a condition
+  to invert it (*does NOT have tag*, *NOT in pipeline stage*, etc.).
+- **Within a condition → OR.** List multiple values and any one matches.
+
+**Example — one group, two conditions:**
 
 \`\`\`
-ALL inbound messages
-AND
 Contact has tag in [hot-lead, vip]
+AND
+Contact does NOT have tag [bot, do-not-contact]
 \`\`\`
 
-Reads as: *"Run this agent on any inbound message from a contact tagged
-\`hot-lead\` or \`vip\`."*
+Reads as: *"Run this agent for any contact tagged hot-lead or vip, as
+long as they don't also have bot or do-not-contact."*
+
+**Example — two groups (OR):**
+
+\`\`\`
+Group 1:
+  Contact has tag [enterprise]
+  AND Contact in pipeline stage [closing]
+OR
+Group 2:
+  Contact has tag [high-intent]
+  AND NOT Contact has tag [cold]
+\`\`\`
+
+Reads as: *"Run this agent for enterprise deals in closing stage — OR —
+high-intent contacts who aren't tagged cold."*
 
 ## Condition types
 
-- **All inbound messages** — catch-all, matches everything
-- **Contact has tag** — picks from your GHL tags (multi-select)
-- **Contact in pipeline stage** — pipeline stage ID (multi-value)
-- **Message contains keyword** — simple keyword match against the inbound
+- **All inbound messages** — catch-all, matches everything (doesn't
+  support NOT — negating "everything" means "nothing")
+- **Contact has tag** — picks from your GHL tags (multi-select, supports NOT)
+- **Contact in pipeline stage** — pipeline stage ID (multi-value, supports NOT)
+- **Message contains keyword** — keyword match against the inbound
+  (multi-value, supports NOT)
 
 ## Priority order
 
@@ -709,15 +730,186 @@ Rules are evaluated lowest-priority number first. By convention:
 - Catch-all fallback → priority 999
 
 This way your "hot-lead" agent catches its contacts before the generic
-agent scoops them up.
+agent scoops them up. A rule that's purely \`ALL inbound messages\` lands
+at priority 999 automatically; anything more specific (including \`ALL\`
+combined with a tag filter) lands at priority 10 so it can outrank a
+plain catch-all.
 
 ## Design tips
 
 - **Keep rules layered.** One specific rule per segment, one catch-all.
-- **Avoid overlap.** If two agents could both match, the first wins. Test
-  with the Routing Diagnostic tool (in the left sidebar) if you're unsure.
-- **Between rules is OR.** Rule 1 fires OR rule 2 fires OR … — not AND.
-  Use multiple rules to say "any of these scenarios is fine".`,
+- **Avoid overlap.** If two agents could both match, the first wins by
+  priority. Test with the Routing Diagnostic tool (in the left sidebar)
+  if you're unsure which agent would catch a given contact.
+- **Use NOT to carve out exceptions.** Instead of writing three separate
+  rules for "VIP but not cold, VIP but not churned, VIP but not bot",
+  one rule with three NOT clauses is cleaner and sorts better.
+- **Use OR groups for "either of these makes sense".** A nurture agent
+  for "long inactivity OR explicit re-engagement request" reads better
+  as two groups than one overloaded condition set.
+- **Between whole rules is still OR.** Rule 1 fires OR rule 2 fires — not
+  AND. Prefer OR groups within one rule over two separate rules when the
+  logic is conceptually one door policy; use separate rules when they
+  truly are different scenarios with different priorities.`,
+  },
+
+  {
+    slug: 'merge-fields',
+    title: 'Merge fields: the {{…}} placeholders that personalise pre-written messages',
+    summary: 'Drop contact data into fixed-mode triggers, follow-ups, voice openers, fallback lines, and the Advanced business-context glossary.',
+    order: 45,
+    body: `Merge fields let you write one message template and have it render
+differently per contact. Type \`{{contact.first_name}}\` in a follow-up,
+and at send time it becomes "Hi Jamie" or "Hi Alex" depending on whose
+number is on the other end.
+
+## Where they work
+
+Anywhere you're writing a **pre-written template** — not anywhere the
+AI composes its own reply.
+
+- **Fixed-mode trigger messages** (Triggers tab, when "Fixed message"
+  is selected)
+- **Follow-up steps** (Follow-ups tab — each step's message body)
+- **Voice opener / closer / end-of-call phrase** (Voice tab)
+- **Fallback message** (Settings tab, when behaviour is "Send a
+  message" or "Message then transfer")
+- **Widget welcome message** (Widget config)
+- **Qualifying question text** (Qualifying tab)
+- **Business Context glossary** on [Advanced agents](/help/a/simple-vs-advanced-agents)
+  — the glossary itself runs through the renderer, so \`{{user.name}}\`
+  in your glossary resolves to the contact's assigned salesperson
+
+The AI's own replies don't need merge fields because the agent already
+sees the contact data and personalises naturally. Writing
+\`{{contact.first_name}}\` in the system prompt is usually redundant.
+
+## Syntax
+
+\`\`\`
+{{token}}                       → empty string if missing
+{{token|fallback text}}         → "fallback text" if missing
+\`\`\`
+
+The token path uses dots: \`{{namespace.key}}\`. The optional \`|fallback\`
+after a pipe renders in place of an empty or missing value.
+
+**Always use a fallback on anything that might be empty.** First names,
+custom fields, and calls from unknown numbers can all hit a blank.
+\`{{contact.first_name|there}}\` reads naturally in both cases.
+
+## The tokens
+
+### Contact
+
+- \`{{contact.first_name|fallback}}\` — first name, or extracted from
+  \`name\` if no firstName
+- \`{{contact.last_name|fallback}}\` — last name
+- \`{{contact.full_name|fallback}}\` — whole name
+- \`{{contact.email|fallback}}\` / \`{{contact.phone|fallback}}\`
+- \`{{contact.company|fallback}}\` / \`{{contact.city|fallback}}\` /
+  \`{{contact.state|fallback}}\` / \`{{contact.country|fallback}}\`
+- \`{{contact.tags|fallback}}\` — comma-joined list
+
+### Custom fields (contact-level only)
+
+\`{{custom.<fieldKey>|fallback}}\` resolves against the contact's GHL
+custom fields. The \`<fieldKey>\` is the stable slug from Settings →
+Custom Fields (usually \`contact.your_field_name\` in GHL). The
+\`{{…}} Insert value\` picker pre-populates with the real field keys
+from your location so you don't have to type them.
+
+**Note:** There's no \`{{opportunity.*}}\` or \`{{custom.vehicle_color}}\`
+for opportunity-level custom fields — opportunities can be multiple per
+contact (which one would merge?). See [Advanced agents](/help/a/simple-vs-advanced-agents)
+for how the AI reads opportunity data directly instead.
+
+### Agent
+
+- \`{{agent.name|fallback}}\` — the agent's display name (or persona
+  name if set)
+
+### Assigned user (contact's CRM owner)
+
+The team member assigned to the contact in GHL. Requires the OAuth
+scope \`users.readonly\` — reconnect GHL from Integrations if the
+values come back empty. Useful for "your rep is Alex at
++1 415 555 0100" style templates.
+
+- \`{{user.name|our team}}\` — full name
+- \`{{user.first_name|fallback}}\` / \`{{user.last_name|fallback}}\`
+- \`{{user.email|fallback}}\`
+- \`{{user.phone|fallback}}\`
+- \`{{user.extension|fallback}}\`
+
+### Date
+
+- \`{{date.today}}\` — locale-friendly like "Saturday, November 8"
+- \`{{date.tomorrow}}\` — same, next day
+- Respects the agent's timezone if set (Working Hours tab)
+
+## Worked examples
+
+**Fixed-mode trigger message, tag-added event:**
+
+\`\`\`
+Hi {{contact.first_name|there}}, thanks for reaching out about
+{{custom.service_interest|our services}}. I'm {{agent.name|from the
+team}}. Quick question — what's got you looking right now?
+\`\`\`
+
+**Follow-up step, "schedule a chat":**
+
+\`\`\`
+Hey {{contact.first_name|there}}, looping back —
+{{user.name|our team}} has some availability
+{{date.tomorrow}}. Want me to lock in a time?
+\`\`\`
+
+**Voice call opener:**
+
+\`\`\`
+Hi {{contact.first_name|there}}, this is {{agent.name|calling from}}
+about your inquiry. Got a few minutes?
+\`\`\`
+
+## The Insert-value picker
+
+Every merge-aware textarea has a \`{{…}} Insert value\` button in the
+top-right corner. Click it to get a grouped, searchable list of every
+token available — built-ins, your CRM custom fields (auto-fetched),
+and a link to this reference page. Typing into the search box filters
+live; Enter inserts the top match at the cursor.
+
+## How it works at send time
+
+When a pre-written message is about to send, we:
+
+1. Load the contact record (name, fields, tags)
+2. Hydrate contact custom fields (match \`fieldKey\` to your tokens)
+3. Resolve the assigned user if any \`{{user.*}}\` tokens are used
+4. Substitute every \`{{token}}\` in the template
+5. Send the result
+
+If any step fails (e.g. GHL scope missing, contact deleted), the
+affected tokens fall back to their \`|fallback\` value or render as
+empty — the message still sends. No half-rendered templates.
+
+## Common mistakes
+
+- **Using tokens in AI instructions** — the agent already has the
+  contact; writing \`{{contact.first_name}}\` in the system prompt is
+  redundant and often gets copied into the reply literally.
+- **Forgetting fallbacks** — \`"Hi {{contact.first_name}},"\` on an
+  anonymous contact renders as \`"Hi ,"\` which looks broken.
+  \`"Hi {{contact.first_name|there}},"\` is the fix.
+- **Assuming \`{{user.*}}\` works without the scope** — if you added
+  these tokens and see them coming back blank, GHL needs
+  reconnecting with the \`users.readonly\` scope.
+- **Using \`{{custom.*}}\` for opportunity data** — opportunity-level
+  fields (vehicle color, deal stage, etc.) aren't token-resolvable.
+  They're visible to [Advanced agents](/help/a/simple-vs-advanced-agents)
+  but the LLM references them in its own reply; you don't template them.`,
   },
 
   {
@@ -1238,7 +1430,7 @@ conversation that produced it, so you can see:
   {
     slug: 'stop-conditions',
     title: 'Stop conditions: when the agent should stand down',
-    summary: 'Define the moments where the agent should pause itself — booking made, keyword said, message count hit.',
+    summary: 'Auto-pause on bookings, keywords, hostile sentiment, message counts. Tag needs-attention and trigger GHL workflows on the way out.',
     order: 120,
     body: `Stop conditions define when the agent should pause itself on a specific
 conversation. Different from **transfer_to_human** (which the agent calls
@@ -1249,6 +1441,9 @@ should stop even if it thinks it's doing fine.
 
 - **Don't double-handle after booking.** Agent booked the meeting — stop
   pinging the contact.
+- **Pause the moment the contact gets hostile.** Angry language, legal
+  threats, demands for refunds — flip the bot off before it makes things
+  worse.
 - **Human takes over after a specific keyword.** e.g. "manager" or
   "attorney" — the contact has asked for a human, don't keep talking.
 - **Message limit.** After 15 turns, if no booking, escalate to a human
@@ -1262,16 +1457,58 @@ should stop even if it thinks it's doing fine.
 - **Keyword** — fires when the inbound message contains any of your
   keywords (comma-separated)
 - **Message count** — fires when the conversation hits N total messages
-- **Opportunity stage** — fires when \`move_opportunity_stage\` runs
+- **Pipeline stage** — fires when \`move_opportunity_stage\` runs
+- **Hostile / angry sentiment** — fires when the inbound matches a
+  built-in hostile-language pattern (hate, lawyer, refund now, scam,
+  profanity, unacceptable, etc.) OR any extra keywords you supply.
+  Deliberately broad — false positives just show up on the review
+  queue, false negatives let angry contacts keep getting bot replies.
 
-## What happens when one fires
+## Actions when a condition fires
 
-1. The conversation is marked **PAUSED** — the agent won't respond to
-   further inbounds on this thread
-2. A **needs_attention** notification fires on your configured channels
-   (Slack, Discord, email, SMS)
-3. The contact is tagged (configurable) so humans can filter
-4. The conversation can be **resumed** manually from the Inbox if needed
+Every condition carries its own action config — you can mix and match:
+
+- **Pause agent** (default on) — stops all further replies until a
+  human resumes the conversation. Turn this OFF for a *flag-only*
+  rule that just raises awareness without interrupting the flow.
+- **Tag \`needs-attention\`** (default on) — the contact shows up on
+  the [Needs Attention review queue](/help/a/needs-attention-queue)
+  for a human to pick up. The tag is searchable in GHL if you want
+  custom segments built on top.
+- **Enrol in workflow** (optional) — GHL workflow ID. The contact is
+  added the moment the condition trips. Handy for "hostile customer
+  recovery" sequences that fire automatically.
+- **Remove from workflow** (optional) — GHL workflow ID. The contact
+  is pulled out. Handy for yanking someone out of a nurture drip the
+  moment they ask to cancel.
+
+Workflow pickers only appear if your GHL connection includes the
+\`workflows.readonly\` scope. Reconnect from Integrations if the
+picker shows no options.
+
+## Flag-only (non-pausing) patterns
+
+You don't have to stop the agent — you can just flag a contact. Common
+patterns:
+
+- **Sentiment, flag-only:** Keep replying, but tag every hostile
+  inbound \`needs-attention\` and enrol into a "support escalation"
+  workflow. The bot keeps the conversation warm while a human gets
+  looped in.
+- **Keyword "refund", flag-only:** Tag and enrol into a finance-team
+  workflow without pausing — the agent keeps going, finance gets
+  looped in async.
+
+## What happens end-to-end when a condition fires
+
+1. The condition's **actions** run (tag, enrol, remove — each
+   best-effort, one failure doesn't block the others)
+2. If **Pause agent** is on, the conversation state flips to PAUSED —
+   the agent won't reply to further inbounds on this thread
+3. A **needs_attention** notification fires on your configured channels
+   (Slack, Discord, email, SMS — see [human handover notifications](/help/a/human-handover-notifications))
+4. The conversation can be **resumed** manually from the Inbox
+   Needs-Attention queue once a human has picked it up
 
 ## Pause vs Transfer
 
@@ -1286,30 +1523,53 @@ so whoever's on-call gets a deep link either way.
 
 ## Tips
 
+- **Always add a SENTIMENT condition.** The built-in pattern catches
+  most hostile language; you can leave the extra-keywords field empty
+  for v1. Pair with a recovery workflow and you've got a safety net
+  that runs itself.
 - **Always set a message-count stop condition.** Catches runaway loops
   cheaply. 20 is a reasonable default.
-- **Keywords are layered on top of transfer_to_human.** The agent might
-  miss "speak to a human" as a natural-language cue; a keyword stop is
-  belt-and-braces.
-- **Test with the Playground.** Fire the condition manually to make sure
-  your notification subscribers get pinged as expected.`,
+- **Layer keyword + sentiment.** Sentiment catches emotional tone;
+  keyword catches specific phrases ("speak to manager") the agent
+  might miss. Belt and braces.
+- **Test with the Playground.** Fire the condition manually to make
+  sure your notification subscribers get pinged and your workflows
+  enrol as expected.`,
   },
 
   {
     slug: 'triggers',
     title: 'Triggers: start conversations, not just reply to them',
-    summary: 'Fire a first message when a contact hits a specific event — new contact, tag added, etc.',
+    summary: 'Fire a first message when a contact hits a specific event — new contact, tag added, etc. Edit, test-fire, delay by days/hours/minutes.',
     order: 130,
     body: `Triggers let the agent *start* conversations, not just respond to them.
 They listen for events in your CRM and kick off an outbound message.
 
 ## Event types
 
-- **New contact created** — someone just hit your CRM for the first time
-- **Tag added** — a specific tag got applied to a contact
+- **New contact created** — someone just hit your CRM for the first time.
+  **Fires on EVERY new contact** — form submissions, imports, API calls,
+  manual adds, other workflows. The UI highlights this event in amber
+  with a ⚠️ banner because operators have lit up their entire pipeline
+  more than once by underestimating it. If you only want to fire for a
+  specific source (a form, a paid campaign), **use Tag added instead**
+  and tag contacts from your intended source.
+- **Tag added** — a specific tag got applied to a contact. Much safer
+  for targeted outbound — you control exactly which contacts get
+  messaged by controlling which ones get the tag.
 
 More event types are on the roadmap (opportunity stage changed, form
 submitted, etc.) — flag what you need.
+
+## Tag picker
+
+When you pick the **Tag added** event, the tag filter field becomes a
+searchable picker sourced from your GHL location's tags. Type to filter,
+pick one from the dropdown, or type a new name and hit Enter / click
+"Create" to create it in GHL on the spot. Requires the
+\`locations/tags.readonly\` + \`locations/tags.write\` scopes on your
+GHL connection — reconnect from Integrations if the picker shows
+"missing scope."
 
 ## Channel
 
@@ -1323,8 +1583,9 @@ tab or the message won't send.
 fields](/help/a/merge-fields) so you can personalise:
 
 \`\`\`
-Hi {{contact.first_name|there}}, thanks for reaching out about {{custom.service_interest|our services}}!
-Do you have time for a quick call this week?
+Hi {{contact.first_name|there}}, thanks for reaching out about
+{{custom.service_interest|our services}}! {{user.first_name|I}} will
+be in touch shortly.
 \`\`\`
 
 Good for: consistent openers, compliance-sensitive industries, simple
@@ -1339,28 +1600,77 @@ and ask what they're looking for. Don't quote prices.
 \`\`\`
 
 Good for: higher-value leads where a personalised open matters; scenarios
-where you want the agent to pull from knowledge + persona.
+where you want the agent to pull from knowledge + persona (especially
+on [Advanced agents](/help/a/simple-vs-advanced-agents) where the LLM
+also has the contact's opportunities in view).
+
+## Delay before sending
+
+The delay picker is four separate fields — **days, hours, minutes,
+seconds** — so you can express human-friendly waits without doing
+mental math. \`delaySeconds\` is stored under the hood; the existing
+trigger list renders the total back as something readable like
+\`2d 4h\` on the card.
+
+Useful for:
+- **Lead form follow-up** — wait 2 minutes so it feels human, not bot-fast
+- **Tag-added nurture** — wait 1 hour so humans have first dibs
+- **Overnight capture** — wait 8h so form submissions at 11pm don't
+  text at 11:02pm
+
+Working hours still apply on top — if the scheduled send-time lands
+outside your window, it bumps to the next open slot.
+
+## Editing a trigger
+
+Every trigger card has **Edit**, **Test fire**, and **Delete** buttons.
+Clicking Edit loads the trigger's values into the same form you created
+it with — change the event, swap the channel, rewrite the message,
+adjust the delay — then **Save Changes**. Nothing else about the agent
+changes; edits are atomic to that one trigger.
+
+## Test-firing a trigger
+
+The **Test fire** button on each card opens a mini panel where you can
+paste a contact ID, phone, or email and fire the trigger against that
+specific contact. The message actually sends — use a contact you own.
+The test fire path skips the 60-second per-contact dedupe so you can
+re-fire repeatedly while QA'ing.
+
+Use this to verify:
+- Fixed-mode merge fields render the way you expect
+- AI mode produces a sensible opener
+- Tag filters actually match (test a contact with and without the tag)
+- Delay handling — test-fire triggers bypass working hours, so a
+  weekend test still fires
 
 ## Working hours + triggers
 
-Triggers respect [working hours](/help/a/working-hours) — if the trigger
-fires outside your window, it's held until the window opens. Inbound
-replies ignore working hours; triggers are outbound and DO respect them.
+Real triggers respect [working hours](/help/a/working-hours) — if
+the trigger fires outside your window, it's held until the window
+opens. Inbound replies ignore working hours; triggers are outbound
+and DO respect them. Test-fire is the exception — it fires now
+regardless.
 
-## Delay before send
+## GoHighLevel webhook subscription
 
-Optional per-trigger. Useful for:
-- **Lead form follow-up** — wait 2 minutes so it feels human, not bot-fast
-- **Tag-added nurture** — wait 1 hour so humans have first dibs
+Triggers listen for webhook events from your connected GHL marketplace
+app. If Test Fire works but real-event triggers don't, the most common
+cause is that the marketplace app isn't subscribed to the matching
+event. You need both \`ContactCreate\` AND \`ContactTagUpdate\` in the
+subscribed events list.
 
 ## Design tips
 
 - **One trigger per distinct outbound scenario.** Don't try to make one
   trigger handle three different events.
+- **Prefer Tag added over New Contact Created.** Unless you really do
+  want to pitch *every* contact that lands in your CRM.
 - **Start fixed, upgrade to AI-generated.** Fixed openers are predictable
   and easy to QA. Switch to AI mode once you trust the agent's voice.
 - **Watch for trigger storms.** If you mass-upload 5000 contacts with a
-  trigger tag, the agent will try to text all 5000. Stagger uploads.`,
+  trigger tag, the agent will try to text all 5000. Stagger uploads or
+  add a [stop condition](/help/a/stop-conditions) for \`do-not-contact\`.`,
   },
 
   {
@@ -1568,5 +1878,172 @@ the agent replies at 3am.
 **Respect the ask.** If someone opts into being contacted, they're still
 asleep at 3am. The agent's window shouldn't be your window — it should be
 the *contact's* window. Default to restraint; you can always loosen later.`,
+  },
+
+  {
+    slug: 'needs-attention-queue',
+    title: 'Needs Attention: the review queue for flagged conversations',
+    summary: 'One page that surfaces every conversation your agent couldn\'t handle or flagged for human review — paused, errored, fallback-answered, stalled.',
+    order: 170,
+    body: `The **Needs Attention** page (sidebar → Needs Attention) is a single
+live queue of every conversation a human should look at. It refreshes
+every 30 seconds and pulls from four sources so nothing falls through
+the cracks.
+
+## What shows up here
+
+**1. Paused conversations** — anything where a [stop
+condition](/help/a/stop-conditions) tripped or the agent called
+\`transfer_to_human\`. Includes the pause reason so you know whether
+it was sentiment, a keyword, a message-count overflow, or an explicit
+handover.
+
+**2. Errored conversations** — a turn where the agent threw during
+tool execution (GHL 500, rate limit, auth failure). Error text is
+shown so you can fix the root cause, not just read the symptom.
+
+**3. Fallback-answered conversations** — turns where the agent used
+its fallback message because it didn't know the answer. If you see the
+same fallback over and over, that's a signal to add [knowledge](/help/a/knowledge).
+
+**4. Stalled conversations** — threads over 10 turns without a
+resolution. The agent's still replying but nothing's converging; worth
+a human eye.
+
+## Filters
+
+The top of the page has type filters (Paused / Error / Fallback /
+Stalled) and a severity chip. Each row shows:
+
+- Who: contact + agent
+- Why: the reason, with a colour-coded severity
+- When: timestamp
+- A **Take over** button that links straight to the conversation
+  in the Inbox
+
+## Who gets notified
+
+A **needs_attention** notification fires on every workspace notification
+channel (Slack, Discord, email, SMS — configured under
+[Integrations](/help/a/human-handover-notifications)) the moment a
+conversation pauses. The review queue is where you go *after* the
+ping lands.
+
+## The \`needs-attention\` tag
+
+Stop conditions that trip optionally tag the contact with
+\`needs-attention\` (on by default, configurable per condition). This
+is a regular GHL tag so:
+
+- You can search for it in GHL directly
+- You can build workflows that trigger on it
+- You can filter reports on it
+- It persists even after a human takes over — useful for retro
+  analysis ("how many of our opts-out tagged needs-attention in the
+  week before they unsubscribed?")
+
+Untag manually when the issue's resolved, or bake it into a recovery
+workflow that clears the tag on completion.
+
+## Patterns for handling the queue
+
+- **One-human-on-call.** Dedicate one person per timezone to clear the
+  queue each morning. 5 minutes a day beats a 2-hour firefight weekly.
+- **Route by type.** Errored conversations go to a support engineer;
+  paused-for-sentiment conversations go to account managers. Use the
+  needs-attention notifications to fork the signal.
+- **Turn fallback spam into knowledge.** If the same question keeps
+  hitting fallback, the agent's knowledge base is missing a doc.
+- **Auto-resume cautiously.** The Inbox has a Resume button; use it
+  only after you've actually addressed whatever caused the pause.
+  Otherwise you'll bounce right back into the queue.`,
+  },
+
+  {
+    slug: 'human-handover-notifications',
+    title: 'Human handover notifications: where the pings go',
+    summary: 'Configure Slack, Discord, email, and SMS destinations for agent pauses, errors, and transfer_to_human calls.',
+    order: 175,
+    body: `Whenever the agent pauses a conversation, calls \`transfer_to_human\`,
+or errors out, we fire a notification. This article covers where those
+pings go and how to wire them up.
+
+## Four notification channels
+
+Configure under **Settings → Integrations → Notifications**:
+
+- **Slack** — OAuth install, channel picker, posts rich messages
+  with a deep link to the conversation
+- **Discord** — paste a webhook URL (Server → Integrations →
+  Webhooks → New Webhook), we post embeds
+- **Email** — any inbox, one or many. Best for long-tail events you
+  check asynchronously
+- **SMS** — a phone number that gets texted for urgent events.
+  Keep this for true escalations so the noise doesn't train your
+  team to ignore it
+
+You can wire up any combination. Most operators use Slack + email
+for routine, SMS for severe only.
+
+## The events
+
+- **\`needs_attention\`** — a conversation paused itself. Fires for:
+  stop conditions tripping, fallback-with-transfer, manual agent
+  pause. Links to the [Needs Attention queue](/help/a/needs-attention-queue).
+- **\`human_handover\`** — the agent called \`transfer_to_human\`.
+  Fires with the agent's summary of *why* (pulled from the tool
+  call's reason argument), so the human picking up has context
+  without reading the whole thread.
+- **\`agent_error\`** — a turn errored out. Includes the error
+  message so you can debug without screen-sharing.
+- **\`approval_pending\`** — an outbound reply was held by the
+  [approval queue](/help/a/simple-vs-advanced-agents) for human
+  review. Time-sensitive — these block real outbound traffic until
+  a human clicks approve.
+
+Each event has a severity: \`info\`, \`warning\`, \`error\`. Wire
+integrations to route severity accordingly (errors to an on-call
+Slack channel, info to an email digest).
+
+## Per-event subscribe
+
+Each integration has per-event toggles so you can wire Slack for
+\`needs_attention\` only, email for \`agent_error\` only, SMS just
+for \`approval_pending\`. Default is "all events to all channels",
+which is noisy — narrow it down after the first week.
+
+## What's in the payload
+
+All notifications include:
+
+- Agent name
+- Contact ID (last 6 chars shown, full in the link)
+- Reason / body (truncated to ~200 chars)
+- Deep link to the conversation in the Inbox
+- Timestamp + severity
+
+## Testing
+
+Each integration has a **Send test** button on its config row. Fires
+a real notification with dummy data so you can verify formatting
+without waiting for an agent to pause.
+
+## When notifications feel spammy
+
+Two patterns:
+
+- **Narrow subscriptions.** Don't send every event to every channel.
+  Slack for \`needs_attention\`, email for everything else.
+- **Tune stop conditions.** If the same stop condition fires 50 times
+  a day, the condition is miscalibrated. Either loosen it (lower
+  sensitivity) or handle it differently (workflow enrol instead of
+  pause — see [stop conditions](/help/a/stop-conditions)).
+
+## Privacy note
+
+Notifications include contact IDs + short message snippets. If you're
+in a regulated industry (HIPAA, PCI), prefer email+SMS to a dedicated
+admin inbox over Slack/Discord — the latter are easier to accidentally
+over-share.`,
   },
 ]
