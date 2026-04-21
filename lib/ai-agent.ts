@@ -81,7 +81,7 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'update_contact_tags',
-    description: 'Add tags to a contact to categorise or flag them.',
+    description: 'Add tags to a contact to categorise or flag them. IMPORTANT: you may only apply tags that already exist in the CRM. Do not invent new tags. If a tag you want is not available, skip it — operators create the tag set in GoHighLevel ahead of time and the system silently drops any tag you request that is not on that list.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -761,8 +761,20 @@ async function executeTool(
         return JSON.stringify({ success: true, ...result })
       }
       case 'update_contact_tags': {
-        await crm.addTags(input.contactId as string, input.tags as string[])
-        return JSON.stringify({ success: true })
+        // Agent-initiated tag writes go through the policy filter — only
+        // tags that already exist in the GHL location are applied. Stops
+        // the LLM from inventing a fresh tag on every turn and polluting
+        // the contact record with made-up labels like "interested-buyer",
+        // "product-question", "test-lead", etc. User-defined paths
+        // (detection rules, stop conditions) still create-on-demand via
+        // crm.addTags directly — that's legitimate operator intent.
+        const { addExistingTagsOnly } = await import('./tag-policy')
+        const result = await addExistingTagsOnly(
+          crm as any,
+          input.contactId as string,
+          (input.tags as string[]) ?? [],
+        )
+        return JSON.stringify({ success: true, ...result })
       }
       case 'update_contact_field': {
         const fieldKey = input.fieldKey as string
@@ -1183,7 +1195,17 @@ async function executeTool(
         const score = input.score as number
         const reason = input.reason as string
         const scoreTag = score >= 80 ? 'lead-hot' : score >= 50 ? 'lead-warm' : 'lead-cold'
-        await crm.addTags(input.contactId as string, [scoreTag])
+        // Tier tag is only applied if the user has pre-created it in GHL.
+        // Score itself is still persisted to LeadScore regardless — the
+        // GHL tag is informational. Stops the agent inventing lead-hot /
+        // lead-warm / lead-cold across every location even when the
+        // operator doesn't want them.
+        const { addExistingTagsOnly } = await import('./tag-policy')
+        const tagResult = await addExistingTagsOnly(
+          crm as any,
+          input.contactId as string,
+          [scoreTag],
+        )
         if (agentId) {
           const { db: prisma } = await import('./db')
           await prisma.leadScore.upsert({
@@ -1192,16 +1214,28 @@ async function executeTool(
             update: { score, reason },
           })
         }
-        return JSON.stringify({ success: true, score, tier: scoreTag, reason })
+        return JSON.stringify({ success: true, score, tier: scoreTag, reason, tagApplied: tagResult.applied.length > 0 })
       }
       case 'detect_sentiment': {
         const sentiment = input.sentiment as string
         const summary = input.summary as string
-        await crm.addTags(input.contactId as string, [`sentiment-${sentiment}`])
+        // Same policy — tags only stick if they already exist. Operators
+        // who want sentiment tagging create `sentiment-positive`,
+        // `sentiment-negative`, `sentiment-very_negative`,
+        // `needs-attention` in GHL first. Otherwise the tool is
+        // informational only — the sentiment + summary are still
+        // returned to the agent for in-conversation reasoning.
+        const { addExistingTagsOnly } = await import('./tag-policy')
+        const wanted = [`sentiment-${sentiment}`]
         if (sentiment === 'very_negative' || sentiment === 'negative') {
-          await crm.addTags(input.contactId as string, ['needs-attention'])
+          wanted.push('needs-attention')
         }
-        return JSON.stringify({ success: true, sentiment, summary })
+        const tagResult = await addExistingTagsOnly(
+          crm as any,
+          input.contactId as string,
+          wanted,
+        )
+        return JSON.stringify({ success: true, sentiment, summary, tagsApplied: tagResult.applied })
       }
       case 'schedule_followup': {
         const { db: prisma } = await import('./db')
@@ -1221,7 +1255,16 @@ async function executeTool(
         return JSON.stringify({ success: true, scheduledAt: scheduledAt.toISOString(), message: input.message })
       }
       case 'transfer_to_human': {
-        await crm.addTags(input.contactId as string, ['human-requested', 'ai-paused'])
+        // Same policy — only apply these tags if the operator has
+        // created them in GHL. The handover notification + conversation
+        // pause + audit trail still fire regardless; the tags are just
+        // a nice-to-have for folks who segment on them in GHL.
+        const { addExistingTagsOnly } = await import('./tag-policy')
+        await addExistingTagsOnly(
+          crm as any,
+          input.contactId as string,
+          ['human-requested', 'ai-paused'],
+        )
         if (agentId) {
           const { db: prisma } = await import('./db')
           await prisma.conversationStateRecord.updateMany({
