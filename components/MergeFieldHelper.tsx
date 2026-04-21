@@ -128,11 +128,15 @@ export default function MergeFieldHelper({
   value: string
   onChange: (next: string) => void
   /** Optional list of CRM custom fields to expose alongside the built-ins.
-   *  Typically fetched by the page from /api/workspaces/:id/contact-fields. */
+   *  When omitted, the helper auto-fetches from /api/workspaces/:id/contact-fields
+   *  on first open so every page gets custom fields without plumbing. Pages
+   *  that already loaded the list (qualifying, rules) pass it in to avoid
+   *  a duplicate request. */
   customFields?: Array<{ name: string; fieldKey: string }>
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [fetchedFields, setFetchedFields] = useState<Array<{ name: string; fieldKey: string }> | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   // The popover lives inside dashboard routes — grab the workspace id so we
@@ -140,6 +144,28 @@ export default function MergeFieldHelper({
   // a workspace route, the link is hidden.
   const params = useParams()
   const workspaceId = (params?.workspaceId as string | undefined) ?? ''
+
+  // Auto-fetch custom fields on first open — only when the caller didn't
+  // pass them in. One-shot (no dependency on `open` beyond gating) so we
+  // don't re-request every time the popover toggles.
+  useEffect(() => {
+    if (!open) return
+    if (customFields) return            // caller supplied the list
+    if (fetchedFields !== null) return  // already fetched this mount
+    if (!workspaceId) return
+    fetch(`/api/workspaces/${workspaceId}/contact-fields`)
+      .then(r => r.json())
+      .then(({ fields }) => {
+        const list = Array.isArray(fields) ? fields : []
+        // Only surface Custom fields — Standard fields are already in
+        // MERGE_FIELDS (contact.first_name etc.) and would duplicate.
+        const customs = list
+          .filter((f: any) => f.group === 'Custom' && f.fieldKey)
+          .map((f: any) => ({ name: f.name, fieldKey: f.fieldKey }))
+        setFetchedFields(customs)
+      })
+      .catch(() => setFetchedFields([]))
+  }, [open, customFields, fetchedFields, workspaceId])
 
   // Close on outside click — the popover is fixed-positioned but still
   // dismissed like a native menu.
@@ -186,7 +212,10 @@ export default function MergeFieldHelper({
     setOpen(false)
   }
 
-  const customSpecs: MergeFieldSpec[] = (customFields ?? []).map(cf => ({
+  // Prefer the caller-supplied list (qualifying + rules already have it
+  // loaded), otherwise fall back to the list we fetched ourselves.
+  const effectiveCustomFields = customFields ?? fetchedFields ?? []
+  const customSpecs: MergeFieldSpec[] = effectiveCustomFields.map(cf => ({
     token: `{{custom.${cf.fieldKey}}}`,
     label: cf.name,
     example: '',
