@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 import SaveBar from '@/components/dashboard/SaveBar'
-import { MergeFieldInput } from '@/components/MergeFieldHelper'
+import { MergeFieldInput, MergeFieldTextarea } from '@/components/MergeFieldHelper'
 import { BUSINESS_CONTEXT_EXAMPLES } from '@/lib/business-context-examples'
 
 type FallbackBehavior = 'message' | 'transfer' | 'message_and_transfer'
@@ -193,12 +193,17 @@ export default function AgentSettingsPage() {
                 </div>
               </div>
 
-              <textarea
+              {/* MergeFieldTextarea adds the {{…}} Insert value picker
+                  — same component used for trigger messages, follow-up
+                  steps, and fallbacks. Tokens inserted here render
+                  against the live contact + user at every turn. */}
+              <MergeFieldTextarea
                 value={draft.businessContext}
                 onChange={e => set({ businessContext: e.target.value })}
+                onValueChange={v => set({ businessContext: v })}
                 placeholder="Write your own or pick an example above…"
                 rows={10}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 pt-10 pb-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
               />
             </div>
           )}

@@ -9,6 +9,7 @@ import {
   GoHighLevelIcon,
 } from '@/components/icons/brand-icons'
 import { BUSINESS_CONTEXT_EXAMPLES } from '@/lib/business-context-examples'
+import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 
 type Step = 'template' | 'crm' | 'calendar' | 'channels' | 'build'
 
@@ -622,12 +623,19 @@ export default function NewAgentWizard() {
                     </div>
                   </div>
 
-                  <textarea
+                  {/* MergeFieldTextarea adds the {{…}} Insert value picker
+                      in the top-right corner. Tokens picked here (or typed
+                      by hand) get rendered against the live contact + user
+                      at runtime via renderMergeFields. Extra top padding
+                      (pt-10) so the first line of content doesn't run
+                      under the picker button. */}
+                  <MergeFieldTextarea
                     value={businessContext}
                     onChange={e => setBusinessContext(e.target.value)}
+                    onValueChange={setBusinessContext}
                     placeholder="Write your own or pick an example above…"
                     rows={10}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 pt-10 pb-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
                   />
                 </div>
               )}
