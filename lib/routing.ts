@@ -129,27 +129,50 @@ export async function findMatchingAgent(
     }
   }
 
+  // A single clause (optionally negated) → boolean.
+  // `negate` flips the result so users can express "DOES NOT HAVE tag", etc.
+  async function evalClauseMaybeNeg(c: {
+    ruleType: string
+    values?: string[]
+    negate?: boolean
+  }): Promise<boolean> {
+    const raw = await evaluateClause(c.ruleType, c.values ?? [])
+    return c.negate ? !raw : raw
+  }
+
+  // A single group (AND across its clauses) → boolean.
+  async function evalGroup(clauses: Array<any>): Promise<boolean> {
+    for (const c of clauses) {
+      if (!(await evalClauseMaybeNeg(c))) return false
+    }
+    return true
+  }
+
   for (const agent of eligibleAgents) {
     for (const rule of agent.routingRules) {
-      // New shape: compound conditions. All clauses must match (AND); values
-      // within a clause are OR'd (handled by evaluateClause).
+      // Shapes supported, most specific first:
+      //   conditions.groups[]     → OR across groups, AND within each
+      //   conditions.clauses[]    → legacy single AND group (implicit)
+      //   rule.ruleType + value   → legacy single clause
       const conditions = (rule as any).conditions as
-        | { clauses?: Array<{ ruleType: string; values?: string[] }> }
+        | {
+            groups?: Array<{ clauses: Array<{ ruleType: string; values?: string[]; negate?: boolean }> }>
+            clauses?: Array<{ ruleType: string; values?: string[]; negate?: boolean }>
+          }
         | null
         | undefined
 
       let matched = false
 
-      if (conditions?.clauses && conditions.clauses.length > 0) {
-        matched = true
-        for (const clause of conditions.clauses) {
-          const ok = await evaluateClause(clause.ruleType, clause.values ?? [])
-          if (!ok) { matched = false; break }
+      if (conditions?.groups && conditions.groups.length > 0) {
+        // ANY group matches → rule matches
+        for (const g of conditions.groups) {
+          if (await evalGroup(g.clauses ?? [])) { matched = true; break }
         }
+      } else if (conditions?.clauses && conditions.clauses.length > 0) {
+        matched = await evalGroup(conditions.clauses)
       } else {
         // Legacy single-field shape — unchanged behavior.
-        // A single `value` becomes a one-element list so it flows through the
-        // same evaluator.
         matched = await evaluateClause(rule.ruleType, rule.value ? [rule.value] : [])
       }
 

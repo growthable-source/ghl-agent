@@ -12,6 +12,17 @@ interface TagComboboxProps {
   locationId: string
   value: string
   onChange: (value: string) => void
+  /**
+   * Fires only when a tag is explicitly picked from the dropdown, created via
+   * the "+ Create" button, or confirmed with Enter. This is separate from
+   * `onChange`, which fires on every keystroke. Use this callback when the
+   * input is a search-for-add-to-list picker (e.g. routing clauses); leave
+   * it out when the input itself stores the selected tag (e.g. trigger
+   * tag-filter).
+   */
+  onSelect?: (value: string) => void
+  /** Clear the input after onSelect fires. Useful for multi-add pickers. */
+  clearOnSelect?: boolean
   placeholder?: string
   required?: boolean
 }
@@ -28,9 +39,19 @@ export default function TagCombobox({
   locationId,
   value,
   onChange,
+  onSelect,
+  clearOnSelect,
   placeholder = 'Start typing a tag name...',
   required,
 }: TagComboboxProps) {
+  function commit(name: string) {
+    const n = name.trim()
+    if (!n) return
+    onSelect?.(n)
+    if (clearOnSelect) onChange('')
+    else onChange(n)
+    setOpen(false)
+  }
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,8 +103,7 @@ export default function TagCombobox({
         const data = await res.json()
         if (data.tag) {
           setTags(prev => [...prev, data.tag])
-          onChange(data.tag.name)
-          setOpen(false)
+          commit(data.tag.name)
         }
       }
     } finally { setCreating(false) }
@@ -96,6 +116,24 @@ export default function TagCombobox({
         value={value}
         onChange={e => { onChange(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
+        onKeyDown={e => {
+          // Enter picks the best match (exact → first filtered → type-as-new).
+          // Only relevant when onSelect is wired; otherwise let the parent
+          // form treat Enter however it likes.
+          if (e.key !== 'Enter' || !onSelect) return
+          const exact = tags.find(t => t.name.toLowerCase() === value.trim().toLowerCase())
+          const top = filtered[0]
+          const candidate = exact?.name ?? top?.name ?? value.trim()
+          if (!candidate) return
+          e.preventDefault()
+          // If the candidate isn't an existing tag, create it through the API
+          // first so routing rules can't reference a tag that doesn't exist.
+          if (!tags.some(t => t.name.toLowerCase() === candidate.toLowerCase())) {
+            createNewTag()
+          } else {
+            commit(candidate)
+          }
+        }}
         placeholder={loading ? 'Loading tags...' : placeholder}
         required={required}
         disabled={loading}
@@ -108,7 +146,7 @@ export default function TagCombobox({
             <button
               key={tag.id}
               type="button"
-              onClick={() => { onChange(tag.name); setOpen(false) }}
+              onClick={() => commit(tag.name)}
               className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors flex items-center justify-between"
             >
               <span className="truncate">{tag.name}</span>

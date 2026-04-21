@@ -12,10 +12,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   // If the caller sends `conditions`, we write the compound shape and clear
   // the legacy `value`. The required `ruleType` column is kept in sync with
-  // the first clause so DB queries that still read ruleType (for display,
-  // sorting, etc.) stay sensible.
+  // the first resolvable clause so DB queries that still read ruleType (for
+  // display, sorting, etc.) stay sensible. Accepts both the AND-only shape
+  // ({ clauses }) and the AND/OR shape ({ groups: [{ clauses }] }).
   const conditions = body.conditions as
-    | { clauses?: Array<{ ruleType: string; values?: string[] }> }
+    | {
+        groups?: Array<{ clauses: Array<{ ruleType: string; values?: string[]; negate?: boolean }> }>
+        clauses?: Array<{ ruleType: string; values?: string[]; negate?: boolean }>
+      }
     | null
     | undefined
 
@@ -25,8 +29,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (conditions !== undefined) {
     data.conditions = conditions
-    if (conditions?.clauses?.[0]?.ruleType) {
-      data.ruleType = conditions.clauses[0].ruleType
+    const firstClause =
+      conditions?.groups?.[0]?.clauses?.[0] ??
+      conditions?.clauses?.[0]
+    if (firstClause?.ruleType) {
+      data.ruleType = firstClause.ruleType
     }
     data.value = null
   } else {
