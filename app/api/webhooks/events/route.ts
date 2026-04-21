@@ -502,12 +502,22 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
       }
 
       case 'ContactTagUpdate': {
-        console.log(`[Webhook] Tags updated for contact: ${payload.contactId} — tags: ${(payload.tags ?? []).join(', ')}`)
+        // GHL is inconsistent about where the contact ID lives on this event
+        // — some accounts send `contactId`, some send `id` (matching the
+        // contact-create shape). Accept both so we don't silently no-op on
+        // an undefined contactId.
+        const cId = payload.contactId ?? payload.id
+        const tagList: string[] = Array.isArray(payload.tags) ? payload.tags : []
+        if (!cId) {
+          console.warn(`[Webhook] ContactTagUpdate with no contactId / id. Raw payload keys: ${Object.keys(payload).join(',')}`)
+          break
+        }
+        console.log(`[Webhook] Tags updated — location=${payload.locationId} contact=${cId} tags=[${tagList.join(', ')}]`)
         await processContactTrigger({
           eventType: 'ContactTagUpdate',
           locationId: payload.locationId,
-          contactId: payload.contactId,
-          tags: payload.tags ?? [],
+          contactId: cId,
+          tags: tagList,
         })
         break
       }
@@ -522,7 +532,13 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
         break
 
       default:
-        console.log(`[Webhook] Unhandled event type: ${eventType}`)
+        // Log a preview of unknown events so we can diagnose misnamed types
+        // (e.g. a GHL account that sends `Contact Tag Update` with spaces,
+        // or routes tag changes through a workflow webhook with a custom
+        // `type`). Keep the preview short to avoid leaking PII in logs.
+        console.log(
+          `[Webhook] Unhandled event type: ${eventType} — keys=[${Object.keys(payload ?? {}).join(',')}] preview=${JSON.stringify(payload ?? {}).slice(0, 300)}`,
+        )
     }
   } catch (err) {
     console.error(`[Webhook] Error handling ${eventType}:`, err)
