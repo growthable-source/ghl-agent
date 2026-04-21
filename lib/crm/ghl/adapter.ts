@@ -318,17 +318,17 @@ export class GhlAdapter implements CrmAdapter {
   /**
    * List all tags for the connected location.
    * GET /locations/{locationId}/tags → { tags: [{ id, name, locationId }] }
+   *
+   * Throws on 401 / missing scope so the API route can detect "reconnect
+   * needed" and surface it to the UI. Previously this swallowed and
+   * returned [], which produced an unhelpful "no tags in this location"
+   * message even when the real problem was a stale OAuth scope.
    */
   async getTags(): Promise<Array<{ id: string; name: string }>> {
-    try {
-      const data = await this.apiFetch<{ tags: Array<{ id: string; name: string }> }>(
-        `/locations/${this.locationId}/tags`
-      )
-      return data.tags ?? []
-    } catch (err) {
-      console.error('[GHL] getTags failed:', err)
-      return []
-    }
+    const data = await this.apiFetch<{ tags: Array<{ id: string; name: string }> }>(
+      `/locations/${this.locationId}/tags`,
+    )
+    return data.tags ?? []
   }
 
   /**

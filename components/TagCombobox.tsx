@@ -34,6 +34,7 @@ export default function TagCombobox({
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -46,6 +47,7 @@ export default function TagCombobox({
       .then(data => {
         setTags(data.tags || [])
         if (data.error) setError(data.error)
+        if (data.code) setErrorCode(data.code)
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
@@ -136,9 +138,23 @@ export default function TagCombobox({
       )}
 
       {error && (
-        <p className="mt-1 text-[11px] text-amber-400">
-          Couldn&apos;t load tags from GHL — you can still type a new tag and save it.
-        </p>
+        <div className="mt-1.5 rounded border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5">
+          <p className="text-[11px] text-amber-300 leading-snug">
+            {error}
+          </p>
+          {errorCode === 'reconnect_required' && (
+            <p className="text-[11px] text-amber-200/80 mt-1">
+              Open{' '}
+              <a
+                href={`/dashboard/${workspaceId}/integrations`}
+                className="underline hover:text-amber-100"
+              >
+                Integrations
+              </a>{' '}
+              and click Reconnect on GoHighLevel. You can still type a tag name by hand in the meantime.
+            </p>
+          )}
+        </div>
       )}
 
       {!loading && !error && tags.length === 0 && (

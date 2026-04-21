@@ -23,13 +23,39 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   try {
     const tokens = await getTokens(locationId)
-    if (!tokens) return NextResponse.json({ tags: [] })
+    if (!tokens) {
+      return NextResponse.json({
+        tags: [],
+        error: 'Not connected to GoHighLevel.',
+        code: 'not_connected',
+      })
+    }
+    // Missing scope on the stored token — no point round-tripping to GHL
+    // just to get a 401. Check explicitly so we can return a precise hint.
+    if (!tokens.scope?.includes('locations/tags.readonly')) {
+      return NextResponse.json({
+        tags: [],
+        error: 'Your GoHighLevel connection is missing the tags scope. Reconnect to fix.',
+        code: 'reconnect_required',
+      })
+    }
     const adapter = new GhlAdapter(locationId)
     const tags = await adapter.getTags()
     return NextResponse.json({ tags })
   } catch (err: any) {
-    console.error('[Tags] fetch failed:', err.message)
-    return NextResponse.json({ tags: [], error: err.message })
+    // Translate the common 401 / scope error into a reconnect hint. The
+    // adapter throws the raw GHL response body, which for scope failures
+    // mentions "authClass" or returns status 401.
+    const msg: string = err?.message ?? 'Unknown error'
+    const isAuth = msg.includes('401') || /scope|unauthor/i.test(msg)
+    console.error('[Tags] fetch failed:', msg)
+    return NextResponse.json({
+      tags: [],
+      error: isAuth
+        ? 'Your GoHighLevel connection needs to be reconnected (tags scope missing or token expired).'
+        : `Couldn't load tags: ${msg}`,
+      code: isAuth ? 'reconnect_required' : 'fetch_failed',
+    })
   }
 }
 
