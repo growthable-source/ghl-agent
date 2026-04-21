@@ -133,6 +133,90 @@ If the contact has more opportunities than fit in the snapshot, the
 agent is told the exact number that were dropped and that it can call
 \`get_opportunities\` for anything it can't see directly.
 
+## What it looks like on a real turn
+
+To make this concrete — here's the exact block that gets injected
+into the system prompt for an Advanced agent at a used car dealer,
+where the contact has three active inquiries:
+
+\`\`\`
+## Business Context
+We are a used car dealership. Each opportunity is a specific vehicle
+the contact has inquired about. monetaryValue is the listed sale
+price in USD. Custom fields starting with vehicle_ describe the car…
+
+## Contact Context
+### Custom fields
+- budget_cap: 40000
+- preferred_body_style: Truck
+
+### Active inquiries (3 of 3)
+1. 2019 Ford F-150 4x4 — $45,000 (open) stage: test_drive_scheduled
+   vehicle_color=red, vehicle_year=2019, vehicle_miles=42000
+2. 2021 Toyota RAV4 LE — $35,000 (open) stage: interested
+   vehicle_color=silver, vehicle_year=2021, vehicle_miles=18000
+3. 2020 Ford F-250 — $52,000 (open) stage: new
+   vehicle_color=white, vehicle_year=2020, vehicle_miles=60000
+\`\`\`
+
+The agent sees all of that on **every** reply, so it can write things
+like *"The F-150 is $5k over your budget — want me to pull some
+trucks under $40k to compare?"* without calling a tool.
+
+## Using merge fields against this data
+
+[Merge fields](/help/a/merge-fields) give you \`{{token|fallback}}\`
+placeholders for pre-written templates (fixed-mode trigger messages,
+follow-up steps, voice openers, fallback replies). Contact-level data
+in the Advanced context is available as merge tokens:
+
+- \`{{contact.first_name|there}}\` — the contact's first name
+- \`{{custom.budget_cap|your budget}}\` — contact custom field
+- \`{{custom.preferred_body_style|something nice}}\` — another one
+
+So a fixed-mode trigger message authored as:
+
+\`\`\`
+Hi {{contact.first_name|there}}, we've got new {{custom.preferred_body_style|vehicles}}
+under {{custom.budget_cap|your budget}} that just landed on the lot. Want to
+take a look this week?
+\`\`\`
+
+...renders for the contact above as:
+
+\`\`\`
+Hi Jamie, we've got new Truck under 40000 that just landed on the
+lot. Want to take a look this week?
+\`\`\`
+
+Note the fallbacks — \`|there\`, \`|your budget\`,
+\`|vehicles\` — kick in for contacts where those fields are empty, so
+the same template still reads naturally for a brand-new lead who
+hasn't had their budget captured yet.
+
+## Merge fields vs opportunity details — an important distinction
+
+**Merge fields only resolve contact-level data.** There is no
+\`{{opportunity.name}}\` or \`{{custom.vehicle_color}}\` token — those
+details live on opportunities, not on the contact, and there can be
+many per contact. Trying to merge them makes no sense ("which one?").
+
+Instead, **the AI references opportunities naturally** when it writes
+its own reply, because it's reading the same Active inquiries section
+you saw in the injected block above. If the contact texts *"is the
+red one still available?"*, the agent resolves "red one" to the
+F-150 by cross-referencing \`vehicle_color=red\`, and writes back
+conversationally. You don't template that — you just rely on the
+agent seeing the data.
+
+**Rule of thumb:**
+
+- Pre-written template with a single contact in front of it → use
+  merge fields against contact-level data
+- AI-generated reply that references *specific* cars / deals / rooms
+  / properties the contact is looking at → use Advanced context and
+  let the agent compose freely
+
 ## What stays the same regardless
 
 Both Simple and Advanced agents see:
