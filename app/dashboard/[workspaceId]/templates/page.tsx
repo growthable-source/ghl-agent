@@ -38,14 +38,17 @@ export default function TemplatesPage() {
   const [notMigrated, setNotMigrated] = useState(false)
 
   useEffect(() => {
-    fetch('/api/templates')
+    // Workspace-scoped endpoint returns both official templates AND any
+    // workspace-saved templates owned by this tenant. Workspace saves
+    // surface at the top of the list.
+    fetch(`/api/workspaces/${workspaceId}/templates`)
       .then(r => r.json())
       .then(data => {
         setTemplates(data.templates || [])
         setNotMigrated(!!data.notMigrated)
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [workspaceId])
 
   async function install(t: Template) {
     setInstalling(t.id)

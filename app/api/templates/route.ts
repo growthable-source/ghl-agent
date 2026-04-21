@@ -7,7 +7,11 @@ export async function GET(_req: NextRequest) {
   if (!session?.user?.id) return NextResponse.json({ templates: [] }, { status: 401 })
 
   try {
+    // Global endpoint — only official templates. Workspace-saved
+    // templates are tenant-scoped and live at
+    // /api/workspaces/:ws/templates so they never leak across customers.
     const templates = await db.agentTemplate.findMany({
+      where: { workspaceId: null },
       orderBy: [{ isOfficial: 'desc' }, { installCount: 'desc' }, { createdAt: 'desc' }],
     })
     return NextResponse.json({ templates })

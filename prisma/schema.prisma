@@ -107,6 +107,7 @@ model Workspace {
   locations    Location[]         @relation("WorkspaceLocations")
   agents       Agent[]            @relation("WorkspaceAgents")
   usageRecords UsageRecord[]
+  templates    AgentTemplate[]    @relation("WorkspaceTemplates")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -612,7 +613,26 @@ model AgentTemplate {
   isOfficial         Boolean  @default(false)
   installCount       Int      @default(0)
   createdAt          DateTime @default(now())
+
+  // ─── Workspace-scoped templates ───
+  // null workspaceId = official/global template (seeded by Voxility).
+  // non-null = saved by a customer from an existing agent; only visible
+  // inside that workspace.
+  workspaceId        String?
+  workspace          Workspace? @relation("WorkspaceTemplates", fields: [workspaceId], references: [id], onDelete: Cascade)
+  // When a workspace user saves an agent as a template we stash the full
+  // agent config (persona, working hours, rules, qualifying, knowledge,
+  // triggers, follow-ups, stop conditions, voice config) in this JSON
+  // blob. The install flow restores every relation from it. Official
+  // templates leave this null and rely on the flat systemPrompt +
+  // suggestedTools columns above.
+  config             Json?
+  // Handy back-reference to the agent this template was snapshotted
+  // from, so we can show "made from Agent X" in the UI.
+  sourceAgentId      String?
+
   @@index([category])
+  @@index([workspaceId])
 }
 
 // ─── Notification Channels (Slack + Email) ─────────────────────────────────

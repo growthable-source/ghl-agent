@@ -82,6 +82,10 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  // Duplicate / Save-as-template action tracking
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const [actionBusy, setActionBusy] = useState<string | null>(null)
+  const [actionFlash, setActionFlash] = useState<{ agentId: string; kind: 'ok' | 'err'; msg: string } | null>(null)
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -131,6 +135,55 @@ export default function AgentsPage() {
       }
     } catch (err) {
       console.error('Failed to delete agent:', err)
+    }
+  }
+
+  // Duplicate — full deep copy into the same workspace. Lands paused so
+  // operators re-review before re-enabling channels.
+  async function duplicateAgent(agentId: string) {
+    setActionBusy(agentId)
+    setMenuOpen(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Duplicate failed (${res.status})`)
+      setActionFlash({ agentId, kind: 'ok', msg: `Copied as "${data.agent.name}" — jumping there now…` })
+      // Refresh list so the copy appears while we navigate.
+      fetchAgents()
+      router.push(`/dashboard/${workspaceId}/agents/${data.agent.id}`)
+    } catch (err: any) {
+      setActionFlash({ agentId, kind: 'err', msg: err.message ?? 'Duplicate failed' })
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
+  // Save as template — snapshots every relation and stores as a
+  // workspace-scoped AgentTemplate.
+  async function saveAsTemplate(agentId: string, agentName: string) {
+    // Simple prompt for a template name. Keeps the common case one click
+    // away; a dedicated modal can come later if we add more fields.
+    const name = window.prompt('Template name', `${agentName} template`)
+    if (!name) return
+    setActionBusy(agentId)
+    setMenuOpen(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/save-as-template`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`)
+      setActionFlash({ agentId, kind: 'ok', msg: `Saved "${data.template.name}" to Templates.` })
+    } catch (err: any) {
+      setActionFlash({ agentId, kind: 'err', msg: err.message ?? 'Save failed' })
+    } finally {
+      setActionBusy(null)
     }
   }
 
@@ -394,34 +447,78 @@ export default function AgentsPage() {
                       Deploy
                     </Link>
 
-                    {/* Delete button */}
-                    {deleteConfirm === agent.id ? (
-                      <div className="flex items-center gap-1">
+                    {/* Overflow menu: Duplicate + Save as template. Wraps
+                        the existing Delete button so all secondary actions
+                        are one place. */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setMenuOpen(menuOpen === agent.id ? null : agent.id)}
+                        disabled={actionBusy === agent.id}
+                        className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                        title="More actions"
+                      >
+                        {actionBusy === agent.id ? (
+                          <span className="block w-4 h-4 border-2 border-zinc-600 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <span className="block w-4 text-center leading-none">⋯</span>
+                        )}
+                      </button>
+                      {menuOpen === agent.id && (
+                        <div className="absolute right-0 bottom-full mb-1 w-52 rounded-lg border border-zinc-700 bg-zinc-950 shadow-lg z-20 overflow-hidden">
+                          <button
+                            onClick={() => duplicateAgent(agent.id)}
+                            className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors"
+                          >
+                            Duplicate agent
+                            <span className="block text-[10px] text-zinc-600 mt-0.5">Deep copy — paused by default</span>
+                          </button>
+                          <button
+                            onClick={() => saveAsTemplate(agent.id, agent.name)}
+                            className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors border-t border-zinc-800"
+                          >
+                            Save as template
+                            <span className="block text-[10px] text-zinc-600 mt-0.5">Reuse this agent's full config</span>
+                          </button>
+                          <button
+                            onClick={() => { setMenuOpen(null); setDeleteConfirm(agent.id) }}
+                            className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors border-t border-zinc-800"
+                          >
+                            Delete agent
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Confirm-delete footer (kept outside the menu so it's
+                      clearly a two-step action) */}
+                  {deleteConfirm === agent.id && (
+                    <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2">
+                      <p className="text-xs text-red-300">Delete this agent and all its data?</p>
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => deleteAgent(agent.id)}
-                          className="text-xs font-medium py-2 px-3 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                          className="text-xs font-medium py-1.5 px-3 rounded bg-red-500/30 text-red-300 hover:bg-red-500/40 transition-colors"
                         >
-                          Confirm
+                          Confirm delete
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(null)}
-                          className="text-xs font-medium py-2 px-2 rounded-lg text-zinc-500 hover:text-zinc-300 transition-colors"
+                          className="text-xs font-medium py-1.5 px-2 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
                         >
                           Cancel
                         </button>
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => setDeleteConfirm(agent.id)}
-                        className="p-2 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        title="Delete agent"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Action result flash (duplicate succeeded / save
+                      succeeded / error message) */}
+                  {actionFlash?.agentId === agent.id && (
+                    <p className={`mt-2 text-xs ${actionFlash.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {actionFlash.msg}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

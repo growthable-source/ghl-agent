@@ -3,11 +3,23 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { canCreateAgent } from '@/lib/plans'
 import { isInternalWorkspace } from '@/lib/internal-workspace'
+import { restoreAgent, type AgentSnapshot } from '@/lib/agent-clone'
 
 type Params = { params: Promise<{ workspaceId: string; templateId: string }> }
 
 /**
  * POST — install a template as a new agent in this workspace.
+ *
+ * Two code paths:
+ *   - Legacy/official templates (config==null): create a bare agent from
+ *     systemPrompt + suggestedTools, attach sampleQualifyingQuestions.
+ *   - Workspace templates with a config snapshot: full restore via
+ *     restoreAgent(), which copies every relation (persona, rules,
+ *     knowledge, triggers, follow-ups, voice config, etc.).
+ *
+ * Workspace-scoped templates (workspaceId != null) are only installable
+ * into their owning workspace — you can't leak a teammate's template
+ * into another tenant even if you know the id.
  */
 export async function POST(_req: NextRequest, { params }: Params) {
   const { workspaceId, templateId } = await params
@@ -16,6 +28,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const template = await db.agentTemplate.findUnique({ where: { id: templateId } })
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+
+  // Tenant guard: workspace-scoped templates only install into their
+  // owning workspace. Official templates (workspaceId=null) install
+  // anywhere.
+  if (template.workspaceId && template.workspaceId !== workspaceId) {
+    return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+  }
 
   // Check agent limit (graceful fallback for pre-migration). Internal
   // workspaces (any @voxility.ai member) bypass the gate entirely.
@@ -37,6 +56,23 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const location = await db.location.findFirst({ where: { workspaceId }, select: { id: true } })
 
+  // Rich-config path: workspace templates saved via /save-as-template
+  // carry the full AgentSnapshot. Restore copies every relation. The
+  // resulting agent is PAUSED so operators re-review before go-live.
+  if (template.config && typeof template.config === 'object') {
+    const snapshot = template.config as unknown as AgentSnapshot
+    const newId = await restoreAgent({
+      snapshot,
+      workspaceId,
+      locationId: location?.id ?? workspaceId,
+      name: template.name,
+    })
+    await db.agentTemplate.update({ where: { id: templateId }, data: { installCount: { increment: 1 } } })
+    const agent = await db.agent.findUnique({ where: { id: newId } })
+    return NextResponse.json({ agent })
+  }
+
+  // Legacy / official path — minimal agent from the flat template fields.
   const agent = await db.agent.create({
     data: {
       workspaceId,
