@@ -219,6 +219,40 @@ Note the fallbacks — \`|there\`, \`|your budget\`,
 the same template still reads naturally for a brand-new lead who
 hasn't had their budget captured yet.
 
+## Merge fields inside the glossary itself
+
+The Business Context glossary **also runs through the merge-field
+renderer** before it's handed to the LLM. So you can personalise the
+glossary per contact, not just pre-written messages:
+
+\`\`\`
+You are speaking with {{contact.first_name|the contact}}. Their budget
+is {{custom.budget_cap|not disclosed}} and their assigned salesperson
+is {{user.name|our team}} ({{user.phone|call the showroom}}).
+
+We are a used car dealership. Each opportunity is a specific vehicle
+the contact has inquired about. monetaryValue is the listed sale
+price in USD…
+\`\`\`
+
+At runtime the agent sees resolved values: *"You are speaking with
+Jamie. Their budget is 40000 and their assigned salesperson is Alex
+Chen (+1 415 555 0100)."* The same token syntax you use in trigger
+messages works inside the glossary.
+
+Tokens available in the glossary:
+
+- \`{{contact.first_name|fallback}}\` and all [contact tokens](/help/a/merge-fields)
+- \`{{custom.<fieldKey>|fallback}}\` for contact custom fields
+- \`{{user.name|fallback}}\`, \`{{user.email}}\`, \`{{user.phone}}\` —
+  the contact's assigned team member
+- \`{{date.today}}\` / \`{{date.tomorrow}}\`
+
+Click any **Start from an example** chip in the Business Context
+editor to load a starter glossary that uses merge fields and
+fallbacks — easiest way to see the pattern is to pick one closest to
+your industry and edit from there.
+
 ## Merge fields vs opportunity details — an important distinction
 
 **Merge fields only resolve contact-level data.** There is no

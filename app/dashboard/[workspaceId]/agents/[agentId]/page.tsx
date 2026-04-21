@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 import SaveBar from '@/components/dashboard/SaveBar'
 import { MergeFieldInput } from '@/components/MergeFieldHelper'
+import { BUSINESS_CONTEXT_EXAMPLES } from '@/lib/business-context-examples'
 
 type FallbackBehavior = 'message' | 'transfer' | 'message_and_transfer'
 
@@ -158,13 +159,45 @@ export default function AgentSettingsPage() {
                 Business Context <span className="text-zinc-600">(optional)</span>
               </label>
               <p className="text-xs text-zinc-600 mb-2">
-                Plain-English explanation of what your custom fields and opportunities represent. The agent reads this alongside the live data so it knows how to interpret what it&apos;s seeing.
+                Plain-English explanation of what your custom fields and opportunities represent. The agent reads this alongside the live data so it knows how to interpret what it&apos;s seeing. Merge fields like <span className="font-mono text-zinc-500">{'{{contact.first_name|there}}'}</span> and <span className="font-mono text-zinc-500">{'{{user.name|our team}}'}</span> resolve per-contact at runtime.
               </p>
+
+              {/* Starter templates — same picker as the new-agent wizard.
+                  Clicking a chip overwrites the textarea; operators can
+                  mix and edit from there. Reset SaveBar handles undo. */}
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 mb-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                  Start from an example
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {BUSINESS_CONTEXT_EXAMPLES.map(ex => (
+                    <button
+                      key={ex.id}
+                      type="button"
+                      onClick={() => set({ businessContext: ex.body })}
+                      className="text-xs text-zinc-300 bg-zinc-900 border border-zinc-700 hover:border-zinc-500 hover:text-white rounded-full px-3 py-1 transition-colors"
+                      title={ex.description}
+                    >
+                      {ex.label}
+                    </button>
+                  ))}
+                  {draft.businessContext.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => set({ businessContext: '' })}
+                      className="text-xs text-zinc-500 hover:text-red-400 transition-colors px-2"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <textarea
                 value={draft.businessContext}
                 onChange={e => set({ businessContext: e.target.value })}
-                placeholder="We are a used car dealership. Each opportunity is a specific vehicle the contact has inquired about. The opportunity monetaryValue is the listed sale price in USD. Custom fields starting with vehicle_ describe the car (stock ID, VIN, make, model, year, color, mileage). When the contact references 'that truck' or 'the silver one', cross-reference their active inquiries."
-                rows={6}
+                placeholder="Write your own or pick an example above…"
+                rows={10}
                 className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
               />
             </div>

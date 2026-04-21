@@ -16,9 +16,14 @@
  * tool remains available for deeper drill-down beyond what's pre-loaded.
  */
 
-import type { Contact, Opportunity } from '@/types'
+import type { Contact, CrmUser, Opportunity } from '@/types'
 import type { CrmAdapter } from './crm/types'
-import { hydrateContactCustomFields, hydrateOpportunityCustomFields } from './merge-fields'
+import {
+  hydrateContactCustomFields,
+  hydrateOpportunityCustomFields,
+  renderMergeFields,
+  resolveAssignedUser,
+} from './merge-fields'
 
 // Keep the footprint predictable. The tool path covers anything beyond.
 const WINDOW_DAYS = 182                 // ~2 quarters
@@ -45,13 +50,19 @@ export async function buildContactContextBlock({
   contact,
   businessContext,
 }: BuildOpts): Promise<string> {
-  if (!adapter || !contact) return businessContext ? wrapGlossary(businessContext) : ''
+  if (!adapter || !contact) {
+    // No live data — still render the glossary, but without merge-field
+    // resolution (no contact to merge against) so tokens fall back to their
+    // `|fallback` values or render empty.
+    return businessContext ? wrapGlossary(businessContext, null, null) : ''
+  }
 
-  // Fetch opportunities + hydrate custom fields in parallel. Wrap each call
-  // so one failure doesn't take the block down.
-  const [hydratedContactRaw, rawOpps] = await Promise.all([
+  // Fetch opportunities + hydrate custom fields + resolve the assigned user
+  // in parallel. Wrap each call so one failure doesn't take the block down.
+  const [hydratedContactRaw, rawOpps, assignedUser] = await Promise.all([
     hydrateContactCustomFields(adapter, contact).catch(() => contact),
     fetchOpportunitiesSafe(adapter, contact.id ?? ''),
+    resolveAssignedUser(adapter, contact).catch(() => null),
   ])
   const hydratedContact = hydratedContactRaw ?? contact
 
@@ -87,9 +98,14 @@ export async function buildContactContextBlock({
   const wonTotal = sumMonetary(wonAll)
   const lostTotal = sumMonetary(lostAll)
 
-  // Assemble
+  // Assemble. Merge fields inside the glossary (e.g. {{contact.first_name|the contact}})
+  // are rendered against the hydrated contact + resolved user, so operators
+  // can personalise the business context itself — not just pre-written
+  // messages. Unresolved tokens fall back to their `|fallback` value or empty.
   const parts: string[] = []
-  if (businessContext && businessContext.trim()) parts.push(wrapGlossary(businessContext))
+  if (businessContext && businessContext.trim()) {
+    parts.push(wrapGlossary(businessContext, hydratedContact as Contact, assignedUser))
+  }
 
   const customFieldLines = formatContactCustomFields(hydratedContact as Contact)
   const openLines = formatOpportunities(hOpen, 'open')
@@ -164,8 +180,16 @@ function monthsLabel(): string {
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
-function wrapGlossary(text: string): string {
-  return `## Business Context\n\n${text.trim()}`
+function wrapGlossary(
+  text: string,
+  contact: Partial<Contact> | null | undefined,
+  user: CrmUser | null | undefined,
+): string {
+  // Render merge-field tokens inside the glossary before it's handed to
+  // the LLM. Lets operators write things like "This contact's budget is
+  // {{custom.budget_cap|not disclosed}}" and have it resolve per-contact.
+  const rendered = renderMergeFields(text, { contact, user })
+  return `## Business Context\n\n${rendered.trim()}`
 }
 
 function byUpdatedDesc(a: Opportunity, b: Opportunity): number {
