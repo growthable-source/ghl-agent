@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { stripe } from '@/lib/stripe'
-import { STRIPE_PRICES, PLAN_FEATURES, type PlanId } from '@/lib/plans'
+import { STRIPE_PRICES, PLAN_FEATURES, getPlanFeatures, type PlanId } from '@/lib/plans'
+import { isInternalWorkspace } from '@/lib/internal-workspace'
 
 /**
  * POST /api/billing/checkout
@@ -38,6 +39,28 @@ export async function POST(req: NextRequest) {
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId } })
   if (!workspace) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+  }
+
+  // Internal workspaces skip Stripe entirely. We flip the workspace to
+  // the requested plan in-place, clear any trial countdown, and return a
+  // `url` that lands back on the billing page with a success flag so the
+  // UI flow is indistinguishable from a real checkout.
+  if (await isInternalWorkspace(workspaceId)) {
+    const features = getPlanFeatures(plan)
+    await db.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        plan,
+        billingPeriod: period,
+        agentLimit: features.agents,
+        trialEndsAt: null,
+      },
+    })
+    const base = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin
+    return NextResponse.json({
+      url: `${base}/dashboard/${workspaceId}/settings/billing?internal=1&plan=${plan}`,
+      internal: true,
+    })
   }
 
   // Get the Stripe price ID

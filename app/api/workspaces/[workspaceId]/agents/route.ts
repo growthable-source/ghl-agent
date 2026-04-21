@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { canCreateAgent, isTrialExpired, getPlanFeatures } from '@/lib/plans'
+import { isInternalWorkspace } from '@/lib/internal-workspace'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -96,7 +97,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     console.warn('[Agents] Feature gating query failed (migration pending?) — allowing agent creation')
   }
 
-  if (workspace) {
+  // Internal workspaces (at least one @voxility.ai member, or allowlisted
+  // via SUPER_ADMIN_EMAILS) skip every billing/trial gate. Staff, demo
+  // accounts, and dogfooding shouldn't ever be blocked behind a paywall.
+  const internal = await isInternalWorkspace(workspaceId)
+
+  if (workspace && !internal) {
     // Block expired trials
     if (workspace.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
       return NextResponse.json({

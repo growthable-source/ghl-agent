@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { canCreateAgent } from '@/lib/plans'
+import { isInternalWorkspace } from '@/lib/internal-workspace'
 
 type Params = { params: Promise<{ workspaceId: string; templateId: string }> }
 
@@ -16,19 +17,23 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const template = await db.agentTemplate.findUnique({ where: { id: templateId } })
   if (!template) return NextResponse.json({ error: 'Template not found' }, { status: 404 })
 
-  // Check agent limit (graceful fallback for pre-migration)
-  try {
-    const workspace = await db.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { plan: true, extraAgentCount: true },
-    })
-    if (workspace) {
-      const count = await db.agent.count({ where: { workspaceId } })
-      if (!canCreateAgent(workspace.plan, count, workspace.extraAgentCount ?? 0)) {
-        return NextResponse.json({ error: 'Agent limit reached', code: 'AGENT_LIMIT' }, { status: 403 })
+  // Check agent limit (graceful fallback for pre-migration). Internal
+  // workspaces (any @voxility.ai member) bypass the gate entirely.
+  const internal = await isInternalWorkspace(workspaceId)
+  if (!internal) {
+    try {
+      const workspace = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { plan: true, extraAgentCount: true },
+      })
+      if (workspace) {
+        const count = await db.agent.count({ where: { workspaceId } })
+        if (!canCreateAgent(workspace.plan, count, workspace.extraAgentCount ?? 0)) {
+          return NextResponse.json({ error: 'Agent limit reached', code: 'AGENT_LIMIT' }, { status: 403 })
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   const location = await db.location.findFirst({ where: { workspaceId }, select: { id: true } })
 

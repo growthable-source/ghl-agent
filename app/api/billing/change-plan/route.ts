@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { stripe } from '@/lib/stripe'
 import { STRIPE_PRICES, getPlanDefaults, type PlanId, PLAN_FEATURES } from '@/lib/plans'
+import { isInternalWorkspace } from '@/lib/internal-workspace'
 
 /**
  * POST /api/billing/change-plan
@@ -37,7 +38,34 @@ export async function POST(req: NextRequest) {
   }
 
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId } })
-  if (!workspace?.stripeSubscriptionId) {
+  if (!workspace) {
+    return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+  }
+
+  // Internal workspaces flip plans instantly without touching Stripe —
+  // no subscription required. Works whether they've ever gone through
+  // checkout or not.
+  if (await isInternalWorkspace(workspaceId)) {
+    const defaults = getPlanDefaults(plan)
+    const billingPeriod = period || workspace.billingPeriod || 'monthly'
+    await db.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        plan,
+        billingPeriod,
+        agentLimit: defaults.agentLimit + (workspace.extraAgentCount ?? 0),
+        messageLimit: defaults.messageLimit,
+        voiceMinuteLimit: defaults.voiceMinuteLimit,
+        trialEndsAt: null,
+      },
+    })
+    return NextResponse.json({
+      success: true, plan, isUpgrade: true, internal: true,
+      message: `Plan set to ${plan} (internal — no billing).`,
+    })
+  }
+
+  if (!workspace.stripeSubscriptionId) {
     return NextResponse.json({ error: 'No active subscription' }, { status: 400 })
   }
 

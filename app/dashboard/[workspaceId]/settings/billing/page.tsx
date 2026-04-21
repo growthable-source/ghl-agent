@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 interface UsageData {
@@ -67,12 +67,21 @@ const PLANS = [
 
 export default function BillingPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const workspaceId = params.workspaceId as string
 
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [loading, setLoading] = useState(true)
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  // Is this workspace internal (Voxility staff)? We ask the server rather
+  // than duplicating the allowlist logic client-side — source of truth
+  // lives in lib/internal-workspace.ts.
+  const [isInternal, setIsInternal] = useState(false)
+  // Post-plan-switch success banner (for internal flip). ?internal=1&plan=x
+  // is appended by the checkout endpoint on success.
+  const internalJustSwitched = searchParams.get('internal') === '1'
+  const switchedPlan = searchParams.get('plan')
 
   useEffect(() => {
     fetch(`/api/billing/usage?workspaceId=${workspaceId}`)
@@ -80,6 +89,12 @@ export default function BillingPage() {
       .then(setUsage)
       .catch(console.error)
       .finally(() => setLoading(false))
+
+    // Check internal status for banners + copy changes.
+    fetch(`/api/workspaces/${workspaceId}/internal`)
+      .then(r => r.json())
+      .then(d => setIsInternal(!!d.internal))
+      .catch(() => {})
   }, [workspaceId])
 
   async function handleCheckout(plan: string) {
@@ -171,8 +186,30 @@ export default function BillingPage() {
         <p className="text-zinc-400 text-sm">Manage your plan, view usage, and update payment details.</p>
       </div>
 
-      {/* Trial banner */}
-      {usage?.plan === 'trial' && !usage.trialExpired && (
+      {/* Internal-workspace banner. Replaces the trial / trial-expired
+          banners for Voxility staff workspaces. */}
+      {isInternal && (
+        <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/30 p-4 mb-6 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-emerald-300">Internal workspace</p>
+            <p className="text-xs text-emerald-400/80 mt-0.5">
+              No billing required. Pick any plan below to apply its feature set instantly — no card, no Stripe.
+            </p>
+          </div>
+          <span className="text-xs text-emerald-400 bg-emerald-900/40 px-2.5 py-1 rounded-full font-medium">
+            {usage?.planLabel ?? usage?.plan ?? 'trial'}
+          </span>
+        </div>
+      )}
+
+      {internalJustSwitched && switchedPlan && (
+        <div className="rounded-xl border border-emerald-600/50 bg-emerald-500/10 p-4 mb-6 text-sm text-emerald-200">
+          ✓ Plan set to <span className="font-semibold capitalize">{switchedPlan}</span>. No billing was triggered — internal workspace.
+        </div>
+      )}
+
+      {/* Trial banner — hidden for internal workspaces */}
+      {!isInternal && usage?.plan === 'trial' && !usage.trialExpired && (
         <div className="rounded-xl border border-amber-800/50 bg-amber-950/30 p-4 mb-6 flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-amber-300">Free Trial</p>
@@ -186,7 +223,7 @@ export default function BillingPage() {
         </div>
       )}
 
-      {usage?.trialExpired && (
+      {!isInternal && usage?.trialExpired && (
         <div className="rounded-xl border border-red-800/50 bg-red-950/30 p-4 mb-6">
           <p className="text-sm font-medium text-red-300">Trial Expired</p>
           <p className="text-xs text-red-400/70 mt-0.5">

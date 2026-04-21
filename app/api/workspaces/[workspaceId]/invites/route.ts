@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { canInviteCrossDomain, canAddTeamMember, isTrialExpired } from '@/lib/plans'
+import { isInternalWorkspace } from '@/lib/internal-workspace'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -65,7 +66,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // ─── Feature gating: team member limit & cross-domain ───
-  if (workspace?.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
+  // Internal workspaces bypass every plan gate — trial expiry, member
+  // caps, and cross-domain restrictions all pass through.
+  const internal = await isInternalWorkspace(workspaceId)
+
+  if (!internal && workspace?.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
     return NextResponse.json({
       error: 'Your trial has expired. Please upgrade to invite team members.',
       code: 'TRIAL_EXPIRED',
@@ -73,7 +78,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const currentMemberCount = await db.workspaceMember.count({ where: { workspaceId } })
-  if (!canAddTeamMember(workspace?.plan || 'free', currentMemberCount)) {
+  if (!internal && !canAddTeamMember(workspace?.plan || 'free', currentMemberCount)) {
     return NextResponse.json({
       error: 'Team member limit reached. Upgrade your plan to add more members.',
       code: 'MEMBER_LIMIT',
@@ -87,8 +92,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const emailDomain = email.split('@')[1]
     const crossDomain = workspace?.domain ? emailDomain !== workspace.domain : false
 
-    // Check cross-domain invite permission
-    if (crossDomain && !canInviteCrossDomain(workspace?.plan || 'trial')) {
+    // Check cross-domain invite permission — internal workspaces skip this
+    if (crossDomain && !internal && !canInviteCrossDomain(workspace?.plan || 'trial')) {
       results.push({ email, status: 'cross_domain_not_allowed', crossDomain })
       continue
     }
