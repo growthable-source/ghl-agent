@@ -172,6 +172,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       })
     }
 
+    // agentType is 'SIMPLE' by default (schema default). ADVANCED agents
+    // also persist a businessContext glossary; the runAgent path checks
+    // agentType to decide whether to fetch opportunities + hydrate custom
+    // fields. Free-text businessContext is harmless on a SIMPLE agent —
+    // upgrading later just flips the flag without a migration.
+    const agentType = body.agentType === 'ADVANCED' ? 'ADVANCED' : 'SIMPLE'
+    const businessContext = typeof body.businessContext === 'string'
+      ? body.businessContext.trim() || null
+      : null
+
     const agent = await db.agent.create({
       data: {
         workspaceId,
@@ -180,6 +190,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         systemPrompt: body.systemPrompt,
         instructions: body.instructions ?? null,
         ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
+        agentType,
+        businessContext,
       },
     })
     return NextResponse.json({ agent }, { status: 201 })

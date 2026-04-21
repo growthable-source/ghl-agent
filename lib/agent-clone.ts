@@ -50,6 +50,9 @@ export interface AgentSnapshot {
   // Approval
   requireApproval: boolean
   approvalRules: any
+  // Advanced-context agent profile (Simple vs Advanced + business glossary)
+  agentType: string
+  businessContext: string | null
   // Relations — serialisable shapes. IDs / FKs stripped before save.
   knowledgeEntries: Array<any>
   routingRules: Array<any>
@@ -115,6 +118,8 @@ export async function snapshotAgent(agentId: string): Promise<AgentSnapshot> {
     removeFromWorkflowsPick: (a as any).removeFromWorkflowsPick ?? null,
     requireApproval: a.requireApproval,
     approvalRules: a.approvalRules,
+    agentType: (a as any).agentType ?? 'SIMPLE',
+    businessContext: (a as any).businessContext ?? null,
 
     knowledgeEntries: a.knowledgeEntries.map(k => ({
       title: k.title, content: k.content, source: k.source, sourceUrl: k.sourceUrl,
@@ -194,6 +199,8 @@ export async function restoreAgent(params: {
       removeFromWorkflowsPick: s.removeFromWorkflowsPick ?? undefined,
       requireApproval: s.requireApproval,
       approvalRules: s.approvalRules ?? undefined,
+      agentType: s.agentType ?? 'SIMPLE',
+      businessContext: s.businessContext ?? null,
       // Cloned agents land DISABLED by default. Users should re-review
       // channel deployments and voice config before going live again —
       // especially for templates installed into a fresh workspace.

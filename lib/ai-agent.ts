@@ -1262,7 +1262,7 @@ export interface FallbackConfig {
   message?: string | null
 }
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string, listeningRulesBlock?: string, contactMemoryBlock?: string): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string, listeningRulesBlock?: string, contactMemoryBlock?: string, advancedContextBlock?: string): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const ch = channel || 'SMS'
   const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`
@@ -1355,6 +1355,13 @@ Professional but warm. Match the contact's energy.`
   // it to recall and cite when composing the reply.
   if (contactMemoryBlock) {
     prompt += contactMemoryBlock
+  }
+
+  // Advanced-agent context (business glossary + opportunities + contact
+  // custom fields). Goes after memory so commercial context is fresh in
+  // the prompt when the agent writes the reply. Opt-in via agentType.
+  if (advancedContextBlock) {
+    prompt += `\n\n${advancedContextBlock}`
   }
 
   if (persona) {
@@ -1542,6 +1549,7 @@ export async function runAgent(opts: {
   // + categorised memory entries) so the agent has continuity across turns.
   let listeningRulesBlock = ''
   let contactMemoryBlock = ''
+  let advancedContextBlock = ''
   let hasListeningRules = false
   if (agentId) {
     const { getActiveListeningRules, buildListeningRulesBlock, buildContactMemoryBlock } = await import('./listening-rules')
@@ -1565,6 +1573,32 @@ export async function runAgent(opts: {
       }
     } catch {
       // Non-fatal — proceed without memory context.
+    }
+
+    // Advanced-agent context block — opt-in via agentType. Only fetches
+    // opportunities + hydrates custom fields when the agent is configured
+    // for advanced context; Simple agents pay zero overhead. Skipped in
+    // sandbox (no real CRM) and on widget runs (no real contact id).
+    // The block builder does its own hydration of contact + opportunity
+    // custom fields, so we pass the raw loadedContact here.
+    if (!isSandbox && crm) {
+      try {
+        const agentRow = await (await import('./db')).db.agent.findUnique({
+          where: { id: agentId },
+          select: { agentType: true, businessContext: true },
+        })
+        if ((agentRow as any)?.agentType === 'ADVANCED') {
+          const { buildContactContextBlock } = await import('./agent-context-block')
+          advancedContextBlock = await buildContactContextBlock({
+            adapter: crm,
+            contact: loadedContact,
+            businessContext: (agentRow as any).businessContext ?? null,
+          })
+        }
+      } catch (err: any) {
+        // Non-fatal — agent proceeds without the advanced block.
+        console.warn('[Agent] advanced context block failed:', err.message)
+      }
     }
   }
 
@@ -1655,7 +1689,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock),
+      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock),
       tools,
       messages: currentMessages,
     }

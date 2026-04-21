@@ -68,6 +68,55 @@ export async function resolveAssignedUser(
 }
 
 /**
+ * Same shape as hydrateContactCustomFields, but for opportunities. GHL's
+ * opportunity endpoint returns customFields as [{id, value}] with no key,
+ * and opportunity custom fields live in a separate definition set
+ * (?model=opportunity). The advanced-context block uses this to surface
+ * fields like vehicle VIN/color/mileage on each opportunity without the
+ * agent having to call a tool.
+ */
+export async function hydrateOpportunityCustomFields<
+  T extends { customFields?: Array<{ id?: string; key?: string; value?: any }> | null | undefined },
+>(
+  // Intentionally `unknown`: only GhlAdapter exposes
+  // getOpportunityCustomFields. Every other CrmAdapter can be passed without
+  // a type dance and the runtime check short-circuits if the method isn't
+  // there.
+  adapter: unknown,
+  opportunities: T[],
+): Promise<T[]> {
+  const getter = (adapter as { getOpportunityCustomFields?: () => Promise<Array<{ id: string; fieldKey: string }>> } | null | undefined)?.getOpportunityCustomFields
+  if (typeof getter !== 'function' || opportunities.length === 0) return opportunities
+  // Skip the API call entirely if nothing needs hydrating.
+  const needsHydrate = opportunities.some(
+    o => Array.isArray(o.customFields)
+      && o.customFields.length > 0
+      && o.customFields.some((f: any) => !f.key && !f.fieldKey),
+  )
+  if (!needsHydrate) return opportunities
+  try {
+    const defs = await getter.call(adapter)
+    if (!defs?.length) return opportunities
+    const idToKey = new Map<string, string>()
+    for (const d of defs) if (d.id && d.fieldKey) idToKey.set(d.id, d.fieldKey)
+    if (idToKey.size === 0) return opportunities
+    return opportunities.map(o => {
+      const fields = o.customFields
+      if (!Array.isArray(fields) || fields.length === 0) return o
+      return {
+        ...o,
+        customFields: fields.map((f: any) => ({
+          ...f,
+          key: f.key ?? (f.id ? idToKey.get(f.id) : undefined),
+        })),
+      }
+    })
+  } catch {
+    return opportunities
+  }
+}
+
+/**
  * Decorate a contact's customFields with their stable fieldKey values.
  *
  * GHL's /contacts/:id endpoint returns customFields as [{ id, value }] —

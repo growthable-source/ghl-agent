@@ -14,6 +14,8 @@ interface Settings {
   instructions: string
   fallbackBehavior: FallbackBehavior
   fallbackMessage: string
+  agentType: 'SIMPLE' | 'ADVANCED'
+  businessContext: string
 }
 
 export default function AgentSettingsPage() {
@@ -34,6 +36,8 @@ export default function AgentSettingsPage() {
           instructions: agent.instructions ?? '',
           fallbackBehavior: agent.fallbackBehavior ?? 'message',
           fallbackMessage: agent.fallbackMessage ?? '',
+          agentType: (agent.agentType === 'ADVANCED' ? 'ADVANCED' : 'SIMPLE'),
+          businessContext: agent.businessContext ?? '',
         })
       })
       .finally(() => setLoading(false))
@@ -51,6 +55,10 @@ export default function AgentSettingsPage() {
           instructions: d.instructions,
           fallbackBehavior: d.fallbackBehavior,
           fallbackMessage: d.fallbackMessage || null,
+          agentType: d.agentType,
+          // Send null when the textarea is blank so the DB column reflects
+          // "no glossary" rather than an empty string.
+          businessContext: d.businessContext.trim() || null,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'Save failed')
@@ -96,6 +104,71 @@ export default function AgentSettingsPage() {
             rows={3}
             className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500 resize-y"
           />
+        </div>
+
+        {/* Context Level ──
+            SIMPLE matches the long-standing behaviour (name + tags in the
+            prompt). ADVANCED additionally pre-loads the contact's recent
+            opportunities and custom fields every turn, plus the operator's
+            businessContext glossary. Upgrade/downgrade is instant — no
+            migration — since every read of these fields is guarded by the
+            agentType check in runAgent. */}
+        <div className="border-t border-zinc-800 pt-6">
+          <label className="block text-sm font-medium text-zinc-300 mb-1">Context Level</label>
+          <p className="text-xs text-zinc-600 mb-3">How much CRM context the agent sees on every turn. You can change this at any time.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+            <button
+              type="button"
+              onClick={() => set({ agentType: 'SIMPLE' })}
+              className={`text-left rounded-lg border p-3 transition-colors ${
+                draft.agentType === 'SIMPLE'
+                  ? 'border-white bg-zinc-900'
+                  : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
+              }`}
+            >
+              <p className="text-sm font-medium text-zinc-200">Simple</p>
+              <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
+                Name, tags, and conversation history. Zero extra token cost.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => set({ agentType: 'ADVANCED' })}
+              className={`text-left rounded-lg border p-3 transition-colors ${
+                draft.agentType === 'ADVANCED'
+                  ? 'border-emerald-500/60 bg-emerald-500/5'
+                  : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
+              }`}
+            >
+              <p className="text-sm font-medium text-zinc-200 flex items-center gap-1.5">
+                Advanced
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5">
+                  context
+                </span>
+              </p>
+              <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
+                Also loads opportunities (last ~6 months) + custom fields. Best for commercial agents.
+              </p>
+            </button>
+          </div>
+
+          {draft.agentType === 'ADVANCED' && (
+            <div>
+              <label className="block text-xs text-zinc-400 mb-1.5">
+                Business Context <span className="text-zinc-600">(optional)</span>
+              </label>
+              <p className="text-xs text-zinc-600 mb-2">
+                Plain-English explanation of what your custom fields and opportunities represent. The agent reads this alongside the live data so it knows how to interpret what it&apos;s seeing.
+              </p>
+              <textarea
+                value={draft.businessContext}
+                onChange={e => set({ businessContext: e.target.value })}
+                placeholder="We are a used car dealership. Each opportunity is a specific vehicle the contact has inquired about. The opportunity monetaryValue is the listed sale price in USD. Custom fields starting with vehicle_ describe the car (stock ID, VIN, make, model, year, color, mileage). When the contact references 'that truck' or 'the silver one', cross-reference their active inquiries."
+                rows={6}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
+              />
+            </div>
+          )}
         </div>
 
         {/* Fallback behavior */}

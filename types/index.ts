@@ -100,6 +100,12 @@ export interface Opportunity {
   assignedTo?: string
   createdAt?: string
   updatedAt?: string
+  /**
+   * Custom fields on the opportunity itself (vehicle VIN, color, etc.).
+   * GHL returns these as [{id, value}] — hydrate via
+   * hydrateOpportunityCustomFields to attach the fieldKey before rendering.
+   */
+  customFields?: Array<{ id?: string; key?: string; value?: any }>
 }
 
 export type MessageChannelType = 'SMS' | 'Email' | 'WhatsApp' | 'GMB' | 'FB' | 'IG' | 'Live_Chat' | 'Custom'

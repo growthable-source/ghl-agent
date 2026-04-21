@@ -193,6 +193,13 @@ export default function NewAgentWizard() {
   const [name, setName] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [instructions, setInstructions] = useState('')
+  // Advanced-context agent profile — Simple is the default and matches the
+  // long-standing behaviour; Advanced additionally pre-loads the contact's
+  // opportunities (last ~6 months) and custom fields into every turn's
+  // system prompt, plus a free-text businessContext glossary the operator
+  // fills out here so the LLM knows what its data means.
+  const [agentType, setAgentType] = useState<'SIMPLE' | 'ADVANCED'>('SIMPLE')
+  const [businessContext, setBusinessContext] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   // Track whether the user has hand-edited the name. Template changes only
@@ -246,6 +253,8 @@ export default function NewAgentWizard() {
           instructions,
           crmProvider: selectedCrm,
           calendarProvider: selectedCalendar,
+          agentType,
+          ...(agentType === 'ADVANCED' && businessContext.trim() && { businessContext }),
           ...(selectedTemplate && { enabledTools: selectedTemplate.enabledTools }),
         }),
       })
@@ -523,6 +532,72 @@ export default function NewAgentWizard() {
                   rows={5}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y" />
               </div>
+
+              {/* ── Context level picker ──
+                  SIMPLE is the default and zero-overhead. ADVANCED pre-loads
+                  the contact's recent opportunities + custom fields into the
+                  system prompt so the agent can reason about commercial
+                  context (ex: a car dealer's vehicle inquiries) without
+                  calling tools. Costs more tokens per turn but produces a
+                  much richer conversation for data-heavy domains. */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Context Level
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAgentType('SIMPLE')}
+                    className={`text-left rounded-lg border p-3 transition-colors ${
+                      agentType === 'SIMPLE'
+                        ? 'border-white bg-zinc-900'
+                        : 'border-zinc-800 hover:border-zinc-600'
+                    }`}
+                  >
+                    <p className="text-sm font-medium text-zinc-200">Simple</p>
+                    <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
+                      Name, tags, and conversation history only. Best for support bots, FAQ agents, and high-volume low-context use cases.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAgentType('ADVANCED')}
+                    className={`text-left rounded-lg border p-3 transition-colors ${
+                      agentType === 'ADVANCED'
+                        ? 'border-emerald-500/60 bg-emerald-500/5'
+                        : 'border-zinc-800 hover:border-zinc-600'
+                    }`}
+                  >
+                    <p className="text-sm font-medium text-zinc-200 flex items-center gap-1.5">
+                      Advanced
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5">
+                        context
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
+                      Also loads the contact's opportunities (last ~6 months) and custom fields. Best for sales agents that need to reason about deals, products, or pricing.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {agentType === 'ADVANCED' && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Business Context <span className="text-zinc-600">(optional)</span>
+                  </label>
+                  <p className="text-xs text-zinc-500 mb-2">
+                    Plain-English explanation of what your custom fields and opportunities represent. The agent reads this alongside the live data so it knows how to interpret what it's seeing.
+                  </p>
+                  <textarea
+                    value={businessContext}
+                    onChange={e => setBusinessContext(e.target.value)}
+                    placeholder="We are a used car dealership. Each opportunity is a specific vehicle the contact has inquired about. The opportunity monetaryValue is the listed sale price in USD. Custom fields starting with vehicle_ describe the car (stock ID, VIN, make, model, year, color, mileage). When the contact references 'that truck' or 'the silver one', cross-reference their active inquiries."
+                    rows={5}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
+                  />
+                </div>
+              )}
 
               {/* Channel summary */}
               {selectedChannels.length > 0 && (

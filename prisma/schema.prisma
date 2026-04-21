@@ -265,6 +265,18 @@ model Agent {
   requireApproval     Boolean          @default(false)
   approvalRules       Json?                           // { lowSentiment: true, firstContact: true, ... }
 
+  // ─── Agent context level ───
+  // SIMPLE = minimal system prompt (name + tags only).
+  // ADVANCED = also loads opportunities (last 2 quarters) + contact custom
+  // fields + the agent's businessContext glossary into every turn's system
+  // prompt. Heavier on tokens but the agent can reason about commercial
+  // context (e.g. a car dealer's vehicle inquiries) without tool calls.
+  agentType           String           @default("SIMPLE")
+  // Free-text glossary the operator fills once — tells the agent what
+  // their custom fields / opportunities represent in their business. Only
+  // used when agentType=ADVANCED.
+  businessContext     String?
+
   knowledgeEntries KnowledgeEntry[]
   routingRules     RoutingRule[]
   detectionRules   AgentRule[]

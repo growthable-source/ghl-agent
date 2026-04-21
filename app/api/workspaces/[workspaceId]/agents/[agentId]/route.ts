@@ -56,6 +56,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.isPaused !== undefined && { isPaused: body.isPaused, pausedAt: body.isPaused ? new Date() : null }),
       ...(body.requireApproval !== undefined && { requireApproval: body.requireApproval }),
       ...(body.approvalRules !== undefined && { approvalRules: body.approvalRules }),
+      // Advanced-context agent profile — only two values accepted; an
+      // unexpected value is coerced to SIMPLE rather than rejected so we
+      // don't hard-fail existing clients that don't know about the flag.
+      ...(body.agentType !== undefined && {
+        agentType: body.agentType === 'ADVANCED' ? 'ADVANCED' : 'SIMPLE',
+      }),
+      ...(body.businessContext !== undefined && {
+        businessContext: typeof body.businessContext === 'string'
+          ? body.businessContext.trim() || null
+          : null,
+      }),
     },
   })
   return NextResponse.json({ agent })

@@ -316,6 +316,25 @@ export class GhlAdapter implements CrmAdapter {
   }
 
   /**
+   * Custom-field definitions for opportunities specifically. GHL scopes
+   * custom fields by `model` — by default `/customFields` returns contact
+   * fields; pass ?model=opportunity to get the opportunity set. Used by the
+   * advanced-agent context block to hydrate opportunity customFields with
+   * their fieldKey.
+   */
+  async getOpportunityCustomFields(): Promise<CustomField[]> {
+    try {
+      const data = await this.apiFetch<{ customFields: CustomField[] }>(
+        `/locations/${this.locationId}/customFields?model=opportunity`,
+      )
+      return data.customFields ?? []
+    } catch (err) {
+      console.error('[GHL] getOpportunityCustomFields failed:', err)
+      return []
+    }
+  }
+
+  /**
    * List all tags for the connected location.
    * GET /locations/{locationId}/tags → { tags: [{ id, name, locationId }] }
    *
