@@ -1883,20 +1883,31 @@ the *contact's* window. Default to restraint; you can always loosen later.`,
   {
     slug: 'needs-attention-queue',
     title: 'Needs Attention: the review queue for flagged conversations',
-    summary: 'One page that surfaces every conversation your agent couldn\'t handle or flagged for human review — paused, errored, fallback-answered, stalled.',
+    summary: 'One page that surfaces every conversation your agent couldn\'t handle — paused, errored, fallback-answered, stalled. Act on any row inline without leaving the page.',
     order: 170,
     body: `The **Needs Attention** page (sidebar → Needs Attention) is a single
 live queue of every conversation a human should look at. It refreshes
 every 30 seconds and pulls from four sources so nothing falls through
 the cracks.
 
+## Spotting items without visiting the page
+
+The sidebar link carries a **red count badge** whenever there are
+flagged items — same shape as an iOS app icon notification. Zero
+means the badge is hidden; anything over 99 caps at \`99+\`. Same
+treatment on the **Approvals** link if you're using the
+[approval queue](/help/a/human-handover-notifications#approval_pending).
+The count polls every 30 seconds from the same endpoint the page
+uses, so the number on the badge is always the current queue depth.
+
 ## What shows up here
 
 **1. Paused conversations** — anything where a [stop
 condition](/help/a/stop-conditions) tripped or the agent called
-\`transfer_to_human\`. Includes the pause reason so you know whether
-it was sentiment, a keyword, a message-count overflow, or an explicit
-handover.
+\`transfer_to_human\`. The reason is shown in plain English — no
+more decoding \`SENTIMENT:hostile\` or \`KEYWORD:stop\`. You see
+"Hostile sentiment" with a one-line explanation of what the agent
+matched on.
 
 **2. Errored conversations** — a turn where the agent threw during
 tool execution (GHL 500, rate limit, auth failure). Error text is
@@ -1910,16 +1921,30 @@ same fallback over and over, that's a signal to add [knowledge](/help/a/knowledg
 resolution. The agent's still replying but nothing's converging; worth
 a human eye.
 
+## Actions on each row
+
+Every paused row with an agent has three options:
+
+- **Resume agent** (green) — hand the conversation back to the
+  agent. Opens a modal where you can leave a context note the
+  agent will see on its very next reply. See the
+  [handoff workflow](/help/a/takeover-and-resume-handoff) for the
+  full walkthrough.
+- **Take over** (outline) — pause the agent under your name. Opens
+  the same modal with a reason field so you capture *why* you're
+  stepping in for audit trail.
+- **View contact** — deep-link into the contact detail page for
+  direct inbox access (the old flow).
+
+Errored / fallback / stalled rows don't have the Resume + Take over
+actions — there's no paused agent to resume or take over from. They
+surface for context only, with the View contact link to dig in.
+
 ## Filters
 
-The top of the page has type filters (Paused / Error / Fallback /
-Stalled) and a severity chip. Each row shows:
-
-- Who: contact + agent
-- Why: the reason, with a colour-coded severity
-- When: timestamp
-- A **Take over** button that links straight to the conversation
-  in the Inbox
+Click any of the four summary chips (Paused / Errors / Couldn't
+answer / Stalled) at the top to filter the list to that category.
+Click the same chip again to clear.
 
 ## Who gets notified
 
@@ -1927,13 +1952,13 @@ A **needs_attention** notification fires on every workspace notification
 channel (Slack, Discord, email, SMS — configured under
 [Integrations](/help/a/human-handover-notifications)) the moment a
 conversation pauses. The review queue is where you go *after* the
-ping lands.
+ping lands. The sidebar badge is the at-a-glance indicator in between.
 
 ## The \`needs-attention\` tag
 
-Stop conditions that trip optionally tag the contact with
-\`needs-attention\` (on by default, configurable per condition). This
-is a regular GHL tag so:
+[Stop conditions](/help/a/stop-conditions) that trip optionally tag
+the contact with \`needs-attention\` (on by default, configurable
+per condition). This is a regular GHL tag so:
 
 - You can search for it in GHL directly
 - You can build workflows that trigger on it
@@ -1954,9 +1979,174 @@ workflow that clears the tag on completion.
   needs-attention notifications to fork the signal.
 - **Turn fallback spam into knowledge.** If the same question keeps
   hitting fallback, the agent's knowledge base is missing a doc.
-- **Auto-resume cautiously.** The Inbox has a Resume button; use it
-  only after you've actually addressed whatever caused the pause.
-  Otherwise you'll bounce right back into the queue.`,
+- **Resume with a note, not a click-and-pray.** When you unpause an
+  agent, use the modal's note field to tell the agent what the
+  human-conducted part of the conversation covered. Otherwise the
+  agent will likely re-ask questions the human already answered.`,
+  },
+
+  {
+    slug: 'takeover-and-resume-handoff',
+    title: 'Taking over and resuming: the handoff workflow',
+    summary: 'When your agent flags a conversation, you can take over under your own name or resume the agent with a context note it reads on its next reply.',
+    order: 172,
+    body: `When the [Needs Attention queue](/help/a/needs-attention-queue) shows a
+paused conversation, you have three choices: take it over, resume the
+agent with a note, or ignore it. This article covers when to use each
+and how the agent actually receives your guidance.
+
+## Where handoffs happen
+
+Any row on the **Needs Attention** page that represents a paused
+agent (sentiment stop, keyword stop, \`transfer_to_human\` call,
+manual pause, etc.) shows two buttons:
+
+- **Resume agent** — green. Hand control back to the agent. The
+  agent replies to the contact's next inbound.
+- **Take over** — outline. Pause the agent under your name and
+  log a takeover record. The agent stays paused until someone
+  resumes it explicitly.
+
+Both open the same modal. The modal also surfaces the **humanised
+pause reason** at the top — "Hostile sentiment," "Keyword matched
+(stop, unsubscribe)," "Agent asked for help," etc. — so you know
+what you're deciding on before you click.
+
+## Resume agent — the common path
+
+Most "flagged" conversations don't actually need a human to step
+in. They need a human to look at the flag, decide it's fine, and
+hand it back — sometimes with context the agent should carry
+forward.
+
+**Example — hostile sentiment false positive:**
+
+Contact texts: *"That's the worst thing I've ever heard. I love it."*
+
+The [SENTIMENT](/help/a/stop-conditions) stop condition fires on
+the word "worst." The agent pauses. You look at it, realise they
+were being sarcastic, and click **Resume agent**. You type in the
+modal:
+
+> *"They're being sarcastic — they love the product. Keep going.
+> No handholding needed."*
+
+Click Resume. The agent unpauses and sees your note on its very
+next reply. It continues the conversation with full context.
+
+## Take over — when the agent shouldn't come back alone
+
+Use **Take over** when you want to handle this conversation
+manually and not leave it up to the agent to pick up again
+automatically.
+
+**Example — angry contact threatening a lawyer:**
+
+Contact says *"I'm going to call my attorney."* SENTIMENT fires.
+You click **Take over** with the reason:
+
+> *"Handling directly, will update when resolved."*
+
+The conversation stays paused. You reply to the contact yourself
+from the Inbox. When you're done, return to Needs Attention
+(or the contact page) and click Resume agent — this time with a
+note telling the agent what happened:
+
+> *"Contact and I reached agreement on the refund. They'll wait
+> 7 days for the credit to clear. Confirm receipt once they
+> respond. Do not bring up the complaint again."*
+
+The agent resumes, reads the handoff note, and picks up from the
+new baseline.
+
+## How the agent sees your note
+
+When you resume with a note, it's stored in the contact's memory
+under a category called \`handoff_context\`. That entry gets
+injected into the agent's system prompt on every subsequent turn
+under the heading **"What You Already Know About This Contact"**:
+
+\`\`\`
+## What You Already Know About This Contact
+
+- handoff_context: A human just handed this conversation back to
+  you. Their note: "Contact and I reached agreement on the refund.
+  They'll wait 7 days for the credit to clear. Confirm receipt
+  once they respond. Do not bring up the complaint again."
+  Treat this as essential context for your next reply; do not
+  re-open topics the human has already addressed.
+\`\`\`
+
+The agent reads this alongside your system prompt, persona, and
+knowledge base on every turn. Instructions like "don't re-open the
+complaint" reliably stick because the agent sees them fresh each
+time.
+
+## What makes a good handoff note
+
+- **Summarise what the human leg of the conversation covered.**
+  Not verbatim — just the outcome and any commitments made.
+- **Tell the agent what NOT to do.** "Don't re-ask about their
+  budget" prevents the agent from wiping your hard-won progress.
+- **Note any time-sensitive commitments.** "They'll follow up in
+  7 days" or "I promised a callback at 2pm Thursday" — the agent
+  will honour these.
+- **Don't dump customer PII you didn't get permission for.** The
+  note goes into memory which is visible to anyone with access to
+  this contact's record in Voxility.
+
+## Takeover without a follow-up note
+
+If you take over and then decide you don't want to resume the agent
+at all (e.g. you converted the lead, you closed the complaint,
+they're going to deal with it on their end), leave the conversation
+paused. It drops off the Needs Attention queue once the
+conversation stalls or the contact marks it done — nothing else
+happens. The agent won't spontaneously reply.
+
+You can also apply an opt-out tag via [rules](/help/a/rules) or
+manually in GHL to permanently stop outbound to that contact.
+
+## Finding the handoff history
+
+Every takeover and resume writes an audit trail entry with the
+operator's identity, the note they left, and the timestamp. Visible
+in two places:
+
+- **Audit log** (sidebar → Audit Log) — workspace-wide timeline
+- **Contact detail page** — per-contact history with the same notes
+
+Useful for post-mortems ("why did we drop this lead?") and for
+onboarding new operators ("this is how the team handles hostile
+contacts").
+
+## Keyboard-friendly workflow
+
+- Click **Resume agent** on the row
+- Type the note (autofocus is on the textarea)
+- **Enter** submits (via the form's default-submit behaviour)
+- Row disappears from the queue
+- Sidebar badge decrements by 1
+
+Most handoffs should take under 15 seconds end to end.
+
+## The badge on the sidebar
+
+The red count next to **Needs Attention** in the left nav is the
+number of rows currently on the queue. It polls every 30 seconds
+and decrements when you resolve a row. If the number keeps
+climbing, that's usually a sign of:
+
+- A [stop condition](/help/a/stop-conditions) firing too
+  aggressively (dial back the keyword list or the sentiment
+  match)
+- An agent too quick to call \`transfer_to_human\` (tighten its
+  instructions so it tries harder before bailing)
+- A real external change — e.g. a bad batch of leads that are all
+  triggering the same fallback
+
+Treat a rising badge as a signal to investigate, not just to
+clear.`,
   },
 
   {
