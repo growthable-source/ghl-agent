@@ -303,6 +303,7 @@ model Agent {
   channelDeployments  ChannelDeployment[]
   triggers            AgentTrigger[]
   reviews             AgentReview[]
+  platformLearnings   PlatformLearning[]
 
   @@index([locationId, isActive])
   @@index([workspaceId])
@@ -1183,6 +1184,56 @@ model AgentReview {
   @@index([agentId, createdAt(sort: Desc)])
   @@index([contactId, createdAt(sort: Desc)])
   @@index([adminId, createdAt(sort: Desc)])
+  learnings  PlatformLearning[]
+}
+
+// Concrete, apply-able suggestion proposed by the meta-Claude reviewer
+// during an AgentReview. Lifecycle:
+//   proposed  → admin sees it as a card under the reviewer's prose
+//   approved  → admin clicked Approve; now eligible for Apply
+//   applied   → the change is live on the target agent
+//   rejected  → admin killed it; kept for audit
+//   retired   → was applied, then rolled back
+//
+// PR 1: scope is always "this_agent" and type is always "prompt_addition".
+// Schema leaves room for scope=workspace|all_agents|new_agents_only and
+// type=detection_rule|listening_rule in PR 2 without a migration.
+model PlatformLearning {
+  id             String   @id @default(cuid())
+  // Traceability — every learning points back to the review turn that
+  // produced it. Null if the source review was deleted.
+  sourceReviewId String?
+  sourceReview   AgentReview? @relation(fields: [sourceReviewId], references: [id], onDelete: SetNull)
+
+  scope          String   @default("this_agent")   // future: workspace | all_agents | new_agents_only
+  agentId        String?                            // required when scope=this_agent
+  agent          Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  type           String                             // "prompt_addition" (PR 2: detection_rule | listening_rule)
+  title          String                             // short label for the approval queue
+  content        String   @db.Text                  // the actual guidance text
+  rationale      String?  @db.Text                  // why the reviewer suggested it
+
+  status         String   @default("proposed")      // proposed | approved | applied | rejected | retired
+
+  proposedByEmail String                            // denormalised admin email (null-safe if admin deleted)
+  approvedByEmail String?
+  rejectedByEmail String?
+  rejectedReason  String?
+
+  appliedAt       DateTime?
+  // When status=applied, points to the surface that was changed. For
+  // prompt_addition, always "agent.systemPrompt" — the content is
+  // fenced in the prompt with marker comments keyed by this learning's
+  // id, so Retire is a string-replace op.
+  appliedTarget   String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([agentId, status])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([sourceReviewId])
 }
 
 // System-wide config the admin UI owns. Typed as JSON so we can add new

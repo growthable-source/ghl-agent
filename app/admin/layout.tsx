@@ -60,6 +60,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <NavLink href="/admin/workspaces" label="Workspaces" />
           <NavLink href="/admin/users" label="Users" />
           <NavLink href="/admin/conversations" label="Conversations" />
+          <NavLink href="/admin/learnings" label="Learnings" />
           <NavLink href="/admin/logs" label="Message logs" />
           <NavLink href="/admin/audit" label="Audit trail" />
           <div className="pt-3 mt-2 border-t border-zinc-800">

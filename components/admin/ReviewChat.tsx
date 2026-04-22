@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
 interface Props {
@@ -8,11 +9,22 @@ interface Props {
   agentName: string
 }
 
+interface Suggestion {
+  learningId: string
+  type: 'prompt_addition'
+  title: string
+  content: string
+  rationale: string | null
+}
+
 interface ReviewMessage {
   role: 'admin' | 'assistant'
   content: string
   at: string
+  suggestions?: Suggestion[]
 }
+
+type SuggestionStatus = 'proposed' | 'approved' | 'applied' | 'rejected' | 'retired'
 
 /**
  * Meta-Claude review chat panel.
@@ -30,6 +42,10 @@ export default function ReviewChat({ agentId, contactId, agentName }: Props) {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Per-suggestion status map so the inline cards can flip to approved/
+  // rejected/applied without a page reload. Keyed by learningId.
+  const [suggestionStatus, setSuggestionStatus] = useState<Record<string, SuggestionStatus>>({})
+  const [suggestionBusy, setSuggestionBusy] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -72,6 +88,36 @@ export default function ReviewChat({ agentId, contactId, agentName }: Props) {
     }
   }
 
+  async function actOnSuggestion(
+    learningId: string,
+    action: 'approve' | 'apply' | 'reject',
+  ) {
+    setSuggestionBusy(learningId)
+    try {
+      const res = await fetch(`/api/admin/learnings/${learningId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed')
+      // Map action → resulting status. Approve + apply is the happy
+      // path; the two-step exists so the admin can review wording
+      // before mutating the agent, but the card collapses the steps
+      // visually by showing "Approve & Apply" as a single button once
+      // approved (see below).
+      const nextStatus: SuggestionStatus =
+        action === 'approve' ? 'approved' :
+        action === 'apply' ? 'applied' :
+        'rejected'
+      setSuggestionStatus(prev => ({ ...prev, [learningId]: nextStatus }))
+    } catch (e: any) {
+      setError(e.message ?? 'Failed')
+    } finally {
+      setSuggestionBusy(null)
+    }
+  }
+
   return (
     <aside className="rounded-lg border border-zinc-800 bg-zinc-950 flex flex-col h-[calc(100vh-8rem)] min-h-[500px]">
       <header className="px-4 py-3 border-b border-zinc-800">
@@ -96,17 +142,99 @@ export default function ReviewChat({ agentId, contactId, agentName }: Props) {
           </div>
         )}
         {messages.map((m, i) => (
-          <div
-            key={i}
-            className={m.role === 'admin'
-              ? 'ml-auto max-w-[85%] bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200'
-              : 'mr-auto max-w-[95%] bg-blue-500/10 border border-blue-500/30 rounded-lg px-3 py-2 text-blue-50'
-            }
-          >
-            <div className="text-[10px] uppercase tracking-wider mb-1 opacity-70">
-              {m.role === 'admin' ? 'You' : 'Reviewer'}
+          <div key={i} className={m.role === 'admin' ? 'flex flex-col items-end' : 'flex flex-col items-start'}>
+            <div
+              className={m.role === 'admin'
+                ? 'max-w-[85%] bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200'
+                : 'max-w-[95%] bg-blue-500/10 border border-blue-500/30 rounded-lg px-3 py-2 text-blue-50'
+              }
+            >
+              <div className="text-[10px] uppercase tracking-wider mb-1 opacity-70">
+                {m.role === 'admin' ? 'You' : 'Reviewer'}
+              </div>
+              <div className="whitespace-pre-wrap">{m.content}</div>
             </div>
-            <div className="whitespace-pre-wrap">{m.content}</div>
+            {/* Inline suggestion cards — only present on assistant turns
+                that produced one or more propose_improvement tool calls. */}
+            {m.role === 'assistant' && m.suggestions && m.suggestions.length > 0 && (
+              <div className="w-full max-w-[95%] mt-2 space-y-2">
+                {m.suggestions.map(s => {
+                  const status = suggestionStatus[s.learningId] ?? 'proposed'
+                  const busy = suggestionBusy === s.learningId
+                  return (
+                    <div
+                      key={s.learningId}
+                      className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2"
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300 bg-amber-500/20 rounded px-1.5 py-0.5">
+                          {status}
+                        </span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 bg-zinc-900 rounded px-1.5 py-0.5">
+                          {s.type.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-xs text-zinc-200 font-medium">{s.title}</span>
+                      </div>
+                      <pre className="text-[11px] text-zinc-300 whitespace-pre-wrap bg-zinc-900/50 p-2 rounded border border-zinc-800 font-sans">
+                        {s.content}
+                      </pre>
+                      {s.rationale && (
+                        <p className="text-[11px] text-zinc-500 italic">{s.rationale}</p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {status === 'proposed' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => actOnSuggestion(s.learningId, 'approve')}
+                              disabled={busy}
+                              className="text-[11px] font-medium bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 text-white rounded px-2.5 py-1 transition-colors"
+                            >
+                              {busy ? 'Approving…' : 'Approve'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => actOnSuggestion(s.learningId, 'reject')}
+                              disabled={busy}
+                              className="text-[11px] font-medium border border-red-500/30 text-red-300 hover:text-red-200 hover:border-red-500/50 rounded px-2.5 py-1 transition-colors"
+                            >
+                              Reject
+                            </button>
+                            <Link
+                              href={`/admin/learnings?status=proposed`}
+                              className="text-[11px] text-zinc-500 hover:text-zinc-300 ml-auto"
+                            >
+                              Edit wording →
+                            </Link>
+                          </>
+                        )}
+                        {status === 'approved' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => actOnSuggestion(s.learningId, 'apply')}
+                              disabled={busy}
+                              className="text-[11px] font-medium bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white rounded px-2.5 py-1 transition-colors"
+                            >
+                              {busy ? 'Applying…' : 'Apply to agent'}
+                            </button>
+                            <span className="text-[11px] text-emerald-300">Approved — ready to apply</span>
+                          </>
+                        )}
+                        {status === 'applied' && (
+                          <span className="text-[11px] text-emerald-300">
+                            ✓ Applied to agent&apos;s system prompt
+                          </span>
+                        )}
+                        {status === 'rejected' && (
+                          <span className="text-[11px] text-zinc-500">Rejected</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         ))}
         {sending && (

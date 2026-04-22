@@ -19,20 +19,34 @@ const REVIEWER_MODEL = 'claude-sonnet-4-20250514'
  * Meta-Claude review endpoint.
  *
  * The admin chats with a "reviewer" Claude about a specific (agent,
- * contact) conversation. We stuff the agent's real configuration and
- * the entire transcript into a system message — the reviewer doesn't
- * call the agent's tools, it just reasons about what the agent did and
- * why, and suggests prompt/rule changes.
+ * contact) conversation. The reviewer does two things per turn:
+ *   1. Writes prose analysis.
+ *   2. Optionally calls the `propose_improvement` tool — zero or more
+ *      times — with a CONCRETE apply-able change (PR 1: prompt_addition
+ *      only). Each tool call lands in the DB as a PlatformLearning row
+ *      with status=proposed, waiting for admin approval.
  *
  * One review thread == one AgentReview row. The messages column is an
- * append-only JSON array of turns; we pass the full history on every
- * call so Claude keeps context across follow-ups.
+ * append-only JSON array of turns with optional suggestion metadata;
+ * we pass the full history on every call so Claude keeps context across
+ * follow-ups.
  */
+
+interface ReviewSuggestion {
+  learningId: string
+  type: 'prompt_addition'
+  title: string
+  content: string
+  rationale: string | null
+}
 
 interface ReviewMessage {
   role: 'admin' | 'assistant'
   content: string
   at: string
+  // Only present on assistant turns that produced suggestions. Denormalised
+  // for fast render; the canonical record is PlatformLearning rows.
+  suggestions?: ReviewSuggestion[]
 }
 
 interface Body {
@@ -47,15 +61,42 @@ const REVIEWER_SYSTEM_PREAMBLE = `You are an experienced conversational-AI engin
 Ground rules:
 1. Be direct. Don't cushion. Point to specific turns ("Turn 4, when the agent asked for the email a second time").
 2. Distinguish prompt/rule issues from tool-failure issues from "the agent did exactly what the config told it to, the config is wrong." Name which.
-3. When suggesting a fix, show the CONCRETE change — a rewritten sentence in the system prompt, a new detection rule, a specific listening rule. Not just "be clearer."
-4. If the agent's behaviour was actually fine and the operator's concern is misplaced, say so.
-5. You cannot change anything yourself. The operator takes your suggestions back to the agent config.
+3. When you have a CONCRETE, APPLY-ABLE recommendation, call the propose_improvement tool with it. Don't just describe the fix in prose — actually propose it. The operator will see your proposal as a reviewable card with Approve / Reject buttons.
+4. You may propose multiple improvements in a single turn if you see multiple distinct fixes. Propose zero if the agent behaved correctly.
+5. Keep prose short and focused. The structured proposals do the heavy lifting; the prose explains WHY.
+6. If the agent's behaviour was actually fine and the operator's concern is misplaced, say so — and don't propose anything.
 
-Format your responses as plain prose with short paragraphs. Use bullet points sparingly. Do not greet, do not sign off.`
+Format your prose as short paragraphs. Use bullet points sparingly. Do not greet, do not sign off.`
+
+const PROPOSE_TOOL: Anthropic.Tool = {
+  name: 'propose_improvement',
+  description: 'Propose a concrete, apply-able change to this agent based on the conversation you just reviewed. Only call this when you have a specific, testable recommendation — not for generic advice. May be called multiple times per turn.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      type: {
+        type: 'string',
+        enum: ['prompt_addition'],
+        description: 'The kind of change. Currently only "prompt_addition" is supported — a sentence or short paragraph that gets appended to the agent\'s system prompt.',
+      },
+      title: {
+        type: 'string',
+        description: 'A short 3–7 word label for the approval queue. Example: "Stop asking for email twice".',
+      },
+      content: {
+        type: 'string',
+        description: 'The actual text that will be appended to the agent\'s system prompt. Write it as if it were part of the prompt itself — imperative, specific, no "I suggest" or "you should". Example: "Never ask the contact for information they have already provided earlier in the conversation. Check the conversation history before asking."',
+      },
+      rationale: {
+        type: 'string',
+        description: 'One sentence citing the turn number where the problem occurred. Example: "The agent asked for the email again in Turn 6 after the contact had already given it in Turn 3."',
+      },
+    },
+    required: ['type', 'title', 'content', 'rationale'],
+  },
+}
 
 function buildAgentBriefing(agent: any, messages: Array<{ role: string; content: string; createdAt: Date }>): string {
-  // Build a single string Claude sees as system context. Keeps the
-  // reviewer's call sites trivial and the briefing diffable.
   const parts: string[] = []
 
   parts.push(`# Agent under review`)
@@ -103,10 +144,26 @@ function buildAgentBriefing(agent: any, messages: Array<{ role: string; content:
 }
 
 function autoTitle(firstAdminMessage: string): string {
-  // First 60 chars of the admin's opening question — good enough to
-  // scan the past-reviews list.
   const trimmed = firstAdminMessage.replace(/\s+/g, ' ').trim()
   return trimmed.length <= 60 ? trimmed : trimmed.slice(0, 57) + '…'
+}
+
+// When replaying the review history back into Claude on subsequent turns,
+// we flatten each assistant message to just its text — Claude only sees
+// its own prior text, not the tool-use blocks, because we're not using
+// the agentic tool loop here. Every turn is a single synchronous call.
+function flattenForReplay(m: ReviewMessage): Anthropic.MessageParam {
+  return {
+    role: m.role === 'admin' ? 'user' : 'assistant',
+    content: m.content,
+  }
+}
+
+interface ProposedInput {
+  type: string
+  title: string
+  content: string
+  rationale: string
 }
 
 export async function POST(req: NextRequest) {
@@ -129,10 +186,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'agentId, contactId, and message required' }, { status: 400 })
   }
 
-  // Lock down: the reviewer API must only ever operate on conversations
-  // the admin can actually see via the list page. Admin is already gated
-  // by 2FA at the layout, so no further tenant check is needed — but we
-  // still confirm the agent exists so bad IDs don't OOM the LLM with junk.
   const agent = await db.agent.findUnique({
     where: { id: agentId },
     select: {
@@ -151,7 +204,6 @@ export async function POST(req: NextRequest) {
         select: { name: true, description: true },
       },
       qualifyingQuestions: {
-        // QualifyingQuestion has no isActive flag — all rows are live.
         orderBy: { order: 'asc' },
         select: { question: true, fieldKey: true },
       },
@@ -171,9 +223,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No messages found for this conversation' }, { status: 404 })
   }
 
-  // Load or create the review row. `reviewId` is null on the very first
-  // admin message; we create the row, title it from that message, and
-  // return the new ID so the client threads subsequent turns into it.
   let review = body.reviewId
     ? await db.agentReview.findUnique({ where: { id: body.reviewId } })
     : null
@@ -182,45 +231,81 @@ export async function POST(req: NextRequest) {
     ? (review.messages as unknown as ReviewMessage[])
     : []
 
-  // Build the Anthropic call. System context = agent briefing. Message
-  // array = the back-and-forth with the admin so far + this new turn.
   const briefing = buildAgentBriefing(agent, messages)
   const systemPrompt = `${REVIEWER_SYSTEM_PREAMBLE}\n\n---\n\n${briefing}`
 
-  const anthMessages: Anthropic.MessageParam[] = prior.map(m => ({
-    role: m.role === 'admin' ? 'user' : 'assistant',
-    content: m.content,
-  }))
+  const anthMessages: Anthropic.MessageParam[] = prior.map(flattenForReplay)
   anthMessages.push({ role: 'user', content: adminMessage })
 
   let replyText: string
+  const proposedInputs: ProposedInput[] = []
   try {
     const response = await client.messages.create({
       model: REVIEWER_MODEL,
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: systemPrompt,
+      tools: [PROPOSE_TOOL],
+      // Let Claude decide whether to propose an improvement. Forcing
+      // a tool call would make the reviewer overreach on "the agent
+      // handled it fine" threads.
+      tool_choice: { type: 'auto' },
       messages: anthMessages,
     })
-    // Concatenate any text blocks. Reviewer has no tools, so this is
-    // always a plain text completion, but being defensive is cheap.
+
     replyText = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map(b => b.text)
       .join('\n')
       .trim()
-    if (!replyText) {
-      replyText = '(The reviewer returned an empty response — try rephrasing your question.)'
+
+    for (const block of response.content) {
+      if (block.type !== 'tool_use') continue
+      if (block.name !== 'propose_improvement') continue
+      const input = block.input as Record<string, unknown>
+      // Defensive validation — Claude almost always respects the schema
+      // but we're about to persist and eventually MUTATE an agent's
+      // prompt, so we don't trust anything unverified.
+      if (typeof input.type !== 'string' ||
+          typeof input.title !== 'string' ||
+          typeof input.content !== 'string' ||
+          typeof input.rationale !== 'string') {
+        continue
+      }
+      if (input.type !== 'prompt_addition') continue
+      if (!input.title.trim() || !input.content.trim()) continue
+      proposedInputs.push({
+        type: input.type,
+        title: input.title.trim().slice(0, 120),
+        content: input.content.trim().slice(0, 4000),
+        rationale: input.rationale.trim().slice(0, 1000),
+      })
+    }
+
+    if (!replyText && proposedInputs.length === 0) {
+      replyText = '(The reviewer returned no prose or proposals — try rephrasing your question.)'
+    }
+    if (!replyText && proposedInputs.length > 0) {
+      // Claude sometimes skips prose entirely when it's confident about
+      // the fix. Give the UI something readable to show above the cards.
+      replyText = `I've proposed ${proposedInputs.length} improvement${proposedInputs.length === 1 ? '' : 's'} — see below.`
     }
   } catch (err: any) {
     const msg = err?.message ?? 'Reviewer call failed'
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 
+  // Create or update the review row FIRST so we have an id to anchor
+  // the learning rows to.
   const now = new Date()
-  const newThread: ReviewMessage[] = [
+  const draftAssistantMessage: ReviewMessage = {
+    role: 'assistant',
+    content: replyText,
+    at: new Date().toISOString(),
+  }
+  const draftThread: ReviewMessage[] = [
     ...prior,
     { role: 'admin', content: adminMessage, at: now.toISOString() },
-    { role: 'assistant', content: replyText, at: new Date().toISOString() },
+    draftAssistantMessage,
   ]
 
   if (!review) {
@@ -232,13 +317,52 @@ export async function POST(req: NextRequest) {
         adminId: session.adminId,
         adminEmail: session.email,
         title: autoTitle(adminMessage),
-        messages: newThread as unknown as object,
+        messages: draftThread as unknown as object,
       },
     })
   } else {
     review = await db.agentReview.update({
       where: { id: review.id },
-      data: { messages: newThread as unknown as object },
+      data: { messages: draftThread as unknown as object },
+    })
+  }
+
+  // Persist each proposal as a PlatformLearning. We do this AFTER the
+  // review row exists so the FK is valid, and we need the learning ids
+  // to embed them back into the messages JSON.
+  const createdLearnings = await Promise.all(
+    proposedInputs.map(p =>
+      db.platformLearning.create({
+        data: {
+          sourceReviewId: review!.id,
+          scope: 'this_agent',
+          agentId,
+          type: p.type,
+          title: p.title,
+          content: p.content,
+          rationale: p.rationale,
+          status: 'proposed',
+          proposedByEmail: session.email,
+        },
+        select: { id: true, title: true, content: true, rationale: true, type: true },
+      }),
+    ),
+  )
+
+  // Now embed the learning ids into the assistant message's
+  // `suggestions` field so the UI can render approve/reject cards
+  // without a second round-trip.
+  if (createdLearnings.length > 0) {
+    draftAssistantMessage.suggestions = createdLearnings.map(l => ({
+      learningId: l.id,
+      type: l.type as 'prompt_addition',
+      title: l.title,
+      content: l.content,
+      rationale: l.rationale,
+    }))
+    review = await db.agentReview.update({
+      where: { id: review.id },
+      data: { messages: draftThread as unknown as object },
     })
   }
 
@@ -246,11 +370,15 @@ export async function POST(req: NextRequest) {
     admin: session,
     action: 'conversation_review_turn',
     target: `${agentId}:${contactId}`,
-    meta: { reviewId: review.id, turnCount: newThread.length },
+    meta: {
+      reviewId: review.id,
+      turnCount: draftThread.length,
+      proposedLearnings: createdLearnings.length,
+    },
   }).catch(() => {})
 
   return NextResponse.json({
     reviewId: review.id,
-    messages: newThread,
+    messages: draftThread,
   })
 }
