@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { getAdminSession, logAdminAction, roleHas } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 // Claude calls can take a bit. 60s is well under Vercel's 5-minute hard
@@ -187,6 +187,12 @@ export async function POST(req: NextRequest) {
   if (!session || !session.twoFactorVerified) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // The chat endpoint writes — it creates PlatformLearning proposals
+  // and AgentReview rows, and costs money per call. Viewer admins can
+  // read past reviews via the page; they cannot start new chats.
+  if (!roleHas(session.role, 'admin')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   let body: Body
   try {
@@ -246,6 +252,19 @@ export async function POST(req: NextRequest) {
   let review = body.reviewId
     ? await db.agentReview.findUnique({ where: { id: body.reviewId } })
     : null
+
+  // Tenancy check: the client can send any reviewId, but the route must
+  // only thread messages into a review that actually belongs to the
+  // (agentId, contactId) pair in the same request. Without this, a stale
+  // client-side reviewId would silently append messages about a DIFFERENT
+  // conversation into an old thread. 400 loudly rather than quietly
+  // starting a new thread — a mismatch here is always a client bug.
+  if (review && (review.agentId !== agentId || review.contactId !== contactId)) {
+    return NextResponse.json(
+      { error: 'reviewId does not belong to this (agent, contact). Refresh and try again.' },
+      { status: 400 },
+    )
+  }
 
   const prior: ReviewMessage[] = review && Array.isArray(review.messages)
     ? (review.messages as unknown as ReviewMessage[])

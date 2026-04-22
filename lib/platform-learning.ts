@@ -57,10 +57,13 @@ export function removeLearningFromPrompt(
   if (endIdx === -1) return currentPrompt
   const stripEnd = endIdx + end.length
   const trailing = currentPrompt.charAt(stripEnd) === '\n' ? 1 : 0
-  const leading = currentPrompt.charAt(startIdx - 1) === '\n'
-    && currentPrompt.charAt(startIdx - 2) === '\n'
-    ? 1
-    : 0
+  // appendLearningToPrompt prepends "\n\n" before the start marker, so
+  // we must strip BOTH newlines on retire. The old ternary only stripped
+  // one, leaving an orphan '\n' that accumulated across apply/retire
+  // cycles and slowly padded the prompt with blank lines.
+  let leading = 0
+  if (currentPrompt.charAt(startIdx - 1) === '\n') leading++
+  if (currentPrompt.charAt(startIdx - 2) === '\n') leading++
   return currentPrompt.slice(0, startIdx - leading) + currentPrompt.slice(stripEnd + trailing)
 }
 

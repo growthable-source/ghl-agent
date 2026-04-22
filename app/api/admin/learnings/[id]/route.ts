@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { getAdminSession, logAdminAction, roleHas } from '@/lib/admin-auth'
 import { applyLearning, retireLearning } from '@/lib/platform-learning'
 
 export const dynamic = 'force-dynamic'
@@ -21,6 +21,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const session = await getAdminSession()
   if (!session || !session.twoFactorVerified) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  // Viewer-tier admins can browse /admin/learnings (read-only) but all
+  // lifecycle actions — approve / reject / apply / retire — require
+  // admin-tier at minimum. all_agents-scoped applies can affect every
+  // customer on the platform; this is not a read-only operation.
+  if (!roleHas(session.role, 'admin')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { id } = await params
