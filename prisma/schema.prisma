@@ -302,6 +302,7 @@ model Agent {
   vapiConfig          VapiConfig?
   channelDeployments  ChannelDeployment[]
   triggers            AgentTrigger[]
+  reviews             AgentReview[]
 
   @@index([locationId, isActive])
   @@index([workspaceId])
@@ -1149,7 +1150,39 @@ model SuperAdmin {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   auditLogs    AdminAuditLog[]
+  agentReviews AgentReview[]
   @@index([email])
+}
+
+// Meta-Claude review thread: an admin opens a specific (agent, contact)
+// conversation and chats with a reviewer Claude about what the agent did
+// wrong and how to fix it. Each row is ONE review thread; messages
+// accumulate in the JSON column as the thread progresses. Kept forever —
+// these are training signal, not disposable chat logs.
+model AgentReview {
+  id         String   @id @default(cuid())
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // The conversation under review is addressed by (agentId + contactId +
+  // conversationId). We store all three so the thread survives even if
+  // the ConversationMessage rows are later pruned.
+  contactId      String
+  conversationId String?
+  adminId    String?
+  admin      SuperAdmin? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminEmail String                              // denormalised for audit
+  // Short auto-title derived from the first admin message. Surfaced in
+  // the reviews list so operators can scan past sessions quickly.
+  title      String?
+  // [{ role: "admin" | "assistant", content: string, at: ISOString }]
+  // Append-only from the app's perspective — new turns push onto the end.
+  messages   Json     @default("[]")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([agentId, createdAt(sort: Desc)])
+  @@index([contactId, createdAt(sort: Desc)])
+  @@index([adminId, createdAt(sort: Desc)])
 }
 
 // System-wide config the admin UI owns. Typed as JSON so we can add new
