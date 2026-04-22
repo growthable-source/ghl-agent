@@ -151,6 +151,7 @@ function SidebarBody() {
                   <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Tools</p>
                 </div>
                 {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
+                {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations')}
                 {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
                 {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
                 {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}

@@ -313,6 +313,7 @@ model Agent {
   triggers            AgentTrigger[]
   reviews             AgentReview[]
   platformLearnings   PlatformLearning[]
+  simulations         Simulation[]
 
   @@index([locationId, isActive])
   @@index([workspaceId])
@@ -1259,6 +1260,104 @@ model PlatformLearning {
   // learning quickly without a table scan.
   @@index([scope, status])
   @@index([workspaceId, status])
+}
+
+// A synthetic conversation between a "persona Claude" (pretending to be
+// a customer with a given context + style) and the real agent running
+// via runAgent(sandbox=true). The goal is to generate training signal
+// without waiting for real inbounds. After completion, an auto-reviewer
+// analyses the transcript and proposes PlatformLearnings that land in
+// the /admin/learnings queue waiting for approval.
+//
+// Lifecycle: queued → running → complete | failed. A cron worker picks
+// up queued sims one-per-minute. Manual (synchronous) runs skip the
+// queue and go straight to running.
+model Simulation {
+  id          String   @id @default(cuid())
+  // Target agent under test
+  agentId     String
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // Denormalised workspace for cross-workspace admin queries + auth scoping
+  workspaceId String?
+
+  // ─── Persona configuration ───
+  // Free-text description of who the simulated contact is + what they
+  // want. The persona-Claude reads this at turn 0 and stays in character.
+  personaContext String @db.Text
+  // Which channel the simulation pretends to run on. Affects tone +
+  // runAgent's internal channel-specific behaviour.
+  channel        String    // "SMS" | "Email" | "WhatsApp" | "Live_Chat"
+  // Communication style: affects the persona-Claude's prompt. Enum-ish
+  // but stored as string so we can add new styles without a migration.
+  style          String    // "friendly" | "aggressive" | "passive" | "skeptical" | "confused" | "ready_to_buy" | "price_shopper"
+  // Optional: what the simulated contact is trying to achieve or what
+  // behaviour the operator is testing ("try to get them to cancel").
+  goal           String?   @db.Text
+  // Turn ceiling so a persona-agent loop can't run forever.
+  maxTurns       Int       @default(10)
+
+  // ─── Execution state ───
+  status         String    @default("queued")     // queued | running | complete | failed
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?   @db.Text
+
+  // ─── Results ───
+  turnCount      Int       @default(0)
+  // Array<{ role: "persona" | "agent", content: string, at: ISOString,
+  //         toolCalls?: Array<{tool, input, output}> }>
+  transcript     Json      @default("[]")
+
+  // Auto-review linkage. After the sim completes, we invoke the
+  // meta-Claude reviewer headlessly and store the resulting review id
+  // here. reviewId is null if the auto-review hasn't run yet or failed.
+  reviewId                String?
+  proposedLearningsCount  Int  @default(0)
+
+  // ─── Provenance ───
+  createdByType  String                           // "user" | "admin" | "swarm"
+  createdByEmail String?                          // null when swarm-driven
+  swarmId        String?
+  swarm          SimulationSwarm? @relation(fields: [swarmId], references: [id], onDelete: SetNull)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([agentId, createdAt(sort: Desc)])
+  @@index([workspaceId, status])
+  // Cron worker hot path — "give me the oldest queued sim".
+  @@index([status, createdAt])
+  @@index([swarmId])
+}
+
+// Admin-only: a batch of simulations configured as matrix of agents ×
+// personas. Creates N Simulation rows with status=queued; the cron
+// worker picks them up in order. "Run 5 sims per agent across these 3
+// agents using these 4 personas" = 60 sims queued.
+model SimulationSwarm {
+  id             String   @id @default(cuid())
+  name           String
+  // Which agents to run against. Stored as IDs so swarms survive agent
+  // renames; if an agent is deleted its queued sims fail gracefully.
+  agentIds       String[]
+  // Array<{ context: string, channel: string, style: string, goal?: string, maxTurns?: number }>
+  personaProfiles Json
+  runsPerAgent   Int      @default(1)
+
+  status         String   @default("queued")     // queued | running | complete
+  createdByEmail String
+
+  // Precomputed at create time so the progress bar has a denominator
+  // even before any simulation starts.
+  totalPlanned   Int
+  totalComplete  Int      @default(0)
+  totalFailed    Int      @default(0)
+
+  simulations    Simulation[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, createdAt])
 }
 
 // System-wide config the admin UI owns. Typed as JSON so we can add new
