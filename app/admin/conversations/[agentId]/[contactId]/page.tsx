@@ -80,6 +80,9 @@ export default async function AdminConversationReviewPage({ params }: Params) {
     },
   })
 
+  // Soft-fail: if the AgentReview migration hasn't run yet (fresh
+  // deploy, dev env that hasn't applied the new SQL), the table won't
+  // exist — we still want the transcript + review chat to work.
   const existingReviews = await db.agentReview.findMany({
     where: { agentId, contactId },
     orderBy: { createdAt: 'desc' },
@@ -87,7 +90,13 @@ export default async function AdminConversationReviewPage({ params }: Params) {
     select: {
       id: true, title: true, adminEmail: true, messages: true, createdAt: true,
     },
-  })
+  }).catch(() => [] as Array<{
+    id: string
+    title: string | null
+    adminEmail: string
+    messages: unknown
+    createdAt: Date
+  }>)
 
   const workspaceName = agent.workspace?.name ?? agent.location?.workspace?.name ?? '—'
   const workspaceId = agent.workspace?.id ?? agent.location?.workspace?.id ?? null

@@ -39,6 +39,23 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
     ...(agentFilter ? { agentId: agentFilter } : {}),
   }
 
+  // Soft-fail both queries if the PlatformLearning migration hasn't
+  // applied yet (dev env, pre-deploy window). Show an empty queue with
+  // an instructional banner rather than a generic crash.
+  let migrationError: string | null = null
+  type LearningRow = Awaited<ReturnType<typeof db.platformLearning.findMany<{
+    include: {
+      agent: {
+        select: {
+          id: true; name: true;
+          workspace: { select: { id: true; name: true } };
+          location: { select: { workspace: { select: { id: true; name: true } } } };
+        };
+      };
+      sourceReview: { select: { id: true; contactId: true; agentId: true } };
+    };
+  }>>>[number] & { _workspaceName?: string | null }
+  type CountRow = { status: string; _count: { _all: number } }
   const [learnings, counts] = await Promise.all([
     db.platformLearning.findMany({
       where: whereClause,
@@ -81,6 +98,9 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
           ? (r.agent.workspace?.name ?? r.agent.location?.workspace?.name ?? null)
           : (r.workspaceId ? wsMap.get(r.workspaceId) ?? null : null),
       }))
+    }).catch((e: any) => {
+      migrationError = `Learnings queue unavailable: ${e?.message ?? 'unknown'}. If you just deployed, run migrations (\`npm run db:migrate:deploy\`).`
+      return [] as LearningRow[]
     }),
     // Count per status for the tab badges. Independent of the agent
     // filter — the tabs always represent the global pipeline so the
@@ -88,8 +108,11 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
     db.platformLearning.groupBy({
       by: ['status'],
       _count: { _all: true },
+    }).catch((e: any) => {
+      migrationError = `Learnings queue unavailable: ${e?.message ?? 'unknown'}. If you just deployed, run migrations (\`npm run db:migrate:deploy\`).`
+      return [] as CountRow[]
     }),
-  ])
+  ]) as [LearningRow[], CountRow[]]
 
   const countMap = new Map(counts.map(c => [c.status, c._count._all]))
 
@@ -105,6 +128,12 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
           push the change into the target agent&apos;s system prompt.
         </p>
       </div>
+
+      {migrationError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-300">
+          {migrationError}
+        </div>
+      )}
 
       {/* Status tabs */}
       <div className="flex items-center gap-2 flex-wrap border-b border-zinc-800 pb-3">
