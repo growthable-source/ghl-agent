@@ -182,6 +182,18 @@ interface ProposedInput {
 
 const VALID_SCOPES = new Set(['this_agent', 'workspace', 'all_agents'])
 
+// Cap the admin's single message — 8k chars is ~2k tokens, plenty for
+// any reasonable question and shields us from a pasted 50kb document
+// being forwarded to Claude at cost.
+const MAX_ADMIN_MESSAGE_CHARS = 8000
+
+// Only replay the last N prior turns to Claude. The full history is
+// still persisted and rendered in the UI, but past-a-certain-depth the
+// tokens aren't pulling their weight and we hit Anthropic's context
+// limits. 16 turns == 8 back-and-forths, which covers any realistic
+// review session.
+const MAX_REPLAYED_TURNS = 16
+
 export async function POST(req: NextRequest) {
   const session = await getAdminSession()
   if (!session || !session.twoFactorVerified) {
@@ -203,10 +215,13 @@ export async function POST(req: NextRequest) {
 
   const agentId = body.agentId?.trim()
   const contactId = body.contactId?.trim()
-  const adminMessage = body.message?.trim()
-  if (!agentId || !contactId || !adminMessage) {
+  const rawAdminMessage = body.message?.trim()
+  if (!agentId || !contactId || !rawAdminMessage) {
     return NextResponse.json({ error: 'agentId, contactId, and message required' }, { status: 400 })
   }
+  // Truncate rather than reject — an admin pasting a bunch of context
+  // shouldn't be a 400, just take the first chunk.
+  const adminMessage = rawAdminMessage.slice(0, MAX_ADMIN_MESSAGE_CHARS)
 
   const agent = await db.agent.findUnique({
     where: { id: agentId },
@@ -273,7 +288,12 @@ export async function POST(req: NextRequest) {
   const briefing = buildAgentBriefing(agent, messages)
   const systemPrompt = `${REVIEWER_SYSTEM_PREAMBLE}\n\n---\n\n${briefing}`
 
-  const anthMessages: Anthropic.MessageParam[] = prior.map(flattenForReplay)
+  // Replay only the tail of the thread to Claude. The full history is
+  // still in `prior` for persistence, but only the recent turns carry
+  // useful context for the current question — older ones just eat
+  // tokens. DB keeps the complete audit trail.
+  const replayTail = prior.slice(-MAX_REPLAYED_TURNS)
+  const anthMessages: Anthropic.MessageParam[] = replayTail.map(flattenForReplay)
   anthMessages.push({ role: 'user', content: adminMessage })
 
   let replyText: string
@@ -342,87 +362,111 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 
-  // Create or update the review row FIRST so we have an id to anchor
-  // the learning rows to.
+  // Atomic write: create the learnings, compose the final thread with
+  // their IDs embedded, then create-or-update the review — all in one
+  // transaction so a partial failure can't leave us with a message
+  // that references non-existent suggestions or learnings orphaned
+  // from their source review. The transaction body only contains DB
+  // writes — the LLM call already completed above — so the connection
+  // is held briefly.
   const now = new Date()
-  const draftAssistantMessage: ReviewMessage = {
-    role: 'assistant',
-    content: replyText,
-    at: new Date().toISOString(),
-  }
-  const draftThread: ReviewMessage[] = [
-    ...prior,
-    { role: 'admin', content: adminMessage, at: now.toISOString() },
-    draftAssistantMessage,
-  ]
-
-  if (!review) {
-    review = await db.agentReview.create({
-      data: {
-        agentId,
-        contactId,
-        conversationId: null,
-        adminId: session.adminId,
-        adminEmail: session.email,
-        title: autoTitle(adminMessage),
-        messages: draftThread as unknown as object,
-      },
-    })
-  } else {
-    review = await db.agentReview.update({
-      where: { id: review.id },
-      data: { messages: draftThread as unknown as object },
-    })
-  }
-
-  // Persist each proposal as a PlatformLearning. We do this AFTER the
-  // review row exists so the FK is valid, and we need the learning ids
-  // to embed them back into the messages JSON.
   const agentWorkspaceId = agent.workspaceId ?? agent.location?.workspaceId ?? null
-  const createdLearnings = await Promise.all(
-    proposedInputs.map(p =>
-      db.platformLearning.create({
-        data: {
-          sourceReviewId: review!.id,
-          scope: p.scope,
-          // For this_agent and workspace scopes we denormalise the
-          // workspace so the runtime injector can filter by it without
-          // joining through the agent row on every inbound. For
-          // all_agents we leave workspaceId null — the injector treats
-          // null as "matches every workspace."
-          workspaceId: p.scope === 'all_agents' ? null : agentWorkspaceId,
-          // scope=all_agents learnings aren't anchored to any one
-          // agent; null keeps them orphaned from the agent lifecycle.
-          agentId: p.scope === 'this_agent' ? agentId : null,
-          type: p.type,
-          title: p.title,
-          content: p.content,
-          rationale: p.rationale,
-          status: 'proposed',
-          proposedByEmail: session.email,
-        },
-        select: { id: true, title: true, content: true, rationale: true, type: true, scope: true },
-      }),
-    ),
-  )
+  const adminAt = now.toISOString()
+  const assistantAt = new Date().toISOString()
 
-  // Now embed the learning ids into the assistant message's
-  // `suggestions` field so the UI can render approve/reject cards
-  // without a second round-trip.
-  if (createdLearnings.length > 0) {
-    draftAssistantMessage.suggestions = createdLearnings.map(l => ({
-      learningId: l.id,
-      type: l.type as 'prompt_addition',
-      scope: l.scope as 'this_agent' | 'workspace' | 'all_agents',
-      title: l.title,
-      content: l.content,
-      rationale: l.rationale,
-    }))
-    review = await db.agentReview.update({
-      where: { id: review.id },
-      data: { messages: draftThread as unknown as object },
-    })
-  }
+  const { persistedReview, persistedLearnings } = await db.$transaction(async (tx) => {
+    // 1. Create the learnings first. sourceReviewId is temporarily null
+    //    — we backfill it below once the review id exists. The queue UI
+    //    is resilient to null sourceReviewId (just hides the
+    //    "view source conversation" link), so even if a freak crash
+    //    hits between steps, nothing is broken beyond a missing link.
+    const created = await Promise.all(
+      proposedInputs.map(p =>
+        tx.platformLearning.create({
+          data: {
+            sourceReviewId: null,
+            scope: p.scope,
+            // Denormalise workspace for the runtime injector's hot
+            // path; null for scope=all_agents ("matches every workspace").
+            workspaceId: p.scope === 'all_agents' ? null : agentWorkspaceId,
+            // scope=all_agents learnings aren't anchored to any one
+            // agent; null keeps them orphaned from the agent lifecycle.
+            agentId: p.scope === 'this_agent' ? agentId : null,
+            type: p.type,
+            title: p.title,
+            content: p.content,
+            rationale: p.rationale,
+            status: 'proposed',
+            proposedByEmail: session.email,
+          },
+          select: { id: true, title: true, content: true, rationale: true, type: true, scope: true },
+        }),
+      ),
+    )
+
+    // 2. Compose the final thread with suggestion metadata inline,
+    //    so the UI renders cards without a second round-trip.
+    const assistantMsg: ReviewMessage = {
+      role: 'assistant',
+      content: replyText,
+      at: assistantAt,
+      ...(created.length > 0
+        ? {
+            suggestions: created.map(l => ({
+              learningId: l.id,
+              type: l.type as 'prompt_addition',
+              scope: l.scope as 'this_agent' | 'workspace' | 'all_agents',
+              title: l.title,
+              content: l.content,
+              rationale: l.rationale,
+            })),
+          }
+        : {}),
+    }
+    const finalThread: ReviewMessage[] = [
+      ...prior,
+      { role: 'admin', content: adminMessage, at: adminAt },
+      assistantMsg,
+    ]
+
+    // 3. Create or update the review with the COMPLETE thread in one write.
+    const r = review
+      ? await tx.agentReview.update({
+          where: { id: review.id },
+          data: { messages: finalThread as unknown as object },
+        })
+      : await tx.agentReview.create({
+          data: {
+            agentId,
+            contactId,
+            conversationId: null,
+            adminId: session.adminId,
+            adminEmail: session.email,
+            title: autoTitle(adminMessage),
+            messages: finalThread as unknown as object,
+          },
+        })
+
+    // 4. Backfill sourceReviewId on each learning now that the review id
+    //    exists. updateMany is one round-trip for all proposals.
+    if (created.length > 0) {
+      await tx.platformLearning.updateMany({
+        where: { id: { in: created.map(l => l.id) } },
+        data: { sourceReviewId: r.id },
+      })
+    }
+
+    return { persistedReview: r, persistedLearnings: created }
+  })
+
+  review = persistedReview
+  const createdLearnings = persistedLearnings
+
+  // Pull the final thread back out of the review row so the client
+  // sees exactly what got persisted (including any ordering).
+  const draftThread = Array.isArray(review.messages)
+    ? (review.messages as unknown as ReviewMessage[])
+    : []
 
   logAdminAction({
     admin: session,

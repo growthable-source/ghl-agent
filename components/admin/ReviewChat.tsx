@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import { scopeChipClass, scopeLabel } from '@/lib/learning-scope-ui'
 
 interface Props {
   agentId: string
@@ -18,11 +19,6 @@ interface Suggestion {
   rationale: string | null
 }
 
-function scopeChipClass(scope: Suggestion['scope']): string {
-  if (scope === 'all_agents') return 'text-purple-300 bg-purple-500/15 border-purple-500/40'
-  if (scope === 'workspace') return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30'
-  return 'text-zinc-400 bg-zinc-900 border-zinc-800'
-}
 
 interface ReviewMessage {
   role: 'admin' | 'assistant'
@@ -178,10 +174,10 @@ export default function ReviewChat({ agentId, contactId, agentName }: Props) {
                           {status}
                         </span>
                         <span className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 border ${scopeChipClass(s.scope)}`}>
-                          {s.scope.replace(/_/g, ' ')}
+                          {scopeLabel(s.scope)}
                         </span>
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 bg-zinc-900 rounded px-1.5 py-0.5">
-                          {s.type.replace(/_/g, ' ')}
+                          {scopeLabel(s.type)}
                         </span>
                         <span className="text-xs text-zinc-200 font-medium">{s.title}</span>
                       </div>
@@ -233,7 +229,7 @@ export default function ReviewChat({ agentId, contactId, agentName }: Props) {
                         )}
                         {status === 'applied' && (
                           <span className="text-[11px] text-emerald-300">
-                            ✓ Applied to agent&apos;s system prompt
+                            ✓ Applied — live on the next inbound (within ~30s)
                           </span>
                         )}
                         {status === 'rejected' && (

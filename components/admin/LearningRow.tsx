@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { scopeChipClass, scopeLabel } from '@/lib/learning-scope-ui'
 
 interface LearningData {
   id: string
@@ -26,14 +27,6 @@ interface LearningData {
   sourceContactId: string | null
 }
 
-function scopeStyle(scope: string): string {
-  // Visual weight escalates with blast radius — a bright tint on
-  // all_agents is the point, so approvers don't nod through a global
-  // without noticing.
-  if (scope === 'all_agents') return 'text-purple-300 bg-purple-500/15 border-purple-500/40'
-  if (scope === 'workspace') return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30'
-  return 'text-zinc-400 bg-zinc-900 border-zinc-800'
-}
 
 interface Props {
   learning: LearningData
@@ -91,11 +84,11 @@ export default function LearningRow({ learning }: Props) {
             <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border ${statusStyle}`}>
               {learning.status}
             </span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border ${scopeStyle(learning.scope)}`}>
-              {learning.scope.replace(/_/g, ' ')}
+            <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border ${scopeChipClass(learning.scope)}`}>
+              {scopeLabel(learning.scope)}
             </span>
             <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-500 border border-zinc-800">
-              {learning.type.replace(/_/g, ' ')}
+              {scopeLabel(learning.type)}
             </span>
             <h3 className="text-sm text-zinc-100 font-medium">{learning.title}</h3>
           </div>

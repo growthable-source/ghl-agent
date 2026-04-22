@@ -1,5 +1,11 @@
 import { db } from './db'
 
+// Canonical values for PlatformLearning.appliedTarget. Stored as plain
+// strings so we can grep audit logs, but exported as constants so
+// callers (and tests, eventually) can reference them without typos.
+export const APPLIED_TARGET_AGENT_PROMPT = 'agent.systemPrompt'
+export const APPLIED_TARGET_RUNTIME_GUIDELINES = 'runtime:platform_guidelines'
+
 /**
  * Platform-learnings apply / retire / runtime-injection helpers.
  *
@@ -74,7 +80,15 @@ interface CachedBlock {
   expiresAt: number
 }
 const guidelinesCache = new Map<string, CachedBlock>()
-const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutes; tune if prompt drift becomes noticeable
+// 30s TTL: bounds the worst-case staleness window to half a minute
+// after an apply/retire. We invalidate locally on every mutation, but
+// on Vercel each serverless instance has its own memory — a sibling
+// Lambda won't see our invalidation, so it falls back to the TTL to
+// pick up changes. A longer TTL reduces DB load; a shorter one trades
+// that for faster propagation. 30s is the smallest value that still
+// lets a warm node serve a burst of inbounds without hitting the DB
+// for the learnings every time.
+const CACHE_TTL_MS = 30 * 1000
 const MAX_GUIDELINES_CHARS = 6000   // hard cap on the block we inject
 
 function cacheKey(workspaceId: string | null): string {
@@ -229,7 +243,7 @@ export async function applyLearning(learningId: string): Promise<
       db.agent.update({ where: { id: agent.id }, data: { systemPrompt: nextPrompt } }),
       db.platformLearning.update({
         where: { id: learning.id },
-        data: { status: 'applied', appliedAt: now, appliedTarget: 'agent.systemPrompt' },
+        data: { status: 'applied', appliedAt: now, appliedTarget: APPLIED_TARGET_AGENT_PROMPT },
       }),
     ])
     invalidateGuidelinesCache(learning.scope, learning.workspaceId)
@@ -241,7 +255,7 @@ export async function applyLearning(learningId: string): Promise<
   if (learning.scope === 'workspace' || learning.scope === 'all_agents') {
     await db.platformLearning.update({
       where: { id: learning.id },
-      data: { status: 'applied', appliedAt: now, appliedTarget: 'runtime:platform_guidelines' },
+      data: { status: 'applied', appliedAt: now, appliedTarget: APPLIED_TARGET_RUNTIME_GUIDELINES },
     })
     invalidateGuidelinesCache(learning.scope, learning.workspaceId)
     return { ok: true, agentId: null, scope: learning.scope }

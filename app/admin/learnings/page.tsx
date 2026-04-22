@@ -13,6 +13,13 @@ type StatusFilter = (typeof STATUSES)[number] | 'all'
 const SCOPES = ['this_agent', 'workspace', 'all_agents'] as const
 type ScopeFilter = (typeof SCOPES)[number] | 'all'
 
+function isStatusFilter(s: unknown): s is StatusFilter {
+  return typeof s === 'string' && (s === 'all' || (STATUSES as readonly string[]).includes(s))
+}
+function isScopeFilter(s: unknown): s is ScopeFilter {
+  return typeof s === 'string' && (s === 'all' || (SCOPES as readonly string[]).includes(s))
+}
+
 /**
  * Platform-learnings approval queue.
  *
@@ -29,8 +36,8 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
   if (!session) redirect('/admin/login')
 
   const sp = await searchParams
-  const statusFilter: StatusFilter = (STATUSES.includes((sp.status as any)) ? sp.status : 'proposed') as StatusFilter
-  const scopeFilter: ScopeFilter = (SCOPES.includes((sp.scope as any)) ? sp.scope : 'all') as ScopeFilter
+  const statusFilter: StatusFilter = isStatusFilter(sp.status) ? sp.status : 'proposed'
+  const scopeFilter: ScopeFilter = isScopeFilter(sp.scope) ? sp.scope : 'all'
   const agentFilter = sp.agent?.trim() || ''
 
   const whereClause = {
@@ -43,7 +50,11 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
   // applied yet (dev env, pre-deploy window). Show an empty queue with
   // an instructional banner rather than a generic crash.
   let migrationError: string | null = null
-  type LearningRow = Awaited<ReturnType<typeof db.platformLearning.findMany<{
+  // Renamed from `LearningRow` so it doesn't shadow the imported
+  // component of the same name. TypeScript keeps the namespaces apart,
+  // but reading code where `LearningRow` is both a type and a component
+  // is unnecessarily confusing.
+  type LearningQueueRow = Awaited<ReturnType<typeof db.platformLearning.findMany<{
     include: {
       agent: {
         select: {
@@ -100,7 +111,7 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
       }))
     }).catch((e: any) => {
       migrationError = `Learnings queue unavailable: ${e?.message ?? 'unknown'}. If you just deployed, run migrations (\`npm run db:migrate:deploy\`).`
-      return [] as LearningRow[]
+      return [] as LearningQueueRow[]
     }),
     // Count per status for the tab badges. Independent of the agent
     // filter — the tabs always represent the global pipeline so the
@@ -112,7 +123,7 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
       migrationError = `Learnings queue unavailable: ${e?.message ?? 'unknown'}. If you just deployed, run migrations (\`npm run db:migrate:deploy\`).`
       return [] as CountRow[]
     }),
-  ]) as [LearningRow[], CountRow[]]
+  ]) as [LearningQueueRow[], CountRow[]]
 
   const countMap = new Map(counts.map(c => [c.status, c._count._all]))
 
