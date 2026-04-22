@@ -108,6 +108,15 @@ model Workspace {
   pausedAt   DateTime?
   pausedBy   String?                       // userId who paused the workspace
 
+  // ─── Platform Learnings opt-out ───
+  // When true, this workspace's agents do NOT receive the shared
+  // "## Platform Guidelines" block injected by approved global learnings.
+  // Escape hatch for customers with very specific tone requirements
+  // that conflict with platform-wide guidance. Workspace-scoped learnings
+  // (scope=workspace) are unaffected — those are still the operator's
+  // own opt-in choices.
+  disableGlobalLearnings Boolean @default(false)
+
   members      WorkspaceMember[]
   invites      WorkspaceInvite[]
   locations    Location[]         @relation("WorkspaceLocations")
@@ -1205,7 +1214,19 @@ model PlatformLearning {
   sourceReviewId String?
   sourceReview   AgentReview? @relation(fields: [sourceReviewId], references: [id], onDelete: SetNull)
 
-  scope          String   @default("this_agent")   // future: workspace | all_agents | new_agents_only
+  // scope controls where this guidance gets applied:
+  //   this_agent   — mutates the single target agent's systemPrompt
+  //                  (markers-based fence; apply writes, retire strips)
+  //   workspace    — ALL agents in the target workspace see it at
+  //                  runtime via buildSystemPrompt's platform-guidelines
+  //                  block. No agent.systemPrompt mutation.
+  //   all_agents   — every agent in every workspace sees it at runtime,
+  //                  except workspaces that set disableGlobalLearnings.
+  scope          String   @default("this_agent")
+  // Populated for this_agent (derived from the agent's workspace) and
+  // workspace scopes. Null for all_agents. Enables queries like
+  // "give me every applied learning that affects workspace X".
+  workspaceId    String?
   agentId        String?                            // required when scope=this_agent
   agent          Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
@@ -1234,6 +1255,10 @@ model PlatformLearning {
   @@index([agentId, status])
   @@index([status, createdAt(sort: Desc)])
   @@index([sourceReviewId])
+  // Hot path for buildSystemPrompt — pull every applied global/workspace
+  // learning quickly without a table scan.
+  @@index([scope, status])
+  @@index([workspaceId, status])
 }
 
 // System-wide config the admin UI owns. Typed as JSON so we can add new

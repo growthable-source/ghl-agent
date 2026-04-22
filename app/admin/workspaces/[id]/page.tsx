@@ -118,6 +118,43 @@ export default async function WorkspaceDrillDown({ params }: Params) {
         />
       </section>
 
+      {/* Platform learnings opt-out */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-sm font-medium text-zinc-200">Platform guidelines</h2>
+            <p className="text-xs text-zinc-500 mt-1 max-w-xl">
+              When enabled, every agent in this workspace sees the shared
+              &ldquo;## Platform Guidelines&rdquo; block at runtime — the set of
+              approved cross-agent learnings. Disable only if this customer needs
+              complete control over their agent prompts.
+            </p>
+            <p className="text-[11px] text-zinc-500 mt-2">
+              Status:{' '}
+              {workspace.disableGlobalLearnings ? (
+                <span className="text-amber-400 font-medium">disabled — opted out</span>
+              ) : (
+                <span className="text-emerald-400 font-medium">enabled</span>
+              )}
+            </p>
+          </div>
+          {canMutate && (
+            <form action={`/api/admin/workspaces/${workspace.id}/toggle-global-learnings`} method="post">
+              <button
+                type="submit"
+                className={`text-xs font-medium border rounded-lg px-3 py-2 transition-colors ${
+                  workspace.disableGlobalLearnings
+                    ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20'
+                    : 'text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20'
+                }`}
+              >
+                {workspace.disableGlobalLearnings ? 'Enable platform guidelines' : 'Disable (opt out)'}
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
+
       {/* Billing */}
       <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-5">
         <h2 className="text-sm font-medium text-zinc-200 mb-3">Billing</h2>

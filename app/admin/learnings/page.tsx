@@ -6,10 +6,12 @@ import LearningRow from '@/components/admin/LearningRow'
 
 export const dynamic = 'force-dynamic'
 
-type Search = Promise<{ status?: string; agent?: string }>
+type Search = Promise<{ status?: string; agent?: string; scope?: string }>
 
 const STATUSES = ['proposed', 'approved', 'applied', 'rejected', 'retired'] as const
 type StatusFilter = (typeof STATUSES)[number] | 'all'
+const SCOPES = ['this_agent', 'workspace', 'all_agents'] as const
+type ScopeFilter = (typeof SCOPES)[number] | 'all'
 
 /**
  * Platform-learnings approval queue.
@@ -28,10 +30,12 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
 
   const sp = await searchParams
   const statusFilter: StatusFilter = (STATUSES.includes((sp.status as any)) ? sp.status : 'proposed') as StatusFilter
+  const scopeFilter: ScopeFilter = (SCOPES.includes((sp.scope as any)) ? sp.scope : 'all') as ScopeFilter
   const agentFilter = sp.agent?.trim() || ''
 
   const whereClause = {
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+    ...(scopeFilter !== 'all' ? { scope: scopeFilter } : {}),
     ...(agentFilter ? { agentId: agentFilter } : {}),
   }
 
@@ -54,6 +58,29 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
           },
         },
       },
+    }).then(async rows => {
+      // Hydrate workspaceId → workspace.name for rows that aren't linked
+      // through an agent (workspace and all_agents scopes). One query,
+      // not N, so the page stays snappy.
+      const missingWorkspaceIds = Array.from(new Set(
+        rows
+          .filter(r => !r.agent && r.workspaceId)
+          .map(r => r.workspaceId!),
+      ))
+      if (missingWorkspaceIds.length === 0) return rows
+      const wsRows = await db.workspace.findMany({
+        where: { id: { in: missingWorkspaceIds } },
+        select: { id: true, name: true },
+      })
+      const wsMap = new Map(wsRows.map(w => [w.id, w.name]))
+      return rows.map(r => ({
+        ...r,
+        // Attach a synthetic workspaceName for rendering. The row type is
+        // unchanged from Prisma's perspective; we just pass through.
+        _workspaceName: r.agent
+          ? (r.agent.workspace?.name ?? r.agent.location?.workspace?.name ?? null)
+          : (r.workspaceId ? wsMap.get(r.workspaceId) ?? null : null),
+      }))
     }),
     // Count per status for the tab badges. Independent of the agent
     // filter — the tabs always represent the global pipeline so the
@@ -87,7 +114,7 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
           return (
             <Link
               key={s}
-              href={{ pathname: '/admin/learnings', query: { status: s, ...(agentFilter ? { agent: agentFilter } : {}) } }}
+              href={{ pathname: '/admin/learnings', query: { status: s, ...(scopeFilter !== 'all' ? { scope: scopeFilter } : {}), ...(agentFilter ? { agent: agentFilter } : {}) } }}
               className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
                 active
                   ? 'bg-zinc-900 text-white border border-zinc-700'
@@ -109,16 +136,38 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
         })}
       </div>
 
+      {/* Scope filter — secondary row */}
+      <div className="flex items-center gap-2 flex-wrap text-[11px]">
+        <span className="text-zinc-600 uppercase tracking-wider">Scope:</span>
+        {(['all', 'this_agent', 'workspace', 'all_agents'] as const).map(s => {
+          const active = scopeFilter === s
+          const label = s === 'all' ? 'All scopes' : s.replace(/_/g, ' ')
+          return (
+            <Link
+              key={s}
+              href={{ pathname: '/admin/learnings', query: { status: statusFilter, ...(s !== 'all' ? { scope: s } : {}), ...(agentFilter ? { agent: agentFilter } : {}) } }}
+              className={`px-2 py-1 rounded transition-colors ${
+                active ? 'bg-zinc-900 text-white border border-zinc-700' : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
+              }`}
+            >
+              {label}
+            </Link>
+          )
+        })}
+      </div>
+
       <div className="space-y-3">
         {learnings.map(l => {
-          const workspaceName = l.agent?.workspace?.name ?? l.agent?.location?.workspace?.name ?? '—'
-          const workspaceId = l.agent?.workspace?.id ?? l.agent?.location?.workspace?.id ?? null
+          const wsRow = l as typeof l & { _workspaceName?: string | null }
+          const workspaceName = wsRow._workspaceName ?? '—'
+          const workspaceId = l.agent?.workspace?.id ?? l.agent?.location?.workspace?.id ?? l.workspaceId ?? null
           return (
             <LearningRow
               key={l.id}
               learning={{
                 id: l.id,
                 status: l.status,
+                scope: l.scope,
                 type: l.type,
                 title: l.title,
                 content: l.content,
@@ -147,8 +196,11 @@ export default async function AdminLearningsPage({ searchParams }: { searchParam
       </div>
 
       <p className="text-[10px] text-zinc-600 pt-4">
-        Showing up to 200 rows. Currently supports prompt additions scoped
-        to a single agent; global platform-wide learnings land in PR 2.
+        Showing up to 200 rows. Scope &ldquo;this_agent&rdquo; mutates one
+        agent&apos;s system prompt directly. &ldquo;workspace&rdquo; and
+        &ldquo;all_agents&rdquo; inject at runtime into a shared
+        ## Platform Guidelines block (capped at 6,000 chars, cached 2 min).
+        Workspaces that set disableGlobalLearnings opt out entirely.
       </p>
     </div>
   )

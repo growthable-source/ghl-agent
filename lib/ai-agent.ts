@@ -8,6 +8,7 @@ import { getCrmAdapter } from './crm/factory'
 import type { CrmAdapter } from './crm/types'
 import { buildPersonaBlock, applyTypos, calculateTypingDelay, type PersonaSettings } from './persona'
 import { detectFalseActionClaim, safeFallbackReply } from './action-claim-detector'
+import { loadPlatformGuidelinesBlock } from './platform-learning'
 import type { AgentContext, Message } from '@/types'
 
 const client = new Anthropic()
@@ -1344,7 +1345,7 @@ export interface FallbackConfig {
   message?: string | null
 }
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string, listeningRulesBlock?: string, contactMemoryBlock?: string, advancedContextBlock?: string): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string, listeningRulesBlock?: string, contactMemoryBlock?: string, advancedContextBlock?: string, platformGuidelinesBlock?: string): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const ch = channel || 'SMS'
   const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`
@@ -1448,6 +1449,15 @@ Professional but warm. Match the contact's energy.`
 
   if (persona) {
     prompt += buildPersonaBlock(persona)
+  }
+
+  // Platform Guidelines — shared, cross-agent rules approved in the
+  // /admin/learnings queue. Goes LAST so the LLM treats it as the most
+  // recent / authoritative instruction. The loader upstream already
+  // respects the workspace opt-out and caps the total character count,
+  // so we can just concatenate here without further sanity checks.
+  if (platformGuidelinesBlock) {
+    prompt += platformGuidelinesBlock
   }
 
   return prompt
@@ -1684,6 +1694,44 @@ export async function runAgent(opts: {
     }
   }
 
+  // Platform Guidelines block. Pulled from the PlatformLearning pipeline
+  // — every applied scope=all_agents learning, plus scope=workspace
+  // learnings for this agent's workspace, minus workspaces that opted
+  // out. Cached for 2 minutes in platform-learning.ts so this lookup is
+  // effectively free after the first inbound of a warm node.
+  //
+  // Resolve the workspace via the Agent row first (explicit link), then
+  // fall back to the Location's workspace. Null is fine — the loader
+  // still returns the global (scope=all_agents) block.
+  let platformGuidelinesBlock = ''
+  try {
+    let workspaceId: string | null = null
+    if (!isSandbox) {
+      if (agentId) {
+        const row = await (await import('./db')).db.agent.findUnique({
+          where: { id: agentId },
+          select: {
+            workspaceId: true,
+            location: { select: { workspaceId: true } },
+          },
+        })
+        workspaceId = row?.workspaceId ?? row?.location?.workspaceId ?? null
+      } else {
+        const row = await (await import('./db')).db.location.findUnique({
+          where: { id: locationId },
+          select: { workspaceId: true },
+        })
+        workspaceId = row?.workspaceId ?? null
+      }
+    }
+    platformGuidelinesBlock = await loadPlatformGuidelinesBlock(workspaceId)
+  } catch (err: any) {
+    // Non-fatal. Never block an inbound on a learnings lookup — the
+    // agent is always at least as capable without the block as it was
+    // before PR 2 shipped.
+    console.warn('[Agent] platform guidelines load failed:', err.message)
+  }
+
   // Filter tools based on agent configuration
   // Normalize: ensure dependent tool pairs are always enabled together.
   //  - send_sms → send_reply (legacy back-compat)
@@ -1771,7 +1819,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock),
+      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock),
       tools,
       messages: currentMessages,
     }

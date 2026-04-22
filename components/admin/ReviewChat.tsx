@@ -12,9 +12,16 @@ interface Props {
 interface Suggestion {
   learningId: string
   type: 'prompt_addition'
+  scope: 'this_agent' | 'workspace' | 'all_agents'
   title: string
   content: string
   rationale: string | null
+}
+
+function scopeChipClass(scope: Suggestion['scope']): string {
+  if (scope === 'all_agents') return 'text-purple-300 bg-purple-500/15 border-purple-500/40'
+  if (scope === 'workspace') return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30'
+  return 'text-zinc-400 bg-zinc-900 border-zinc-800'
 }
 
 interface ReviewMessage {
@@ -169,6 +176,9 @@ export default function ReviewChat({ agentId, contactId, agentName }: Props) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300 bg-amber-500/20 rounded px-1.5 py-0.5">
                           {status}
+                        </span>
+                        <span className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 border ${scopeChipClass(s.scope)}`}>
+                          {s.scope.replace(/_/g, ' ')}
                         </span>
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 bg-zinc-900 rounded px-1.5 py-0.5">
                           {s.type.replace(/_/g, ' ')}

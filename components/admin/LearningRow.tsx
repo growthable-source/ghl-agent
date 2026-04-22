@@ -7,6 +7,7 @@ import { useState } from 'react'
 interface LearningData {
   id: string
   status: string
+  scope: string
   type: string
   title: string
   content: string
@@ -23,6 +24,15 @@ interface LearningData {
   createdAt: string
   sourceReviewId: string | null
   sourceContactId: string | null
+}
+
+function scopeStyle(scope: string): string {
+  // Visual weight escalates with blast radius — a bright tint on
+  // all_agents is the point, so approvers don't nod through a global
+  // without noticing.
+  if (scope === 'all_agents') return 'text-purple-300 bg-purple-500/15 border-purple-500/40'
+  if (scope === 'workspace') return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30'
+  return 'text-zinc-400 bg-zinc-900 border-zinc-800'
 }
 
 interface Props {
@@ -81,18 +91,27 @@ export default function LearningRow({ learning }: Props) {
             <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border ${statusStyle}`}>
               {learning.status}
             </span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border ${scopeStyle(learning.scope)}`}>
+              {learning.scope.replace(/_/g, ' ')}
+            </span>
             <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-500 border border-zinc-800">
               {learning.type.replace(/_/g, ' ')}
             </span>
             <h3 className="text-sm text-zinc-100 font-medium">{learning.title}</h3>
           </div>
           <p className="text-[11px] text-zinc-500 mt-1">
-            {learning.agentName ? (
+            {learning.scope === 'all_agents' ? (
+              <span className="text-purple-300">applies to every agent on the platform</span>
+            ) : learning.scope === 'workspace' ? (
+              <>applies to every agent in <span className="text-cyan-300">{learning.workspaceName}</span></>
+            ) : learning.agentName ? (
               <>Agent <span className="text-zinc-400">{learning.agentName}</span></>
             ) : (
               <em className="text-zinc-600">agent deleted</em>
             )}
-            {' · '}workspace <span className="text-zinc-400">{learning.workspaceName}</span>
+            {learning.scope !== 'all_agents' && (
+              <>{' · '}workspace <span className="text-zinc-400">{learning.workspaceName}</span></>
+            )}
             {' · '}proposed by <span className="font-mono text-zinc-500">{learning.proposedByEmail}</span>
             {' · '}<span className="font-mono text-zinc-600">{new Date(learning.createdAt).toISOString().slice(0, 16).replace('T', ' ')}</span>
           </p>
@@ -221,13 +240,19 @@ export default function LearningRow({ learning }: Props) {
         )}
         {learning.status === 'approved' && !askingReject && (
           <>
+            {/* Apply requires an agentId only for this_agent scope —
+                workspace and all_agents live in the runtime injection
+                table, no individual agent needs to be writable. */}
             <button
               type="button"
               onClick={() => perform('apply')}
-              disabled={busy !== null || !learning.agentId}
+              disabled={busy !== null || (learning.scope === 'this_agent' && !learning.agentId)}
               className="text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded px-3 py-1.5 transition-colors"
             >
-              {busy === 'apply' ? 'Applying…' : 'Apply to agent'}
+              {busy === 'apply' ? 'Applying…' :
+                learning.scope === 'all_agents' ? 'Apply to all agents' :
+                learning.scope === 'workspace' ? 'Apply to workspace' :
+                'Apply to agent'}
             </button>
             <button
               type="button"
@@ -245,7 +270,10 @@ export default function LearningRow({ learning }: Props) {
             disabled={busy !== null}
             className="text-xs font-medium border border-amber-500/30 text-amber-300 hover:text-amber-200 hover:border-amber-500/50 rounded px-3 py-1.5 transition-colors"
           >
-            {busy === 'retire' ? 'Retiring…' : 'Retire (remove from agent)'}
+            {busy === 'retire' ? 'Retiring…' :
+              learning.scope === 'all_agents' ? 'Retire (stop injecting globally)' :
+              learning.scope === 'workspace' ? 'Retire (stop injecting in workspace)' :
+              'Retire (remove from agent)'}
           </button>
         )}
       </div>

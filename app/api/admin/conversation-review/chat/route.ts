@@ -35,6 +35,7 @@ const REVIEWER_MODEL = 'claude-sonnet-4-20250514'
 interface ReviewSuggestion {
   learningId: string
   type: 'prompt_addition'
+  scope: 'this_agent' | 'workspace' | 'all_agents'
   title: string
   content: string
   rationale: string | null
@@ -66,18 +67,30 @@ Ground rules:
 5. Keep prose short and focused. The structured proposals do the heavy lifting; the prose explains WHY.
 6. If the agent's behaviour was actually fine and the operator's concern is misplaced, say so — and don't propose anything.
 
+SCOPE GUIDANCE — this is important. Every proposal must pick a scope:
+- "this_agent" (default): the fix is specific to THIS agent's business, tone, or config. Pick this unless you're confident the fix is universal.
+- "workspace": the fix is something the operator likely wants applied to every agent they run in this workspace (e.g., their whole company's agents should never promise same-day delivery). Still bounded to one customer.
+- "all_agents": reserved for truly universal conversational-AI hygiene — behaviours that would be correct regardless of industry, tone, or customer. Examples: "never ask for information the contact has already provided", "never claim a tool call was made when it wasn't", "never invent calendar availability". If you can imagine a single legitimate customer for whom the rule should NOT apply, it is NOT all_agents.
+
+Default hard to "this_agent". Overuse of "all_agents" will make operators turn off the platform learnings feature entirely.
+
 Format your prose as short paragraphs. Use bullet points sparingly. Do not greet, do not sign off.`
 
 const PROPOSE_TOOL: Anthropic.Tool = {
   name: 'propose_improvement',
-  description: 'Propose a concrete, apply-able change to this agent based on the conversation you just reviewed. Only call this when you have a specific, testable recommendation — not for generic advice. May be called multiple times per turn.',
+  description: 'Propose a concrete, apply-able change based on the conversation you just reviewed. Only call this when you have a specific, testable recommendation — not for generic advice. May be called multiple times per turn.',
   input_schema: {
     type: 'object' as const,
     properties: {
       type: {
         type: 'string',
         enum: ['prompt_addition'],
-        description: 'The kind of change. Currently only "prompt_addition" is supported — a sentence or short paragraph that gets appended to the agent\'s system prompt.',
+        description: 'The kind of change. Currently only "prompt_addition" is supported — a sentence or short paragraph that gets appended to the agent\'s system prompt (or to the platform guidelines block, for wider scopes).',
+      },
+      scope: {
+        type: 'string',
+        enum: ['this_agent', 'workspace', 'all_agents'],
+        description: 'Where this improvement should apply. See the system prompt\'s SCOPE GUIDANCE section. Default to "this_agent" unless you are confident the fix is workspace-wide or truly universal.',
       },
       title: {
         type: 'string',
@@ -85,14 +98,14 @@ const PROPOSE_TOOL: Anthropic.Tool = {
       },
       content: {
         type: 'string',
-        description: 'The actual text that will be appended to the agent\'s system prompt. Write it as if it were part of the prompt itself — imperative, specific, no "I suggest" or "you should". Example: "Never ask the contact for information they have already provided earlier in the conversation. Check the conversation history before asking."',
+        description: 'The actual text that will be applied. Write it as if it were part of a system prompt — imperative, specific, no "I suggest" or "you should". For scope=this_agent this gets appended to the specific agent\'s prompt; for workspace and all_agents it lands in a shared "## Platform Guidelines" block injected at runtime into every applicable agent. Keep each under 400 characters.',
       },
       rationale: {
         type: 'string',
-        description: 'One sentence citing the turn number where the problem occurred. Example: "The agent asked for the email again in Turn 6 after the contact had already given it in Turn 3."',
+        description: 'One sentence citing the turn number where the problem occurred AND justifying the scope choice. Example: "Turn 6: agent re-asked for email after Turn 3 provided it. Scope=all_agents because this failure mode is domain-independent."',
       },
     },
-    required: ['type', 'title', 'content', 'rationale'],
+    required: ['type', 'scope', 'title', 'content', 'rationale'],
   },
 }
 
@@ -161,10 +174,13 @@ function flattenForReplay(m: ReviewMessage): Anthropic.MessageParam {
 
 interface ProposedInput {
   type: string
+  scope: 'this_agent' | 'workspace' | 'all_agents'
   title: string
   content: string
   rationale: string
 }
+
+const VALID_SCOPES = new Set(['this_agent', 'workspace', 'all_agents'])
 
 export async function POST(req: NextRequest) {
   const session = await getAdminSession()
@@ -193,6 +209,10 @@ export async function POST(req: NextRequest) {
       businessContext: true, agentPersonaName: true, responseLength: true,
       formalityLevel: true, useEmojis: true, fallbackBehavior: true,
       fallbackMessage: true,
+      // Needed to denormalise workspaceId onto any learnings we create.
+      // Prefer the explicit Agent.workspaceId; fall back to the location's.
+      workspaceId: true,
+      location: { select: { workspaceId: true } },
       detectionRules: {
         where: { isActive: true },
         orderBy: { order: 'asc' },
@@ -273,8 +293,17 @@ export async function POST(req: NextRequest) {
       }
       if (input.type !== 'prompt_addition') continue
       if (!input.title.trim() || !input.content.trim()) continue
+      // Scope is new in PR 2. Fall back to this_agent if Claude omitted
+      // it (shouldn't happen — it's required in the schema — but belt
+      // and braces because the apply path treats the scopes very
+      // differently).
+      const rawScope = typeof input.scope === 'string' ? input.scope : 'this_agent'
+      const scope = VALID_SCOPES.has(rawScope)
+        ? (rawScope as 'this_agent' | 'workspace' | 'all_agents')
+        : 'this_agent'
       proposedInputs.push({
         type: input.type,
+        scope,
         title: input.title.trim().slice(0, 120),
         content: input.content.trim().slice(0, 4000),
         rationale: input.rationale.trim().slice(0, 1000),
@@ -330,13 +359,22 @@ export async function POST(req: NextRequest) {
   // Persist each proposal as a PlatformLearning. We do this AFTER the
   // review row exists so the FK is valid, and we need the learning ids
   // to embed them back into the messages JSON.
+  const agentWorkspaceId = agent.workspaceId ?? agent.location?.workspaceId ?? null
   const createdLearnings = await Promise.all(
     proposedInputs.map(p =>
       db.platformLearning.create({
         data: {
           sourceReviewId: review!.id,
-          scope: 'this_agent',
-          agentId,
+          scope: p.scope,
+          // For this_agent and workspace scopes we denormalise the
+          // workspace so the runtime injector can filter by it without
+          // joining through the agent row on every inbound. For
+          // all_agents we leave workspaceId null — the injector treats
+          // null as "matches every workspace."
+          workspaceId: p.scope === 'all_agents' ? null : agentWorkspaceId,
+          // scope=all_agents learnings aren't anchored to any one
+          // agent; null keeps them orphaned from the agent lifecycle.
+          agentId: p.scope === 'this_agent' ? agentId : null,
           type: p.type,
           title: p.title,
           content: p.content,
@@ -344,7 +382,7 @@ export async function POST(req: NextRequest) {
           status: 'proposed',
           proposedByEmail: session.email,
         },
-        select: { id: true, title: true, content: true, rationale: true, type: true },
+        select: { id: true, title: true, content: true, rationale: true, type: true, scope: true },
       }),
     ),
   )
@@ -356,6 +394,7 @@ export async function POST(req: NextRequest) {
     draftAssistantMessage.suggestions = createdLearnings.map(l => ({
       learningId: l.id,
       type: l.type as 'prompt_addition',
+      scope: l.scope as 'this_agent' | 'workspace' | 'all_agents',
       title: l.title,
       content: l.content,
       rationale: l.rationale,
