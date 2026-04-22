@@ -71,6 +71,18 @@ export default async function WorkspaceDrillDown({ params }: Params) {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href={`/admin/workspaces/${workspace.id}/routing-diagnostic`}
+            className="text-xs font-medium border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 rounded-lg px-3 py-2 transition-colors"
+          >
+            Routing diagnostic →
+          </Link>
+          <Link
+            href={`/admin/workspaces/${workspace.id}/connection-health`}
+            className="text-xs font-medium border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 rounded-lg px-3 py-2 transition-colors"
+          >
+            Connection health →
+          </Link>
           {canMutate && (
             <form action={`/api/admin/workspaces/${workspace.id}/pause`} method="post">
               <button

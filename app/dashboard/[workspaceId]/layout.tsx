@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import TrialBanner from '@/components/dashboard/TrialBanner'
 import PauseBanner from '@/components/dashboard/PauseBanner'
+import ConnectionHealthBanner from '@/components/dashboard/ConnectionHealthBanner'
 import MobileNav from '@/components/dashboard/MobileNav'
 
 /**
@@ -71,6 +72,7 @@ export default async function WorkspaceLayout({
     <>
       <TrialBanner workspaceId={workspaceId} />
       <PauseBanner />
+      <ConnectionHealthBanner workspaceId={workspaceId} />
       <div className="pb-16 md:pb-0">{children}</div>
       <MobileNav />
     </>

@@ -129,7 +129,11 @@ function SidebarBody() {
                 {navLink(`/dashboard/${workspaceId}/widgets`, 'Chat Widgets')}
                 {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox')}
                 {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
-                {navLink(`/dashboard/${workspaceId}/routing-diagnostic`, 'Routing Diagnostic')}
+                {/* Routing Diagnostic moved to /admin — it exposed raw
+                    per-agent evaluation traces that were staff-only
+                    territory and had tenant-isolation risk across
+                    multi-workspace users. Customers troubleshoot via
+                    the per-agent Deploy-tab warning banner or support. */}
                 {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
                 {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
                 {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals', counts.approvalsPending)}
