@@ -55,8 +55,19 @@ export default function NewSimulationForm({ workspaceId, agents }: Props) {
           maxTurns,
         }),
       })
+      // Read status BEFORE trying to parse JSON — a timeout or crash
+      // returns an empty body, in which case `res.json()` throws
+      // "Unexpected end of JSON input" and masks the real problem.
+      if (!res.ok) {
+        const rawText = await res.text().catch(() => '')
+        let detail = rawText.slice(0, 300)
+        try {
+          const parsed = JSON.parse(rawText)
+          if (parsed?.error) detail = parsed.error
+        } catch { /* body wasn't JSON; use raw text */ }
+        throw new Error(`${res.status} ${res.statusText}${detail ? ` — ${detail}` : ''}`)
+      }
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
       router.push(`/dashboard/${workspaceId}/simulations/${data.simulationId}`)
     } catch (e: any) {
       setError(e.message ?? 'Failed to start simulation')

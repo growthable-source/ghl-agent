@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import SimulationAutoRefresh from '@/components/dashboard/SimulationAutoRefresh'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +61,7 @@ export default async function SimulationDetail({ params }: Params) {
 
   return (
     <div className="p-8 max-w-4xl space-y-6">
+      <SimulationAutoRefresh status={sim.status} />
       <div>
         <Link href={`/dashboard/${workspaceId}/simulations`} className="text-xs text-zinc-500 hover:text-white">
           ← Simulations
@@ -83,9 +85,10 @@ export default async function SimulationDetail({ params }: Params) {
         </div>
       )}
 
-      {sim.status === 'running' && (
-        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-sm text-blue-300">
-          Running — refresh to see progress.
+      {(sim.status === 'running' || sim.status === 'queued') && (
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-sm text-blue-300 flex items-center gap-2">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          {sim.status === 'queued' ? 'Queued — waiting for the processor to pick it up…' : 'Running — new turns appear as the conversation unfolds (auto-refreshing).'}
         </div>
       )}
 

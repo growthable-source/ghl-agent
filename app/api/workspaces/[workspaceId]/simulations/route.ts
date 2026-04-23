@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { runSimulation, VALID_STYLES, VALID_CHANNELS } from '@/lib/simulator'
 
 export const dynamic = 'force-dynamic'
-// Synchronous run takes up to ~60s for a multi-turn sim + auto-review.
-// Vercel's hard cap for the Pro plan is 300s, so we stay well under it.
-export const maxDuration = 120
+// The response itself returns in under 1s — we create the row, then fire
+// the actual simulation via `after()` which runs POST-response within
+// the same function invocation. maxDuration therefore has to cover the
+// entire background run (up to 10 turns × ~20s + auto-review). 300s is
+// Vercel Pro's hard cap for non-enterprise.
+export const maxDuration = 300
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -81,7 +85,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       style,
       goal: goal || null,
       maxTurns,
-      status: 'running',   // we run synchronously below
+      // Starts as 'running' — runSimulation() will also flip it on its
+      // way in, but starting here means the detail page shows the right
+      // state immediately instead of a brief 'queued' flicker.
+      status: 'running',
       startedAt: new Date(),
       createdByType: 'user',
       createdByEmail: session.user.email,
@@ -89,15 +96,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     select: { id: true },
   })
 
-  try {
-    await runSimulation(sim.id)
-  } catch (err: any) {
-    // runSimulation marks failed internally; this catch is belt-and-braces.
-    return NextResponse.json({
-      error: `Simulation failed: ${err?.message ?? 'unknown'}`,
-      simulationId: sim.id,
-    }, { status: 500 })
-  }
+  // Fire the actual simulation AFTER we've responded. The client is
+  // free to redirect to the detail page while the background work
+  // runs; the detail page auto-refreshes until status=complete.
+  //
+  // runSimulation catches its own errors and marks the sim failed with
+  // errorMessage set, so we don't lose visibility if something blows
+  // up in the background.
+  after(async () => {
+    try {
+      await runSimulation(sim.id)
+    } catch (err: any) {
+      console.error(`[Simulations] background run ${sim.id} failed:`, err?.message)
+    }
+  })
 
   return NextResponse.json({ simulationId: sim.id })
 }
