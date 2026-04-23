@@ -40,14 +40,14 @@ interface Props {
  */
 export default function LearningRow({ learning }: Props) {
   const router = useRouter()
-  const [busy, setBusy] = useState<null | 'approve' | 'reject' | 'apply' | 'retire'>(null)
+  const [busy, setBusy] = useState<null | 'approve' | 'reject' | 'apply' | 'retire' | 'promote'>(null)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [draftContent, setDraftContent] = useState(learning.content)
   const [rejectReason, setRejectReason] = useState('')
   const [askingReject, setAskingReject] = useState(false)
 
-  async function perform(action: 'approve' | 'reject' | 'apply' | 'retire', extra?: Record<string, unknown>) {
+  async function perform(action: 'approve' | 'reject' | 'apply' | 'retire' | 'promote', extra?: Record<string, unknown>) {
     setBusy(action)
     setError(null)
     try {
@@ -257,17 +257,38 @@ export default function LearningRow({ learning }: Props) {
           </>
         )}
         {learning.status === 'applied' && (
-          <button
-            type="button"
-            onClick={() => perform('retire')}
-            disabled={busy !== null}
-            className="text-xs font-medium border border-amber-500/30 text-amber-300 hover:text-amber-200 hover:border-amber-500/50 rounded px-3 py-1.5 transition-colors"
-          >
-            {busy === 'retire' ? 'Retiring…' :
-              learning.scope === 'all_agents' ? 'Retire (stop injecting globally)' :
-              learning.scope === 'workspace' ? 'Retire (stop injecting in workspace)' :
-              'Retire (remove from agent)'}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => perform('retire')}
+              disabled={busy !== null}
+              className="text-xs font-medium border border-amber-500/30 text-amber-300 hover:text-amber-200 hover:border-amber-500/50 rounded px-3 py-1.5 transition-colors"
+            >
+              {busy === 'retire' ? 'Retiring…' :
+                learning.scope === 'all_agents' ? 'Retire (stop injecting globally)' :
+                learning.scope === 'workspace' ? 'Retire (stop injecting in workspace)' :
+                'Retire (remove from agent)'}
+            </button>
+            {/* Promote: take a this_agent learning that's working and
+                create a scope=all_agents proposal from it. Only offered
+                on applied this_agent rows — promoting a retired or
+                never-applied learning is not interesting.
+                The new row lands in status=proposed for normal review. */}
+            {learning.scope === 'this_agent' && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!confirm(`Promote to all_agents?\n\nThis creates a new proposal scoped to EVERY agent on the platform. It still needs Approve + Apply to go live, but affects every customer once applied.`)) return
+                  perform('promote')
+                }}
+                disabled={busy !== null}
+                className="text-xs font-medium border border-purple-500/30 text-purple-300 hover:text-purple-200 hover:border-purple-500/50 rounded px-3 py-1.5 transition-colors"
+                title="Create an all_agents proposal copied from this learning. Rising tide — good fixes get shared."
+              >
+                {busy === 'promote' ? 'Promoting…' : 'Promote to all_agents ↑'}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db'
+import { applyLearning } from './platform-learning'
 
 /**
  * Headless meta-Claude review for a completed Simulation.
@@ -74,6 +75,10 @@ export async function autoReviewSimulation(simulationId: string): Promise<void> 
       id: true, agentId: true, workspaceId: true,
       personaContext: true, channel: true, style: true, goal: true,
       transcript: true, reviewId: true, createdByEmail: true,
+      // createdByType decides whether the reviewer's proposals auto-
+      // apply to the target agent (user sims) or stay proposed in the
+      // admin queue (swarm / admin sims).
+      createdByType: true,
     },
   })
   if (!sim) throw new Error(`Simulation ${simulationId} not found`)
@@ -165,9 +170,17 @@ export async function autoReviewSimulation(simulationId: string): Promise<void> 
       if (input.type !== 'prompt_addition') continue
       if (!input.title.trim() || !input.content.trim()) continue
       const rawScope = typeof input.scope === 'string' ? input.scope : 'this_agent'
-      const scope = VALID_SCOPES.has(rawScope)
+      let scope: 'this_agent' | 'workspace' | 'all_agents' = VALID_SCOPES.has(rawScope)
         ? (rawScope as 'this_agent' | 'workspace' | 'all_agents')
         : 'this_agent'
+      // User-initiated sims can only produce this_agent learnings. If the
+      // reviewer picked workspace or all_agents, we coerce it down — the
+      // user owns their own agent's prompt, they don't get to push
+      // changes onto other workspaces. Super admins promote selectively
+      // via the /admin/learnings "Promote to all_agents" action.
+      if (sim.createdByType === 'user' && scope !== 'this_agent') {
+        scope = 'this_agent'
+      }
       proposalInputs.push({
         type: input.type,
         scope,
@@ -191,7 +204,7 @@ export async function autoReviewSimulation(simulationId: string): Promise<void> 
   const agentWorkspaceId = agent.workspaceId ?? agent.location?.workspaceId ?? null
   const adminEmail = sim.createdByEmail ?? 'auto-review@simulator'
 
-  await db.$transaction(async (tx) => {
+  const transactionResult = await db.$transaction(async (tx) => {
     // 1. Create learnings (sourceReviewId populated after review insert).
     const created = await Promise.all(
       proposalInputs.map(p =>
@@ -267,7 +280,43 @@ export async function autoReviewSimulation(simulationId: string): Promise<void> 
         proposedLearningsCount: created.length,
       },
     })
+    return { createdIds: created.map(l => l.id), createdScopes: new Map(created.map(l => [l.id, l.scope] as const)) }
   })
+
+  // For user-initiated sims, auto-apply every this_agent learning. The
+  // user kicked off the simulation explicitly — they want the fix on
+  // their own agent immediately, not a queue of proposals waiting for
+  // an admin. Sims created by swarms or admins stay proposed so a
+  // super admin can curate the firehose in /admin/learnings.
+  //
+  // applyLearning runs OUTSIDE the transaction above intentionally:
+  // the agent.systemPrompt mutation is a separate concern and
+  // applyLearning has its own transaction to wrap the systemPrompt
+  // write + status flip atomically. Each apply failure is isolated —
+  // one bad learning doesn't prevent the others from landing.
+  if (sim.createdByType === 'user') {
+    const { createdIds, createdScopes } = transactionResult
+    for (const id of createdIds) {
+      if (createdScopes.get(id) !== 'this_agent') continue
+      try {
+        // Flip proposed → approved so applyLearning's state machine
+        // accepts it (it requires approved before apply).
+        await db.platformLearning.update({
+          where: { id },
+          data: {
+            status: 'approved',
+            approvedByEmail: adminEmail,
+          },
+        })
+        const result = await applyLearning(id)
+        if (!result.ok) {
+          console.warn(`[AutoReview] auto-apply failed for ${id}: ${result.error}`)
+        }
+      } catch (err: any) {
+        console.warn(`[AutoReview] auto-apply errored for ${id}:`, err?.message)
+      }
+    }
+  }
 }
 
 function buildAutoReviewBriefing(opts: {

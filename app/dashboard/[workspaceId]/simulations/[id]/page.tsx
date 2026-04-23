@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import SimulationAutoRefresh from '@/components/dashboard/SimulationAutoRefresh'
+import SimulationLearningCard from '@/components/dashboard/SimulationLearningCard'
+import { workspaceRoleHas, type WorkspaceRole } from '@/lib/require-workspace-role'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +36,19 @@ export default async function SimulationDetail({ params }: Params) {
     include: { agent: { select: { id: true, name: true } } },
   })
   if (!sim) notFound()
+
+  // Role gate for the Retire button on learning cards. Owners + admins
+  // can roll back an auto-applied learning; members see it read-only.
+  // Members who got here have workspace access; the Retire button is
+  // just gated on role at the UI layer and re-checked server-side.
+  const member = await db.workspaceMember.findUnique({
+    where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
+    select: { role: true },
+  })
+  const role: WorkspaceRole = member?.role === 'owner' || member?.role === 'admin' || member?.role === 'member'
+    ? member.role as WorkspaceRole
+    : 'member'
+  const canManageLearnings = workspaceRoleHas(role, 'admin')
 
   const transcript = Array.isArray(sim.transcript) ? (sim.transcript as unknown as Turn[]) : []
 
@@ -140,31 +155,40 @@ export default async function SimulationDetail({ params }: Params) {
         <section className="rounded-lg border border-amber-500/30 bg-amber-500/[0.03] p-4 space-y-3">
           <h2 className="text-sm font-medium text-zinc-200">
             Auto-review
-            {learnings.length > 0 && (
-              <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-amber-300 bg-amber-500/10 rounded px-1.5 py-0.5">
-                {learnings.length} proposed
-              </span>
-            )}
+            {learnings.length > 0 && (() => {
+              // Label reflects the pipeline's actual disposition: applied
+              // (the happy path for user sims), proposed (rare — if a
+              // non-user sim or an auto-apply failure), mixed otherwise.
+              const appliedCount = learnings.filter(l => l.status === 'applied').length
+              const label = appliedCount === learnings.length
+                ? `${learnings.length} applied`
+                : appliedCount === 0
+                  ? `${learnings.length} proposed`
+                  : `${appliedCount}/${learnings.length} applied`
+              const chipCls = appliedCount === learnings.length
+                ? 'text-emerald-300 bg-emerald-500/10'
+                : 'text-amber-300 bg-amber-500/10'
+              return (
+                <span className={`ml-2 text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 ${chipCls}`}>
+                  {label}
+                </span>
+              )
+            })()}
           </h2>
           <ReviewProse messages={review.messages} />
           {learnings.length > 0 && (
             <div className="space-y-2">
               {learnings.map(l => (
-                <div key={l.id} className="rounded border border-zinc-800 bg-zinc-900/60 p-3 space-y-1.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <ScopeChip scope={l.scope} />
-                    <LearningStatusChip status={l.status} />
-                    <span className="text-xs text-zinc-200 font-medium">{l.title}</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 italic">{l.rationale ?? ''}</p>
-                  <pre className="text-[11px] text-zinc-300 whitespace-pre-wrap bg-zinc-950/60 p-2 rounded border border-zinc-800 font-sans">
-                    {l.content}
-                  </pre>
-                </div>
+                <SimulationLearningCard
+                  key={l.id}
+                  learning={l}
+                  workspaceId={workspaceId}
+                  canManage={canManageLearnings}
+                />
               ))}
               <p className="text-[11px] text-zinc-500 pt-1">
-                Proposals route to the admin approval queue for your workspace. An
-                admin approves + applies before they affect any live agent.
+                Agent-level improvements apply automatically to your agent&apos;s
+                prompt. Click Retire on any of them if it didn&apos;t land right.
               </p>
             </div>
           )}
@@ -194,32 +218,6 @@ function StatusChip({ status }: { status: string }) {
     'text-zinc-500 bg-zinc-900 border-zinc-800'
   return (
     <span className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 border ${cls}`}>
-      {status}
-    </span>
-  )
-}
-
-function ScopeChip({ scope }: { scope: string }) {
-  const cls =
-    scope === 'all_agents' ? 'text-purple-300 bg-purple-500/15 border-purple-500/40' :
-    scope === 'workspace' ? 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30' :
-    'text-zinc-400 bg-zinc-900 border-zinc-800'
-  return (
-    <span className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 border ${cls}`}>
-      {scope.replace(/_/g, ' ')}
-    </span>
-  )
-}
-
-function LearningStatusChip({ status }: { status: string }) {
-  const cls =
-    status === 'applied' ? 'text-emerald-400 bg-emerald-500/10' :
-    status === 'approved' ? 'text-blue-400 bg-blue-500/10' :
-    status === 'proposed' ? 'text-amber-400 bg-amber-500/10' :
-    status === 'rejected' ? 'text-zinc-500 bg-zinc-800 line-through' :
-    'text-zinc-500 bg-zinc-900'
-  return (
-    <span className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 ${cls}`}>
       {status}
     </span>
   )

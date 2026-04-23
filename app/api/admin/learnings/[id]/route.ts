@@ -130,5 +130,60 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true })
   }
 
+  if (action === 'promote') {
+    // Promote a successful this_agent learning to scope=all_agents.
+    // Creates a brand-new PlatformLearning row (status=proposed,
+    // scope=all_agents) with content copied from the source. The super
+    // admin then approves + applies it through the normal queue — the
+    // copy is NOT auto-applied because the blast radius is every
+    // workspace on the platform.
+    //
+    // Traceability: stash the source id in rationale so approvers can
+    // jump back to the original conversation. Proper sourceLearningId
+    // column is a future nice-to-have.
+    const source = await db.platformLearning.findUnique({
+      where: { id },
+      select: {
+        id: true, scope: true, type: true, title: true, content: true,
+        rationale: true, sourceReviewId: true,
+      },
+    })
+    if (!source) {
+      return NextResponse.json({ error: 'Source learning not found' }, { status: 404 })
+    }
+    if (source.scope !== 'this_agent') {
+      return NextResponse.json(
+        { error: `Can only promote this_agent learnings (current: ${source.scope})` },
+        { status: 400 },
+      )
+    }
+    const promotedRationale = [
+      source.rationale?.trim(),
+      `Promoted from learning ${source.id} (originally scoped to one agent).`,
+    ].filter(Boolean).join(' ')
+    const created = await db.platformLearning.create({
+      data: {
+        sourceReviewId: source.sourceReviewId,
+        scope: 'all_agents',
+        workspaceId: null,
+        agentId: null,
+        type: source.type,
+        title: source.title,
+        content: source.content,
+        rationale: promotedRationale,
+        status: 'proposed',
+        proposedByEmail: session.email,
+      },
+      select: { id: true },
+    })
+    logAdminAction({
+      admin: session,
+      action: 'learning_promote',
+      target: id,
+      meta: { promotedLearningId: created.id },
+    }).catch(() => {})
+    return NextResponse.json({ ok: true, promotedLearningId: created.id })
+  }
+
   return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
 }
