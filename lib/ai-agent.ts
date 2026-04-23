@@ -719,8 +719,32 @@ async function executeTool(
   try {
     switch (toolName) {
       case 'get_contact_details': {
-        const contact = await crm.getContact(input.contactId as string)
-        return JSON.stringify(contact)
+        const contactId = input.contactId as string
+        // Playground/sandbox uses a synthetic `playground-<timestamp>` id with
+        // no backing CRM record. Return a structured "no record" hint so the
+        // agent collects details and calls create_contact instead of erroring.
+        if (sandbox && contactId.startsWith('playground-')) {
+          return JSON.stringify({
+            exists: false,
+            contactId,
+            hint: 'No contact record exists yet for this conversation. Ask the user for their name, email, and phone, then call create_contact (or upsert_contact) before booking. Use the returned contact id for book_appointment and any follow-up tools.',
+          })
+        }
+        try {
+          const contact = await crm.getContact(contactId)
+          return JSON.stringify(contact)
+        } catch (err: any) {
+          const msg = err?.message || 'Unknown error'
+          if (/not\s*found|\b404\b|\b400\b/i.test(msg)) {
+            return JSON.stringify({
+              exists: false,
+              contactId,
+              error: 'Contact not found',
+              hint: 'No record for this contact id. Ask the user for their name, email, and phone, then call create_contact (or upsert_contact) and use the new id for subsequent tools.',
+            })
+          }
+          throw err
+        }
       }
       case 'send_reply': {
         const replyChannel = (channel || 'SMS') as import('@/types').MessageChannelType
