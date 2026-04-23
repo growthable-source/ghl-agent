@@ -205,7 +205,7 @@ function SidebarBody() {
             }`}
             style={pathname.startsWith(`/dashboard/${workspaceId}/help`) ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
           >
-            Feature reference
+            Merge Fields Reference
           </Link>
         )}
         {isSuperAdmin && (
