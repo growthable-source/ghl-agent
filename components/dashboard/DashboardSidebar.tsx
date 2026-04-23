@@ -7,6 +7,7 @@ import { signOut } from 'next-auth/react'
 import VoxilityLogo from '@/components/VoxilityLogo'
 import { NavCountsProvider, useNavCounts, NavBadge } from './useNavCounts'
 import WorkspaceAvatar from './WorkspaceAvatar'
+import CannyChangelogButton from '@/components/CannyChangelogButton'
 
 export default function DashboardSidebar() {
   const pathname = usePathname()
@@ -211,6 +212,9 @@ function SidebarBody() {
             Help Center · Admin
           </Link>
         )}
+        {/* What's new — opens Canny changelog popover with an unread
+            badge. Sits above Feedback so users see the updates first. */}
+        <CannyChangelogButton />
         <a
           href="https://voxility.canny.io"
           target="_blank"
