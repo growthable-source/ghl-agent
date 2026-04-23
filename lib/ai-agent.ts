@@ -1892,7 +1892,10 @@ export async function runAgent(opts: {
       }
 
       if (finalText && !smsSent) {
-        // If Claude wrote a reply but didn't use send_reply, send it now on the correct channel
+        // Claude wrote a reply but didn't use send_reply. Auto-send via
+        // whichever output path we have; sandbox has no adapter but we
+        // still populate smsSent so the reply surfaces in the
+        // playground / simulator UI (runAgent returns `reply: smsSent`).
         let msgToSend = finalText
         if (persona?.simulateTypos) msgToSend = applyTypos(msgToSend)
         if (persona?.typingDelayEnabled) {
@@ -1918,7 +1921,24 @@ export async function runAgent(opts: {
           })
           smsSent = msgToSend
           actionsPerformed.push(`send_reply (auto, ${channel})`)
+        } else if (isSandbox) {
+          // Sandbox / playground / simulator: no CRM to send through,
+          // but the reply still has to appear in the UI. Populating
+          // smsSent is enough — the runAgent caller renders it as the
+          // agent's visible reply. Marking the action lets the tool-
+          // trace show how the reply got here.
+          smsSent = msgToSend
+          actionsPerformed.push(`send_reply (auto, ${channel}, sandbox)`)
         }
+      } else if (!finalText && !smsSent) {
+        // Loop exited with neither text nor a send_reply call — usually
+        // Claude called a tool and stopped expecting to be prompted
+        // again. Log loudly so future debugging in production doesn't
+        // have to come back to this file cold.
+        console.warn('[Agent] loop exited with no reply and no final text.', {
+          agentId, contactId, iteration: i, stopReason: response.stop_reason,
+          lastToolsCalled: toolCallTrace.slice(-3).map(t => t.tool),
+        })
       }
       break
     }
