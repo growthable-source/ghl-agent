@@ -8,6 +8,14 @@ import VoxilityLogo from '@/components/VoxilityLogo'
 import { NavCountsProvider, useNavCounts, NavBadge } from './useNavCounts'
 import WorkspaceAvatar from './WorkspaceAvatar'
 import CannyChangelogButton from '@/components/CannyChangelogButton'
+import NewBadge from '@/components/NewBadge'
+
+// Ship dates for the "NEW" badges on recently-added nav items. Add
+// entries here when a new feature links off the sidebar; the badge
+// auto-expires 90 days after the ship date.
+const FEATURE_SHIP_DATES: Record<string, string> = {
+  simulations: '2026-04-20',
+}
 
 export default function DashboardSidebar() {
   const pathname = usePathname()
@@ -74,7 +82,7 @@ function SidebarBody() {
 
   if (isOnboarding) return null
 
-  function navLink(href: string, label: string, badgeCount?: number | null) {
+  function navLink(href: string, label: string, badgeCount?: number | null, newSince?: string) {
     const active = pathname === href || (href !== `/dashboard/${workspaceId}` && pathname.startsWith(href))
     return (
       <Link
@@ -87,6 +95,7 @@ function SidebarBody() {
         style={active ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
       >
         <span className="flex-1 truncate">{label}</span>
+        {newSince && <NewBadge since={newSince} />}
         <NavBadge count={badgeCount} />
       </Link>
     )
@@ -152,7 +161,7 @@ function SidebarBody() {
                   <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Tools</p>
                 </div>
                 {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
-                {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations')}
+                {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations', null, FEATURE_SHIP_DATES.simulations)}
                 {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
                 {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
                 {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}

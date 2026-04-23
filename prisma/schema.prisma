@@ -1337,6 +1337,10 @@ model Simulation {
 model SimulationSwarm {
   id             String   @id @default(cuid())
   name           String
+  // Customer swarms are scoped to one workspace (one agent × N personas).
+  // Admin-driven platform swarms span workspaces and leave this null.
+  // The workspace dashboard lists only its own swarms; admin lists all.
+  workspaceId    String?
   // Which agents to run against. Stored as IDs so swarms survive agent
   // renames; if an agent is deleted its queued sims fail gracefully.
   agentIds       String[]
@@ -1358,6 +1362,7 @@ model SimulationSwarm {
   updatedAt      DateTime @updatedAt
 
   @@index([status, createdAt])
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 // System-wide config the admin UI owns. Typed as JSON so we can add new

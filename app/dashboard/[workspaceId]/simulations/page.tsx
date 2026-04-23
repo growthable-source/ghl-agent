@@ -2,6 +2,12 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import NewBadge from '@/components/NewBadge'
+
+// Ship date for the Simulation Swarm feature — used to time out the
+// "NEW" badge automatically 90 days later. Bump if you ship a major
+// iteration that deserves re-highlighting.
+const SWARM_SHIPPED = '2026-04-23'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,9 +27,9 @@ export default async function SimulationsPage({ params }: Params) {
   if (!session?.user?.id) redirect('/login')
   const { workspaceId } = await params
 
-  // Parallelize the three reads. Workspace membership was already
-  // checked at the layout level.
-  const [sims, agents] = await Promise.all([
+  // Parallelize reads. Workspace membership was already checked at
+  // the layout level.
+  const [sims, agents, swarms] = await Promise.all([
     db.simulation.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' },
@@ -38,6 +44,13 @@ export default async function SimulationsPage({ params }: Params) {
       select: { id: true, name: true },
       orderBy: { createdAt: 'desc' },
     }),
+    // Customer swarms scoped to this workspace. Admin-driven platform
+    // swarms (workspaceId=null) don't show up here.
+    db.simulationSwarm.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }).catch(() => []),
   ])
 
   return (
@@ -53,16 +66,67 @@ export default async function SimulationsPage({ params }: Params) {
           </p>
         </div>
         {agents.length > 0 ? (
-          <Link
-            href={`/dashboard/${workspaceId}/simulations/new`}
-            className="text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 transition-colors"
-          >
-            New simulation
-          </Link>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href={`/dashboard/${workspaceId}/simulations/swarm/new`}
+              className="text-sm font-medium border border-zinc-700 text-zinc-200 hover:text-white hover:border-zinc-500 rounded-lg px-4 py-2 transition-colors inline-flex items-center gap-2"
+            >
+              Simulation swarm
+              <NewBadge since={SWARM_SHIPPED} />
+            </Link>
+            <Link
+              href={`/dashboard/${workspaceId}/simulations/new`}
+              className="text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 transition-colors"
+            >
+              New simulation
+            </Link>
+          </div>
         ) : (
           <span className="text-xs text-zinc-500">Create an agent first to run simulations.</span>
         )}
       </div>
+
+      {/* Recent swarms — shown only when there's at least one so we
+          don't waste vertical space on a "no swarms yet" empty state. */}
+      {swarms.length > 0 && (
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Recent swarms</h2>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 divide-y divide-zinc-900">
+            {swarms.map(s => {
+              const done = s.totalComplete + s.totalFailed
+              const pct = s.totalPlanned > 0 ? Math.round((done / s.totalPlanned) * 100) : 0
+              const isActive = s.status !== 'complete' && done < s.totalPlanned
+              return (
+                <Link
+                  key={s.id}
+                  href={`/dashboard/${workspaceId}/simulations/swarm/${s.id}`}
+                  className="block px-4 py-3 hover:bg-zinc-900/40 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="text-sm text-zinc-200 truncate">{s.name}</p>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                        {done}/{s.totalPlanned} done ({pct}%)
+                        {s.totalFailed > 0 && <span className="text-red-400"> · {s.totalFailed} failed</span>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isActive && (
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      )}
+                      <span className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 ${
+                        s.status === 'complete' ? 'bg-emerald-500/10 text-emerald-400' :
+                        isActive ? 'bg-blue-500/10 text-blue-400' :
+                        'bg-zinc-800 text-zinc-400'
+                      }`}>{isActive ? 'running' : s.status}</span>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
         <table className="w-full text-xs">
