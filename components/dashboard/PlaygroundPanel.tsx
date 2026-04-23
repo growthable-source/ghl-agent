@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import PlaygroundFeedback from './PlaygroundFeedback'
 
 interface Agent { id: string; name: string }
 
@@ -125,6 +126,20 @@ export default function PlaygroundPanel({
                       </div>
                     </details>
                   ))}
+                </div>
+              )}
+              {/* Thumbs feedback on each agent reply. Captures the full
+                  conversation up to this point so the reviewer sees the
+                  same context the agent replied to. Requires a selected
+                  agent (which is always set when messages exist). */}
+              {msg.role === 'agent' && selectedAgentId && (
+                <div className="self-start max-w-md">
+                  <PlaygroundFeedback
+                    workspaceId={workspaceId}
+                    agentId={selectedAgentId}
+                    conversation={messages.slice(0, i + 1).map(m => ({ role: m.role, content: m.content }))}
+                    flaggedReplyIndex={i}
+                  />
                 </div>
               )}
             </div>
