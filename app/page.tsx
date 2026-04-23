@@ -2,6 +2,117 @@ import Image from 'next/image'
 import Link from 'next/link'
 import VoxilityLogo from '@/components/VoxilityLogo'
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+
+// ────────────────────────────────────────────────────────────────────────
+// JSON-LD structured data
+// ────────────────────────────────────────────────────────────────────────
+// Three schemas, one script each. Google understands and rewards these
+// with rich-result treatment in SERPs:
+//   - Organization: company-level info + brand logo
+//   - SoftwareApplication: marks the product up as software so it can
+//     win the product-rich-card / app-install-card treatment
+//   - FAQPage: turns the FAQ section into expandable SERP entries
+//
+// Keep these in a single data block at page-bottom so the HTML payload
+// stays near the top; search crawlers don't care about script position.
+const ORG_SCHEMA = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Voxility',
+  url: SITE_URL,
+  logo: `${SITE_URL}/logo-color.svg`,
+  description:
+    'Conversational AI agents for GoHighLevel and HubSpot. Self-improving agents that answer calls, respond to texts, qualify leads, and book appointments.',
+  sameAs: [
+    'https://voxility.canny.io',
+  ],
+}
+
+const SOFTWARE_SCHEMA = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Voxility',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  description:
+    'Conversational AI platform that plugs into GoHighLevel and HubSpot. AI agents answer inbound calls, respond to SMS/email/chat, qualify leads, book appointments, and get measurably better over time from every conversation they have.',
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+    availability: 'https://schema.org/InStock',
+    description: 'Free during beta',
+  },
+  featureList: [
+    'Voice AI for inbound and outbound calls',
+    'SMS, email, WhatsApp, Instagram, Facebook, Google Business, and live chat',
+    'Native GoHighLevel and HubSpot CRM integration',
+    'Real-time appointment booking',
+    'Simulation Swarm testing against 7 customer personas',
+    'Auto-applied prompt improvements from every conversation',
+    '26+ CRM tools the agent can call natively',
+  ],
+}
+
+// FAQ schema — the questions below must match the <details> in the
+// FAQ section byte-for-byte, otherwise Google penalises the mismatch.
+// If you edit a question here, edit the corresponding FAQItem below.
+const FAQ_SCHEMA = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: 'How does the agent actually get better?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Every completed conversation — real or simulated — gets automatically reviewed by a second AI auditor that knows your agent\'s configuration. When it spots a specific failure, it proposes a concrete prompt addition. Improvements scoped to your agent are applied automatically; improvements that would benefit every agent on the platform get reviewed and promoted selectively.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Can I test an agent before it talks to a real customer?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes — Simulation Swarm runs the same scenario through seven different personas in parallel: friendly, aggressive, passive, skeptical, confused, ready-to-buy, price-shopper. Each gives feedback about where your agent struggled, and the fixes land on the live agent automatically.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'What CRMs does Voxility work with?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'GoHighLevel (via the marketplace) and HubSpot. We sync contacts, pipelines, calendars, and conversations. The agent reads and writes CRM data natively — no Zapier glue required.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'Do I need to be technical to use Voxility?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'No. If you can fill out a form, you can build an agent. Pick a voice, write some instructions in plain English, add your qualifying questions, and go live. No code, no API keys, no developers.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How realistic do the voice calls sound?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Very. We use ElevenLabs with 100+ voice options. You can tune speed, tone, and personality. Most callers don\'t realize they\'re talking to an AI until you tell them.',
+      },
+    },
+    {
+      '@type': 'Question',
+      name: 'How much does it cost?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Voxility is free during beta. Pricing lands as we exit beta, designed for agencies and SMBs.',
+      },
+    },
+  ],
+}
+
 /**
  * Voxility landing page.
  *
@@ -157,12 +268,12 @@ export default function LandingPage() {
 
         <div className="relative z-10 max-w-[1280px] mx-auto px-6 grid md:grid-cols-2 gap-12 items-center">
           <div className="max-w-xl">
-            <span className="section-label inline-block mb-6">Conversational AI that improves itself</span>
+            <span className="section-label inline-block mb-6">Conversational AI for GoHighLevel &amp; HubSpot</span>
             <h1 className="font-extrabold tracking-tight leading-[1.05] mb-6" style={{ fontSize: 'clamp(2.25rem, 5.5vw, 4rem)' }}>
               AI agents that <span className="text-gradient">get better</span> every day.
             </h1>
             <p className="mb-10 leading-[1.65]" style={{ color: '#94a3b8', fontSize: '1.0625rem' }}>
-              Voxility agents answer calls, respond to texts, qualify leads, and book appointments — then learn from every single conversation. Every mistake becomes a prompt improvement. Every improvement applies automatically. Your agent on day 90 is measurably smarter than your agent on day 1.
+              Voxility is the self-improving AI agent platform for GoHighLevel and HubSpot. Your agents answer calls, respond to texts, qualify leads, and book appointments — then learn from every single conversation. Every mistake becomes a prompt improvement. Every improvement applies automatically. Your agent on day 90 is measurably smarter than your agent on day 1.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-4">
               <Link href="/login?mode=signup" className="btn-primary">
@@ -178,11 +289,14 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Right-side generated hero illustration */}
+          {/* Right-side generated hero illustration. Alt text carries
+              primary keyword weight — decorative images on landing
+              pages are a missed-signal. Describe what the image is about
+              AND reinforce the page's main topic. */}
           <div className="relative aspect-square w-full max-w-[520px] mx-auto md:ml-auto">
             <Image
               src="/landing/hero-network.png"
-              alt=""
+              alt="Voxility — conversational AI agent platform for GoHighLevel and HubSpot"
               fill
               priority
               sizes="(max-width: 768px) 90vw, 520px"
@@ -285,7 +399,7 @@ export default function LandingPage() {
             <div className="relative aspect-square w-full max-w-[480px] mx-auto md:mx-0">
               <Image
                 src="/landing/learning-loop.png"
-                alt=""
+                alt="Self-improving AI agent feedback loop — review, refine, apply, repeat"
                 fill
                 sizes="(max-width: 768px) 90vw, 480px"
                 style={{ objectFit: 'contain' }}
@@ -447,13 +561,13 @@ export default function LandingPage() {
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><CrmIcon /></div>
-              <h3 className="text-lg font-semibold mb-2">Deep CRM integration</h3>
+              <h3 className="text-lg font-semibold mb-2">GoHighLevel &amp; HubSpot native</h3>
               <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
-                Agents read and write CRM data natively. Tag contacts, update custom fields, move pipeline stages, enroll in workflows, log every interaction. No Zapier glue.
+                Install the Voxility AI add-on from the GoHighLevel marketplace or connect HubSpot in one click. Agents read and write CRM data natively — tag contacts, update custom fields, move pipeline stages, enroll in workflows, log every interaction. No Zapier glue.
               </p>
               <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />GoHighLevel + HubSpot</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Native tool use, not glue</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />GoHighLevel marketplace install</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Native HubSpot integration</li>
                 <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Full audit trail</li>
               </ul>
             </div>
@@ -662,6 +776,24 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* ═══ JSON-LD structured data ═══
+          Three schemas inlined for rich-result eligibility. Google, Bing,
+          and DuckDuckGo all parse these. Kept at the bottom of the
+          render tree because crawlers don't care about position and the
+          HTML above stays lean. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(ORG_SCHEMA) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(SOFTWARE_SCHEMA) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_SCHEMA) }}
+      />
     </div>
   )
 }

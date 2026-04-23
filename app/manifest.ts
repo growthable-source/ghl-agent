@@ -2,17 +2,19 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Voxility',
+    name: 'Voxility — AI Agents for GoHighLevel & HubSpot',
     short_name: 'Voxility',
-    description: 'Conversational AI agents across every channel',
+    description:
+      'Self-improving conversational AI agents for GoHighLevel and HubSpot. Answer calls, respond to texts, qualify leads, and book appointments — with an agent that gets better every day.',
     start_url: '/dashboard',
     display: 'standalone',
-    background_color: '#09090b',
+    background_color: '#05080f',
     theme_color: '#fa4d2e',
     orientation: 'portrait-primary',
-    // Only reference icons that actually exist in public/ or app/. The
-    // previous list pointed at /icon.png and /icon-512.png which never got
-    // added — browsers would 404 on those and surface a console warning.
+    // Icon sources match files that actually exist. /icon.svg is served
+    // automatically by Next from app/icon.svg; /favicon.ico is the
+    // long-standing fallback for browsers that don't understand SVG
+    // favicons yet. /apple-icon.png is auto-served from app/.
     icons: [
       {
         src: '/favicon.ico',
@@ -20,10 +22,16 @@ export default function manifest(): MetadataRoute.Manifest {
         type: 'image/x-icon',
       },
       {
-        src: '/logo-mark.svg',
+        src: '/icon.svg',
         sizes: 'any',
         type: 'image/svg+xml',
         purpose: 'any',
+      },
+      {
+        src: '/apple-icon.png',
+        sizes: '1024x1024',
+        type: 'image/png',
+        purpose: 'maskable',
       },
     ],
     categories: ['business', 'productivity', 'communication'],
