@@ -30,7 +30,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const headers = widgetCorsHeaders(req.headers.get('origin'))
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: v.status, headers })
 
-  if (!v.widget.voiceEnabled) {
+  // Click-to-call widgets are voice-only by definition; chat widgets need the toggle
+  const voiceOk = v.widget.voiceEnabled || v.widget.type === 'click_to_call'
+  if (!voiceOk) {
     return NextResponse.json({ error: 'Voice not enabled for this widget' }, { status: 400, headers })
   }
 

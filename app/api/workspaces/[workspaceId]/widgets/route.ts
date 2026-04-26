@@ -56,12 +56,16 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
+    const type = body.type === 'click_to_call' ? 'click_to_call' : 'chat'
     const widget = await db.chatWidget.create({
       data: {
         workspaceId,
         name,
+        type,
         publicKey: generatePublicKey(),
         defaultAgentId: body.defaultAgentId || null,
+        // Click-to-call widgets default to having voice on
+        voiceEnabled: type === 'click_to_call' ? true : false,
       },
     })
     return NextResponse.json({ widget })

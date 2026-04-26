@@ -997,6 +997,12 @@ model ChatWidget {
   workspaceId       String
   name              String
   publicKey         String   @unique
+  // Type — "chat" (full chat UI w/ optional voice) or "click_to_call" (just a styled button that opens a voice call)
+  type              String   @default("chat")
+  // Slug — used for hosted call page at /c/{slug}. Optional, unique when set.
+  slug              String?  @unique
+  // Embed mode — "floating" (fixed launcher) or "inline" (renders into a target div on the host page)
+  embedMode         String   @default("floating")
   // Appearance
   primaryColor      String   @default("#fa4d2e")
   logoUrl           String?
@@ -1004,6 +1010,15 @@ model ChatWidget {
   subtitle          String   @default("We typically reply within a minute")
   welcomeMessage    String   @db.Text @default("Hi! How can we help?")
   position          String   @default("bottom-right")
+  // Click-to-call button styling
+  buttonLabel       String   @default("Talk to us")
+  buttonShape       String   @default("pill")        // pill | rounded | square
+  buttonSize        String   @default("md")          // sm | md | lg
+  buttonIcon        String   @default("phone")       // phone | mic | none
+  buttonTextColor   String   @default("#ffffff")
+  // Hosted call page copy
+  hostedPageHeadline String?
+  hostedPageSubtext  String?
   // Identity
   requireEmail      Boolean  @default(false)
   askForNameEmail   Boolean  @default(true)

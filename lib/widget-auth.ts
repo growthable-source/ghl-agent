@@ -25,6 +25,12 @@ function extractPublicKey(req: Request): string | null {
   return url.searchParams.get('pk')
 }
 
+function isOurOrigin(origin: string): boolean {
+  const app = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || ''
+  if (!app) return false
+  try { return new URL(origin).host.toLowerCase() === new URL(app).host.toLowerCase() } catch { return false }
+}
+
 function originMatches(origin: string, allowed: string[]): boolean {
   if (allowed.length === 0) return true
   try {
@@ -59,7 +65,7 @@ export async function validateWidgetRequest(
   }
 
   const origin = req.headers.get('origin')
-  if (origin && !originMatches(origin, widget.allowedDomains)) {
+  if (origin && !isOurOrigin(origin) && !originMatches(origin, widget.allowedDomains)) {
     return { ok: false, error: `Origin ${origin} not allowed for this widget`, status: 403 }
   }
 

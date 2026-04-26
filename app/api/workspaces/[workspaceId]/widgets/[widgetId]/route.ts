@@ -30,8 +30,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const allowed = [
-    'name', 'primaryColor', 'logoUrl', 'title', 'subtitle', 'welcomeMessage',
-    'position', 'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
+    'name', 'type', 'slug', 'embedMode',
+    'primaryColor', 'logoUrl', 'title', 'subtitle', 'welcomeMessage',
+    'position', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor',
+    'hostedPageHeadline', 'hostedPageSubtext',
+    'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
     'defaultAgentId', 'allowedDomains', 'isActive',
   ]
   const data: Record<string, unknown> = {}
@@ -42,11 +45,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
   }
 
-  const widget = await db.chatWidget.update({
-    where: { id: widgetId },
-    data,
-  })
-  return NextResponse.json({ widget })
+  // Slug normalization: lowercase, alphanumeric + dash, empty string -> null
+  if (typeof data.slug === 'string') {
+    const cleaned = data.slug.toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
+    data.slug = cleaned || null
+  }
+
+  try {
+    const widget = await db.chatWidget.update({ where: { id: widgetId }, data })
+    return NextResponse.json({ widget })
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      return NextResponse.json({ error: 'That slug is already taken' }, { status: 409 })
+    }
+    return NextResponse.json({ error: err.message || 'Failed to update widget' }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {

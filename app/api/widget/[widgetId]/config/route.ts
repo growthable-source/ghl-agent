@@ -35,14 +35,22 @@ export async function GET(req: NextRequest, { params }: Params) {
   return NextResponse.json({
     id: w.id,
     name: w.name,
+    type: w.type,
+    embedMode: w.embedMode,
+    slug: w.slug,
     primaryColor: w.primaryColor,
     logoUrl: w.logoUrl,
     title: w.title,
     subtitle: w.subtitle,
     welcomeMessage: renderedWelcome,
     position: w.position,
+    buttonLabel: w.buttonLabel,
+    buttonShape: w.buttonShape,
+    buttonSize: w.buttonSize,
+    buttonIcon: w.buttonIcon,
+    buttonTextColor: w.buttonTextColor,
     requireEmail: w.requireEmail,
     askForNameEmail: w.askForNameEmail,
-    voiceEnabled: w.voiceEnabled,
+    voiceEnabled: w.voiceEnabled || w.type === 'click_to_call',
   }, { headers })
 }
