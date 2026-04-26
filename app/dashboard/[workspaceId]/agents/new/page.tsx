@@ -320,6 +320,23 @@ export default function NewAgentWizard() {
               Pick the template that best fits your use case. Everything can be customized afterward.
             </p>
 
+            <Link
+              href={`/dashboard/${workspaceId}/agents/new/wizard`}
+              className="block mb-6 p-5 rounded-xl border-2 border-orange-500/40 bg-gradient-to-br from-orange-500/10 to-orange-500/5 hover:border-orange-500/60 transition-colors"
+            >
+              <div className="flex items-start gap-4">
+                <div className="text-3xl">✨</div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-white">Build with AI</p>
+                  <p className="text-[12px] text-zinc-300 mt-0.5">
+                    Skip the templates. Describe what you want in plain English and I&apos;ll generate the system prompt,
+                    rules, qualifying questions, and tools for you.
+                  </p>
+                </div>
+                <span className="text-xs text-orange-300 font-semibold whitespace-nowrap">Try it →</span>
+              </div>
+            </Link>
+
             {/* Outbound */}
             <div className="mb-6">
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Outbound — Agent initiates the conversation</p>
