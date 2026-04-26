@@ -1369,7 +1369,7 @@ export interface FallbackConfig {
   message?: string | null
 }
 
-function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string, listeningRulesBlock?: string, contactMemoryBlock?: string, advancedContextBlock?: string, platformGuidelinesBlock?: string): string {
+function buildSystemPrompt(ctx: AgentContext, customPrompt?: string, persona?: PersonaSettings, qualifyingBlock?: string, fallback?: FallbackConfig, channel?: string, detectionRulesBlock?: string, listeningRulesBlock?: string, contactMemoryBlock?: string, advancedContextBlock?: string, platformGuidelinesBlock?: string, connectedIntegrationsBlock?: string): string {
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const ch = channel || 'SMS'
   const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`
@@ -1482,6 +1482,10 @@ Professional but warm. Match the contact's energy.`
   // so we can just concatenate here without further sanity checks.
   if (platformGuidelinesBlock) {
     prompt += platformGuidelinesBlock
+  }
+
+  if (connectedIntegrationsBlock) {
+    prompt += connectedIntegrationsBlock
   }
 
   return prompt
@@ -1756,6 +1760,24 @@ export async function runAgent(opts: {
     console.warn('[Agent] platform guidelines load failed:', err.message)
   }
 
+  // ─── MCP attachments ───
+  // Load every external MCP tool the user has wired into this agent.
+  // Apply per-attachment keyword gates against the incoming message so we
+  // only expose tools that are contextually relevant. The Anthropic
+  // mcp_servers parameter actually executes the calls; the prompt block
+  // is our steering layer (whenToUse rules).
+  let mcpServersParam: ReturnType<typeof import('./mcp-runtime').buildMcpServersParam> = []
+  let connectedIntegrationsBlock = ''
+  try {
+    const { loadAgentMcpAttachments, filterByKeywords, buildMcpServersParam, buildConnectedIntegrationsBlock } = await import('./mcp-runtime')
+    const all = await loadAgentMcpAttachments(agentId)
+    const live = filterByKeywords(all, incomingMessage)
+    mcpServersParam = buildMcpServersParam(live)
+    connectedIntegrationsBlock = buildConnectedIntegrationsBlock(live)
+  } catch (err: any) {
+    console.warn('[Agent] MCP attachment load failed:', err.message)
+  }
+
   // Filter tools based on agent configuration
   // Normalize: ensure dependent tool pairs are always enabled together.
   //  - send_sms → send_reply (legacy back-compat)
@@ -1843,13 +1865,22 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock),
+      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock),
       tools,
       messages: currentMessages,
     }
     if (toolChoice) createParams.tool_choice = toolChoice
+    if (mcpServersParam.length > 0) createParams.mcp_servers = mcpServersParam
 
     const response = await client.messages.create(createParams)
+
+    // Log MCP tool calls (executed by Anthropic's backend, not our loop)
+    try {
+      const { extractMcpActions } = await import('./mcp-runtime')
+      for (const a of extractMcpActions(response.content as any[])) {
+        actionsPerformed.push(a)
+      }
+    } catch {}
 
     totalInputTokens += response.usage.input_tokens
     totalOutputTokens += response.usage.output_tokens
