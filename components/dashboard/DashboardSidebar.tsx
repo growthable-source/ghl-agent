@@ -136,7 +136,7 @@ function SidebarBody() {
                 {navLink(`/dashboard/${workspaceId}`, 'Overview')}
                 {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
                 {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
-                {navLink(`/dashboard/${workspaceId}/widgets`, 'Chat Widgets')}
+                {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
                 {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox')}
                 {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
                 {/* Routing Diagnostic moved to /admin — it exposed raw

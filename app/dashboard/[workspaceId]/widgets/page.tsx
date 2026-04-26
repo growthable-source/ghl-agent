@@ -68,45 +68,55 @@ export default function WidgetsPage() {
               Embeddable chat widgets and click-to-call buttons. Drop them anywhere — landing pages, blog posts, email signatures.
             </p>
           </div>
-          <div className="relative">
-            <button
-              onClick={() => setPickerOpen(o => !o)}
-              disabled={creating}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors disabled:opacity-50"
-              style={{ background: '#fa4d2e' }}
-            >
-              {creating ? 'Creating…' : '+ New widget'}
-            </button>
-            {pickerOpen && (
-              <div className="absolute right-0 mt-2 w-72 rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl z-10 overflow-hidden">
+          <button
+            onClick={() => setPickerOpen(true)}
+            disabled={creating}
+            className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors disabled:opacity-50"
+            style={{ background: '#fa4d2e' }}
+          >
+            {creating ? 'Creating…' : '+ New widget'}
+          </button>
+        </div>
+
+        {pickerOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPickerOpen(false)}>
+            <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-1">
+                <h2 className="text-lg font-bold text-white">Create a widget</h2>
+                <button onClick={() => setPickerOpen(false)} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
+              </div>
+              <p className="text-xs text-zinc-500 mb-5">Pick what you&apos;re embedding.</p>
+              <div className="space-y-2">
                 <button
                   onClick={() => createWidget('chat')}
-                  className="w-full text-left px-4 py-3 hover:bg-zinc-900 transition-colors border-b border-zinc-800"
+                  disabled={creating}
+                  className="w-full text-left p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900 transition-colors disabled:opacity-50"
                 >
                   <div className="flex items-start gap-3">
-                    <span className="text-xl">💬</span>
+                    <span className="text-2xl">💬</span>
                     <div>
                       <p className="text-sm font-semibold text-white">Chat widget</p>
-                      <p className="text-[11px] text-zinc-500">Floating chat with optional voice</p>
+                      <p className="text-[11px] text-zinc-500">Floating chat bubble with optional voice escalation.</p>
                     </div>
                   </div>
                 </button>
                 <button
                   onClick={() => createWidget('click_to_call')}
-                  className="w-full text-left px-4 py-3 hover:bg-zinc-900 transition-colors"
+                  disabled={creating}
+                  className="w-full text-left p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900 transition-colors disabled:opacity-50"
                 >
                   <div className="flex items-start gap-3">
-                    <span className="text-xl">📞</span>
+                    <span className="text-2xl">📞</span>
                     <div>
                       <p className="text-sm font-semibold text-white">Click-to-call button</p>
-                      <p className="text-[11px] text-zinc-500">A styled button that opens a voice call</p>
+                      <p className="text-[11px] text-zinc-500">A styled button that opens a voice call instantly. Floating or inline.</p>
                     </div>
                   </div>
                 </button>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {notMigrated && (
           <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
