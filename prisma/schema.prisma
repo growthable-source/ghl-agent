@@ -1098,6 +1098,47 @@ model WidgetVoiceCall {
   @@index([conversationId])
 }
 
+// ─── MCP Connectors ──────────────────────────────────────────────────────
+// External MCP servers attached to a workspace. Per-agent attachments are
+// in AgentMcpTool — that's where "when to use this" rules live.
+
+model McpServer {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  name             String
+  registrySlug     String?  // null for custom; e.g. "meta-ads", "stripe", "linear"
+  description      String?
+  iconUrl          String?
+  transport        String   @default("http")    // http | sse
+  url              String
+  authType         String   @default("bearer")  // bearer | header | none
+  authSecretEnc    String?  // AES-256-GCM ciphertext (see lib/secrets.ts)
+  headers          Json?    // extra static headers
+  isActive         Boolean  @default(true)
+  lastDiscoveredAt DateTime?
+  discoveredTools  Json?    // cached tool list from last discovery
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  agentTools       AgentMcpTool[]
+  @@index([workspaceId])
+}
+
+model AgentMcpTool {
+  id                  String   @id @default(cuid())
+  agentId             String
+  mcpServerId         String
+  mcpServer           McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  toolName            String
+  enabled             Boolean  @default(true)
+  whenToUse           String?  @db.Text
+  mustIncludeKeywords String[] @default([])
+  requireApproval     Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  @@unique([agentId, mcpServerId, toolName])
+  @@index([agentId])
+}
+
 // ─── Help Center ─────────────────────────────────────────────────────────
 // Public, crawlable help articles. Authored by super-admins (emails ending
 // in @voxility.ai). No per-workspace scoping — the help center is
