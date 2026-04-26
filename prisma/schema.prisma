@@ -285,6 +285,16 @@ model Agent {
   requireApproval     Boolean          @default(false)
   approvalRules       Json?                           // { lowSentiment: true, firstContact: true, ... }
 
+  // ─── AI Judge ───
+  // When approval is required, run a cheap LLM "judge" pass on the draft
+  // reply before queuing for a human. SAFE → auto-release; UNSAFE → optionally
+  // auto-block; UNCERTAIN → keep in queue for review.
+  judgeEnabled        Boolean          @default(false)
+  judgeModel          String           @default("haiku")
+  judgeAutoSend       Boolean          @default(true)
+  judgeAutoBlock      Boolean          @default(false)
+  judgeInstructions   String?          @db.Text
+
   // ─── Agent context level ───
   // SIMPLE = minimal system prompt (name + tags only).
   // ADVANCED = also loads opportunities (last 2 quarters) + contact custom
@@ -448,7 +458,12 @@ model MessageLog {
 
   // ─── Approval Queue ───
   needsApproval    Boolean   @default(false)
-  approvalStatus   String?                    // "pending" | "approved" | "rejected" | "auto_sent"
+  approvalStatus   String?                    // "pending" | "approved" | "rejected" | "auto_sent" | "auto_sent_by_judge" | "rejected_by_judge"
+
+  // ─── AI Judge verdict (when judgeEnabled on the agent) ───
+  judgeVerdict     String?                    // "safe" | "unsafe" | "uncertain"
+  judgeReason      String?   @db.Text
+  judgeModel       String?
   approvedBy       String?                    // userId
   approvedAt       DateTime?
   approvalReason   String?                    // why it was flagged (e.g. "low_sentiment", "first_contact")

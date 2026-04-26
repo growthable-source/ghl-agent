@@ -56,6 +56,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.isPaused !== undefined && { isPaused: body.isPaused, pausedAt: body.isPaused ? new Date() : null }),
       ...(body.requireApproval !== undefined && { requireApproval: body.requireApproval }),
       ...(body.approvalRules !== undefined && { approvalRules: body.approvalRules }),
+      // AI Judge config
+      ...(body.judgeEnabled !== undefined && { judgeEnabled: !!body.judgeEnabled }),
+      ...(body.judgeModel !== undefined && { judgeModel: body.judgeModel === 'sonnet' ? 'sonnet' : 'haiku' }),
+      ...(body.judgeAutoSend !== undefined && { judgeAutoSend: !!body.judgeAutoSend }),
+      ...(body.judgeAutoBlock !== undefined && { judgeAutoBlock: !!body.judgeAutoBlock }),
+      ...(body.judgeInstructions !== undefined && {
+        judgeInstructions: typeof body.judgeInstructions === 'string'
+          ? body.judgeInstructions.trim() || null
+          : null,
+      }),
       // Advanced-context agent profile — only two values accepted; an
       // unexpected value is coerced to SIMPLE rather than rejected so we
       // don't hard-fail existing clients that don't know about the flag.

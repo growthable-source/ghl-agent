@@ -16,6 +16,9 @@ interface ApprovalLog {
   approvalStatus: string | null
   approvalReason: string | null
   approvedBy: string | null
+  judgeVerdict?: 'safe' | 'unsafe' | 'uncertain' | null
+  judgeReason?: string | null
+  judgeModel?: string | null
 }
 
 function timeAgo(iso: string): string {
@@ -46,6 +49,7 @@ export default function ApprovalsPage() {
   const [editText, setEditText] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [notMigrated, setNotMigrated] = useState(false)
+  const [judgeConfigOpen, setJudgeConfigOpen] = useState(false)
 
   const fetchData = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/approvals`)
@@ -80,12 +84,27 @@ export default function ApprovalsPage() {
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Approval Queue</h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Messages your agents flagged for human review before sending.
-          </p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Approval Queue</h1>
+            <p className="text-sm text-zinc-400 mt-1">
+              Messages your agents flagged for human review before sending.
+            </p>
+          </div>
+          <button
+            onClick={() => setJudgeConfigOpen(true)}
+            className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors"
+            style={{ background: '#fa4d2e' }}
+          >
+            🤖 AI Judge settings
+          </button>
         </div>
+        {judgeConfigOpen && (
+          <JudgeConfigModal
+            workspaceId={workspaceId}
+            onClose={() => setJudgeConfigOpen(false)}
+          />
+        )}
 
         {notMigrated && (
           <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
@@ -137,8 +156,27 @@ export default function ApprovalsPage() {
                           {REASON_LABELS[log.approvalReason] || log.approvalReason}
                         </span>
                       )}
+                      {log.judgeVerdict && (
+                        <span
+                          title={log.judgeReason || ''}
+                          className="text-[10px] font-medium px-2 py-0.5 rounded-full cursor-help"
+                          style={{
+                            background: log.judgeVerdict === 'safe' ? 'rgba(34,197,94,0.12)'
+                              : log.judgeVerdict === 'unsafe' ? 'rgba(239,68,68,0.12)'
+                              : 'rgba(99,102,241,0.12)',
+                            color: log.judgeVerdict === 'safe' ? '#4ade80'
+                              : log.judgeVerdict === 'unsafe' ? '#f87171'
+                              : '#a5b4fc',
+                          }}
+                        >
+                          🤖 judge: {log.judgeVerdict}
+                        </span>
+                      )}
                       <span className="ml-auto text-xs text-zinc-500">{timeAgo(log.createdAt)}</span>
                     </div>
+                    {log.judgeReason && (
+                      <p className="text-[11px] text-zinc-500 italic mb-2 -mt-1">Judge: {log.judgeReason}</p>
+                    )}
 
                     {/* Contact message */}
                     <div className="p-3 rounded-lg bg-zinc-900 mb-2">
@@ -243,6 +281,141 @@ export default function ApprovalsPage() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+interface AgentJudgeConfig {
+  id: string
+  name: string
+  requireApproval: boolean
+  judgeEnabled: boolean
+  judgeModel: 'haiku' | 'sonnet'
+  judgeAutoSend: boolean
+  judgeAutoBlock: boolean
+  judgeInstructions: string | null
+}
+
+function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const [agents, setAgents] = useState<AgentJudgeConfig[] | null>(null)
+  const [saving, setSaving] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/workspaces/${workspaceId}/agents`)
+      .then(r => r.json())
+      .then(d => setAgents(d.agents || []))
+  }, [workspaceId])
+
+  async function update(agentId: string, patch: Partial<AgentJudgeConfig>) {
+    setSaving(agentId)
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      setAgents(prev => prev?.map(a => a.id === agentId ? { ...a, ...patch } as AgentJudgeConfig : a) || null)
+    } finally { setSaving(null) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-zinc-800 flex items-start justify-between shrink-0">
+          <div>
+            <h2 className="text-lg font-bold text-white">🤖 AI Judge settings</h2>
+            <p className="text-xs text-zinc-500 mt-1 max-w-xl">
+              When approval rules flag a message, run a cheap LLM pass first. SAFE → auto-release; UNSAFE → optionally
+              auto-block; UNCERTAIN → keep for human review. Cuts queue volume ~80% on the typical mix.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          {agents === null ? (
+            <div className="h-6 w-32 bg-zinc-800 rounded animate-pulse" />
+          ) : agents.length === 0 ? (
+            <p className="text-sm text-zinc-500">No agents in this workspace.</p>
+          ) : (
+            agents.map(a => (
+              <div key={a.id} className={`p-4 rounded-xl border ${a.judgeEnabled ? 'border-orange-500/30 bg-orange-500/5' : 'border-zinc-800 bg-zinc-900/40'}`}>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{a.name}</p>
+                    <p className="text-[11px] text-zinc-500">
+                      {a.requireApproval
+                        ? `Approval queue is on. Judge ${a.judgeEnabled ? 'will pre-screen' : 'is off — every flagged message goes to a human'}.`
+                        : 'Approval queue is off — turn it on at the agent level first; the judge only runs on flagged messages.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => update(a.id, { judgeEnabled: !a.judgeEnabled })}
+                    disabled={saving === a.id || !a.requireApproval}
+                    className="relative inline-flex h-5 w-9 items-center rounded-full disabled:opacity-30"
+                    style={{ background: a.judgeEnabled ? '#fa4d2e' : '#3f3f46' }}
+                  >
+                    <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
+                      style={{ transform: a.judgeEnabled ? 'translateX(20px)' : 'translateX(4px)' }} />
+                  </button>
+                </div>
+
+                {a.judgeEnabled && (
+                  <div className="space-y-3 mt-3 pt-3 border-t border-zinc-800">
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="text-[11px] text-zinc-400">
+                        <span className="block mb-1">Judge model</span>
+                        <select
+                          value={a.judgeModel}
+                          onChange={e => update(a.id, { judgeModel: e.target.value as any })}
+                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
+                        >
+                          <option value="haiku">Haiku (fast, cheap)</option>
+                          <option value="sonnet">Sonnet (slower, more nuance)</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={a.judgeAutoSend}
+                        onChange={e => update(a.id, { judgeAutoSend: e.target.checked })}
+                        className="mt-0.5 w-4 h-4 accent-orange-500"
+                      />
+                      <div>
+                        <p className="text-xs text-white">Auto-release messages judged SAFE</p>
+                        <p className="text-[10px] text-zinc-500">Off = even SAFE verdicts wait for a human to click approve.</p>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={a.judgeAutoBlock}
+                        onChange={e => update(a.id, { judgeAutoBlock: e.target.checked })}
+                        className="mt-0.5 w-4 h-4 accent-orange-500"
+                      />
+                      <div>
+                        <p className="text-xs text-white">Auto-reject messages judged UNSAFE</p>
+                        <p className="text-[10px] text-zinc-500">Off = UNSAFE verdicts still surface to a human (recommended at first).</p>
+                      </div>
+                    </label>
+                    <div>
+                      <label className="text-[11px] text-zinc-400 block mb-1">Custom rubric (optional)</label>
+                      <textarea
+                        value={a.judgeInstructions || ''}
+                        onChange={e => update(a.id, { judgeInstructions: e.target.value })}
+                        rows={3}
+                        placeholder='E.g. "Never auto-send anything that quotes a price. Auto-send anything that is just confirming a meeting time."'
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   )

@@ -365,11 +365,49 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
             priorMessageCount: convState.messageCount,
           })
 
+          // ─── AI Judge — pre-screen flagged messages with a cheap LLM ───
+          // Verdicts (per-agent config decides what to do with each):
+          //   safe      → release if judgeAutoSend
+          //   unsafe    → reject if judgeAutoBlock
+          //   uncertain → leave for human review
+          let judgeVerdict: 'safe' | 'unsafe' | 'uncertain' | null = null
+          let judgeReason: string | null = null
+          let judgeModel: string | null = null
+          let finalNeedsApproval = needsApproval
+          let autoReleasedByJudge = false
+          let rejectedByJudge = false
+          if (needsApproval && result.deferredCapture && (agent as any).judgeEnabled) {
+            try {
+              const { judgeReply } = await import('@/lib/approval-judge')
+              const verdict = await judgeReply({
+                inboundMessage,
+                draftReply: result.deferredCapture.message,
+                agentSystemPrompt: agent.systemPrompt,
+                approvalReason,
+                judgeInstructions: (agent as any).judgeInstructions,
+                model: ((agent as any).judgeModel as 'haiku' | 'sonnet') || 'haiku',
+              })
+              judgeVerdict = verdict.verdict
+              judgeReason = verdict.reason
+              judgeModel = verdict.model
+              if (verdict.verdict === 'safe' && (agent as any).judgeAutoSend) {
+                finalNeedsApproval = false
+                autoReleasedByJudge = true
+              } else if (verdict.verdict === 'unsafe' && (agent as any).judgeAutoBlock) {
+                finalNeedsApproval = false
+                rejectedByJudge = true
+              }
+              console.log(`[Judge] ${verdict.verdict.toUpperCase()} (${verdict.latencyMs}ms): ${verdict.reason}`)
+            } catch (err: any) {
+              console.warn('[Judge] failed, falling back to human queue:', err.message)
+            }
+          }
+
           // ─── Release or queue the deferred send ───
           // If the agent captured a message AND approval is not required,
           // deliver it now. If approval IS required, leave captured so the
           // approvals UI can release it after human review.
-          if (shouldDeferForApproval && result.deferredCapture && !needsApproval) {
+          if (shouldDeferForApproval && result.deferredCapture && !finalNeedsApproval && !rejectedByJudge) {
             try {
               const { sendMessage } = await import('@/lib/crm-client')
               await sendMessage(p.locationId, {
@@ -378,12 +416,18 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
                 conversationProviderId: result.deferredCapture.conversationProviderId,
                 message: result.deferredCapture.message,
               })
-              console.log(`[Approval] Auto-released captured message for ${p.contactId} (rules matched none)`)
+              if (autoReleasedByJudge) {
+                console.log(`[Approval] AUTO-RELEASED by judge for ${p.contactId} — verdict=safe`)
+              } else {
+                console.log(`[Approval] Auto-released captured message for ${p.contactId} (rules matched none)`)
+              }
             } catch (err: any) {
               console.error('[Approval] Auto-release send failed:', err.message)
             }
-          } else if (needsApproval && result.deferredCapture) {
-            console.log(`[Approval] HELD for approval: "${result.deferredCapture.message.slice(0, 60)}..." reason=${approvalReason}`)
+          } else if (rejectedByJudge) {
+            console.log(`[Approval] AUTO-REJECTED by judge: "${result.deferredCapture?.message.slice(0, 60)}..." reason=${judgeReason}`)
+          } else if (finalNeedsApproval && result.deferredCapture) {
+            console.log(`[Approval] HELD for approval: "${result.deferredCapture.message.slice(0, 60)}..." reason=${approvalReason}${judgeVerdict ? ` judge=${judgeVerdict}` : ''}`)
           }
 
           await db.messageLog.update({
@@ -395,9 +439,18 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
               tokensUsed: result.tokensUsed,
               status: 'SUCCESS',
               toolCallTrace: result.toolCallTrace as any,
-              needsApproval,
-              approvalStatus: needsApproval ? 'pending' : (agent as any).requireApproval ? 'auto_sent' : null,
+              needsApproval: finalNeedsApproval,
+              approvalStatus: rejectedByJudge
+                ? 'rejected_by_judge'
+                : autoReleasedByJudge
+                  ? 'auto_sent_by_judge'
+                  : finalNeedsApproval
+                    ? 'pending'
+                    : (agent as any).requireApproval ? 'auto_sent' : null,
               approvalReason,
+              judgeVerdict,
+              judgeReason,
+              judgeModel,
               // Persist channel + conversationProviderId so the approve
               // endpoint can send on the exact channel the inbound arrived on.
               ...(result.deferredCapture ? {
