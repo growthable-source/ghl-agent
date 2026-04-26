@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { isSuperAdmin } from '@/lib/help-auth'
 import CategoryManager from './CategoryManager'
 import SeedAgentsButton from './SeedAgentsButton'
+import SeedReleasesButton from './SeedReleasesButton'
 
 /**
  * Admin landing for the help center. Server-renders the guard, the full
@@ -46,6 +47,7 @@ export default async function HelpAdminPage() {
         </div>
         <div className="flex items-center gap-2">
           <SeedAgentsButton />
+          <SeedReleasesButton />
           <Link
             href="/dashboard/help-admin/articles/new"
             className="inline-flex items-center rounded-lg bg-white text-black font-medium text-sm px-4 h-10 hover:bg-zinc-200 transition-colors"
