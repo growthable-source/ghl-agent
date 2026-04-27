@@ -134,8 +134,21 @@ export default function WidgetEmbedPage() {
           setMessages(m => [...m, { id: data.id, role: 'agent', content: data.content, createdAt: data.createdAt }])
         } else if (data.type === 'visitor_message') {
           setMessages(m => {
-            // Avoid duplicate if we already optimistically added it
+            // Already have it under the real id (SSE replayed twice) — no-op
             if (m.some(x => x.id === data.id)) return m
+            // Replace the optimistic copy if we sent this turn ourselves.
+            // The optimistic message has id "opt-…" and matches by content +
+            // role; swapping in the real id keeps future dedupes consistent.
+            const optIdx = m.findIndex(x =>
+              x.role === 'visitor' &&
+              x.id.startsWith('opt-') &&
+              x.content === data.content
+            )
+            if (optIdx >= 0) {
+              const next = m.slice()
+              next[optIdx] = { id: data.id, role: 'visitor', content: data.content, createdAt: data.createdAt }
+              return next
+            }
             return [...m, { id: data.id, role: 'visitor', content: data.content, createdAt: data.createdAt }]
           })
         } else if (data.type === 'agent_typing') {
