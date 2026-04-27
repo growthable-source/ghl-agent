@@ -26,6 +26,7 @@ export default function WidgetsPage() {
   const [creating, setCreating] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [notMigrated, setNotMigrated] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const fetchWidgets = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/widgets`)
@@ -39,7 +40,7 @@ export default function WidgetsPage() {
 
   async function createWidget(type: 'chat' | 'click_to_call') {
     setCreating(true)
-    setPickerOpen(false)
+    setCreateError(null)
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/widgets`, {
         method: 'POST',
@@ -49,10 +50,15 @@ export default function WidgetsPage() {
           type,
         }),
       })
-      const data = await res.json()
-      if (data.widget) {
-        router.push(`/dashboard/${workspaceId}/widgets/${data.widget.id}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.widget) {
+        setCreateError(data.error || `Could not create widget (HTTP ${res.status})`)
+        return
       }
+      setPickerOpen(false)
+      router.push(`/dashboard/${workspaceId}/widgets/${data.widget.id}`)
+    } catch (err: any) {
+      setCreateError(err?.message || 'Network error — please try again')
     } finally { setCreating(false) }
   }
 
@@ -86,6 +92,11 @@ export default function WidgetsPage() {
                 <button onClick={() => setPickerOpen(false)} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
               </div>
               <p className="text-xs text-zinc-500 mb-5">Pick what you&apos;re embedding.</p>
+              {createError && (
+                <div className="mb-4 p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs text-red-300">
+                  {createError}
+                </div>
+              )}
               <div className="space-y-2">
                 <button
                   onClick={() => createWidget('chat')}

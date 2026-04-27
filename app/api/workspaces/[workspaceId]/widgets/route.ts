@@ -55,21 +55,41 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Pre-migration — allow
   }
 
+  const type = body.type === 'click_to_call' ? 'click_to_call' : 'chat'
+  const baseData = {
+    workspaceId,
+    name,
+    publicKey: generatePublicKey(),
+    defaultAgentId: body.defaultAgentId || null,
+    voiceEnabled: type === 'click_to_call',
+  }
+
   try {
-    const type = body.type === 'click_to_call' ? 'click_to_call' : 'chat'
     const widget = await db.chatWidget.create({
-      data: {
-        workspaceId,
-        name,
-        type,
-        publicKey: generatePublicKey(),
-        defaultAgentId: body.defaultAgentId || null,
-        // Click-to-call widgets default to having voice on
-        voiceEnabled: type === 'click_to_call' ? true : false,
-      },
+      data: { ...baseData, type },
     })
     return NextResponse.json({ widget })
   } catch (err: any) {
+    // Pending click-to-call migration: ChatWidget.type (and friends) don't
+    // exist yet. Fall back to creating a chat-only widget without the new
+    // fields so the UI can still ship widgets, but tell the operator what
+    // needs to happen for click-to-call to work.
+    const isMissingColumn = err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')
+    if (isMissingColumn) {
+      if (type === 'click_to_call') {
+        return NextResponse.json({
+          error: "Click-to-call needs a database migration first — run prisma/migrations-legacy/manual_widget_click_to_call.sql in Supabase, then try again.",
+          code: 'MIGRATION_PENDING',
+        }, { status: 503 })
+      }
+      // Plain chat widget: try again without the new columns
+      try {
+        const widget = await db.chatWidget.create({ data: baseData })
+        return NextResponse.json({ widget })
+      } catch (err2: any) {
+        return NextResponse.json({ error: err2.message || 'Failed to create widget' }, { status: 500 })
+      }
+    }
     return NextResponse.json({ error: err.message || 'Failed to create widget' }, { status: 500 })
   }
 }
