@@ -21,6 +21,7 @@ const SECTIONS = [
   { key: 'follow-ups',  label: 'Follow-ups',  path: '/follow-ups' },
   { key: 'voice',       label: 'Voice',       path: '/voice' },
   { key: 'replay',      label: 'Replay',      path: '/replay' },
+  { key: 'experiments', label: 'Experiments', path: '/experiments' },
 ]
 
 export default function AgentLayout({ children }: { children: React.ReactNode }) {

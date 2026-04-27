@@ -94,7 +94,7 @@ export async function recordGoalAchievements(params: {
       })
       if (existing) continue
 
-      await db.agentGoalEvent.create({
+      const evt = await db.agentGoalEvent.create({
         data: {
           goalId: goal.id,
           contactId: params.contactId,
@@ -102,6 +102,22 @@ export async function recordGoalAchievements(params: {
           turnsToAchieve: params.priorMessageCount + 1,
         },
       })
+
+      // Mirror the achievement to any running A/B experiment that's
+      // measuring this goal type. Idempotent — duplicate calls collapse
+      // to a single conversion event per (experiment, contact).
+      try {
+        const { recordExperimentConversion } = await import('./experiments')
+        const metricKey = goal.goalType === 'custom' && goal.value
+          ? `custom:${goal.value}`
+          : goal.goalType
+        await recordExperimentConversion({
+          agentId: params.agentId,
+          contactId: params.contactId,
+          metricKey,
+          goalEventId: evt.id,
+        })
+      } catch { /* never block goal recording on experiment bookkeeping */ }
     }
   } catch (err: any) {
     console.warn('[Goals] recordGoalAchievements failed:', err.message)

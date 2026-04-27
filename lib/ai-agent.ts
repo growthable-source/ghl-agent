@@ -1760,6 +1760,22 @@ export async function runAgent(opts: {
     console.warn('[Agent] platform guidelines load failed:', err.message)
   }
 
+  // ─── Active experiments ───
+  // Resolve any running A/B experiments for this agent. The runtime hashes
+  // contactId deterministically into a bucket and appends the matching
+  // variant's prompt fragment. Exposure events are written here; conversion
+  // events fire later from recordGoalAchievements.
+  let experimentBlock = ''
+  try {
+    if (!isSandbox && agentId) {
+      const { resolveExperimentVariants, buildExperimentBlock } = await import('./experiments')
+      const variants = await resolveExperimentVariants(agentId, contactId)
+      experimentBlock = buildExperimentBlock(variants)
+    }
+  } catch (err: any) {
+    console.warn('[Agent] experiment resolution failed:', err.message)
+  }
+
   // ─── MCP attachments ───
   // Load every external MCP tool the user has wired into this agent.
   // Apply per-attachment keyword gates against the incoming message so we
@@ -1865,7 +1881,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock),
+      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock) + experimentBlock,
       tools,
       messages: currentMessages,
     }

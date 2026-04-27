@@ -310,6 +310,7 @@ model Agent {
   knowledgeEntries KnowledgeEntry[]
   routingRules     RoutingRule[]
   detectionRules   AgentRule[]
+  experiments      AgentExperiment[]
   listeningRules   AgentListeningRule[]
   messageLogs      MessageLog[]
   stopConditions      StopCondition[]
@@ -1152,6 +1153,49 @@ model AgentMcpTool {
   updatedAt           DateTime @updatedAt
   @@unique([agentId, mcpServerId, toolName])
   @@index([agentId])
+}
+
+// ─── Agent Self-Experimentation ──────────────────────────────────────────
+// A/B test opening lines, personas, or appended instructions on a slice of
+// inbounds. The weekly proposer cron writes drafts; an operator approves
+// them; runtime hashes contactId to deterministically bucket A vs B and
+// records exposure/conversion against AgentGoalEvent.
+
+model AgentExperiment {
+  id              String   @id @default(cuid())
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  hypothesis      String   @db.Text
+  variantALabel   String   @default("control")
+  variantBLabel   String   @default("variant-b")
+  variantAPrompt  String?  @db.Text                // appended to system prompt for A; null = vanilla
+  variantBPrompt  String   @db.Text
+  metric          String   @default("any_goal")    // "any_goal" | "appointment_booked" | "tag_added:<value>"
+  splitPercent    Int      @default(50)            // % routed to variant B
+  status          String   @default("draft")       // "draft" | "approved" | "running" | "ended" | "rejected"
+  proposedBy      String?                          // "ai" | operator email
+  proposedAt      DateTime @default(now())
+  approvedBy      String?
+  approvedAt      DateTime?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  events          AgentExperimentEvent[]
+  @@index([agentId, status])
+}
+
+model AgentExperimentEvent {
+  id            String   @id @default(cuid())
+  experimentId  String
+  experiment    AgentExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  contactId     String
+  variant       String                             // 'A' | 'B'
+  outcome       String                             // 'exposed' | 'converted'
+  goalEventId   String?
+  createdAt     DateTime @default(now())
+  @@unique([experimentId, contactId, outcome])
+  @@index([experimentId, variant, outcome])
 }
 
 // ─── Help Center ─────────────────────────────────────────────────────────
