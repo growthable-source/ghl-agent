@@ -21,6 +21,7 @@
     "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
+    "@types/web-push": "^3.6.4",
     "@vapi-ai/web": "^2.5.2",
     "@vercel/blob": "^2.3.3",
     "bcryptjs": "^3.0.3",
@@ -36,7 +37,8 @@
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
     "stripe": "^22.0.1",
-    "vercel": "^50.38.1"
+    "vercel": "^50.38.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -702,6 +702,36 @@ model NotificationChannel {
   @@index([workspaceId, type])
 }
 
+// ── Per-user notification routing ─────────────────────────────────────────
+// Lives alongside NotificationChannel. NotificationChannel fans out to a
+// shared destination (e.g. a Slack channel, a team@ inbox); these tables
+// fan out to *each individual user* per their preferences.
+
+model UserNotificationPreference {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  event       String                                // e.g. "widget.new_conversation"
+  channels    String[] @default([])                 // subset of ["email","web_push"]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([userId, workspaceId, event])
+  @@index([workspaceId, event])
+}
+
+model WebPushSubscription {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  endpoint    String   @unique                      // unique per browser/device
+  p256dh      String
+  auth        String
+  userAgent   String?
+  lastUsedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  @@index([userId, workspaceId])
+}
+
 model StopCondition {
   id                String            @id @default(cuid())
   agentId           String
