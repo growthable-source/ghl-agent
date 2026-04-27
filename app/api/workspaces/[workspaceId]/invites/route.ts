@@ -122,6 +122,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (existingUser) {
       const existingMember = await db.workspaceMember.findUnique({
         where: { userId_workspaceId: { userId: existingUser.id, workspaceId } },
+        select: { id: true },
       })
       if (existingMember) {
         results.push({ email, status: 'already_member', crossDomain })

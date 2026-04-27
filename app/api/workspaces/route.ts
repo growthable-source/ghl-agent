@@ -12,9 +12,14 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Explicit select so Prisma doesn't pull every WorkspaceMember column by
+  // default — pending migrations on this table would otherwise crash this
+  // load (e.g. the digestOptIn / lastDigestSentAt columns).
   const memberships = await db.workspaceMember.findMany({
     where: { userId: session.user.id },
-    include: {
+    select: {
+      role: true,
+      createdAt: true,
       workspace: {
         include: {
           _count: { select: { agents: true, locations: true, members: true } },
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest) {
   try {
     const existingMemberships = await db.workspaceMember.findMany({
       where: { userId: session.user.id },
-      include: { workspace: { select: { plan: true } } },
+      select: { workspace: { select: { plan: true } } },
     })
     const plans = existingMemberships.map(m => m.workspace.plan)
     const bestPlan = (['scale', 'growth', 'starter', 'free', 'trial'] as const).find(p => plans.includes(p)) || 'trial'

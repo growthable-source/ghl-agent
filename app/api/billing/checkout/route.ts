@@ -28,9 +28,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid plan or workspaceId' }, { status: 400 })
   }
 
-  // Verify ownership
+  // Verify ownership — explicit select so pending WorkspaceMember
+  // migrations (digestOptIn etc) don't crash the billing path.
   const member = await db.workspaceMember.findUnique({
     where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
+    select: { role: true },
   })
   if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
     return NextResponse.json({ error: 'Only owners and admins can manage billing' }, { status: 403 })

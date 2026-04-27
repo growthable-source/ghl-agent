@@ -1,7 +1,11 @@
 import { ImageResponse } from 'next/og'
 import { findPostBySlug, POSTS } from '@/lib/blog-posts'
 
-export const runtime = 'edge'
+// Next 16 disallows `runtime = 'edge'` on metadata routes that also
+// export generateStaticParams — the build wants to know whether to
+// statically generate per-slug at build time (Node) or render at the
+// edge per request, not both. We pre-render at build, so stick with
+// the default (Node) runtime.
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 export const alt = 'Voxility blog post'

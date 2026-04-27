@@ -13,9 +13,14 @@ export async function GET(
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
+  // Explicit select — pending migrations on WorkspaceMember (e.g.
+  // digestOptIn) would otherwise crash this listing.
   const members = await db.workspaceMember.findMany({
     where: { workspaceId },
-    include: {
+    select: {
+      id: true,
+      role: true,
+      createdAt: true,
       user: { select: { id: true, name: true, email: true, image: true } },
     },
     orderBy: { createdAt: 'asc' },

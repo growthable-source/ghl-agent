@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
 
   const member = await db.workspaceMember.findUnique({
     where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
+    select: { role: true },
   })
   if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
     return NextResponse.json({ error: 'Only owners and admins can manage billing' }, { status: 403 })
@@ -84,6 +85,7 @@ export async function DELETE(req: NextRequest) {
 
   const member = await db.workspaceMember.findUnique({
     where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
+    select: { role: true },
   })
   if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
     return NextResponse.json({ error: 'Only owners and admins can manage billing' }, { status: 403 })
