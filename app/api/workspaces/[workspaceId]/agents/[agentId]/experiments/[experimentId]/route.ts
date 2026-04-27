@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { isMissingColumn, migrationPendingResponse } from '@/lib/migration-error'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string; experimentId: string }> }
 
@@ -22,7 +23,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const agent = await db.agent.findFirst({ where: { id: agentId, workspaceId }, select: { id: true, instructions: true } })
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
-  const exp = await (db as any).agentExperiment.findFirst({ where: { id: experimentId, agentId } })
+  let exp: any
+  try {
+    exp = await (db as any).agentExperiment.findFirst({ where: { id: experimentId, agentId } })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('Experiments', 'manual_agent_experiments.sql')
+    throw err
+  }
   if (!exp) return NextResponse.json({ error: 'Experiment not found' }, { status: 404 })
 
   let body: any = {}
@@ -34,15 +41,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.promote === true) {
     const winner = body.winner === 'A' ? 'A' : 'B'
     const winningPrompt = winner === 'A' ? exp.variantAPrompt : exp.variantBPrompt
-    if (winningPrompt) {
-      const newInstructions = [agent.instructions, winningPrompt].filter(Boolean).join('\n\n')
-      await db.agent.update({ where: { id: agentId }, data: { instructions: newInstructions } })
+    try {
+      if (winningPrompt) {
+        const newInstructions = [agent.instructions, winningPrompt].filter(Boolean).join('\n\n')
+        await db.agent.update({ where: { id: agentId }, data: { instructions: newInstructions } })
+      }
+      await (db as any).agentExperiment.update({
+        where: { id: experimentId },
+        data: { status: 'ended', endedAt: new Date() },
+      })
+      return NextResponse.json({ ok: true, promoted: winner })
+    } catch (err: any) {
+      if (isMissingColumn(err)) return migrationPendingResponse('Experiments', 'manual_agent_experiments.sql')
+      return NextResponse.json({ error: err.message || 'Promote failed' }, { status: 500 })
     }
-    await (db as any).agentExperiment.update({
-      where: { id: experimentId },
-      data: { status: 'ended', endedAt: new Date() },
-    })
-    return NextResponse.json({ ok: true, promoted: winner })
   }
 
   const data: Record<string, unknown> = {}
@@ -64,8 +76,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
   }
 
-  const updated = await (db as any).agentExperiment.update({ where: { id: experimentId }, data })
-  return NextResponse.json({ experiment: updated })
+  try {
+    const updated = await (db as any).agentExperiment.update({ where: { id: experimentId }, data })
+    return NextResponse.json({ experiment: updated })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('Experiments', 'manual_agent_experiments.sql')
+    return NextResponse.json({ error: err.message || 'Failed to update experiment' }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
@@ -76,6 +93,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const agent = await db.agent.findFirst({ where: { id: agentId, workspaceId }, select: { id: true } })
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
-  await (db as any).agentExperiment.delete({ where: { id: experimentId } })
-  return NextResponse.json({ ok: true })
+  try {
+    await (db as any).agentExperiment.delete({ where: { id: experimentId } })
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('Experiments', 'manual_agent_experiments.sql')
+    return NextResponse.json({ error: err.message || 'Failed to delete experiment' }, { status: 500 })
+  }
 }

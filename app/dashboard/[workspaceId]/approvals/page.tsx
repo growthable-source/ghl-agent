@@ -300,22 +300,37 @@ interface AgentJudgeConfig {
 function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
   const [agents, setAgents] = useState<AgentJudgeConfig[] | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents`)
       .then(r => r.json())
-      .then(d => setAgents(d.agents || []))
+      .then(d => {
+        if (d.error) setError(d.error)
+        else setAgents(d.agents || [])
+      })
+      .catch(e => setError(e?.message || 'Could not load agents'))
   }, [workspaceId])
 
   async function update(agentId: string, patch: Partial<AgentJudgeConfig>) {
     setSaving(agentId)
+    setError(null)
     try {
-      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
       })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error || `Save failed (HTTP ${res.status})`)
+        return
+      }
+      // Server may have warned that judge migration is pending — surface it.
+      if (data.warning) setError(data.warning)
       setAgents(prev => prev?.map(a => a.id === agentId ? { ...a, ...patch } as AgentJudgeConfig : a) || null)
+    } catch (err: any) {
+      setError(err?.message || 'Network error')
     } finally { setSaving(null) }
   }
 
@@ -334,6 +349,11 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          {error && (
+            <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs text-amber-300">
+              {error}
+            </div>
+          )}
           {agents === null ? (
             <div className="h-6 w-32 bg-zinc-800 rounded animate-pulse" />
           ) : agents.length === 0 ? (

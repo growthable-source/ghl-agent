@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { isMissingColumn } from '@/lib/migration-error'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -24,9 +25,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
   const body = await req.json()
-  const agent = await db.agent.update({
-    where: { id: agentId },
-    data: {
+  const judgeKeys = ['judgeEnabled', 'judgeModel', 'judgeAutoSend', 'judgeAutoBlock', 'judgeInstructions']
+  const buildData = (includeJudge: boolean): Record<string, unknown> => ({
       ...(body.name !== undefined && { name: body.name }),
       ...(body.systemPrompt !== undefined && { systemPrompt: body.systemPrompt }),
       ...(body.instructions !== undefined && { instructions: body.instructions }),
@@ -56,12 +56,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.isPaused !== undefined && { isPaused: body.isPaused, pausedAt: body.isPaused ? new Date() : null }),
       ...(body.requireApproval !== undefined && { requireApproval: body.requireApproval }),
       ...(body.approvalRules !== undefined && { approvalRules: body.approvalRules }),
-      // AI Judge config
-      ...(body.judgeEnabled !== undefined && { judgeEnabled: !!body.judgeEnabled }),
-      ...(body.judgeModel !== undefined && { judgeModel: body.judgeModel === 'sonnet' ? 'sonnet' : 'haiku' }),
-      ...(body.judgeAutoSend !== undefined && { judgeAutoSend: !!body.judgeAutoSend }),
-      ...(body.judgeAutoBlock !== undefined && { judgeAutoBlock: !!body.judgeAutoBlock }),
-      ...(body.judgeInstructions !== undefined && {
+      // AI Judge config — only included when includeJudge=true so the
+      // PATCH degrades gracefully on a DB where manual_ai_judge.sql
+      // hasn't run yet (we retry without these on P2022).
+      ...(includeJudge && body.judgeEnabled !== undefined && { judgeEnabled: !!body.judgeEnabled }),
+      ...(includeJudge && body.judgeModel !== undefined && { judgeModel: body.judgeModel === 'sonnet' ? 'sonnet' : 'haiku' }),
+      ...(includeJudge && body.judgeAutoSend !== undefined && { judgeAutoSend: !!body.judgeAutoSend }),
+      ...(includeJudge && body.judgeAutoBlock !== undefined && { judgeAutoBlock: !!body.judgeAutoBlock }),
+      ...(includeJudge && body.judgeInstructions !== undefined && {
         judgeInstructions: typeof body.judgeInstructions === 'string'
           ? body.judgeInstructions.trim() || null
           : null,
@@ -77,9 +79,36 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ? body.businessContext.trim() || null
           : null,
       }),
-    },
   })
-  return NextResponse.json({ agent })
+
+  // Try once with judge fields. If those columns are missing, retry
+  // without them so the rest of the PATCH still goes through and the UI
+  // gets clear signal that the AI Judge migration is pending.
+  const wantsJudge = judgeKeys.some(k => body[k] !== undefined)
+  try {
+    const agent = await db.agent.update({ where: { id: agentId }, data: buildData(true) as any })
+    return NextResponse.json({ agent })
+  } catch (err: any) {
+    if (isMissingColumn(err) && wantsJudge) {
+      try {
+        const agent = await db.agent.update({ where: { id: agentId }, data: buildData(false) as any })
+        return NextResponse.json({
+          agent,
+          warning: 'Judge config skipped — run prisma/migrations-legacy/manual_ai_judge.sql to enable it.',
+          code: 'JUDGE_MIGRATION_PENDING',
+        })
+      } catch (err2: any) {
+        return NextResponse.json({ error: err2.message || 'Failed to update agent' }, { status: 500 })
+      }
+    }
+    if (isMissingColumn(err)) {
+      return NextResponse.json({
+        error: 'Some agent columns are missing — check pending Prisma migrations.',
+        code: 'MIGRATION_PENDING',
+      }, { status: 503 })
+    }
+    return NextResponse.json({ error: err.message || 'Failed to update agent' }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {

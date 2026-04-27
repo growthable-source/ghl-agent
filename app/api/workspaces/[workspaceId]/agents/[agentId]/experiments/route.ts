@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { getExperimentStats } from '@/lib/experiments'
+import { isMissingColumn, migrationPendingResponse } from '@/lib/migration-error'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -49,19 +50,24 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'hypothesis and variantBPrompt required' }, { status: 400 })
   }
 
-  const exp = await (db as any).agentExperiment.create({
-    data: {
-      agentId,
-      hypothesis,
-      variantALabel: body.variantALabel || 'control',
-      variantBLabel: body.variantBLabel || 'variant-b',
-      variantAPrompt: body.variantAPrompt || null,
-      variantBPrompt,
-      metric: body.metric || 'any_goal',
-      splitPercent: typeof body.splitPercent === 'number' ? body.splitPercent : 50,
-      status: 'draft',
-      proposedBy: body.proposedBy || 'operator',
-    },
-  })
-  return NextResponse.json({ experiment: exp })
+  try {
+    const exp = await (db as any).agentExperiment.create({
+      data: {
+        agentId,
+        hypothesis,
+        variantALabel: body.variantALabel || 'control',
+        variantBLabel: body.variantBLabel || 'variant-b',
+        variantAPrompt: body.variantAPrompt || null,
+        variantBPrompt,
+        metric: body.metric || 'any_goal',
+        splitPercent: typeof body.splitPercent === 'number' ? body.splitPercent : 50,
+        status: 'draft',
+        proposedBy: body.proposedBy || 'operator',
+      },
+    })
+    return NextResponse.json({ experiment: exp })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('Experiments', 'manual_agent_experiments.sql')
+    return NextResponse.json({ error: err.message || 'Failed to create experiment' }, { status: 500 })
+  }
 }

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { encryptSecret } from '@/lib/secrets'
 import { MCP_REGISTRY } from '@/lib/mcp-registry'
+import { isMissingColumn, migrationPendingResponse } from '@/lib/migration-error'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { authSecretEnc: _, ...safe } = server
     return NextResponse.json({ server: safe })
   } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('MCP connectors', 'manual_mcp_connectors.sql')
     return NextResponse.json({ error: err.message || 'Failed to create MCP server' }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { isMissingColumn, migrationPendingResponse } from '@/lib/migration-error'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -71,13 +72,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     requireApproval: !!body.requireApproval,
   }
 
-  const attachment = await db.agentMcpTool.upsert({
-    where: { agentId_mcpServerId_toolName: { agentId, mcpServerId, toolName } },
-    create: { agentId, mcpServerId, toolName, ...data },
-    update: data,
-  })
-
-  return NextResponse.json({ attachment })
+  try {
+    const attachment = await db.agentMcpTool.upsert({
+      where: { agentId_mcpServerId_toolName: { agentId, mcpServerId, toolName } },
+      create: { agentId, mcpServerId, toolName, ...data },
+      update: data,
+    })
+    return NextResponse.json({ attachment })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('MCP connectors', 'manual_mcp_connectors.sql')
+    return NextResponse.json({ error: err.message || 'Failed to save attachment' }, { status: 500 })
+  }
 }
 
 /**
@@ -92,8 +97,13 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id query param required' }, { status: 400 })
 
-  const att = await db.agentMcpTool.findFirst({ where: { id, agentId } })
-  if (!att) return NextResponse.json({ error: 'Attachment not found' }, { status: 404 })
-  await db.agentMcpTool.delete({ where: { id } })
-  return NextResponse.json({ success: true })
+  try {
+    const att = await db.agentMcpTool.findFirst({ where: { id, agentId } })
+    if (!att) return NextResponse.json({ error: 'Attachment not found' }, { status: 404 })
+    await db.agentMcpTool.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('MCP connectors', 'manual_mcp_connectors.sql')
+    return NextResponse.json({ error: err.message || 'Failed to delete attachment' }, { status: 500 })
+  }
 }

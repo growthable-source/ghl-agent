@@ -83,6 +83,9 @@ export default function WidgetEditorPage() {
         setSaveError(data.error || 'Failed to save')
         return
       }
+      // PATCH may return a warning when click-to-call columns aren't migrated.
+      // Show it as a soft warning so the operator knows what to run.
+      if (data.warning) setSaveError(data.warning)
       if (data.widget) setWidget(data.widget)
       setDirty(false)
     } finally { setSaving(false) }

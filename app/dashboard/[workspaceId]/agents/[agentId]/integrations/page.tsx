@@ -54,16 +54,27 @@ export default function AgentIntegrationsPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [loading, setLoading] = useState(true)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [pageError, setPageError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    const [serversRes, attRes] = await Promise.all([
-      fetch(`/api/workspaces/${workspaceId}/mcp-servers`).then(r => r.json()),
-      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/mcp-tools`).then(r => r.json()),
-    ])
-    setServers(serversRes.servers || [])
-    setRegistry(serversRes.registry || [])
-    setAttachments(attRes.attachments || [])
-    setLoading(false)
+    try {
+      const [serversRes, attRes] = await Promise.all([
+        fetch(`/api/workspaces/${workspaceId}/mcp-servers`).then(r => r.json()),
+        fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/mcp-tools`).then(r => r.json()),
+      ])
+      setServers(serversRes.servers || [])
+      setRegistry(serversRes.registry || [])
+      setAttachments(attRes.attachments || [])
+      if (serversRes.notMigrated || attRes.notMigrated) {
+        setPageError('MCP connectors need a database migration — run prisma/migrations-legacy/manual_mcp_connectors.sql in Supabase.')
+      } else if (serversRes.error || attRes.error) {
+        setPageError(serversRes.error || attRes.error)
+      } else {
+        setPageError(null)
+      }
+    } catch (err: any) {
+      setPageError(err?.message || 'Could not load integrations')
+    } finally { setLoading(false) }
   }, [workspaceId, agentId])
 
   useEffect(() => { refresh() }, [refresh])
@@ -88,6 +99,12 @@ export default function AgentIntegrationsPage() {
           + Connect MCP
         </button>
       </div>
+
+      {pageError && (
+        <div className="mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs text-amber-300">
+          {pageError}
+        </div>
+      )}
 
       <div className="flex gap-1 border-b border-zinc-800 mb-6">
         <button
@@ -152,16 +169,30 @@ function ConnectedView({
     )
   }
 
+  const [discoverError, setDiscoverError] = useState<string | null>(null)
   async function discover(serverId: string) {
     setBusy(serverId)
+    setDiscoverError(null)
     try {
-      await fetch(`/api/workspaces/${workspaceId}/mcp-servers/${serverId}/discover`, { method: 'POST' })
+      const res = await fetch(`/api/workspaces/${workspaceId}/mcp-servers/${serverId}/discover`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setDiscoverError(data.error || `Discovery failed (HTTP ${res.status})`)
+        return
+      }
       await onRefresh()
+    } catch (err: any) {
+      setDiscoverError(err?.message || 'Network error')
     } finally { setBusy(null) }
   }
 
   return (
     <div className="space-y-4">
+      {discoverError && (
+        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs text-red-300">
+          {discoverError}
+        </div>
+      )}
       {servers.map(s => {
         const tools = s.discoveredTools || []
         return (
@@ -236,6 +267,7 @@ function ToolRow({
   const [keywordsText, setKeywordsText] = useState((attachment?.mustIncludeKeywords ?? []).join(', '))
   const [requireApproval, setRequireApproval] = useState(attachment?.requireApproval ?? false)
   const [saving, setSaving] = useState(false)
+  const [rowError, setRowError] = useState<string | null>(null)
 
   // Sync local state when attachment from server changes
   useEffect(() => {
@@ -247,9 +279,10 @@ function ToolRow({
 
   async function save(nextEnabled?: boolean) {
     setSaving(true)
+    setRowError(null)
     try {
       const keywords = keywordsText.split(',').map(s => s.trim()).filter(Boolean)
-      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/mcp-tools`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/mcp-tools`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -261,7 +294,14 @@ function ToolRow({
           requireApproval,
         }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setRowError(data.error || `Save failed (HTTP ${res.status})`)
+        return
+      }
       await onChange()
+    } catch (err: any) {
+      setRowError(err?.message || 'Network error')
     } finally { setSaving(false) }
   }
 
@@ -274,12 +314,27 @@ function ToolRow({
   async function detach() {
     if (!attachment) return
     if (!confirm(`Detach "${tool.name}" from this agent?`)) return
-    await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/mcp-tools?id=${attachment.id}`, { method: 'DELETE' })
-    await onChange()
+    setRowError(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/mcp-tools?id=${attachment.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setRowError(data.error || `Detach failed (HTTP ${res.status})`)
+        return
+      }
+      await onChange()
+    } catch (err: any) {
+      setRowError(err?.message || 'Network error')
+    }
   }
 
   return (
     <div className={`px-5 py-4 border-b border-zinc-800 last:border-b-0 ${!enabled ? 'opacity-60' : ''}`}>
+      {rowError && (
+        <div className="mb-2 p-2 rounded border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
+          {rowError}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">

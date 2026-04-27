@@ -153,24 +153,41 @@ function ExperimentCard({
   const [busy, setBusy] = useState<string | null>(null)
   const badge = STATUS_BADGE[exp.status] || STATUS_BADGE.draft
 
+  const [error, setError] = useState<string | null>(null)
   async function patch(body: Record<string, unknown>, label: string) {
     setBusy(label)
+    setError(null)
     try {
-      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/experiments/${exp.id}`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/experiments/${exp.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || `Update failed (HTTP ${res.status})`)
+        return
+      }
       await onChange()
+    } catch (err: any) {
+      setError(err?.message || 'Network error')
     } finally { setBusy(null) }
   }
 
   async function remove() {
     if (!confirm('Delete this experiment? This also removes its exposure/conversion events.')) return
     setBusy('delete')
+    setError(null)
     try {
-      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/experiments/${exp.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/experiments/${exp.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || `Delete failed (HTTP ${res.status})`)
+        return
+      }
       await onChange()
+    } catch (err: any) {
+      setError(err?.message || 'Network error')
     } finally { setBusy(null) }
   }
 
@@ -215,6 +232,12 @@ function ExperimentCard({
               <p className="text-[10px] text-zinc-500">Need 50+ exposures</p>
             )}
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-2 p-2 rounded border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
+          {error}
         </div>
       )}
 

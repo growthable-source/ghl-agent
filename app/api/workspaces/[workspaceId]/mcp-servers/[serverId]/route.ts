@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { encryptSecret } from '@/lib/secrets'
+import { isMissingColumn, migrationPendingResponse } from '@/lib/migration-error'
 
 type Params = { params: Promise<{ workspaceId: string; serverId: string }> }
 
@@ -53,9 +54,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
   }
 
-  const server = await db.mcpServer.update({ where: { id: serverId }, data })
-  const { authSecretEnc, ...safe } = server
-  return NextResponse.json({ server: safe })
+  try {
+    const server = await db.mcpServer.update({ where: { id: serverId }, data })
+    const { authSecretEnc, ...safe } = server
+    return NextResponse.json({ server: safe })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('MCP connectors', 'manual_mcp_connectors.sql')
+    return NextResponse.json({ error: err.message || 'Failed to update MCP server' }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
@@ -63,6 +69,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
-  await db.mcpServer.delete({ where: { id: serverId } })
-  return NextResponse.json({ success: true })
+  try {
+    await db.mcpServer.delete({ where: { id: serverId } })
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    if (isMissingColumn(err)) return migrationPendingResponse('MCP connectors', 'manual_mcp_connectors.sql')
+    return NextResponse.json({ error: err.message || 'Failed to delete MCP server' }, { status: 500 })
+  }
 }

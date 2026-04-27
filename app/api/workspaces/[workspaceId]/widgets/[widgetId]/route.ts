@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { isMissingColumn } from '@/lib/migration-error'
 
 type Params = { params: Promise<{ workspaceId: string; widgetId: string }> }
 
@@ -51,12 +52,39 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.slug = cleaned || null
   }
 
+  // Click-to-call columns that may not exist pre-migration. If the
+  // update touches any of these and the DB is on the old schema, retry
+  // with just the legacy fields and warn the operator.
+  const ctcKeys = ['type', 'slug', 'embedMode', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor', 'hostedPageHeadline', 'hostedPageSubtext']
+  const touchesCtc = ctcKeys.some(k => data[k] !== undefined)
+
   try {
     const widget = await db.chatWidget.update({ where: { id: widgetId }, data })
     return NextResponse.json({ widget })
   } catch (err: any) {
     if (err.code === 'P2002') {
       return NextResponse.json({ error: 'That slug is already taken' }, { status: 409 })
+    }
+    if (isMissingColumn(err) && touchesCtc) {
+      // Retry without the click-to-call fields so the legacy fields still save.
+      const legacyData = { ...data }
+      for (const k of ctcKeys) delete legacyData[k]
+      try {
+        const widget = await db.chatWidget.update({ where: { id: widgetId }, data: legacyData })
+        return NextResponse.json({
+          widget,
+          warning: 'Click-to-call fields skipped — run prisma/migrations-legacy/manual_widget_click_to_call.sql to enable them.',
+          code: 'CLICK_TO_CALL_MIGRATION_PENDING',
+        })
+      } catch (err2: any) {
+        return NextResponse.json({ error: err2.message || 'Failed to update widget' }, { status: 500 })
+      }
+    }
+    if (isMissingColumn(err)) {
+      return NextResponse.json({
+        error: 'Widget table is missing columns — check pending migrations.',
+        code: 'MIGRATION_PENDING',
+      }, { status: 503 })
     }
     return NextResponse.json({ error: err.message || 'Failed to update widget' }, { status: 500 })
   }
