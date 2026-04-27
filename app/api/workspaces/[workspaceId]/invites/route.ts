@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { canInviteCrossDomain, canAddTeamMember, isTrialExpired } from '@/lib/plans'
+import { canInviteCrossDomain, canAddTeamMember, isTrialExpired, recommendPlanForLimit, PLAN_FEATURES } from '@/lib/plans'
 import { isInternalWorkspace } from '@/lib/internal-workspace'
 
 type Params = { params: Promise<{ workspaceId: string }> }
@@ -71,17 +71,36 @@ export async function POST(req: NextRequest, { params }: Params) {
   const internal = await isInternalWorkspace(workspaceId)
 
   if (!internal && workspace?.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
+    const recommendedPlan = recommendPlanForLimit('trial', 'TRIAL_EXPIRED')
+    const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
     return NextResponse.json({
-      error: 'Your trial has expired. Please upgrade to invite team members.',
+      error: 'Your trial has expired.',
       code: 'TRIAL_EXPIRED',
+      currentPlan: workspace.plan,
+      recommendedPlan,
+      recommendedPlanLabel: recommendedFeatures?.label ?? null,
+      recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
+      benefit: 'Invite teammates again',
     }, { status: 403 })
   }
 
   const currentMemberCount = await db.workspaceMember.count({ where: { workspaceId } })
   if (!internal && !canAddTeamMember(workspace?.plan || 'free', currentMemberCount)) {
+    const planNow = workspace?.plan || 'free'
+    const recommendedPlan = recommendPlanForLimit(planNow, 'MEMBER_LIMIT')
+    const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
     return NextResponse.json({
-      error: 'Team member limit reached. Upgrade your plan to add more members.',
+      error: 'Team member limit reached.',
       code: 'MEMBER_LIMIT',
+      currentPlan: planNow,
+      currentCount: currentMemberCount,
+      recommendedPlan,
+      recommendedPlanLabel: recommendedFeatures?.label ?? null,
+      recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
+      recommendedPlanCapacity: recommendedFeatures?.teamMembers === Infinity ? null : recommendedFeatures?.teamMembers ?? null,
+      benefit: recommendedFeatures
+        ? (recommendedFeatures.teamMembers === Infinity ? 'Unlimited team seats' : `${recommendedFeatures.teamMembers} team seats`)
+        : null,
     }, { status: 403 })
   }
 

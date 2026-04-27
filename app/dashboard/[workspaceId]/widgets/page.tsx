@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import PlanLimitNotice, { isPlanLimitError, type PlanLimitData } from '@/components/PlanLimitNotice'
 
 interface Widget {
   id: string
@@ -27,6 +28,7 @@ export default function WidgetsPage() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [notMigrated, setNotMigrated] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [planLimit, setPlanLimit] = useState<PlanLimitData | null>(null)
 
   const fetchWidgets = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/widgets`)
@@ -41,6 +43,7 @@ export default function WidgetsPage() {
   async function createWidget(type: 'chat' | 'click_to_call') {
     setCreating(true)
     setCreateError(null)
+    setPlanLimit(null)
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/widgets`, {
         method: 'POST',
@@ -52,7 +55,11 @@ export default function WidgetsPage() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.widget) {
-        setCreateError(data.error || `Could not create widget (HTTP ${res.status})`)
+        if (isPlanLimitError(data)) {
+          setPlanLimit(data)
+        } else {
+          setCreateError(data.error || `Could not create widget (HTTP ${res.status})`)
+        }
         return
       }
       setPickerOpen(false)
@@ -92,7 +99,12 @@ export default function WidgetsPage() {
                 <button onClick={() => setPickerOpen(false)} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
               </div>
               <p className="text-xs text-zinc-500 mb-5">Pick what you&apos;re embedding.</p>
-              {createError && (
+              {planLimit && (
+                <div className="mb-4">
+                  <PlanLimitNotice workspaceId={workspaceId} data={planLimit} />
+                </div>
+              )}
+              {createError && !planLimit && (
                 <div className="mb-4 p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs text-red-300">
                   {createError}
                 </div>

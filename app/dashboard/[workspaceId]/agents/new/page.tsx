@@ -10,6 +10,7 @@ import {
 } from '@/components/icons/brand-icons'
 import { BUSINESS_CONTEXT_EXAMPLES } from '@/lib/business-context-examples'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
+import PlanLimitNotice, { isPlanLimitError, type PlanLimitData } from '@/components/PlanLimitNotice'
 
 type Step = 'template' | 'crm' | 'calendar' | 'channels' | 'build'
 
@@ -204,6 +205,7 @@ export default function NewAgentWizard() {
   const [businessContext, setBusinessContext] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [planLimit, setPlanLimit] = useState<PlanLimitData | null>(null)
   // Track whether the user has hand-edited the name. Template changes only
   // overwrite the name while it's still template-derived — otherwise we'd
   // clobber a name the user typed. Previously this used `if (!name)` which
@@ -244,6 +246,7 @@ export default function NewAgentWizard() {
     if (!name.trim() || !systemPrompt.trim()) return
     setSaving(true)
     setError('')
+    setPlanLimit(null)
 
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents`, {
@@ -262,6 +265,11 @@ export default function NewAgentWizard() {
       })
       const data = await res.json()
       if (!res.ok) {
+        if (isPlanLimitError(data)) {
+          setPlanLimit(data)
+          setSaving(false)
+          return
+        }
         throw new Error(data.error || `Failed to create agent (${res.status})`)
       }
 
@@ -674,7 +682,10 @@ export default function NewAgentWizard() {
                 </div>
               )}
 
-              {error && <p className="text-red-400 text-sm">{error}</p>}
+              {planLimit && (
+                <PlanLimitNotice workspaceId={workspaceId} data={planLimit} />
+              )}
+              {error && !planLimit && <p className="text-red-400 text-sm">{error}</p>}
             </div>
           </div>
         )}

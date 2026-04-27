@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { canCreateAgent, isTrialExpired, getPlanFeatures } from '@/lib/plans'
+import { canCreateAgent, isTrialExpired, getPlanFeatures, recommendPlanForLimit, PLAN_FEATURES } from '@/lib/plans'
 import { isInternalWorkspace } from '@/lib/internal-workspace'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
@@ -105,19 +105,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   if (workspace && !internal) {
     // Block expired trials
     if (workspace.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
+      const recommendedPlan = recommendPlanForLimit('trial', 'TRIAL_EXPIRED')
+      const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
       return NextResponse.json({
-        error: 'Your trial has expired. Please upgrade to continue creating agents.',
+        error: 'Your trial has expired.',
         code: 'TRIAL_EXPIRED',
+        currentPlan: workspace.plan,
+        recommendedPlan,
+        recommendedPlanLabel: recommendedFeatures?.label ?? null,
+        recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
+        benefit: 'Keep your agents running',
       }, { status: 403 })
     }
 
     const currentAgentCount = await db.agent.count({ where: { workspaceId } })
     if (!canCreateAgent(workspace.plan, currentAgentCount, workspace.extraAgentCount ?? 0)) {
+      const recommendedPlan = recommendPlanForLimit(workspace.plan, 'AGENT_LIMIT')
+      const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
       return NextResponse.json({
-        error: `Agent limit reached (${currentAgentCount}/${workspace.agentLimit}). Upgrade your plan or add extra agent slots.`,
+        error: `Agent limit reached (${currentAgentCount}/${workspace.agentLimit}).`,
         code: 'AGENT_LIMIT',
+        currentPlan: workspace.plan,
         currentCount: currentAgentCount,
-        limit: workspace.agentLimit,
+        currentLimit: workspace.agentLimit,
+        recommendedPlan,
+        recommendedPlanLabel: recommendedFeatures?.label ?? null,
+        recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
+        recommendedPlanCapacity: recommendedFeatures?.agents ?? null,
+        benefit: recommendedFeatures ? `${recommendedFeatures.agents} agent slots` : null,
       }, { status: 403 })
     }
   }

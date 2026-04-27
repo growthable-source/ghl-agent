@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { generatePublicKey } from '@/lib/widget-auth'
-import { canCreateWidget, widgetLimit } from '@/lib/plans'
+import { canCreateWidget, widgetLimit, recommendPlanForLimit, PLAN_FEATURES } from '@/lib/plans'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -45,9 +45,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (ws) {
       const current = await db.chatWidget.count({ where: { workspaceId } })
       if (!canCreateWidget(ws.plan, current)) {
+        const recommendedPlan = recommendPlanForLimit(ws.plan, 'WIDGET_LIMIT')
+        const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
+        const recommendedCap = recommendedPlan ? widgetLimit(recommendedPlan) : null
         return NextResponse.json({
-          error: `Widget limit reached on the ${ws.plan} plan (${current}/${widgetLimit(ws.plan)}). Upgrade to create more.`,
+          error: `Widget limit reached on the ${ws.plan} plan (${current}/${widgetLimit(ws.plan)}).`,
           code: 'WIDGET_LIMIT',
+          currentPlan: ws.plan,
+          currentCount: current,
+          currentLimit: widgetLimit(ws.plan),
+          recommendedPlan,
+          recommendedPlanLabel: recommendedFeatures?.label ?? null,
+          recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
+          recommendedPlanCapacity: recommendedCap,
+          benefit: recommendedPlan === 'scale'
+            ? 'Unlimited widgets'
+            : recommendedCap === Infinity ? 'Unlimited widgets' : `${recommendedCap} widgets`,
         }, { status: 403 })
       }
     }

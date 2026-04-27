@@ -294,6 +294,46 @@ export function canUseFeature(plan: string, feature: keyof PlanFeatures): boolea
   return true
 }
 
+/**
+ * Plan-limit codes returned by API endpoints when an action would exceed
+ * the workspace's plan. The dashboard uses these to render an upgrade CTA
+ * inline rather than a dead-end "Upgrade" sentence.
+ */
+export type PlanLimitCode = 'WIDGET_LIMIT' | 'AGENT_LIMIT' | 'MEMBER_LIMIT' | 'TRIAL_EXPIRED'
+
+/**
+ * Given the current plan and the limit the user just hit, recommend the
+ * cheapest plan that lifts that specific limit. Returns null if they're
+ * already on the highest plan that gates the limit.
+ */
+export function recommendPlanForLimit(currentPlan: string, code: PlanLimitCode): PlanId | null {
+  if (code === 'TRIAL_EXPIRED') return 'starter'
+
+  const tiers: PlanId[] = ['starter', 'growth', 'scale']
+  // Start above the current tier; if currentPlan is unknown (free/trial),
+  // start at the bottom paid tier.
+  const idx = tiers.indexOf(currentPlan as PlanId)
+  const start = idx >= 0 ? idx + 1 : 0
+
+  for (let i = start; i < tiers.length; i++) {
+    const next = tiers[i]
+    const f = PLAN_FEATURES[next]
+    if (!f) continue
+    if (code === 'WIDGET_LIMIT') {
+      const cap = WIDGETS_PER_PLAN[next] ?? 0
+      const cur = WIDGETS_PER_PLAN[currentPlan] ?? 0
+      if (cap > cur) return next
+    } else if (code === 'AGENT_LIMIT') {
+      const curAgents = PLAN_FEATURES[currentPlan as PlanId]?.agents ?? 0
+      if (f.agents > curAgents) return next
+    } else if (code === 'MEMBER_LIMIT') {
+      const curMembers = PLAN_FEATURES[currentPlan as PlanId]?.teamMembers ?? 0
+      if (f.teamMembers > curMembers) return next
+    }
+  }
+  return null
+}
+
 /** Check if trial has expired */
 export function isTrialExpired(trialEndsAt: Date | null): boolean {
   if (!trialEndsAt) return false
