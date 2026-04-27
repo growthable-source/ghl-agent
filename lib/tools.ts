@@ -56,6 +56,11 @@ export const ALL_TOOLS: ToolDefinition[] = [
   // Automation
   { name: 'schedule_followup', label: 'Schedule Follow-up', description: 'Queue an automated follow-up SMS after a delay', category: 'automation' },
   { name: 'transfer_to_human', label: 'Transfer to Human', description: 'Escalate the conversation to a human agent with context', category: 'automation' },
+
+  // Live data sources (configured per-workspace under Settings → Data sources)
+  { name: 'lookup_sheet', label: 'Google Sheet lookup', description: 'Read live rows from a connected Google Sheet at request time. Configure sheets under Settings → Data sources.', category: 'intelligence', requiresConfig: true },
+  { name: 'query_airtable', label: 'Airtable query', description: 'Query a connected Airtable base with an optional filter formula at request time.', category: 'intelligence', requiresConfig: true },
+  { name: 'fetch_data', label: 'Custom REST GET', description: 'Call a saved REST endpoint at request time and return the response.', category: 'intelligence', requiresConfig: true },
 ]
 
 export const DEFAULT_TOOLS = ALL_TOOLS

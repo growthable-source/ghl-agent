@@ -691,6 +691,26 @@ model AgentTemplate {
 }
 
 // ─── Notification Channels (Slack + Email) ─────────────────────────────────
+// ── Workspace data sources ────────────────────────────────────────────────
+// Operator-curated handles to live data the agent can query at runtime via
+// the lookup_sheet, query_airtable, and fetch_data tools. The agent
+// references them by `name`; tool descriptions list the available sources
+// + their descriptions so Claude knows when to call which.
+model WorkspaceDataSource {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String                                 // slug-ish, e.g. "inventory"
+  kind        String                                 // "google_sheet" | "airtable" | "rest_get"
+  description String?
+  config      Json     @default("{}")                // sheet URL, base ID, table, headers, etc.
+  secretEnc   String?                                // AES-256-GCM (lib/secrets.ts)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
 model NotificationChannel {
   id          String   @id @default(cuid())
   workspaceId String

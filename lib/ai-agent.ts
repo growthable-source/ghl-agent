@@ -496,6 +496,48 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['contactId', 'reason'],
     },
   },
+  // ── Live data sources (workspace-curated) ──────────────────────────────
+  // The three tools below wrap operator-managed data sources stored in
+  // WorkspaceDataSource. The agent passes a `source` name; the runtime
+  // resolves it to the saved config (URL, token, etc) and executes the
+  // call. Prompt block injected into buildSystemPrompt lists the
+  // available source names so the model knows what's at hand.
+  {
+    name: 'lookup_sheet',
+    description: 'Read live data from a Google Sheet that the operator has connected. Use when the contact asks about something the saved sheet covers (inventory, pricing, schedules, etc). Pass the source name + an optional plain-text query to filter rows. Returns CSV-shaped text.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        source: { type: 'string', description: 'The configured data-source name (see system prompt for available names).' },
+        query: { type: 'string', description: 'Optional case-insensitive substring filter on rows. Header row is always returned.' },
+      },
+      required: ['source'],
+    },
+  },
+  {
+    name: 'query_airtable',
+    description: 'Query a connected Airtable base. Pass the source name; optionally a filterByFormula and a maxRecords cap.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        source: { type: 'string', description: 'The configured data-source name (see system prompt).' },
+        formula: { type: 'string', description: 'Optional Airtable filterByFormula expression. E.g. {Status}=\'Open\' or LOWER({Email})=\'foo@bar.com\'.' },
+        maxRecords: { type: 'number', description: 'Limit (1–50). Defaults to 10.' },
+      },
+      required: ['source'],
+    },
+  },
+  {
+    name: 'fetch_data',
+    description: 'Call a saved REST GET endpoint that the operator has connected (e.g. an internal status API). Pass the source name. Returns the raw response text.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        source: { type: 'string', description: 'The configured data-source name (see system prompt).' },
+      },
+      required: ['source'],
+    },
+  },
 ]
 
 // ─── Workflow tool constraint ──────────────────────────────────────────────
@@ -707,6 +749,8 @@ async function executeTool(
   fieldOverwriteMap?: Record<string, boolean>,
   /** transfer_to_human writes here — runAgent fires notify() afterwards. */
   handoverCapture?: HandoverCapture,
+  /** Workspace ID — used to scope the live-data tools (lookup_sheet etc). */
+  workspaceId?: string | null,
 ): Promise<string> {
   // In sandbox, allow read-only tools to hit the real CRM so the agent
   // sees actual data. Writes (send_reply, book_appointment, update_*,
@@ -1353,6 +1397,37 @@ async function executeTool(
           note: 'Conversation paused. Contact tagged for human follow-up.',
         })
       }
+      // ── Live data sources ─────────────────────────────────────────────
+      case 'lookup_sheet': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for data lookup' })
+        const { runSheetLookup } = await import('./data-sources')
+        const result = await runSheetLookup({
+          workspaceId,
+          source: String((input as any).source || ''),
+          query: (input as any).query as string | undefined,
+        })
+        return result
+      }
+      case 'query_airtable': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for data lookup' })
+        const { runAirtableQuery } = await import('./data-sources')
+        const result = await runAirtableQuery({
+          workspaceId,
+          source: String((input as any).source || ''),
+          formula: (input as any).formula as string | undefined,
+          maxRecords: (input as any).maxRecords as number | undefined,
+        })
+        return result
+      }
+      case 'fetch_data': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for data lookup' })
+        const { runRestGet } = await import('./data-sources')
+        const result = await runRestGet({
+          workspaceId,
+          source: String((input as any).source || ''),
+        })
+        return result
+      }
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
@@ -1731,9 +1806,11 @@ export async function runAgent(opts: {
   // Resolve the workspace via the Agent row first (explicit link), then
   // fall back to the Location's workspace. Null is fine — the loader
   // still returns the global (scope=all_agents) block.
-  let platformGuidelinesBlock = ''
+  // Resolve workspaceId once — reused for platform guidelines, data
+  // sources, MCP, and any other workspace-scoped lookup below. Null is
+  // valid (sandbox / no-agent path); downstream consumers handle it.
+  let workspaceId: string | null = null
   try {
-    let workspaceId: string | null = null
     if (!isSandbox) {
       if (agentId) {
         const row = await (await import('./db')).db.agent.findUnique({
@@ -1752,6 +1829,12 @@ export async function runAgent(opts: {
         workspaceId = row?.workspaceId ?? null
       }
     }
+  } catch (err: any) {
+    console.warn('[Agent] workspaceId resolution failed:', err.message)
+  }
+
+  let platformGuidelinesBlock = ''
+  try {
     platformGuidelinesBlock = await loadPlatformGuidelinesBlock(workspaceId)
   } catch (err: any) {
     // Non-fatal. Never block an inbound on a learnings lookup — the
@@ -1774,6 +1857,23 @@ export async function runAgent(opts: {
     }
   } catch (err: any) {
     console.warn('[Agent] experiment resolution failed:', err.message)
+  }
+
+  // ─── Live data sources (Google Sheets / Airtable / saved REST) ───
+  // Resolve every active WorkspaceDataSource for this workspace and
+  // describe them in the system prompt so the model knows which `source`
+  // names it can pass to lookup_sheet / query_airtable / fetch_data.
+  let dataSourcesBlock = ''
+  let dataSourcesList: Array<{ id: string; name: string; kind: string }> = []
+  try {
+    if (!isSandbox && workspaceId) {
+      const { listActiveDataSources, describeDataSources } = await import('./data-sources')
+      const sources = await listActiveDataSources(workspaceId)
+      dataSourcesBlock = describeDataSources(sources)
+      dataSourcesList = sources.map(s => ({ id: s.id, name: s.name, kind: s.kind }))
+    }
+  } catch (err: any) {
+    console.warn('[Agent] data-source load failed:', err.message)
   }
 
   // ─── MCP attachments ───
@@ -1881,7 +1981,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock) + experimentBlock,
+      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock) + experimentBlock + dataSourcesBlock,
       tools,
       messages: currentMessages,
     }
@@ -2032,6 +2132,7 @@ export async function runAgent(opts: {
         deferredSend,
         fieldOverwriteMap,
         handoverCapture,
+        workspaceId,
       )
       toolCallTrace.push({
         tool: toolBlock.name,

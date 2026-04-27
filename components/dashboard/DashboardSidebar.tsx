@@ -178,6 +178,7 @@ function SidebarBody() {
                 </div>
                 {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
                 {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
+                {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}
                 {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
                 {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
               </>
