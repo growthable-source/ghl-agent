@@ -143,12 +143,28 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(true)
   const [entries, setEntries] = useState<KnowledgeEntry[]>([])
   const [schedules, setSchedules] = useState<CrawlSchedule[]>([])
-  const [tab, setTab] = useState<'manual' | 'url' | 'file' | 'scheduled'>('manual')
+  const [tab, setTab] = useState<'manual' | 'qa' | 'url' | 'file' | 'notion' | 'youtube' | 'scheduled'>('manual')
 
   // Manual
   const [kTitle, setKTitle] = useState('')
   const [kContent, setKContent] = useState('')
   const [addingK, setAddingK] = useState(false)
+
+  // Q&A pairs (FAQ format)
+  const [qaTitle, setQaTitle] = useState('')
+  const [qaPairs, setQaPairs] = useState<Array<{ q: string; a: string }>>([{ q: '', a: '' }])
+  const [addingQa, setAddingQa] = useState(false)
+
+  // Notion
+  const [notionToken, setNotionToken] = useState('')
+  const [notionPageId, setNotionPageId] = useState('')
+  const [notionStatus, setNotionStatus] = useState<string | null>(null)
+  const [notionImporting, setNotionImporting] = useState(false)
+
+  // YouTube
+  const [ytUrl, setYtUrl] = useState('')
+  const [ytStatus, setYtStatus] = useState<string | null>(null)
+  const [ytImporting, setYtImporting] = useState(false)
 
   // URL one-off
   const [crawlUrl, setCrawlUrl] = useState('')
@@ -220,6 +236,80 @@ export default function KnowledgePage() {
     setKTitle('')
     setKContent('')
     setAddingK(false)
+  }
+
+  // Q&A pairs — composes the Q/A pairs into a single prose entry the
+  // retriever can match against. Higher-precision than free text for
+  // FAQ-style questions.
+  async function addQaPairs(e: React.FormEvent) {
+    e.preventDefault()
+    const pairs = qaPairs.filter(p => p.q.trim() && p.a.trim())
+    if (!qaTitle.trim() || pairs.length === 0) return
+    setAddingQa(true)
+    const content = pairs.map(p => `Q: ${p.q.trim()}\nA: ${p.a.trim()}`).join('\n\n')
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/knowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: qaTitle, content, source: 'qa' }),
+      })
+      const { entry } = await res.json()
+      if (entry) {
+        setEntries(prev => [...prev, { ...entry, status: 'ready' }])
+        setQaTitle('')
+        setQaPairs([{ q: '', a: '' }])
+      }
+    } finally { setAddingQa(false) }
+  }
+
+  // Notion — server-side ingest using the operator's Notion API token.
+  async function importNotion(e: React.FormEvent) {
+    e.preventDefault()
+    if (!notionToken.trim() || !notionPageId.trim()) return
+    setNotionImporting(true)
+    setNotionStatus(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/knowledge/import/notion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: notionToken, pageId: notionPageId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setNotionStatus(`✗ ${data.error || 'Import failed'}`)
+        return
+      }
+      setNotionStatus(`✓ Imported "${data.entry.title}"`)
+      setEntries(prev => [...prev, { ...data.entry, status: 'ready' }])
+      setNotionPageId('')
+    } catch (err: any) {
+      setNotionStatus(`✗ ${err.message || 'Network error'}`)
+    } finally { setNotionImporting(false) }
+  }
+
+  // YouTube — server-side fetches the caption track.
+  async function importYouTube(e: React.FormEvent) {
+    e.preventDefault()
+    if (!ytUrl.trim()) return
+    setYtImporting(true)
+    setYtStatus(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/knowledge/import/youtube`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: ytUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setYtStatus(`✗ ${data.error || 'Import failed'}`)
+        return
+      }
+      setYtStatus(`✓ Imported "${data.entry.title}"`)
+      setEntries(prev => [...prev, { ...data.entry, status: 'ready' }])
+      setYtUrl('')
+    } catch (err: any) {
+      setYtStatus(`✗ ${err.message || 'Network error'}`)
+    } finally { setYtImporting(false) }
   }
 
   async function deleteEntry(id: string) {
@@ -495,17 +585,20 @@ export default function KnowledgePage() {
 
       <div className="rounded-lg border border-zinc-800 overflow-hidden">
         <div className="flex border-b border-zinc-800">
-          {(['manual', 'url', 'file', 'scheduled'] as const).map(t => (
+          {(['manual', 'qa', 'url', 'file', 'notion', 'youtube', 'scheduled'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${
+              className={`flex-1 px-3 py-2.5 text-xs font-medium transition-colors whitespace-nowrap ${
                 tab === t ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               {t === 'manual' ? '✎ Write'
+                : t === 'qa' ? '❓ Q&A'
                 : t === 'url' ? '↗ URL'
                 : t === 'file' ? '◻ File'
+                : t === 'notion' ? '🅽 Notion'
+                : t === 'youtube' ? '▶ YouTube'
                 : '🔄 Auto-crawl'}
             </button>
           ))}
@@ -535,6 +628,126 @@ export default function KnowledgePage() {
                 className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
               >
                 {addingK ? 'Indexing…' : 'Add Entry'}
+              </button>
+            </form>
+          )}
+
+          {tab === 'qa' && (
+            <form onSubmit={addQaPairs} className="space-y-3">
+              <input
+                type="text"
+                value={qaTitle}
+                onChange={e => setQaTitle(e.target.value)}
+                placeholder="Title (e.g. Pricing FAQ, Refund policy)"
+                required
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+              <p className="text-[11px] text-zinc-500">
+                Question/answer pairs index more precisely than free-text. Great for FAQs and crisp policy answers.
+              </p>
+              {qaPairs.map((pair, i) => (
+                <div key={i} className="rounded-lg border border-zinc-800 p-3 space-y-2 bg-zinc-900/40">
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] uppercase tracking-wider text-zinc-500 mt-2 w-4">Q</span>
+                    <input
+                      type="text"
+                      value={pair.q}
+                      onChange={e => setQaPairs(p => p.map((x, idx) => idx === i ? { ...x, q: e.target.value } : x))}
+                      placeholder="What's the question?"
+                      className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    />
+                    {qaPairs.length > 1 && (
+                      <button type="button" onClick={() => setQaPairs(p => p.filter((_, idx) => idx !== i))}
+                        className="text-zinc-600 hover:text-red-400 px-2 self-start mt-1.5"
+                        title="Remove pair"
+                      >×</button>
+                    )}
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] uppercase tracking-wider text-zinc-500 mt-2 w-4">A</span>
+                    <textarea
+                      value={pair.a}
+                      onChange={e => setQaPairs(p => p.map((x, idx) => idx === i ? { ...x, a: e.target.value } : x))}
+                      placeholder="The answer the agent should give"
+                      rows={2}
+                      className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
+                    />
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center gap-2">
+                <button type="button"
+                  onClick={() => setQaPairs(p => [...p, { q: '', a: '' }])}
+                  className="text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-1.5 transition-colors"
+                >+ Add another pair</button>
+                <button
+                  type="submit"
+                  disabled={addingQa}
+                  className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  {addingQa ? 'Indexing…' : 'Save Q&A pack'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {tab === 'notion' && (
+            <form onSubmit={importNotion} className="space-y-3">
+              <p className="text-xs text-zinc-500">
+                Imports a Notion page (and its child blocks). Create an integration in Notion → Settings → Integrations,
+                then share the page with it. <a href="https://www.notion.so/profile/integrations" target="_blank" rel="noopener" className="text-orange-400 hover:underline">Get an API token →</a>
+              </p>
+              <input
+                type="password"
+                value={notionToken}
+                onChange={e => setNotionToken(e.target.value)}
+                placeholder="Notion API token (secret_…)"
+                required
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono"
+              />
+              <input
+                type="text"
+                value={notionPageId}
+                onChange={e => setNotionPageId(e.target.value)}
+                placeholder="Notion page ID or URL"
+                required
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+              {notionStatus && (
+                <p className={`text-xs ${notionStatus.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{notionStatus}</p>
+              )}
+              <button
+                type="submit"
+                disabled={notionImporting}
+                className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              >
+                {notionImporting ? 'Importing…' : 'Import from Notion'}
+              </button>
+            </form>
+          )}
+
+          {tab === 'youtube' && (
+            <form onSubmit={importYouTube} className="space-y-3">
+              <p className="text-xs text-zinc-500">
+                Pulls the public transcript from a YouTube video. Auto-generated captions count.
+              </p>
+              <input
+                type="url"
+                value={ytUrl}
+                onChange={e => setYtUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=…"
+                required
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+              {ytStatus && (
+                <p className={`text-xs ${ytStatus.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{ytStatus}</p>
+              )}
+              <button
+                type="submit"
+                disabled={ytImporting}
+                className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              >
+                {ytImporting ? 'Fetching transcript…' : 'Import transcript'}
               </button>
             </form>
           )}
