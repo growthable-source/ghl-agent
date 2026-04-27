@@ -49,16 +49,36 @@ export async function GET(req: NextRequest) {
     }
     workspacesProcessed++
 
-    const members = await db.workspaceMember.findMany({
-      where: { workspaceId: ws.id },
-      include: { user: { select: { id: true, email: true, name: true } } },
-    })
+    // Use explicit `select` so a pending digestOptIn / lastDigestSentAt
+    // migration doesn't poison this query — Prisma's default-select-all
+    // will throw when a schema column is missing in the DB.
+    let members: Array<{
+      id: string
+      digestOptIn: boolean
+      lastDigestSentAt: Date | null
+      user: { id: string; email: string | null; name: string | null } | null
+    }> = []
+    try {
+      members = await db.workspaceMember.findMany({
+        where: { workspaceId: ws.id },
+        select: {
+          id: true,
+          digestOptIn: true,
+          lastDigestSentAt: true,
+          user: { select: { id: true, email: true, name: true } },
+        },
+      })
+    } catch (err: any) {
+      if (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')) {
+        console.warn('[WeeklyDigest] digest columns missing — run manual_weekly_digest_email.sql. Skipping.')
+        continue
+      }
+      throw err
+    }
 
     for (const m of members) {
-      const optIn = (m as any).digestOptIn !== false  // default true; tolerates pre-migration rows
-      if (!optIn) { membersSkippedOptOut++; continue }
-      const last = (m as any).lastDigestSentAt as Date | null | undefined
-      if (last && new Date(last) > sixDaysAgo) { membersSkippedRecentSend++; continue }
+      if (m.digestOptIn === false) { membersSkippedOptOut++; continue }
+      if (m.lastDigestSentAt && new Date(m.lastDigestSentAt) > sixDaysAgo) { membersSkippedRecentSend++; continue }
       if (!m.user?.email) continue
 
       try {
@@ -73,8 +93,8 @@ export async function GET(req: NextRequest) {
           emailsSent++
           await db.workspaceMember.update({
             where: { id: m.id },
-            data: { lastDigestSentAt: new Date() } as any,
-          }).catch(() => {})
+            data: { lastDigestSentAt: new Date() },
+          }).catch(() => { /* tolerate missing column on first deploy */ })
         } else {
           emailsFailed++
           console.warn(`[WeeklyDigest] send failed for ${m.user.email}: ${result.reason}`)
