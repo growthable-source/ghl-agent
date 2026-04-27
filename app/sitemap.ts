@@ -1,25 +1,40 @@
 import type { MetadataRoute } from 'next'
+import { POSTS } from '@/lib/blog-posts'
+import { COMPARISONS } from '@/lib/compare-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
 
 /**
- * Root sitemap — covers the marketing surface. Help articles have their
- * own sitemap at /help/sitemap.xml that lists individual posts; we
- * don't duplicate those here because Google de-dupes them by URL
- * anyway and keeping them in one place simplifies authoring.
+ * Root sitemap — covers the marketing surface + blog + comparisons.
+ * Help articles have their own sitemap at /help/sitemap.xml that
+ * lists individual posts; Google reads both without deduping.
  *
- * Google reads the <lastmod> hint as a *suggestion*, not a guarantee
- * of freshness. We set the landing page to today's date at build time
- * so a redeploy after significant copy change bumps the hint forward.
+ * Priority heuristic:
+ *   1.0 = landing page
+ *   0.9 = blog/compare index pages (top-level hubs)
+ *   0.8 = individual blog posts + comparisons + help root
  */
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date()
-  return [
+
+  const staticEntries: MetadataRoute.Sitemap = [
     {
       url: `${SITE_URL}/`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 1.0,
+    },
+    {
+      url: `${SITE_URL}/blog`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
+      url: `${SITE_URL}/compare`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.9,
     },
     {
       url: `${SITE_URL}/help`,
@@ -28,4 +43,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
   ]
+
+  const postEntries: MetadataRoute.Sitemap = POSTS.map(p => ({
+    url: `${SITE_URL}/blog/${p.slug}`,
+    lastModified: new Date(p.updatedAt ?? p.publishedAt),
+    changeFrequency: 'monthly' as const,
+    priority: 0.8,
+  }))
+
+  const compareEntries: MetadataRoute.Sitemap = COMPARISONS.map(c => ({
+    url: `${SITE_URL}/compare/${c.slug}`,
+    lastModified: new Date(c.updatedAt),
+    changeFrequency: 'monthly' as const,
+    priority: 0.8,
+  }))
+
+  return [...staticEntries, ...postEntries, ...compareEntries]
 }
