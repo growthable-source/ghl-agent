@@ -177,7 +177,8 @@ function SidebarBody() {
                   <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Account</p>
                 </div>
                 {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
-                {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Notifications')}
+                {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
+                {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
                 {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
               </>
             )}

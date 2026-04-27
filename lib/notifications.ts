@@ -53,6 +53,87 @@ export async function notify(params: {
       console.warn(`[Notify] ${channel.type} dispatch failed:`, err.message)
     }
   }
+
+  // ── Per-user fan-out ─────────────────────────────────────────────────
+  // In addition to the workspace's shared channels (above), every member
+  // of the workspace can opt into delivery to *their own* email + browser
+  // push. Falls back to defaults from the event catalog when a user has
+  // never set explicit preferences.
+  await fanOutPerUser(params).catch(err => {
+    console.warn('[Notify] per-user fan-out failed:', err.message)
+  })
+}
+
+async function fanOutPerUser(params: {
+  workspaceId: string
+  event: string
+  title: string
+  body?: string
+  link?: string
+  severity?: 'info' | 'warning' | 'error'
+}) {
+  let members: Array<{ userId: string; user: { email: string | null; name: string | null } | null }>
+  try {
+    members = await db.workspaceMember.findMany({
+      where: { workspaceId: params.workspaceId },
+      select: { userId: true, user: { select: { email: true, name: true } } },
+    })
+  } catch (err: any) {
+    if (
+      err?.code === 'P2022' || err?.code === 'P2021'
+      || /column .* does not exist/i.test(err?.message ?? '')
+    ) return
+    throw err
+  }
+  if (members.length === 0) return
+
+  const { defaultPreferenceFor } = await import('./notification-events')
+
+  // Bulk-load preferences for all members in this workspace for this event.
+  let prefs: Array<{ userId: string; channels: string[] }> = []
+  try {
+    prefs = await (db as any).userNotificationPreference.findMany({
+      where: { workspaceId: params.workspaceId, event: params.event },
+      select: { userId: true, channels: true },
+    })
+  } catch (err: any) {
+    if (
+      err?.code === 'P2022' || err?.code === 'P2021'
+      || /relation .* does not exist/i.test(err?.message ?? '')
+    ) {
+      // Migration pending — fall back to defaults so we still notify.
+    } else {
+      throw err
+    }
+  }
+  const prefByUser = new Map(prefs.map(p => [p.userId, p.channels]))
+
+  await Promise.all(members.map(async m => {
+    const channels = prefByUser.get(m.userId) ?? defaultPreferenceFor(params.event)
+    if (channels.length === 0) return
+
+    if (channels.includes('email') && m.user?.email) {
+      try {
+        await dispatchEmail({ email: m.user.email }, params)
+      } catch (err: any) {
+        console.warn('[Notify] per-user email failed:', err.message)
+      }
+    }
+    if (channels.includes('web_push')) {
+      try {
+        const { sendPushToUser } = await import('./web-push')
+        await sendPushToUser(m.userId, params.workspaceId, {
+          title: params.title,
+          body: params.body,
+          link: params.link,
+          severity: params.severity,
+          tag: params.event,
+        })
+      } catch (err: any) {
+        console.warn('[Notify] per-user push failed:', err.message)
+      }
+    }
+  }))
 }
 
 async function dispatchSlack(
