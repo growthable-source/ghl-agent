@@ -144,13 +144,17 @@ model UsageRecord {
 }
 
 model WorkspaceMember {
-  id          String    @id @default(cuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  role        String    @default("owner")   // "owner" | "admin" | "member"
-  createdAt   DateTime  @default(now())
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId      String
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role             String    @default("owner")   // "owner" | "admin" | "member"
+  // Weekly digest delivery — per-user opt-in. Cron checks this before
+  // dispatching; the digest page exposes a toggle.
+  digestOptIn      Boolean   @default(true)
+  lastDigestSentAt DateTime?
+  createdAt        DateTime  @default(now())
   @@unique([userId, workspaceId])
 }
 

@@ -136,16 +136,108 @@ export default function DigestPage() {
           )}
         </div>
 
-        {/* Call to action */}
-        <div className="mt-12 p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 text-center">
-          <p className="text-sm text-zinc-300">
-            <span className="font-semibold">📬 Want this in your inbox every Monday?</span>
-          </p>
+        {/* Email digest controls */}
+        <DigestEmailControls workspaceId={workspaceId} />
+      </div>
+    </div>
+  )
+}
+
+function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
+  const [optIn, setOptIn] = useState<boolean | null>(null)
+  const [email, setEmail] = useState<string | null>(null)
+  const [lastSent, setLastSent] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/workspaces/${workspaceId}/digest/preferences`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) return
+        setOptIn(!!d.digestOptIn)
+        setEmail(d.email)
+        setLastSent(d.lastDigestSentAt)
+      })
+      .catch(() => {})
+  }, [workspaceId])
+
+  async function toggle() {
+    if (optIn === null) return
+    const next = !optIn
+    setOptIn(next)
+    setSaving(true)
+    setStatus(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/digest/preferences`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ digestOptIn: next }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setOptIn(!next)
+        setStatus({ kind: 'err', msg: data.error || 'Could not save' })
+      }
+    } finally { setSaving(false) }
+  }
+
+  async function sendTest() {
+    setSending(true)
+    setStatus(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/digest/test-send`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setStatus({ kind: 'err', msg: data.error || 'Send failed' })
+      } else {
+        setStatus({ kind: 'ok', msg: `Sent to ${data.sentTo}` })
+      }
+    } finally { setSending(false) }
+  }
+
+  if (optIn === null) {
+    return <div className="mt-12 h-16 rounded-xl border border-zinc-800 bg-zinc-900/40 animate-pulse" />
+  }
+
+  return (
+    <div className="mt-12 p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p className="text-sm text-zinc-300 font-semibold">📬 Email me this digest every Monday</p>
           <p className="text-xs text-zinc-500 mt-1">
-            Email digests coming soon. For now, bookmark this page or check in each Monday.
+            {email
+              ? <>We&apos;ll send to <span className="text-zinc-300 font-mono">{email}</span> at 13:00 UTC every Monday.</>
+              : <>Add an email to your account to receive digests.</>}
+            {lastSent && <> · Last sent {new Date(lastSent).toLocaleDateString()}.</>}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={sendTest}
+            disabled={sending || !email}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg text-zinc-300 border border-zinc-700 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-40"
+          >
+            {sending ? 'Sending…' : 'Send me a test now'}
+          </button>
+          <button
+            onClick={toggle}
+            disabled={saving || !email}
+            title={!email ? 'Set an email on your account first' : optIn ? 'Turn off weekly digest emails' : 'Turn on weekly digest emails'}
+            className="relative inline-flex h-5 w-9 items-center rounded-full disabled:opacity-30"
+            style={{ background: optIn ? '#22c55e' : '#3f3f46' }}
+          >
+            <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
+              style={{ transform: optIn ? 'translateX(20px)' : 'translateX(4px)' }} />
+          </button>
+        </div>
       </div>
+      {status && (
+        <p className={`text-xs mt-3 ${status.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+          {status.msg}
+        </p>
+      )}
     </div>
   )
 }
