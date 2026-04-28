@@ -49,9 +49,22 @@ export default function WidgetEmbedPage() {
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [voiceCallId, setVoiceCallId] = useState<string | null>(null)
 
+  // New visitor controls
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false)
+  const [transcriptEmail, setTranscriptEmail] = useState('')
+  const [transcriptStatus, setTranscriptStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+  const [transcriptSending, setTranscriptSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [dictating, setDictating] = useState(false)
+  const dictationRef = useRef<any>(null)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const vapiRef = useRef<any>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Generate/restore stable cookieId
   function getCookieId(): string {
@@ -205,6 +218,131 @@ export default function WidgetEmbedPage() {
     } finally { setSending(false) }
   }
 
+  async function uploadFile(file: File) {
+    if (!conversationId || uploading) return
+    setUploading(true)
+    setUploadError(null)
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      const res = await fetch(
+        `/api/widget/${widgetId}/conversations/${conversationId}/upload?pk=${publicKey}`,
+        { method: 'POST', body: form },
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setUploadError(data.error || `Upload failed (HTTP ${res.status})`)
+        return
+      }
+      // SSE will broadcast the new visitor_message — no local insert needed.
+    } catch (err: any) {
+      setUploadError(err?.message || 'Upload failed')
+    } finally { setUploading(false) }
+  }
+
+  function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(e.clipboardData?.items || [])
+    const fileItem = items.find(it => it.kind === 'file' && it.type.startsWith('image/'))
+    if (fileItem) {
+      const f = fileItem.getAsFile()
+      if (f) { e.preventDefault(); void uploadFile(f) }
+    }
+  }
+
+  function onDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragOver(false)
+    const f = e.dataTransfer?.files?.[0]
+    if (f) void uploadFile(f)
+  }
+
+  async function startNewConversation() {
+    if (!visitorId) return
+    setMenuOpen(false)
+    try {
+      const res = await fetch(`/api/widget/${widgetId}/conversations/new?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorId }),
+      })
+      const data = await res.json()
+      if (data.conversationId) {
+        // Drop the old SSE — new one will be opened by the conversationId effect.
+        esRef.current?.close()
+        esRef.current = null
+        setConversationId(data.conversationId)
+        setMessages(config?.welcomeMessage
+          ? [{ id: 'welcome-' + Date.now(), role: 'agent', content: config.welcomeMessage }]
+          : [])
+      }
+    } catch (err: any) {
+      setError('Could not start a new chat — check your connection')
+    }
+  }
+
+  async function emailTranscript(e: React.FormEvent) {
+    e.preventDefault()
+    if (!conversationId || !transcriptEmail.trim()) return
+    setTranscriptSending(true)
+    setTranscriptStatus(null)
+    try {
+      const res = await fetch(
+        `/api/widget/${widgetId}/conversations/${conversationId}/email-transcript?pk=${publicKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: transcriptEmail.trim() }),
+        },
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTranscriptStatus({ kind: 'err', msg: data.error || 'Send failed' })
+      } else {
+        setTranscriptStatus({ kind: 'ok', msg: `Sent to ${data.sentTo}` })
+        setTranscriptEmail('')
+      }
+    } catch (err: any) {
+      setTranscriptStatus({ kind: 'err', msg: err?.message || 'Send failed' })
+    } finally { setTranscriptSending(false) }
+  }
+
+  function toggleDictation() {
+    if (typeof window === 'undefined') return
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setUploadError("Voice typing isn't supported in this browser. Try Chrome or Edge.")
+      return
+    }
+    if (dictating) {
+      try { dictationRef.current?.stop() } catch {}
+      setDictating(false)
+      return
+    }
+    const rec = new SR()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-US'
+    let finalText = ''
+    rec.onresult = (e: any) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) finalText += r[0].transcript
+        else interim += r[0].transcript
+      }
+      setInput((prev => {
+        // Replace the last "interim" portion each tick. We track final separately.
+        const base = (prev.endsWith(' ') || prev === '') ? prev : prev + ' '
+        return (base + finalText + interim).trimStart()
+      })(input))
+    }
+    rec.onerror = () => { setDictating(false) }
+    rec.onend = () => { setDictating(false) }
+    dictationRef.current = rec
+    rec.start()
+    setDictating(true)
+  }
+
   if (error && !config) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8 bg-zinc-950 text-zinc-300 text-sm">
@@ -247,6 +385,50 @@ export default function WidgetEmbedPage() {
             </svg>
           </button>
         )}
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen(o => !o)}
+            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+            title="More options"
+            aria-label="More options"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <circle cx="12" cy="5" r="1.4" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.4" fill="currentColor" />
+              <circle cx="12" cy="19" r="1.4" fill="currentColor" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 mt-1 w-56 rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl z-50 overflow-hidden">
+                <button
+                  onClick={() => { setMenuOpen(false); startNewConversation() }}
+                  className="w-full text-left px-4 py-2.5 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors flex items-center gap-2"
+                >
+                  <span>🔄</span> Start new conversation
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); setMessages([]); }}
+                  className="w-full text-left px-4 py-2.5 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors flex items-center gap-2 border-t border-zinc-800"
+                >
+                  <span>🧹</span> Clear chat (local only)
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setTranscriptStatus(null)
+                    setTranscriptEmail(email || '')
+                    setTranscriptDialogOpen(true)
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors flex items-center gap-2 border-t border-zinc-800"
+                >
+                  <span>✉️</span> Email me a transcript
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Identity form (hard-gated) */}
@@ -280,8 +462,14 @@ export default function WidgetEmbedPage() {
         </form>
       ) : (
         <>
-          {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Messages — wrapped in drag-drop target so visitors can drop a file anywhere */}
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto p-4 space-y-3 relative"
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+          >
             {messages.map(m => (
               <MessageBubble key={m.id} msg={m} accent={accent} />
             ))}
@@ -292,18 +480,72 @@ export default function WidgetEmbedPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             )}
+            {dragOver && (
+              <div className="absolute inset-0 bg-zinc-950/85 border-2 border-dashed border-zinc-500 rounded-lg flex items-center justify-center pointer-events-none">
+                <p className="text-sm text-zinc-300">Drop to attach</p>
+              </div>
+            )}
           </div>
 
           {/* Composer */}
           <form onSubmit={sendMessage} className="p-3 border-t border-zinc-800 bg-zinc-900/40">
+            {uploadError && (
+              <div className="mb-2 p-2 rounded border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
+                {uploadError}
+              </div>
+            )}
+            {uploading && (
+              <div className="mb-2 text-[11px] text-zinc-400">Uploading…</div>
+            )}
             <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) void uploadFile(f)
+                  if (e.target) e.target.value = ''
+                }}
+                accept="image/*,application/pdf,text/plain,text/csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!conversationId || uploading}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30"
+                title="Attach a file"
+                aria-label="Attach a file"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={toggleDictation}
+                disabled={!conversationId}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                  dictating
+                    ? 'text-white animate-pulse'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+                style={dictating ? { background: accent } : undefined}
+                title={dictating ? 'Stop dictation' : 'Voice typing'}
+                aria-label={dictating ? 'Stop dictation' : 'Voice typing'}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                </svg>
+              </button>
               <textarea
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e as any) }
                 }}
-                placeholder="Type a message…"
+                onPaste={onPaste}
+                placeholder={dictating ? 'Listening…' : 'Type a message…'}
                 rows={1}
                 disabled={!conversationId || sending}
                 className="flex-1 resize-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 max-h-24"
@@ -384,6 +626,50 @@ export default function WidgetEmbedPage() {
             setVoiceError(null)
           }}
         />
+      )}
+
+      {transcriptDialogOpen && (
+        <div
+          className="absolute inset-0 z-50 bg-zinc-950/85 backdrop-blur flex items-center justify-center p-6"
+          onClick={() => setTranscriptDialogOpen(false)}
+        >
+          <form
+            onSubmit={emailTranscript}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-xl p-5 shadow-xl"
+          >
+            <p className="text-sm font-semibold text-white mb-1">Email me a transcript</p>
+            <p className="text-[11px] text-zinc-500 mb-4">We&apos;ll send a copy of this conversation so you have a record.</p>
+            <input
+              type="email"
+              value={transcriptEmail}
+              onChange={e => setTranscriptEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 mb-3"
+            />
+            {transcriptStatus && (
+              <p className={`text-[11px] mb-2 ${transcriptStatus.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {transcriptStatus.msg}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setTranscriptDialogOpen(false)}
+                className="text-xs px-3 py-2 rounded-lg text-zinc-400 hover:text-white transition-colors"
+              >Close</button>
+              <button
+                type="submit"
+                disabled={transcriptSending || !transcriptEmail.trim()}
+                className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                style={{ background: accent }}
+              >
+                {transcriptSending ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   )
@@ -468,6 +754,50 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
     )
   }
   const isVisitor = msg.role === 'visitor'
+
+  // Image attachment — content is the URL, render inline.
+  if (msg.kind === 'image') {
+    return (
+      <div className={`flex ${isVisitor ? 'justify-end' : 'justify-start'}`}>
+        <a
+          href={msg.content}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="max-w-[70%] block rounded-2xl overflow-hidden border border-zinc-700 hover:border-zinc-500 transition-colors"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={msg.content} alt="attachment" className="block w-full h-auto" />
+        </a>
+      </div>
+    )
+  }
+
+  // File attachment — content is JSON { url, name, mime, size }.
+  if (msg.kind === 'file') {
+    let meta: { url: string; name: string; mime?: string; size?: number } | null = null
+    try { meta = JSON.parse(msg.content) } catch {}
+    if (meta?.url) {
+      return (
+        <div className={`flex ${isVisitor ? 'justify-end' : 'justify-start'}`}>
+          <a
+            href={meta.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`max-w-[80%] flex items-center gap-2 px-3 py-2 rounded-2xl text-sm border ${
+              isVisitor
+                ? 'rounded-tr-sm border-white/20 text-white'
+                : 'rounded-tl-sm border-zinc-700 bg-zinc-800 text-zinc-100'
+            }`}
+            style={isVisitor ? { background: accent } : undefined}
+          >
+            <span className="text-base leading-none">📎</span>
+            <span className="truncate">{meta.name}</span>
+          </a>
+        </div>
+      )
+    }
+  }
+
   return (
     <div className={`flex ${isVisitor ? 'justify-end' : 'justify-start'}`}>
       <div
