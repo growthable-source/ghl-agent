@@ -64,6 +64,33 @@ export class WidgetAdapter implements CrmAdapter {
     return { messageId: msg.id, conversationId: this.conversationId }
   }
 
+  /**
+   * Operator-visible system note. Use for tool-level failures the agent
+   * shouldn't apologize for (calendar misconfiguration, scope drift,
+   * etc.) — surfaces inline in the widget transcript so the inbox view
+   * shows exactly what went wrong on the server.
+   */
+  async broadcastSystem(content: string): Promise<void> {
+    try {
+      const msg = await db.widgetMessage.create({
+        data: {
+          conversationId: this.conversationId,
+          role: 'system',
+          content,
+          kind: 'text',
+        },
+      })
+      broadcast(this.conversationId, {
+        type: 'agent_message',
+        id: msg.id,
+        content,
+        createdAt: msg.createdAt.toISOString(),
+      })
+    } catch (err: any) {
+      console.warn('[WidgetAdapter] broadcastSystem failed:', err?.message)
+    }
+  }
+
   // ─── Contact ops — stubbed (widget visitors aren't CRM contacts) ──────
 
   async getContact(_contactId: string): Promise<Contact> {

@@ -728,6 +728,59 @@ export interface HandoverCapture {
   }
 }
 
+/**
+ * Surface a calendar-tool failure to operators in real time.
+ *
+ * Two channels:
+ *   1) If we're running in a widget thread (CrmAdapter is a WidgetAdapter
+ *      with `broadcastSystem`), inject a system note inline so the chat
+ *      transcript shows the failure reason. Operators reviewing the
+ *      conversation see "calendar lookup failed: <reason>" right where
+ *      the agent went vague.
+ *   2) Always fire an `agent_error` notification with workspaceId so
+ *      whoever has email/push opted in for that event gets pinged.
+ *
+ * Best-effort — never throws. The agent's tool result still goes through
+ * with the structured hint regardless.
+ */
+async function reportCalendarFailure(params: {
+  crm: CrmAdapter | null
+  agentId: string | undefined
+  workspaceId: string | null
+  tool: 'get_available_slots' | 'book_appointment'
+  input: Record<string, unknown>
+  message: string
+}) {
+  const { crm, workspaceId, tool, message } = params
+  // Inline system note in the widget transcript (when applicable).
+  try {
+    const broadcaster = (crm as any)?.broadcastSystem
+    if (typeof broadcaster === 'function') {
+      const human = tool === 'get_available_slots'
+        ? `Couldn't pull calendar slots: ${message}`
+        : `Booking attempt failed: ${message}`
+      await broadcaster.call(crm, `⚠ ${human}`)
+    }
+  } catch {}
+
+  // Workspace-wide notification.
+  if (!workspaceId) return
+  try {
+    const { notify } = await import('./notifications')
+    await notify({
+      workspaceId,
+      event: 'agent_error',
+      title: tool === 'get_available_slots'
+        ? 'Calendar lookup failed'
+        : 'Booking attempt failed',
+      body: `${tool}: ${message.slice(0, 180)}`,
+      severity: 'warning',
+    })
+  } catch (err: any) {
+    console.warn('[reportCalendarFailure] notify failed:', err?.message)
+  }
+}
+
 async function executeTool(
   toolName: string,
   input: Record<string, unknown>,
@@ -923,9 +976,7 @@ async function executeTool(
         // tool result on retry → it fabricates ("the calendar is fully
         // booked") → hallucination guard intervenes → eventually the
         // model reaches for transfer_to_human with a reason mentioning
-        // "calendar issues" and the conversation pauses. That's how an
-        // operator ends up seeing "agent paused citing calendar
-        // connection issues" when the calendar is actually fine.
+        // "calendar issues" and the conversation pauses.
         try {
           const slots = await crm.getFreeSlots(
             input.calendarId as string,
@@ -941,6 +992,11 @@ async function executeTool(
             : /timeout|ETIMEDOUT|ECONN/i.test(msg) ? 'Transient network hiccup reaching GHL. Retry once before doing anything else.'
             : 'Unexpected calendar error. Ask the contact for their preferred time and confirm that a human will verify it — do NOT call transfer_to_human, this is a tool blip, not an insurmountable block.'
           console.warn(`[Agent] get_available_slots failed: ${msg}`)
+          await reportCalendarFailure({
+            crm, agentId, workspaceId: workspaceId ?? null,
+            tool: 'get_available_slots',
+            input, message: msg,
+          })
           return JSON.stringify({ success: false, error: msg, hint })
         }
       }
@@ -987,6 +1043,11 @@ async function executeTool(
             : /contactId/i.test(msg) ? 'The contactId is invalid — use the current conversation contactId (passed in your context).'
             : /timezone|format/i.test(msg) ? 'The startTime format is wrong — use the exact string returned by get_available_slots.'
             : 'Booking failed. Apologize to the contact, try once more with a different slot, or offer to have someone follow up.'
+          await reportCalendarFailure({
+            crm, agentId, workspaceId: workspaceId ?? null,
+            tool: 'book_appointment',
+            input, message: msg,
+          })
           return JSON.stringify({
             success: false,
             error: msg,
