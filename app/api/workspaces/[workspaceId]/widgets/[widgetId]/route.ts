@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const allowed = [
-    'name', 'type', 'slug', 'embedMode',
+    'name', 'type', 'slug', 'embedMode', 'folderId',
     'primaryColor', 'logoUrl', 'title', 'subtitle', 'welcomeMessage',
     'position', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor',
     'hostedPageHeadline', 'hostedPageSubtext',
@@ -90,11 +90,35 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const { workspaceId, widgetId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
+  // Block delete when there's an active conversation behind it. The
+  // dashboard surfaces the count so the operator can either take those
+  // chats over and resolve them first, or pass `?force=1` to override
+  // (which we still warn about — last-resort).
+  const force = new URL(req.url).searchParams.get('force') === '1'
+  const widget = await db.chatWidget.findFirst({
+    where: { id: widgetId, workspaceId },
+    include: {
+      conversations: {
+        where: { status: 'active' },
+        select: { id: true },
+      },
+    },
+  })
+  if (!widget) return NextResponse.json({ error: 'Widget not found' }, { status: 404 })
+
+  if (widget.conversations.length > 0 && !force) {
+    return NextResponse.json({
+      error: `This widget has ${widget.conversations.length} active conversation${widget.conversations.length === 1 ? '' : 's'}. End or take over the chat${widget.conversations.length === 1 ? '' : 's'} first, or pass force=1 to delete anyway.`,
+      activeCount: widget.conversations.length,
+      code: 'ACTIVE_CONVERSATIONS',
+    }, { status: 409 })
+  }
+
   await db.chatWidget.delete({ where: { id: widgetId } })
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, forced: force && widget.conversations.length > 0 })
 }

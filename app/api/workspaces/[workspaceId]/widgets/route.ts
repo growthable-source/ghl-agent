@@ -17,12 +17,76 @@ export async function GET(_req: NextRequest, { params }: Params) {
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { conversations: true, visitors: true } },
+        // Count just the active conversations so the UI can render a
+        // "live now" pulse + block deletes that would orphan an open chat.
+        conversations: {
+          where: { status: 'active' },
+          select: { id: true },
+        },
       },
     })
-    return NextResponse.json({ widgets })
+    const shaped = widgets.map((w: any) => {
+      const { conversations, ...rest } = w
+      return { ...rest, activeConversationsCount: conversations.length }
+    })
+    // Folder list comes back alongside so the dashboard can render the
+    // sidebar without a second round trip. Tolerant of pending migration.
+    let folders: Array<{ id: string; name: string; color: string | null; order: number }> = []
+    try {
+      folders = await (db as any).widgetFolder.findMany({
+        where: { workspaceId },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, name: true, color: true, order: true },
+      })
+    } catch { /* folders migration pending — empty list */ }
+    return NextResponse.json({ widgets: shaped, folders })
   } catch {
-    return NextResponse.json({ widgets: [], notMigrated: true })
+    return NextResponse.json({ widgets: [], folders: [], notMigrated: true })
   }
+}
+
+/**
+ * DELETE /api/workspaces/:id/widgets?ids=a,b,c
+ * Bulk delete. Refuses to delete widgets with an active conversation;
+ * returns the offending list so the UI can surface them.
+ */
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const { workspaceId } = await params
+  const access = await requireWorkspaceAccess(workspaceId)
+  if (access instanceof NextResponse) return access
+
+  const idsParam = new URL(req.url).searchParams.get('ids') || ''
+  const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean)
+  if (ids.length === 0) {
+    return NextResponse.json({ error: 'No widget ids provided' }, { status: 400 })
+  }
+
+  // Verify all belong to this workspace
+  const widgets = await db.chatWidget.findMany({
+    where: { id: { in: ids }, workspaceId },
+    include: {
+      conversations: {
+        where: { status: 'active' },
+        select: { id: true },
+      },
+    },
+  })
+
+  const blocked = widgets.filter(w => w.conversations.length > 0)
+  if (blocked.length > 0) {
+    return NextResponse.json({
+      error: `${blocked.length} widget${blocked.length === 1 ? ' has an active conversation' : 's have active conversations'}. End or take over those chats first.`,
+      blocked: blocked.map(w => ({ id: w.id, name: w.name, activeCount: w.conversations.length })),
+      code: 'ACTIVE_CONVERSATIONS',
+    }, { status: 409 })
+  }
+
+  const deletable = widgets.map(w => w.id)
+  if (deletable.length === 0) {
+    return NextResponse.json({ error: 'No matching widgets found' }, { status: 404 })
+  }
+  await db.chatWidget.deleteMany({ where: { id: { in: deletable } } })
+  return NextResponse.json({ ok: true, deleted: deletable.length })
 }
 
 export async function POST(req: NextRequest, { params }: Params) {

@@ -1062,11 +1062,27 @@ model Integration {
 
 // ─── Chat Widgets (Intercom-clone) ──────────────────────────────────────────
 
+model WidgetFolder {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  widgets     ChatWidget[]
+  @@index([workspaceId, order])
+}
+
 model ChatWidget {
   id                String   @id @default(cuid())
   workspaceId       String
   name              String
   publicKey         String   @unique
+  // Optional grouping. Operators can drop widgets into folders for
+  // organization once they've got more than a handful.
+  folderId          String?
+  folder            WidgetFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
   // Type — "chat" (full chat UI w/ optional voice) or "click_to_call" (just a styled button that opens a voice call)
   type              String   @default("chat")
   // Slug — used for hosted call page at /c/{slug}. Optional, unique when set.
@@ -1104,6 +1120,7 @@ model ChatWidget {
   visitors          WidgetVisitor[]
   conversations     WidgetConversation[]
   @@index([workspaceId])
+  @@index([folderId])
 }
 
 model WidgetVisitor {
