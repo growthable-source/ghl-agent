@@ -23,7 +23,11 @@ interface Msg {
   content: string
   kind?: string
   createdAt?: string
+  /** Optional click-to-send chips offered by the agent. */
+  quickReplies?: string[]
 }
+
+const EMOJI_GRID = ['👍', '🙏', '😀', '😅', '🎉', '💯', '🔥', '✅', '❌', '👀', '❤️', '🤔', '👋', '✨', '⏰', '📅']
 
 const VISITOR_KEY = 'voxility_visitor_id'
 
@@ -67,6 +71,12 @@ export default function WidgetEmbedPage() {
   const [csatComment, setCsatComment] = useState('')
   const [csatStatus, setCsatStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [csatSubmitting, setCsatSubmitting] = useState(false)
+
+  // Connection / emoji / typing
+  const [disconnected, setDisconnected] = useState(false)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const typingPingTimer = useRef<any>(null)
+  const lastTypingPing = useRef<number>(0)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
@@ -147,18 +157,22 @@ export default function WidgetEmbedPage() {
     const es = new EventSource(url)
     esRef.current = es
 
+    es.onopen = () => setDisconnected(false)
     es.onmessage = (e) => {
+      setDisconnected(false)
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'agent_message') {
-          setMessages(m => [...m, { id: data.id, role: 'agent', content: data.content, createdAt: data.createdAt }])
+          setMessages(m => [...m, {
+            id: data.id, role: 'agent', content: data.content, createdAt: data.createdAt,
+            kind: data.kind,
+            quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies : undefined,
+          }])
         } else if (data.type === 'visitor_message') {
           setMessages(m => {
             // Already have it under the real id (SSE replayed twice) — no-op
             if (m.some(x => x.id === data.id)) return m
             // Replace the optimistic copy if we sent this turn ourselves.
-            // The optimistic message has id "opt-…" and matches by content +
-            // role; swapping in the real id keeps future dedupes consistent.
             const optIdx = m.findIndex(x =>
               x.role === 'visitor' &&
               x.id.startsWith('opt-') &&
@@ -166,10 +180,10 @@ export default function WidgetEmbedPage() {
             )
             if (optIdx >= 0) {
               const next = m.slice()
-              next[optIdx] = { id: data.id, role: 'visitor', content: data.content, createdAt: data.createdAt }
+              next[optIdx] = { id: data.id, role: 'visitor', content: data.content, kind: data.kind, createdAt: data.createdAt }
               return next
             }
-            return [...m, { id: data.id, role: 'visitor', content: data.content, createdAt: data.createdAt }]
+            return [...m, { id: data.id, role: 'visitor', content: data.content, kind: data.kind, createdAt: data.createdAt }]
           })
         } else if (data.type === 'agent_typing') {
           setTyping(!!data.isTyping)
@@ -178,8 +192,16 @@ export default function WidgetEmbedPage() {
         }
       } catch {}
     }
+    // Surface dropped connections after a short grace period so brief
+    // network blips don't flicker the banner. Browser auto-retries; we
+    // also expose a manual "Try again" if the visitor is impatient.
+    let dropTimer: any = null
     es.onerror = () => {
-      // EventSource will auto-reconnect; we don't need to surface this
+      if (dropTimer) return
+      dropTimer = setTimeout(() => {
+        if (es.readyState !== EventSource.OPEN) setDisconnected(true)
+        dropTimer = null
+      }, 3000)
     }
     return () => { es.close(); esRef.current = null }
   }, [conversationId, widgetId, publicKey])
@@ -223,6 +245,61 @@ export default function WidgetEmbedPage() {
     } catch (err: any) {
       setError('Failed to send — check your connection')
     } finally { setSending(false) }
+  }
+
+  function pingTyping() {
+    if (!conversationId) return
+    const now = Date.now()
+    // Throttle to one ping per 2s; debounce a "stopped" ping 4s after last keystroke.
+    if (now - lastTypingPing.current > 2000) {
+      lastTypingPing.current = now
+      fetch(`/api/widget/${widgetId}/conversations/${conversationId}/typing?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isTyping: true }),
+      }).catch(() => {})
+    }
+    if (typingPingTimer.current) clearTimeout(typingPingTimer.current)
+    typingPingTimer.current = setTimeout(() => {
+      fetch(`/api/widget/${widgetId}/conversations/${conversationId}/typing?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isTyping: false }),
+      }).catch(() => {})
+      lastTypingPing.current = 0
+    }, 4000)
+  }
+
+  async function sendQuickReply(text: string) {
+    if (!conversationId || sending) return
+    setSending(true)
+    const optimisticId = 'opt-' + Date.now()
+    setMessages(m => [...m, { id: optimisticId, role: 'visitor', content: text }])
+    try {
+      await fetch(`/api/widget/${widgetId}/conversations/${conversationId}/messages?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      })
+    } catch (err: any) {
+      setError('Failed to send — check your connection')
+    } finally { setSending(false) }
+  }
+
+  function reconnectStream() {
+    setDisconnected(false)
+    // Bumping conversationId effect by toggling a re-render is overkill;
+    // simplest: close + null the existing ES so the conversationId effect
+    // recreates it. Trick: clone setConversationId(prev => prev) doesn't
+    // re-run — but closing esRef + setting a fresh value via refresh works.
+    if (esRef.current) {
+      esRef.current.close()
+      esRef.current = null
+    }
+    // Toggle conversationId state to retrigger the SSE effect.
+    const cur = conversationId
+    setConversationId(null)
+    setTimeout(() => setConversationId(cur), 0)
   }
 
   async function uploadFile(file: File) {
@@ -468,6 +545,16 @@ export default function WidgetEmbedPage() {
         </div>
       </div>
 
+      {disconnected && (
+        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300 flex items-center justify-between">
+          <span>Connection dropped. Messages will deliver once you&apos;re back online.</span>
+          <button
+            onClick={reconnectStream}
+            className="font-semibold text-amber-200 hover:text-white transition-colors"
+          >Try again</button>
+        </div>
+      )}
+
       {/* Identity form (hard-gated) */}
       {needsIdentity && !visitorId ? (
         <form onSubmit={submitIdentity} className="flex-1 flex flex-col items-center justify-center p-6 text-center">
@@ -507,9 +594,30 @@ export default function WidgetEmbedPage() {
             onDragLeave={() => setDragOver(false)}
             onDrop={onDrop}
           >
-            {messages.map(m => (
-              <MessageBubble key={m.id} msg={m} accent={accent} />
-            ))}
+            {messages.map((m, idx) => {
+              // Only render chips on the LAST agent message — older chips
+              // shouldn't keep nudging the visitor after they've moved on.
+              const isLastAgent = m.role === 'agent'
+                && messages.findIndex((x, i) => i > idx && x.role === 'agent') === -1
+              return (
+                <div key={m.id}>
+                  <MessageBubble msg={m} accent={accent} />
+                  {isLastAgent && m.quickReplies && m.quickReplies.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2 pl-2">
+                      {m.quickReplies.map(qr => (
+                        <button
+                          key={qr}
+                          onClick={() => sendQuickReply(qr)}
+                          disabled={sending}
+                          className="text-xs px-3 py-1.5 rounded-full border transition-colors hover:opacity-90 disabled:opacity-50"
+                          style={{ borderColor: accent, color: accent }}
+                        >{qr}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
             {typing && (
               <div className="flex gap-1.5 pl-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -575,9 +683,38 @@ export default function WidgetEmbedPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
                 </svg>
               </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setEmojiOpen(o => !o)}
+                  disabled={!conversationId}
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                  title="Emoji"
+                  aria-label="Emoji"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+                {emojiOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setEmojiOpen(false)} />
+                    <div className="absolute bottom-11 left-0 z-40 bg-zinc-950 border border-zinc-700 rounded-lg p-2 shadow-xl grid grid-cols-8 gap-1 w-[260px]">
+                      {EMOJI_GRID.map(e => (
+                        <button
+                          key={e}
+                          type="button"
+                          onClick={() => { setInput(prev => prev + e); setEmojiOpen(false) }}
+                          className="text-lg w-8 h-8 hover:bg-zinc-800 rounded transition-colors"
+                        >{e}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <textarea
                 value={input}
-                onChange={e => setInput(e.target.value)}
+                onChange={e => { setInput(e.target.value); pingTyping() }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e as any) }
                 }}

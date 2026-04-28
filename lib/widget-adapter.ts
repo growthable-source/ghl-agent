@@ -39,12 +39,23 @@ export class WidgetAdapter implements CrmAdapter {
   // ─── Messaging — the whole reason this adapter exists ────────────────
 
   async sendMessage(payload: SendMessagePayload): Promise<{ messageId: string; conversationId: string }> {
-    // Persist the outbound reply
+    // Strip the optional <quickReplies>opt1|opt2|opt3</quickReplies> marker
+    // (see lib/widget-agent-runner.ts prompt) so the visitor sees clean
+    // text + a row of button chips. Up to 6 chips, each ≤60 chars.
+    const QR_RE = /<quickReplies>([\s\S]*?)<\/quickReplies>/i
+    const m = payload.message.match(QR_RE)
+    const cleanMessage = payload.message.replace(QR_RE, '').trim()
+    const quickReplies = m
+      ? m[1].split('|').map(s => s.trim()).filter(Boolean).slice(0, 6).map(s => s.slice(0, 60))
+      : null
+    const finalMessage = cleanMessage || payload.message
+
+    // Persist the outbound reply (cleaned)
     const msg = await db.widgetMessage.create({
       data: {
         conversationId: this.conversationId,
         role: 'agent',
-        content: payload.message,
+        content: finalMessage,
         kind: 'text',
       },
     })
@@ -57,8 +68,9 @@ export class WidgetAdapter implements CrmAdapter {
     broadcast(this.conversationId, {
       type: 'agent_message',
       id: msg.id,
-      content: payload.message,
+      content: finalMessage,
       createdAt: msg.createdAt.toISOString(),
+      ...(quickReplies && quickReplies.length > 0 ? { quickReplies } : {}),
     })
 
     return { messageId: msg.id, conversationId: this.conversationId }
