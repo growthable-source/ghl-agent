@@ -92,6 +92,30 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data: { status: next },
   })
   broadcast(conversationId, { type: 'status_changed', status: next })
+
+  // GHL bridge — fire-and-forget. On 'ended' write a transcript note +
+  // resolved tag onto the contact so operators living in GHL have a
+  // permanent record. Skipped silently when no CRM is connected.
+  if (next === 'ended') {
+    ;(async () => {
+      try {
+        const full = await db.widgetConversation.findUnique({
+          where: { id: conversationId },
+          include: { widget: true, visitor: true },
+        })
+        if (!full) return
+        const { tagAndNoteOnResolve } = await import('@/lib/widget-crm-sync')
+        await tagAndNoteOnResolve({
+          workspaceId,
+          visitor: full.visitor as any,
+          conversationId,
+          widgetName: full.widget.name || 'widget',
+        })
+      } catch (err: any) {
+        console.warn('[widget] CRM resolve sync failed:', err?.message)
+      }
+    })()
+  }
   return NextResponse.json({ ok: true, status: next })
 }
 
@@ -113,9 +137,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widget: { workspaceId } },
-    select: { id: true, status: true },
+    include: { visitor: true },
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+
+  const wasActive = convo.status === 'active'
 
   const msg = await db.widgetMessage.create({
     data: { conversationId, role: 'agent', content, kind: 'text' },
@@ -124,7 +150,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     where: { id: conversationId },
     data: {
       lastMessageAt: new Date(),
-      ...(convo.status === 'active' ? { status: 'handed_off' } : {}),
+      ...(wasActive ? { status: 'handed_off' } : {}),
     },
   })
 
@@ -135,6 +161,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     createdAt: msg.createdAt.toISOString(),
     fromHuman: true,
   })
+
+  // GHL bridge — first time an operator takes over, tag the contact so
+  // the record reflects "human is on this." Fire-and-forget.
+  if (wasActive) {
+    ;(async () => {
+      try {
+        const { tagOnHandover } = await import('@/lib/widget-crm-sync')
+        await tagOnHandover(workspaceId, convo.visitor as any)
+      } catch (err: any) {
+        console.warn('[widget] CRM handover tag failed:', err?.message)
+      }
+    })()
+  }
 
   return NextResponse.json({ messageId: msg.id })
 }

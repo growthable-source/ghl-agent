@@ -90,6 +90,24 @@ export async function POST(req: NextRequest, { params }: Params) {
         console.warn('[widget] new-conversation notify failed:', err?.message)
       }
     })()
+
+    // GHL bridge — upsert the contact, tag, and create a follow-up task
+    // with a deep link back to our inbox so operators living in GHL
+    // still catch the chat. Fire-and-forget; CRM blips never block.
+    ;(async () => {
+      try {
+        const { tagAndTaskOnFirstMessage } = await import('@/lib/widget-crm-sync')
+        await tagAndTaskOnFirstMessage({
+          workspaceId: convo.widget.workspaceId,
+          visitor: convo.visitor as any,
+          conversationId,
+          widgetName: convo.widget.name || 'widget',
+          firstMessage: content,
+        })
+      } catch (err: any) {
+        console.warn('[widget] CRM first-message sync failed:', err?.message)
+      }
+    })()
   }
 
   // Echo the visitor message back via SSE so other tabs/subscribers see it

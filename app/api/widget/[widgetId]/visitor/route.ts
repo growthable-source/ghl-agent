@@ -54,6 +54,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     },
   })
 
+  // Sync into GHL when we have an email/phone and a real CRM is connected.
+  // Best-effort — errors don't break the visitor flow, and there's nothing
+  // to do for workspaces without a real CRM hookup.
+  if ((visitor.email || visitor.phone) && !visitor.crmContactId) {
+    try {
+      const widget = await db.chatWidget.findUnique({
+        where: { id: widgetId },
+        select: { workspaceId: true },
+      })
+      if (widget) {
+        const { syncContactFromVisitor } = await import('@/lib/widget-crm-sync')
+        // Fire-and-forget so we don't slow the visitor's identity step.
+        syncContactFromVisitor(widget.workspaceId, visitor as any).catch(() => {})
+      }
+    } catch { /* swallowed — best-effort */ }
+  }
+
   return NextResponse.json({
     visitorId: visitor.id,
     email: visitor.email,
