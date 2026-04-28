@@ -17,51 +17,78 @@ export type { CrmAdapter } from './crm/types'
 // ─── Backward-compatible function exports ─────────────────────────────────
 // These create a new adapter per call. Prefer getCrmAdapter() for efficiency.
 
+/**
+ * Placeholder Locations exist purely as FK targets for agents created
+ * before a real CRM is connected (crmProvider='none', empty OAuth tokens).
+ * Hitting GHL with these triggers `No valid token` errors and 422s on
+ * token refresh. Reads no-op safely; writes throw a clear message so the
+ * caller knows the workspace isn't connected yet.
+ */
+function isPlaceholder(locationId: string): boolean {
+  return locationId.startsWith('placeholder:')
+}
+
+function noCrmConnected(method: string): never {
+  throw new Error(`Cannot ${method} — this workspace has no CRM connected yet.`)
+}
+
 export async function getContact(locationId: string, contactId: string): Promise<Contact> {
+  if (isPlaceholder(locationId)) noCrmConnected('look up the contact')
   return new GhlAdapter(locationId).getContact(contactId)
 }
 
 export async function searchContacts(locationId: string, query: string): Promise<Contact[]> {
+  if (isPlaceholder(locationId)) return []
   return new GhlAdapter(locationId).searchContacts(query)
 }
 
 export async function createContact(locationId: string, payload: Partial<Contact>): Promise<Contact> {
+  if (isPlaceholder(locationId)) noCrmConnected('create a contact')
   return new GhlAdapter(locationId).createContact(payload)
 }
 
 export async function updateContact(locationId: string, contactId: string, payload: Partial<Contact>): Promise<Contact> {
+  if (isPlaceholder(locationId)) noCrmConnected('update the contact')
   return new GhlAdapter(locationId).updateContact(contactId, payload)
 }
 
 export async function addTagsToContact(locationId: string, contactId: string, tags: string[]): Promise<void> {
+  if (isPlaceholder(locationId)) return
   return new GhlAdapter(locationId).addTags(contactId, tags)
 }
 
 export async function updateContactField(locationId: string, contactId: string, fieldKey: string, value: string): Promise<void> {
+  if (isPlaceholder(locationId)) return
   return new GhlAdapter(locationId).updateContactField(contactId, fieldKey, value)
 }
 
 export async function getCustomFields(locationId: string) {
+  if (isPlaceholder(locationId)) return []
   return new GhlAdapter(locationId).getCustomFields()
 }
 
 export async function searchConversations(locationId: string, opts?: { contactId?: string; limit?: number }): Promise<Conversation[]> {
+  if (isPlaceholder(locationId)) return []
   return new GhlAdapter(locationId).searchConversations(opts)
 }
 
 export async function getConversation(locationId: string, conversationId: string): Promise<Conversation> {
+  if (isPlaceholder(locationId)) noCrmConnected('load the conversation')
   return new GhlAdapter(locationId).getConversation(conversationId)
 }
 
 export async function getMessages(locationId: string, conversationId: string, limit?: number): Promise<Message[]> {
+  if (isPlaceholder(locationId)) return []
   return new GhlAdapter(locationId).getMessages(conversationId, limit)
 }
 
 export async function sendMessage(locationId: string, payload: SendMessagePayload): Promise<{ messageId: string; conversationId: string }> {
+  if (isPlaceholder(locationId)) noCrmConnected('send a CRM message')
   return new GhlAdapter(locationId).sendMessage(payload)
 }
 
 export async function getOpportunitiesForContact(locationId: string, contactId: string): Promise<Opportunity[]> {
+  if (isPlaceholder(locationId)) return []
   return new GhlAdapter(locationId).getOpportunitiesForContact(contactId)
 }
 

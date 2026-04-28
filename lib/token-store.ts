@@ -112,9 +112,22 @@ export async function refreshAccessToken(key: string): Promise<StoredTokens | nu
 }
 
 async function refreshImpl(key: string): Promise<StoredTokens | null> {
+  // Placeholder locations exist purely as FK targets for agents created
+  // before a real GHL OAuth connection — they have empty refresh tokens
+  // and crmProvider='none'. Hitting GHL's /oauth/token with empty values
+  // is a guaranteed 422; skip outright and stop retrying.
+  if (key.startsWith('placeholder:')) return null
+
   const tokens = await getTokens(key)
   if (!tokens) {
     console.warn(`[TokenStore] refreshAccessToken called for unknown key "${key}" — no tokens in DB`)
+    return null
+  }
+  // Same defense for any non-placeholder location whose tokens are
+  // empty / dead. Better to surface a reconnect than hammer GHL with
+  // a refresh that can't possibly succeed.
+  if (!tokens.refreshToken || !tokens.userType) {
+    console.warn(`[TokenStore] Skipping refresh for "${key}" — refresh_token or user_type is empty (reconnect required)`)
     return null
   }
 

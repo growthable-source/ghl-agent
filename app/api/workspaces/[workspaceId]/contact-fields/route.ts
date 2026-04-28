@@ -27,14 +27,29 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
-  // Get the first location for this workspace to fetch CRM custom fields
+  // Prefer a real, OAuth-connected location. Workspaces without a real
+  // CRM hookup get a placeholder Location row (crmProvider='none') so
+  // their agents can still exist as FK targets — calling GHL on those is
+  // a guaranteed 422 because the refresh token is empty.
   const location = await db.location.findFirst({
-    where: { workspaceId },
+    where: { workspaceId, crmProvider: { not: 'none' } },
     select: { id: true },
+    orderBy: { installedAt: 'desc' },
   })
-  if (!location) return NextResponse.json({ error: 'No location found for workspace' }, { status: 404 })
 
-  const customFields = await getCustomFields(location.id)
+  // No real CRM connected yet → just return the standard field set so the
+  // dashboard renders something useful.
+  if (!location) {
+    return NextResponse.json({ fields: STANDARD_FIELDS })
+  }
+
+  let customFields: Awaited<ReturnType<typeof getCustomFields>> = []
+  try {
+    customFields = await getCustomFields(location.id)
+  } catch (err: any) {
+    // Non-fatal — fall back to standard fields only.
+    console.warn('[contact-fields] getCustomFields failed:', err.message)
+  }
 
   return NextResponse.json({
     fields: [
