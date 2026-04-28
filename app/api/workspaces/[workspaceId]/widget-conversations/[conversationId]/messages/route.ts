@@ -13,16 +13,86 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
-  const convo = await db.widgetConversation.findFirst({
-    where: { id: conversationId, widget: { workspaceId } },
-    include: {
-      widget: { select: { id: true, name: true, primaryColor: true } },
-      visitor: { select: { id: true, name: true, email: true, firstSeenAt: true } },
-      messages: { orderBy: { createdAt: 'asc' } },
+  let convo: any
+  try {
+    convo = await db.widgetConversation.findFirst({
+      where: { id: conversationId, widget: { workspaceId } },
+      include: {
+        widget: { select: { id: true, name: true, primaryColor: true } },
+        visitor: { select: { id: true, name: true, email: true, phone: true, firstSeenAt: true, lastSeenAt: true } },
+        messages: { orderBy: { createdAt: 'asc' } },
+        _count: { select: { messages: true } },
+      },
+    })
+  } catch (err: any) {
+    // CSAT migration may not be applied yet → don't fail the inbox.
+    convo = await db.widgetConversation.findFirst({
+      where: { id: conversationId, widget: { workspaceId } },
+      include: {
+        widget: { select: { id: true, name: true, primaryColor: true } },
+        visitor: { select: { id: true, name: true, email: true, firstSeenAt: true } },
+        messages: { orderBy: { createdAt: 'asc' } },
+      },
+    })
+  }
+  if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+
+  // Best-effort visitor metadata. CSAT columns may not exist yet — degrade.
+  let visitorConversationCount = 1
+  let csatHistory: Array<{ rating: number; submittedAt: string | null }> = []
+  try {
+    const all = await (db as any).widgetConversation.findMany({
+      where: { visitorId: convo.visitor.id },
+      select: { id: true, csatRating: true, csatSubmittedAt: true },
+    })
+    visitorConversationCount = all.length
+    csatHistory = all
+      .filter((c: any) => typeof c.csatRating === 'number')
+      .map((c: any) => ({
+        rating: c.csatRating as number,
+        submittedAt: c.csatSubmittedAt ? c.csatSubmittedAt.toISOString() : null,
+      }))
+  } catch { /* ignore */ }
+
+  return NextResponse.json({
+    conversation: {
+      ...convo,
+      visitorConversationCount,
+      csatHistory,
     },
   })
+}
+
+/**
+ * PATCH — update conversation status (mark resolved, reopen).
+ * Body: { status: 'active' | 'handed_off' | 'ended' }
+ */
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { workspaceId, conversationId } = await params
+  const access = await requireWorkspaceAccess(workspaceId)
+  if (access instanceof NextResponse) return access
+
+  let body: any = {}
+  try { body = await req.json() } catch {
+    return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
+  }
+  const next = body.status as string
+  if (!['active', 'handed_off', 'ended'].includes(next)) {
+    return NextResponse.json({ error: 'status must be active | handed_off | ended' }, { status: 400 })
+  }
+
+  const convo = await db.widgetConversation.findFirst({
+    where: { id: conversationId, widget: { workspaceId } },
+    select: { id: true },
+  })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
-  return NextResponse.json({ conversation: convo })
+
+  await db.widgetConversation.update({
+    where: { id: conversationId },
+    data: { status: next },
+  })
+  broadcast(conversationId, { type: 'status_changed', status: next })
+  return NextResponse.json({ ok: true, status: next })
 }
 
 /**
