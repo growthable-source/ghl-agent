@@ -86,6 +86,13 @@ export interface Message {
   messageType?: string
   dateAdded?: string
   contentType?: string
+  // Optional attachment metadata so multimodal-capable runtimes can
+  // upgrade an inbound text message into a multimodal content block.
+  // 'image' attaches via a URL the model can fetch; 'file' renders as
+  // a text breadcrumb (Claude can't read PDFs natively yet via URL).
+  attachmentKind?: 'image' | 'file'
+  attachmentUrl?: string
+  attachmentName?: string
 }
 
 export interface Opportunity {

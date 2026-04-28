@@ -1136,6 +1136,11 @@ model WidgetConversation {
   // Cron debounce for conversation.stale — set when we've already paged
   // about this thread so we don't notify again until the visitor replies.
   staleNotifiedAt  DateTime?
+  // Visitor satisfaction (1–5 stars). Submitted via the widget's "Rate
+  // this chat" control or auto-prompted on Start-new-conversation.
+  csatRating       Int?
+  csatComment      String?  @db.Text
+  csatSubmittedAt  DateTime?
   createdAt        DateTime @default(now())
   messages         WidgetMessage[]
   voiceCalls       WidgetVoiceCall[]

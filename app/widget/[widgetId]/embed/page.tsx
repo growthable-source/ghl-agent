@@ -61,6 +61,13 @@ export default function WidgetEmbedPage() {
   const [dictating, setDictating] = useState(false)
   const dictationRef = useRef<any>(null)
 
+  // CSAT
+  const [csatOpen, setCsatOpen] = useState(false)
+  const [csatRating, setCsatRating] = useState(0)
+  const [csatComment, setCsatComment] = useState('')
+  const [csatStatus, setCsatStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+  const [csatSubmitting, setCsatSubmitting] = useState(false)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const vapiRef = useRef<any>(null)
@@ -306,6 +313,26 @@ export default function WidgetEmbedPage() {
     } finally { setTranscriptSending(false) }
   }
 
+  async function submitCsat() {
+    if (!conversationId || csatRating < 1) return
+    setCsatSubmitting(true)
+    setCsatStatus(null)
+    try {
+      const res = await fetch(`/api/widget/${widgetId}/conversations/${conversationId}/csat?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: csatRating, comment: csatComment.trim() || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setCsatStatus({ kind: 'err', msg: data.error || 'Could not save rating' })
+        return
+      }
+      setCsatStatus({ kind: 'ok', msg: 'Thanks — your feedback was sent.' })
+      setTimeout(() => { setCsatOpen(false); setCsatRating(0); setCsatComment(''); setCsatStatus(null) }, 1400)
+    } finally { setCsatSubmitting(false) }
+  }
+
   function toggleDictation() {
     if (typeof window === 'undefined') return
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -424,6 +451,16 @@ export default function WidgetEmbedPage() {
                   className="w-full text-left px-4 py-2.5 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors flex items-center gap-2 border-t border-zinc-800"
                 >
                   <span>✉️</span> Email me a transcript
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setCsatStatus(null)
+                    setCsatOpen(true)
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors flex items-center gap-2 border-t border-zinc-800"
+                >
+                  <span>⭐</span> Rate this chat
                 </button>
               </div>
             </>
@@ -626,6 +663,62 @@ export default function WidgetEmbedPage() {
             setVoiceError(null)
           }}
         />
+      )}
+
+      {csatOpen && (
+        <div
+          className="absolute inset-0 z-50 bg-zinc-950/85 backdrop-blur flex items-center justify-center p-6"
+          onClick={() => setCsatOpen(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-xl p-5 shadow-xl"
+          >
+            <p className="text-sm font-semibold text-white mb-1">How was this chat?</p>
+            <p className="text-[11px] text-zinc-500 mb-4">Your feedback helps us train the agent.</p>
+            <div className="flex justify-center gap-2 mb-4">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setCsatRating(n)}
+                  className="text-3xl transition-transform hover:scale-110"
+                  aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                >
+                  <span style={{ filter: n <= csatRating ? 'none' : 'grayscale(1) opacity(0.3)' }}>⭐</span>
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={csatComment}
+              onChange={e => setCsatComment(e.target.value)}
+              rows={3}
+              placeholder="Anything we could do better? (optional)"
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 mb-3"
+            />
+            {csatStatus && (
+              <p className={`text-[11px] mb-2 ${csatStatus.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {csatStatus.msg}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCsatOpen(false)}
+                className="text-xs px-3 py-2 rounded-lg text-zinc-400 hover:text-white transition-colors"
+              >Close</button>
+              <button
+                type="button"
+                onClick={submitCsat}
+                disabled={csatSubmitting || csatRating < 1}
+                className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                style={{ background: accent }}
+              >
+                {csatSubmitting ? 'Sending…' : 'Send feedback'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {transcriptDialogOpen && (

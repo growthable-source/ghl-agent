@@ -1645,6 +1645,13 @@ export interface AgentResponse {
   deferredCapture?: DeferredSendCapture['captured']
 }
 
+export interface AgentAttachment {
+  url: string
+  kind: 'image' | 'file'
+  name?: string
+  mediaType?: string
+}
+
 export async function runAgent(opts: {
   locationId: string
   agentId?: string
@@ -1653,6 +1660,11 @@ export async function runAgent(opts: {
   conversationProviderId?: string
   channel?: string
   incomingMessage: string
+  /**
+   * Attachments accompanying the incoming message — sent as image content
+   * blocks alongside the text so Claude can actually see them.
+   */
+  incomingAttachments?: AgentAttachment[]
   messageHistory?: Message[]
   systemPrompt?: string
   enabledTools?: string[]
@@ -1715,23 +1727,65 @@ export async function runAgent(opts: {
   // Build message history for Claude
   const messages: Anthropic.MessageParam[] = []
 
+  // Build a single user message — multimodal when attachments are present,
+  // plain string otherwise. Image attachments piggy-back as image blocks
+  // so Claude (Sonnet 4 / Opus) can actually see them.
+  function buildUserContent(text: string, attachments?: AgentAttachment[]): string | Anthropic.ContentBlockParam[] {
+    const imgs = (attachments || []).filter(a => a.kind === 'image' && a.url)
+    const fileBreadcrumbs = (attachments || [])
+      .filter(a => a.kind === 'file' && a.url)
+      .map(a => `[Attached file: ${a.name || a.url}]`)
+      .join('\n')
+    const textWithBreadcrumbs = fileBreadcrumbs ? `${text}\n${fileBreadcrumbs}` : text
+    if (imgs.length === 0) return textWithBreadcrumbs
+    const blocks: Anthropic.ContentBlockParam[] = []
+    for (const img of imgs) {
+      blocks.push({
+        type: 'image',
+        source: { type: 'url', url: img.url },
+      } as any)
+    }
+    blocks.push({ type: 'text', text: textWithBreadcrumbs })
+    return blocks
+  }
+
   // Include recent message history as context
   if (messageHistory && messageHistory.length > 0) {
     const recent = messageHistory.slice(-8) // last 8 messages
     for (const msg of recent) {
       // Skip if it's the same as the incoming message
       if (msg.body === incomingMessage && msg.direction === 'inbound') continue
-      messages.push({
-        role: msg.direction === 'inbound' ? 'user' : 'assistant',
-        content: msg.body,
-      })
+      const role = msg.direction === 'inbound' ? 'user' : 'assistant'
+      // Reconstruct multimodal content for past inbound messages that
+      // had image attachments, so the model has the visual context.
+      if (role === 'user' && msg.attachmentKind === 'image' && msg.attachmentUrl) {
+        messages.push({
+          role,
+          content: buildUserContent(msg.body || '(image)', [{
+            kind: 'image',
+            url: msg.attachmentUrl,
+            name: msg.attachmentName,
+          }]),
+        })
+      } else if (role === 'user' && msg.attachmentKind === 'file' && msg.attachmentUrl) {
+        messages.push({
+          role,
+          content: `${msg.body || ''}\n[Attached file: ${msg.attachmentName || msg.attachmentUrl}]`.trim(),
+        })
+      } else {
+        messages.push({ role, content: msg.body })
+      }
     }
   }
 
-  // Add the current incoming message
+  // Add the current incoming message — multimodal when attachments came
+  // through with this turn (e.g. visitor just uploaded an image).
   messages.push({
     role: 'user',
-    content: `[Inbound ${channel} message from contact ${contactId}]: ${incomingMessage}`,
+    content: buildUserContent(
+      `[Inbound ${channel} message from contact ${contactId}]: ${incomingMessage}`,
+      opts.incomingAttachments,
+    ),
   })
 
   const actionsPerformed: string[] = []

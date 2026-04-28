@@ -3,6 +3,7 @@ import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { broadcast } from '@/lib/widget-sse'
+import { runWidgetAgent } from '@/lib/widget-agent-runner'
 
 type Params = { params: Promise<{ widgetId: string; conversationId: string }> }
 
@@ -49,10 +50,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     }, { status: 500, headers })
   }
 
-  // Verify conversation belongs to widget
+  // Verify conversation belongs to widget — load with widget + visitor
+  // because runWidgetAgent expects the full row.
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widgetId },
-    select: { id: true },
+    include: { widget: true, visitor: true },
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers })
 
@@ -119,6 +121,27 @@ export async function POST(req: NextRequest, { params }: Params) {
     createdAt: msg.createdAt.toISOString(),
   })
   void ext // intentionally unused — kept for future filename-extension routing
+
+  // Trigger the agent to react. For images, runAgent gets the URL as a
+  // multimodal image block (Claude vision). For files we breadcrumb the
+  // filename in text — Claude can't read PDFs/docs natively over a URL.
+  const breadcrumb = isImage ? '(visitor sent an image)' : `(visitor attached a file: ${file.name})`
+  runWidgetAgent({
+    convo,
+    content: breadcrumb,
+    attachments: [{
+      kind: isImage ? 'image' : 'file',
+      url: blobUrl,
+      name: file.name,
+      mediaType: mime,
+    }],
+  }).catch(err => {
+    console.error('[widget upload] agent run failed:', err)
+    broadcast(conversationId, {
+      type: 'agent_error',
+      message: 'Agent failed to acknowledge the upload. Please try again.',
+    })
+  })
 
   return NextResponse.json({
     messageId: msg.id,
