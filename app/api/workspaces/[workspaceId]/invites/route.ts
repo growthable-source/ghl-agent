@@ -66,17 +66,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // ─── Feature gating: team member limit & cross-domain ───
-  // Internal workspaces bypass every plan gate — trial expiry, member
-  // caps, and cross-domain restrictions all pass through.
+  // Plan + trial state are account-level — see lib/effective-plan.ts.
   const internal = await isInternalWorkspace(workspaceId)
+  const { getEffectivePlan } = await import('@/lib/effective-plan')
+  const effective = await getEffectivePlan(workspaceId).catch(() => null)
 
-  if (!internal && workspace?.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
+  if (!internal && effective?.trialExpired) {
     const recommendedPlan = recommendPlanForLimit('trial', 'TRIAL_EXPIRED')
     const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
     return NextResponse.json({
       error: 'Your trial has expired.',
       code: 'TRIAL_EXPIRED',
-      currentPlan: workspace.plan,
+      currentPlan: effective.plan,
       recommendedPlan,
       recommendedPlanLabel: recommendedFeatures?.label ?? null,
       recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
@@ -85,8 +86,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const currentMemberCount = await db.workspaceMember.count({ where: { workspaceId } })
-  if (!internal && !canAddTeamMember(workspace?.plan || 'free', currentMemberCount)) {
-    const planNow = workspace?.plan || 'free'
+  const planNow = effective?.plan || 'free'
+  if (!internal && !canAddTeamMember(planNow, currentMemberCount)) {
     const recommendedPlan = recommendPlanForLimit(planNow, 'MEMBER_LIMIT')
     const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
     return NextResponse.json({

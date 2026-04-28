@@ -36,33 +36,31 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
   const name = (body.name || '').trim() || 'New Widget'
 
-  // Plan gating — graceful fallback if plan column / widget table doesn't exist
+  // Plan gating — uses the workspace owner's effective (best) plan, not
+  // the local workspace.plan, so a user on Scale can spin up widgets in
+  // any of their workspaces without each one being its own trial.
   try {
-    const ws = await db.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { plan: true },
-    })
-    if (ws) {
-      const current = await db.chatWidget.count({ where: { workspaceId } })
-      if (!canCreateWidget(ws.plan, current)) {
-        const recommendedPlan = recommendPlanForLimit(ws.plan, 'WIDGET_LIMIT')
-        const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
-        const recommendedCap = recommendedPlan ? widgetLimit(recommendedPlan) : null
-        return NextResponse.json({
-          error: `Widget limit reached on the ${ws.plan} plan (${current}/${widgetLimit(ws.plan)}).`,
-          code: 'WIDGET_LIMIT',
-          currentPlan: ws.plan,
-          currentCount: current,
-          currentLimit: widgetLimit(ws.plan),
-          recommendedPlan,
-          recommendedPlanLabel: recommendedFeatures?.label ?? null,
-          recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
-          recommendedPlanCapacity: recommendedCap,
-          benefit: recommendedPlan === 'scale'
-            ? 'Unlimited widgets'
-            : recommendedCap === Infinity ? 'Unlimited widgets' : `${recommendedCap} widgets`,
-        }, { status: 403 })
-      }
+    const { getEffectivePlan } = await import('@/lib/effective-plan')
+    const effective = await getEffectivePlan(workspaceId)
+    const current = await db.chatWidget.count({ where: { workspaceId } })
+    if (!canCreateWidget(effective.plan, current)) {
+      const recommendedPlan = recommendPlanForLimit(effective.plan, 'WIDGET_LIMIT')
+      const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
+      const recommendedCap = recommendedPlan ? widgetLimit(recommendedPlan) : null
+      return NextResponse.json({
+        error: `Widget limit reached on the ${effective.plan} plan (${current}/${widgetLimit(effective.plan)}).`,
+        code: 'WIDGET_LIMIT',
+        currentPlan: effective.plan,
+        currentCount: current,
+        currentLimit: widgetLimit(effective.plan),
+        recommendedPlan,
+        recommendedPlanLabel: recommendedFeatures?.label ?? null,
+        recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
+        recommendedPlanCapacity: recommendedCap,
+        benefit: recommendedPlan === 'scale'
+          ? 'Unlimited widgets'
+          : recommendedCap === Infinity ? 'Unlimited widgets' : `${recommendedCap} widgets`,
+      }, { status: 403 })
     }
   } catch {
     // Pre-migration — allow

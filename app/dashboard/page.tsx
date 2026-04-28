@@ -24,9 +24,26 @@ export default async function DashboardPage() {
     orderBy: { createdAt: 'desc' },
   })
 
-  // Determine workspace limit based on best plan
-  const plans = workspaceMembers.map(m => m.workspace.plan)
+  // Determine the *effective* plan for this user — billing is account-
+  // level (the user's best plan across all owned workspaces), not
+  // per-workspace. Every row inherits this; no workspace shows its own
+  // trial-expired badge once any of the user's workspaces is on a paid
+  // plan.
+  const ownedWorkspaces = workspaceMembers.filter(m => m.role === 'owner').map(m => m.workspace)
+  const sourceForPlan = ownedWorkspaces.length > 0 ? ownedWorkspaces : workspaceMembers.map(m => m.workspace)
+  const plans = sourceForPlan.map(w => w.plan)
   const bestPlan = (['scale', 'growth', 'starter', 'trial'] as const).find(p => plans.includes(p)) || 'trial'
+  // Latest trialEndsAt across the source so a freshly-created trial
+  // workspace doesn't accidentally extend the timer for an old one.
+  const latestTrialEndsAt = sourceForPlan
+    .filter(w => w.plan === 'trial' && w.trialEndsAt)
+    .reduce<Date | null>((latest, w) => {
+      const t = w.trialEndsAt!
+      return !latest || t > latest ? t : latest
+    }, null)
+  const trialDaysLeftAccount = latestTrialEndsAt
+    ? Math.max(0, Math.ceil((new Date(latestTrialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0
   const features = getPlanFeatures(bestPlan)
   const atLimit = workspaceMembers.length >= features.workspaces
   const isOnFreeTier = bestPlan === 'trial' || bestPlan === 'starter'
@@ -99,11 +116,12 @@ export default async function DashboardPage() {
 
         <div className="space-y-3">
           {workspaceMembers.map(({ workspace: ws, role }) => {
-            const planLabel = ws.plan.charAt(0).toUpperCase() + ws.plan.slice(1)
-            const isTrial = ws.plan === 'trial'
-            const trialDaysLeft = ws.trialEndsAt
-              ? Math.max(0, Math.ceil((new Date(ws.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-              : 0
+            // Badges reflect the OWNER'S effective plan — not this row's
+            // workspace.plan — so a Scale account doesn't see "Trial
+            // expired" on workspace #2..#N.
+            const planLabel = bestPlan.charAt(0).toUpperCase() + bestPlan.slice(1)
+            const isTrial = bestPlan === 'trial'
+            const trialDaysLeft = trialDaysLeftAccount
 
             return (
               <Link

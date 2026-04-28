@@ -86,14 +86,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   if (access instanceof NextResponse) return access
 
   // ─── Feature gating: check agent limit ───
-  let workspace: { plan: string; agentLimit: number; extraAgentCount: number; trialEndsAt: Date | null } | null = null
+  // Plan is account-level (the workspace owner's best plan across all
+  // their owned workspaces) — see lib/effective-plan.ts for why we don't
+  // read the local workspace.plan directly.
+  let effective: Awaited<ReturnType<typeof import('@/lib/effective-plan').getEffectivePlan>> | null = null
   try {
-    workspace = await db.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { plan: true, agentLimit: true, extraAgentCount: true, trialEndsAt: true },
-    })
+    const { getEffectivePlan } = await import('@/lib/effective-plan')
+    effective = await getEffectivePlan(workspaceId)
   } catch {
-    // Columns may not exist yet if billing migration hasn't been run — skip gating
     console.warn('[Agents] Feature gating query failed (migration pending?) — allowing agent creation')
   }
 
@@ -102,15 +102,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   // accounts, and dogfooding shouldn't ever be blocked behind a paywall.
   const internal = await isInternalWorkspace(workspaceId)
 
-  if (workspace && !internal) {
-    // Block expired trials
-    if (workspace.plan === 'trial' && isTrialExpired(workspace.trialEndsAt)) {
+  if (effective && !internal) {
+    // Block expired trials — but only if the *owner has no paid plan
+    // anywhere*. As soon as one of their workspaces is on Scale/Growth/
+    // Starter, every workspace they own inherits those benefits.
+    if (effective.trialExpired) {
       const recommendedPlan = recommendPlanForLimit('trial', 'TRIAL_EXPIRED')
       const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
       return NextResponse.json({
         error: 'Your trial has expired.',
         code: 'TRIAL_EXPIRED',
-        currentPlan: workspace.plan,
+        currentPlan: effective.plan,
         recommendedPlan,
         recommendedPlanLabel: recommendedFeatures?.label ?? null,
         recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
@@ -119,15 +121,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     }
 
     const currentAgentCount = await db.agent.count({ where: { workspaceId } })
-    if (!canCreateAgent(workspace.plan, currentAgentCount, workspace.extraAgentCount ?? 0)) {
-      const recommendedPlan = recommendPlanForLimit(workspace.plan, 'AGENT_LIMIT')
+    if (!canCreateAgent(effective.plan, currentAgentCount, effective.extraAgentCount ?? 0)) {
+      const recommendedPlan = recommendPlanForLimit(effective.plan, 'AGENT_LIMIT')
       const recommendedFeatures = recommendedPlan ? PLAN_FEATURES[recommendedPlan] : null
       return NextResponse.json({
-        error: `Agent limit reached (${currentAgentCount}/${workspace.agentLimit}).`,
+        error: `Agent limit reached (${currentAgentCount}/${effective.agentLimit}).`,
         code: 'AGENT_LIMIT',
-        currentPlan: workspace.plan,
+        currentPlan: effective.plan,
         currentCount: currentAgentCount,
-        currentLimit: workspace.agentLimit,
+        currentLimit: effective.agentLimit,
         recommendedPlan,
         recommendedPlanLabel: recommendedFeatures?.label ?? null,
         recommendedPlanPrice: recommendedFeatures?.monthlyPrice ?? null,
