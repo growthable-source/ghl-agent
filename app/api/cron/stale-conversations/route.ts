@@ -74,11 +74,15 @@ export async function GET(req: NextRequest) {
       const preview = (last.content || '').length > 120
         ? last.content.slice(0, 117) + '…'
         : last.content
+      // Wording note: this cron only fires when the *visitor* sent the
+      // last message (see the role check above). So the agent is the one
+      // that hasn't replied — be explicit about that, otherwise the
+      // operator reads it as if the visitor went silent.
       await notify({
         workspaceId: convo.widget.workspaceId,
         event: 'conversation.stale',
-        title: `Chat on ${convo.widget.name || 'your widget'} has gone quiet`,
-        body: `Visitor's last message: "${preview}" — no reply for ${STALE_MINUTES}+ minutes`,
+        title: `Agent on ${convo.widget.name || 'your widget'} hasn't replied in ${STALE_MINUTES}+ minutes`,
+        body: `Visitor is waiting. Last message: "${preview}"`,
         link,
         severity: 'warning',
       })

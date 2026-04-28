@@ -198,10 +198,30 @@ Note: This conversation is happening on a website chat widget. When booking, use
     direction: m.role === 'visitor' ? 'inbound' as const : 'outbound' as const,
   }))
 
+  // Resolve a real CRM adapter for the workspace if one is connected, so
+  // the agent's calendar/opportunity tools (get_available_slots,
+  // book_appointment, get_opportunities, etc.) can actually execute.
+  // Without this the WidgetAdapter throws "No CRM connected" the moment
+  // the agent tries to look up availability and the conversation dies.
+  let inner: import('@/lib/crm/types').CrmAdapter | null = null
+  try {
+    const realLocation = await db.location.findFirst({
+      where: { workspaceId: widget.workspaceId, crmProvider: { not: 'none' } },
+      select: { id: true },
+      orderBy: { installedAt: 'desc' },
+    })
+    if (realLocation) {
+      const { getCrmAdapter } = await import('@/lib/crm/factory')
+      inner = await getCrmAdapter(realLocation.id)
+    }
+  } catch (err: any) {
+    console.warn('[widget] could not resolve CRM adapter — calendar tools will degrade:', err?.message)
+  }
+
   const adapter = new WidgetAdapter({
     widgetId: convo.widgetId,
     conversationId: convo.id,
-    inner: null, // TODO: pass real CRM adapter if workspace has one + agent has calendarId
+    inner,
   })
 
   // Ensure conversation state exists + message count stays accurate for
@@ -211,8 +231,9 @@ Note: This conversation is happening on a website chat widget. When booking, use
   await getOrCreateConversationState(agent.id, widgetLocationId, widgetContactId, convo.id).catch(() => null)
   await incrementMessageCount(agent.id, widgetContactId).catch(() => null)
 
+  let result: Awaited<ReturnType<typeof runAgent>> | null = null
   try {
-    const result = await runAgent({
+    result = await runAgent({
       locationId: widgetLocationId,
       agentId: agent.id,
       contactId: widgetContactId,
@@ -240,6 +261,42 @@ Note: This conversation is happening on a website chat widget. When booking, use
       },
       adapter,
     } as any)
+
+    // Silent-agent guardrail. If runAgent finished without ever calling
+    // send_reply (tool errored out, all iterations consumed, or model
+    // returned an empty turn), the visitor sees nothing — and we get a
+    // misleading "conversation gone quiet" page later. Surface a short
+    // honest fallback so they know the agent is at least alive.
+    if (!result?.reply || !result.reply.trim()) {
+      const fallbackMessage = "I hit a snag on my end — let me get someone on our team to follow up."
+      try {
+        await adapter.sendMessage({
+          type: 'Live_Chat',
+          contactId: widgetContactId,
+          message: fallbackMessage,
+        })
+      } catch (err: any) {
+        console.warn('[widget] silent-agent fallback failed:', err?.message)
+      }
+      // Page the operator inbox so a human can pick up the dropped thread
+      if (convo.widget.workspaceId) {
+        try {
+          await notify({
+            workspaceId: convo.widget.workspaceId,
+            event: 'agent_error',
+            title: `Agent went silent on ${convo.widget.name || 'a widget'}`,
+            body: `The agent processed an inbound but produced no reply. Visitor: "${content.slice(0, 120)}". Sent fallback message instead.`,
+            link: resolveHandoverLink({
+              workspaceId: convo.widget.workspaceId,
+              locationId: `widget:${convo.widgetId}`,
+              conversationId: convo.id,
+              channel: 'Live_Chat',
+            }),
+            severity: 'warning',
+          })
+        } catch {}
+      }
+    }
 
     // Stop-condition evaluation — same pattern the webhook handler uses for
     // SMS/WhatsApp/etc. so widget threads pause consistently when a rule
