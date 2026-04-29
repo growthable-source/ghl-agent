@@ -1268,9 +1268,35 @@ model WidgetVisitor {
   crmContactId  String?
   userAgent     String?
   ipAddress     String?
+  // Convenience: most-recent page the visitor was seen on. Updated by
+  // the page_view event ingest. Operators see this in the inbox to
+  // know "where on my site is the visitor right now?" without having
+  // to walk the full timeline.
+  currentUrl    String?
+  currentTitle  String?
   conversations WidgetConversation[]
+  events        WidgetVisitorEvent[]
   @@unique([widgetId, cookieId])
   @@index([widgetId, lastSeenAt])
+}
+
+// Visitor activity stream — page views, identifies, custom events
+// emitted by the widget JS on the host page. Powers the "Timeline"
+// panel in the inbox sidebar so operators can see where the visitor
+// has been before they hit the chat.
+model WidgetVisitorEvent {
+  id         String   @id @default(cuid())
+  visitorId  String
+  visitor    WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  // 'page_view' | 'identify' | 'custom' | reserved for future kinds
+  kind       String
+  // Free-shape JSON for kind-specific fields. For page_view:
+  //   { url, title?, referrer?, search? }
+  // For identify: { email?, name?, phone? }
+  // For custom (future): caller-defined.
+  data       Json     @default("{}")
+  createdAt  DateTime @default(now())
+  @@index([visitorId, createdAt(sort: Desc)])
 }
 
 model WidgetConversation {

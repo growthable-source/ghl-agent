@@ -581,7 +581,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
       </div>
 
       {/* Right sidebar */}
-      <aside className="w-72 border-l border-zinc-800 overflow-y-auto bg-zinc-950 hidden lg:block">
+      <aside className="w-80 border-l border-zinc-800 overflow-y-auto bg-zinc-950 hidden lg:block">
         <div className="p-5 border-b border-zinc-800">
           <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-3">Visitor</p>
           <div className="flex items-start gap-3">
@@ -610,6 +610,15 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
             </div>
           </div>
         </div>
+
+        {/* Where they are now + activity stream — pulled from the
+            visitor-events API. Renders nothing for visitors who
+            haven't fired any events yet. */}
+        <VisitorTimelineSection workspaceId={workspaceId} conversationId={conversationId} />
+
+        {/* CRM context — only renders when the visitor is tied to a
+            real CRM contact. Quietly hidden otherwise. */}
+        <CrmContextSection workspaceId={workspaceId} conversationId={conversationId} />
 
         {typeof convo.csatRating === 'number' && (
           <div className="p-5 border-b border-zinc-800">
@@ -793,6 +802,316 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Visitor timeline + CRM panels
+// ──────────────────────────────────────────────────────────────────────
+//
+// Both fetch on mount + every time the conversationId changes. Failures
+// are quiet — empty / hidden state, not error-flashy. Operators have
+// other things to do than diagnose a sidebar fetch.
+
+interface VisitorTimelineData {
+  visitor: {
+    id: string
+    currentUrl?: string | null
+    currentTitle?: string | null
+    crmContactId?: string | null
+  }
+  events: Array<{ id: string; kind: string; data: any; createdAt: string }>
+  conversations: Array<{
+    id: string
+    status: string
+    createdAt: string
+    lastMessageAt: string
+    messageCount: number
+    widget: { id: string; name: string }
+  }>
+}
+
+function VisitorTimelineSection({ workspaceId, conversationId }: { workspaceId: string; conversationId: string }) {
+  const [data, setData] = useState<VisitorTimelineData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/timeline`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(() => { if (!cancelled) setData(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [workspaceId, conversationId])
+
+  if (loading || !data) return null
+
+  const currentUrl = data.visitor.currentUrl
+  const currentTitle = data.visitor.currentTitle
+  const events = data.events
+  // Build a unified timeline: page_view + identify events plus a
+  // synthetic "chat started" event for each conversation. Sorted
+  // newest-first.
+  const timeline: Array<{ id: string; ts: number; node: any }> = []
+  for (const e of events) {
+    timeline.push({
+      id: 'e_' + e.id,
+      ts: new Date(e.createdAt).getTime(),
+      node: <TimelineEvent key={'e_' + e.id} event={e} />,
+    })
+  }
+  for (const c of data.conversations) {
+    timeline.push({
+      id: 'c_' + c.id,
+      ts: new Date(c.createdAt).getTime(),
+      node: <TimelineConversation key={'c_' + c.id} convo={c} active={c.id === conversationId} />,
+    })
+  }
+  timeline.sort((a, b) => b.ts - a.ts)
+
+  if (!currentUrl && timeline.length === 0) return null
+
+  return (
+    <div className="p-5 border-b border-zinc-800">
+      <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-3">Visitor activity</p>
+
+      {currentUrl && (
+        <div className="mb-4 p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+          <p className="text-[10px] text-zinc-500 mb-1">Currently on</p>
+          {currentTitle && <p className="text-xs font-medium text-white truncate">{currentTitle}</p>}
+          <a
+            href={currentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-orange-300 hover:underline break-all line-clamp-2"
+          >
+            {prettyUrl(currentUrl)}
+          </a>
+        </div>
+      )}
+
+      {timeline.length === 0 ? (
+        <p className="text-[11px] text-zinc-500 italic">No activity recorded yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {timeline.slice(0, 30).map(t => t.node)}
+          {timeline.length > 30 && (
+            <p className="text-[10px] text-zinc-600 italic">+ {timeline.length - 30} more events</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TimelineEvent({ event }: { event: { kind: string; data: any; createdAt: string } }) {
+  if (event.kind === 'page_view') {
+    const url = event.data?.url as string | undefined
+    const title = event.data?.title as string | undefined
+    return (
+      <div className="flex items-start gap-2 text-[11px]">
+        <span className="text-zinc-600 mt-0.5">📄</span>
+        <div className="flex-1 min-w-0">
+          {title && <p className="text-zinc-200 truncate">{title}</p>}
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 truncate block"
+              title={url}
+            >
+              {prettyUrl(url)}
+            </a>
+          )}
+          <p className="text-[10px] text-zinc-600">{relTime(event.createdAt)}</p>
+        </div>
+      </div>
+    )
+  }
+  if (event.kind === 'identify') {
+    const email = event.data?.email
+    const name = event.data?.name
+    return (
+      <div className="flex items-start gap-2 text-[11px]">
+        <span className="text-zinc-600 mt-0.5">👤</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-zinc-200">Identified {name ? <span className="font-semibold">{name}</span> : null} {email && <span className="font-mono text-[10px] text-zinc-400">{email}</span>}</p>
+          <p className="text-[10px] text-zinc-600">{relTime(event.createdAt)}</p>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-start gap-2 text-[11px]">
+      <span className="text-zinc-600 mt-0.5">·</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-zinc-300 capitalize">{event.kind.replace(/_/g, ' ')}</p>
+        <p className="text-[10px] text-zinc-600">{relTime(event.createdAt)}</p>
+      </div>
+    </div>
+  )
+}
+
+function TimelineConversation({ convo, active }: { convo: { id: string; status: string; messageCount: number; createdAt: string; widget: { name: string } }; active: boolean }) {
+  return (
+    <div className={`flex items-start gap-2 text-[11px] ${active ? 'opacity-100' : 'opacity-80'}`}>
+      <span className="text-zinc-600 mt-0.5">💬</span>
+      <div className="flex-1 min-w-0">
+        <p className={active ? 'text-orange-300' : 'text-zinc-200'}>
+          Chat started on {convo.widget.name}
+          {active && <span className="ml-1 text-[10px] text-orange-300">(this one)</span>}
+        </p>
+        <p className="text-[10px] text-zinc-600">
+          {convo.messageCount} message{convo.messageCount === 1 ? '' : 's'} · {relTime(convo.createdAt)}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function prettyUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    const path = u.pathname + (u.search || '')
+    return u.host.replace(/^www\./, '') + (path === '/' ? '' : path)
+  } catch {
+    return url
+  }
+}
+
+// ─── CRM context ────────────────────────────────────────────────────
+
+interface CrmContext {
+  connected: boolean
+  reason?: string
+  provider?: string
+  deepLink?: string | null
+  contact?: {
+    id: string
+    name?: string | null
+    email?: string | null
+    phone?: string | null
+    tags?: string[]
+    source?: string | null
+    dateAdded?: string | null
+  } | null
+  opportunities: Array<{ id: string; name: string; stage?: string | null; monetaryValue?: number | null; status?: string | null }>
+  notes: Array<{ id: string; body: string; dateAdded?: string | null }>
+  tasks: Array<{ id: string; title: string; dueDate?: string | null; completed: boolean }>
+}
+
+function CrmContextSection({ workspaceId, conversationId }: { workspaceId: string; conversationId: string }) {
+  const [data, setData] = useState<CrmContext | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/crm-context`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setData(d) })
+      .catch(() => { if (!cancelled) setData(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [workspaceId, conversationId])
+
+  if (loading || !data || !data.connected) return null
+
+  const c = data.contact
+  return (
+    <div className="p-5 border-b border-zinc-800">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">CRM context</p>
+        {data.deepLink && (
+          <a
+            href={data.deepLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-zinc-500 hover:text-zinc-300"
+            title="Open in your CRM"
+          >
+            Open →
+          </a>
+        )}
+      </div>
+
+      {!c ? (
+        <p className="text-[11px] text-zinc-500 italic">Couldn&apos;t load contact details.</p>
+      ) : (
+        <>
+          <div className="space-y-1 text-[11px]">
+            {c.name && <Row k="Name"   v={c.name} />}
+            {c.email && <Row k="Email"  v={c.email} />}
+            {c.phone && <Row k="Phone"  v={c.phone} />}
+            {c.source && <Row k="Source" v={c.source} />}
+          </div>
+
+          {c.tags && c.tags.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[10px] text-zinc-500 mb-1.5">Tags</p>
+              <div className="flex flex-wrap gap-1">
+                {c.tags.map(t => (
+                  <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {data.opportunities.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] text-zinc-500 mb-1.5">Opportunities ({data.opportunities.length})</p>
+          <div className="space-y-1.5">
+            {data.opportunities.slice(0, 5).map(o => (
+              <div key={o.id} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                <p className="text-xs text-white truncate">{o.name}</p>
+                <div className="flex items-center gap-2 text-[10px] text-zinc-500 mt-0.5">
+                  {o.status && <span>{o.status}</span>}
+                  {o.monetaryValue != null && <span>· ${o.monetaryValue.toLocaleString()}</span>}
+                </div>
+              </div>
+            ))}
+            {data.opportunities.length > 5 && (
+              <p className="text-[10px] text-zinc-600 italic">+ {data.opportunities.length - 5} more</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {data.tasks.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] text-zinc-500 mb-1.5">Open tasks</p>
+          <div className="space-y-1">
+            {data.tasks.filter(t => !t.completed).slice(0, 5).map(t => (
+              <div key={t.id} className="text-[11px] text-zinc-300 truncate">
+                <span className="text-zinc-600 mr-1">○</span>{t.title}
+                {t.dueDate && <span className="text-[10px] text-zinc-500 ml-1">· {relTime(t.dueDate)}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.notes.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] text-zinc-500 mb-1.5">Recent notes</p>
+          <div className="space-y-1.5">
+            {data.notes.slice(0, 3).map(n => (
+              <div key={n.id} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                <p className="text-[11px] text-zinc-300 line-clamp-3">{n.body}</p>
+                {n.dateAdded && (
+                  <p className="text-[10px] text-zinc-600 mt-1">{relTime(n.dateAdded)}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

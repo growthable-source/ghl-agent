@@ -53,9 +53,73 @@
   fetch(hostUrl + '/api/widget/' + widgetId + '/config?pk=' + encodeURIComponent(publicKey))
     .then(function (r) { return r.json() })
     .then(function (cfg) {
-      if (cfg && cfg.id) { state.config = cfg; render() }
+      if (cfg && cfg.id) { state.config = cfg; render(); startVisitorTracking() }
     })
     .catch(function (e) { console.warn('[Voxility] config fetch failed:', e) })
+
+  // ─── Visitor tracking ──────────────────────────────────────────────
+  // Fires page_view events to /visitor/events so the operator inbox
+  // can show a timeline of where the visitor has been on the site.
+  // Best-effort — failures are silent. SPA-aware: re-fires on
+  // history.pushState / popstate, with the host route capped via the
+  // server-side 60s same-URL dedupe.
+  var VISITOR_KEY = 'voxility_visitor_id'
+  function getCookieId() {
+    try {
+      var id = localStorage.getItem(VISITOR_KEY)
+      if (id) return id
+      id = 'c_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+      localStorage.setItem(VISITOR_KEY, id)
+      return id
+    } catch (_) { return null }
+  }
+  function sendEvent(kind, data) {
+    var cookieId = getCookieId()
+    if (!cookieId) return
+    try {
+      var url = hostUrl + '/api/widget/' + widgetId + '/visitor/events?pk=' + encodeURIComponent(publicKey)
+      var body = JSON.stringify({ cookieId: cookieId, kind: kind, data: data || {} })
+      // sendBeacon is fire-and-forget and survives page unload — perfect
+      // for the "user navigated away" case. Falls back to fetch when
+      // unsupported (older Safari) or when the body type fails.
+      if (navigator.sendBeacon) {
+        var blob = new Blob([body], { type: 'application/json' })
+        if (navigator.sendBeacon(url, blob)) return
+      }
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true })
+        .catch(function () {})
+    } catch (_) {}
+  }
+  function currentPageData() {
+    return {
+      url: location.href,
+      title: document.title,
+      referrer: document.referrer || null,
+      path: location.pathname,
+      search: location.search || null,
+    }
+  }
+  function startVisitorTracking() {
+    // Fire once on load.
+    sendEvent('page_view', currentPageData())
+    // SPA navigation: monkey-patch pushState + replaceState so we hear
+    // every router transition, plus listen for popstate (back/forward).
+    var origPush = history.pushState
+    var origReplace = history.replaceState
+    history.pushState = function () {
+      var ret = origPush.apply(this, arguments)
+      try { sendEvent('page_view', currentPageData()) } catch (_) {}
+      return ret
+    }
+    history.replaceState = function () {
+      var ret = origReplace.apply(this, arguments)
+      try { sendEvent('page_view', currentPageData()) } catch (_) {}
+      return ret
+    }
+    window.addEventListener('popstate', function () {
+      try { sendEvent('page_view', currentPageData()) } catch (_) {}
+    })
+  }
 
   function render() {
     var cfg = state.config
