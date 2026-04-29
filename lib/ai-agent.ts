@@ -1990,7 +1990,21 @@ export async function runAgent(opts: {
   let dataSourcesBlock = ''
   let dataSourcesList: Array<{ id: string; name: string; kind: string }> = []
   try {
-    if (workspaceId) {
+    // Post-Collections: data sources are scoped per-agent through
+    // attached collections. Only sources the operator wired into a
+    // collection this agent uses surface here. Falls back to the
+    // workspace-wide list if no collection is attached, so a fresh
+    // agent in a workspace that has data sources but no collection
+    // setup yet still sees the tools (matches legacy behavior).
+    if (agentId) {
+      const { listActiveDataSourcesForAgent, listActiveDataSources, describeDataSources } = await import('./data-sources')
+      let sources = await listActiveDataSourcesForAgent(agentId)
+      if (sources.length === 0 && workspaceId) {
+        sources = await listActiveDataSources(workspaceId)
+      }
+      dataSourcesBlock = describeDataSources(sources)
+      dataSourcesList = sources.map(s => ({ id: s.id, name: s.name, kind: s.kind }))
+    } else if (workspaceId) {
       const { listActiveDataSources, describeDataSources } = await import('./data-sources')
       const sources = await listActiveDataSources(workspaceId)
       dataSourcesBlock = describeDataSources(sources)

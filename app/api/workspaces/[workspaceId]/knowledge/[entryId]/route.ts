@@ -5,33 +5,23 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 type Params = { params: Promise<{ workspaceId: string; entryId: string }> }
 
 /**
- * GET — full entry incl. its current connected agent IDs (for the
- * editor's "Stack on agents" multi-select).
- *
- * PATCH — edit title/content/sourceUrl. (Source type is fixed at create
- * — switching e.g. from "manual" to "notion" would change semantics
- * around re-sync.)
- *
- * DELETE — remove the entry from the workspace. Cascades through
- * AgentKnowledge so every connected agent loses it on next prompt build.
+ * Legacy entry-by-id route. Entries now live inside collections — use
+ * /workspaces/:wid/knowledge/collections/:cid/entries/:eid for create/
+ * edit/delete. We keep GET working for read-only fetches (deep links,
+ * external integrations) but redirect-style 410 for mutations to point
+ * callers at the new path.
  */
-
-async function loadEntryGuarded(workspaceId: string, entryId: string) {
-  return db.knowledgeEntry.findFirst({
-    where: { id: entryId, workspaceId },
-    include: {
-      attachments: { select: { agentId: true } },
-      agent: { select: { id: true, name: true } },
-    } as any,
-  })
-}
-
 export async function GET(_req: NextRequest, { params }: Params) {
   const { workspaceId, entryId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
-  const entry: any = await loadEntryGuarded(workspaceId, entryId)
+  const entry = await db.knowledgeEntry.findFirst({
+    where: { id: entryId, workspaceId },
+    include: {
+      collection: { select: { id: true, name: true } },
+    },
+  }).catch(() => null)
   if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   return NextResponse.json({
@@ -43,49 +33,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
       sourceUrl: entry.sourceUrl,
       tokenEstimate: entry.tokenEstimate,
       status: entry.status,
+      collection: entry.collection ? { id: entry.collection.id, name: entry.collection.name } : null,
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
-      createdByAgent: entry.agent ? { id: entry.agent.id, name: entry.agent.name } : null,
-      connectedAgentIds: entry.attachments?.map((a: any) => a.agentId) ?? [],
     },
   })
 }
 
-export async function PATCH(req: NextRequest, { params }: Params) {
-  const { workspaceId, entryId } = await params
-  const access = await requireWorkspaceAccess(workspaceId)
-  if (access instanceof NextResponse) return access
-
-  let body: any = {}
-  try { body = await req.json() } catch {
-    return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
-  }
-
-  const data: Record<string, unknown> = {}
-  if (typeof body.title === 'string' && body.title.trim()) data.title = body.title.trim()
-  if (typeof body.content === 'string' && body.content.trim()) data.content = body.content.trim()
-  if (body.sourceUrl !== undefined) {
-    data.sourceUrl = typeof body.sourceUrl === 'string' && body.sourceUrl.trim() ? body.sourceUrl.trim() : null
-  }
-  if (Object.keys(data).length === 0) {
-    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
-  }
-
-  const existing = await loadEntryGuarded(workspaceId, entryId)
-  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  const entry = await db.knowledgeEntry.update({ where: { id: entryId }, data })
-  return NextResponse.json({ entry })
+export function PATCH() {
+  return NextResponse.json({
+    error: 'Entries are now edited under their collection. Use PATCH /workspaces/[id]/knowledge/collections/[cid]/entries/[entryId].',
+    code: 'WORKSPACE_LEVEL_ENTRY_EDIT_REMOVED',
+  }, { status: 410 })
 }
-
-export async function DELETE(_req: NextRequest, { params }: Params) {
-  const { workspaceId, entryId } = await params
-  const access = await requireWorkspaceAccess(workspaceId)
-  if (access instanceof NextResponse) return access
-
-  const existing = await loadEntryGuarded(workspaceId, entryId)
-  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  await db.knowledgeEntry.delete({ where: { id: entryId } })
-  return NextResponse.json({ success: true })
+export function DELETE() {
+  return NextResponse.json({
+    error: 'Entries are now deleted under their collection. Use DELETE /workspaces/[id]/knowledge/collections/[cid]/entries/[entryId].',
+    code: 'WORKSPACE_LEVEL_ENTRY_DELETE_REMOVED',
+  }, { status: 410 })
 }

@@ -124,7 +124,8 @@ model Workspace {
   agents       Agent[]            @relation("WorkspaceAgents")
   usageRecords UsageRecord[]
   templates    AgentTemplate[]    @relation("WorkspaceTemplates")
-  knowledgeEntries KnowledgeEntry[] @relation("WorkspaceKnowledge")
+  knowledgeEntries     KnowledgeEntry[]      @relation("WorkspaceKnowledge")
+  knowledgeCollections KnowledgeCollection[] @relation("WorkspaceKnowledgeCollections")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -321,7 +322,7 @@ model Agent {
   businessContext     String?
 
   knowledgeEntries KnowledgeEntry[]
-  attachedKnowledge AgentKnowledge[]
+  attachedCollections AgentCollection[]
   routingRules     RoutingRule[]
   detectionRules   AgentRule[]
   experiments      AgentExperiment[]
@@ -344,16 +345,61 @@ model Agent {
   @@index([workspaceId])
 }
 
-// Workspace-scoped reference docs the agents can pull into their system
-// prompt. An entry is owned by the workspace; *which agents use it* lives
-// in AgentKnowledge (many-to-many junction). The legacy `agentId` column
-// is now nullable and represents the *creator* (the agent whose page
-// spawned the entry) — purely for breadcrumbs. Attachment is the junction.
+// Knowledge Collection — the unit operators reason about. A collection
+// is a named bundle of items (text entries, file uploads, URL crawls,
+// FAQs, Notion pages, YouTube transcripts, AND live data sources)
+// that an agent can subscribe to. Agents stack collections, not
+// individual items.
+model KnowledgeCollection {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation("WorkspaceKnowledgeCollections", fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // Lightweight visual identity for the collection list view. Emoji /
+  // hex colour. Both optional; UI falls back to a default.
+  icon        String?
+  color       String?
+  // Display order — lets operators pin "Master FAQs" to the top of the
+  // workspace knowledge page. Ascending; equal values sort by createdAt.
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  entries     KnowledgeEntry[]
+  dataSources WorkspaceDataSource[]
+  attachments AgentCollection[]
+  @@index([workspaceId, order])
+}
+
+// Junction connecting an agent to a knowledge collection. Single
+// source of truth for which collections an agent pulls into its
+// system prompt at runtime — both the static knowledge entries and
+// the data-source tools live inside the collection.
+model AgentCollection {
+  id           String   @id @default(cuid())
+  agentId      String
+  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  collectionId String
+  collection   KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  attachedAt   DateTime @default(now())
+  @@unique([agentId, collectionId])
+  @@index([collectionId])
+}
+
+// A single knowledge item (text, FAQ pair, crawled chunk, etc.). Lives
+// inside a KnowledgeCollection. The legacy `workspaceId` and `agentId`
+// columns are kept temporarily for migration tracking — collectionId is
+// the live attachment path.
 model KnowledgeEntry {
   id            String   @id @default(cuid())
+  collectionId  String
+  collection    KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   workspaceId   String
   workspace     Workspace @relation("WorkspaceKnowledge", fields: [workspaceId], references: [id], onDelete: Cascade)
-  agentId       String?   // creator (origin) agent — nullable for workspace-level creates
+  // Origin pointer — the agent whose page first created this entry, if
+  // any. Pre-collections (legacy). Nullable; not used for routing.
+  agentId       String?
   agent         Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   title         String
   content       String   @db.Text
@@ -365,24 +411,10 @@ model KnowledgeEntry {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  attachments   AgentKnowledge[]
+  @@index([collectionId])
+  @@index([collectionId, status])
   @@index([workspaceId])
-  @@index([workspaceId, status])
   @@index([agentId])
-}
-
-// Junction connecting an agent to a knowledge entry it has been
-// "stacked" with. Single source of truth for which agents pull which
-// entries into their system prompt at runtime.
-model AgentKnowledge {
-  id               String   @id @default(cuid())
-  agentId          String
-  agent            Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  knowledgeEntryId String
-  entry            KnowledgeEntry @relation(fields: [knowledgeEntryId], references: [id], onDelete: Cascade)
-  attachedAt       DateTime @default(now())
-  @@unique([agentId, knowledgeEntryId])
-  @@index([knowledgeEntryId])
 }
 
 // ─── Recurring crawl schedule ──────────────────────────────────────────────
@@ -729,19 +761,29 @@ model AgentTemplate {
 // the lookup_sheet, query_airtable, and fetch_data tools. The agent
 // references them by `name`; tool descriptions list the available sources
 // + their descriptions so Claude knows when to call which.
+// A live data lookup connection (Google Sheets, Airtable, REST). Lives
+// inside a KnowledgeCollection now — agents that connect to the
+// collection get the data-source tools automatically alongside any
+// static knowledge entries in the same collection.
 model WorkspaceDataSource {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String                                 // slug-ish, e.g. "inventory"
-  kind        String                                 // "google_sheet" | "airtable" | "rest_get"
-  description String?
-  config      Json     @default("{}")                // sheet URL, base ID, table, headers, etc.
-  secretEnc   String?                                // AES-256-GCM (lib/secrets.ts)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  workspaceId  String
+  // Collection ownership. Required after backfill — every data source
+  // belongs to exactly one collection so agents inherit the tool when
+  // they attach the collection.
+  collectionId String?
+  collection   KnowledgeCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  name         String                                 // slug-ish, e.g. "inventory"
+  kind         String                                 // "google_sheet" | "airtable" | "rest_get"
+  description  String?
+  config       Json     @default("{}")                // sheet URL, base ID, table, headers, etc.
+  secretEnc    String?                                // AES-256-GCM (lib/secrets.ts)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   @@unique([workspaceId, name])
   @@index([workspaceId])
+  @@index([collectionId])
 }
 
 model NotificationChannel {

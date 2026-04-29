@@ -721,7 +721,87 @@ hand-off from tier-1.
   },
 
   // ───────────────────────────────────────────────────────────────────
-  // Workspace knowledge library
+  // Knowledge Collections
+  // ───────────────────────────────────────────────────────────────────
+  {
+    slug: 'knowledge-collections',
+    title: 'Knowledge Collections — bundle anything an agent should know',
+    summary: 'Collections group every type of knowledge (FAQs, files, web crawls, Notion, YouTube, live data sources) into reusable bundles. Agents subscribe to one or more collections.',
+    order: 71,
+    body: `Knowledge is no longer a flat list of entries — it's organised into
+**Collections**. A collection is a named bundle of everything an agent
+needs to know about a topic: written notes, FAQ pairs, file uploads,
+crawled web pages, Notion docs, YouTube transcripts, and live data
+sources (Google Sheets, Airtable, REST). Agents pick which
+collections to use; collections are reusable across as many agents as
+you want.
+
+## Why collections
+
+Before this change, agents had their own loose entries plus a
+separate "Data Sources" hub. Sharing meant manually re-attaching
+items to each agent. The result: drift, duplication, and a confusing
+distinction between "knowledge" and "data sources" — when in practice
+they're both just things the agent needs to know about.
+
+Collections solve all three:
+
+- **Bundled** — one collection holds the FAQs, the price list crawl,
+  the inventory Sheet, and the policy PDFs. All in one place.
+- **Reusable** — connect the same collection to your sales, support,
+  and voice agents. Edit once.
+- **Mixed types** — text and tools live side by side. The agent gets
+  static knowledge in its prompt and live-lookup tools at runtime,
+  from the same connection.
+
+## How to use it
+
+1. Go to **Knowledge** in the left nav.
+2. Click **+ New collection** — give it a name, icon, and accent.
+3. Open the collection. Use the **Items** tab to add written notes,
+   FAQs, file uploads, or crawl URLs. Use the **Data sources** tab to
+   wire up a Sheet, Airtable, or REST endpoint.
+4. Switch to the **Connected agents** tab. Tick which agents should
+   use this collection. Save.
+
+That's it. The agent now sees every item in the collection on its
+next conversation turn.
+
+## Per-agent picker
+
+From an agent's **Knowledge** sub-page, you'll see a list of every
+collection in the workspace with a checkbox each. Tick one or more to
+attach. Untick to detach. The collection (and all its items) stays in
+the library — only this agent's connection changes.
+
+## Migration
+
+Anything you had before this change — entries you'd written, data
+sources you'd wired up — was automatically dropped into a default
+**General** collection in each workspace. Every agent that used
+those items was connected to General. Day-one behaviour is identical.
+
+To reorganise, just create new collections and split items between
+them. Each item belongs to exactly one collection at a time.
+
+## Pro tips
+
+- **One collection per topic.** "Refunds & returns," "Product specs,"
+  "Brand voice." Easier to mix-and-match.
+- **Stack at the agent level.** Sales agent → Brand voice +
+  Product specs. Support agent → Brand voice + Refunds + FAQs. Voice
+  agent → Brand voice + FAQs.
+- **Data sources go where they belong.** Inventory Sheet in the
+  "Product specs" collection so any agent that needs product info
+  also gets the live lookup.
+- **Delete a collection** to remove it everywhere. Delete an item
+  inside a collection to remove just that item.
+`,
+  },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Legacy "library" article — kept for the slug, retitled to redirect
+  // attention to the new collections concept.
   // ───────────────────────────────────────────────────────────────────
   {
     slug: 'workspace-knowledge-library',

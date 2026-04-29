@@ -57,6 +57,48 @@ export async function listActiveDataSources(workspaceId: string): Promise<Loaded
   }
 }
 
+/**
+ * Agent-scoped view: only the data sources inside collections that
+ * this agent is connected to. This is what the prompt builder uses
+ * post-Collections — agents only see the tools the operator wired
+ * up via collection attachment, not every data source in the
+ * workspace.
+ *
+ * Falls back to an empty list when the collections migration hasn't
+ * run yet (legacy `listActiveDataSources` callers can still go
+ * workspace-wide if they need to bridge that gap).
+ */
+export async function listActiveDataSourcesForAgent(agentId: string): Promise<LoadedDataSource[]> {
+  try {
+    const rows = await (db as any).agentCollection.findMany({
+      where: { agentId },
+      include: {
+        collection: {
+          include: {
+            dataSources: { where: { isActive: true } },
+          },
+        },
+      },
+    })
+    const seen = new Set<string>()
+    const out: LoadedDataSource[] = []
+    for (const r of rows) {
+      for (const ds of r.collection?.dataSources ?? []) {
+        if (seen.has(ds.id)) continue
+        seen.add(ds.id)
+        out.push(ds as LoadedDataSource)
+      }
+    }
+    return out
+  } catch (err: any) {
+    if (
+      err?.code === 'P2021' || err?.code === 'P2022'
+      || /relation .* does not exist/i.test(err?.message ?? '')
+    ) return []
+    throw err
+  }
+}
+
 async function loadByName(workspaceId: string, name: string): Promise<LoadedDataSource | null> {
   try {
     const row = await (db as any).workspaceDataSource.findUnique({
