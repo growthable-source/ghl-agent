@@ -909,11 +909,42 @@ export class GhlAdapter implements CrmAdapter {
     }
   }
 
+  // ISO 8601 with offset: "2024-10-28T10:00:00-05:00"
+  // ISO 8601 with Z:      "2024-10-28T10:00:00Z"
+  // toISOString() output: "2024-10-28T15:00:00.000Z"  (ms + Z)
+  //
+  // GHL's calendar API rejects mixed-format payloads (startTime with
+  // offset, endTime in UTC-Z) with a bare "Bad Request" — no field
+  // hint. These helpers keep startTime + endTime in lockstep so the
+  // contract is consistent.
+
+  /**
+   * Strip milliseconds from an ISO string while preserving the offset
+   * suffix (or Z, or none). GHL's 2021-04-15 contract accepts seconds
+   * precision; .000 fractional seconds occasionally trip it.
+   */
+  // (Implemented at module scope below — used by bookAppointment.)
+
   async bookAppointment(payload: BookAppointmentPayload): Promise<any> {
     // Auto-pick a team member if the caller didn't specify one — many GHL
     // calendars reject with 422 "A team member needs to be selected" otherwise.
     const assignedUserId = payload.assignedUserId
       ?? (await this.pickCalendarTeamMember(payload.calendarId))
+
+    // Time-format hardening:
+    // - get_available_slots returns ISO 8601 with a numeric offset
+    //   ("…T10:00:00-05:00"). Send startTime back to GHL untouched so
+    //   the timezone the slot was generated in is preserved.
+    // - Stamp endTime in the *same* format. The previous code ran
+    //   `new Date(startTime).toISOString()` which always emits UTC `Z`
+    //   with milliseconds — mixed-TZ payloads triggered GHL's bare
+    //   "Bad Request" with no field hint. Match the offset.
+    // - Strip milliseconds. GHL's 2021-04-15 calendar contract is
+    //   picky about extra precision in some calendars.
+    const startTime = normalizeIsoForGhl(payload.startTime)
+    const endTime = payload.endTime
+      ? normalizeIsoForGhl(payload.endTime)
+      : addMinutesPreservingOffset(payload.startTime, 30)
 
     // Body matches the GHL AppointmentCreateSchema exactly.
     // Required: calendarId, locationId, contactId, startTime.
@@ -921,7 +952,8 @@ export class GhlAdapter implements CrmAdapter {
       calendarId: payload.calendarId,
       locationId: this.locationId,
       contactId: payload.contactId,
-      startTime: payload.startTime,
+      startTime,
+      endTime,
       title: payload.title || 'Appointment',
       // GHL enum: "new" | "confirmed" | "cancelled" | "showed" | "noshow" | "invalid"
       // We default to "confirmed" because the lead has already picked a slot and
@@ -936,7 +968,6 @@ export class GhlAdapter implements CrmAdapter {
       // appointment creation". We already fetched free-slots — skip the race.
       ignoreFreeSlotValidation: true,
     }
-    if (payload.endTime) body.endTime = payload.endTime
     // Spec uses `description` for freeform body text, not `notes`.
     // Our caller passes the conversation context as `notes` for clarity; map it.
     if (payload.notes) body.description = payload.notes
@@ -970,17 +1001,20 @@ export class GhlAdapter implements CrmAdapter {
           console.log(`[GHL] Appointment booked (fallback status=new): ${result?.id ?? 'unknown'}`)
           return result
         } catch (retryErr: any) {
-          console.error('[GHL] bookAppointment FAILED after status retry', { error: retryErr.message })
+          console.error('[GHL] bookAppointment FAILED after status retry', {
+            error: retryErr.message,
+            requestBody: JSON.stringify(body),
+          })
           throw retryErr
         }
       }
+      // Log the EXACT request body so we can see what GHL rejected.
+      // GHL's bare "Bad Request" is useless without seeing the payload;
+      // this turns a 5-minute mystery into a 30-second diagnosis.
       console.error('[GHL] bookAppointment FAILED', {
-        calendarId: payload.calendarId,
-        contactId: payload.contactId,
-        startTime: payload.startTime,
-        assignedUserId,
-        appointmentStatus: body.appointmentStatus,
         error: err.message,
+        requestBody: JSON.stringify(body),
+        assignedUserId,
       })
       throw err
     }
@@ -1035,4 +1069,76 @@ export class GhlAdapter implements CrmAdapter {
       body: JSON.stringify({ body }),
     })
   }
+}
+
+// ─── ISO time helpers for GHL booking contract ──────────────────────────
+//
+// GHL's /calendars/events/appointments rejects payloads where startTime
+// and endTime use different timezone formats (offset vs Z), or where
+// timestamps include sub-second precision on certain calendars. These
+// helpers keep both fields aligned to the input format and seconds
+// precision so the API doesn't fall back to the bare "Bad Request"
+// status with no useful field hint.
+
+const ISO_PARTS_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/
+
+/**
+ * Strip milliseconds from an ISO timestamp while preserving the
+ * timezone designator (offset, Z, or none). Returns the input
+ * unchanged if it doesn't look like an ISO timestamp.
+ */
+function normalizeIsoForGhl(iso: string): string {
+  const m = ISO_PARTS_RE.exec(iso)
+  if (!m) return iso
+  const [, base, tz] = m
+  return tz ? `${base}${tz}` : base
+}
+
+/**
+ * Add `minutes` to an ISO timestamp and return the result in the
+ * SAME timezone designator as the input (offset/Z/none preserved).
+ * Falls back to UTC `Z` if the input isn't recognisable.
+ *
+ * Built specifically for endTime stamping when the caller didn't
+ * provide one and we need to send something that matches startTime's
+ * format. GHL's contract is strict about this.
+ */
+function addMinutesPreservingOffset(iso: string, minutes: number): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const shifted = new Date(date.getTime() + minutes * 60_000)
+
+  // Pull the original offset suffix out of the input.
+  const m = ISO_PARTS_RE.exec(iso)
+  const tz = m?.[2]
+
+  if (!tz || tz === 'Z') {
+    // No offset (rare but valid) → emit UTC Z, no ms.
+    return shifted.toISOString().replace(/\.\d+Z$/, 'Z')
+  }
+
+  // Has an explicit offset like +05:30 or -0500. Render the local time
+  // for that offset, then re-attach the suffix. We need minutes-of-
+  // offset to compute "what time is it in that zone."
+  const sign = tz.startsWith('+') ? 1 : -1
+  const digits = tz.replace(/[+:-]/g, '')   // "0500" or "0530"
+  const hh = parseInt(digits.slice(0, 2), 10) || 0
+  const mm = parseInt(digits.slice(2, 4), 10) || 0
+  const offsetMinutes = sign * (hh * 60 + mm)
+
+  // Local time in the target zone = UTC time of the moment + offset
+  const local = new Date(shifted.getTime() + offsetMinutes * 60_000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const yyyy = local.getUTCFullYear()
+  const mo   = pad(local.getUTCMonth() + 1)
+  const day  = pad(local.getUTCDate())
+  const hr   = pad(local.getUTCHours())
+  const mi   = pad(local.getUTCMinutes())
+  const se   = pad(local.getUTCSeconds())
+  // Normalize the offset back to canonical "+HH:MM" form even if the
+  // input was "+0500" without the colon.
+  const tzNorm = tz === 'Z'
+    ? 'Z'
+    : `${tz[0]}${pad(hh)}:${pad(mm)}`
+  return `${yyyy}-${mo}-${day}T${hr}:${mi}:${se}${tzNorm}`
 }
