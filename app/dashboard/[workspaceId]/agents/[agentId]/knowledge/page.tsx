@@ -143,6 +143,7 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(true)
   const [entries, setEntries] = useState<KnowledgeEntry[]>([])
   const [schedules, setSchedules] = useState<CrawlSchedule[]>([])
+  const [stackPickerOpen, setStackPickerOpen] = useState(false)
   const [tab, setTab] = useState<'manual' | 'qa' | 'url' | 'file' | 'notion' | 'youtube' | 'scheduled'>('manual')
 
   // Manual
@@ -446,6 +447,24 @@ export default function KnowledgePage() {
 
   return (
     <div className="p-8 max-w-2xl space-y-6">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-orange-500/15 text-orange-300 flex items-center justify-center flex-shrink-0">📚</div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white">Knowledge is now a workspace library</p>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Anything you write or import here lands in the shared pool and stacks onto this agent automatically.
+            Stack existing library entries onto this agent below, or manage every entry from the
+            {' '}<a href={`/dashboard/${workspaceId}/knowledge`} className="text-orange-300 hover:underline">workspace Knowledge page</a>.
+          </p>
+        </div>
+        <button
+          onClick={() => setStackPickerOpen(true)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500/15 text-orange-300 hover:bg-orange-500/25 transition-colors flex-shrink-0"
+        >
+          Stack from library
+        </button>
+      </div>
+
       {entries.length > 0 && (
         <div className="flex items-center justify-between text-xs text-zinc-500">
           <span>{groups.length} source{groups.length === 1 ? '' : 's'} · {entries.length} chunk{entries.length === 1 ? '' : 's'}</span>
@@ -919,6 +938,175 @@ export default function KnowledgePage() {
               </form>
             </div>
           )}
+        </div>
+      </div>
+
+      {stackPickerOpen && (
+        <StackFromLibraryPicker
+          workspaceId={workspaceId}
+          agentId={agentId}
+          attachedIds={new Set(entries.map(e => e.id))}
+          onClose={() => setStackPickerOpen(false)}
+          onAttached={() => { setStackPickerOpen(false); fetchData() }}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Modal that loads the workspace knowledge library, hides entries
+ * already attached to this agent, and lets the user attach more in
+ * one click. Replaces the friction of "go to workspace knowledge,
+ * find the entry, edit it, check the box."
+ */
+function StackFromLibraryPicker({
+  workspaceId, agentId, attachedIds, onClose, onAttached,
+}: {
+  workspaceId: string
+  agentId: string
+  attachedIds: Set<string>
+  onClose: () => void
+  onAttached: () => void
+}) {
+  const [library, setLibrary] = useState<Array<{
+    id: string; title: string; content: string; source: string; connectedAgentCount: number; connectedAgentIds: string[]
+  }>>([])
+  const [loading, setLoading] = useState(true)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/workspaces/${workspaceId}/knowledge`)
+        const data = await r.json()
+        setLibrary(data.entries || [])
+      } finally { setLoading(false) }
+    })()
+  }, [workspaceId])
+
+  const candidates = useMemo(() => {
+    const filtered = library.filter(e => !attachedIds.has(e.id) && !e.connectedAgentIds.includes(agentId))
+    if (!search.trim()) return filtered
+    const q = search.toLowerCase().trim()
+    return filtered.filter(e =>
+      e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q),
+    )
+  }, [library, attachedIds, agentId, search])
+
+  function toggle(id: string) {
+    setPicked(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  async function attach() {
+    if (picked.size === 0) return
+    setSaving(true)
+    try {
+      // For each picked entry, replace its connection set with the
+      // current agents + this one. Sequentially to avoid hammering — the
+      // typical attach is 1–10 entries.
+      for (const entryId of picked) {
+        const entry = library.find(l => l.id === entryId)
+        if (!entry) continue
+        const nextIds = Array.from(new Set([...entry.connectedAgentIds, agentId]))
+        await fetch(`/api/workspaces/${workspaceId}/knowledge/${entryId}/connections`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentIds: nextIds }),
+        })
+      }
+      onAttached()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-base font-semibold text-white">Stack from library</h2>
+            <p className="text-[11px] text-zinc-500 mt-0.5">
+              Pick entries from your workspace knowledge to add to this agent. Already-attached entries are hidden.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white" aria-label="Close">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-5 py-3 border-b border-zinc-800 flex-shrink-0">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search the library\u2026"
+            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="p-5 text-xs text-zinc-500">Loading library\u2026</div>
+          ) : candidates.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-zinc-800 flex items-center justify-center text-lg">📚</div>
+              <p className="text-sm text-white">{library.length === 0 ? 'Nothing in the library yet' : 'Already stacked everything'}</p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {library.length === 0
+                  ? <>Create entries from the <a href={`/dashboard/${workspaceId}/knowledge`} className="text-orange-300 hover:underline">workspace Knowledge page</a>.</>
+                  : 'This agent already uses every available entry.'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-800">
+              {candidates.map(e => {
+                const checked = picked.has(e.id)
+                return (
+                  <label key={e.id} className="flex items-start gap-3 px-5 py-3 hover:bg-zinc-900/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(e.id)}
+                      className="mt-1 accent-orange-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{e.title}</p>
+                      <p className="text-xs text-zinc-400 line-clamp-2">{e.content}</p>
+                      {e.connectedAgentCount > 0 && (
+                        <p className="text-[10px] text-zinc-600 mt-1">
+                          on {e.connectedAgentCount} other agent{e.connectedAgentCount === 1 ? '' : 's'}
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-between gap-2 flex-shrink-0">
+          <span className="text-[11px] text-zinc-500">
+            {picked.size === 0 ? 'Pick at least one entry' : `${picked.size} entry${picked.size === 1 ? '' : 'ies'} selected`}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={attach}
+              disabled={saving || picked.size === 0}
+              className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Stacking\u2026' : `Stack ${picked.size || ''}`.trim()}
+            </button>
+          </div>
         </div>
       </div>
     </div>

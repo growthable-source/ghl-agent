@@ -3,14 +3,16 @@ import { db } from '@/lib/db'
 import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
 
 async function findAgentByPhoneNumber(phoneNumber: string) {
-  const vapiConfig = await db.vapiConfig.findFirst({
+  const vapiConfig: any = await db.vapiConfig.findFirst({
     where: { phoneNumber, isActive: true },
-    include: {
-      agent: {
-        include: { knowledgeEntries: true },
-      },
-    },
+    include: { agent: true },
   })
+  if (vapiConfig?.agent) {
+    // Hydrate workspace-stacked knowledge via the junction.
+    const { bulkLoadKnowledgeForAgents } = await import('@/lib/knowledge')
+    const map = await bulkLoadKnowledgeForAgents([vapiConfig.agent.id])
+    vapiConfig.agent.knowledgeEntries = map.get(vapiConfig.agent.id) ?? []
+  }
   return vapiConfig
 }
 

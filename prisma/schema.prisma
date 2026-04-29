@@ -124,6 +124,7 @@ model Workspace {
   agents       Agent[]            @relation("WorkspaceAgents")
   usageRecords UsageRecord[]
   templates    AgentTemplate[]    @relation("WorkspaceTemplates")
+  knowledgeEntries KnowledgeEntry[] @relation("WorkspaceKnowledge")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -320,6 +321,7 @@ model Agent {
   businessContext     String?
 
   knowledgeEntries KnowledgeEntry[]
+  attachedKnowledge AgentKnowledge[]
   routingRules     RoutingRule[]
   detectionRules   AgentRule[]
   experiments      AgentExperiment[]
@@ -342,10 +344,17 @@ model Agent {
   @@index([workspaceId])
 }
 
+// Workspace-scoped reference docs the agents can pull into their system
+// prompt. An entry is owned by the workspace; *which agents use it* lives
+// in AgentKnowledge (many-to-many junction). The legacy `agentId` column
+// is now nullable and represents the *creator* (the agent whose page
+// spawned the entry) — purely for breadcrumbs. Attachment is the junction.
 model KnowledgeEntry {
   id            String   @id @default(cuid())
-  agentId       String
-  agent         Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspaceId   String
+  workspace     Workspace @relation("WorkspaceKnowledge", fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentId       String?   // creator (origin) agent — nullable for workspace-level creates
+  agent         Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   title         String
   content       String   @db.Text
   source        String   @default("manual")
@@ -356,8 +365,24 @@ model KnowledgeEntry {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  attachments   AgentKnowledge[]
+  @@index([workspaceId])
+  @@index([workspaceId, status])
   @@index([agentId])
-  @@index([agentId, status])
+}
+
+// Junction connecting an agent to a knowledge entry it has been
+// "stacked" with. Single source of truth for which agents pull which
+// entries into their system prompt at runtime.
+model AgentKnowledge {
+  id               String   @id @default(cuid())
+  agentId          String
+  agent            Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  knowledgeEntryId String
+  entry            KnowledgeEntry @relation(fields: [knowledgeEntryId], references: [id], onDelete: Cascade)
+  attachedAt       DateTime @default(now())
+  @@unique([agentId, knowledgeEntryId])
+  @@index([knowledgeEntryId])
 }
 
 // ─── Recurring crawl schedule ──────────────────────────────────────────────

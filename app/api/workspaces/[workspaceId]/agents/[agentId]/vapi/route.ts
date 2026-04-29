@@ -13,13 +13,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (access instanceof NextResponse) return access
   try {
 
-    const [config, agent] = await Promise.all([
+    const [config, agentRow] = await Promise.all([
       db.vapiConfig.findUnique({ where: { agentId } }),
-      db.agent.findUnique({
-        where: { id: agentId },
-        include: { knowledgeEntries: true },
-      }),
+      db.agent.findUnique({ where: { id: agentId } }),
     ])
+    let agent: any = agentRow
+    if (agent) {
+      // Hydrate workspace-stacked knowledge via the junction so the
+      // test-call system prompt sees everything stacked on this agent.
+      const { bulkLoadKnowledgeForAgents } = await import('@/lib/knowledge')
+      const map = await bulkLoadKnowledgeForAgents([agent.id])
+      agent.knowledgeEntries = map.get(agent.id) ?? []
+    }
 
     let phoneNumbers: { id: string; number: string | null; name: string; provider?: string; status?: string }[] = []
     let vapiError: string | null = null
@@ -39,7 +44,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     let testSystemPrompt = agent?.systemPrompt || 'You are a helpful assistant.'
     if (agent?.instructions) testSystemPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
     if (agent?.knowledgeEntries?.length) {
-      const kb = agent.knowledgeEntries.map(e => `### ${e.title}\n${e.content}`).join('\n\n')
+      const kb = agent.knowledgeEntries.map((e: any) => `### ${e.title}\n${e.content}`).join('\n\n')
       testSystemPrompt += `\n\n## Knowledge Base\n${kb}`
     }
 

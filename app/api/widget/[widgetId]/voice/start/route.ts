@@ -53,11 +53,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No voice agent configured on this widget' }, { status: 400, headers })
   }
 
-  const agent = await db.agent.findFirst({
+  const agent: any = await db.agent.findFirst({
     where: { id: agentId, workspaceId: v.widget.workspaceId },
-    include: { vapiConfig: true, knowledgeEntries: true },
+    include: { vapiConfig: true },
   })
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404, headers })
+
+  // Hydrate knowledge via the workspace junction (single source of truth).
+  const { bulkLoadKnowledgeForAgents } = await import('@/lib/knowledge')
+  const map = await bulkLoadKnowledgeForAgents([agent.id])
+  agent.knowledgeEntries = map.get(agent.id) ?? []
   if (!agent.vapiConfig) {
     return NextResponse.json({ error: 'Agent has no voice configuration. Set up voice on the agent first.' }, { status: 400, headers })
   }

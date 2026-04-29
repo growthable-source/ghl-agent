@@ -135,6 +135,7 @@ function SidebarBody() {
               <>
                 {navLink(`/dashboard/${workspaceId}`, 'Overview')}
                 {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
+                {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
                 {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                 {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
                 {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox')}

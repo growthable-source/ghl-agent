@@ -18,7 +18,8 @@ interface AgentData {
   vapiConfig: { isActive: boolean; phoneNumber: string | null } | null
   nextActions: { count: number; nextAt: string | null }
   _count: {
-    knowledgeEntries: number
+    knowledgeEntries?: number       // legacy field name — pre-migration servers
+    attachedKnowledge?: number      // post-migration: junction count
     routingRules: number
     messageLogs: number
     conversationStates: number
@@ -397,7 +398,7 @@ export default function AgentsPage() {
                       <p className="text-[11px] text-zinc-500">Conversations</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-white">{agent._count.knowledgeEntries}</p>
+                      <p className="text-lg font-bold text-white">{agent._count.attachedKnowledge ?? agent._count.knowledgeEntries ?? 0}</p>
                       <p className="text-[11px] text-zinc-500">Knowledge</p>
                     </div>
                   </div>

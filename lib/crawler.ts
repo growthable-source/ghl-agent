@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { db } from './db'
 import { stripHtml, extractTitle, chunkText, estimateTokens } from './chunker'
+import { createKnowledgeForAgent } from './knowledge'
 
 /**
  * Shared crawl helpers — used by the ad-hoc crawl route AND the recurring
@@ -82,17 +83,15 @@ export async function crawlAndIndex(params: {
     }
 
     const tokens = estimateTokens(chunk)
-    await db.knowledgeEntry.create({
-      data: {
-        agentId,
-        title: chunks.length === 1 ? title : `${title} (${i + 1}/${chunks.length})`,
-        content: chunk,
-        source,
-        sourceUrl: url,
-        tokenEstimate: tokens,
-        status: 'ready',
-        contentHash: hash,
-      } as any,
+    await createKnowledgeForAgent({
+      agentId,
+      title: chunks.length === 1 ? title : `${title} (${i + 1}/${chunks.length})`,
+      content: chunk,
+      source,
+      sourceUrl: url,
+      tokenEstimate: tokens,
+      status: 'ready',
+      contentHash: hash,
     })
     chunksAdded++
     totalTokens += tokens

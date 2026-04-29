@@ -19,11 +19,12 @@ export async function POST(
     return NextResponse.json({ error: 'agentId and message are required' }, { status: 400 })
   }
 
-  const agent = await db.agent.findUnique({
-    where: { id: agentId },
-    include: { knowledgeEntries: true },
-  })
+  const agent: any = await db.agent.findUnique({ where: { id: agentId } })
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  // Hydrate workspace-stacked knowledge via the junction.
+  const { bulkLoadKnowledgeForAgents } = await import('@/lib/knowledge')
+  const map = await bulkLoadKnowledgeForAgents([agent.id])
+  agent.knowledgeEntries = map.get(agent.id) ?? []
 
   // Use the agent's locationId for CRM token lookup
   const locationId = agent.locationId

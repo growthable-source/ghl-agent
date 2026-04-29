@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { chunkText, estimateTokens } from '@/lib/chunker'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { createKnowledgeForAgent } from '@/lib/knowledge'
 
 export async function POST(
   req: NextRequest,
@@ -49,14 +49,12 @@ export async function POST(
 
   const entries = await Promise.all(
     chunks.map((chunk, i) =>
-      db.knowledgeEntry.create({
-        data: {
-          agentId,
-          title: chunks.length === 1 ? baseName : `${baseName} (${i + 1}/${chunks.length})`,
-          content: chunk,
-          source: 'file',
-          tokenEstimate: estimateTokens(chunk),
-        },
+      createKnowledgeForAgent({
+        agentId,
+        title: chunks.length === 1 ? baseName : `${baseName} (${i + 1}/${chunks.length})`,
+        content: chunk,
+        source: 'file',
+        tokenEstimate: estimateTokens(chunk),
       })
     )
   )

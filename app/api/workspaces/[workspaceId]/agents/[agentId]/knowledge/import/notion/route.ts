@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { createKnowledgeForAgent } from '@/lib/knowledge'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -152,14 +152,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!content.trim()) {
       return NextResponse.json({ error: 'Notion page has no readable text' }, { status: 400 })
     }
-    const entry = await db.knowledgeEntry.create({
-      data: {
-        agentId,
-        title: finalTitle,
-        content,
-        source: 'notion',
-        sourceUrl: `https://www.notion.so/${pageId.replace(/-/g, '')}`,
-      },
+    const entry = await createKnowledgeForAgent({
+      agentId,
+      title: finalTitle,
+      content,
+      source: 'notion',
+      sourceUrl: `https://www.notion.so/${pageId.replace(/-/g, '')}`,
     })
     return NextResponse.json({ entry })
   } catch (err: any) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { createKnowledgeForAgent } from '@/lib/knowledge'
 
 type Params = { params: Promise<{ workspaceId: string; correctionId: string }> }
 
@@ -38,13 +39,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const title = (body.title || correction.messageLog.inboundMessage.slice(0, 60) + '...').trim()
 
   try {
-    const entry = await db.knowledgeEntry.create({
-      data: {
-        agentId: correction.messageLog.agentId,
-        title,
-        content: `When a contact asks something like: "${correction.messageLog.inboundMessage}"\n\nRespond: ${correction.correctedText}`,
-        source: 'correction',
-      },
+    const entry = await createKnowledgeForAgent({
+      agentId: correction.messageLog.agentId,
+      title,
+      content: `When a contact asks something like: "${correction.messageLog.inboundMessage}"\n\nRespond: ${correction.correctedText}`,
+      source: 'correction',
     })
     await db.messageCorrection.update({
       where: { id: correctionId },

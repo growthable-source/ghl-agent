@@ -12,7 +12,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
   const agents = await db.agent.findMany({
     where: { workspaceId },
     include: {
-      _count: { select: { knowledgeEntries: true, routingRules: true, messageLogs: true, conversationStates: true } },
+      // knowledgeEntries was the legacy per-agent FK; the count we surface
+      // on agent cards is now "how many entries are stacked on this
+      // agent" via the AgentKnowledge junction.
+      _count: { select: { attachedKnowledge: true, routingRules: true, messageLogs: true, conversationStates: true } },
       channelDeployments: { where: { isActive: true }, select: { channel: true } },
       vapiConfig: { select: { isActive: true, phoneNumber: true } },
     },

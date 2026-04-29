@@ -47,10 +47,19 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     agent = await db.agent.findFirst({
       where: { id: widget.defaultAgentId, workspaceId: widget.workspaceId, isActive: true },
       include: {
-        knowledgeEntries: true, routingRules: true, stopConditions: true,
+        routingRules: true, stopConditions: true,
         followUpSequences: true, qualifyingQuestions: true, channelDeployments: true,
       },
     })
+    if (agent) {
+      // Hydrate workspace-stacked knowledge via the junction. We don't
+      // include this in the Prisma `include` because the relation type
+      // returns AgentKnowledge wrappers; the prompt builder wants the
+      // entries directly. Same pattern as findMatchingAgent.
+      const { bulkLoadKnowledgeForAgents } = await import('./knowledge')
+      const map = await bulkLoadKnowledgeForAgents([agent.id])
+      agent.knowledgeEntries = map.get(agent.id) ?? []
+    }
   }
   if (!agent) {
     const loc = await db.location.findFirst({

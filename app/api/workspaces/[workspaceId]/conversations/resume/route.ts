@@ -57,10 +57,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   // Attention page was happy to show that exact agent. Verify via either
   // the scalar field or the location FK and it works both pre- and
   // post-migration.
-  const agent = await db.agent.findUnique({
+  const agent: any = await db.agent.findUnique({
     where: { id: agentId },
     include: {
-      knowledgeEntries: true,
       channelDeployments: true,
       location: { select: { id: true, workspaceId: true } },
     },
@@ -68,6 +67,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   if (!agent) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   }
+  // Hydrate workspace-stacked knowledge via the junction.
+  const { bulkLoadKnowledgeForAgents } = await import('@/lib/knowledge')
+  const knMap = await bulkLoadKnowledgeForAgents([agent.id])
+  agent.knowledgeEntries = knMap.get(agent.id) ?? []
   const inWorkspace =
     agent.workspaceId === workspaceId ||
     agent.location?.workspaceId === workspaceId

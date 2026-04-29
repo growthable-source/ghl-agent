@@ -211,8 +211,24 @@ export async function restoreAgent(params: {
   // Recreate every related row. Each block is independent so partial
   // failure on one type doesn't kill the rest of the restore.
   try {
+    const { createKnowledgeForAgent } = await import('./knowledge')
     for (const k of s.knowledgeEntries || []) {
-      await db.knowledgeEntry.create({ data: { ...k, agentId: agent.id } })
+      // Strip server-managed fields off the snapshot before recreating —
+      // workspaceId resolution + junction creation now happen in the
+      // helper. Original `agentId` (origin) becomes the new agent's id;
+      // the entry lands in the new workspace pool, attached to the new
+      // agent.
+      const { id: _id, agentId: _aid, workspaceId: _wid, createdAt: _ca, updatedAt: _ua, ...rest } = k as any
+      await createKnowledgeForAgent({
+        agentId: agent.id,
+        title: rest.title,
+        content: rest.content,
+        source: rest.source,
+        sourceUrl: rest.sourceUrl ?? null,
+        tokenEstimate: rest.tokenEstimate ?? 0,
+        status: rest.status ?? 'ready',
+        contentHash: rest.contentHash ?? null,
+      })
     }
   } catch (err: any) { console.warn('[restoreAgent] knowledge failed:', err.message) }
 

@@ -65,7 +65,6 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
       include: {
         agent: {
           include: {
-            knowledgeEntries: true,
             channelDeployments: true,
           },
         },
@@ -92,6 +91,20 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
   }
 
   console.log(`[Trigger] Found ${triggers.length} trigger(s) for ${eventType} at location ${locationId}${isTest ? ' (test fire)' : ''}`)
+
+  // Hydrate workspace-stacked knowledge once for every distinct agent
+  // referenced by these triggers — single round-trip, applied to each
+  // trigger's agent before we enter the firing loop.
+  {
+    const { bulkLoadKnowledgeForAgents } = await import('./knowledge')
+    const agentIds = Array.from(new Set(triggers.map(t => t.agent?.id).filter(Boolean) as string[]))
+    if (agentIds.length > 0) {
+      const map = await bulkLoadKnowledgeForAgents(agentIds)
+      for (const t of triggers) {
+        if (t.agent) (t.agent as any).knowledgeEntries = map.get(t.agent.id) ?? []
+      }
+    }
+  }
 
   // 3. Deduplicate — check if we already sent a trigger message to this
   //    contact recently. Skipped for test fires so repeated clicks from

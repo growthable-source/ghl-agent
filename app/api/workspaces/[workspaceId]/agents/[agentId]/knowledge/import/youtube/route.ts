@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { createKnowledgeForAgent } from '@/lib/knowledge'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -112,14 +112,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const { title, text } = await fetchTranscript(videoId)
-    const entry = await db.knowledgeEntry.create({
-      data: {
-        agentId,
-        title,
-        content: text,
-        source: 'youtube',
-        sourceUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      },
+    const entry = await createKnowledgeForAgent({
+      agentId,
+      title,
+      content: text,
+      source: 'youtube',
+      sourceUrl: `https://www.youtube.com/watch?v=${videoId}`,
     })
     return NextResponse.json({ entry })
   } catch (err: any) {

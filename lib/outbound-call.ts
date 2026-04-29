@@ -25,14 +25,14 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
   if (opts.agentId) {
     vapiConfig = await db.vapiConfig.findFirst({
       where: { agentId: opts.agentId, isActive: true, phoneNumberId: { not: null } },
-      include: { agent: { include: { knowledgeEntries: true } } },
+      include: { agent: true },
     })
   }
   if (!vapiConfig) {
     // Fallback: first voice-enabled agent for this location
     vapiConfig = await db.vapiConfig.findFirst({
       where: { agent: { locationId, isActive: true }, isActive: true, phoneNumberId: { not: null } },
-      include: { agent: { include: { knowledgeEntries: true } } },
+      include: { agent: true },
     })
   }
   if (!vapiConfig || !vapiConfig.phoneNumberId) {
@@ -40,6 +40,12 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
   }
 
   const agent = vapiConfig.agent
+  // Hydrate workspace-stacked knowledge via the junction (single source
+  // of truth). Mutates the agent in place so downstream prompt-building
+  // can read agent.knowledgeEntries unchanged.
+  const { bulkLoadKnowledgeForAgents } = await import('./knowledge')
+  const knMap = await bulkLoadKnowledgeForAgents([agent.id])
+  agent.knowledgeEntries = knMap.get(agent.id) ?? []
   const agentId = agent.id
 
   // 2. Duplicate check — skip if call to same number initiated in last 5 minutes

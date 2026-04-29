@@ -9,14 +9,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { workspaceId, agentId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
-  const agent = await db.agent.findUnique({
+  const agent: any = await db.agent.findUnique({
     where: { id: agentId },
     include: {
-      knowledgeEntries: { orderBy: { createdAt: 'asc' } },
       routingRules: { orderBy: { priority: 'asc' } },
     },
   })
   if (!agent) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Hydrate knowledge via the workspace junction. Some agent-detail
+  // consumers still expect `knowledgeEntries` so we splice it onto the
+  // returned agent in the same shape as before.
+  const { bulkLoadKnowledgeForAgents } = await import('@/lib/knowledge')
+  const map = await bulkLoadKnowledgeForAgents([agent.id])
+  agent.knowledgeEntries = map.get(agent.id) ?? []
   return NextResponse.json({ agent })
 }
 

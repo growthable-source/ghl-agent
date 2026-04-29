@@ -23,7 +23,6 @@ export async function findMatchingAgent(
       where: { locationId, isActive: true },
       include: {
         routingRules: { orderBy: { priority: 'asc' } },
-        knowledgeEntries: true,
         stopConditions: true,
         followUpSequences: { where: { isActive: true } },
         qualifyingQuestions: true,
@@ -54,6 +53,16 @@ export async function findMatchingAgent(
   if (agents.length === 0) {
     console.log(`[Routing] No active agents found for location ${locationId}`)
     return null
+  }
+
+  // Hydrate `knowledgeEntries` via the workspace junction so each agent
+  // sees both its own + any workspace-shared entries it's connected to.
+  // The legacy `agent.knowledgeEntries` FK is gone; the junction is now
+  // the single source of truth.
+  const { bulkLoadKnowledgeForAgents } = await import('./knowledge')
+  const knowledgeByAgent = await bulkLoadKnowledgeForAgents(agents.map(a => a.id))
+  for (const a of agents) {
+    a.knowledgeEntries = knowledgeByAgent.get(a.id) ?? []
   }
 
   console.log(`[Routing] Found ${agents.length} active agent(s) for location ${locationId}, filtering for channel=${channel ?? 'any'}`)
