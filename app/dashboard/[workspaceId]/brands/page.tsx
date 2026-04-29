@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -216,6 +216,14 @@ function BrandEditorModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [slugTouched, setSlugTouched] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  // Vision-suggested colours after a logo upload. Rendered as extra
+  // swatches alongside the preset palette with a "Suggested" label.
+  const [suggestedColors, setSuggestedColors] = useState<string[]>([])
+  const [styleHint, setStyleHint] = useState<string | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-derive slug from name on the create flow until the user types
   // their own. On edit, leave whatever the user has set.
@@ -224,6 +232,64 @@ function BrandEditorModal({
     if (mode === 'create' && !slugTouched) {
       setSlug(v.toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, ''))
     }
+  }
+
+  // After a logo lands, kick off vision analysis. Failures are
+  // non-fatal — the brand still saves with the manually-picked colour.
+  async function analyzeLogo(url: string) {
+    setAnalyzing(true)
+    setStyleHint(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/brands/analyze-logo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: url }),
+      })
+      if (!res.ok) return
+      const d = await res.json()
+      const colours: string[] = []
+      if (d.primaryColor) colours.push(d.primaryColor)
+      if (Array.isArray(d.accentColors)) {
+        for (const c of d.accentColors) if (typeof c === 'string' && !colours.includes(c)) colours.push(c)
+      }
+      setSuggestedColors(colours)
+      if (d.style) setStyleHint(d.style)
+      // First-touch convenience: auto-select the suggested primary
+      // colour, but only if the user is still on the default preset
+      // (i.e. they haven't picked something deliberate yet). Avoids
+      // overriding a deliberate choice on re-upload.
+      if (d.primaryColor && color === PRESET_COLORS[0]) setColor(d.primaryColor)
+      // Auto-fill suggested name only on create flow + only if the
+      // user hasn't typed anything meaningful yet.
+      if (mode === 'create' && d.suggestedName && !name.trim()) {
+        onNameChange(d.suggestedName)
+      }
+    } catch {
+      /* swallow — vision is best-effort */
+    } finally { setAnalyzing(false) }
+  }
+
+  async function uploadLogo(file: File) {
+    setUploadError(null)
+    setUploading(true)
+    setSuggestedColors([])
+    setStyleHint(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/workspaces/${workspaceId}/brands/upload-logo`, {
+        method: 'POST',
+        body: form,
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setUploadError(d.error || 'Upload failed')
+        return
+      }
+      setLogoUrl(d.logoUrl)
+      // Kick off vision in the background — don't block the form.
+      void analyzeLogo(d.logoUrl)
+    } finally { setUploading(false) }
   }
 
   async function save() {
@@ -300,17 +366,92 @@ function BrandEditorModal({
             />
           </div>
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Logo URL (optional)</label>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">
+              Logo
+              <span className="ml-2 normal-case font-normal text-zinc-600">PNG, JPG, SVG · max 2 MB</span>
+            </label>
             <input
-              type="url"
-              value={logoUrl}
-              onChange={e => setLogoUrl(e.target.value)}
-              placeholder="https://…"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+              hidden
+              onChange={e => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); if (e.target) e.target.value = '' }}
             />
+            {logoUrl ? (
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoUrl} alt="" className="w-14 h-14 rounded-lg object-cover bg-zinc-950 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-zinc-300 break-all">{logoUrl}</p>
+                  {analyzing && (
+                    <p className="text-[10px] text-zinc-500 mt-1 inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                      Analyzing colours…
+                    </p>
+                  )}
+                  {styleHint && !analyzing && (
+                    <p className="text-[10px] text-zinc-500 mt-1">Style: {styleHint}</p>
+                  )}
+                  <div className="flex gap-1.5 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 disabled:opacity-50"
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setLogoUrl(''); setSuggestedColors([]); setStyleHint(null) }}
+                      className="text-[10px] px-2 py-1 rounded border border-zinc-800 text-red-400 hover:text-red-300 hover:border-red-500/40"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="w-full p-6 rounded-lg border-2 border-dashed border-zinc-700 hover:border-zinc-500 transition-colors text-center disabled:opacity-50"
+              >
+                <p className="text-sm text-zinc-300">{uploading ? 'Uploading…' : '📤  Upload logo'}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">We'll suggest accent colours from the image</p>
+              </button>
+            )}
+            {uploadError && <p className="text-xs text-red-400 mt-2">{uploadError}</p>}
           </div>
+
           <div>
             <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Accent color</label>
+
+            {/* Vision-suggested swatches first when present, with a label
+                so the user knows where they came from. */}
+            {suggestedColors.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[10px] text-orange-300 mb-1.5">✨ Suggested from your logo</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestedColors.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setColor(c)}
+                      title={c}
+                      className={`w-9 h-9 rounded-lg border-2 transition-colors ${color === c ? 'border-white' : 'border-orange-500/40'}`}
+                      style={{ background: c }}
+                      aria-label={c}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className={`text-[10px] text-zinc-500 ${suggestedColors.length > 0 ? 'mb-1.5' : 'hidden'}`}>
+              Or pick a preset
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {PRESET_COLORS.map(c => (
                 <button
