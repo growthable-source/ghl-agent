@@ -721,191 +721,145 @@ hand-off from tier-1.
   },
 
   // ───────────────────────────────────────────────────────────────────
-  // Knowledge Collections
+  // Knowledge Collections — the canonical write-up for the shipped
+  // Collections model. Replaces two intermediate articles
+  // ('workspace-knowledge-library' and the earlier knowledge-collections
+  // placeholder), which the seed handler prunes from the DB on next run.
   // ───────────────────────────────────────────────────────────────────
   {
     slug: 'knowledge-collections',
-    title: 'Knowledge Collections — bundle anything an agent should know',
-    summary: 'Collections group every type of knowledge (FAQs, files, web crawls, Notion, YouTube, live data sources) into reusable bundles. Agents subscribe to one or more collections.',
-    order: 71,
-    body: `Knowledge is no longer a flat list of entries — it's organised into
-**Collections**. A collection is a named bundle of everything an agent
-needs to know about a topic: written notes, FAQ pairs, file uploads,
-crawled web pages, Notion docs, YouTube transcripts, and live data
-sources (Google Sheets, Airtable, REST). Agents pick which
-collections to use; collections are reusable across as many agents as
-you want.
+    title: 'Knowledge Collections',
+    summary: 'Build named bundles of FAQs, files, web pages, Notion docs, YouTube transcripts, and live data sources. Agents pick which collections to use — multi-select, stacked, edit once.',
+    order: 70,
+    body: `Knowledge lives in **Collections** — named, reusable bundles of
+everything an agent needs to know about a topic. A collection holds
+written notes, FAQs, uploaded files, crawled web pages, Notion docs,
+YouTube transcripts, *and* live data sources (Google Sheets, Airtable,
+REST endpoints), all in one place. Agents don't own knowledge directly
+anymore — they connect to one or more collections, and inherit
+everything inside.
 
-## Why collections
+## The shape of it
 
-Before this change, agents had their own loose entries plus a
-separate "Data Sources" hub. Sharing meant manually re-attaching
-items to each agent. The result: drift, duplication, and a confusing
-distinction between "knowledge" and "data sources" — when in practice
-they're both just things the agent needs to know about.
+- **Collections live at the workspace level.** Open the **Knowledge**
+  tab in the left nav. Every collection in the workspace shows as a
+  card with its icon, item count, data-source count, and how many
+  agents it's connected to.
+- **Items inside a collection** are mixed-type. A single collection
+  can hold a written FAQ, a PDF you uploaded, three crawled pages from
+  your help docs, and a Google Sheets data source — side by side. The
+  agent gets the static items as context in its prompt, and the data
+  sources as live-lookup tools.
+- **Agents subscribe.** Each agent's **Knowledge** sub-page is a
+  checklist of every collection in the workspace. Tick the ones the
+  agent should use. Save. Done.
 
-Collections solve all three:
+## Building a collection
 
-- **Bundled** — one collection holds the FAQs, the price list crawl,
-  the inventory Sheet, and the policy PDFs. All in one place.
-- **Reusable** — connect the same collection to your sales, support,
-  and voice agents. Edit once.
-- **Mixed types** — text and tools live side by side. The agent gets
-  static knowledge in its prompt and live-lookup tools at runtime,
-  from the same connection.
+1. Go to **Knowledge** in the left nav and click **+ New collection**.
+2. Give it a name, an icon, and an accent colour. (e.g. "Refunds &
+   returns" 🛒, "Product specs" 📦, "Brand voice" 💼.)
+3. Open the collection. You'll see three tabs:
 
-## How to use it
+### Items tab
+The "things the agent should read" — static knowledge pulled into the
+system prompt. Six ways to add an item:
 
-1. Go to **Knowledge** in the left nav.
-2. Click **+ New collection** — give it a name, icon, and accent.
-3. Open the collection. Use the **Items** tab to add written notes,
-   FAQs, file uploads, or crawl URLs. Use the **Data sources** tab to
-   wire up a Sheet, Airtable, or REST endpoint.
-4. Switch to the **Connected agents** tab. Tick which agents should
-   use this collection. Save.
+- **Write** — a manual entry. Title + body.
+- **Q&A** — paste in question/answer pairs; each becomes its own item
+  so the agent can match individually.
+- **Crawl URL** — paste a web URL; we fetch the page, strip
+  formatting, chunk long content, and store the text. Comes back fast
+  with a chunk count.
+- **Upload file** — PDF, TXT, or Markdown (max 5 MB). Long files chunk
+  automatically.
+- **Notion / YouTube** — coming back into the collection editor; for
+  now use **Write** to paste the text.
 
-That's it. The agent now sees every item in the collection on its
-next conversation turn.
+### Data sources tab
+The "things the agent can look up live" — credentials and config for
+Google Sheets, Airtable, or REST GET endpoints. Each data source
+becomes a tool the agent can call mid-conversation:
 
-## Per-agent picker
+- **Google Sheet** — pulls rows by query.
+- **Airtable** — queries records with formula filters.
+- **REST GET** — hits any HTTP endpoint and returns the JSON.
 
-From an agent's **Knowledge** sub-page, you'll see a list of every
-collection in the workspace with a checkbox each. Tick one or more to
-attach. Untick to detach. The collection (and all its items) stays in
-the library — only this agent's connection changes.
+Give it a slug name (lowercase, e.g. \`inventory\`); the agent calls
+it by that name. Paste the credentials — they're stored encrypted.
+
+### Connected agents tab
+Multi-select checklist of every agent in the workspace. Tick the ones
+that should use this collection. Save replaces the full set — anything
+you uncheck gets disconnected.
+
+## Connecting from the agent side
+
+You can also wire collections from an agent's perspective. On any
+agent, the **Knowledge** sub-page is now a picker — every workspace
+collection appears with a checkbox. Tick the ones you want, hit Save.
+Same effect, different angle. Use whichever feels natural for the
+moment.
+
+## Why this exists
+
+Before Collections, knowledge and data sources lived in two unrelated
+places — and knowledge entries were locked to a single agent. Sharing
+the same FAQ across three agents meant duplicating it three times,
+then editing three copies whenever something changed.
+
+Collections fix all three:
+
+- **One bundle, many agents.** A "Brand voice" collection on every
+  customer-facing agent. Update once; every agent picks it up next
+  turn.
+- **Mixed types in one place.** The "Product specs" collection holds
+  the spec PDF, the FAQ pairs, and the live inventory Sheet. An agent
+  attached to it gets all three on the same connection.
+- **Build once, reuse anywhere.** When you spin up a new agent, you
+  don't rebuild knowledge — you tick the collections it needs and
+  start tuning behaviour instead.
 
 ## Migration
 
-Anything you had before this change — entries you'd written, data
-sources you'd wired up — was automatically dropped into a default
-**General** collection in each workspace. Every agent that used
-those items was connected to General. Day-one behaviour is identical.
+Everything from before — knowledge entries you'd written and data
+sources you'd configured — was automatically dropped into a default
+**General** collection in each workspace. Every agent that previously
+used those items was connected to General. Day-one prompt context is
+identical to what it was before.
 
-To reorganise, just create new collections and split items between
-them. Each item belongs to exactly one collection at a time.
+To reorganise, just create new collections and move items by
+recreating them in the right place (each item belongs to exactly one
+collection). Or rename **General** and split items into topic-specific
+collections as you go.
 
-## Pro tips
+## A clean pattern
 
-- **One collection per topic.** "Refunds & returns," "Product specs,"
-  "Brand voice." Easier to mix-and-match.
-- **Stack at the agent level.** Sales agent → Brand voice +
-  Product specs. Support agent → Brand voice + Refunds + FAQs. Voice
-  agent → Brand voice + FAQs.
-- **Data sources go where they belong.** Inventory Sheet in the
-  "Product specs" collection so any agent that needs product info
-  also gets the live lookup.
-- **Delete a collection** to remove it everywhere. Delete an item
-  inside a collection to remove just that item.
-`,
-  },
+For workspaces with multiple agents on the same business, a
+collection-per-topic layout works well:
 
-  // ───────────────────────────────────────────────────────────────────
-  // Legacy "library" article — kept for the slug, retitled to redirect
-  // attention to the new collections concept.
-  // ───────────────────────────────────────────────────────────────────
-  {
-    slug: 'workspace-knowledge-library',
-    title: 'Knowledge is now a workspace library — stack onto multiple agents',
-    summary: 'Write a policy, FAQ, or product doc once and stack it onto every agent that needs it. Edits propagate everywhere automatically.',
-    order: 70,
-    body: `Knowledge entries used to be locked to a single agent — every new
-agent meant duplicating the same FAQ doc, and editing in one place
-meant N copies later. Knowledge is now a **first-class workspace
-entity**, and agents subscribe to entries via a connection.
+- **Brand voice** (one shared collection) → on every agent.
+- **Refunds & returns** → on support + voice agents.
+- **Product specs** (with the inventory Sheet inside) → on sales +
+  support + voice agents.
+- **Sales playbook** → on sales agent only.
 
-## What's new
+Each agent inherits exactly what it needs by checking 2–4 collections,
+and any change you make to a collection ripples to every agent on it.
 
-- **Top-level Knowledge tab** in the left nav (between Agents and
-  Templates) — the workspace library where every entry lives.
-- **Multi-stack** — pick which agents an entry connects to. Same entry,
-  many agents.
-- **Single source of truth** — edit in one place, and every connected
-  agent sees the change on the next conversation turn.
-- **Per-agent knowledge page still works** as it always has — write,
-  upload PDFs, import from Notion or YouTube, crawl URLs. Entries land
-  in the workspace pool *and* auto-attach to that agent.
-- **"Stack from library" button** on the per-agent page lets you grab
-  existing workspace entries and attach them in one click.
+## Things to know
 
-## How it works
-
-1. **Workspace library** holds every entry. Open from the **Knowledge**
-   tab in the left nav.
-2. Each entry has **connections** — the set of agents that pull this
-   entry into their system prompt at runtime.
-3. **Creating** an entry: from the workspace page, you can pick which
-   agents to connect to during creation. From the per-agent knowledge
-   page, the entry auto-connects to that agent only.
-4. **Editing** an entry updates it once; every connected agent sees
-   the new content next turn. No syncing, no copies.
-5. **Deleting**: the workspace **Delete** button removes the entry
-   permanently (cascades through every connection). The per-agent
-   **Delete** button now **detaches** that one agent (the entry stays
-   in the pool — other agents keep using it).
-
-## Stacking on a new agent
-
-When you build a new agent and want it to inherit existing knowledge:
-
-1. Open the agent → **Knowledge** tab
-2. Click **Stack from library** in the banner at the top
-3. Tick the entries you want from the workspace pool
-4. Hit **Stack**
-
-The agent now has those entries attached. Same library entry, no
-duplication.
-
-## Reorganizing existing knowledge
-
-To consolidate — e.g. you have a "Refund policy" on three agents that
-were edited separately:
-
-1. Open the **Knowledge** tab in the left nav
-2. Find the three entries (filter by "Connected to: agent-name" if
-   needed)
-3. Pick the cleanest version
-4. Edit its connections to include all three agents (the
-   **Stack on agents** checklist in the editor)
-5. Delete the other two from the workspace page
-
-After this, all three agents share one entry.
-
-## Where stacking matters most
-
-- **Common policies** (refund terms, escalation rules, brand voice)
-  → stack on every agent, edit once when policy changes.
-- **Product specs** that multiple agents reference (sales agent,
-  support agent, voice agent on the same product) → stack on each.
-- **Onboarding documents** that should land on every newly-created
-  agent → create in the workspace, stack the new agent onto each.
-
-## Migration notes
-
-Existing entries you had before this update were automatically:
-
-1. Promoted to the workspace pool (their workspace inferred from
-   their original agent).
-2. Connected back to their original agent so prompt context didn't
-   change on day one.
-
-Nothing to do — your agents see exactly the same knowledge as before.
-The new ability is to **stack** existing entries onto additional
-agents, and to **build new entries at the workspace level** instead
-of inside one agent.
-
-## Pro tip: source-of-truth FAQs
-
-For multi-agent setups, a clean pattern is:
-
-1. Build a "Master FAQs" set in the workspace knowledge — one entry
-   per topic (refunds, hours, shipping, etc.).
-2. Stack the entire master set onto every customer-facing agent.
-3. When a policy changes, edit the workspace entry. Every agent
-   updates instantly.
-
-You can build agent-specific entries (only attached to one agent) for
-things that are truly unique to that agent's role — but the shared
-truth lives once in the library.
+- **Delete a collection** to remove it everywhere. Every connected
+  agent loses access; the items inside are deleted too.
+- **Delete an item inside a collection** to remove just that item.
+  Other items in the collection stay; agents keep using the
+  collection.
+- **Disconnect an agent** by un-ticking the collection in the agent's
+  Knowledge picker (or in the collection's Connected agents tab). The
+  collection survives untouched.
+- **Data sources only surface as tools** when an agent connects to the
+  collection that holds them. So you control which agents can call
+  which data sources by where you put them.
 `,
   },
 ]
