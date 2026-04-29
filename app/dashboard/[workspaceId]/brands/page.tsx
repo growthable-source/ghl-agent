@@ -70,10 +70,6 @@ export default function BrandsPage() {
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white">Brands</h1>
-            <p className="text-sm text-zinc-400 mt-1">
-              Whitelabel client identities. Tag widgets and knowledge collections to a brand —
-              the inbox filters by brand, transcripts export by brand, and the same support team can handle every brand from one queue.
-            </p>
           </div>
           <button
             onClick={() => setEditor({ mode: 'create' })}
