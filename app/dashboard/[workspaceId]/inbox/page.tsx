@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import ConversationDetail from '@/components/inbox/ConversationDetail'
 
 interface AssignedUser {
   id: string
@@ -82,6 +83,9 @@ export default function InboxPage() {
   const [brandSlug, setBrandSlug] = useState<string>(searchParams.get('brand') || 'all')
   const [brandPickerOpen, setBrandPickerOpen] = useState(false)
   const [brandSearch, setBrandSearch] = useState('')
+  // Selected conversation for the right-pane detail. URL-synced via
+  // ?conversation=<id> so deep-links and back-button navigation work.
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('conversation'))
 
   // Two fetch modes:
   //   1) No query, no brand filter → cheap list endpoint, polled every 8s.
@@ -128,14 +132,16 @@ export default function InboxPage() {
     })()
   }, [workspaceId])
 
-  // Keep ?brand=<slug> in sync with the dropdown so deep-links and back-
-  // button navigation behave naturally.
+  // Keep ?brand=<slug> + ?conversation=<id> in sync with state so
+  // deep-links and back-button navigation behave naturally.
   useEffect(() => {
     const url = new URL(window.location.href)
     if (brandSlug === 'all') url.searchParams.delete('brand')
     else url.searchParams.set('brand', brandSlug)
+    if (selectedId) url.searchParams.set('conversation', selectedId)
+    else url.searchParams.delete('conversation')
     router.replace(url.pathname + url.search, { scroll: false })
-  }, [brandSlug, router])
+  }, [brandSlug, selectedId, router])
 
   // Initial fetch + refetch when filters change. For the live recency
   // list (no query, no brand), poll every 8 seconds so new
@@ -206,26 +212,25 @@ export default function InboxPage() {
   const hot = rows.filter(r => isHot(r.lastMessageAt) && r.status !== 'ended').length
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-5xl mx-auto p-8">
-        <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-              Inbox
-              {hot > 0 && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 inline-flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {hot} active now
-                </span>
-              )}
-            </h1>
-            <p className="text-sm text-zinc-400 mt-1">Live chat conversations across every widget in this workspace.</p>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="flex-1 flex h-full overflow-hidden">
+      {/* LEFT PANE — list, filters, search. Fixed width on md+; full
+          width on mobile (right pane is hidden via md:flex). */}
+      <div className="w-full md:w-[440px] lg:w-[480px] md:flex-shrink-0 flex flex-col border-r border-zinc-800 overflow-y-auto p-4">
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h1 className="text-lg font-bold text-white inline-flex items-center gap-2">
+            Inbox
+            {hot > 0 && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 inline-flex items-center gap-1">
+                <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                {hot}
+              </span>
+            )}
+          </h1>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={togglePresence}
-              className={`group flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+              className={`group flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full border transition-colors ${
                 isAvailable
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
                   : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white'
@@ -234,10 +239,9 @@ export default function InboxPage() {
                 ? 'You\u2019re available — round-robin / first-available routing can land chats with you. Click to go away.'
                 : 'You\u2019re away — auto-routing skips you. Click to come back.'}
             >
-              <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
               {isAvailable ? 'Available' : 'Away'}
             </button>
-            <div className="text-[11px] text-zinc-500">Auto-refreshes every 8s · {rows.length} total</div>
           </div>
         </div>
 
@@ -535,11 +539,23 @@ export default function InboxPage() {
               const hot = isHot(r.lastMessageAt) && r.status !== 'ended'
               const lastKind = r.lastMessage?.kind
               const isMine = meId && r.assignedUserId === meId
+              const isSelected = selectedId === r.id
+              // "Unread" treatment: latest message is from the visitor
+              // and the conversation hasn't been ended. The bolden +
+              // dot signal that an operator hasn't replied/closed yet.
+              const isUnread = r.lastMessage?.role === 'visitor' && r.status !== 'ended'
               return (
-                <Link
+                <button
                   key={r.id}
-                  href={`/dashboard/${workspaceId}/inbox/${r.id}`}
-                  className="flex items-start gap-3 p-4 hover:bg-zinc-900/60 transition-colors"
+                  type="button"
+                  onClick={() => setSelectedId(r.id)}
+                  className={`w-full text-left flex items-start gap-3 p-4 transition-colors border-l-2 ${
+                    isSelected
+                      ? 'bg-zinc-900 border-l-orange-500'
+                      : isUnread
+                        ? 'bg-zinc-950 border-l-emerald-500/60 hover:bg-zinc-900/60'
+                        : 'border-l-transparent hover:bg-zinc-900/60'
+                  }`}
                 >
                   <div className="relative flex-shrink-0">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold text-white"
@@ -642,9 +658,32 @@ export default function InboxPage() {
                       )}
                     </div>
                   </div>
-                </Link>
+                </button>
               )
             })}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT PANE — conversation detail. Renders when a row is
+          selected; otherwise an empty state. */}
+      <div className="hidden md:flex flex-1 min-w-0 flex-col overflow-hidden bg-black">
+        {selectedId ? (
+          <ConversationDetail
+            key={selectedId}
+            workspaceId={workspaceId}
+            conversationId={selectedId}
+            onClose={() => setSelectedId(null)}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="w-14 h-14 rounded-full bg-zinc-900 flex items-center justify-center text-2xl mb-4">
+              💬
+            </div>
+            <p className="text-sm font-medium text-white mb-1">Pick a conversation</p>
+            <p className="text-xs text-zinc-500 max-w-sm">
+              Select a chat from the list on the left to read the full thread, claim it, and reply.
+            </p>
           </div>
         )}
       </div>
