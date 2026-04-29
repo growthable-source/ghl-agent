@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { searchConversations } from '@/lib/conversation-search'
 
 type Params = { params: Promise<{ workspaceId: string; brandId: string }> }
 
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const fromParam = url.searchParams.get('from')
   const toParam = url.searchParams.get('to')
   const statusParam = url.searchParams.get('status')
+  const qParam = url.searchParams.get('q')
   const format = url.searchParams.get('format') === 'text' ? 'text' : 'json'
 
   const from = fromParam ? new Date(fromParam) : null
@@ -45,29 +47,21 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid to date' }, { status: 400 })
   }
 
-  const where: any = {
-    widget: { workspaceId, brandId },
-  }
-  if (from || to) {
-    where.createdAt = {}
-    if (from) where.createdAt.gte = from
-    if (to) where.createdAt.lte = to
-  }
-  if (statusParam && ['active', 'handed_off', 'ended'].includes(statusParam)) {
-    where.status = statusParam
-  }
-
-  const conversations = await db.widgetConversation.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
+  // Reuse the shared search helper so the export filters in lockstep
+  // with what the operator sees in the inbox after applying the same
+  // brand + date + status + q combination. Different filter logic in
+  // two places would silently ship a "but I exported what I saw"
+  // mismatch the day someone refines the search.
+  const matched = await searchConversations({
+    workspaceId,
+    brandId,
+    status: statusParam,
+    from: fromParam,
+    to: toParam,
+    q: qParam,
     take: 1000,
-    include: {
-      widget: { select: { id: true, name: true } },
-      visitor: { select: { id: true, name: true, email: true, phone: true } },
-      messages: { orderBy: { createdAt: 'asc' } },
-      assignedUser: { select: { id: true, name: true, email: true } } as any,
-    } as any,
   })
+  const conversations = matched.map(m => m.conversation)
 
   const stamp = new Date().toISOString().slice(0, 10)
   const filenameBase = `${brand.slug || brandId}-transcripts-${stamp}`
@@ -92,7 +86,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       primaryColor: brand.primaryColor,
     },
     exportedAt: new Date().toISOString(),
-    filters: { from: fromParam, to: toParam, status: statusParam ?? null },
+    filters: { from: fromParam, to: toParam, status: statusParam ?? null, q: qParam ?? null },
     conversationCount: conversations.length,
     conversations: conversations.map((c: any) => ({
       id: c.id,

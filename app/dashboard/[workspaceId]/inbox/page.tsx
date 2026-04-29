@@ -33,6 +33,11 @@ interface Row {
   assignmentReason: string | null
   lastMessageAt: string
   lastMessage: { role: string; content: string; kind?: string; createdAt: string } | null
+  // Search-only metadata. Populated by the /search endpoint when
+  // there's a query — empty when the inbox is showing the regular
+  // recency list.
+  matchedIn?: Array<'visitor' | 'message' | 'assignee' | 'widget' | 'brand' | 'csat'>
+  snippets?: string[]
 }
 
 type StatusTab = 'live' | 'handed_off' | 'ended' | 'all'
@@ -78,13 +83,31 @@ export default function InboxPage() {
   const [brandPickerOpen, setBrandPickerOpen] = useState(false)
   const [brandSearch, setBrandSearch] = useState('')
 
+  // Two fetch modes:
+  //   1) No query, no brand filter → cheap list endpoint, polled every 8s.
+  //   2) Query OR a non-default brand filter → server-backed search
+  //      that walks transcripts + metadata. Debounced via the effect
+  //      that triggers it; not polled (search results don't need to
+  //      auto-refresh while you're scoping a historical lookup).
+  const usingSearch = search.trim().length > 0 || (brandSlug !== 'all')
   const fetchRows = useCallback(async () => {
+    if (usingSearch) {
+      const url = new URL(`/api/workspaces/${workspaceId}/widget-conversations/search`, window.location.origin)
+      if (search.trim()) url.searchParams.set('q', search.trim())
+      if (brandSlug !== 'all') url.searchParams.set('brand', brandSlug)
+      const res = await fetch(url.pathname + url.search)
+      const data = await res.json()
+      setRows(data.conversations || [])
+      setNotMigrated(!!data.notMigrated)
+      setLoading(false)
+      return
+    }
     const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations`)
     const data = await res.json()
     setRows(data.conversations || [])
     setNotMigrated(!!data.notMigrated)
     setLoading(false)
-  }, [workspaceId])
+  }, [workspaceId, usingSearch, search, brandSlug])
 
   // Bootstrap: load current user + presence flag + brands in parallel.
   useEffect(() => {
@@ -114,11 +137,20 @@ export default function InboxPage() {
     router.replace(url.pathname + url.search, { scroll: false })
   }, [brandSlug, router])
 
-  useEffect(() => { fetchRows() }, [fetchRows])
+  // Initial fetch + refetch when filters change. For the live recency
+  // list (no query, no brand), poll every 8 seconds so new
+  // conversations stream in. For the search view, debounce 250ms to
+  // avoid hammering the server on every keystroke and don't poll —
+  // the search is an explicit user action, not ambient.
   useEffect(() => {
+    if (usingSearch) {
+      const t = setTimeout(() => { fetchRows() }, 250)
+      return () => clearTimeout(t)
+    }
+    fetchRows()
     const i = setInterval(fetchRows, 8000)
     return () => clearInterval(i)
-  }, [fetchRows])
+  }, [fetchRows, usingSearch])
 
   async function togglePresence() {
     const next = !isAvailable
@@ -153,23 +185,13 @@ export default function InboxPage() {
     if (assignTab === 'mine' && meId) f = f.filter(r => r.assignedUserId === meId)
     else if (assignTab === 'unassigned') f = f.filter(r => !r.assignedUserId)
 
-    if (brandSlug === 'untagged') f = f.filter(r => !r.brand)
-    else if (brandSlug !== 'all') f = f.filter(r => r.brand?.slug === brandSlug)
-
-    if (search.trim()) {
-      const q = search.toLowerCase().trim()
-      f = f.filter(r =>
-        (r.visitor.name || '').toLowerCase().includes(q)
-        || (r.visitor.email || '').toLowerCase().includes(q)
-        || (r.lastMessage?.content || '').toLowerCase().includes(q)
-        || r.widget.name.toLowerCase().includes(q)
-        || (r.brand?.name || '').toLowerCase().includes(q)
-        || (r.assignedUser?.name || '').toLowerCase().includes(q)
-        || (r.assignedUser?.email || '').toLowerCase().includes(q),
-      )
-    }
+    // When `usingSearch` is true the server already applied brand +
+    // free-text filters. The status / assignment tabs are still
+    // client-side because they're cheap to flip and don't change the
+    // underlying result set semantically — operators expect them to
+    // narrow what's already on screen.
     return f
-  }, [rows, tab, assignTab, search, meId, brandSlug])
+  }, [rows, tab, assignTab, meId])
 
   if (loading) return (
     <div className="flex-1 p-8">
@@ -367,18 +389,6 @@ export default function InboxPage() {
                   </>
                 )}
               </div>
-              {brandSlug !== 'all' && brandSlug !== 'untagged' && currentBrand && (
-                <a
-                  href={`/api/workspaces/${workspaceId}/brands/${currentBrand.id}/transcripts/export?format=json`}
-                  className="ml-auto text-[11px] font-medium px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors inline-flex items-center gap-1.5"
-                  title="Download every conversation tagged to this brand as JSON"
-                >
-                  Export
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-                  </svg>
-                </a>
-              )}
             </div>
           )
         })()}
@@ -412,14 +422,93 @@ export default function InboxPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, email, message, assignee\u2026"
-              className="w-72 max-w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+              placeholder={brandSlug !== 'all' && brandSlug !== 'untagged'
+                ? 'Search transcripts in this brand\u2026'
+                : 'Search transcripts, visitors, assignees\u2026'}
+              className="w-80 max-w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-8 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
             />
             <svg className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                title="Clear search"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Search-results banner \u2014 shown whenever a query OR a brand
+            filter is active. Surfaces what's being searched + the
+            "export these" call-to-action right next to the result
+            count, which is the moment operators want it. */}
+        {(() => {
+          if (!usingSearch) return null
+          const currentBrand = brandSlug !== 'all' && brandSlug !== 'untagged'
+            ? brands.find(b => b.slug === brandSlug) ?? null
+            : null
+          const exportable = !!currentBrand
+          const exportHref = currentBrand
+            ? (() => {
+                const u = new URL(`/api/workspaces/${workspaceId}/brands/${currentBrand.id}/transcripts/export`, window.location.origin)
+                u.searchParams.set('format', 'json')
+                if (search.trim()) u.searchParams.set('q', search.trim())
+                return u.pathname + u.search
+              })()
+            : null
+          const textHref = currentBrand
+            ? (() => {
+                const u = new URL(`/api/workspaces/${workspaceId}/brands/${currentBrand.id}/transcripts/export`, window.location.origin)
+                u.searchParams.set('format', 'text')
+                if (search.trim()) u.searchParams.set('q', search.trim())
+                return u.pathname + u.search
+              })()
+            : null
+          return (
+            <div className="flex items-center gap-3 mb-4 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800">
+              <p className="text-xs text-zinc-300">
+                <span className="text-zinc-500">Showing</span>{' '}
+                <span className="font-semibold text-white">{filtered.length}</span>{' '}
+                <span className="text-zinc-500">
+                  {filtered.length === 1 ? 'conversation' : 'conversations'}
+                  {search.trim() && <> matching <span className="text-orange-300">&ldquo;{search.trim()}&rdquo;</span></>}
+                  {currentBrand && <> in {currentBrand.name}</>}
+                  {brandSlug === 'untagged' && <> (untagged)</>}
+                </span>
+              </p>
+              {exportable ? (
+                <div className="ml-auto flex items-center gap-1.5">
+                  <span className="text-[10px] text-zinc-500 mr-1">Export this set</span>
+                  <a
+                    href={exportHref!}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                    title="Download as JSON"
+                  >
+                    JSON
+                  </a>
+                  <a
+                    href={textHref!}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                    title="Download as plain-text transcript"
+                  >
+                    Text
+                  </a>
+                </div>
+              ) : (
+                search.trim() && (
+                  <p className="ml-auto text-[10px] text-zinc-500">Scope to a brand to export this set</p>
+                )
+              )}
+            </div>
+          )
+        })()}
 
         {filtered.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
@@ -499,7 +588,25 @@ export default function InboxPage() {
                       )}
                       <span className="ml-auto text-[10px] text-zinc-500 whitespace-nowrap">{timeAgo(r.lastMessageAt)}</span>
                     </div>
-                    {r.lastMessage && (
+                    {/* When the row matched on a search query, show
+                        the snippets with the term highlighted. Falls
+                        back to the regular last-message preview when
+                        not searching. */}
+                    {(r.snippets && r.snippets.length > 0) ? (
+                      <div className="space-y-0.5">
+                        {r.snippets.slice(0, 2).map((s, i) => (
+                          <p key={i} className="text-xs text-zinc-400 line-clamp-2">
+                            <span className="text-zinc-600">💬</span>{' '}
+                            <Highlight text={s} term={search.trim()} />
+                          </p>
+                        ))}
+                        {r.matchedIn && r.matchedIn.length > 0 && (
+                          <p className="text-[10px] text-zinc-600">
+                            matched in {r.matchedIn.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                    ) : r.lastMessage ? (
                       <p className="text-xs text-zinc-400 truncate">
                         <span className="text-zinc-600">
                           {r.lastMessage.role === 'visitor' ? '👤' : r.lastMessage.role === 'agent' ? '🤖' : 'ℹ️'}
@@ -508,7 +615,7 @@ export default function InboxPage() {
                           : lastKind === 'file' ? <span className="text-zinc-500 italic">sent a file</span>
                           : r.lastMessage.content}
                       </p>
-                    )}
+                    ) : null}
                     <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-600 flex-wrap">
                       <span>{r.messageCount} message{r.messageCount === 1 ? '' : 's'}</span>
                       {r.visitor.email && <span>· {r.visitor.email}</span>}
@@ -572,5 +679,32 @@ function PickerRow({
         </svg>
       )}
     </button>
+  )
+}
+
+function Highlight({ text, term }: { text: string; term: string }) {
+  if (!term) return <>{text}</>
+  const lower = text.toLowerCase()
+  const needle = term.toLowerCase()
+  const parts: Array<{ text: string; match: boolean }> = []
+  let i = 0
+  while (i < text.length) {
+    const idx = lower.indexOf(needle, i)
+    if (idx < 0) {
+      parts.push({ text: text.slice(i), match: false })
+      break
+    }
+    if (idx > i) parts.push({ text: text.slice(i, idx), match: false })
+    parts.push({ text: text.slice(idx, idx + needle.length), match: true })
+    i = idx + needle.length
+  }
+  return (
+    <>
+      {parts.map((p, idx) =>
+        p.match
+          ? <mark key={idx} className="bg-orange-500/30 text-orange-100 rounded px-0.5">{p.text}</mark>
+          : <span key={idx}>{p.text}</span>,
+      )}
+    </>
   )
 }
