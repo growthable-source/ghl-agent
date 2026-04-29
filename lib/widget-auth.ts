@@ -14,8 +14,78 @@ type ValidationResult =
   | { ok: true; widget: Awaited<ReturnType<typeof loadWidget>> & NonNullable<unknown> }
   | { ok: false; error: string; status: number }
 
+/**
+ * Pull a widget row with an explicit select. Two reasons:
+ *   1. Migration tolerance — if any newly-added column (brandId,
+ *      routingMode, etc.) hasn't been applied to production yet,
+ *      Prisma's default `findUnique` fails entirely with
+ *      `column does not exist` because it SELECT *s. An explicit
+ *      list lets the widget keep loading on partially-migrated DBs;
+ *      anything not in the list degrades to a sensible default.
+ *   2. Performance / privacy — we don't need the entire row; the
+ *      caller only ever reads the fields below.
+ *
+ * If a new feature adds a column the widget needs at config-load time,
+ * add it here behind a try/catch so a missing migration doesn't take
+ * down every customer's widget.
+ */
 async function loadWidget(widgetId: string) {
-  return db.chatWidget.findUnique({ where: { id: widgetId } })
+  // Try the full select first — what current code expects.
+  try {
+    return await db.chatWidget.findUnique({
+      where: { id: widgetId },
+      select: {
+        id: true, name: true, publicKey: true, isActive: true,
+        primaryColor: true, logoUrl: true, title: true, subtitle: true,
+        welcomeMessage: true, position: true,
+        type: true, slug: true, embedMode: true,
+        buttonLabel: true, buttonShape: true, buttonSize: true,
+        buttonIcon: true, buttonTextColor: true,
+        hostedPageHeadline: true, hostedPageSubtext: true,
+        requireEmail: true, askForNameEmail: true,
+        voiceEnabled: true, voiceAgentId: true,
+        defaultAgentId: true, allowedDomains: true,
+        workspaceId: true,
+      } as any,
+    })
+  } catch (err: any) {
+    // A column the new schema expects doesn't exist on this DB yet
+    // (migration pending). Retry with the smallest possible select
+    // that's been around since the base widget migration so the
+    // launcher still loads.
+    if (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')) {
+      const fallback = await db.chatWidget.findUnique({
+        where: { id: widgetId },
+        select: {
+          id: true, name: true, publicKey: true, isActive: true,
+          primaryColor: true, logoUrl: true, title: true, subtitle: true,
+          welcomeMessage: true, position: true,
+          requireEmail: true, askForNameEmail: true,
+          voiceEnabled: true, voiceAgentId: true,
+          defaultAgentId: true, allowedDomains: true,
+          workspaceId: true,
+        },
+      })
+      if (!fallback) return null
+      // Pad in the click-to-call defaults so callers reading those
+      // fields don't break. Older deployments are effectively
+      // chat-only widgets in floating mode.
+      return {
+        ...fallback,
+        type: 'chat',
+        slug: null,
+        embedMode: 'floating',
+        buttonLabel: 'Talk to us',
+        buttonShape: 'pill',
+        buttonSize: 'md',
+        buttonIcon: 'phone',
+        buttonTextColor: '#ffffff',
+        hostedPageHeadline: null,
+        hostedPageSubtext: null,
+      } as any
+    }
+    throw err
+  }
 }
 
 function extractPublicKey(req: Request): string | null {
