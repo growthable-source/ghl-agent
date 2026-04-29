@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -75,6 +75,8 @@ export default function InboxPage() {
   // brand. Initial value comes from ?brand=<slug> on the URL so the
   // brands page can deep-link straight into the brand-scoped inbox.
   const [brandSlug, setBrandSlug] = useState<string>(searchParams.get('brand') || 'all')
+  const [brandPickerOpen, setBrandPickerOpen] = useState(false)
+  const [brandSearch, setBrandSearch] = useState('')
 
   const fetchRows = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations`)
@@ -249,46 +251,137 @@ export default function InboxPage() {
         </div>
 
         {/* Brand filter — only renders when the workspace actually has
-            brands defined. Otherwise it'd be visual noise. */}
-        {brands.length > 0 && (
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Brand</span>
-            {([
-              { slug: 'all', label: 'All', logoUrl: null, primaryColor: null },
-              { slug: 'untagged', label: 'Untagged', logoUrl: null, primaryColor: null },
-              ...brands.map(b => ({ slug: b.slug, label: b.name, logoUrl: b.logoUrl, primaryColor: b.primaryColor })),
-            ]).map(opt => {
-              const active = brandSlug === opt.slug
-              return (
+            brands defined. Dropdown form, scales to 50+ brands. */}
+        {brands.length > 0 && (() => {
+          const counts = rows.reduce((acc, r) => {
+            const k = r.brand?.slug ?? '__untagged__'
+            acc[k] = (acc[k] ?? 0) + 1
+            return acc
+          }, {} as Record<string, number>)
+          const untaggedCount = counts.__untagged__ ?? 0
+          const currentBrand = brandSlug === 'all' ? null
+            : brandSlug === 'untagged' ? null
+            : brands.find(b => b.slug === brandSlug) ?? null
+          const triggerLabel = brandSlug === 'all' ? 'All brands'
+            : brandSlug === 'untagged' ? 'Untagged'
+            : currentBrand?.name ?? brandSlug
+          const triggerCount = brandSlug === 'all' ? rows.length
+            : brandSlug === 'untagged' ? untaggedCount
+            : (counts[brandSlug] ?? 0)
+          const sb = brandSearch.toLowerCase().trim()
+          const filteredBrands = sb
+            ? brands.filter(b =>
+                b.name.toLowerCase().includes(sb)
+                || b.slug.toLowerCase().includes(sb))
+            : brands
+          return (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Brand</span>
+              <div className="relative">
                 <button
-                  key={opt.slug}
-                  onClick={() => setBrandSlug(opt.slug)}
-                  className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors inline-flex items-center gap-1.5 ${
-                    active
-                      ? 'bg-white text-black'
-                      : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                  type="button"
+                  onClick={() => setBrandPickerOpen(o => !o)}
+                  className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                    brandSlug === 'all'
+                      ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:border-zinc-600'
+                      : 'bg-white text-black border-white'
                   }`}
                 >
-                  {opt.primaryColor && <span className="w-2 h-2 rounded-full" style={{ background: opt.primaryColor }} />}
-                  {opt.logoUrl && (
+                  {currentBrand?.logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={opt.logoUrl} alt="" className="w-3.5 h-3.5 rounded-sm object-cover" />
-                  )}
-                  {opt.label}
+                    <img src={currentBrand.logoUrl} alt="" className="w-3.5 h-3.5 rounded-sm object-cover" />
+                  ) : currentBrand?.primaryColor ? (
+                    <span className="w-2 h-2 rounded-full" style={{ background: currentBrand.primaryColor }} />
+                  ) : null}
+                  <span className="truncate max-w-[180px]">{triggerLabel}</span>
+                  <span className={brandSlug === 'all' ? 'text-zinc-500' : 'text-zinc-500'}>{triggerCount}</span>
+                  <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
                 </button>
-              )
-            })}
-            {brandSlug !== 'all' && brandSlug !== 'untagged' && (
-              <a
-                href={`/api/workspaces/${workspaceId}/brands/${brands.find(b => b.slug === brandSlug)?.id}/transcripts/export?format=json`}
-                className="ml-auto text-[11px] font-medium px-3 py-1 rounded-full border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
-                title="Download every conversation tagged to this brand as JSON"
-              >
-                Export {brandSlug} ↓
-              </a>
-            )}
-          </div>
-        )}
+                {brandPickerOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setBrandPickerOpen(false)} />
+                    <div className="absolute left-0 top-full mt-1 z-40 w-72 bg-zinc-950 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+                      {brands.length > 6 && (
+                        <div className="p-2 border-b border-zinc-800">
+                          <input
+                            autoFocus
+                            value={brandSearch}
+                            onChange={e => setBrandSearch(e.target.value)}
+                            placeholder="Search brands…"
+                            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                          />
+                        </div>
+                      )}
+                      <div className="max-h-72 overflow-y-auto py-1">
+                        <PickerRow
+                          active={brandSlug === 'all'}
+                          onClick={() => { setBrandSlug('all'); setBrandPickerOpen(false); setBrandSearch('') }}
+                          left={<span className="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-400">∗</span>}
+                          label="All brands"
+                          count={rows.length}
+                        />
+                        <PickerRow
+                          active={brandSlug === 'untagged'}
+                          onClick={() => { setBrandSlug('untagged'); setBrandPickerOpen(false); setBrandSearch('') }}
+                          left={<span className="w-5 h-5 rounded border border-dashed border-zinc-700 flex items-center justify-center text-[10px] text-zinc-500">·</span>}
+                          label="Untagged"
+                          count={untaggedCount}
+                        />
+                        {filteredBrands.length === 0 && (
+                          <p className="px-3 py-2 text-[11px] text-zinc-500">No brands match.</p>
+                        )}
+                        {filteredBrands.map(b => (
+                          <PickerRow
+                            key={b.slug}
+                            active={brandSlug === b.slug}
+                            onClick={() => { setBrandSlug(b.slug); setBrandPickerOpen(false); setBrandSearch('') }}
+                            left={
+                              b.logoUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={b.logoUrl} alt="" className="w-5 h-5 rounded object-cover" />
+                              ) : (
+                                <span
+                                  className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-semibold text-white"
+                                  style={{ background: b.primaryColor || '#fa4d2e' }}
+                                >
+                                  {b.name.charAt(0).toUpperCase()}
+                                </span>
+                              )
+                            }
+                            label={b.name}
+                            count={counts[b.slug] ?? 0}
+                          />
+                        ))}
+                      </div>
+                      <div className="p-2 border-t border-zinc-800">
+                        <Link
+                          href={`/dashboard/${workspaceId}/brands`}
+                          className="text-[11px] text-zinc-400 hover:text-white"
+                        >
+                          Manage brands →
+                        </Link>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              {brandSlug !== 'all' && brandSlug !== 'untagged' && currentBrand && (
+                <a
+                  href={`/api/workspaces/${workspaceId}/brands/${currentBrand.id}/transcripts/export?format=json`}
+                  className="ml-auto text-[11px] font-medium px-3 py-1.5 rounded-full border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors inline-flex items-center gap-1.5"
+                  title="Download every conversation tagged to this brand as JSON"
+                >
+                  Export
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                  </svg>
+                </a>
+              )}
+            </div>
+          )
+        })()}
 
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {([
@@ -449,5 +542,35 @@ export default function InboxPage() {
         )}
       </div>
     </div>
+  )
+}
+
+
+function PickerRow({
+  active, onClick, left, label, count,
+}: {
+  active: boolean
+  onClick: () => void
+  left: ReactNode
+  label: string
+  count: number
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
+        active ? 'bg-zinc-900 text-white' : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+      }`}
+    >
+      {left}
+      <span className="flex-1 min-w-0 truncate">{label}</span>
+      <span className="text-[10px] text-zinc-500">{count}</span>
+      {active && (
+        <svg className="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      )}
+    </button>
   )
 }
