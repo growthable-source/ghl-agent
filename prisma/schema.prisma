@@ -23,6 +23,7 @@ model User {
   sessions              Session[]
   locations             UserLocation[]
   workspaces            WorkspaceMember[]
+  assignedConversations WidgetConversation[] @relation("ConversationAssignee")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 }
@@ -154,8 +155,15 @@ model WorkspaceMember {
   // dispatching; the digest page exposes a toggle.
   digestOptIn      Boolean   @default(true)
   lastDigestSentAt DateTime?
+  // Inbox availability. Routing engine only assigns chats to members
+  // marked available; "away" members stay in the workspace but are
+  // skipped by round-robin / first-available picks. Toggled from the
+  // inbox header.
+  isAvailable      Boolean   @default(true)
+  availabilityChangedAt DateTime?
   createdAt        DateTime  @default(now())
   @@unique([userId, workspaceId])
+  @@index([workspaceId, isAvailable])
 }
 
 model WorkspaceInvite {
@@ -1113,6 +1121,19 @@ model ChatWidget {
   voiceAgentId      String?
   // Routing
   defaultAgentId    String?
+  // Operator assignment routing. Determines who the chat lands on when
+  // a human is needed (AI handover, manual takeover). "manual" leaves
+  // the conversation unassigned for any operator to claim from the
+  // inbox; "round_robin" cycles through the eligible users; "first_available"
+  // picks the available user with the fewest open chats.
+  routingMode       String   @default("manual")  // manual | round_robin | first_available
+  // Eligible operator user IDs. Empty array means "all workspace
+  // members" — useful so a brand-new widget routes to everyone without
+  // explicit configuration.
+  routingTargetUserIds String[] @default([])
+  // Cursor for round-robin so we hand the next chat to the *next* person
+  // in the rotation, not the same person every time.
+  routingLastAssignedUserId String?
   allowedDomains    String[] @default([])
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
@@ -1158,12 +1179,24 @@ model WidgetConversation {
   csatRating       Int?
   csatComment      String?  @db.Text
   csatSubmittedAt  DateTime?
+  // Operator assignment. assignedUserId points at WorkspaceMember.userId
+  // (the User row), set either by the routing engine on handover or by
+  // an operator picking up the chat manually. assignedAt drives SLA /
+  // first-response timing on the inbox.
+  assignedUserId   String?
+  assignedUser     User?    @relation("ConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt       DateTime?
+  // Why the chat was assigned. "manual", "self" (operator self-assigned
+  // by replying), "round_robin", "first_available". Useful in the inbox
+  // and for debugging routing.
+  assignmentReason String?
   createdAt        DateTime @default(now())
   messages         WidgetMessage[]
   voiceCalls       WidgetVoiceCall[]
   @@index([widgetId, lastMessageAt(sort: Desc)])
   @@index([visitorId])
   @@index([agentId, status])
+  @@index([assignedUserId, status])
 }
 
 model WidgetMessage {

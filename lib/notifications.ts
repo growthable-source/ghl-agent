@@ -23,34 +23,42 @@ export async function notify(params: {
   body?: string
   link?: string
   severity?: 'info' | 'warning' | 'error'
+  // When set, this notification is *personal* — meant for one user, not
+  // the whole workspace. Skips shared channels (Slack/Discord/etc.) and
+  // only fans out to the targeted user's own email/web push. Used for
+  // events like widget.conversation_assigned where blasting the whole
+  // team would be noise.
+  targetUserId?: string
 }) {
-  let channels: Array<{ id: string; type: string; config: any; events: string[] }>
-  try {
-    channels = await db.notificationChannel.findMany({
-      where: { workspaceId: params.workspaceId, isActive: true },
-      select: { id: true, type: true, config: true, events: true },
-    })
-  } catch {
-    return
-  }
-
-  const matchingChannels = channels.filter(
-    c => c.events.length === 0 || c.events.includes(params.event)
-  )
-
-  for (const channel of matchingChannels) {
+  if (!params.targetUserId) {
+    let channels: Array<{ id: string; type: string; config: any; events: string[] }>
     try {
-      if (channel.type === 'slack') {
-        await dispatchSlack(channel.config, params)
-      } else if (channel.type === 'discord') {
-        await dispatchDiscord(channel.config, params)
-      } else if (channel.type === 'email') {
-        await dispatchEmail(channel.config, params)
-      } else if (channel.type === 'sms') {
-        await dispatchSms(params.workspaceId, channel.config, params)
+      channels = await db.notificationChannel.findMany({
+        where: { workspaceId: params.workspaceId, isActive: true },
+        select: { id: true, type: true, config: true, events: true },
+      })
+    } catch {
+      return
+    }
+
+    const matchingChannels = channels.filter(
+      c => c.events.length === 0 || c.events.includes(params.event)
+    )
+
+    for (const channel of matchingChannels) {
+      try {
+        if (channel.type === 'slack') {
+          await dispatchSlack(channel.config, params)
+        } else if (channel.type === 'discord') {
+          await dispatchDiscord(channel.config, params)
+        } else if (channel.type === 'email') {
+          await dispatchEmail(channel.config, params)
+        } else if (channel.type === 'sms') {
+          await dispatchSms(params.workspaceId, channel.config, params)
+        }
+      } catch (err: any) {
+        console.warn(`[Notify] ${channel.type} dispatch failed:`, err.message)
       }
-    } catch (err: any) {
-      console.warn(`[Notify] ${channel.type} dispatch failed:`, err.message)
     }
   }
 
@@ -71,11 +79,15 @@ async function fanOutPerUser(params: {
   body?: string
   link?: string
   severity?: 'info' | 'warning' | 'error'
+  targetUserId?: string
 }) {
   let members: Array<{ userId: string; user: { email: string | null; name: string | null } | null }>
   try {
     members = await db.workspaceMember.findMany({
-      where: { workspaceId: params.workspaceId },
+      where: {
+        workspaceId: params.workspaceId,
+        ...(params.targetUserId ? { userId: params.targetUserId } : {}),
+      },
       select: { userId: true, user: { select: { email: true, name: true } } },
     })
   } catch (err: any) {

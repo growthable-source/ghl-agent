@@ -15,16 +15,39 @@ export async function GET(
 
   // Explicit select — pending migrations on WorkspaceMember (e.g.
   // digestOptIn) would otherwise crash this listing.
-  const members = await db.workspaceMember.findMany({
-    where: { workspaceId },
-    select: {
-      id: true,
-      role: true,
-      createdAt: true,
-      user: { select: { id: true, name: true, email: true, image: true } },
-    },
-    orderBy: { createdAt: 'asc' },
-  })
+  let members: any[]
+  try {
+    members = await db.workspaceMember.findMany({
+      where: { workspaceId },
+      select: {
+        id: true,
+        role: true,
+        createdAt: true,
+        isAvailable: true,
+        availabilityChangedAt: true,
+        user: { select: { id: true, name: true, email: true, image: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+  } catch (err: any) {
+    // Routing-assignment migration may not be applied yet — fall back to
+    // the bare select so the members page keeps working.
+    if (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')) {
+      members = await db.workspaceMember.findMany({
+        where: { workspaceId },
+        select: {
+          id: true,
+          role: true,
+          createdAt: true,
+          user: { select: { id: true, name: true, email: true, image: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+      members = members.map(m => ({ ...m, isAvailable: true, availabilityChangedAt: null }))
+    } else {
+      throw err
+    }
+  }
 
   return NextResponse.json({ members })
 }

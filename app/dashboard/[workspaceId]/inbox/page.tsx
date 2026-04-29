@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
+interface AssignedUser {
+  id: string
+  name: string | null
+  email: string | null
+  image?: string | null
+}
+
 interface Row {
   id: string
   widget: { id: string; name: string; primaryColor?: string }
@@ -11,11 +18,16 @@ interface Row {
   status: string
   messageCount: number
   csatRating: number | null
+  assignedUserId: string | null
+  assignedUser: AssignedUser | null
+  assignedAt: string | null
+  assignmentReason: string | null
   lastMessageAt: string
   lastMessage: { role: string; content: string; kind?: string; createdAt: string } | null
 }
 
-type FilterTab = 'live' | 'handed_off' | 'ended' | 'all'
+type StatusTab = 'live' | 'handed_off' | 'ended' | 'all'
+type AssignTab = 'all' | 'mine' | 'unassigned'
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -31,14 +43,21 @@ function isHot(iso: string): boolean {
   return Date.now() - new Date(iso).getTime() < 5 * 60 * 1000
 }
 
+function initialOf(name: string | null | undefined, email: string | null | undefined, fallback = '?'): string {
+  return ((name || email || fallback).charAt(0) || fallback).toUpperCase()
+}
+
 export default function InboxPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [notMigrated, setNotMigrated] = useState(false)
-  const [tab, setTab] = useState<FilterTab>('live')
+  const [tab, setTab] = useState<StatusTab>('live')
+  const [assignTab, setAssignTab] = useState<AssignTab>('all')
   const [search, setSearch] = useState('')
+  const [meId, setMeId] = useState<string | null>(null)
+  const [isAvailable, setIsAvailable] = useState<boolean>(true)
 
   const fetchRows = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations`)
@@ -48,35 +67,74 @@ export default function InboxPage() {
     setLoading(false)
   }, [workspaceId])
 
+  // Bootstrap: load current user + presence flag in parallel.
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const [meRes, presenceRes] = await Promise.all([
+          fetch('/api/me'),
+          fetch(`/api/workspaces/${workspaceId}/me/presence`),
+        ])
+        const me = await meRes.json()
+        const p = await presenceRes.json()
+        if (me?.user?.id) setMeId(me.user.id)
+        if (typeof p?.isAvailable === 'boolean') setIsAvailable(p.isAvailable)
+      } catch { /* fail-open: keep defaults */ }
+    })()
+  }, [workspaceId])
+
   useEffect(() => { fetchRows() }, [fetchRows])
   useEffect(() => {
     const i = setInterval(fetchRows, 8000)
     return () => clearInterval(i)
   }, [fetchRows])
 
-  const counts = useMemo(() => ({
-    live: rows.filter(r => r.status === 'active').length,
-    handed_off: rows.filter(r => r.status === 'handed_off').length,
-    ended: rows.filter(r => r.status === 'ended').length,
-    all: rows.length,
-  }), [rows])
+  async function togglePresence() {
+    const next = !isAvailable
+    setIsAvailable(next)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/me/presence`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAvailable: next }),
+      })
+      if (!res.ok) setIsAvailable(!next)
+    } catch {
+      setIsAvailable(!next)
+    }
+  }
+
+  const counts = useMemo(() => {
+    const live = rows.filter(r => r.status === 'active').length
+    const handed = rows.filter(r => r.status === 'handed_off').length
+    const ended = rows.filter(r => r.status === 'ended').length
+    const mine = meId ? rows.filter(r => r.assignedUserId === meId).length : 0
+    const unassigned = rows.filter(r => !r.assignedUserId).length
+    return { live, handed_off: handed, ended, all: rows.length, mine, unassigned }
+  }, [rows, meId])
 
   const filtered = useMemo(() => {
     let f = rows
     if (tab === 'live') f = f.filter(r => r.status === 'active')
     else if (tab === 'handed_off') f = f.filter(r => r.status === 'handed_off')
     else if (tab === 'ended') f = f.filter(r => r.status === 'ended')
+
+    if (assignTab === 'mine' && meId) f = f.filter(r => r.assignedUserId === meId)
+    else if (assignTab === 'unassigned') f = f.filter(r => !r.assignedUserId)
+
     if (search.trim()) {
       const q = search.toLowerCase().trim()
       f = f.filter(r =>
         (r.visitor.name || '').toLowerCase().includes(q)
         || (r.visitor.email || '').toLowerCase().includes(q)
         || (r.lastMessage?.content || '').toLowerCase().includes(q)
-        || r.widget.name.toLowerCase().includes(q),
+        || r.widget.name.toLowerCase().includes(q)
+        || (r.assignedUser?.name || '').toLowerCase().includes(q)
+        || (r.assignedUser?.email || '').toLowerCase().includes(q),
       )
     }
     return f
-  }, [rows, tab, search])
+  }, [rows, tab, assignTab, search, meId])
 
   if (loading) return (
     <div className="flex-1 p-8">
@@ -106,7 +164,24 @@ export default function InboxPage() {
             </h1>
             <p className="text-sm text-zinc-400 mt-1">Live chat conversations across every widget in this workspace.</p>
           </div>
-          <div className="text-[11px] text-zinc-500">Auto-refreshes every 8s · {rows.length} total</div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={togglePresence}
+              className={`group flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                isAvailable
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
+                  : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white'
+              }`}
+              title={isAvailable
+                ? 'You\u2019re available — round-robin / first-available routing can land chats with you. Click to go away.'
+                : 'You\u2019re away — auto-routing skips you. Click to come back.'}
+            >
+              <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+              {isAvailable ? 'Available' : 'Away'}
+            </button>
+            <div className="text-[11px] text-zinc-500">Auto-refreshes every 8s · {rows.length} total</div>
+          </div>
         </div>
 
         {notMigrated && (
@@ -115,13 +190,38 @@ export default function InboxPage() {
           </div>
         )}
 
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {([
+            { id: 'all', label: 'Everyone' },
+            { id: 'mine', label: 'Assigned to me' },
+            { id: 'unassigned', label: 'Unassigned' },
+          ] as Array<{ id: AssignTab; label: string }>).map(t => {
+            const active = assignTab === t.id
+            const count = counts[t.id]
+            return (
+              <button
+                key={t.id}
+                onClick={() => setAssignTab(t.id)}
+                className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                  active
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                }`}
+              >
+                {t.label}
+                <span className={`ml-1.5 ${active ? 'text-orange-100' : 'text-zinc-600'}`}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {([
             { id: 'live', label: 'Live' },
             { id: 'handed_off', label: 'Handed off' },
             { id: 'ended', label: 'Ended' },
             { id: 'all', label: 'All' },
-          ] as Array<{ id: FilterTab; label: string }>).map(t => {
+          ] as Array<{ id: StatusTab; label: string }>).map(t => {
             const active = tab === t.id
             const count = counts[t.id]
             return (
@@ -144,7 +244,7 @@ export default function InboxPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, email, message…"
+              placeholder="Search by name, email, message, assignee\u2026"
               className="w-72 max-w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
             />
             <svg className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -157,20 +257,27 @@ export default function InboxPage() {
           <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
             <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">📥</div>
             <p className="text-sm font-medium text-white mb-1">
-              {search.trim() ? 'No matches' : tab === 'live' ? 'Nothing live right now' : 'No conversations'}
+              {search.trim() ? 'No matches' :
+                assignTab === 'mine' ? 'Nothing assigned to you'
+                : assignTab === 'unassigned' ? 'Queue is empty — nice'
+                : tab === 'live' ? 'Nothing live right now' : 'No conversations'}
             </p>
             <p className="text-xs text-zinc-500">
-              {search.trim() ? 'Try a different query.' : 'Conversations land here as visitors chat with your widgets.'}
+              {search.trim() ? 'Try a different query.'
+                : assignTab === 'mine' ? 'Chats land here when teammates assign them or when routing picks you.'
+                : assignTab === 'unassigned' ? 'New chats show up here until someone claims them.'
+                : 'Conversations land here as visitors chat with your widgets.'}
             </p>
           </div>
         ) : (
           <div className="rounded-xl border border-zinc-800 divide-y divide-zinc-800 overflow-hidden bg-zinc-950">
             {filtered.map(r => {
               const visitorLabel = r.visitor.name || r.visitor.email || `Visitor ${r.visitor.cookieId.slice(-6)}`
-              const initial = (r.visitor.name || r.visitor.email || 'V').charAt(0).toUpperCase()
+              const initial = initialOf(r.visitor.name, r.visitor.email, 'V')
               const accent = r.widget.primaryColor || '#fa4d2e'
               const hot = isHot(r.lastMessageAt) && r.status !== 'ended'
               const lastKind = r.lastMessage?.kind
+              const isMine = meId && r.assignedUserId === meId
               return (
                 <Link
                   key={r.id}
@@ -216,10 +323,31 @@ export default function InboxPage() {
                           : r.lastMessage.content}
                       </p>
                     )}
-                    <p className="text-[10px] text-zinc-600 mt-0.5">
-                      {r.messageCount} message{r.messageCount === 1 ? '' : 's'}
-                      {r.visitor.email && <> · {r.visitor.email}</>}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-600 flex-wrap">
+                      <span>{r.messageCount} message{r.messageCount === 1 ? '' : 's'}</span>
+                      {r.visitor.email && <span>· {r.visitor.email}</span>}
+                      {r.assignedUser ? (
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${
+                          isMine
+                            ? 'bg-orange-500/15 text-orange-300'
+                            : 'bg-zinc-800 text-zinc-400'
+                        }`}>
+                          {r.assignedUser.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={r.assignedUser.image} alt="" className="w-3.5 h-3.5 rounded-full" />
+                          ) : (
+                            <span className="w-3.5 h-3.5 rounded-full bg-zinc-700 flex items-center justify-center text-[8px] font-semibold text-white">
+                              {initialOf(r.assignedUser.name, r.assignedUser.email)}
+                            </span>
+                          )}
+                          {isMine ? 'You' : (r.assignedUser.name || r.assignedUser.email || 'Assigned')}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-dashed border-zinc-700 text-zinc-500">
+                          unassigned
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </Link>
               )

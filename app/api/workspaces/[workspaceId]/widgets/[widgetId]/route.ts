@@ -37,6 +37,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'hostedPageHeadline', 'hostedPageSubtext',
     'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
     'defaultAgentId', 'allowedDomains', 'isActive',
+    'routingMode', 'routingTargetUserIds',
   ]
   const data: Record<string, unknown> = {}
   for (const key of allowed) {
@@ -52,11 +53,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.slug = cleaned || null
   }
 
-  // Click-to-call columns that may not exist pre-migration. If the
-  // update touches any of these and the DB is on the old schema, retry
-  // with just the legacy fields and warn the operator.
+  // Columns that may not exist pre-migration. If the update touches any
+  // of these and the DB is on the old schema, retry without them and
+  // warn the operator. Click-to-call and routing/assignment landed in
+  // separate migrations, so they're handled together as "newish columns
+  // that we're tolerant about" — the legacy fields still save either way.
   const ctcKeys = ['type', 'slug', 'embedMode', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor', 'hostedPageHeadline', 'hostedPageSubtext']
-  const touchesCtc = ctcKeys.some(k => data[k] !== undefined)
+  const routingKeys = ['routingMode', 'routingTargetUserIds']
+  const tolerantKeys = [...ctcKeys, ...routingKeys]
+  const touchesTolerant = tolerantKeys.some(k => data[k] !== undefined)
 
   try {
     const widget = await db.chatWidget.update({ where: { id: widgetId }, data })
@@ -65,16 +70,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (err.code === 'P2002') {
       return NextResponse.json({ error: 'That slug is already taken' }, { status: 409 })
     }
-    if (isMissingColumn(err) && touchesCtc) {
-      // Retry without the click-to-call fields so the legacy fields still save.
+    if (isMissingColumn(err) && touchesTolerant) {
+      // Retry without the new columns so the legacy fields still save.
       const legacyData = { ...data }
-      for (const k of ctcKeys) delete legacyData[k]
+      for (const k of tolerantKeys) delete legacyData[k]
       try {
         const widget = await db.chatWidget.update({ where: { id: widgetId }, data: legacyData })
+        const skipped = tolerantKeys.filter(k => data[k] !== undefined)
         return NextResponse.json({
           widget,
-          warning: 'Click-to-call fields skipped — run prisma/migrations-legacy/manual_widget_click_to_call.sql to enable them.',
-          code: 'CLICK_TO_CALL_MIGRATION_PENDING',
+          warning: `Some fields skipped (${skipped.join(', ')}) — run pending widget migrations to enable them.`,
+          code: 'WIDGET_MIGRATION_PENDING',
         })
       } catch (err2: any) {
         return NextResponse.json({ error: err2.message || 'Failed to update widget' }, { status: 500 })

@@ -21,11 +21,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
         widget: { select: { id: true, name: true, primaryColor: true } },
         visitor: { select: { id: true, name: true, email: true, phone: true, firstSeenAt: true, lastSeenAt: true } },
         messages: { orderBy: { createdAt: 'asc' } },
+        assignedUser: { select: { id: true, name: true, email: true, image: true } },
         _count: { select: { messages: true } },
-      },
+      } as any,
     })
   } catch (err: any) {
-    // CSAT migration may not be applied yet → don't fail the inbox.
+    // CSAT or routing-assignment migration may not be applied yet → don't
+    // fail the inbox. Fall back to the bare include.
     convo = await db.widgetConversation.findFirst({
       where: { id: conversationId, widget: { workspaceId } },
       include: {
@@ -93,6 +95,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   })
   broadcast(conversationId, { type: 'status_changed', status: next })
 
+  // Status hit "handed_off" — auto-route per the widget's config so an
+  // operator gets a heads-up immediately, instead of the chat sitting in
+  // a queue waiting for someone to notice.
+  if (next === 'handed_off') {
+    ;(async () => {
+      try {
+        const { autoRouteIfUnassigned } = await import('@/lib/widget-routing')
+        await autoRouteIfUnassigned({ workspaceId, conversationId })
+      } catch (err: any) {
+        console.warn('[widget] auto-route on handover failed:', err?.message)
+      }
+    })()
+  }
+
   // GHL bridge — fire-and-forget. On 'ended' write a transcript note +
   // resolved tag onto the contact so operators living in GHL have a
   // permanent record. Skipped silently when no CRM is connected.
@@ -142,6 +158,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
 
   const wasActive = convo.status === 'active'
+  // Read assignedUserId off the row defensively — column may not exist
+  // pre-migration. Self-assignment kicks in only when the chat is
+  // currently unassigned and the caller is the one replying.
+  const wasUnassigned = (convo as any).assignedUserId == null
 
   const msg = await db.widgetMessage.create({
     data: { conversationId, role: 'agent', content, kind: 'text' },
@@ -171,6 +191,26 @@ export async function POST(req: NextRequest, { params }: Params) {
         await tagOnHandover(workspaceId, convo.visitor as any)
       } catch (err: any) {
         console.warn('[widget] CRM handover tag failed:', err?.message)
+      }
+    })()
+  }
+
+  // Operator self-assignment — if the chat had no assignee, replying
+  // claims it. This mirrors Intercom: whoever picks up a thread becomes
+  // the de-facto owner unless someone reassigns later.
+  if (wasUnassigned && access.session.user?.id) {
+    ;(async () => {
+      try {
+        const { assignConversation } = await import('@/lib/widget-routing')
+        await assignConversation({
+          workspaceId,
+          conversationId,
+          userId: access.session.user!.id,
+          reason: 'self',
+          notifyAssignee: false,
+        })
+      } catch (err: any) {
+        console.warn('[widget] self-assign failed:', err?.message)
       }
     })()
   }

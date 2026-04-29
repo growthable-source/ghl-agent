@@ -32,6 +32,13 @@ interface Widget {
   defaultAgentId: string | null
   allowedDomains: string[]
   isActive: boolean
+  routingMode?: 'manual' | 'round_robin' | 'first_available'
+  routingTargetUserIds?: string[]
+}
+
+interface MemberOption {
+  id: string
+  user: { id: string; name: string | null; email: string | null; image: string | null }
 }
 
 type CopyKey = 'embed' | 'hostedUrl' | 'emailSig' | 'inline'
@@ -44,6 +51,7 @@ export default function WidgetEditorPage() {
 
   const [widget, setWidget] = useState<Widget | null>(null)
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
+  const [members, setMembers] = useState<MemberOption[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -51,12 +59,14 @@ export default function WidgetEditorPage() {
   const [copied, setCopied] = useState<CopyKey | null>(null)
 
   const fetchWidget = useCallback(async () => {
-    const [w, a] = await Promise.all([
+    const [w, a, m] = await Promise.all([
       fetch(`/api/workspaces/${workspaceId}/widgets/${widgetId}`).then(r => r.json()),
       fetch(`/api/workspaces/${workspaceId}/agents`).then(r => r.json()),
+      fetch(`/api/workspaces/${workspaceId}/members`).then(r => r.json()),
     ])
     if (w.widget) setWidget(w.widget)
     setAgents(a.agents || [])
+    setMembers(m.members || [])
     setLoading(false)
   }, [workspaceId, widgetId])
 
@@ -269,6 +279,84 @@ export default function WidgetEditorPage() {
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono"
                 />
               </Field>
+
+              {!isCallType && (
+                <>
+                  <Field
+                    label="Operator routing"
+                    helper="What happens when a chat needs a human — either the AI hands off, or someone escalates from the inbox."
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {([
+                        { id: 'manual', title: 'Manual', desc: 'Chats sit unassigned until someone claims them from the inbox.' },
+                        { id: 'round_robin', title: 'Round-robin', desc: 'Cycle through available teammates so load is even.' },
+                        { id: 'first_available', title: 'Lightest load', desc: 'Send to the available teammate with the fewest open chats.' },
+                      ] as Array<{ id: 'manual' | 'round_robin' | 'first_available'; title: string; desc: string }>).map(opt => {
+                        const active = (widget.routingMode || 'manual') === opt.id
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => update('routingMode', opt.id)}
+                            className={`text-left p-3 rounded-lg border transition-colors ${
+                              active
+                                ? 'border-orange-500 bg-orange-500/10 text-white'
+                                : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500'
+                            }`}
+                          >
+                            <p className="text-xs font-semibold mb-1">{opt.title}</p>
+                            <p className="text-[10px] text-zinc-500 leading-snug">{opt.desc}</p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </Field>
+
+                  {(widget.routingMode === 'round_robin' || widget.routingMode === 'first_available') && (
+                    <Field
+                      label="Eligible teammates"
+                      helper="Pick who can be auto-routed to. Leave all unchecked to include everyone in the workspace."
+                    >
+                      {members.length === 0 ? (
+                        <p className="text-xs text-zinc-500">No teammates yet — invite from Members.</p>
+                      ) : (
+                        <div className="space-y-1.5 border border-zinc-800 rounded-lg p-2 max-h-48 overflow-y-auto bg-zinc-950">
+                          {members.map(m => {
+                            const targetIds = widget.routingTargetUserIds || []
+                            const checked = targetIds.includes(m.user.id)
+                            return (
+                              <label key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-900 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => {
+                                    const next = e.target.checked
+                                      ? [...targetIds, m.user.id]
+                                      : targetIds.filter(id => id !== m.user.id)
+                                    update('routingTargetUserIds', next)
+                                  }}
+                                  className="accent-orange-500"
+                                />
+                                {m.user.image ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={m.user.image} alt="" className="w-5 h-5 rounded-full" />
+                                ) : (
+                                  <span className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[9px] font-semibold text-white">
+                                    {(m.user.name || m.user.email || '?').charAt(0).toUpperCase()}
+                                  </span>
+                                )}
+                                <span className="text-xs text-zinc-200 flex-1 min-w-0 truncate">
+                                  {m.user.name || m.user.email || 'Unnamed'}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </Field>
+                  )}
+                </>
+              )}
             </Section>
 
             <Section title="Appearance">

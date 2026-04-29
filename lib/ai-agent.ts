@@ -2323,6 +2323,19 @@ export async function runAgent(opts: {
           link,
           severity: 'warning',
         })
+
+        // Widget chat handover → auto-route per the widget's config so a
+        // specific operator gets the personal "assigned to you" ping in
+        // addition to the workspace-wide handover notification. Other
+        // channels (SMS / web phone) don't have an inbox queue concept yet.
+        if (channel === 'Live_Chat' && conversationId) {
+          try {
+            const { autoRouteIfUnassigned } = await import('./widget-routing')
+            await autoRouteIfUnassigned({ workspaceId: agentRow.workspaceId, conversationId })
+          } catch (err: any) {
+            console.warn('[Handover] auto-route failed:', err?.message)
+          }
+        }
       } catch (err: any) {
         console.warn('[Handover] notify failed:', err?.message)
       }

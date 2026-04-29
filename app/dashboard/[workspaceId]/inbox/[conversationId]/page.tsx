@@ -27,6 +27,17 @@ interface Convo {
   widget: { id: string; name: string; primaryColor: string }
   visitor: { id: string; name: string | null; email: string | null; phone?: string | null; firstSeenAt: string; lastSeenAt?: string }
   messages: Message[]
+  assignedUserId?: string | null
+  assignedUser?: { id: string; name: string | null; email: string | null; image?: string | null } | null
+  assignedAt?: string | null
+  assignmentReason?: string | null
+}
+
+interface Member {
+  id: string
+  role: string
+  isAvailable?: boolean
+  user: { id: string; name: string | null; email: string | null; image: string | null }
 }
 
 const EMOJI_GRID = ['👍', '🙏', '😀', '😅', '🎉', '💯', '🔥', '✅', '❌', '👀', '❤️', '🤔', '👋', '✨', '⏰', '📅']
@@ -59,6 +70,10 @@ export default function InboxDetailPage() {
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [statusBusy, setStatusBusy] = useState(false)
+  const [assigneeOpen, setAssigneeOpen] = useState(false)
+  const [assigning, setAssigning] = useState(false)
+  const [members, setMembers] = useState<Member[]>([])
+  const [meId, setMeId] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
@@ -74,6 +89,43 @@ export default function InboxDetailPage() {
   }, [workspaceId, conversationId])
 
   useEffect(() => { fetchConvo() }, [fetchConvo])
+
+  // Workspace members for the assignee dropdown + current user id so we
+  // can highlight "you" and offer Claim. One-shot — assigning rarely
+  // changes the member list and the dropdown re-renders on toggle.
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const [meRes, membersRes] = await Promise.all([
+          fetch('/api/me'),
+          fetch(`/api/workspaces/${workspaceId}/members`),
+        ])
+        const me = await meRes.json()
+        const m = await membersRes.json()
+        if (me?.user?.id) setMeId(me.user.id)
+        if (Array.isArray(m?.members)) setMembers(m.members)
+      } catch { /* dropdown will fall back to "Claim" only */ }
+    })()
+  }, [workspaceId])
+
+  async function assignTo(userId: string | null, claim = false) {
+    if (assigning) return
+    setAssigning(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(claim ? { claim: true } : { userId }),
+      })
+      if (res.ok) {
+        // Optimistic — SSE assignment_changed will reconcile, but the
+        // dropdown should close immediately so it feels responsive.
+        setAssigneeOpen(false)
+      }
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   // SSE: replace polling with a live subscription so the operator sees
   // every visitor turn, agent turn, typing event, and status change the
@@ -106,6 +158,26 @@ export default function InboxDetailPage() {
           setVisitorTyping(!!data.isTyping)
         } else if (data.type === 'status_changed') {
           setConvo(c => c ? { ...c, status: data.status } : c)
+        } else if (data.type === 'assignment_changed') {
+          setConvo(c => {
+            if (!c) return c
+            // The SSE event carries the bare assignee (id + name). To
+            // hydrate the avatar we look the user up in our members
+            // cache; if they're not there (e.g. just joined) we fall
+            // back to a name-only stub.
+            const matched = members.find(m => m.user.id === data.assignedUserId)
+            return {
+              ...c,
+              assignedUserId: data.assignedUserId,
+              assignedAt: data.at ?? null,
+              assignmentReason: data.reason ?? null,
+              assignedUser: data.assignedUserId
+                ? matched
+                  ? { id: matched.user.id, name: matched.user.name, email: matched.user.email, image: matched.user.image }
+                  : { id: data.assignedUserId, name: data.assigneeName ?? null, email: null, image: null }
+                : null,
+            }
+          })
         } else if (data.type === 'agent_error') {
           setConvo(c => c ? { ...c, messages: [...c.messages, {
             id: 'err-' + Date.now(), role: 'system', content: data.message || 'Agent error', kind: 'text',
@@ -235,6 +307,109 @@ export default function InboxDetailPage() {
             }`}>
               {isHandedOff ? 'Taken over' : isEnded ? 'Ended' : 'Active'}
             </span>
+
+            {/* Assignee dropdown — shows current assignee, opens to a
+                searchable list of workspace members. Owner of the chat
+                is the workspace member who claimed/was-routed to it. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAssigneeOpen(o => !o)}
+                disabled={assigning || isEnded}
+                className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-lg border transition-colors disabled:opacity-40 ${
+                  convo.assignedUserId
+                    ? 'border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500'
+                    : 'border-dashed border-zinc-700 bg-transparent text-zinc-400 hover:text-white hover:border-zinc-500'
+                }`}
+              >
+                {convo.assignedUser?.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={convo.assignedUser.image} alt="" className="w-4 h-4 rounded-full" />
+                ) : (
+                  <span className="w-4 h-4 rounded-full bg-zinc-700 flex items-center justify-center text-[9px] font-semibold text-white">
+                    {(convo.assignedUser?.name || convo.assignedUser?.email || '?').charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span className="truncate max-w-[120px]">
+                  {!convo.assignedUserId
+                    ? 'Unassigned'
+                    : convo.assignedUserId === meId
+                      ? 'You'
+                      : (convo.assignedUser?.name || convo.assignedUser?.email || 'Assignee')}
+                </span>
+                <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {assigneeOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setAssigneeOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-40 w-64 max-h-80 overflow-y-auto bg-zinc-950 border border-zinc-700 rounded-lg shadow-xl py-1">
+                    {/* Quick "Claim" — only visible if the chat isn't already mine */}
+                    {meId && convo.assignedUserId !== meId && (
+                      <button
+                        type="button"
+                        onClick={() => assignTo(null, true)}
+                        className="w-full text-left px-3 py-2 text-xs text-orange-300 hover:bg-orange-500/10 flex items-center gap-2 border-b border-zinc-800"
+                      >
+                        <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-300 flex items-center justify-center">→</span>
+                        <span className="font-medium">Claim this chat</span>
+                      </button>
+                    )}
+                    {convo.assignedUserId && (
+                      <button
+                        type="button"
+                        onClick={() => assignTo(null)}
+                        className="w-full text-left px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-white flex items-center gap-2 border-b border-zinc-800"
+                      >
+                        <span className="w-5 h-5 rounded-full border border-dashed border-zinc-600 flex items-center justify-center">×</span>
+                        Unassign
+                      </button>
+                    )}
+                    {members.length === 0 && (
+                      <div className="px-3 py-3 text-xs text-zinc-500">No teammates yet — invite from Members.</div>
+                    )}
+                    {members.map(m => {
+                      const isCurrent = m.user.id === convo.assignedUserId
+                      const isMe = m.user.id === meId
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => assignTo(m.user.id)}
+                          disabled={isCurrent}
+                          className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 ${
+                            isCurrent ? 'bg-zinc-900/60 text-zinc-500' : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+                          }`}
+                        >
+                          {m.user.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={m.user.image} alt="" className="w-5 h-5 rounded-full" />
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[9px] font-semibold text-white">
+                              {(m.user.name || m.user.email || '?').charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                          <span className="flex-1 min-w-0 truncate">
+                            {m.user.name || m.user.email || 'Unnamed'}
+                            {isMe && <span className="ml-1 text-zinc-500">(you)</span>}
+                          </span>
+                          {m.isAvailable === false && (
+                            <span className="text-[9px] text-zinc-500 px-1 py-0.5 rounded bg-zinc-900 border border-zinc-700">away</span>
+                          )}
+                          {isCurrent && (
+                            <svg className="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
             {!isEnded && (
               <button
                 onClick={() => setStatus('ended')}
@@ -437,6 +612,44 @@ export default function InboxDetailPage() {
             </div>
           </div>
         )}
+
+        <div className="p-5 border-b border-zinc-800">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-2">Assignment</p>
+          {convo.assignedUserId ? (
+            <div className="flex items-start gap-2">
+              {convo.assignedUser?.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={convo.assignedUser.image} alt="" className="w-8 h-8 rounded-full" />
+              ) : (
+                <span className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-semibold text-white">
+                  {(convo.assignedUser?.name || convo.assignedUser?.email || '?').charAt(0).toUpperCase()}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-white truncate">
+                  {convo.assignedUserId === meId ? 'You' : (convo.assignedUser?.name || convo.assignedUser?.email || 'Assigned')}
+                </p>
+                {convo.assignmentReason && (
+                  <p className="text-[10px] text-zinc-500">
+                    {convo.assignmentReason === 'self' ? 'Self-claimed by replying'
+                      : convo.assignmentReason === 'manual' ? 'Manually assigned'
+                      : convo.assignmentReason === 'round_robin' ? 'Routed via round-robin'
+                      : convo.assignmentReason === 'first_available' ? 'Routed by load (first available)'
+                      : convo.assignmentReason === 'handover' ? 'Routed at AI handover'
+                      : convo.assignmentReason}
+                  </p>
+                )}
+                {convo.assignedAt && (
+                  <p className="text-[10px] text-zinc-600">{relTime(convo.assignedAt)}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-500">
+              No one assigned yet. Click the assignee badge in the header to claim or hand off.
+            </p>
+          )}
+        </div>
 
         <div className="p-5">
           <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-2">Conversation</p>

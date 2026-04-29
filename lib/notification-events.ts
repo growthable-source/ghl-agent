@@ -43,6 +43,12 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     defaultUserChannels: ['email', 'web_push'],
   },
   {
+    id: 'widget.conversation_assigned',
+    label: 'Chat assigned to you',
+    description: 'A widget chat was routed (or manually assigned) to you to handle.',
+    defaultUserChannels: ['email', 'web_push'],
+  },
+  {
     id: 'agent_error',
     label: 'Agent error',
     description: 'An agent ran into a problem processing an inbound message.',
