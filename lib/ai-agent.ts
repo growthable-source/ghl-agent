@@ -1924,25 +1924,29 @@ export async function runAgent(opts: {
   // Resolve workspaceId once — reused for platform guidelines, data
   // sources, MCP, and any other workspace-scoped lookup below. Null is
   // valid (sandbox / no-agent path); downstream consumers handle it.
+  // PARITY GUARDRAIL — workspaceId is resolved identically in sandbox and
+  // production. Context-loading code below depends on it; if you skip
+  // resolution in sandbox, the simulator stops mirroring prod and
+  // operators silently lose the ability to test changes safely. Only
+  // *side-effects* (writes, sends, billable calls) should branch on
+  // isSandbox — never the prompt context.
   let workspaceId: string | null = null
   try {
-    if (!isSandbox) {
-      if (agentId) {
-        const row = await (await import('./db')).db.agent.findUnique({
-          where: { id: agentId },
-          select: {
-            workspaceId: true,
-            location: { select: { workspaceId: true } },
-          },
-        })
-        workspaceId = row?.workspaceId ?? row?.location?.workspaceId ?? null
-      } else {
-        const row = await (await import('./db')).db.location.findUnique({
-          where: { id: locationId },
-          select: { workspaceId: true },
-        })
-        workspaceId = row?.workspaceId ?? null
-      }
+    if (agentId) {
+      const row = await (await import('./db')).db.agent.findUnique({
+        where: { id: agentId },
+        select: {
+          workspaceId: true,
+          location: { select: { workspaceId: true } },
+        },
+      })
+      workspaceId = row?.workspaceId ?? row?.location?.workspaceId ?? null
+    } else if (!locationId.startsWith('placeholder:') && !locationId.startsWith('widget:')) {
+      const row = await (await import('./db')).db.location.findUnique({
+        where: { id: locationId },
+        select: { workspaceId: true },
+      })
+      workspaceId = row?.workspaceId ?? null
     }
   } catch (err: any) {
     console.warn('[Agent] workspaceId resolution failed:', err.message)
@@ -1959,15 +1963,17 @@ export async function runAgent(opts: {
   }
 
   // ─── Active experiments ───
-  // Resolve any running A/B experiments for this agent. The runtime hashes
-  // contactId deterministically into a bucket and appends the matching
-  // variant's prompt fragment. Exposure events are written here; conversion
-  // events fire later from recordGoalAchievements.
+  // Resolve any running A/B experiments for this agent. Variant resolution
+  // (and the prompt block it produces) ALWAYS runs — sandbox sees the
+  // same variant the production contactId would land in, so simulations
+  // mirror prod. Only the side-effect — writing the "exposed" event into
+  // AgentExperimentEvent — is gated on !isSandbox, so dry-run replays
+  // don't pollute experiment metrics.
   let experimentBlock = ''
   try {
-    if (!isSandbox && agentId) {
+    if (agentId) {
       const { resolveExperimentVariants, buildExperimentBlock } = await import('./experiments')
-      const variants = await resolveExperimentVariants(agentId, contactId)
+      const variants = await resolveExperimentVariants(agentId, contactId, { writeExposures: !isSandbox })
       experimentBlock = buildExperimentBlock(variants)
     }
   } catch (err: any) {
@@ -1978,10 +1984,13 @@ export async function runAgent(opts: {
   // Resolve every active WorkspaceDataSource for this workspace and
   // describe them in the system prompt so the model knows which `source`
   // names it can pass to lookup_sheet / query_airtable / fetch_data.
+  // Loaded identically in sandbox and prod (parity). The data-source
+  // tools themselves are read-only, so calling them in sandbox is safe
+  // and matches what the agent would actually do live.
   let dataSourcesBlock = ''
   let dataSourcesList: Array<{ id: string; name: string; kind: string }> = []
   try {
-    if (!isSandbox && workspaceId) {
+    if (workspaceId) {
       const { listActiveDataSources, describeDataSources } = await import('./data-sources')
       const sources = await listActiveDataSources(workspaceId)
       dataSourcesBlock = describeDataSources(sources)

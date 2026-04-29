@@ -33,18 +33,22 @@ function bucket(contactId: string, experimentId: string): number {
 
 /**
  * Returns variant assignments for every running experiment on this agent
- * applied to this contact. Writes an "exposed" event the first time we see
- * (experiment, contact) so we can compute denominators later.
+ * applied to this contact.
  *
- * Multiple concurrent experiments on the same agent stack: variants append
- * their prompt fragments together. Operators should normally only run one
- * at a time; we don't enforce that.
+ * Variant *resolution* (the deterministic bucket → prompt fragment) is
+ * pure and always runs, so sandbox simulations see the same prompt
+ * production would for the same contactId. The *exposure write* (the
+ * "exposed" event in AgentExperimentEvent that drives the denominator)
+ * is gated by `writeExposures` so dry-run / sandbox / replay flows
+ * don't poison the metrics.
  */
 export async function resolveExperimentVariants(
   agentId: string | undefined,
   contactId: string,
+  opts: { writeExposures?: boolean } = {},
 ): Promise<ResolvedVariant[]> {
   if (!agentId || !contactId) return []
+  const writeExposures = opts.writeExposures !== false
   let experiments: any[]
   try {
     experiments = await (db as any).agentExperiment.findMany({
@@ -68,16 +72,17 @@ export async function resolveExperimentVariants(
     const appendPrompt = variant === 'B' ? exp.variantBPrompt : (exp.variantAPrompt || null)
     out.push({ experimentId: exp.id, variant, appendPrompt })
 
-    // Record exposure idempotently
-    await (db as any).agentExperimentEvent.upsert({
-      where: {
-        experimentId_contactId_outcome: {
-          experimentId: exp.id, contactId, outcome: 'exposed',
+    if (writeExposures) {
+      await (db as any).agentExperimentEvent.upsert({
+        where: {
+          experimentId_contactId_outcome: {
+            experimentId: exp.id, contactId, outcome: 'exposed',
+          },
         },
-      },
-      create: { experimentId: exp.id, contactId, variant, outcome: 'exposed' },
-      update: { variant }, // keep variant in sync if splitPercent ever changes (rare)
-    }).catch(() => {})
+        create: { experimentId: exp.id, contactId, variant, outcome: 'exposed' },
+        update: { variant },
+      }).catch(() => {})
+    }
   }
   return out
 }
