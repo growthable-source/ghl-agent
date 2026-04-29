@@ -614,4 +614,218 @@ The whole flow — describe → review → create → channel → activate —
 is usually under 10 minutes for a fresh agent.
 `,
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Inbox: assignment + routing
+  // ───────────────────────────────────────────────────────────────────
+  {
+    slug: 'inbox-assignment-routing',
+    title: 'Assign chats to teammates and auto-route widget conversations',
+    summary: 'Operators own conversations like in Intercom — manual claim, round-robin, or lightest-load auto-routing, with availability presence.',
+    order: 60,
+    body: `Widget chats no longer just sit in a shared queue. Each conversation
+can have a single **assigned operator** — set automatically when the AI
+hands off, when a teammate replies, or manually from the inbox.
+
+## What's new
+
+- **Assignee on every chat.** Visible on every inbox row and in the
+  conversation header.
+- **Inbox filters: Assigned to me / Unassigned / Everyone.** Operators
+  see only their work without scrolling past everyone else's.
+- **Available / Away presence.** Toggle from the inbox header. Auto-
+  routing skips "away" teammates so chats land with someone who's
+  actually online.
+- **Per-widget routing modes.** Configure how a specific widget assigns
+  chats: Manual (sit in queue), Round-robin (cycle through teammates),
+  or Lightest-load (whoever has the fewest open chats).
+- **Personal "assigned to you" notification.** New event in the
+  notifications panel — fires only on the assignee, not the whole team.
+
+## Three routing modes
+
+Pick one per widget under **Widgets → \\[your widget\\] → Routing →
+Operator routing**. They only kick in when a chat needs a human (AI
+handover or manual takeover) — the AI handles things normally before
+that.
+
+**Manual** — chats stay in the unassigned queue until someone claims
+them from the inbox. Best when one person is on duty at a time, or
+when you want full discretion.
+
+**Round-robin** — cycles through eligible *available* teammates in
+deterministic order, using a stored cursor so the next chat goes to
+the next person. Perfect for fair distribution across a team.
+
+**Lightest load** — picks the available teammate with the fewest open
+chats (status: active or handed_off). Smooths things out when one
+operator gets buried.
+
+For round-robin and lightest-load, you can pin the **eligible
+teammates** — leave all unchecked to include everyone in the workspace,
+or check specific people for a sub-team.
+
+## Manual assignment
+
+Click the assignee chip in the conversation header to:
+
+- **Claim this chat** (one-click for "I'm taking this")
+- **Pick a teammate** from the dropdown — anyone in the workspace,
+  even teammates marked away (manual override)
+- **Unassign** to drop it back into the queue
+
+Assignment changes broadcast in real-time, so every open inbox tab
+updates the moment someone claims or hands off.
+
+## Self-claim by replying
+
+If you reply to an unassigned chat from the operator inbox, you
+automatically become the assignee. Mirrors the Intercom convention —
+whoever picks up the thread becomes the de-facto owner unless someone
+reassigns.
+
+## Available / Away
+
+The toggle in the inbox header (top-right) sets your availability.
+**Available** means round-robin and lightest-load can route chats to
+you. **Away** keeps you in the workspace but auto-routing skips you.
+
+Toggle to Away when you're stepping out for lunch, in a meeting, or
+just don't want to be auto-assigned. Manual assignments still work
+either way — a teammate can still pick you specifically.
+
+## Notifications
+
+The new **\`widget.conversation_assigned\`** event fires when you get
+assigned. By default it sends:
+
+- A web push to your browser
+- An email with a deep link to the chat
+
+Manage it under **Settings → Notifications**. The event is *personal* —
+it only goes to the assignee, not the whole workspace, so you don't
+spam Slack on every assignment.
+
+## Common patterns
+
+**Solo operator** — set routing to Manual, leave yourself Available.
+You see every new chat in the Unassigned queue and pick what to claim.
+
+**Small team, even split** — Round-robin across all eligible teammates.
+Toggle yourself Away when you step out and the rotation skips you.
+
+**Tiered support** — Lightest-load mode, and pin only your tier-1
+operators as eligible. Tier-2/3 teammates only get chats by manual
+hand-off from tier-1.
+`,
+  },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Workspace knowledge library
+  // ───────────────────────────────────────────────────────────────────
+  {
+    slug: 'workspace-knowledge-library',
+    title: 'Knowledge is now a workspace library — stack onto multiple agents',
+    summary: 'Write a policy, FAQ, or product doc once and stack it onto every agent that needs it. Edits propagate everywhere automatically.',
+    order: 70,
+    body: `Knowledge entries used to be locked to a single agent — every new
+agent meant duplicating the same FAQ doc, and editing in one place
+meant N copies later. Knowledge is now a **first-class workspace
+entity**, and agents subscribe to entries via a connection.
+
+## What's new
+
+- **Top-level Knowledge tab** in the left nav (between Agents and
+  Templates) — the workspace library where every entry lives.
+- **Multi-stack** — pick which agents an entry connects to. Same entry,
+  many agents.
+- **Single source of truth** — edit in one place, and every connected
+  agent sees the change on the next conversation turn.
+- **Per-agent knowledge page still works** as it always has — write,
+  upload PDFs, import from Notion or YouTube, crawl URLs. Entries land
+  in the workspace pool *and* auto-attach to that agent.
+- **"Stack from library" button** on the per-agent page lets you grab
+  existing workspace entries and attach them in one click.
+
+## How it works
+
+1. **Workspace library** holds every entry. Open from the **Knowledge**
+   tab in the left nav.
+2. Each entry has **connections** — the set of agents that pull this
+   entry into their system prompt at runtime.
+3. **Creating** an entry: from the workspace page, you can pick which
+   agents to connect to during creation. From the per-agent knowledge
+   page, the entry auto-connects to that agent only.
+4. **Editing** an entry updates it once; every connected agent sees
+   the new content next turn. No syncing, no copies.
+5. **Deleting**: the workspace **Delete** button removes the entry
+   permanently (cascades through every connection). The per-agent
+   **Delete** button now **detaches** that one agent (the entry stays
+   in the pool — other agents keep using it).
+
+## Stacking on a new agent
+
+When you build a new agent and want it to inherit existing knowledge:
+
+1. Open the agent → **Knowledge** tab
+2. Click **Stack from library** in the banner at the top
+3. Tick the entries you want from the workspace pool
+4. Hit **Stack**
+
+The agent now has those entries attached. Same library entry, no
+duplication.
+
+## Reorganizing existing knowledge
+
+To consolidate — e.g. you have a "Refund policy" on three agents that
+were edited separately:
+
+1. Open the **Knowledge** tab in the left nav
+2. Find the three entries (filter by "Connected to: agent-name" if
+   needed)
+3. Pick the cleanest version
+4. Edit its connections to include all three agents (the
+   **Stack on agents** checklist in the editor)
+5. Delete the other two from the workspace page
+
+After this, all three agents share one entry.
+
+## Where stacking matters most
+
+- **Common policies** (refund terms, escalation rules, brand voice)
+  → stack on every agent, edit once when policy changes.
+- **Product specs** that multiple agents reference (sales agent,
+  support agent, voice agent on the same product) → stack on each.
+- **Onboarding documents** that should land on every newly-created
+  agent → create in the workspace, stack the new agent onto each.
+
+## Migration notes
+
+Existing entries you had before this update were automatically:
+
+1. Promoted to the workspace pool (their workspace inferred from
+   their original agent).
+2. Connected back to their original agent so prompt context didn't
+   change on day one.
+
+Nothing to do — your agents see exactly the same knowledge as before.
+The new ability is to **stack** existing entries onto additional
+agents, and to **build new entries at the workspace level** instead
+of inside one agent.
+
+## Pro tip: source-of-truth FAQs
+
+For multi-agent setups, a clean pattern is:
+
+1. Build a "Master FAQs" set in the workspace knowledge — one entry
+   per topic (refunds, hours, shipping, etc.).
+2. Stack the entire master set onto every customer-facing agent.
+3. When a policy changes, edit the workspace entry. Every agent
+   updates instantly.
+
+You can build agent-specific entries (only attached to one agent) for
+things that are truly unique to that agent's role — but the shared
+truth lives once in the library.
+`,
+  },
 ]
