@@ -224,6 +224,13 @@ function BrandEditorModal({
   const [styleHint, setStyleHint] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Fallback when Blob isn't configured: keep the file in-memory as a
+  // data URL so the modal can preview and the brand can still save
+  // (a hosted URL is still the preferred long-term fix). We also keep
+  // a paste-a-URL field for users who already host their logo.
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [showUrlInput, setShowUrlInput] = useState(false)
+  const [blobUnavailable, setBlobUnavailable] = useState(false)
 
   // Auto-derive slug from name on the create flow until the user types
   // their own. On edit, leave whatever the user has set.
@@ -234,9 +241,26 @@ function BrandEditorModal({
     }
   }
 
-  // After a logo lands, kick off vision analysis. Failures are
+  // Apply vision results to the modal. Wired in two places: after a
+  // URL-based analyze and after a file-based analyze (the no-Blob
+  // fallback path).
+  function applyVisionResult(d: any) {
+    const colours: string[] = []
+    if (d.primaryColor) colours.push(d.primaryColor)
+    if (Array.isArray(d.accentColors)) {
+      for (const c of d.accentColors) if (typeof c === 'string' && !colours.includes(c)) colours.push(c)
+    }
+    setSuggestedColors(colours)
+    if (d.style) setStyleHint(d.style)
+    if (d.primaryColor && color === PRESET_COLORS[0]) setColor(d.primaryColor)
+    if (mode === 'create' && d.suggestedName && !name.trim()) {
+      onNameChange(d.suggestedName)
+    }
+  }
+
+  // After a hosted URL lands, kick off vision analysis. Failures are
   // non-fatal — the brand still saves with the manually-picked colour.
-  async function analyzeLogo(url: string) {
+  async function analyzeLogoFromUrl(url: string) {
     setAnalyzing(true)
     setStyleHint(null)
     try {
@@ -245,28 +269,27 @@ function BrandEditorModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: url }),
       })
-      if (!res.ok) return
-      const d = await res.json()
-      const colours: string[] = []
-      if (d.primaryColor) colours.push(d.primaryColor)
-      if (Array.isArray(d.accentColors)) {
-        for (const c of d.accentColors) if (typeof c === 'string' && !colours.includes(c)) colours.push(c)
-      }
-      setSuggestedColors(colours)
-      if (d.style) setStyleHint(d.style)
-      // First-touch convenience: auto-select the suggested primary
-      // colour, but only if the user is still on the default preset
-      // (i.e. they haven't picked something deliberate yet). Avoids
-      // overriding a deliberate choice on re-upload.
-      if (d.primaryColor && color === PRESET_COLORS[0]) setColor(d.primaryColor)
-      // Auto-fill suggested name only on create flow + only if the
-      // user hasn't typed anything meaningful yet.
-      if (mode === 'create' && d.suggestedName && !name.trim()) {
-        onNameChange(d.suggestedName)
-      }
-    } catch {
-      /* swallow — vision is best-effort */
-    } finally { setAnalyzing(false) }
+      if (res.ok) applyVisionResult(await res.json())
+    } catch { /* swallow — best-effort */ }
+    finally { setAnalyzing(false) }
+  }
+
+  // Send the raw file directly to analyze — used when Blob isn't
+  // configured (no public URL to host). The endpoint accepts multipart
+  // and forwards the bytes to Claude as base64 without persisting.
+  async function analyzeLogoFromFile(file: File) {
+    setAnalyzing(true)
+    setStyleHint(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/workspaces/${workspaceId}/brands/analyze-logo`, {
+        method: 'POST',
+        body: form,
+      })
+      if (res.ok) applyVisionResult(await res.json())
+    } catch { /* swallow — best-effort */ }
+    finally { setAnalyzing(false) }
   }
 
   async function uploadLogo(file: File) {
@@ -283,25 +306,44 @@ function BrandEditorModal({
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok) {
+        // Blob storage isn't configured (or the upload otherwise
+        // failed). Fall back to direct vision analysis from the file
+        // bytes so suggestions still work, and let the user paste a
+        // hosted URL if they want to persist the logo.
+        const isBlobMissing = /BLOB_READ_WRITE_TOKEN|Blob storage/i.test(d.error || '')
+        if (isBlobMissing) setBlobUnavailable(true)
         setUploadError(d.error || 'Upload failed')
+        // Preview locally so the user sees what they uploaded, even
+        // though we couldn't host it.
+        setPendingFile(file)
+        const reader = new FileReader()
+        reader.onload = () => {
+          if (typeof reader.result === 'string') setLogoUrl(reader.result)
+        }
+        reader.readAsDataURL(file)
+        void analyzeLogoFromFile(file)
         return
       }
       setLogoUrl(d.logoUrl)
-      // Kick off vision in the background — don't block the form.
-      void analyzeLogo(d.logoUrl)
+      setPendingFile(null)
+      void analyzeLogoFromUrl(d.logoUrl)
     } finally { setUploading(false) }
   }
 
   async function save() {
     setError(null)
     if (!name.trim()) { setError('Name is required.'); return }
+    // Don't persist the data: URL preview — only http(s). If the user
+    // uploaded a file but Blob wasn't configured, we send null and
+    // ask them to either paste a hosted URL or wire up Blob.
+    const persistableLogoUrl = /^https?:\/\//i.test(logoUrl.trim()) ? logoUrl.trim() : null
     setSaving(true)
     try {
       const body = {
         name: name.trim(),
         slug: slug.trim() || undefined,
         description: description.trim() || null,
-        logoUrl: logoUrl.trim() || null,
+        logoUrl: persistableLogoUrl,
         primaryColor: color,
       }
       const url = mode === 'create'
@@ -422,7 +464,48 @@ function BrandEditorModal({
                 <p className="text-[10px] text-zinc-500 mt-1">We'll suggest accent colours from the image</p>
               </button>
             )}
-            {uploadError && <p className="text-xs text-red-400 mt-2">{uploadError}</p>}
+            {uploadError && (
+              <div className="mt-2 text-xs text-amber-300 space-y-1">
+                <p>{uploadError}</p>
+                {blobUnavailable && (
+                  <p className="text-[10px] text-zinc-400">
+                    Suggestions still work locally. To persist the logo, configure
+                    {' '}<code className="bg-black/30 px-1 rounded">BLOB_READ_WRITE_TOKEN</code> in Vercel Storage,
+                    or paste a hosted URL below.
+                  </p>
+                )}
+              </div>
+            )}
+            {/* URL-paste fallback — useful if the user already hosts the
+                logo somewhere, or as a workaround when Blob isn't wired. */}
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setShowUrlInput(s => !s)}
+                className="text-[10px] text-zinc-500 hover:text-zinc-300"
+              >
+                {showUrlInput ? 'Hide URL input' : 'Or paste a hosted logo URL'}
+              </button>
+              {showUrlInput && (
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="url"
+                    value={/^data:/i.test(logoUrl) ? '' : logoUrl}
+                    onChange={e => setLogoUrl(e.target.value)}
+                    placeholder="https://…"
+                    className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { if (/^https?:\/\//i.test(logoUrl)) void analyzeLogoFromUrl(logoUrl) }}
+                    disabled={!/^https?:\/\//i.test(logoUrl) || analyzing}
+                    className="px-3 py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 text-xs whitespace-nowrap disabled:opacity-50"
+                  >
+                    {analyzing ? 'Analyzing…' : 'Analyze'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div>

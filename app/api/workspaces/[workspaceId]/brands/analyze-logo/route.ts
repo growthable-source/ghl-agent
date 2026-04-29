@@ -3,7 +3,15 @@ import Anthropic from '@anthropic-ai/sdk'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 
 /**
- * POST — analyze a brand logo image with Claude Vision and return:
+ * POST — analyze a brand logo with Claude Vision. Two input shapes
+ * supported so the modal works whether or not Blob storage is wired:
+ *
+ *   1. JSON body: { imageUrl: 'https://…' }  → URL source
+ *   2. multipart with `file` field           → base64 source (no Blob
+ *                                              required, file never
+ *                                              persists server-side)
+ *
+ * Returns:
  *   {
  *     primaryColor: '#hex',
  *     accentColors: ['#hex', '#hex', '#hex'],
@@ -11,37 +19,58 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
  *     suggestedName?: 'company name if legible in the logo'
  *   }
  *
- * Body: { imageUrl: string }
- *
- * Uses Haiku — color/style extraction is a simple visual task and the
- * cost-per-call should be cents at most. The user gets a fast preview
- * back; if Claude botches the extraction (rare), they can override
- * with the preset palette as before.
- *
- * Failure modes are non-fatal — the brand creation flow still works
- * if vision is down; the user just doesn't get suggestions.
+ * Uses Haiku — color/style extraction is a simple visual task. Failure
+ * modes are non-fatal — the brand creation flow still works if vision
+ * is down; the user just doesn't get suggestions.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
-  let body: any = {}
-  try { body = await req.json() } catch {
-    return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
-  }
-
-  const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : ''
-  if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 })
-  if (!/^https?:\/\//i.test(imageUrl)) {
-    return NextResponse.json({ error: 'imageUrl must be an http(s) URL' }, { status: 400 })
-  }
-
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({
       error: 'Vision unavailable — ANTHROPIC_API_KEY not configured.',
       code: 'VISION_NOT_CONFIGURED',
     }, { status: 503 })
+  }
+
+  // Branch on content-type. multipart/form-data → file path; anything
+  // else → JSON path with imageUrl. The file path is what the modal
+  // falls back to when Blob isn't configured — it sends the raw bytes
+  // and we forward them to Claude as base64 without persisting.
+  const contentType = req.headers.get('content-type') || ''
+  let imageSource: any
+  if (contentType.includes('multipart/form-data')) {
+    let form: FormData
+    try { form = await req.formData() } catch {
+      return NextResponse.json({ error: 'Invalid multipart body' }, { status: 400 })
+    }
+    const file = form.get('file')
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: 'Missing `file` field' }, { status: 400 })
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large for analysis (max 5 MB).' }, { status: 413 })
+    }
+    const buf = Buffer.from(await file.arrayBuffer())
+    const mediaType = file.type && file.type.startsWith('image/') ? file.type : 'image/png'
+    imageSource = {
+      type: 'base64',
+      media_type: mediaType,
+      data: buf.toString('base64'),
+    }
+  } else {
+    let body: any = {}
+    try { body = await req.json() } catch {
+      return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
+    }
+    const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : ''
+    if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 })
+    if (!/^https?:\/\//i.test(imageUrl)) {
+      return NextResponse.json({ error: 'imageUrl must be an http(s) URL' }, { status: 400 })
+    }
+    imageSource = { type: 'url', url: imageUrl }
   }
 
   const client = new Anthropic()
@@ -54,10 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         {
           role: 'user',
           content: [
-            {
-              type: 'image',
-              source: { type: 'url', url: imageUrl },
-            } as any,
+            { type: 'image', source: imageSource } as any,
             {
               type: 'text',
               text: `You are analyzing a brand logo to suggest the brand's identity colors for an operator inbox UI.
