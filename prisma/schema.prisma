@@ -126,6 +126,7 @@ model Workspace {
   templates    AgentTemplate[]    @relation("WorkspaceTemplates")
   knowledgeEntries     KnowledgeEntry[]      @relation("WorkspaceKnowledge")
   knowledgeCollections KnowledgeCollection[] @relation("WorkspaceKnowledgeCollections")
+  brands       Brand[]            @relation("WorkspaceBrands")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -363,6 +364,11 @@ model KnowledgeCollection {
   // Display order — lets operators pin "Master FAQs" to the top of the
   // workspace knowledge page. Ascending; equal values sort by createdAt.
   order       Int      @default(0)
+  // Whitelabel brand the collection belongs to. Null = workspace-shared
+  // (a "Master FAQs" set every brand can use). Set = brand-scoped, so
+  // it shows up only when filtering by that brand.
+  brandId     String?
+  brand       Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -370,6 +376,7 @@ model KnowledgeCollection {
   dataSources WorkspaceDataSource[]
   attachments AgentCollection[]
   @@index([workspaceId, order])
+  @@index([brandId])
 }
 
 // Junction connecting an agent to a knowledge collection. Single
@@ -1149,6 +1156,36 @@ model WidgetFolder {
   @@index([workspaceId, order])
 }
 
+// Brand — represents a client/whitelabel brand that the support team
+// works on behalf of. One workspace, many brands (one team handles
+// multiple clients). Widgets and Knowledge Collections can be tagged
+// to a brand so the inbox can filter, conversations can be exported,
+// and knowledge stays cleanly separated per client.
+//
+// Nullable on the things it tags — a workspace that doesn't run a
+// whitelabel agency has no brands and the inbox just shows everything
+// without a brand filter.
+model Brand {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation("WorkspaceBrands", fields: [workspaceId], references: [id], onDelete: Cascade)
+  name         String
+  // URL-safe identifier — used in transcript export filenames and the
+  // brand-scoped inbox URL. Lowercase letters/numbers/dashes.
+  slug         String
+  description  String?
+  // Visual identity for the operator inbox: a chip with a colored dot
+  // + the brand logo on each conversation row makes routing obvious.
+  logoUrl      String?
+  primaryColor String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  widgets      ChatWidget[]
+  collections  KnowledgeCollection[]
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
 model ChatWidget {
   id                String   @id @default(cuid())
   workspaceId       String
@@ -1158,6 +1195,12 @@ model ChatWidget {
   // organization once they've got more than a handful.
   folderId          String?
   folder            WidgetFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  // Whitelabel brand this widget represents. Optional — workspaces
+  // that aren't running a multi-brand agency leave this null and the
+  // brand UX doesn't show up. SetNull on brand delete so widgets
+  // survive (they just go untagged).
+  brandId           String?
+  brand             Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
   // Type — "chat" (full chat UI w/ optional voice) or "click_to_call" (just a styled button that opens a voice call)
   type              String   @default("chat")
   // Slug — used for hosted call page at /c/{slug}. Optional, unique when set.
@@ -1209,6 +1252,7 @@ model ChatWidget {
   conversations     WidgetConversation[]
   @@index([workspaceId])
   @@index([folderId])
+  @@index([brandId])
 }
 
 model WidgetVisitor {

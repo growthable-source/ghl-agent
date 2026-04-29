@@ -64,6 +64,21 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
   if (name.length > 80) return NextResponse.json({ error: 'name too long (max 80)' }, { status: 400 })
 
+  // Optional brandId — verify it belongs to this workspace before
+  // setting it. Workspaces without brands just leave it null.
+  let brandId: string | null = null
+  if (body.brandId !== undefined && body.brandId !== null && body.brandId !== '') {
+    if (typeof body.brandId !== 'string') {
+      return NextResponse.json({ error: 'brandId must be a string' }, { status: 400 })
+    }
+    const brand = await (db as any).brand.findFirst({
+      where: { id: body.brandId, workspaceId },
+      select: { id: true },
+    }).catch(() => null)
+    if (!brand) return NextResponse.json({ error: 'brandId is not a brand in this workspace' }, { status: 400 })
+    brandId = body.brandId
+  }
+
   try {
     const collection = await db.knowledgeCollection.create({
       data: {
@@ -72,7 +87,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         description: typeof body.description === 'string' ? body.description.trim() || null : null,
         icon: typeof body.icon === 'string' ? body.icon.trim() || null : null,
         color: typeof body.color === 'string' ? body.color.trim() || null : null,
-      },
+        brandId,
+      } as any,
     })
     return NextResponse.json({ collection }, { status: 201 })
   } catch (err: any) {

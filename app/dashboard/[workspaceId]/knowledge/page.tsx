@@ -36,15 +36,21 @@ export default function WorkspaceKnowledgePage() {
   const workspaceId = params.workspaceId as string
 
   const [collections, setCollections] = useState<Collection[]>([])
+  const [brands, setBrands] = useState<Array<{ id: string; name: string; primaryColor: string | null }>>([])
   const [loading, setLoading] = useState(true)
   const [notMigrated, setNotMigrated] = useState(false)
   const [search, setSearch] = useState('')
   const [creator, setCreator] = useState(false)
 
   const fetchAll = useCallback(async () => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/knowledge/collections`)
-    const data = await res.json()
+    const [cRes, bRes] = await Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/knowledge/collections`),
+      fetch(`/api/workspaces/${workspaceId}/brands`),
+    ])
+    const data = await cRes.json()
+    const bData = await bRes.json()
     setCollections(data.collections || [])
+    setBrands((bData.brands || []).map((b: any) => ({ id: b.id, name: b.name, primaryColor: b.primaryColor })))
     setNotMigrated(!!data.notMigrated)
     setLoading(false)
   }, [workspaceId])
@@ -182,6 +188,7 @@ export default function WorkspaceKnowledgePage() {
       {creator && (
         <CreateCollectionModal
           workspaceId={workspaceId}
+          brands={brands}
           onClose={() => setCreator(false)}
           onCreated={() => { setCreator(false); fetchAll() }}
         />
@@ -191,12 +198,18 @@ export default function WorkspaceKnowledgePage() {
 }
 
 function CreateCollectionModal({
-  workspaceId, onClose, onCreated,
-}: { workspaceId: string; onClose: () => void; onCreated: () => void }) {
+  workspaceId, brands, onClose, onCreated,
+}: {
+  workspaceId: string
+  brands: Array<{ id: string; name: string; primaryColor: string | null }>
+  onClose: () => void
+  onCreated: () => void
+}) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [icon, setIcon] = useState(PRESET_ICONS[0])
   const [color, setColor] = useState(PRESET_COLORS[0])
+  const [brandId, setBrandId] = useState<string>('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -213,6 +226,7 @@ function CreateCollectionModal({
           description: description.trim() || null,
           icon,
           color,
+          brandId: brandId || null,
         }),
       })
       if (!res.ok) {
@@ -285,6 +299,22 @@ function CreateCollectionModal({
               ))}
             </div>
           </div>
+          {brands.length > 0 && (
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">
+                Brand
+                <span className="ml-2 normal-case font-normal text-zinc-600">leave blank for "shared across every brand"</span>
+              </label>
+              <select
+                value={brandId}
+                onChange={e => setBrandId(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+              >
+                <option value="">— No brand (shared) —</option>
+                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
         <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-end gap-2">

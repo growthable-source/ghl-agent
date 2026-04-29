@@ -107,6 +107,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.color = typeof body.color === 'string' && body.color.trim() ? body.color.trim() : null
   }
   if (typeof body.order === 'number' && Number.isFinite(body.order)) data.order = Math.trunc(body.order)
+
+  // brandId: explicit null clears the tag (back to "shared across
+  // brands"); a non-empty string sets it after verifying it's a real
+  // brand in this workspace.
+  if (body.brandId !== undefined) {
+    if (body.brandId === null || body.brandId === '') {
+      data.brandId = null
+    } else if (typeof body.brandId === 'string') {
+      const brand = await (db as any).brand.findFirst({
+        where: { id: body.brandId, workspaceId },
+        select: { id: true },
+      }).catch(() => null)
+      if (!brand) return NextResponse.json({ error: 'brandId is not a brand in this workspace' }, { status: 400 })
+      data.brandId = body.brandId
+    }
+  }
+
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }

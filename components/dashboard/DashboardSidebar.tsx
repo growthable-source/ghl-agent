@@ -137,6 +137,7 @@ function SidebarBody() {
                 {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
                 {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
                 {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
+                {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
                 {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
                 {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox')}
                 {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}

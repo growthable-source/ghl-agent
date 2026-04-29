@@ -22,7 +22,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // "assigned to me" filter, so missing assignment data must degrade to
   // "everyone is unassigned" rather than 500ing the inbox.
   const fullInclude = {
-    widget: { select: { id: true, name: true, primaryColor: true } },
+    widget: {
+      select: {
+        id: true, name: true, primaryColor: true,
+        brand: { select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true } },
+      },
+    },
     visitor: { select: { id: true, name: true, email: true, cookieId: true } },
     messages: { orderBy: { createdAt: 'desc' as const }, take: 1 },
     assignedUser: { select: { id: true, name: true, email: true, image: true } },
@@ -59,7 +64,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const shaped = conversations.map((c: any) => ({
     id: c.id,
-    widget: c.widget,
+    widget: c.widget ? {
+      id: c.widget.id,
+      name: c.widget.name,
+      primaryColor: c.widget.primaryColor,
+    } : null,
+    // Brand info denormalized onto each row so the inbox can render
+    // chips and filter without extra fetches. Pulled through
+    // widget.brand at query time; null when the widget isn't tagged.
+    brand: c.widget?.brand ? {
+      id: c.widget.brand.id,
+      name: c.widget.brand.name,
+      slug: c.widget.brand.slug,
+      logoUrl: c.widget.brand.logoUrl,
+      primaryColor: c.widget.brand.primaryColor,
+    } : null,
     visitor: c.visitor,
     agentId: c.agentId,
     status: c.status,

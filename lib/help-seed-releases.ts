@@ -721,6 +721,131 @@ hand-off from tier-1.
   },
 
   // ───────────────────────────────────────────────────────────────────
+  // Brands — whitelabel client identity
+  // ───────────────────────────────────────────────────────────────────
+  {
+    slug: 'brands-whitelabel',
+    title: 'Brands — run a whitelabel agency from one workspace',
+    summary: 'Tag widgets and knowledge collections to a brand. Inbox filters, transcript exports, and per-client knowledge stay clean — even when one team handles many brands.',
+    order: 80,
+    body: `If you represent multiple clients (whitelabel agency, holdco
+support team, MSP), you need one operator queue, one set of agents,
+but cleanly separated **conversations, knowledge, and reporting** per
+brand. Brands let you tag widgets and collections so the right things
+filter, group, and export under each client identity — without
+spinning up a workspace per brand.
+
+## What a brand is
+
+A brand is a small workspace-level entity:
+
+- **Name** — the human label ("Acme Corp", "Beta Co").
+- **Slug** — URL-safe identifier used in transcript exports and the
+  brand-scoped inbox URL.
+- **Logo + accent color** — for visual identification on the operator
+  inbox so a glance tells you which brand a chat is for.
+- **Description** — optional notes for your team.
+
+It's optional. Workspaces that aren't running a multi-brand setup
+ignore the whole concept; the inbox doesn't show brand controls when
+there are no brands.
+
+## Tag widgets to a brand
+
+Each widget has a **Brand** dropdown in its Routing section. Picking
+a brand flows through to:
+
+- **Inbox row chip** — every conversation from that widget shows the
+  brand chip with logo and accent color.
+- **Inbox brand filter** — operators can scope to one brand at a time.
+- **Transcript export** — the per-brand JSON / text export pulls
+  every conversation on every widget tagged to that brand.
+
+Untagged widgets keep working — they just show up in "Untagged" in
+the inbox brand filter.
+
+## Tag collections to a brand
+
+When you create a Knowledge Collection, you can pick a brand:
+
+- **Brand-scoped** — only relevant to that client. "Acme refund
+  policy," "Beta shipping windows."
+- **Shared across brands** (no brand picked) — useful for things that
+  are universal in your team's voice or method, regardless of which
+  brand you're representing.
+
+Connect collections to agents the same way as before — agents pick
+which collections to use. A single agent can handle multiple brands
+by being attached to brand-scoped collections for each one.
+
+## The inbox
+
+Open **Inbox** in the left nav. With brands defined, a new **Brand**
+filter row appears (above the status tabs):
+
+- **All** (default) — every conversation, brand or not.
+- **Untagged** — conversations on widgets that aren't tagged to any
+  brand.
+- **One row per brand** — click to scope.
+
+When you scope to a specific brand, an **Export** button appears in
+the top-right of the brand filter row. Click it to download every
+conversation tagged to that brand as JSON.
+
+## Transcript exports
+
+Two formats, both via the brand detail or inbox:
+
+\`GET /api/workspaces/:wid/brands/:bid/transcripts/export?format=json\`
+- Full structured export — every conversation, every message, CSAT
+  ratings, assignment, timestamps. Filename: \`<brand-slug>-transcripts-<date>.json\`.
+
+\`?format=text\`
+- Human-readable plain-text concatenation. Useful for skimming or
+  feeding into a QA review.
+
+Optional query params:
+- \`from=YYYY-MM-DD\` and \`to=YYYY-MM-DD\` — date range.
+- \`status=ended\` (or \`active\` / \`handed_off\`) — narrow to one status.
+
+Capped at 1,000 conversations per export — chunk longer archives via
+the date range.
+
+## A clean pattern
+
+For an agency running 5 brands:
+
+1. Create 5 brands under **Brands** in the left nav.
+2. For each brand, create one widget tagged to it (chat or
+   click-to-call). Different colours, logos, hostnames in
+   "Allowed domains."
+3. Create one **Brand-scoped collection** per brand for FAQs, refund
+   terms, and any client-specific docs.
+4. Create one **shared collection** per skill (Brand voice, support
+   playbook) — no brand tag, used by every agent.
+5. One agent per brand: attach the brand's collections + the shared
+   ones. The agent runs with the right knowledge mix automatically.
+6. Operators sit in **Inbox** and either work the All view or scope
+   to a brand. The brand chip on each conversation makes context
+   obvious without clicking in.
+
+When clients ask for a transcript audit ("show me everything that
+went through Acme last quarter"), open Brands, click the brand,
+and hit Export.
+
+## Things to know
+
+- **Deleting a brand doesn't delete widgets or collections.** They
+  become "untagged" and stay in the workspace.
+- **Brands are workspace-scoped.** If you need cross-workspace brand
+  separation, you still need separate workspaces.
+- **The brand chip is purely visual** — the brand identity doesn't
+  alter the agent's behaviour. To change voice or knowledge per
+  brand, swap which collections each agent uses.
+`,
+  },
+
+  // ───────────────────────────────────────────────────────────────────
   // Knowledge Collections — the canonical write-up for the shipped
   // Collections model. Replaces two intermediate articles
   // ('workspace-knowledge-library' and the earlier knowledge-collections

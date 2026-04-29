@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 interface AssignedUser {
@@ -11,9 +11,18 @@ interface AssignedUser {
   image?: string | null
 }
 
+interface Brand {
+  id: string
+  name: string
+  slug: string
+  logoUrl?: string | null
+  primaryColor?: string | null
+}
+
 interface Row {
   id: string
   widget: { id: string; name: string; primaryColor?: string }
+  brand: Brand | null
   visitor: { id: string; name: string | null; email: string | null; cookieId: string }
   status: string
   messageCount: number
@@ -49,8 +58,11 @@ function initialOf(name: string | null | undefined, email: string | null | undef
 
 export default function InboxPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const workspaceId = params.workspaceId as string
   const [rows, setRows] = useState<Row[]>([])
+  const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
   const [notMigrated, setNotMigrated] = useState(false)
   const [tab, setTab] = useState<StatusTab>('live')
@@ -58,6 +70,11 @@ export default function InboxPage() {
   const [search, setSearch] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
   const [isAvailable, setIsAvailable] = useState<boolean>(true)
+  // Brand filter — value is the brand *slug*. 'all' = no filter,
+  // 'untagged' = conversations on widgets that aren't tagged to any
+  // brand. Initial value comes from ?brand=<slug> on the URL so the
+  // brands page can deep-link straight into the brand-scoped inbox.
+  const [brandSlug, setBrandSlug] = useState<string>(searchParams.get('brand') || 'all')
 
   const fetchRows = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations`)
@@ -67,21 +84,33 @@ export default function InboxPage() {
     setLoading(false)
   }, [workspaceId])
 
-  // Bootstrap: load current user + presence flag in parallel.
+  // Bootstrap: load current user + presence flag + brands in parallel.
   useEffect(() => {
     ;(async () => {
       try {
-        const [meRes, presenceRes] = await Promise.all([
+        const [meRes, presenceRes, brandsRes] = await Promise.all([
           fetch('/api/me'),
           fetch(`/api/workspaces/${workspaceId}/me/presence`),
+          fetch(`/api/workspaces/${workspaceId}/brands`),
         ])
         const me = await meRes.json()
         const p = await presenceRes.json()
+        const b = await brandsRes.json()
         if (me?.user?.id) setMeId(me.user.id)
         if (typeof p?.isAvailable === 'boolean') setIsAvailable(p.isAvailable)
+        if (Array.isArray(b?.brands)) setBrands(b.brands)
       } catch { /* fail-open: keep defaults */ }
     })()
   }, [workspaceId])
+
+  // Keep ?brand=<slug> in sync with the dropdown so deep-links and back-
+  // button navigation behave naturally.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (brandSlug === 'all') url.searchParams.delete('brand')
+    else url.searchParams.set('brand', brandSlug)
+    router.replace(url.pathname + url.search, { scroll: false })
+  }, [brandSlug, router])
 
   useEffect(() => { fetchRows() }, [fetchRows])
   useEffect(() => {
@@ -122,6 +151,9 @@ export default function InboxPage() {
     if (assignTab === 'mine' && meId) f = f.filter(r => r.assignedUserId === meId)
     else if (assignTab === 'unassigned') f = f.filter(r => !r.assignedUserId)
 
+    if (brandSlug === 'untagged') f = f.filter(r => !r.brand)
+    else if (brandSlug !== 'all') f = f.filter(r => r.brand?.slug === brandSlug)
+
     if (search.trim()) {
       const q = search.toLowerCase().trim()
       f = f.filter(r =>
@@ -129,12 +161,13 @@ export default function InboxPage() {
         || (r.visitor.email || '').toLowerCase().includes(q)
         || (r.lastMessage?.content || '').toLowerCase().includes(q)
         || r.widget.name.toLowerCase().includes(q)
+        || (r.brand?.name || '').toLowerCase().includes(q)
         || (r.assignedUser?.name || '').toLowerCase().includes(q)
         || (r.assignedUser?.email || '').toLowerCase().includes(q),
       )
     }
     return f
-  }, [rows, tab, assignTab, search, meId])
+  }, [rows, tab, assignTab, search, meId, brandSlug])
 
   if (loading) return (
     <div className="flex-1 p-8">
@@ -214,6 +247,48 @@ export default function InboxPage() {
             )
           })}
         </div>
+
+        {/* Brand filter — only renders when the workspace actually has
+            brands defined. Otherwise it'd be visual noise. */}
+        {brands.length > 0 && (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Brand</span>
+            {([
+              { slug: 'all', label: 'All', logoUrl: null, primaryColor: null },
+              { slug: 'untagged', label: 'Untagged', logoUrl: null, primaryColor: null },
+              ...brands.map(b => ({ slug: b.slug, label: b.name, logoUrl: b.logoUrl, primaryColor: b.primaryColor })),
+            ]).map(opt => {
+              const active = brandSlug === opt.slug
+              return (
+                <button
+                  key={opt.slug}
+                  onClick={() => setBrandSlug(opt.slug)}
+                  className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors inline-flex items-center gap-1.5 ${
+                    active
+                      ? 'bg-white text-black'
+                      : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                  }`}
+                >
+                  {opt.primaryColor && <span className="w-2 h-2 rounded-full" style={{ background: opt.primaryColor }} />}
+                  {opt.logoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={opt.logoUrl} alt="" className="w-3.5 h-3.5 rounded-sm object-cover" />
+                  )}
+                  {opt.label}
+                </button>
+              )
+            })}
+            {brandSlug !== 'all' && brandSlug !== 'untagged' && (
+              <a
+                href={`/api/workspaces/${workspaceId}/brands/${brands.find(b => b.slug === brandSlug)?.id}/transcripts/export?format=json`}
+                className="ml-auto text-[11px] font-medium px-3 py-1 rounded-full border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                title="Download every conversation tagged to this brand as JSON"
+              >
+                Export {brandSlug} ↓
+              </a>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {([
@@ -296,6 +371,24 @@ export default function InboxPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
                       <p className="text-sm font-semibold text-white truncate">{visitorLabel}</p>
+                      {r.brand && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-medium"
+                          style={{
+                            background: `${r.brand.primaryColor || '#fa4d2e'}20`,
+                            color: r.brand.primaryColor || '#fa4d2e',
+                          }}
+                          title={`Brand: ${r.brand.name}`}
+                        >
+                          {r.brand.logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={r.brand.logoUrl} alt="" className="w-3 h-3 rounded-sm object-cover" />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: r.brand.primaryColor || '#fa4d2e' }} />
+                          )}
+                          {r.brand.name}
+                        </span>
+                      )}
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{r.widget.name}</span>
                       {r.status === 'active' && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">live</span>

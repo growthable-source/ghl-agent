@@ -38,6 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
     'defaultAgentId', 'allowedDomains', 'isActive',
     'routingMode', 'routingTargetUserIds',
+    'brandId',
   ]
   const data: Record<string, unknown> = {}
   for (const key of allowed) {
@@ -60,7 +61,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // that we're tolerant about" — the legacy fields still save either way.
   const ctcKeys = ['type', 'slug', 'embedMode', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor', 'hostedPageHeadline', 'hostedPageSubtext']
   const routingKeys = ['routingMode', 'routingTargetUserIds']
-  const tolerantKeys = [...ctcKeys, ...routingKeys]
+  const brandKeys = ['brandId']
+  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys]
   const touchesTolerant = tolerantKeys.some(k => data[k] !== undefined)
 
   try {

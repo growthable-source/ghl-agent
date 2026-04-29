@@ -34,11 +34,20 @@ interface Widget {
   isActive: boolean
   routingMode?: 'manual' | 'round_robin' | 'first_available'
   routingTargetUserIds?: string[]
+  brandId?: string | null
 }
 
 interface MemberOption {
   id: string
   user: { id: string; name: string | null; email: string | null; image: string | null }
+}
+
+interface BrandOption {
+  id: string
+  name: string
+  slug: string
+  logoUrl: string | null
+  primaryColor: string | null
 }
 
 type CopyKey = 'embed' | 'hostedUrl' | 'emailSig' | 'inline'
@@ -52,6 +61,7 @@ export default function WidgetEditorPage() {
   const [widget, setWidget] = useState<Widget | null>(null)
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [members, setMembers] = useState<MemberOption[]>([])
+  const [brands, setBrands] = useState<BrandOption[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -59,14 +69,16 @@ export default function WidgetEditorPage() {
   const [copied, setCopied] = useState<CopyKey | null>(null)
 
   const fetchWidget = useCallback(async () => {
-    const [w, a, m] = await Promise.all([
+    const [w, a, m, b] = await Promise.all([
       fetch(`/api/workspaces/${workspaceId}/widgets/${widgetId}`).then(r => r.json()),
       fetch(`/api/workspaces/${workspaceId}/agents`).then(r => r.json()),
       fetch(`/api/workspaces/${workspaceId}/members`).then(r => r.json()),
+      fetch(`/api/workspaces/${workspaceId}/brands`).then(r => r.json()),
     ])
     if (w.widget) setWidget(w.widget)
     setAgents(a.agents || [])
     setMembers(m.members || [])
+    setBrands(b.brands || [])
     setLoading(false)
   }, [workspaceId, widgetId])
 
@@ -263,6 +275,27 @@ export default function WidgetEditorPage() {
           {/* Form */}
           <div className="space-y-4">
             <Section title="Routing">
+              <Field
+                label="Brand"
+                helper="Whitelabel client this widget represents. Tagging it lets the inbox filter by brand and lets you export transcripts per brand. Leave blank if you don't run a multi-brand setup."
+              >
+                <div className="flex gap-2">
+                  <select
+                    value={widget.brandId || ''}
+                    onChange={e => update('brandId', (e.target.value || null) as any)}
+                    className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">— Untagged —</option>
+                    {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                  <Link
+                    href={`/dashboard/${workspaceId}/brands`}
+                    className="px-3 py-2 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 text-xs whitespace-nowrap"
+                  >
+                    Manage brands
+                  </Link>
+                </div>
+              </Field>
               <Field label={isCallType ? 'Voice agent' : 'Default agent'}>
                 <select value={widget.defaultAgentId || ''} onChange={e => update('defaultAgentId', e.target.value || null as any)}
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white">
