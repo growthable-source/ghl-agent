@@ -8,12 +8,20 @@ import { db } from './db'
 import { getContact, sendMessage } from './crm-client'
 import { runAgent } from './ai-agent'
 import { getTokens } from './token-store'
-import { saveMessages } from './conversation-memory'
+import { saveMessages, getMessageHistory } from './conversation-memory'
 import { getOrCreateConversationState } from './conversation-state'
 import { buildKnowledgeBlock } from './rag'
 import { buildPersonaBlock } from './persona'
 import { isWithinWorkingHours, shiftToWorkingHours } from './working-hours'
 import type { MessageChannelType } from '@/types'
+
+// Window during which an active inbound conversation suppresses proactive
+// triggers. A tag-update or contact-create trigger landing in the middle of
+// a live booking flow used to fire a generic "Hi Gary, good to hear from
+// you" message that overran the in-flight reply. Five minutes is long
+// enough to cover a typical multi-turn SMS exchange and short enough that
+// genuinely-new triggers fire promptly.
+const ACTIVE_CONVERSATION_WINDOW_MS = 5 * 60_000
 
 interface TriggerEvent {
   eventType: 'ContactCreate' | 'ContactTagUpdate'
@@ -122,6 +130,24 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
     if (recentTriggerLog) {
       console.log(`[Trigger] Already sent a trigger message to contact ${contactId} within 60s, skipping duplicates`)
       skipReasons.push('A trigger fired for this contact within the last 60 seconds')
+      return { fired, skipped: skipped + triggers.length, skipReasons }
+    }
+
+    // 3b. Don't interrupt active conversations. If the contact has sent ANY
+    //     inbound message recently, a tag-update or contact-create trigger
+    //     would overrun the in-flight reply with a generic greeting.
+    const recentInbound = await db.conversationMessage.findFirst({
+      where: {
+        locationId,
+        contactId,
+        role: 'user',
+        createdAt: { gte: new Date(Date.now() - ACTIVE_CONVERSATION_WINDOW_MS) },
+      },
+      select: { id: true },
+    })
+    if (recentInbound) {
+      console.log(`[Trigger] Active inbound conversation for ${contactId} within ${ACTIVE_CONVERSATION_WINDOW_MS / 60_000}m — skipping to avoid interrupting`)
+      skipReasons.push('Contact has an active inbound conversation — trigger suppressed to avoid talking over a live thread')
       return { fired, skipped: skipped + triggers.length, skipReasons }
     }
   }
@@ -289,13 +315,28 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
           ? `[System trigger: New contact created — ${contactName}. Send them a first message.]`
           : `[System trigger: Tag "${trigger.tagFilter || ''}" added to contact ${contactName}. Send them a first message.]`
 
+        // Load existing conversation history so the trigger's first message
+        // doesn't blindly say "Hi, good to hear from you" when there's an
+        // active thread from earlier today. Mapping mirrors the events
+        // webhook's read path so the agent sees turns in the same shape.
+        const dbHistory = await getMessageHistory(agent.id, contactId, 20)
+        const triggerHistory: import('@/types').Message[] = dbHistory.map(m => ({
+          id: m.id,
+          conversationId: m.conversationId,
+          locationId: m.locationId,
+          contactId: m.contactId,
+          body: m.content,
+          direction: m.role === 'user' ? 'inbound' as const : 'outbound' as const,
+          createdAt: m.createdAt.toISOString(),
+        }))
+
         const result = await runAgent({
           locationId,
           agentId: agent.id,
           contactId,
           channel: trigger.channel,
           incomingMessage: syntheticMessage,
-          messageHistory: [],
+          messageHistory: triggerHistory,
           systemPrompt: fullPrompt,
           enabledTools: agent.enabledTools,
           workflowPicks: {
@@ -329,6 +370,21 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
             status: 'SUCCESS',
           },
         })
+
+        // Persist the AI-generated first message to conversation history so
+        // the contact's reply (handled by the events webhook) sees it as
+        // prior context. Without this, every reply to a trigger-sent
+        // greeting was processed against an empty history and the agent
+        // re-introduced itself as if no prior contact had happened.
+        if (result.reply) {
+          try {
+            await saveMessages(agent.id, locationId, contactId, '', [
+              { role: 'assistant', content: result.reply },
+            ])
+          } catch (err: any) {
+            console.warn(`[Trigger] saveMessages(assistant) failed: ${err.message}`)
+          }
+        }
 
         console.log(`[Trigger] AI sent message to ${contactId}: "${(result.reply ?? '').slice(0, 60)}"`)
       }

@@ -3,6 +3,12 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic()
 
+// Reserved roles that are persisted to ConversationMessage but excluded from
+// the chat history shown to the model. They carry structured context that
+// the prompt builder lifts into dedicated blocks instead.
+export const OFFERED_SLOTS_ROLE = '__offered_slots__'
+export const CLEARED_OFFERED_SLOTS_ROLE = '__offered_slots_cleared__'
+
 export async function saveMessages(
   agentId: string,
   locationId: string,
@@ -16,11 +22,93 @@ export async function saveMessages(
 }
 
 export async function getMessageHistory(agentId: string, contactId: string, limit = 20) {
+  // Only return user/assistant turns. Reserved roles (offered_slots etc.) are
+  // structured context lifted into the prompt by the caller, not chat history.
   return db.conversationMessage.findMany({
-    where: { agentId, contactId },
+    where: { agentId, contactId, role: { in: ['user', 'assistant'] } },
     orderBy: { createdAt: 'asc' },
     take: limit,
   })
+}
+
+/**
+ * Persist the slots returned by get_available_slots so the next turn's
+ * prompt builder can surface them — and so a confirmation reply ("yes",
+ * "11.45") can be locked to a concrete ISO timestamp instead of the model
+ * re-fetching and getting a different set.
+ */
+export async function recordOfferedSlots(params: {
+  agentId: string
+  locationId: string
+  contactId: string
+  conversationId: string
+  slots: unknown
+  timezone?: string | null
+}): Promise<void> {
+  const { agentId, locationId, contactId, conversationId, slots, timezone } = params
+  await db.conversationMessage.create({
+    data: {
+      agentId,
+      locationId,
+      contactId,
+      conversationId,
+      role: OFFERED_SLOTS_ROLE,
+      content: JSON.stringify({ slots, timezone: timezone ?? null, recordedAt: new Date().toISOString() }),
+    },
+  })
+}
+
+/**
+ * Mark any prior offered-slots context as consumed (e.g. after book_appointment
+ * succeeds). Reads downstream of this row treat earlier offers as stale.
+ */
+export async function clearOfferedSlots(params: {
+  agentId: string
+  locationId: string
+  contactId: string
+  conversationId: string
+}): Promise<void> {
+  const { agentId, locationId, contactId, conversationId } = params
+  await db.conversationMessage.create({
+    data: {
+      agentId,
+      locationId,
+      contactId,
+      conversationId,
+      role: CLEARED_OFFERED_SLOTS_ROLE,
+      content: JSON.stringify({ clearedAt: new Date().toISOString() }),
+    },
+  })
+}
+
+/**
+ * Returns the most recent offered-slots payload for this contact, IF that
+ * payload is more recent than the latest clear marker. Returns null when
+ * there's nothing live to surface to the agent.
+ */
+export async function getLastOfferedSlots(
+  agentId: string,
+  contactId: string,
+): Promise<{ slots: unknown; timezone: string | null; recordedAt: string } | null> {
+  const latest = await db.conversationMessage.findFirst({
+    where: {
+      agentId,
+      contactId,
+      role: { in: [OFFERED_SLOTS_ROLE, CLEARED_OFFERED_SLOTS_ROLE] },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+  if (!latest || latest.role !== OFFERED_SLOTS_ROLE) return null
+  try {
+    const parsed = JSON.parse(latest.content)
+    return {
+      slots: parsed.slots,
+      timezone: parsed.timezone ?? null,
+      recordedAt: parsed.recordedAt ?? latest.createdAt.toISOString(),
+    }
+  } catch {
+    return null
+  }
 }
 
 export async function getMemorySummary(agentId: string, contactId: string): Promise<string | null> {

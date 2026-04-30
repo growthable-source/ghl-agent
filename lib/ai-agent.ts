@@ -2386,6 +2386,35 @@ export async function runAgent(opts: {
         }
       }
 
+      // Persist booking-context across turns. When get_available_slots
+      // returns slots we record them so the next turn's prompt builder
+      // can surface the exact ISO timestamps — preventing the model from
+      // re-fetching after a "yes" and offering different times. When
+      // book_appointment succeeds we mark the cached offer as consumed.
+      if (!isSandbox && agentId && conversationId) {
+        if (toolBlock.name === 'get_available_slots') {
+          try {
+            const parsed = JSON.parse(result)
+            if (parsed?.success && Array.isArray(parsed.slots)) {
+              const { recordOfferedSlots } = await import('./conversation-memory')
+              await recordOfferedSlots({
+                agentId, locationId, contactId, conversationId,
+                slots: parsed.slots,
+                timezone: parsed.timezone ?? null,
+              })
+            }
+          } catch { /* non-fatal */ }
+        } else if (toolBlock.name === 'book_appointment') {
+          try {
+            const parsed = JSON.parse(result)
+            if (parsed?.success) {
+              const { clearOfferedSlots } = await import('./conversation-memory')
+              await clearOfferedSlots({ agentId, locationId, contactId, conversationId })
+            }
+          } catch { /* non-fatal */ }
+        }
+      }
+
       toolResults.push({
         type: 'tool_result',
         tool_use_id: toolBlock.id,

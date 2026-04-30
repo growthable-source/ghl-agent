@@ -17,7 +17,7 @@ import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
 import { buildKnowledgeBlock } from '@/lib/rag'
 import { getOrCreateConversationState, checkStopConditions, executeStopConditionActions, pauseConversation, incrementMessageCount } from '@/lib/conversation-state'
-import { saveMessages, getMessageHistory, getMemorySummaryWithMeta, updateContactMemorySummary } from '@/lib/conversation-memory'
+import { saveMessages, getMessageHistory, getMemorySummaryWithMeta, updateContactMemorySummary, getLastOfferedSlots } from '@/lib/conversation-memory'
 import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
 import { debounceMessage } from '@/lib/message-debounce'
@@ -255,19 +255,44 @@ export async function POST(req: NextRequest) {
 
         // Inject calendar ID if booking tools are enabled and a calendar is configured
         if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
+          // Surface any slots we offered on a prior turn so a "yes" reply
+          // locks to a concrete ISO instead of triggering a re-fetch that
+          // returns different times. Cleared automatically when book_appointment
+          // succeeds or when the model decides to re-fetch a new window.
+          const lastOffered = await getLastOfferedSlots(agent.id, p.contactId)
+          let offeredBlock = ''
+          if (lastOffered && Array.isArray(lastOffered.slots) && lastOffered.slots.length > 0) {
+            const ageMs = Date.now() - new Date(lastOffered.recordedAt).getTime()
+            const ageMin = Math.round(ageMs / 60_000)
+            // Truncate to first 8 ISO strings — anything longer pollutes the
+            // prompt without helping the agent pick.
+            const slotIsos = (lastOffered.slots as any[])
+              .map(s => typeof s === 'string' ? s : (s?.startTime || s?.start || s?.slotStart))
+              .filter(Boolean)
+              .slice(0, 8)
+            if (slotIsos.length > 0) {
+              offeredBlock = `\n\n## Slots You Already Offered (recorded ${ageMin}m ago${lastOffered.timezone ? `, in ${lastOffered.timezone}` : ''})
+${slotIsos.map((iso: string) => `- ${iso}`).join('\n')}
+
+If the contact's latest message is a positive confirmation ("yes", "sure", "ok", "works", "11.45", "11:45", "that one", "👍", a time matching one of the slots above, etc.), use the matching ISO from THIS list when calling book_appointment. Do NOT call get_available_slots again before booking — the slots above are still valid.`
+            }
+          }
+
           fullPrompt += `\n\n## Calendar Configuration
 Calendar ID for booking: ${agent.calendarId}
 Contact ID for this conversation: ${p.contactId}
 
 BOOKING PROCEDURE — follow this exactly when the contact wants to schedule:
-1. Call \`get_available_slots\` with the Calendar ID above and a date range starting from today.
-2. Propose ONE specific slot in your reply (don't list 10 — be decisive). Example: "I can do Thursday at 2pm your time — does that work?"
-3. When the contact confirms ("yes", "that works", "perfect", etc.), IMMEDIATELY call \`book_appointment\` in the same turn using:
+1. If the "Slots You Already Offered" block exists below, treat those slots as authoritative and SKIP step 2. Only call \`get_available_slots\` for a fresh booking discussion or when the contact rejects every offered slot.
+2. Otherwise, call \`get_available_slots\` ONCE with the Calendar ID above and a date range starting from today.
+3. Propose ONE specific slot in your reply (don't list 10 — be decisive). Example: "I can do Thursday at 2pm your time — does that work?"
+4. CONFIRMATION RULE — when the contact's reply is a positive confirmation ("yes", "sure", "works", "perfect", "ok", "sounds good", "👍", a time string like "11.45" or "11:45", or a brief affirmative), you MUST call \`book_appointment\` IMMEDIATELY in the same turn using:
    - calendarId: ${agent.calendarId}
    - contactId: ${p.contactId}
-   - startTime: the EXACT string returned by get_available_slots
-4. After the tool returns success, confirm the booked time to the contact. DO NOT say "I've booked" without calling book_appointment — the booking won't exist.
-5. Optionally call \`create_appointment_note\` to log context from the conversation.
+   - startTime: the EXACT ISO string from your offered slots — copy from "Slots You Already Offered" if present, otherwise from the most recent get_available_slots tool result in this turn
+   DO NOT call \`get_available_slots\` after a confirmation. Slot availability is stable for minutes; re-fetching causes you to propose a different time and confuse the contact.
+5. After book_appointment returns success, confirm the booked time to the contact in plain language. Never say "I've booked" without calling the tool — the booking won't exist.
+6. Optionally call \`create_appointment_note\` to log context from the conversation.
 
 CANCELLATION PROCEDURE — when the contact asks to cancel/remove/drop a meeting:
 1. Call \`get_calendar_events\` with contactId=${p.contactId} to find the appointmentId.
@@ -278,7 +303,7 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
 1. Call \`get_calendar_events\` to find the existing appointmentId.
 2. Call \`get_available_slots\` for the new window the contact wants.
 3. Propose one specific slot; on confirmation call \`reschedule_appointment\` with the appointmentId + exact startTime from get_available_slots.
-4. Confirm the NEW time to the contact. Never say "I've moved it" without calling reschedule_appointment.`
+4. Confirm the NEW time to the contact. Never say "I've moved it" without calling reschedule_appointment.${offeredBlock}`
         }
 
         // Memory context and qualifying questions
@@ -314,6 +339,20 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
           typingDelayMaxMs: agent.typingDelayMaxMs,
           languages: agent.languages,
         })
+
+        // Persist the inbound user turn BEFORE running the agent. If a
+        // second webhook arrives for this contact mid-run (concurrent
+        // parallel delivery, or another channel event), its history read
+        // will see this turn and not double-process. Also means the
+        // assistant's tool loop reads its own freshly-recorded inbound on
+        // any inner sub-call.
+        try {
+          await saveMessages(agent.id, p.locationId, p.contactId, p.conversationId, [
+            { role: 'user', content: inboundMessage },
+          ])
+        } catch (err: any) {
+          console.warn(`[Webhook] saveMessages(inbound) failed: ${err.message}`)
+        }
 
         // Use DB history if available, otherwise fall back to GHL API
         let history: import('@/types').Message[]
@@ -547,11 +586,14 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
             )
           }
 
-          // Save messages to persistent history
-          await saveMessages(agent.id, p.locationId, p.contactId, p.conversationId, [
-            { role: 'user', content: inboundMessage },
-            ...(result.reply ? [{ role: 'assistant', content: result.reply }] : []),
-          ])
+          // Save the assistant reply to persistent history. The inbound was
+          // already saved before runAgent (parallel-webhook safety), so we
+          // only persist the agent's response here.
+          if (result.reply) {
+            await saveMessages(agent.id, p.locationId, p.contactId, p.conversationId, [
+              { role: 'assistant', content: result.reply },
+            ])
+          }
 
           // Increment message count
           await incrementMessageCount(agent.id, p.contactId)
