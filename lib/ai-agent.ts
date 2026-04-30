@@ -1795,28 +1795,9 @@ export async function runAgent(opts: {
     return blocks
   }
 
-  // Render a coarse relative-time tag ("[3 days ago]") for a historical
-  // message. We deliberately keep it human-grade rather than precise so
-  // the agent can reason about gaps without anchoring on exact minutes.
-  // Returns empty string when no usable timestamp is available.
-  const formatRelativeAge = (createdAt: string | undefined, nowMs: number): string => {
-    if (!createdAt) return ''
-    const t = new Date(createdAt).getTime()
-    if (!Number.isFinite(t) || t <= 0) return ''
-    const diffMs = Math.max(0, nowMs - t)
-    const min = Math.round(diffMs / 60_000)
-    if (min < 2) return '[just now]'
-    if (min < 60) return `[${min} minutes ago]`
-    const hr = Math.round(diffMs / 3_600_000)
-    if (hr < 24) return hr === 1 ? '[1 hour ago]' : `[${hr} hours ago]`
-    const day = Math.round(diffMs / 86_400_000)
-    if (day < 14) return day === 1 ? '[1 day ago]' : `[${day} days ago]`
-    const wk = Math.round(diffMs / (7 * 86_400_000))
-    if (wk < 8) return wk === 1 ? '[1 week ago]' : `[${wk} weeks ago]`
-    const mo = Math.round(diffMs / (30 * 86_400_000))
-    return mo === 1 ? '[1 month ago]' : `[${mo} months ago]`
-  }
-
+  // Pure helpers for booking heuristics + relative-age formatting live
+  // in ./agent-heuristics so they can be unit-tested in isolation.
+  const { formatRelativeAge } = await import('./agent-heuristics')
   const nowMs = Date.now()
 
   // Include recent message history as context
@@ -2189,24 +2170,9 @@ export async function runAgent(opts: {
   // If the inbound message strongly signals intent to book (and the booking
   // tools are available), force Claude to call A tool on the first turn.
   // This breaks the "let me check and get back to you" non-action reply.
-  const incomingLower = (incomingMessage || '').toLowerCase()
-  const BOOKING_INTENT_PATTERNS = [
-    'speak to sales', 'talk to sales', 'book a call', 'book a meeting', 'book a demo',
-    'book an appointment', 'book appointment', 'make an appointment', 'schedule an appointment',
-    'schedule appointment', 'set an appointment', 'set up an appointment', 'get an appointment',
-    'an appointment', 'appointment',
-    'schedule a call', 'schedule a meeting', 'schedule a demo', 'set up a call',
-    'hop on a call', 'get on a call', 'have a call', 'have a meeting',
-    'what times', 'available times', 'other times', 'another time', 'different time',
-    'next available', 'whats next', "what's next", 'other options', 'something else',
-    'have access to the calendar', 'check the calendar', 'any availability',
-    'can we chat', 'quick chat', 'jump on', 'catch up',
-    "i need another", 'need another time', 'need a different',
-    "haven't heard", "havent heard", 'any update',
-  ]
-  const hasBookingIntent = BOOKING_INTENT_PATTERNS.some(p => incomingLower.includes(p))
+  const heuristics = await import('./agent-heuristics')
   const hasBookingTools = availableToolNames.includes('get_available_slots') || availableToolNames.includes('book_appointment')
-  const initialForceAny = hasBookingIntent && hasBookingTools
+  const initialForceAny = heuristics.hasBookingIntent(incomingMessage) && hasBookingTools
 
   if (initialForceAny) {
     console.log(`[Agent] Booking intent detected in "${incomingMessage?.slice(0, 60)}" — forcing tool_choice: any`)
@@ -2219,58 +2185,13 @@ export async function runAgent(opts: {
   //   (a) the contact's reply looks like a confirmation, AND
   //   (b) the previous outbound from the agent looks like it offered a
   //       specific time slot.
-  // Both heuristics are conservative — false positives mean the agent
-  // tries to book, fails (no startTime match), and the loop's normal
-  // fallback handles it. False negatives just mean we don't force, and
-  // the agent might still circle (the prompt rules try to catch that).
-  const trimmedIncoming = incomingLower.trim()
-  const CONFIRMATION_TOKENS = [
-    'yes', 'yep', 'yeah', 'yup', 'ya', 'yas', 'yess', 'yessir',
-    'sure', 'sure thing', 'ok', 'okay', 'okey', 'k',
-    'sounds good', 'sounds great', 'sounds perfect',
-    'works', 'works for me', 'that works', 'that one', "that's good", 'that is good',
-    'perfect', 'great', 'awesome', 'lovely', 'cool', 'fine', 'good',
-    'do it', 'book it', 'book me', 'book that', 'lock it in',
-    'confirmed', "let's do it", 'lets do it', 'lgtm',
-    'go ahead', 'go for it', 'lets go', "let's go",
-  ]
-  // Negative signals: even if the reply STARTS with "ok" or "sure", phrases
-  // like "ok but in PST" or "sure, can you do London time?" are NOT booking
-  // confirmations — they're requests to re-fetch slots in a different zone.
-  // Also skip questions and explicit time-window requests.
-  const looksLikeTimezoneRequest = /\b(timezone|time zone|in\s+[a-z]{2,4}\s*$|in\s+(pst|est|cst|mst|edt|pdt|cdt|mdt|gmt|bst|cet|ist|aest|jst|kst|sgt)\b|london|sydney|tokyo|berlin|paris|new york|chicago|los angeles|san francisco|denver|seattle|melbourne|brisbane|perth|auckland|toronto|vancouver|mumbai|delhi|bangalore|dubai)\b/i.test(trimmedIncoming)
-  const looksLikeQuestion = trimmedIncoming.includes('?')
-  const looksLikeRejection = /\b(can't|cannot|won't|can not|will not|nope|nah|no\s|no$|busy|already have|conflict|earlier|later|after|before|other|else|different)\b/i.test(trimmedIncoming)
-
-  const isShortAffirmation =
-    trimmedIncoming.length <= 40
-    && !looksLikeTimezoneRequest
-    && !looksLikeQuestion
-    && !looksLikeRejection
-    && CONFIRMATION_TOKENS.some(w =>
-      trimmedIncoming === w
-      || trimmedIncoming === w + '.' || trimmedIncoming === w + '!' || trimmedIncoming === w + ','
-      || trimmedIncoming.startsWith(w + ' ') || trimmedIncoming.startsWith(w + ',') || trimmedIncoming.startsWith(w + '.')
-      || trimmedIncoming.endsWith(' ' + w) || trimmedIncoming.endsWith(' ' + w + '.')
-    )
-
-  // Did the previous agent message offer a specific time? Heuristic: a
-  // time pattern (e.g. "11:45am", "2:30pm", "10am") plus "offer" phrasing.
-  const lastOutboundOfferedTimes = (() => {
-    if (!messageHistory || messageHistory.length === 0) return false
-    const lastOutbound = [...messageHistory].reverse().find(m => m.direction === 'outbound' && m.body)
-    if (!lastOutbound?.body) return false
-    const body = lastOutbound.body
-    const hasTimePattern =
-      /\b\d{1,2}(:\d{2})?\s*(am|pm|AM|PM)\b/.test(body) ||
-      /\b\d{1,2}:\d{2}\b/.test(body)
-    const looksLikeOffer = /(does that work|which works|works better|how about|next available|i can do|i have|are you free|free at|available at|got\s+\w+\s+at|book(ed)?\s+you|how does)/i.test(body)
-    return hasTimePattern && looksLikeOffer
-  })()
-
+  // Both heuristics are conservative and unit-tested in agent-heuristics.
+  const lastOutboundBody = messageHistory && messageHistory.length > 0
+    ? [...messageHistory].reverse().find(m => m.direction === 'outbound' && m.body)?.body ?? null
+    : null
   const isBookingConfirmation =
-    isShortAffirmation
-    && lastOutboundOfferedTimes
+    heuristics.isShortAffirmation(incomingMessage)
+    && heuristics.looksLikeOfferedTime(lastOutboundBody)
     && availableToolNames.includes('book_appointment')
 
   if (isBookingConfirmation) {

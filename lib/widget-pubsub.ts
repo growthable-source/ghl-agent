@@ -24,22 +24,12 @@
 
 import { Client } from 'pg'
 import { db } from './db'
-
-const CHANNEL_PREFIX = 'widget_'
+import { widgetPubsubChannelName as channelName } from './agent-heuristics'
 
 // Postgres has an 8000-byte hard cap on NOTIFY payloads. We refuse
 // anything close to that — operator messages and agent replies are far
 // smaller than this in practice (~4KB max for a long agent reply).
 const MAX_PAYLOAD_BYTES = 7000
-
-function channelName(conversationId: string): string {
-  // Postgres identifiers: letters/digits/underscores, max 63 bytes.
-  // Conversation IDs are CUIDs which are already lowercase
-  // alphanumeric, but we sanitize defensively in case the ID format
-  // ever changes.
-  const safe = conversationId.toLowerCase().replace(/[^a-z0-9_]/g, '_')
-  return `${CHANNEL_PREFIX}${safe}`.slice(0, 63)
-}
 
 function directConnectionString(): string {
   // LISTEN must run on a connection that won't be returned to a
