@@ -242,6 +242,35 @@ export async function POST(req: NextRequest) {
           break
         }
 
+        // PARALLEL-RUN GUARD — if this agent has sent an outbound to this
+        // contact in the last ~6 seconds, treat the current webhook as a
+        // duplicate delivery (or a piggyback from a tag/event echo) and
+        // skip. Without this, GHL re-delivering a webhook within the
+        // debounce window after our outbound has already gone out can
+        // produce a flood of redundant replies.
+        const recentAssistant = await db.conversationMessage.findFirst({
+          where: {
+            agentId: agent.id,
+            contactId: p.contactId,
+            role: 'assistant',
+            createdAt: { gte: new Date(Date.now() - 6_000) },
+          },
+          select: { id: true, createdAt: true },
+        })
+        if (recentAssistant) {
+          const ageMs = Date.now() - recentAssistant.createdAt.getTime()
+          await db.messageLog.update({
+            where: { id: log.id },
+            data: {
+              agentId: agent.id,
+              status: 'SKIPPED',
+              errorMessage: `Agent replied ${ageMs}ms ago — treating this webhook as a duplicate to avoid double-sending.`,
+            },
+          })
+          console.log(`[Webhook] Skipping run for ${p.contactId}: assistant replied ${ageMs}ms ago`)
+          break
+        }
+
         // Cancel any scheduled follow-ups since contact replied
         await cancelFollowUpsForContact(p.locationId, p.contactId)
 

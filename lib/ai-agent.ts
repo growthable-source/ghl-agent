@@ -2355,6 +2355,36 @@ export async function runAgent(opts: {
       const toolBlock = block as Anthropic.ToolUseBlock
       actionsPerformed.push(toolBlock.name)
       const toolStart = Date.now()
+
+      // SINGLE-SEND GUARD — refuse a second outbound message in the same
+      // run. Without this, a chatty model can emit multiple send_reply
+      // blocks (across iterations OR within one response) and each one
+      // delivers an SMS to the contact, producing the "flood of apologies"
+      // pattern. Post-reply housekeeping tools (tags, notes, opportunity
+      // moves) still run normally; only additional sends are blocked.
+      const isSendTool = toolBlock.name === 'send_reply' || toolBlock.name === 'send_sms'
+      if (isSendTool && smsSent !== null) {
+        const blockedResult = JSON.stringify({
+          success: false,
+          error: 'duplicate_send_blocked',
+          alreadySent: smsSent.slice(0, 200),
+          hint: 'You have already sent one reply this turn. Wait for the contact to respond before sending again. End your turn now — do NOT call send_reply or send_sms again.',
+        })
+        toolCallTrace.push({
+          tool: toolBlock.name,
+          input: toolBlock.input as Record<string, unknown>,
+          output: blockedResult,
+          durationMs: Date.now() - toolStart,
+        })
+        actionsPerformed.push(`${toolBlock.name}_blocked_duplicate`)
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolBlock.id,
+          content: blockedResult,
+        })
+        continue
+      }
+
       const result = await executeTool(
         toolBlock.name,
         toolBlock.input as Record<string, unknown>,
@@ -2377,7 +2407,7 @@ export async function runAgent(opts: {
       })
 
       // Track message sends (send_reply or legacy send_sms)
-      if (toolBlock.name === 'send_reply' || toolBlock.name === 'send_sms') {
+      if (isSendTool) {
         const parsed = JSON.parse(result)
         if (parsed.success) {
           let msg = (toolBlock.input as { message: string }).message
