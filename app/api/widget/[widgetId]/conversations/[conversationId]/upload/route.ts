@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { broadcast } from '@/lib/widget-sse'
 import { runWidgetAgent } from '@/lib/widget-agent-runner'
+
+export const maxDuration = 300
 
 type Params = { params: Promise<{ widgetId: string; conversationId: string }> }
 
@@ -126,21 +128,28 @@ export async function POST(req: NextRequest, { params }: Params) {
   // multimodal image block (Claude vision). For files we breadcrumb the
   // filename in text — Claude can't read PDFs/docs natively over a URL.
   const breadcrumb = isImage ? '(visitor sent an image)' : `(visitor attached a file: ${file.name})`
-  runWidgetAgent({
-    convo,
-    content: breadcrumb,
-    attachments: [{
-      kind: isImage ? 'image' : 'file',
-      url: blobUrl,
-      name: file.name,
-      mediaType: mime,
-    }],
-  }).catch(err => {
-    console.error('[widget upload] agent run failed:', err)
-    broadcast(conversationId, {
-      type: 'agent_error',
-      message: 'Agent failed to acknowledge the upload. Please try again.',
-    })
+  // Wrapped in after() so Vercel keeps the runtime alive past the JSON
+  // response — fire-and-forget Promises get killed when the function
+  // suspends, which manifests as the agent going silent mid-loop.
+  after(async () => {
+    try {
+      await runWidgetAgent({
+        convo,
+        content: breadcrumb,
+        attachments: [{
+          kind: isImage ? 'image' : 'file',
+          url: blobUrl,
+          name: file.name,
+          mediaType: mime,
+        }],
+      })
+    } catch (err: any) {
+      console.error('[widget upload] agent run failed:', err)
+      broadcast(conversationId, {
+        type: 'agent_error',
+        message: 'Agent failed to acknowledge the upload. Please try again.',
+      })
+    }
   })
 
   return NextResponse.json({

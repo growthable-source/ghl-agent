@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { broadcast } from '@/lib/widget-sse'
 import { notify } from '@/lib/notifications'
 import { resolveHandoverLink } from '@/lib/handover-link'
 import { runWidgetAgent } from '@/lib/widget-agent-runner'
+
+export const maxDuration = 300
 
 type Params = { params: Promise<{ widgetId: string; conversationId: string }> }
 
@@ -118,20 +120,24 @@ export async function POST(req: NextRequest, { params }: Params) {
     createdAt: visitorMsg.createdAt.toISOString(),
   })
 
-  // Respond to widget immediately — agent reply flows back on SSE
-  const response = NextResponse.json({ ok: true, messageId: visitorMsg.id }, { headers })
-
-  // Fire the agent in a non-blocking promise. We intentionally don't await
-  // — Vercel will keep the function alive via waitUntil semantics since
-  // Next hasn't closed the response until the stream is drained.
-  runWidgetAgent({ convo, content }).catch(err => {
-    console.error('[widget] agent run failed:', err)
-    broadcast(conversationId, {
-      type: 'agent_error',
-      message: 'Agent failed to respond. Please try again.',
-    })
+  // Run the agent AFTER the response is sent. Wrapping in `after()` is
+  // required on Vercel serverless — without it the runtime tears down the
+  // moment we return, killing the agent loop mid-Anthropic-call. That was
+  // the cause of "agent goes silent after a random number of turns": the
+  // first reply usually beat the suspension, later ones often didn't.
+  after(async () => {
+    try {
+      await runWidgetAgent({ convo, content })
+    } catch (err: any) {
+      console.error('[widget] agent run failed:', err)
+      broadcast(conversationId, {
+        type: 'agent_error',
+        message: 'Agent failed to respond. Please try again.',
+      })
+    }
   })
 
-  return response
+  // Respond to widget immediately — agent reply flows back on SSE
+  return NextResponse.json({ ok: true, messageId: visitorMsg.id }, { headers })
 }
 
