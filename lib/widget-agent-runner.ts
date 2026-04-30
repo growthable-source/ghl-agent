@@ -253,6 +253,31 @@ Booking / Other"). Don't use it for free-text answers.`
     } catch (err: any) {
       console.warn('[widget] stop-condition check failed:', err?.message)
     }
+
+    // Refresh the visitor's long-term memory summary. The cookie-based
+    // visitorId already links return visits; this is the layer that
+    // condenses prior chats into a paragraph the agent reads on the
+    // NEXT visit (via runAgent's ContactMemory lookup). Fire-and-forget
+    // so a slow Haiku call doesn't block the reply path. We only run
+    // this every Nth message to avoid a Haiku call per turn.
+    try {
+      const { updateWidgetMemorySummary } = await import('./conversation-memory')
+      const totalForVisitor = await db.widgetMessage.count({
+        where: { conversation: { visitorId: convo.visitorId } },
+      })
+      // Refresh on every 4th message — frequent enough that long
+      // conversations stay summarised, infrequent enough that we don't
+      // burn a Haiku call on every reply.
+      if (totalForVisitor >= 4 && totalForVisitor % 4 === 0) {
+        updateWidgetMemorySummary({
+          agentId: agent.id,
+          workspaceId: widget.workspaceId,
+          visitorId: convo.visitorId,
+        }).catch(() => {})
+      }
+    } catch (err: any) {
+      console.warn('[widget] memory summary refresh failed:', err?.message)
+    }
   } finally {
     await broadcast(convo.id, { type: 'agent_typing', isTyping: false }).catch(() => {})
   }

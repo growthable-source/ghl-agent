@@ -5,6 +5,7 @@ import { buildKnowledgeBlock } from '@/lib/rag'
 import { findMatchingAgent } from '@/lib/routing'
 import { getOrCreateConversationState, incrementMessageCount } from '@/lib/conversation-state'
 import { saveMessages, getMessageHistory } from '@/lib/conversation-memory'
+import { trackMessageUsage } from '@/lib/usage'
 
 // SMS webhook triggers a full agent loop. Vercel's default would kill
 // it after 10–15s, dropping the reply silently. 300s is the Pro cap.
@@ -209,6 +210,16 @@ export async function POST(req: NextRequest) {
     }
 
     await incrementMessageCount(agent.id, contactId).catch(() => {})
+
+    // Bill metered usage on successful sends, mirroring the GHL webhook
+    // path. Without this, Twilio-direct conversations were uncounted —
+    // workspaces could blow past their plan limits silently. Fire-and-
+    // forget; billing failures should never abort an SMS reply.
+    if (result.reply && twilioOk && agent.workspaceId) {
+      trackMessageUsage(agent.workspaceId, agent.id).catch(err =>
+        console.error('[Twilio] trackMessageUsage failed:', err?.message)
+      )
+    }
 
     // Mark the log row complete with the outbound + token usage.
     if (log && twilioOk) {
