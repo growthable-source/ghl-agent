@@ -127,6 +127,50 @@ is pending. Production launches when Advanced Access is granted.
 
 ---
 
+## 5b. Facebook Login for Business — REQUIRED for BM-owned Pages
+
+If any of the Pages you want to connect are owned by a **Meta Business
+Manager** (most non-personal Pages are), you must use Facebook Login
+for Business instead of classic Facebook Login. Symptoms when you
+skip this step: OAuth completes successfully, /me/accounts returns 0
+Pages, the dashboard shows "no Pages" even though you admin Pages in
+the BM. Classic FB Login simply doesn't surface BM-owned Pages
+reliably — that's the entire reason this newer flow exists.
+
+How to set it up:
+
+1. In the Meta App dashboard, **Use cases → Customize → Messenger
+   from Meta** (the use case you've already configured).
+2. In the left sidebar, click **Facebook Login for Business →
+   Configurations**.
+3. Click **+ Create configuration**.
+4. **Login type**: pick **"Login as Business"** — this is the one
+   that surfaces BM assets in the consent dialog.
+5. **Permissions** — tick:
+   - `pages_show_list`
+   - `pages_messaging`
+   - `pages_manage_metadata`
+   - `instagram_basic`
+   - `instagram_manage_messages`
+6. **Assets** — leave on "Allow all assets" so the user can pick
+   which Pages / IG accounts to grant per session. (You can scope
+   to specific assets if you only ever connect one BM, but most
+   workspaces will want the picker.)
+7. Save. Meta will give you a **Configuration ID** (looks like
+   `1234567890123456`).
+8. Copy that ID and set it as the `META_LOGIN_CONFIG_ID` env var
+   in Vercel, then redeploy.
+
+Once `META_LOGIN_CONFIG_ID` is set, our `/api/meta/oauth/connect`
+route automatically switches from the classic dialog to the Business
+Login dialog — no other code changes needed. The consent screen
+will show a "Choose a Business" picker first, then list the Pages +
+IG accounts the BM owns, ticked by default.
+
+If `META_LOGIN_CONFIG_ID` is unset, the classic flow runs as a
+fallback (useful for dev / personal-Page testing), but you'll hit
+the BM-owned-Page failure described above.
+
 ## 6. Environment variables
 
 Add these to Vercel (Production + Preview) and your `.env.local`:
@@ -135,6 +179,10 @@ Add these to Vercel (Production + Preview) and your `.env.local`:
 # From step 1 — App settings → Basic
 META_APP_ID="<your app id>"
 META_APP_SECRET="<your app secret>"
+
+# From step 5b — Facebook Login for Business → Configurations.
+# REQUIRED for connecting Business-Manager-owned Pages.
+META_LOGIN_CONFIG_ID="<your configuration id>"
 
 # From step 4 — anything opaque, must match what's in the webhook
 # subscription form
@@ -242,3 +290,5 @@ by different prompts.
 | Outbound fails with code 10 / 200 | 24h window closed and tag rejected — check the body returned by Graph |
 | Token works in dev but not prod | App is in development mode + the user isn't a Test User |
 | Instagram permission denied | Page isn't linked to an IG Business / Creator account |
+| OAuth succeeds but /me/accounts returns 0 Pages | Page is BM-owned and you're using classic FB Login. Set `META_LOGIN_CONFIG_ID` (step 5b). |
+| Consent dialog skips the Pages picker entirely | Same — set up Facebook Login for Business. The classic dialog skips the picker for BM-owned Pages. |

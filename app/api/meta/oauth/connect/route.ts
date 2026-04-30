@@ -103,12 +103,36 @@ export async function GET(req: NextRequest) {
 
   const redirectUri = buildRedirectUri(req)
 
+  // Two OAuth flows are supported:
+  //
+  // 1. **Facebook Login for Business** (preferred). Set META_LOGIN_CONFIG_ID
+  //    to a Configuration ID created in the Meta App dashboard. The
+  //    configuration declares which Use Cases (Messenger / IG Messaging)
+  //    and assets it covers, and the dialog explicitly surfaces
+  //    Business-Manager-owned Pages — which classic FB Login does not.
+  //    Required for any app that operates on BM-owned Pages.
+  //
+  // 2. **Classic Facebook Login** (fallback). Used when no config ID is
+  //    set. Works for personal Pages and very small apps; fails to
+  //    surface BM-owned Pages reliably. Useful for dev/test before the
+  //    Business config is set up.
+  const configId = process.env.META_LOGIN_CONFIG_ID
   const authUrl = new URL('https://www.facebook.com/v19.0/dialog/oauth')
   authUrl.searchParams.set('client_id', appId)
   authUrl.searchParams.set('redirect_uri', redirectUri)
   authUrl.searchParams.set('state', state)
-  authUrl.searchParams.set('scope', SCOPES)
   authUrl.searchParams.set('response_type', 'code')
+  if (configId) {
+    // Business Login — permissions live in the config, NOT the URL.
+    // Passing both scope + config_id is invalid; Meta's docs require
+    // exactly one. Configurations are managed in the App dashboard
+    // under "Use cases → Customize → Facebook Login for Business →
+    // Configurations".
+    authUrl.searchParams.set('config_id', configId)
+  } else {
+    // Classic flow — scope drives the consent screen.
+    authUrl.searchParams.set('scope', SCOPES)
+  }
 
   return NextResponse.redirect(authUrl.toString())
 }
