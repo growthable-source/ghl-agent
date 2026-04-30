@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import {
   GoHighLevelIcon, VapiIcon, TwilioIcon, HubSpotIcon,
-  CalendlyIcon, CalcomIcon, StripeIcon,
+  CalendlyIcon, CalcomIcon, StripeIcon, FacebookIcon, InstagramIcon,
 } from '@/components/icons/brand-icons'
 
 interface Integration {
@@ -17,9 +17,14 @@ interface Integration {
 
 export default function IntegrationsPage() {
   const params = useParams()
+  const search = useSearchParams()
   const workspaceId = params.workspaceId as string
 
   const [integrations, setIntegrations] = useState<Integration[]>([])
+  // Banner state for the Meta OAuth callback redirect. Surface success
+  // ("connected N Pages") or the specific error reason so the operator
+  // doesn't have to dig through Vercel logs to figure out what went wrong.
+  const [metaBanner, setMetaBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
   const [ghlConnected, setGhlConnected] = useState(false)
   const [vapiActive, setVapiActive] = useState(false)
   const [crmProvider, setCrmProvider] = useState<string>('ghl')
@@ -65,6 +70,38 @@ export default function IntegrationsPage() {
       })
       .finally(() => setLoading(false))
   }, [workspaceId])
+
+  // Read the Meta OAuth callback redirect query params once on mount and
+  // strip them from the URL so a refresh doesn't re-show the banner.
+  useEffect(() => {
+    const meta = search.get('meta')
+    if (!meta) return
+    if (meta === 'connected') {
+      const n = search.get('pages')
+      const count = n ? parseInt(n, 10) : 0
+      setMetaBanner({
+        kind: 'success',
+        text: count > 0
+          ? `Connected ${count} Page${count === 1 ? '' : 's'} from Meta. Inbound DMs will route to the matching agent.`
+          : 'Meta connected.',
+      })
+    } else if (meta === 'error') {
+      const reason = search.get('reason') ?? 'unknown'
+      const detail = search.get('detail')
+      const pretty = humaniseMetaError(reason)
+      setMetaBanner({
+        kind: 'error',
+        text: detail ? `${pretty} (${detail})` : pretty,
+      })
+    }
+    // Strip the params so reloads don't re-show the banner.
+    const url = new URL(window.location.href)
+    url.searchParams.delete('meta')
+    url.searchParams.delete('pages')
+    url.searchParams.delete('reason')
+    url.searchParams.delete('detail')
+    window.history.replaceState({}, '', url.toString())
+  }, [search])
 
   async function connectTwilio(e: React.FormEvent) {
     e.preventDefault()
@@ -196,7 +233,21 @@ export default function IntegrationsPage() {
 
   if (loading) return <div className="flex items-center justify-center h-64"><p className="text-zinc-500 text-sm">Loading…</p></div>
 
+  function humaniseMetaError(reason: string): string {
+    switch (reason) {
+      case 'no_pages': return "The Facebook account you authorized doesn't manage any Pages. Connect from a Facebook account that admins at least one Page."
+      case 'invalid_state': return 'OAuth state was invalid or expired. Try connecting again.'
+      case 'token_exchange_failed': return 'Meta rejected the OAuth code. Re-check META_APP_ID and META_APP_SECRET in Vercel and redeploy.'
+      case 'server_misconfigured': return 'Meta is not configured on this deployment (missing env vars). See docs/meta-integration.md.'
+      case 'missing_code_or_state': return 'OAuth callback was missing required parameters.'
+      case 'access_denied': return 'You declined access on the Facebook prompt.'
+      default: return `Meta connection failed (${reason}).`
+    }
+  }
+
   const twilioIntegrations = integrations.filter(i => i.type === 'twilio')
+  const metaIntegrations = integrations.filter(i => i.type === 'meta' && i.isActive)
+  const inactiveMetaIntegrations = integrations.filter(i => i.type === 'meta' && !i.isActive)
   const hubspotIntegrations = integrations.filter(i => i.type === 'hubspot')
   const calendlyIntegrations = integrations.filter(i => i.type === 'calendly')
   const calcomIntegrations = integrations.filter(i => i.type === 'calcom')
@@ -208,6 +259,26 @@ export default function IntegrationsPage() {
         <h1 className="text-xl font-semibold mb-1">Integrations</h1>
         <p className="text-zinc-400 text-sm">Connect your CRM, telephony, and communication platforms. Agents work across all connected channels.</p>
       </div>
+
+      {metaBanner && (
+        <div
+          className={`rounded-xl border p-4 mb-6 flex items-start justify-between gap-3 ${
+            metaBanner.kind === 'success'
+              ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-200'
+              : 'border-red-900/60 bg-red-950/40 text-red-200'
+          }`}
+          role="status"
+        >
+          <p className="text-sm">{metaBanner.text}</p>
+          <button
+            onClick={() => setMetaBanner(null)}
+            className="text-xs opacity-60 hover:opacity-100"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* CRM Provider Selector — only show when both are available */}
       {ghlConnected && hubspotIntegrations.length > 0 && (
@@ -386,6 +457,83 @@ export default function IntegrationsPage() {
                 </button>
               </div>
             </form>
+          )}
+        </div>
+
+        {/* Meta — Facebook Messenger + Instagram DMs (native, no CRM dep) */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 relative">
+                {/* Stack the two glyphs slightly so the pair reads as one
+                    "Meta" affordance without inventing a custom icon. */}
+                <div className="absolute -left-1 -top-0.5 text-[#1877F2]"><FacebookIcon className="w-5 h-5" /></div>
+                <div className="absolute right-0 bottom-0"><InstagramIcon className="w-5 h-5" /></div>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Meta — Messenger &amp; Instagram</p>
+                <p className="text-xs text-zinc-500">Direct DMs from Facebook Pages and Instagram Business accounts — no CRM required</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {metaIntegrations.length > 0 && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">
+                  {metaIntegrations.length} {metaIntegrations.length === 1 ? 'Page' : 'Pages'}
+                </span>
+              )}
+              <a
+                href={`/api/meta/oauth/connect?workspaceId=${workspaceId}`}
+                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+              >
+                {metaIntegrations.length > 0 ? '+ Add Page' : 'Connect Meta'}
+              </a>
+            </div>
+          </div>
+
+          {/* Connected pages — show Page name plus an IG badge when the
+              Page is also linked to an Instagram Business Account. */}
+          {metaIntegrations.length > 0 && (
+            <div className="space-y-1 mb-3">
+              {metaIntegrations.map(i => {
+                const cred = (i as Integration & { credentials?: { pageName?: string; instagramBusinessAccountId?: string } }).credentials
+                const igLinked = !!cred?.instagramBusinessAccountId
+                return (
+                  <div key={i.id} className="flex items-center justify-between bg-zinc-900 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-300">{cred?.pageName || i.name}</span>
+                      {igLinked && (
+                        <span className="text-[10px] uppercase tracking-wider text-pink-400/80">+ IG</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-emerald-400">Active</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Inactive integrations need a clear "reconnect" CTA — Meta
+              page tokens can't refresh silently, so once one expires
+              the operator has to redo OAuth. */}
+          {inactiveMetaIntegrations.length > 0 && (
+            <div className="space-y-1 mb-3">
+              {inactiveMetaIntegrations.map(i => (
+                <div key={i.id} className="flex items-center justify-between bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2">
+                  <span className="text-xs text-amber-200">{i.name}</span>
+                  <span className="text-xs text-amber-400">Token expired — reconnect</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Operator-facing explainer that's only shown to workspaces
+              without a CRM connected — those are the ones for whom this
+              path matters most ("I don't want GoHighLevel just to talk
+              to my FB DMs"). */}
+          {!ghlConnected && hubspotIntegrations.length === 0 && metaIntegrations.length === 0 && (
+            <p className="text-xs text-zinc-500 mt-3">
+              Connect Meta directly to handle Messenger and Instagram DMs without setting up a CRM. Each Page you authorize becomes its own integration; route different Pages to different agents from the routing rules tab.
+            </p>
           )}
         </div>
 

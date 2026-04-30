@@ -21,6 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { db } from '@/lib/db'
 import { createHmac, randomBytes } from 'node:crypto'
 
 export const dynamic = 'force-dynamic'
@@ -35,15 +36,52 @@ const SCOPES = [
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
-  const locationId = url.searchParams.get('locationId')
   const workspaceId = url.searchParams.get('workspaceId')
-  if (!locationId || !workspaceId) {
-    return NextResponse.json({ error: 'locationId and workspaceId are required' }, { status: 400 })
+  if (!workspaceId) {
+    return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 })
   }
 
   // Auth: only members of the workspace can initiate the flow.
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
+
+  // Resolve a Location for the workspace to attach the integration to.
+  // Native Meta works without GHL — if no Location exists yet (workspaces
+  // that only use widget / direct channels), bootstrap a stub Location
+  // with empty GHL-OAuth fields. The schema requires those columns; we
+  // satisfy the constraint with empty strings + crmProvider='none' so
+  // nothing in the GHL token-refresh path mistakes it for a real GHL
+  // connection. Eventually the schema should make those nullable, but
+  // this unblocks workspaces that haven't connected GHL.
+  let location = await db.location.findFirst({
+    where: { workspaceId },
+    select: { id: true },
+    orderBy: { installedAt: 'desc' },
+  })
+  if (!location) {
+    try {
+      location = await db.location.create({
+        data: {
+          id: `ws-${workspaceId}`,
+          workspaceId,
+          companyId: '',
+          userId: '',
+          userType: 'direct',
+          scope: '',
+          accessToken: '',
+          refreshToken: '',
+          refreshTokenId: '',
+          expiresAt: new Date(0),
+          crmProvider: 'none',
+        },
+        select: { id: true },
+      })
+    } catch (err: any) {
+      console.error('[meta-oauth] failed to bootstrap Location for workspace:', err?.message)
+      return NextResponse.json({ error: 'Could not bootstrap a Location for this workspace.' }, { status: 500 })
+    }
+  }
+  const locationId = location.id
 
   const appId = process.env.META_APP_ID
   const stateSecret = process.env.META_OAUTH_STATE_SECRET
