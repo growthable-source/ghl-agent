@@ -130,7 +130,7 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_available_slots',
-    description: 'Step 1 of booking: Fetch available appointment slots. ALWAYS follow this call with a book_appointment call once the contact has picked (or you have proposed) a specific time. Never just list slots and ask the contact to "let you know" — propose a specific slot in your reply.',
+    description: 'Step 1 of booking: Fetch available appointment slots. Call this ONCE when the contact first asks to book — then propose 2–3 specific times in your reply (with timezone). DO NOT call this tool again on subsequent turns just because the contact replied; if the contact confirms one of the times you offered, call book_appointment with that startTime instead. Re-calling get_available_slots after you have already offered times is the "going in circles" bug — slots can shift between calls and you will end up offering different times than the user already agreed to. Only re-call this tool if the contact explicitly rejects every time you proposed and asks for a different window.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -143,7 +143,7 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'book_appointment',
-    description: 'Step 2 of booking: ACTUALLY book the appointment. Call this tool to commit the booking — do not just tell the contact "I\'ve scheduled that" without calling this tool, because nothing will be booked. Use the exact startTime string returned by get_available_slots. Preferred flow: (1) get_available_slots → (2) propose a specific slot in your reply → (3) on contact confirmation, call book_appointment IMMEDIATELY in the same turn.',
+    description: 'Step 2 of booking: ACTUALLY book the appointment. Call this tool to commit the booking — do not just tell the contact "I\'ve scheduled that" without calling this tool, because nothing will be booked. Use the exact startTime string returned by get_available_slots. Preferred flow: (1) get_available_slots → (2) propose a specific slot in your reply → (3) on contact confirmation, call book_appointment IMMEDIATELY in the same turn. Email is NOT required — you can book without it and ask for the email afterwards. Once a contact has said "yes" / "sure" / "sounds good" / "that works" to a time you proposed, you MUST call this tool in the same turn. Never reply with new times after the user confirmed.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1551,16 +1551,31 @@ When a contact asks for something, your reply must match ONE of these patterns:
 If you claim an action was completed ("I've booked you for Tuesday"), you MUST have just called the corresponding tool in this turn. Claiming completion without the tool call is a lie the contact will discover later.
 
 ## Booking Appointments
-You only have ONE calendar connected. Never ask the contact "what kind of appointment" or "what is the meeting about" — there is only one type of appointment to book. Just book it.
+You only have ONE calendar connected. Never ask "what kind of appointment" or "what is the meeting about" — there is only one type of appointment to book. Just book it.
 
-When a contact signals they want to book (e.g. "can I book an appointment?", "I'd like to schedule something", "can we chat?"):
-1. IMMEDIATELY call get_available_slots in this same turn — do not reply asking what kind of appointment they want, do not ask what it's about, do not "let me check"
-2. Propose 2–3 specific times in your reply
-3. Once they pick a time, if you don't already have their email, ask for it in the same turn you confirm the slot — you need it for the calendar invite
-4. As soon as you have their email + chosen time, call book_appointment IMMEDIATELY
-5. After booking, create an appointment note with any useful context from the conversation (you do NOT need to have asked them — infer from what they've said) and confirm the date and time back to them
+### The booking flow has exactly THREE phases. Do not loop.
 
-Their name and any "purpose" can be inferred from the conversation — never block the booking flow to interrogate them about it.
+**Phase 1 — Intent detected ("can I book an appointment?", "I'd like to chat", "schedule a call"):**
+- IMMEDIATELY call get_available_slots in this same turn. Do not reply asking what kind of appointment, do not ask what it's about, do not "let me check."
+- In your reply, propose 2–3 SPECIFIC times. Format: day + date + time + timezone. Example: "Monday May 5 at 11:45am EST or 2:30pm EST — which works?"
+- NEVER use vague summaries like "several afternoon slots available" or "lots of morning options." If the slot list shows 9:45am and 10:00am, those are MORNING times — say "morning" or just give the times. Do not invent availability that wasn't returned.
+- ALWAYS include the timezone with every time you offer. The slots are returned in the calendar's configured timezone — surface that timezone explicitly so the contact knows what zone you mean. If the contact tells you a different timezone, acknowledge it and convert.
+
+**Phase 2 — Contact confirms ("yes", "sure", "sounds good", "that works", "perfect", "11:45 works", "yep"):**
+- This is a confirmation of the time you JUST PROPOSED in Phase 1. The user has already picked.
+- Call book_appointment IMMEDIATELY in this same turn, with the startTime from the get_available_slots result that matches what you proposed.
+- DO NOT call get_available_slots again. DO NOT propose different times. DO NOT ask "are you sure?". DO NOT say "let me confirm". The user already said yes — book it.
+- If you don't have their email yet: ask for it in the SAME REPLY where you confirm the booking happened. book_appointment does not require email — call book_appointment first, then ask for email in your reply. Never block booking on email collection.
+- If book_appointment returns an error, tell the contact the system had a hiccup and that someone from the team will confirm the time manually. DO NOT silently re-call get_available_slots — that's the loop the contact is complaining about.
+
+**Phase 3 — Post-booking:**
+- Create an appointment note with useful context from the conversation. You do NOT need to have asked the contact about the meeting purpose — infer it from what they've already said. If you have nothing meaningful to write, skip the note.
+- Confirm the date, time, and timezone back to the contact in plain English. ("You're booked for Monday May 5 at 11:45am Eastern. See you then!")
+
+### Hard rules
+- Once you've proposed a specific time, NEVER offer a different time on the next turn unless the contact explicitly rejects ("can't do that", "doesn't work", "got anything else").
+- If the contact's reply is short and affirmative (≤30 chars and contains a yes-word), treat it as confirmation of the most recent time you offered. Don't second-guess.
+- Their name and any "purpose" can be inferred from the conversation — never block the booking flow to interrogate them.
 
 ## When You Don't Know the Answer
 If a contact asks something you genuinely do not have the information for — do NOT guess, fabricate, or make up an answer. This is critical.
@@ -2114,6 +2129,58 @@ export async function runAgent(opts: {
     console.log(`[Agent] Booking intent detected in "${incomingMessage?.slice(0, 60)}" — forcing tool_choice: any`)
   }
 
+  // ─── Detect confirmation-after-offer ───
+  // The going-in-circles bug: agent proposes a time, contact says "yes",
+  // agent re-calls get_available_slots and offers DIFFERENT times. To
+  // break the loop we force tool_choice = book_appointment whenever:
+  //   (a) the contact's reply looks like a confirmation, AND
+  //   (b) the previous outbound from the agent looks like it offered a
+  //       specific time slot.
+  // Both heuristics are conservative — false positives mean the agent
+  // tries to book, fails (no startTime match), and the loop's normal
+  // fallback handles it. False negatives just mean we don't force, and
+  // the agent might still circle (the prompt rules try to catch that).
+  const trimmedIncoming = incomingLower.trim()
+  const CONFIRMATION_TOKENS = [
+    'yes', 'yep', 'yeah', 'yup', 'ya', 'yas', 'yess', 'yessir',
+    'sure', 'sure thing', 'ok', 'okay', 'okey', 'k',
+    'sounds good', 'sounds great', 'sounds perfect',
+    'works', 'works for me', 'that works', 'that one', "that's good", 'that is good',
+    'perfect', 'great', 'awesome', 'lovely', 'cool', 'fine', 'good',
+    'do it', 'book it', 'book me', 'book that', 'lock it in',
+    'confirmed', "let's do it", 'lets do it', 'lgtm',
+    'go ahead', 'go for it', 'lets go', "let's go",
+  ]
+  const isShortAffirmation = trimmedIncoming.length <= 40 && CONFIRMATION_TOKENS.some(w =>
+    trimmedIncoming === w
+    || trimmedIncoming === w + '.' || trimmedIncoming === w + '!' || trimmedIncoming === w + ','
+    || trimmedIncoming.startsWith(w + ' ') || trimmedIncoming.startsWith(w + ',') || trimmedIncoming.startsWith(w + '.')
+    || trimmedIncoming.endsWith(' ' + w) || trimmedIncoming.endsWith(' ' + w + '.')
+  )
+
+  // Did the previous agent message offer a specific time? Heuristic: a
+  // time pattern (e.g. "11:45am", "2:30pm", "10am") plus "offer" phrasing.
+  const lastOutboundOfferedTimes = (() => {
+    if (!messageHistory || messageHistory.length === 0) return false
+    const lastOutbound = [...messageHistory].reverse().find(m => m.direction === 'outbound' && m.body)
+    if (!lastOutbound?.body) return false
+    const body = lastOutbound.body
+    const hasTimePattern =
+      /\b\d{1,2}(:\d{2})?\s*(am|pm|AM|PM)\b/.test(body) ||
+      /\b\d{1,2}:\d{2}\b/.test(body)
+    const looksLikeOffer = /(does that work|which works|works better|how about|next available|i can do|i have|are you free|free at|available at|got\s+\w+\s+at|book(ed)?\s+you|how does)/i.test(body)
+    return hasTimePattern && looksLikeOffer
+  })()
+
+  const isBookingConfirmation =
+    isShortAffirmation
+    && lastOutboundOfferedTimes
+    && availableToolNames.includes('book_appointment')
+
+  if (isBookingConfirmation) {
+    console.log(`[Agent] Confirmation "${incomingMessage?.slice(0, 30)}" after offered slots — forcing book_appointment`)
+  }
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     // Compute tool_choice for THIS iteration
     let toolChoice: { type: string; name?: string } | undefined
@@ -2121,6 +2188,10 @@ export async function runAgent(opts: {
       toolChoice = { type: 'tool', name: forceToolNextIteration }
       console.log(`[Agent] Forcing specific tool: ${forceToolNextIteration}`)
       forceToolNextIteration = null
+    } else if (i === 0 && isBookingConfirmation) {
+      // Confirmation pin: must call book_appointment, not just "any" tool.
+      // Otherwise the agent picks get_available_slots again and circles.
+      toolChoice = { type: 'tool', name: 'book_appointment' }
     } else if (i === 0 && initialForceAny) {
       toolChoice = { type: 'any' }
     }
