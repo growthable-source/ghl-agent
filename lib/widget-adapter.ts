@@ -64,8 +64,9 @@ export class WidgetAdapter implements CrmAdapter {
       data: { lastMessageAt: new Date() },
     })
 
-    // Push to every SSE subscriber listening to this conversation.
-    broadcast(this.conversationId, {
+    // Push to every SSE subscriber listening to this conversation. Awaited
+    // so the NOTIFY lands before the agent loop moves on / suspends.
+    await broadcast(this.conversationId, {
       type: 'agent_message',
       id: msg.id,
       content: finalMessage,
@@ -92,7 +93,7 @@ export class WidgetAdapter implements CrmAdapter {
           kind: 'text',
         },
       })
-      broadcast(this.conversationId, {
+      await broadcast(this.conversationId, {
         type: 'agent_message',
         id: msg.id,
         content,

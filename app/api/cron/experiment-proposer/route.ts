@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import Anthropic from '@anthropic-ai/sdk'
 
+// Iterates over eligible agents, calls Sonnet for each. With many
+// agents per cron run this can stack up; 300s gives headroom.
+export const maxDuration = 300
+
 /**
  * Weekly experiment-proposer cron.
  *

@@ -27,6 +27,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Broadcast as agent_typing so the visitor widget treats it the same
   // as AI typing — fromHuman=true differentiates the source for any
   // operator-side subscriber that cares.
-  broadcast(conversationId, { type: 'agent_typing', isTyping, fromHuman: true })
+  await broadcast(conversationId, { type: 'agent_typing', isTyping, fromHuman: true })
   return NextResponse.json({ ok: true })
 }

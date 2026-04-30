@@ -25,6 +25,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   let body: any = {}
   try { body = await req.json() } catch {}
   const isTyping = !!body.isTyping
-  broadcast(conversationId, { type: 'visitor_typing', isTyping })
+  await broadcast(conversationId, { type: 'visitor_typing', isTyping })
   return NextResponse.json({ ok: true }, { headers })
 }

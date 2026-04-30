@@ -5,6 +5,9 @@ import { audit } from '@/lib/audit'
 import type { MessageChannelType } from '@/types'
 
 export const dynamic = 'force-dynamic'
+// `sendFollowUpNow=true` runs the full agent loop synchronously to
+// compose an outbound. 300s covers worst-case Anthropic + tool latency.
+export const maxDuration = 300
 
 /**
  * Resume a paused conversation and hand it back to the agent.

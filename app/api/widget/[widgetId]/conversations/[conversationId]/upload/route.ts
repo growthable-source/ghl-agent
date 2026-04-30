@@ -115,7 +115,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     data: { lastMessageAt: new Date(), staleNotifiedAt: null },
   })
 
-  broadcast(conversationId, {
+  await broadcast(conversationId, {
     type: 'visitor_message',
     id: msg.id,
     content,
@@ -145,10 +145,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       })
     } catch (err: any) {
       console.error('[widget upload] agent run failed:', err)
-      broadcast(conversationId, {
+      await broadcast(conversationId, {
         type: 'agent_error',
         message: 'Agent failed to acknowledge the upload. Please try again.',
-      })
+      }).catch(() => {})
     }
   })
 

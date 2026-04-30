@@ -49,6 +49,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     },
   })
 
-  broadcast(call.conversation.id, { type: 'voice_ended', callId })
+  await broadcast(call.conversation.id, { type: 'voice_ended', callId })
   return NextResponse.json({ success: true }, { headers })
 }

@@ -5,6 +5,10 @@ import { buildKnowledgeBlock } from '@/lib/rag'
 import { findMatchingAgent } from '@/lib/routing'
 import { getOrCreateConversationState } from '@/lib/conversation-state'
 
+// SMS webhook triggers a full agent loop. Vercel's default would kill
+// it after 10–15s, dropping the reply silently. 300s is the Pro cap.
+export const maxDuration = 300
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
   const from = formData.get('From') as string

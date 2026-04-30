@@ -1,7 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { broadcast } from '@/lib/widget-sse'
+
+// Background work (auto-routing, CRM sync, self-assign) runs via after()
+// after the JSON response. maxDuration covers those tails on Vercel.
+export const maxDuration = 60
 
 type Params = { params: Promise<{ workspaceId: string; conversationId: string }> }
 
@@ -93,27 +97,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     where: { id: conversationId },
     data: { status: next },
   })
-  broadcast(conversationId, { type: 'status_changed', status: next })
+  await broadcast(conversationId, { type: 'status_changed', status: next })
 
   // Status hit "handed_off" — auto-route per the widget's config so an
   // operator gets a heads-up immediately, instead of the chat sitting in
-  // a queue waiting for someone to notice.
+  // a queue waiting for someone to notice. Wrapped in after() so the
+  // serverless runtime keeps it alive past the JSON response.
   if (next === 'handed_off') {
-    ;(async () => {
+    after(async () => {
       try {
         const { autoRouteIfUnassigned } = await import('@/lib/widget-routing')
         await autoRouteIfUnassigned({ workspaceId, conversationId })
       } catch (err: any) {
         console.warn('[widget] auto-route on handover failed:', err?.message)
       }
-    })()
+    })
   }
 
-  // GHL bridge — fire-and-forget. On 'ended' write a transcript note +
-  // resolved tag onto the contact so operators living in GHL have a
-  // permanent record. Skipped silently when no CRM is connected.
+  // GHL bridge — runs after the response. On 'ended' write a transcript
+  // note + resolved tag onto the contact so operators living in GHL have
+  // a permanent record. Skipped silently when no CRM is connected.
   if (next === 'ended') {
-    ;(async () => {
+    after(async () => {
       try {
         const full = await db.widgetConversation.findUnique({
           where: { id: conversationId },
@@ -130,7 +135,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       } catch (err: any) {
         console.warn('[widget] CRM resolve sync failed:', err?.message)
       }
-    })()
+    })
   }
   return NextResponse.json({ ok: true, status: next })
 }
@@ -174,7 +179,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     },
   })
 
-  broadcast(conversationId, {
+  await broadcast(conversationId, {
     type: 'agent_message',
     id: msg.id,
     content,
@@ -183,23 +188,24 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
 
   // GHL bridge — first time an operator takes over, tag the contact so
-  // the record reflects "human is on this." Fire-and-forget.
+  // the record reflects "human is on this." Wrapped in after() so the
+  // tag write isn't killed when the function suspends.
   if (wasActive) {
-    ;(async () => {
+    after(async () => {
       try {
         const { tagOnHandover } = await import('@/lib/widget-crm-sync')
         await tagOnHandover(workspaceId, convo.visitor as any)
       } catch (err: any) {
         console.warn('[widget] CRM handover tag failed:', err?.message)
       }
-    })()
+    })
   }
 
   // Operator self-assignment — if the chat had no assignee, replying
   // claims it. This mirrors Intercom: whoever picks up a thread becomes
   // the de-facto owner unless someone reassigns later.
   if (wasUnassigned && access.session.user?.id) {
-    ;(async () => {
+    after(async () => {
       try {
         const { assignConversation } = await import('@/lib/widget-routing')
         await assignConversation({
@@ -212,7 +218,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       } catch (err: any) {
         console.warn('[widget] self-assign failed:', err?.message)
       }
-    })()
+    })
   }
 
   return NextResponse.json({ messageId: msg.id })

@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { addSubscriber, removeSubscriber, formatSSE } from '@/lib/widget-sse'
+import { formatSSE } from '@/lib/widget-sse'
+import { subscribe } from '@/lib/widget-pubsub'
+
+export const maxDuration = 300
 
 type Params = { params: Promise<{ workspaceId: string; conversationId: string }> }
 
@@ -30,16 +33,38 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   const subId = 'op_' + Math.random().toString(36).slice(2, 10)
+
+  let pending: unknown[] | null = []
+  let deliver: (msg: unknown) => void = (msg) => { pending!.push(msg) }
+  let onPubsubError: (err: Error) => void = () => {}
+
+  let subscription: Awaited<ReturnType<typeof subscribe>>
+  try {
+    subscription = await subscribe(
+      conversationId,
+      (msg) => deliver(msg),
+      (err) => onPubsubError(err),
+    )
+  } catch (err: any) {
+    console.error('[op-stream] failed to open pubsub subscription:', err.message)
+    return new Response(JSON.stringify({ error: 'stream unavailable' }), {
+      status: 503, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   const stream = new ReadableStream({
     start(controller) {
-      const sub = {
-        id: subId,
-        write: (msg: any) => {
-          try { controller.enqueue(formatSSE(msg)) } catch {}
-        },
-        close: () => { try { controller.close() } catch {} },
+      deliver = (msg) => {
+        try { controller.enqueue(formatSSE(msg as any)) } catch {}
       }
-      addSubscriber(conversationId, sub)
+      for (const msg of pending!) deliver(msg)
+      pending = null
+
+      onPubsubError = (err) => {
+        console.warn('[op-stream] pubsub error, closing SSE:', err.message)
+        try { controller.close() } catch {}
+      }
+
       controller.enqueue(formatSSE({ type: 'hello', subId, conversationId }))
 
       const keepalive = setInterval(() => {
@@ -49,7 +74,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
       const cleanup = () => {
         clearInterval(keepalive)
-        removeSubscriber(conversationId, sub)
+        subscription.close().catch(() => {})
         try { controller.close() } catch {}
       }
       req.signal.addEventListener('abort', cleanup)

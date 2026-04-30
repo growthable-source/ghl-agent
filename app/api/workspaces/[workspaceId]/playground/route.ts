@@ -6,6 +6,10 @@ import { runAgent } from '@/lib/ai-agent'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'
 
+// Playground waits for the full agent reply before responding (single
+// turn but with tool loops). 120s covers worst case.
+export const maxDuration = 120
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ workspaceId: string }> }

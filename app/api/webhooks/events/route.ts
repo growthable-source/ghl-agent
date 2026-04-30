@@ -23,6 +23,12 @@ import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-sch
 import { debounceMessage } from '@/lib/message-debounce'
 import { buildPersonaBlock } from '@/lib/persona'
 import { htmlToText } from '@/lib/html-to-text'
+
+// CRM webhooks trigger a full agent run (Anthropic loop, tool calls, CRM
+// writes). Vercel's default 10–15s ceiling kills these mid-loop, which
+// previously surfaced as the agent silently failing to reply to inbound
+// messages. 300s is the Vercel Pro non-Enterprise cap.
+export const maxDuration = 300
 import { trackMessageUsage } from '@/lib/usage'
 import { evaluateApprovalNeed, recordGoalAchievements, isContactBlocked } from '@/lib/approval-rules'
 import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'

@@ -72,14 +72,14 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
   }
 
   if (!agent) {
-    broadcast(convo.id, {
+    await broadcast(convo.id, {
       type: 'agent_error',
       message: 'No agent is configured to handle this widget. Add a default agent in the widget settings.',
     })
     return
   }
 
-  broadcast(convo.id, { type: 'agent_typing', isTyping: true })
+  await broadcast(convo.id, { type: 'agent_typing', isTyping: true })
 
   let fullPrompt = agent.systemPrompt
   fullPrompt += await buildObjectivesBlockForAgent(agent.id, content)
@@ -251,6 +251,6 @@ Booking / Other"). Don't use it for free-text answers.`
       console.warn('[widget] stop-condition check failed:', err?.message)
     }
   } finally {
-    broadcast(convo.id, { type: 'agent_typing', isTyping: false })
+    await broadcast(convo.id, { type: 'agent_typing', isTyping: false }).catch(() => {})
   }
 }

@@ -113,7 +113,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Echo the visitor message back via SSE so other tabs/subscribers see it
-  broadcast(conversationId, {
+  await broadcast(conversationId, {
     type: 'visitor_message',
     id: visitorMsg.id,
     content,
@@ -130,10 +130,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       await runWidgetAgent({ convo, content })
     } catch (err: any) {
       console.error('[widget] agent run failed:', err)
-      broadcast(conversationId, {
+      await broadcast(conversationId, {
         type: 'agent_error',
         message: 'Agent failed to respond. Please try again.',
-      })
+      }).catch(() => {})
     }
   })
 

@@ -4,6 +4,11 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { runAgent } from '@/lib/ai-agent'
 import type { Message } from '@/types'
 
+// Replay reruns the full agent loop against a real conversation. Long
+// timeline = many tool calls; cap at the Pro maximum so the request
+// doesn't get clipped.
+export const maxDuration = 300
+
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
 /**

@@ -186,7 +186,7 @@ export async function assignConversation(params: {
     assigneeName = u?.name ?? u?.email ?? null
   }
 
-  broadcast(conversationId, {
+  await broadcast(conversationId, {
     type: 'assignment_changed',
     assignedUserId: userId,
     assigneeName,

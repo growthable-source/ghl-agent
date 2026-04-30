@@ -75,7 +75,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       ...(convo.status === 'active' ? { status: 'handed_off' } : {}),
     },
   })
-  broadcast(conversationId, {
+  await broadcast(conversationId, {
     type: 'agent_message',
     id: msg.id,
     content,
