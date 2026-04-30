@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction, verifyPassword } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter, verifyPassword } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   const ok = await verifyPassword(password, admin.passwordHash)
   if (!ok) {
-    logAdminAction({ admin: session, action: '2fa_disable_bad_password' }).catch(() => {})
+    logAdminActionAfter({ admin: session, action: '2fa_disable_bad_password' })
     return NextResponse.json({ error: 'Invalid password.' }, { status: 401 })
   }
 
@@ -35,6 +35,6 @@ export async function POST(req: NextRequest) {
     where: { id: session.adminId },
     data: { twoFactorSecret: null, twoFactorVerifiedAt: null },
   })
-  logAdminAction({ admin: session, action: '2fa_disabled' }).catch(() => {})
+  logAdminActionAfter({ admin: session, action: '2fa_disabled' })
   return NextResponse.json({ ok: true })
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction, roleHas } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter, roleHas } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 // Claude calls can take a bit. 60s is well under Vercel's 5-minute hard
@@ -468,7 +468,7 @@ export async function POST(req: NextRequest) {
     ? (review.messages as unknown as ReviewMessage[])
     : []
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'conversation_review_turn',
     target: `${agentId}:${contactId}`,
@@ -477,7 +477,7 @@ export async function POST(req: NextRequest) {
       turnCount: draftThread.length,
       proposedLearnings: createdLearnings.length,
     },
-  }).catch(() => {})
+  })
 
   return NextResponse.json({
     reviewId: review.id,

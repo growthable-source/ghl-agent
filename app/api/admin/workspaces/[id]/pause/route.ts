@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdminRole, logAdminAction } from '@/lib/admin-auth'
+import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,12 +33,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
     },
   })
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: nowPausing ? 'pause_workspace' : 'unpause_workspace',
     target: id,
     meta: { name: ws.name },
-  }).catch(() => {})
+  })
 
   return NextResponse.redirect(new URL(`/admin/workspaces/${id}`, _req.url))
 }

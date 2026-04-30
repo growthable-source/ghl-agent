@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -121,12 +121,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
     workspaceIssues.push(`${skippedRecently} of the last 20 inbounds were skipped. Check the Recent inbounds list below.`)
   }
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'view_routing_diagnostic',
     target: workspaceId,
     meta: { agentCount: agents.length, skippedCount: skippedRecently },
-  }).catch(() => {})
+  })
 
   return NextResponse.json({
     ok: workspaceIssues.length === 0,

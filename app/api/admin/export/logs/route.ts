@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter } from '@/lib/admin-auth'
 import { toCsv, csvResponse, ADMIN_EXPORT_ROW_CAP } from '@/lib/admin-csv'
 
 export const dynamic = 'force-dynamic'
@@ -54,11 +54,11 @@ export async function GET(req: NextRequest) {
     ])
   }
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'export_logs_csv',
     meta: { status, locationId, agentId, contactId, rowCount: logs.length },
-  }).catch(() => {})
+  })
 
   const stamp = new Date().toISOString().slice(0, 10)
   return csvResponse(`voxility-logs-${stamp}.csv`, toCsv(rows))

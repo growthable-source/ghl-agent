@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword, signAdminToken, setAdminCookie, logAdminAction } from '@/lib/admin-auth'
+import { hashPassword, signAdminToken, setAdminCookie, logAdminActionAfter } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,13 +122,13 @@ export async function POST(req: NextRequest) {
     await db.superAdmin.update({
       where: { id: admin.id },
       data: { lastLoginAt: new Date() },
-    }).catch(() => {})
+    })
 
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'bootstrap_first_admin',
       meta: { viaWebSetup: true },
-    }).catch(() => {})
+    })
 
     return NextResponse.json({ ok: true, admin: { email: admin.email, name: admin.name } })
   } catch (err: any) {

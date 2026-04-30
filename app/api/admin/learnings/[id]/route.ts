@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction, roleHas } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter, roleHas } from '@/lib/admin-auth'
 import { applyLearning, retireLearning } from '@/lib/platform-learning'
 
 export const dynamic = 'force-dynamic'
@@ -69,12 +69,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         ...(editedContent && editedContent !== learning.content ? { content: editedContent } : {}),
       },
     })
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'learning_approve',
       target: id,
       meta: { edited: editedContent !== null && editedContent !== learning.content },
-    }).catch(() => {})
+    })
     return NextResponse.json({ ok: true, learning: updated })
   }
 
@@ -94,12 +94,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         rejectedReason: reason,
       },
     })
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'learning_reject',
       target: id,
       meta: { reason: reason ?? null },
-    }).catch(() => {})
+    })
     return NextResponse.json({ ok: true, learning: updated })
   }
 
@@ -108,12 +108,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 })
     }
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'learning_apply',
       target: id,
       meta: { agentId: result.agentId },
-    }).catch(() => {})
+    })
     return NextResponse.json({ ok: true })
   }
 
@@ -122,11 +122,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 })
     }
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'learning_retire',
       target: id,
-    }).catch(() => {})
+    })
     return NextResponse.json({ ok: true })
   }
 
@@ -176,12 +176,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       },
       select: { id: true },
     })
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'learning_promote',
       target: id,
       meta: { promotedLearningId: created.id },
-    }).catch(() => {})
+    })
     return NextResponse.json({ ok: true, promotedLearningId: created.id })
   }
 

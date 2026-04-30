@@ -78,15 +78,20 @@ export async function POST(req: NextRequest, { params }: Params) {
       where: { visitorId: visitor.id, kind: 'page_view' },
       orderBy: { createdAt: 'desc' },
       select: { data: true, createdAt: true },
-    }).catch(() => null)
+    }).catch((err: any) => {
+      console.warn('[visitor-events] dedupe lookup failed:', err?.message)
+      return null
+    })
     const sameUrl = lastEvent?.data?.url === url
     const tooSoon = lastEvent && Date.now() - new Date(lastEvent.createdAt).getTime() < 60_000
     if (sameUrl && tooSoon) {
       // Update lastSeen on the visitor but don't write a new event row.
+      // We log failures rather than block the visitor's request — the
+      // chat path can't get blocked on this metadata write.
       await db.widgetVisitor.update({
         where: { id: visitor.id },
         data: { lastSeenAt: new Date() },
-      }).catch(() => {})
+      }).catch((err: any) => console.warn('[visitor-events] lastSeen update failed:', err?.message))
       return NextResponse.json({ ok: true, deduped: true }, { headers })
     }
 
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           currentTitle: typeof data.title === 'string' ? data.title.slice(0, 200) : null,
           lastSeenAt: new Date(),
         } as any,
-      }).catch(() => {}),
+      }).catch((err: any) => console.warn('[visitor-events] currentPage update failed:', err?.message)),
     ])
     return NextResponse.json({ ok: true }, { headers })
   }
@@ -112,11 +117,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   await Promise.all([
     (db as any).widgetVisitorEvent.create({
       data: { visitorId: visitor.id, kind, data },
-    }).catch(() => {}),
+    }).catch((err: any) => console.warn('[visitor-events] event create failed:', err?.message)),
     db.widgetVisitor.update({
       where: { id: visitor.id },
       data: { lastSeenAt: new Date() },
-    }).catch(() => {}),
+    }).catch((err: any) => console.warn('[visitor-events] lastSeen update failed:', err?.message)),
   ])
   return NextResponse.json({ ok: true }, { headers })
 }

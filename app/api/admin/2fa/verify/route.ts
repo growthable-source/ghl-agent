@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction, signAdminToken, setAdminCookie } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter, signAdminToken, setAdminCookie } from '@/lib/admin-auth'
 import { verifyCode } from '@/lib/admin-2fa'
 
 export const dynamic = 'force-dynamic'
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   const ok = verifyCode(code, admin.twoFactorSecret)
   if (!ok) {
-    logAdminAction({ admin: session, action: '2fa_verify_failed' }).catch(() => {})
+    logAdminActionAfter({ admin: session, action: '2fa_verify_failed' })
     return NextResponse.json({ error: 'Invalid code.' }, { status: 401 })
   }
 
@@ -67,16 +67,16 @@ export async function POST(req: NextRequest) {
   const token = await signAdminToken(fullSession)
   await setAdminCookie(token)
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: fullSession,
     action: wasEnrolment ? '2fa_enrolled' : '2fa_login_verified',
-  }).catch(() => {})
+  })
 
   if (wasEnrolment) {
     db.superAdmin.update({
       where: { id: admin.id },
       data: { lastLoginAt: new Date() },
-    }).catch(() => {})
+    })
   }
 
   return NextResponse.json({ ok: true, enrolled: wasEnrolment })

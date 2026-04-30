@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, roleHas, logAdminAction } from '@/lib/admin-auth'
+import { getAdminSession, roleHas, logAdminActionAfter } from '@/lib/admin-auth'
 import { invalidateGuidelinesCache } from '@/lib/platform-learning'
 
 export const dynamic = 'force-dynamic'
@@ -40,12 +40,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   // the change is visible immediately rather than up to 2 minutes later.
   invalidateGuidelinesCache('workspace', id)
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'workspace_toggle_global_learnings',
     target: id,
     meta: { disableGlobalLearnings: next },
-  }).catch(() => {})
+  })
 
   return NextResponse.redirect(new URL(`/admin/workspaces/${id}`, req.url))
 }

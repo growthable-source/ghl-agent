@@ -19,6 +19,7 @@
  */
 
 import { cookies, headers } from 'next/headers'
+import { after } from 'next/server'
 import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
 import { db } from './db'
@@ -228,4 +229,18 @@ export async function logAdminAction(params: {
   } catch (err) {
     console.warn('[AdminAudit] write failed:', err)
   }
+}
+
+/**
+ * Schedule an audit log write to run AFTER the response is sent.
+ *
+ * Bare `logAdminAction(...)` (or `.catch(() => {})`) creates a Promise
+ * that's killed when Vercel suspends the function on response close —
+ * audit gaps result. Wrapping in `after()` keeps the runtime alive
+ * just long enough for the row to land. Use this from admin route
+ * handlers; `logAdminAction()` swallows its own errors so we don't
+ * need a catch here.
+ */
+export function logAdminActionAfter(params: Parameters<typeof logAdminAction>[0]): void {
+  after(() => logAdminAction(params))
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdminRole, logAdminAction, hashPassword } from '@/lib/admin-auth'
+import { requireAdminRole, logAdminActionAfter, hashPassword } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,12 +93,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       lastLoginAt: true, createdAt: true, twoFactorVerifiedAt: true,
     },
   })
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'update_admin',
     target: id,
     meta: { changes: Object.keys(data) },
-  }).catch(() => {})
+  })
   return NextResponse.json({ admin: updated })
 }
 
@@ -124,11 +124,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     }
   }
   await db.superAdmin.delete({ where: { id } })
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'delete_admin',
     target: id,
     meta: { email: target.email },
-  }).catch(() => {})
+  })
   return NextResponse.json({ ok: true })
 }

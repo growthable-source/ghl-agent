@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { verifyPassword, signAdminToken, setAdminCookie, logAdminAction, type AdminRole } from '@/lib/admin-auth'
+import { verifyPassword, signAdminToken, setAdminCookie, logAdminActionAfter, type AdminRole } from '@/lib/admin-auth'
 
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000
 const MAX_ATTEMPTS = 5
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   const admin = await db.superAdmin.findUnique({ where: { email } })
   if (!admin || !admin.isActive) {
-    await verifyPassword(password, '$2a$12$C6UzMDM.H6dfI/f/IKxGhuUGvFwZ9z9z9z9z9z9z9z9z9z9z9z9z9').catch(() => {})
+    await verifyPassword(password, '$2a$12$C6UzMDM.H6dfI/f/IKxGhuUGvFwZ9z9z9z9z9z9z9z9z9z9z9z9z9')
     return NextResponse.json({
       error: `Invalid credentials. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
     }, { status: 401 })
@@ -78,10 +78,10 @@ export async function POST(req: NextRequest) {
     db.superAdmin.update({
       where: { id: admin.id },
       data: { lastLoginAt: new Date() },
-    }).catch(() => {})
-    logAdminAction({ admin: session, action: 'login' }).catch(() => {})
+    })
+    logAdminActionAfter({ admin: session, action: 'login' })
   } else {
-    logAdminAction({ admin: session, action: 'login_password_ok_awaiting_2fa' }).catch(() => {})
+    logAdminActionAfter({ admin: session, action: 'login_password_ok_awaiting_2fa' })
   }
 
   return NextResponse.json({

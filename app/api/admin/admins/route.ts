@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAdminRole, logAdminAction, hashPassword } from '@/lib/admin-auth'
+import { requireAdminRole, logAdminActionAfter, hashPassword } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,12 +46,12 @@ export async function POST(req: NextRequest) {
       data: { email, name, passwordHash: hash, role, isActive: true },
       select: { id: true, email: true, name: true, role: true, isActive: true, createdAt: true },
     })
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'create_admin',
       target: admin.id,
       meta: { email, role },
-    }).catch(() => {})
+    })
     return NextResponse.json({ admin }, { status: 201 })
   } catch (err: any) {
     if (err.code === 'P2002') {

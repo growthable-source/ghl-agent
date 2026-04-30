@@ -68,10 +68,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     data: { lastMessageAt: new Date(), staleNotifiedAt: null },
   })
 
-  // Fire new-conversation notification — fire-and-forget so the widget
-  // never waits on Slack/Discord/etc.
+  // Fire new-conversation notification after the response so the widget
+  // never waits on Slack/Discord/etc. Wrapped in after() so the work
+  // actually completes — bare IIFEs are killed when Vercel suspends.
   if (isFirstVisitorMessage && convo.widget.workspaceId) {
-    ;(async () => {
+    after(async () => {
       try {
         const link = resolveHandoverLink({
           workspaceId: convo.widget.workspaceId,
@@ -91,12 +92,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       } catch (err: any) {
         console.warn('[widget] new-conversation notify failed:', err?.message)
       }
-    })()
+    })
 
     // GHL bridge — upsert the contact, tag, and create a follow-up task
     // with a deep link back to our inbox so operators living in GHL
-    // still catch the chat. Fire-and-forget; CRM blips never block.
-    ;(async () => {
+    // still catch the chat. CRM blips never block the visitor.
+    after(async () => {
       try {
         const { tagAndTaskOnFirstMessage } = await import('@/lib/widget-crm-sync')
         await tagAndTaskOnFirstMessage({
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       } catch (err: any) {
         console.warn('[widget] CRM first-message sync failed:', err?.message)
       }
-    })()
+    })
   }
 
   // Echo the visitor message back via SSE so other tabs/subscribers see it

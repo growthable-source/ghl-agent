@@ -85,7 +85,11 @@ export async function POST(req: NextRequest, { params }: Params) {
             targetValue: '',
             order: i,
           },
-        }).catch(() => { /* skip individual failures so a bad rule doesn't kill creation */ })
+        }).catch((err: any) => {
+          // One bad rule shouldn't kill agent creation, but we want a
+          // breadcrumb so operators can see why a rule went missing.
+          console.warn(`[wizard/create] rule ${i} (${r.name}) failed:`, err?.message)
+        })
       }
     }
 
@@ -101,7 +105,9 @@ export async function POST(req: NextRequest, { params }: Params) {
             fieldKey: String(q.captureField).toLowerCase().replace(/\s+/g, '_').slice(0, 80),
             order: i,
           },
-        }).catch(() => {})
+        }).catch((err: any) => {
+          console.warn(`[wizard/create] qualifying-question ${i} failed:`, err?.message)
+        })
       }
     }
 

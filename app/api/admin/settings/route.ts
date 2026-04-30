@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminRole, logAdminAction } from '@/lib/admin-auth'
+import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
 import { getAuditRetentionDays, setSetting } from '@/lib/system-settings'
 
 export const dynamic = 'force-dynamic'
@@ -33,12 +33,12 @@ export async function PATCH(req: NextRequest) {
       }
       await setSetting('auditRetentionDays', { days: Math.floor(n) }, session.email)
     }
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'update_setting',
       target: 'auditRetentionDays',
       meta: { value: body.auditRetentionDays },
-    }).catch(() => {})
+    })
   }
 
   const auditRetentionDays = await getAuditRetentionDays()

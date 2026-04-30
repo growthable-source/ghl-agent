@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter } from '@/lib/admin-auth'
 import { generateSecret, otpauthQrDataUrl } from '@/lib/admin-2fa'
 
 export const dynamic = 'force-dynamic'
@@ -30,6 +30,6 @@ export async function GET() {
   })
 
   const qr = await otpauthQrDataUrl(session.email, secret)
-  logAdminAction({ admin: session, action: '2fa_setup_started' }).catch(() => {})
+  logAdminActionAfter({ admin: session, action: '2fa_setup_started' })
   return NextResponse.json({ secret, qr })
 }

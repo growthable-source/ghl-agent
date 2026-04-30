@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
+// POST timeout is 20s; the upstream fetch + DB collect dominate. 60s
+// leaves room for the audit log write that runs via after().
+export const maxDuration = 60
 
 // One-shot webhook fire from the admin UI. Collects the filtered set into
 // one JSON body and POSTs it. No retries — admin can re-click if the
@@ -58,12 +61,12 @@ export async function POST(req: NextRequest) {
       generatedAt: new Date().toISOString(),
     }
   } catch (err: any) {
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'webhook_export_error',
       target: url,
       meta: { entity, filters, error: err.message },
-    }).catch(() => {})
+    })
     return NextResponse.json({ error: `Failed to build payload: ${err.message}` }, { status: 500 })
   }
 
@@ -86,12 +89,12 @@ export async function POST(req: NextRequest) {
     responseBody = (await res.text()).slice(0, 500)
   } catch (err: any) {
     clearTimeout(to)
-    logAdminAction({
+    logAdminActionAfter({
       admin: session,
       action: 'webhook_export_failed',
       target: url,
       meta: { entity, rowCount, error: err.message },
-    }).catch(() => {})
+    })
     return NextResponse.json({
       ok: false,
       error: `Webhook POST failed: ${err.message}`,
@@ -101,12 +104,12 @@ export async function POST(req: NextRequest) {
     clearTimeout(to)
   }
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'webhook_export',
     target: url,
     meta: { entity, filters, rowCount, responseStatus },
-  }).catch(() => {})
+  })
 
   return NextResponse.json({
     ok: responseStatus >= 200 && responseStatus < 300,

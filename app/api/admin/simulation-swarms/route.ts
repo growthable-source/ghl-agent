@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAdminSession, logAdminAction, roleHas } from '@/lib/admin-auth'
+import { getAdminSession, logAdminActionAfter, roleHas } from '@/lib/admin-auth'
 import { VALID_STYLES, VALID_CHANNELS } from '@/lib/simulator'
 
 export const dynamic = 'force-dynamic'
@@ -144,12 +144,12 @@ export async function POST(req: NextRequest) {
     return s
   })
 
-  logAdminAction({
+  logAdminActionAfter({
     admin: session,
     action: 'simulation_swarm_create',
     target: swarm.id,
     meta: { agents: activeAgentIds.length, personas: personas.length, runsPerAgent, totalPlanned },
-  }).catch(() => {})
+  })
 
   return NextResponse.json({ swarmId: swarm.id })
 }
