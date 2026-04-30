@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { canInviteCrossDomain, canAddTeamMember, isTrialExpired, recommendPlanForLimit, PLAN_FEATURES } from '@/lib/plans'
 import { isInternalWorkspace } from '@/lib/internal-workspace'
+import { sendInviteEmail } from '@/lib/invite-email'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -50,17 +51,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Get workspace for plan checks
-  let workspace: { domain: string | null; plan: string; trialEndsAt: Date | null } | null = null
+  let workspace: { name: string; domain: string | null; plan: string; trialEndsAt: Date | null } | null = null
   try {
     workspace = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { domain: true, plan: true, trialEndsAt: true },
+      select: { name: true, domain: true, plan: true, trialEndsAt: true },
     })
   } catch {
     // trialEndsAt may not exist yet — fall back to domain-only query
     const ws = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { domain: true, plan: true },
+      select: { name: true, domain: true, plan: true },
     })
     if (ws) workspace = { ...ws, trialEndsAt: null }
   }
@@ -155,7 +156,26 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  // TODO: Send invite emails via Resend/SES
+  // Fan out invite emails for newly-issued (or re-opened) invites. Run in
+  // parallel and don't await before responding — Resend latency shouldn't
+  // block the API, and per-recipient failures are logged but non-fatal.
+  const invitedEmails = results.filter(r => r.status === 'invited').map(r => r.email)
+  if (invitedEmails.length > 0 && workspace) {
+    const inviter = access.session.user
+    Promise.allSettled(invitedEmails.map(email =>
+      sendInviteEmail({
+        to: email,
+        workspaceId,
+        workspaceName: workspace!.name,
+        inviterName: inviter?.name ?? null,
+        inviterEmail: inviter?.email ?? null,
+        role,
+        expiresAt,
+      }).then(r => {
+        if (!r.ok) console.warn('[Invites] email failed for', email, '—', r.reason)
+      })
+    )).catch(() => { /* never throws — Promise.allSettled */ })
+  }
 
   return NextResponse.json({ results })
 }
