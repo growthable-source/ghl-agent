@@ -130,13 +130,14 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_available_slots',
-    description: 'Step 1 of booking: Fetch available appointment slots. Call this ONCE when the contact first asks to book — then propose 2–3 specific times in your reply (with timezone). DO NOT call this tool again on subsequent turns just because the contact replied; if the contact confirms one of the times you offered, call book_appointment with that startTime instead. Re-calling get_available_slots after you have already offered times is the "going in circles" bug — slots can shift between calls and you will end up offering different times than the user already agreed to. Only re-call this tool if the contact explicitly rejects every time you proposed and asks for a different window.',
+    description: 'Step 1 of booking: Fetch available appointment slots. Call this ONCE when the contact first asks to book — then propose 2–3 specific times in your reply (with timezone). DO NOT call this tool again on subsequent turns just because the contact replied; if the contact confirms one of the times you offered, call book_appointment with that startTime instead. Re-calling get_available_slots after you have already offered times is the "going in circles" bug — slots can shift between calls and you will end up offering different times than the user already agreed to. Re-call this tool ONLY when (a) the contact explicitly rejects every time you proposed and asks for a different window, OR (b) the contact has now told you their timezone for the first time and you need to re-fetch slots in their zone.',
     input_schema: {
       type: 'object' as const,
       properties: {
         calendarId: { type: 'string', description: 'The GHL calendar ID — this is provided in your Calendar Configuration section' },
         startDate: { type: 'string', description: 'Start of search window in ISO format (YYYY-MM-DD or full ISO datetime). Default to today.' },
         endDate: { type: 'string', description: 'End of search window in ISO format (YYYY-MM-DD or full ISO datetime). Default to 7 days after startDate.' },
+        timezone: { type: 'string', description: 'Optional IANA timezone (e.g. "America/Los_Angeles", "Europe/London", "Australia/Sydney") in which the returned slot times should be expressed. Pass this when the contact has stated a specific timezone. If omitted, the calendar\'s configured timezone is used and that timezone is included in the response so you can mention it to the contact.' },
       },
       required: ['calendarId', 'startDate', 'endDate'],
     },
@@ -978,12 +979,30 @@ async function executeTool(
         // model reaches for transfer_to_human with a reason mentioning
         // "calendar issues" and the conversation pauses.
         try {
-          const slots = await crm.getFreeSlots(
-            input.calendarId as string,
-            input.startDate as string,
-            input.endDate as string,
-          )
-          return JSON.stringify({ success: true, slots })
+          const requestedTz = (input.timezone as string | undefined)?.trim() || undefined
+          const calendarId = input.calendarId as string
+          // Resolve the calendar's configured timezone in parallel so we
+          // can label the response with whichever zone the slots came
+          // back in. If the caller passed a `timezone`, that's what GHL
+          // expressed the offsets in; otherwise it's the calendar default.
+          const [slots, calendarTz] = await Promise.all([
+            crm.getFreeSlots(calendarId, input.startDate as string, input.endDate as string, requestedTz),
+            crm.getCalendarTimezone(calendarId).catch(() => null),
+          ])
+          const responseTimezone = requestedTz || calendarTz || null
+          return JSON.stringify({
+            success: true,
+            slots,
+            // The IANA zone the times are expressed in. The agent MUST
+            // surface this to the contact (e.g. "11:45am Eastern") so
+            // there's never ambiguity about which zone we're in.
+            timezone: responseTimezone,
+            calendarTimezone: calendarTz,
+            // Friendly note the prompt instructions reference verbatim.
+            timezoneNote: responseTimezone
+              ? `All times above are in ${responseTimezone}. Mention this to the contact when proposing times. If the contact asks for a different timezone, re-call this tool with that timezone parameter.`
+              : `The calendar has no configured timezone — ask the contact what zone they're in before proposing times.`,
+          })
         } catch (err: any) {
           const msg = err?.message || 'Unknown error'
           const hint = /401|unauthor/i.test(msg) ? 'The GHL connection may have expired — ask the operator to reconnect from Integrations. Do not transfer to human just for this; offer to have someone follow up manually.'
@@ -1559,7 +1578,13 @@ You only have ONE calendar connected. Never ask "what kind of appointment" or "w
 - IMMEDIATELY call get_available_slots in this same turn. Do not reply asking what kind of appointment, do not ask what it's about, do not "let me check."
 - In your reply, propose 2–3 SPECIFIC times. Format: day + date + time + timezone. Example: "Monday May 5 at 11:45am EST or 2:30pm EST — which works?"
 - NEVER use vague summaries like "several afternoon slots available" or "lots of morning options." If the slot list shows 9:45am and 10:00am, those are MORNING times — say "morning" or just give the times. Do not invent availability that wasn't returned.
-- ALWAYS include the timezone with every time you offer. The slots are returned in the calendar's configured timezone — surface that timezone explicitly so the contact knows what zone you mean. If the contact tells you a different timezone, acknowledge it and convert.
+
+### Timezone handling — read this carefully
+- get_available_slots returns a "timezone" field in its response. That tells you what zone the slot times are expressed in (defaults to the calendar's configured zone).
+- ALWAYS surface that timezone when offering times. Acceptable: "Monday at 11:45am Eastern" / "11:45am EST" / "11:45am (America/New_York)". Unacceptable: "Monday at 11:45am" with no zone.
+- If the contact mentions or asks for a different timezone ("I'm in PST", "can you give me times in London?", "what about Sydney time?"), re-call get_available_slots with the "timezone" parameter set to the IANA name for that zone (e.g. "America/Los_Angeles", "Europe/London", "Australia/Sydney"). Do NOT do timezone math yourself — let the tool give you the right offsets.
+- If the calendar has no configured timezone (the response's "calendarTimezone" is null) and the contact hasn't told you theirs, ASK before proposing times: "What timezone are you in so I can suggest a time that works?"
+- Once you know the contact's preferred timezone, use it for every offer in this conversation. Don't switch back to the calendar's default.
 
 **Phase 2 — Contact confirms ("yes", "sure", "sounds good", "that works", "perfect", "11:45 works", "yep"):**
 - This is a confirmation of the time you JUST PROPOSED in Phase 1. The user has already picked.
@@ -2151,12 +2176,25 @@ export async function runAgent(opts: {
     'confirmed', "let's do it", 'lets do it', 'lgtm',
     'go ahead', 'go for it', 'lets go', "let's go",
   ]
-  const isShortAffirmation = trimmedIncoming.length <= 40 && CONFIRMATION_TOKENS.some(w =>
-    trimmedIncoming === w
-    || trimmedIncoming === w + '.' || trimmedIncoming === w + '!' || trimmedIncoming === w + ','
-    || trimmedIncoming.startsWith(w + ' ') || trimmedIncoming.startsWith(w + ',') || trimmedIncoming.startsWith(w + '.')
-    || trimmedIncoming.endsWith(' ' + w) || trimmedIncoming.endsWith(' ' + w + '.')
-  )
+  // Negative signals: even if the reply STARTS with "ok" or "sure", phrases
+  // like "ok but in PST" or "sure, can you do London time?" are NOT booking
+  // confirmations — they're requests to re-fetch slots in a different zone.
+  // Also skip questions and explicit time-window requests.
+  const looksLikeTimezoneRequest = /\b(timezone|time zone|in\s+[a-z]{2,4}\s*$|in\s+(pst|est|cst|mst|edt|pdt|cdt|mdt|gmt|bst|cet|ist|aest|jst|kst|sgt)\b|london|sydney|tokyo|berlin|paris|new york|chicago|los angeles|san francisco|denver|seattle|melbourne|brisbane|perth|auckland|toronto|vancouver|mumbai|delhi|bangalore|dubai)\b/i.test(trimmedIncoming)
+  const looksLikeQuestion = trimmedIncoming.includes('?')
+  const looksLikeRejection = /\b(can't|cannot|won't|can not|will not|nope|nah|no\s|no$|busy|already have|conflict|earlier|later|after|before|other|else|different)\b/i.test(trimmedIncoming)
+
+  const isShortAffirmation =
+    trimmedIncoming.length <= 40
+    && !looksLikeTimezoneRequest
+    && !looksLikeQuestion
+    && !looksLikeRejection
+    && CONFIRMATION_TOKENS.some(w =>
+      trimmedIncoming === w
+      || trimmedIncoming === w + '.' || trimmedIncoming === w + '!' || trimmedIncoming === w + ','
+      || trimmedIncoming.startsWith(w + ' ') || trimmedIncoming.startsWith(w + ',') || trimmedIncoming.startsWith(w + '.')
+      || trimmedIncoming.endsWith(' ' + w) || trimmedIncoming.endsWith(' ' + w + '.')
+    )
 
   // Did the previous agent message offer a specific time? Heuristic: a
   // time pattern (e.g. "11:45am", "2:30pm", "10am") plus "offer" phrasing.

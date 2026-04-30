@@ -892,12 +892,8 @@ export class GhlAdapter implements CrmAdapter {
       return this.calendarTeamCache.get(calendarId) ?? null
     }
     try {
-      const data = await this.apiFetch<any>(`/calendars/${calendarId}`, {
-        headers: { 'Version': '2021-04-15' },
-      })
-      // GHL calendar response has `teamMembers: [{ userId, priority, ... }]`
+      const data = await this.fetchCalendarMetadata(calendarId)
       const members: any[] = data?.calendar?.teamMembers || data?.teamMembers || []
-      // Prefer the highest-priority (lowest priority number) team member
       const sorted = members.slice().sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
       const pick = sorted[0]?.userId ?? null
       this.calendarTeamCache.set(calendarId, pick)
@@ -907,6 +903,53 @@ export class GhlAdapter implements CrmAdapter {
       this.calendarTeamCache.set(calendarId, null)
       return null
     }
+  }
+
+  /**
+   * Cache + return the calendar's configured IANA timezone. The agent
+   * uses this to label proposed times so the contact knows what zone
+   * "11:45am" is in. GHL's calendar object stores timezone as a string
+   * like "America/New_York"; older calendars may not have one set,
+   * in which case we return null and the agent falls back to asking.
+   */
+  private calendarTzCache: Map<string, string | null> = new Map()
+  async getCalendarTimezone(calendarId: string): Promise<string | null> {
+    if (this.calendarTzCache.has(calendarId)) {
+      return this.calendarTzCache.get(calendarId) ?? null
+    }
+    try {
+      const data = await this.fetchCalendarMetadata(calendarId)
+      const tz: unknown =
+        data?.calendar?.timezone ?? data?.timezone ?? data?.calendar?.timeZone ?? data?.timeZone ?? null
+      const resolved = typeof tz === 'string' && tz.length > 0 ? tz : null
+      this.calendarTzCache.set(calendarId, resolved)
+      return resolved
+    } catch (err: any) {
+      console.warn(`[GHL] getCalendarTimezone failed for ${calendarId}:`, err.message)
+      this.calendarTzCache.set(calendarId, null)
+      return null
+    }
+  }
+
+  /**
+   * Single shared fetch for the calendar metadata blob. Both
+   * pickCalendarTeamMember and getCalendarTimezone consume it; without
+   * de-dup they'd issue two GETs for the same payload back-to-back at
+   * the start of every booking flow.
+   */
+  private calendarMetadataCache: Map<string, Promise<any>> = new Map()
+  private fetchCalendarMetadata(calendarId: string): Promise<any> {
+    const cached = this.calendarMetadataCache.get(calendarId)
+    if (cached) return cached
+    const p = this.apiFetch<any>(`/calendars/${calendarId}`, {
+      headers: { 'Version': '2021-04-15' },
+    }).catch((err: any) => {
+      // Don't poison the cache with a failed lookup — let the next call retry.
+      this.calendarMetadataCache.delete(calendarId)
+      throw err
+    })
+    this.calendarMetadataCache.set(calendarId, p)
+    return p
   }
 
   // ISO 8601 with offset: "2024-10-28T10:00:00-05:00"

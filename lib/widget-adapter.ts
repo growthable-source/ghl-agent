@@ -173,6 +173,10 @@ export class WidgetAdapter implements CrmAdapter {
     if (!this.inner) throw new Error('No CRM connected — calendar unavailable')
     return this.inner.getFreeSlots(calendarId, startDate, endDate, timezone)
   }
+  async getCalendarTimezone(calendarId: string): Promise<string | null> {
+    if (!this.inner) return null
+    return this.inner.getCalendarTimezone(calendarId)
+  }
   async bookAppointment(payload: BookAppointmentPayload): Promise<any> {
     if (!this.inner) throw new Error('No CRM connected — cannot book appointments from widget')
     return this.inner.bookAppointment(payload)

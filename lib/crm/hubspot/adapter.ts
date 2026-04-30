@@ -408,6 +408,12 @@ export class HubSpotAdapter implements CrmAdapter {
     return []
   }
 
+  async getCalendarTimezone(_calendarId: string): Promise<string | null> {
+    // HubSpot has no calendar object that exposes a timezone in the same
+    // way as GHL. The agent will fall back to asking the contact.
+    return null
+  }
+
   async bookAppointment(payload: BookAppointmentPayload): Promise<any> {
     // Create a Meeting engagement object associated with the contact
     const data = await this.apiFetch<any>('/crm/v3/objects/meetings', {

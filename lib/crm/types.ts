@@ -75,6 +75,12 @@ export interface CrmAdapter {
 
   // ─── Calendar ────────────────────────────────────────────────────────
   getFreeSlots(calendarId: string, startDate: string, endDate: string, timezone?: string): Promise<Array<{ startTime: string; endTime: string }>>
+  /**
+   * Returns the calendar's configured IANA timezone (e.g. "America/New_York")
+   * if the CRM exposes it, otherwise null. Used so the agent can tell the
+   * contact what zone the proposed times are in instead of guessing.
+   */
+  getCalendarTimezone(calendarId: string): Promise<string | null>
   bookAppointment(payload: BookAppointmentPayload): Promise<any>
   getAppointment(eventId: string): Promise<any>
   updateAppointment(eventId: string, payload: any): Promise<any>

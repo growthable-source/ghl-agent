@@ -49,6 +49,7 @@ export class NoCrmAdapter implements CrmAdapter {
   updateOpportunityValue(_opportunityId: string, _monetaryValue: number): Promise<any> { missing() }
 
   getFreeSlots(_calendarId: string, _startDate: string, _endDate: string, _timezone?: string) { return missing() as Promise<Array<{ startTime: string; endTime: string }>> }
+  async getCalendarTimezone(_calendarId: string): Promise<string | null> { return null }
   bookAppointment(_payload: BookAppointmentPayload): Promise<any> { missing() }
   getAppointment(_eventId: string): Promise<any> { missing() }
   updateAppointment(_eventId: string, _payload: any): Promise<any> { missing() }
