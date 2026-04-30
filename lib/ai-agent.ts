@@ -1795,6 +1795,30 @@ export async function runAgent(opts: {
     return blocks
   }
 
+  // Render a coarse relative-time tag ("[3 days ago]") for a historical
+  // message. We deliberately keep it human-grade rather than precise so
+  // the agent can reason about gaps without anchoring on exact minutes.
+  // Returns empty string when no usable timestamp is available.
+  const formatRelativeAge = (createdAt: string | undefined, nowMs: number): string => {
+    if (!createdAt) return ''
+    const t = new Date(createdAt).getTime()
+    if (!Number.isFinite(t) || t <= 0) return ''
+    const diffMs = Math.max(0, nowMs - t)
+    const min = Math.round(diffMs / 60_000)
+    if (min < 2) return '[just now]'
+    if (min < 60) return `[${min} minutes ago]`
+    const hr = Math.round(diffMs / 3_600_000)
+    if (hr < 24) return hr === 1 ? '[1 hour ago]' : `[${hr} hours ago]`
+    const day = Math.round(diffMs / 86_400_000)
+    if (day < 14) return day === 1 ? '[1 day ago]' : `[${day} days ago]`
+    const wk = Math.round(diffMs / (7 * 86_400_000))
+    if (wk < 8) return wk === 1 ? '[1 week ago]' : `[${wk} weeks ago]`
+    const mo = Math.round(diffMs / (30 * 86_400_000))
+    return mo === 1 ? '[1 month ago]' : `[${mo} months ago]`
+  }
+
+  const nowMs = Date.now()
+
   // Include recent message history as context
   if (messageHistory && messageHistory.length > 0) {
     const recent = messageHistory.slice(-8) // last 8 messages
@@ -1802,12 +1826,18 @@ export async function runAgent(opts: {
       // Skip if it's the same as the incoming message
       if (msg.body === incomingMessage && msg.direction === 'inbound') continue
       const role = msg.direction === 'inbound' ? 'user' : 'assistant'
+      // Prepend a relative-time tag so the agent can tell whether prior
+      // turns are 5 minutes old or 5 days old. Without this every turn
+      // looks equally fresh and the agent re-asks questions or repeats
+      // promises that are stale.
+      const ageTag = formatRelativeAge(msg.createdAt, nowMs)
+      const tagPrefix = ageTag ? ageTag + ' ' : ''
       // Reconstruct multimodal content for past inbound messages that
       // had image attachments, so the model has the visual context.
       if (role === 'user' && msg.attachmentKind === 'image' && msg.attachmentUrl) {
         messages.push({
           role,
-          content: buildUserContent(msg.body || '(image)', [{
+          content: buildUserContent(`${tagPrefix}${msg.body || '(image)'}`, [{
             kind: 'image',
             url: msg.attachmentUrl,
             name: msg.attachmentName,
@@ -1816,10 +1846,10 @@ export async function runAgent(opts: {
       } else if (role === 'user' && msg.attachmentKind === 'file' && msg.attachmentUrl) {
         messages.push({
           role,
-          content: `${msg.body || ''}\n[Attached file: ${msg.attachmentName || msg.attachmentUrl}]`.trim(),
+          content: `${tagPrefix}${msg.body || ''}\n[Attached file: ${msg.attachmentName || msg.attachmentUrl}]`.trim(),
         })
       } else {
-        messages.push({ role, content: msg.body })
+        messages.push({ role, content: `${tagPrefix}${msg.body}` })
       }
     }
   }
@@ -1915,16 +1945,20 @@ export async function runAgent(opts: {
 
     // Pull existing memory for this contact (summary + categories).
     // Safe in sandbox — the table is keyed by (agentId, playground-contactId)
-    // and stays isolated from real data.
+    // and stays isolated from real data. updatedAt is included so the
+    // memory block can stamp the summary with how recently it was
+    // captured ("as of 3 days ago"). Without that the agent treats a
+    // months-old summary as if it's fresh.
     try {
       const memory = await (await import('./db')).db.contactMemory.findUnique({
         where: { agentId_contactId: { agentId, contactId } },
-        select: { summary: true, categories: true },
+        select: { summary: true, categories: true, updatedAt: true },
       })
       if (memory) {
         contactMemoryBlock = buildContactMemoryBlock({
           summary: memory.summary,
           categories: memory.categories as Record<string, string> | null,
+          summaryUpdatedAt: memory.updatedAt?.toISOString() ?? null,
         })
       }
     } catch {
@@ -2076,6 +2110,30 @@ export async function runAgent(opts: {
     connectedIntegrationsBlock = buildConnectedIntegrationsBlock(live)
   } catch (err: any) {
     console.warn('[Agent] MCP attachment load failed:', err.message)
+  }
+
+  // ─── Conversation gap awareness ───
+  // If the last message in this conversation is more than an hour old,
+  // tell the agent how long it's been so it can resume gracefully (skip
+  // the re-introduction, acknowledge the gap if it's been a while, drop
+  // any time-bound promises that have expired). Without this signal the
+  // agent treats every turn as if it follows immediately from the last —
+  // which is why operators see "as I mentioned earlier today" 5 days
+  // after the prior message.
+  let conversationGapBlock = ''
+  if (messageHistory && messageHistory.length > 0) {
+    const lastWithTime = [...messageHistory].reverse().find(m => m.createdAt && m.body !== incomingMessage)
+    if (lastWithTime?.createdAt) {
+      const lastMs = new Date(lastWithTime.createdAt).getTime()
+      if (Number.isFinite(lastMs) && lastMs > 0) {
+        const gapMs = Math.max(0, nowMs - lastMs)
+        const ONE_HOUR = 60 * 60 * 1000
+        if (gapMs >= ONE_HOUR) {
+          const ageTag = formatRelativeAge(lastWithTime.createdAt, nowMs).replace(/^\[|\]$/g, '')
+          conversationGapBlock = `\n\n## Conversation Resumed\nThe contact's previous activity in this conversation was ${ageTag}. This is NOT a fresh first contact — pick up where you left off:\n- Do not re-introduce yourself or repeat the welcome line.\n- Do not re-ask qualifying questions you already have answers to in the history above.\n- If you made a time-bound promise earlier (e.g. "I'll follow up next week") and that window has passed or shifted, acknowledge the gap rather than pretending the promise is still pending.\n- Historical messages above carry relative-age tags like "[3 days ago]" — use those to judge whether prior context is still relevant.`
+        }
+      }
+    }
   }
 
   // Filter tools based on agent configuration
@@ -2237,7 +2295,7 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock) + experimentBlock + dataSourcesBlock,
+      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock) + experimentBlock + dataSourcesBlock + conversationGapBlock,
       tools,
       messages: currentMessages,
     }

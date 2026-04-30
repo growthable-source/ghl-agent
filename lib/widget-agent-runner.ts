@@ -133,6 +133,9 @@ Booking / Other"). Don't use it for free-text answers.`
       contactId: `visitor:${convo.visitorId}`,
       body: attachmentKind ? '' : m.content,
       direction: m.role === 'visitor' ? ('inbound' as const) : ('outbound' as const),
+      // Surface the row's createdAt so runAgent can render relative-time
+      // tags ("[2 days ago]") on the historical messages it shows Claude.
+      createdAt: m.createdAt.toISOString(),
       attachmentKind,
       attachmentUrl,
       attachmentName,

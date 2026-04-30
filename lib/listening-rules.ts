@@ -101,19 +101,25 @@ ${body}`
  * Render what we already know about this contact into the system prompt.
  * Includes both the auto-generated summary and any categorised memory
  * entries. Shown to the agent so it can reference prior context naturally.
+ *
+ * `summaryUpdatedAt` is stamped onto the summary as a relative-age hint
+ * so the agent knows whether the prior context is fresh or months stale.
  */
 export function buildContactMemoryBlock(params: {
   summary?: string | null
   categories?: Record<string, string> | null
+  summaryUpdatedAt?: string | null
 }): string {
-  const { summary, categories } = params
+  const { summary, categories, summaryUpdatedAt } = params
   const hasSummary = summary && summary.trim().length > 0
   const hasCategories = categories && Object.keys(categories).length > 0
   if (!hasSummary && !hasCategories) return ''
 
   let block = '\n\n## What You Already Know About This Contact\n'
   if (hasSummary) {
-    block += `\n${summary}\n`
+    const ageTag = summaryUpdatedAt ? formatRelativeAge(summaryUpdatedAt) : ''
+    const stamp = ageTag ? ` (captured ${ageTag})` : ''
+    block += `\nSummary${stamp}:\n${summary}\n`
   }
   if (hasCategories) {
     block += '\n'
@@ -121,8 +127,26 @@ export function buildContactMemoryBlock(params: {
       if (content && content.trim()) block += `- ${cat}: ${content}\n`
     }
   }
-  block += '\nReference this naturally when relevant. Do not recite it back verbatim.'
+  block += '\nReference this naturally when relevant. Do not recite it back verbatim. If the summary above is more than a few days old, treat it as background — facts may have shifted.'
   return block
+}
+
+/** Coarse relative-age string ("3 days ago"). Mirrors the runAgent helper. */
+function formatRelativeAge(iso: string): string {
+  const t = new Date(iso).getTime()
+  if (!Number.isFinite(t) || t <= 0) return ''
+  const diffMs = Math.max(0, Date.now() - t)
+  const min = Math.round(diffMs / 60_000)
+  if (min < 2) return 'just now'
+  if (min < 60) return `${min} minutes ago`
+  const hr = Math.round(diffMs / 3_600_000)
+  if (hr < 24) return hr === 1 ? '1 hour ago' : `${hr} hours ago`
+  const day = Math.round(diffMs / 86_400_000)
+  if (day < 14) return day === 1 ? '1 day ago' : `${day} days ago`
+  const wk = Math.round(diffMs / (7 * 86_400_000))
+  if (wk < 8) return wk === 1 ? '1 week ago' : `${wk} weeks ago`
+  const mo = Math.round(diffMs / (30 * 86_400_000))
+  return mo === 1 ? '1 month ago' : `${mo} months ago`
 }
 
 /**

@@ -17,7 +17,7 @@ import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
 import { buildKnowledgeBlock } from '@/lib/rag'
 import { getOrCreateConversationState, checkStopConditions, executeStopConditionActions, pauseConversation, incrementMessageCount } from '@/lib/conversation-state'
-import { saveMessages, getMessageHistory, getMemorySummary, updateContactMemorySummary } from '@/lib/conversation-memory'
+import { saveMessages, getMessageHistory, getMemorySummaryWithMeta, updateContactMemorySummary } from '@/lib/conversation-memory'
 import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
 import { debounceMessage } from '@/lib/message-debounce'
@@ -283,12 +283,23 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
 
         // Memory context and qualifying questions
         const [memorySummary, unanswered] = await Promise.all([
-          getMemorySummary(agent.id, p.contactId),
+          getMemorySummaryWithMeta(agent.id, p.contactId),
           getUnansweredQuestions(agent.id, p.contactId),
         ])
 
         if (memorySummary) {
-          fullPrompt += `\n\n## Previous Conversation Context\n${memorySummary}`
+          // Stamp the summary with how recently it was regenerated so the
+          // agent doesn't treat months-old context as fresh. The runAgent
+          // path computes its own gap block from messageHistory; this is
+          // the parallel signal for the long-term ContactMemory summary.
+          const ageMs = Date.now() - memorySummary.updatedAt.getTime()
+          const day = 86_400_000
+          const ageStr = ageMs < 60 * 60_000 ? 'just now'
+            : ageMs < day ? `${Math.round(ageMs / 3_600_000)} hours ago`
+            : ageMs < 14 * day ? `${Math.round(ageMs / day)} days ago`
+            : ageMs < 60 * day ? `${Math.round(ageMs / (7 * day))} weeks ago`
+            : `${Math.round(ageMs / (30 * day))} months ago`
+          fullPrompt += `\n\n## Previous Conversation Context (captured ${ageStr})\n${memorySummary.summary}\n\nIf this summary is more than a few days old, treat it as background — the contact's situation may have changed.`
         }
         fullPrompt += buildQualifyingPromptBlock(unanswered, (agent as any).qualifyingStyle ?? 'strict')
         fullPrompt += buildPersonaBlock({
@@ -317,6 +328,10 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
               contactId: m.contactId,
               body: m.content,
               direction: m.role === 'user' ? 'inbound' as const : 'outbound' as const,
+              // Surface the row's createdAt so the agent can reason about
+              // gaps ("contact's last reply was 4 days ago — don't repeat
+              // the qualification questions you already asked").
+              createdAt: m.createdAt.toISOString(),
             }))
           : history
 

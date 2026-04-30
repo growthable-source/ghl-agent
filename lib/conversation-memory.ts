@@ -30,6 +30,22 @@ export async function getMemorySummary(agentId: string, contactId: string): Prom
   return memory?.summary ?? null
 }
 
+/**
+ * Like getMemorySummary but also returns when the summary was last
+ * regenerated, so the prompt can surface "as of 3 days ago" stamps and
+ * the agent can judge how stale the prior context is.
+ */
+export async function getMemorySummaryWithMeta(
+  agentId: string,
+  contactId: string,
+): Promise<{ summary: string; updatedAt: Date } | null> {
+  const memory = await db.contactMemory.findUnique({
+    where: { agentId_contactId: { agentId, contactId } },
+  })
+  if (!memory?.summary) return null
+  return { summary: memory.summary, updatedAt: memory.updatedAt }
+}
+
 export async function updateContactMemorySummary(
   agentId: string,
   locationId: string,

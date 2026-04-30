@@ -86,6 +86,13 @@ export interface Message {
   messageType?: string
   dateAdded?: string
   contentType?: string
+  /**
+   * ISO 8601 timestamp from the local DB row (MessageLog / ConversationMessage
+   * / WidgetMessage `createdAt`). Used by the agent to surface relative-time
+   * tags ("[3 days ago]") on prior turns so it can reason about gaps. Distinct
+   * from `dateAdded`, which carries the upstream CRM's own timestamp.
+   */
+  createdAt?: string
   // Optional attachment metadata so multimodal-capable runtimes can
   // upgrade an inbound text message into a multimodal content block.
   // 'image' attaches via a URL the model can fetch; 'file' renders as
