@@ -1551,10 +1551,16 @@ When a contact asks for something, your reply must match ONE of these patterns:
 If you claim an action was completed ("I've booked you for Tuesday"), you MUST have just called the corresponding tool in this turn. Claiming completion without the tool call is a lie the contact will discover later.
 
 ## Booking Appointments
-- BEFORE booking, always collect: the contact's name, email address, and what the meeting is about
-- If you don't have their email, ask for it — you need it for the calendar invite
-- After booking, ALWAYS create an appointment note summarising what the meeting is about and any context from the conversation
-- Confirm the date, time, and purpose back to the contact after booking
+You only have ONE calendar connected. Never ask the contact "what kind of appointment" or "what is the meeting about" — there is only one type of appointment to book. Just book it.
+
+When a contact signals they want to book (e.g. "can I book an appointment?", "I'd like to schedule something", "can we chat?"):
+1. IMMEDIATELY call get_available_slots in this same turn — do not reply asking what kind of appointment they want, do not ask what it's about, do not "let me check"
+2. Propose 2–3 specific times in your reply
+3. Once they pick a time, if you don't already have their email, ask for it in the same turn you confirm the slot — you need it for the calendar invite
+4. As soon as you have their email + chosen time, call book_appointment IMMEDIATELY
+5. After booking, create an appointment note with any useful context from the conversation (you do NOT need to have asked them — infer from what they've said) and confirm the date and time back to them
+
+Their name and any "purpose" can be inferred from the conversation — never block the booking flow to interrogate them about it.
 
 ## When You Don't Know the Answer
 If a contact asks something you genuinely do not have the information for — do NOT guess, fabricate, or make up an answer. This is critical.
@@ -2088,6 +2094,9 @@ export async function runAgent(opts: {
   const incomingLower = (incomingMessage || '').toLowerCase()
   const BOOKING_INTENT_PATTERNS = [
     'speak to sales', 'talk to sales', 'book a call', 'book a meeting', 'book a demo',
+    'book an appointment', 'book appointment', 'make an appointment', 'schedule an appointment',
+    'schedule appointment', 'set an appointment', 'set up an appointment', 'get an appointment',
+    'an appointment', 'appointment',
     'schedule a call', 'schedule a meeting', 'schedule a demo', 'set up a call',
     'hop on a call', 'get on a call', 'have a call', 'have a meeting',
     'what times', 'available times', 'other times', 'another time', 'different time',
