@@ -112,6 +112,44 @@ export async function POST(req: NextRequest) {
         // Strip HTML from email bodies (GHL sends raw HTML for email channel)
         const inboundMessage = htmlToText(debounced.combinedMessage)
 
+        // ─── IN-FLIGHT RUN LOCK ─────────────────────────────────────────
+        // A prior agent run for this contact may still be executing — its
+        // model + tool-loop can take 5–15s and the assistant message isn't
+        // saved until the run finishes. If GHL re-delivers (or an
+        // adjacent event fires) during that window, the post-save 6s guard
+        // sees nothing and a parallel run starts, producing back-to-back
+        // contradictory replies. Block here on a PENDING messageLog row
+        // for the same contact within the last 90 seconds (well above the
+        // p99 run time, well below any reasonable "real" follow-up gap).
+        const inFlightRun = await db.messageLog.findFirst({
+          where: {
+            contactId: p.contactId,
+            status: 'PENDING',
+            createdAt: { gte: new Date(Date.now() - 90_000) },
+          },
+          select: { id: true, createdAt: true },
+        })
+        if (inFlightRun) {
+          const ageMs = Date.now() - inFlightRun.createdAt.getTime()
+          // Record this skip in its own log row so operators can see why a
+          // delivery was dropped. Don't update the in-flight row — the
+          // owning request will finalise it.
+          try {
+            await db.messageLog.create({
+              data: {
+                locationId: p.locationId,
+                contactId: p.contactId,
+                conversationId: p.conversationId,
+                inboundMessage,
+                status: 'SKIPPED',
+                errorMessage: `In-flight run started ${ageMs}ms ago is still processing. Suppressed to prevent double-reply.`,
+              },
+            })
+          } catch { /* logging-only */ }
+          console.log(`[Webhook] In-flight run for ${p.contactId} (started ${ageMs}ms ago) — suppressing parallel delivery`)
+          break
+        }
+
         // Create pending log
         const log = await db.messageLog.create({
           data: {
