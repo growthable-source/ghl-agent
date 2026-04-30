@@ -69,10 +69,36 @@ export async function GET(req: NextRequest) {
     // the default ~1-2 hours so we don't re-prompt the user weekly.
     const longToken = await exchangeForLongLivedToken({ appId, appSecret, shortLivedToken: shortToken })
 
+    // Step 3.5: read the user identity + granted scopes for diagnostics.
+    // When pages come back empty (the most common "I have Pages but it
+    // says I don't" failure) we want to surface WHO authorised, what
+    // permissions they actually granted, and how many Pages /me/accounts
+    // returned — so the operator can fix the right thing instead of
+    // guessing between "wrong account", "Page not selected in dialog",
+    // and "Business-Manager-owned Page that needs separate granting".
+    const [whoami, perms] = await Promise.all([
+      describeUser(longToken.accessToken).catch(() => null),
+      listGrantedPermissions(longToken.accessToken).catch(() => null),
+    ])
+    console.log('[meta-oauth] whoami:', whoami, 'perms:', perms)
+
     // Step 4: list pages the user manages.
     const pages = await listPagesForUser(longToken.accessToken)
+    console.log(`[meta-oauth] /me/accounts returned ${pages.length} Page(s) for user ${whoami?.name ?? '?'}`)
     if (pages.length === 0) {
-      return redirectToDashboard(req, { ok: false, error: 'no_pages', detail: 'The connected Facebook account manages no Pages.' }, workspaceId)
+      // Build a detail string that points at the most likely cause.
+      // Order matters: missing scope > Page-picker-empty > BM-owned hint.
+      const grantedScopes = (perms ?? []).filter(p => p.status === 'granted').map(p => p.permission)
+      const declinedScopes = (perms ?? []).filter(p => p.status === 'declined').map(p => p.permission)
+      const lacksPagesShowList = grantedScopes.length > 0 && !grantedScopes.includes('pages_show_list')
+      let detail: string
+      if (lacksPagesShowList) {
+        detail = `pages_show_list was not granted. Reconnect and tick the Pages permission. Declined: ${declinedScopes.join(', ') || 'none'}.`
+      } else {
+        const userBit = whoami?.name ? `Authorised as ${whoami.name}.` : ''
+        detail = `${userBit} /me/accounts returned 0 Pages. If your Page is owned by a Business Manager, that BM has to grant your app access in Business Settings → Apps → (your app) → Connect Assets → add the Page. Otherwise re-run Connect Meta and tick the Pages explicitly in the consent dialog.`.trim()
+      }
+      return redirectToDashboard(req, { ok: false, error: 'no_pages', detail }, workspaceId)
     }
 
     // Step 5: store one Integration row per page. Page Access Tokens
@@ -183,11 +209,37 @@ interface PageInfo {
   instagramBusinessAccountId?: string
 }
 
+/** Read user identity for diagnostic logging. */
+async function describeUser(userAccessToken: string): Promise<{ id: string; name?: string } | null> {
+  const url = new URL('https://graph.facebook.com/v19.0/me')
+  url.searchParams.set('fields', 'id,name')
+  url.searchParams.set('access_token', userAccessToken)
+  const res = await fetch(url.toString())
+  if (!res.ok) return null
+  const data = await res.json() as { id?: string; name?: string }
+  if (!data.id) return null
+  return { id: data.id, name: data.name }
+}
+
+/** Read which scopes the user actually granted vs declined. */
+async function listGrantedPermissions(userAccessToken: string): Promise<Array<{ permission: string; status: 'granted' | 'declined' }>> {
+  const url = new URL('https://graph.facebook.com/v19.0/me/permissions')
+  url.searchParams.set('access_token', userAccessToken)
+  const res = await fetch(url.toString())
+  if (!res.ok) return []
+  const data = await res.json() as { data?: Array<{ permission: string; status: string }> }
+  return (data.data ?? []).map(p => ({ permission: p.permission, status: p.status === 'granted' ? 'granted' : 'declined' }))
+}
+
 async function listPagesForUser(userAccessToken: string): Promise<PageInfo[]> {
   // Request the page's IG-business-account link in the same call so we
   // know which pages can serve Instagram DMs without a second round-trip.
   const url = new URL('https://graph.facebook.com/v19.0/me/accounts')
   url.searchParams.set('fields', 'id,name,access_token,instagram_business_account')
+  // Default page-size is 25; bump so workspaces that admin lots of Pages
+  // don't silently miss the one they actually wanted. 200 is well below
+  // any realistic limit and doesn't trigger pagination headers.
+  url.searchParams.set('limit', '200')
   url.searchParams.set('access_token', userAccessToken)
   const res = await fetch(url.toString())
   if (!res.ok) throw new Error(`list pages failed: ${res.status} ${await res.text()}`)

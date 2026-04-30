@@ -25,6 +25,25 @@ export default function IntegrationsPage() {
   // ("connected N Pages") or the specific error reason so the operator
   // doesn't have to dig through Vercel logs to figure out what went wrong.
   const [metaBanner, setMetaBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const [disconnectingMeta, setDisconnectingMeta] = useState<string | null>(null)
+
+  async function disconnectMetaPage(integrationId: string) {
+    setDisconnectingMeta(integrationId)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/integrations/${integrationId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to disconnect')
+      }
+      setIntegrations(prev => prev.filter(i => i.id !== integrationId))
+    } catch (err: any) {
+      setMetaBanner({ kind: 'error', text: `Disconnect failed: ${err.message}` })
+    } finally {
+      setDisconnectingMeta(null)
+    }
+  }
   const [ghlConnected, setGhlConnected] = useState(false)
   const [vapiActive, setVapiActive] = useState(false)
   const [crmProvider, setCrmProvider] = useState<string>('ghl')
@@ -499,13 +518,25 @@ export default function IntegrationsPage() {
                 const igLinked = !!cred?.instagramBusinessAccountId
                 return (
                   <div key={i.id} className="flex items-center justify-between bg-zinc-900 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-zinc-300">{cred?.pageName || i.name}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs text-zinc-300 truncate">{cred?.pageName || i.name}</span>
                       {igLinked && (
-                        <span className="text-[10px] uppercase tracking-wider text-pink-400/80">+ IG</span>
+                        <span className="text-[10px] uppercase tracking-wider text-pink-400/80 flex-shrink-0">+ IG</span>
                       )}
                     </div>
-                    <span className="text-xs text-emerald-400">Active</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-emerald-400">Active</span>
+                      <button
+                        type="button"
+                        onClick={() => disconnectMetaPage(i.id)}
+                        disabled={disconnectingMeta === i.id}
+                        className="text-xs text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-50"
+                        title="Disconnect this Page"
+                        aria-label={`Disconnect ${cred?.pageName || i.name}`}
+                      >
+                        {disconnectingMeta === i.id ? '…' : 'Disconnect'}
+                      </button>
+                    </div>
                   </div>
                 )
               })}
@@ -519,8 +550,19 @@ export default function IntegrationsPage() {
             <div className="space-y-1 mb-3">
               {inactiveMetaIntegrations.map(i => (
                 <div key={i.id} className="flex items-center justify-between bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2">
-                  <span className="text-xs text-amber-200">{i.name}</span>
-                  <span className="text-xs text-amber-400">Token expired — reconnect</span>
+                  <span className="text-xs text-amber-200 truncate">{i.name}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs text-amber-400">Token expired — reconnect</span>
+                    <button
+                      type="button"
+                      onClick={() => disconnectMetaPage(i.id)}
+                      disabled={disconnectingMeta === i.id}
+                      className="text-xs text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-50"
+                      title="Remove this integration"
+                    >
+                      {disconnectingMeta === i.id ? '…' : 'Remove'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
