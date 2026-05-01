@@ -138,19 +138,26 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
+    // CRITICAL: this effect must run exactly once on mount. next-themes'
+    // setTheme reference can change between renders, and including it in
+    // the deps array meant the effect would re-fire AFTER the user
+    // clicked a theme card and immediately reset their pick back to the
+    // DB value. Empty deps + lint-disable is the right shape here — the
+    // bootstrap fetch only matters once.
+    let cancelled = false
     fetch('/api/user/settings')
       .then(r => r.json())
       .then(({ user }) => {
-        if (user) {
-          setUser(user)
-          setName(user.name ?? '')
-          // Backward compat: map legacy theme names
-          const mapped = user.theme === 'dark' ? 'midnight' : user.theme === 'light' ? 'soft-light' : user.theme
-          if (mapped) setTheme(mapped)
-        }
+        if (cancelled || !user) return
+        setUser(user)
+        setName(user.name ?? '')
+        const mapped = user.theme === 'dark' ? 'midnight' : user.theme === 'light' ? 'soft-light' : user.theme
+        if (mapped) setTheme(mapped)
       })
-      .finally(() => setLoading(false))
-  }, [setTheme])
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleThemeChange(value: string) {
     setTheme(value)
