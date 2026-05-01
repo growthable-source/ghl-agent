@@ -1,18 +1,16 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import ConversationDetail from '@/components/inbox/ConversationDetail'
+import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
 
 /**
  * Standalone conversation detail route — used for deep-links from
- * notifications and shared URLs. The same component renders inside
- * the split-pane inbox at /inbox?conversation=<id>; the wrapper just
- * pulls the IDs from the route and lets the back-link in the panel
- * navigate back to the list.
+ * notifications and shared URLs. The router picks widget vs Meta
+ * based on the id prefix; both share this entry point.
  */
 export default function InboxDetailPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
-  const conversationId = params.conversationId as string
-  return <ConversationDetail workspaceId={workspaceId} conversationId={conversationId} />
+  const conversationId = decodeURIComponent(params.conversationId as string)
+  return <InboxConversationPanel workspaceId={workspaceId} conversationId={conversationId} />
 }

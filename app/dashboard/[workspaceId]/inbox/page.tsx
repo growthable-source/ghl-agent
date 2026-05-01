@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import ConversationDetail from '@/components/inbox/ConversationDetail'
+import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
 
 interface AssignedUser {
   id: string
@@ -22,9 +22,14 @@ interface Brand {
 
 interface Row {
   id: string
+  // 'widget' = website chat, 'meta' = Facebook Messenger or Instagram DM.
+  // Drives the channel pill icon and (in the detail page) which API
+  // path to fetch for messages + replies.
+  source?: 'widget' | 'meta'
+  channel?: 'widget' | 'messenger' | 'instagram'
   widget: { id: string; name: string; primaryColor?: string }
   brand: Brand | null
-  visitor: { id: string; name: string | null; email: string | null; cookieId: string }
+  visitor: { id: string; name: string | null; email: string | null; cookieId: string; avatarUrl?: string | null }
   status: string
   messageCount: number
   csatRating: number | null
@@ -106,7 +111,11 @@ export default function InboxPage() {
       setLoading(false)
       return
     }
-    const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations`)
+    // Unified inbox feed: widget conversations + Meta (Messenger / IG)
+    // conversations sorted by recency. Meta rows synthesize widget +
+    // visitor fields so the existing list renderer Just Works; the
+    // `source` / `channel` fields on each row drive the channel pill.
+    const res = await fetch(`/api/workspaces/${workspaceId}/inbox`)
     const data = await res.json()
     setRows(data.conversations || [])
     setNotMigrated(!!data.notMigrated)
@@ -558,11 +567,36 @@ export default function InboxPage() {
                   }`}
                 >
                   <div className="relative flex-shrink-0">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold text-white"
-                      style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}>
-                      {initial}
-                    </div>
-                    {hot && (
+                    {r.visitor.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.visitor.avatarUrl}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-cover bg-zinc-800"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold text-white"
+                        style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}>
+                        {initial}
+                      </div>
+                    )}
+                    {/* Channel pill on the avatar — Facebook 'f' for
+                        Messenger, IG glyph for Instagram, no badge for
+                        widget (the row already lives in the widget
+                        feed, so the chip would just be noise). */}
+                    {r.channel === 'messenger' && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#1877F2] ring-2 ring-zinc-950 flex items-center justify-center" title="Facebook Messenger">
+                        <FacebookIcon className="w-2.5 h-2.5 text-white" />
+                      </span>
+                    )}
+                    {r.channel === 'instagram' && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ring-2 ring-zinc-950 flex items-center justify-center"
+                        style={{ background: 'linear-gradient(135deg,#F58529,#DD2A7B,#8134AF)' }}
+                        title="Instagram Direct">
+                        <InstagramIcon className="w-2.5 h-2.5 text-white" />
+                      </span>
+                    )}
+                    {hot && r.channel === 'widget' && (
                       <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-zinc-950" />
                     )}
                   </div>
@@ -669,7 +703,7 @@ export default function InboxPage() {
           selected; otherwise an empty state. */}
       <div className="hidden md:flex flex-1 min-w-0 flex-col overflow-hidden bg-black">
         {selectedId ? (
-          <ConversationDetail
+          <InboxConversationPanel
             key={selectedId}
             workspaceId={workspaceId}
             conversationId={selectedId}
@@ -745,5 +779,23 @@ function Highlight({ text, term }: { text: string; term: string }) {
           : <span key={idx}>{p.text}</span>,
       )}
     </>
+  )
+}
+
+function FacebookIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M14 13.5h2.5l1-4H14V7c0-1.03 0-2 2-2h1.5V1.64c-.34-.04-1.62-.14-2.97-.14C11.7 1.5 10 3.16 10 6.2v3.3H7v4h3v9h4v-9z" />
+    </svg>
+  )
+}
+
+function InstagramIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="0.7" fill="currentColor" stroke="none" />
+    </svg>
   )
 }
