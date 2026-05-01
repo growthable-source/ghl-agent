@@ -190,6 +190,27 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 @theme inline {
+  /* Remap Tailwind's zinc + black scale to our semantic theme tokens.
+     This is the ONLY thing that makes legacy class names like
+     bg-zinc-900 / text-zinc-400 / border-zinc-800 (used across hundreds
+     of pages) automatically follow the active theme — when you switch
+     to midnight, --surface-secondary points at the dark value, and
+     `bg-zinc-900` automatically goes dark. No JSX rewrites required. */
+  --color-zinc-950: var(--surface);
+  --color-zinc-900: var(--surface-secondary);
+  --color-zinc-800: var(--surface-tertiary);
+  --color-zinc-700: var(--border-secondary);
+  --color-zinc-600: var(--text-muted);
+  --color-zinc-500: var(--text-tertiary);
+  --color-zinc-400: var(--text-tertiary);
+  --color-zinc-300: var(--text-secondary);
+  --color-zinc-200: var(--text-primary);
+  --color-zinc-100: var(--text-primary);
+  /* bg-black and bg-white intentionally NOT remapped here — too
+     context-dependent (white-on-page CTAs vs page bg). Those keep the
+     dedicated overrides further down (.bg-white → btn-primary-bg etc.). */
+
+  /* Semantic tokens (used directly via bg-surface, text-text-primary, etc.) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
