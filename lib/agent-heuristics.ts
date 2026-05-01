@@ -119,17 +119,3 @@ export function formatRelativeAge(createdAt: string | null | undefined, nowMs: n
   const mo = Math.round(diffMs / (30 * 86_400_000))
   return mo === 1 ? '[1 month ago]' : `[${mo} months ago]`
 }
-
-// ─── Pubsub channel sanitization ─────────────────────────────────────────
-
-/**
- * Sanitize a conversationId into a Postgres LISTEN/NOTIFY channel name.
- * Postgres identifiers: letters/digits/underscores, max 63 bytes.
- * We prefix with "widget_" and lowercase + replace any non-alphanumeric
- * to keep the name safe to interpolate into NOTIFY without parameter
- * binding (NOTIFY doesn't support parameterised channel names).
- */
-export function widgetPubsubChannelName(conversationId: string): string {
-  const safe = conversationId.toLowerCase().replace(/[^a-z0-9_]/g, '_')
-  return `widget_${safe}`.slice(0, 63)
-}

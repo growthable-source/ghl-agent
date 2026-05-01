@@ -4,7 +4,6 @@ import {
   isShortAffirmation,
   looksLikeOfferedTime,
   formatRelativeAge,
-  widgetPubsubChannelName,
 } from './agent-heuristics'
 
 describe('hasBookingIntent', () => {
@@ -179,31 +178,5 @@ describe('formatRelativeAge', () => {
     // negative gap. We never want to render "[in 3 minutes]".
     const future = new Date(NOW_MS + 3 * 60_000).toISOString()
     expect(formatRelativeAge(future, NOW_MS)).toBe('[just now]')
-  })
-})
-
-describe('widgetPubsubChannelName', () => {
-  it('produces a safe Postgres identifier from a CUID', () => {
-    expect(widgetPubsubChannelName('clx12345abc')).toBe('widget_clx12345abc')
-  })
-
-  it('lowercases mixed-case input', () => {
-    expect(widgetPubsubChannelName('Conv-ABC')).toBe('widget_conv_abc')
-  })
-
-  it('replaces unsafe characters with underscores', () => {
-    expect(widgetPubsubChannelName('conv-with-dashes/and:colons')).toBe('widget_conv_with_dashes_and_colons')
-  })
-
-  it('caps at 63 bytes (Postgres identifier limit)', () => {
-    const long = 'a'.repeat(200)
-    const channel = widgetPubsubChannelName(long)
-    expect(channel.length).toBeLessThanOrEqual(63)
-    expect(channel.startsWith('widget_')).toBe(true)
-  })
-
-  it('never produces an empty identifier', () => {
-    // Empty input still produces "widget_" which is a valid identifier.
-    expect(widgetPubsubChannelName('')).toBe('widget_')
   })
 })

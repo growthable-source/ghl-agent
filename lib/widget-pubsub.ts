@@ -2,33 +2,35 @@
  * Cross-instance pub/sub for chat-widget SSE events, backed by Postgres
  * LISTEN/NOTIFY.
  *
- * Why this exists: the previous implementation kept subscribers in an
- * in-memory Map keyed by conversationId. That works on a single Vercel
- * function instance, but on multi-instance deployments the visitor's
- * SSE connection lands on instance A while the agent's reply runs on
- * instance B — so the broadcast from B finds an empty map and the
- * message is lost silently. Visitors saw the agent "go quiet."
- *
- * LISTEN/NOTIFY fixes this without adding new infra: NOTIFY can be
- * issued from any pooled connection, every Postgres backend receives
- * the event, and our LISTEN-side connections forward it to whatever
- * SSE streams they're holding open.
+ * Why this exists: the in-memory Map keyed by conversationId worked on a
+ * single Vercel function instance, but on multi-instance deployments the
+ * visitor's SSE landed on instance A while the agent ran on instance B —
+ * so the broadcast on B found an empty map and the message was lost.
  *
  * Connection model:
- *  - publish() goes through the regular Prisma pool (cheap, short-lived).
- *  - subscribe() opens a dedicated `pg.Client` per SSE stream because
- *    LISTEN requires the connection to stay alive between queries —
- *    a transaction-mode pooler would yank it back. We prefer the
- *    NON_POOLING URL when one is configured.
+ *  - publish() goes through Prisma's pool (cheap, short-lived).
+ *  - subscribe() shares ONE pg.Client per function instance. The client
+ *    LISTENs on a single fan-in channel ("widget_events") and we demux
+ *    in-process by conversationId. Earlier the route opened a dedicated
+ *    pg.Client per SSE stream — that saturated Postgres direct-connection
+ *    limits (Neon caps direct connections aggressively) once a handful
+ *    of visitors were chatting concurrently, and any pg-side blip closed
+ *    every active stream. Sharing the connection makes widget capacity
+ *    bounded by function-instance count, not by visitor count.
+ *
+ * The shared client is lazy: it opens on the first subscribe(), gets
+ * recycled on error so the next subscribe() reconnects, and is held
+ * open for the lifetime of the function instance.
  */
 
 import { Client } from 'pg'
 import { db } from './db'
-import { widgetPubsubChannelName as channelName } from './agent-heuristics'
+
+const CHANNEL = 'widget_events'
 
 // Postgres has an 8000-byte hard cap on NOTIFY payloads. We refuse
 // anything close to that — operator messages and agent replies are far
-// smaller than this in practice (~4KB max for a long agent reply).
+// smaller in practice (~4KB max for a long agent reply).
 const MAX_PAYLOAD_BYTES = 7000
 
 function directConnectionString(): string {
@@ -44,19 +46,88 @@ function directConnectionString(): string {
   )
 }
 
+type Handler = (msg: unknown) => void
+type ErrorHandler = (err: Error) => void
+
+const subscribers = new Map<string, Set<Handler>>()
+const errorHandlers = new Map<string, Set<ErrorHandler>>()
+
+let sharedClient: Client | null = null
+let connectPromise: Promise<Client> | null = null
+let heartbeat: ReturnType<typeof setInterval> | null = null
+
+function tearDownSharedClient() {
+  if (heartbeat) { clearInterval(heartbeat); heartbeat = null }
+  const client = sharedClient
+  sharedClient = null
+  connectPromise = null
+  if (client) client.end().catch(() => {})
+}
+
+async function getSharedClient(): Promise<Client> {
+  if (sharedClient) return sharedClient
+  if (connectPromise) return connectPromise
+  connectPromise = (async () => {
+    const client = new Client({
+      connectionString: directConnectionString(),
+      ssl: { rejectUnauthorized: false },
+    })
+    client.on('notification', (n) => {
+      if (n.channel !== CHANNEL || !n.payload) return
+      let parsed: { c?: string; m?: unknown }
+      try { parsed = JSON.parse(n.payload) } catch (err: any) {
+        console.warn('[widget-pubsub] malformed notification payload:', err.message)
+        return
+      }
+      const cid = parsed.c
+      if (!cid) return
+      const handlers = subscribers.get(cid)
+      if (!handlers || handlers.size === 0) return
+      for (const handler of handlers) {
+        try { handler(parsed.m) } catch (err: any) {
+          console.warn('[widget-pubsub] subscriber threw:', err.message)
+        }
+      }
+    })
+    client.on('error', (err) => {
+      console.warn('[widget-pubsub] shared LISTEN connection error:', err.message)
+      // Tear down so the next subscribe() reconnects, and notify every
+      // active stream so it can close + tell the visitor to retry.
+      tearDownSharedClient()
+      const allErrorHandlers: ErrorHandler[] = []
+      for (const set of errorHandlers.values()) {
+        for (const h of set) allErrorHandlers.push(h)
+      }
+      for (const h of allErrorHandlers) {
+        try { h(err) } catch {}
+      }
+    })
+    await client.connect()
+    await client.query(`LISTEN ${CHANNEL}`)
+    sharedClient = client
+    // Idle ping so connection-tracking middleboxes don't reap us during
+    // a quiet stretch.
+    heartbeat = setInterval(() => {
+      client.query('SELECT 1').catch(() => {})
+    }, 30_000)
+    return client
+  })().catch((err) => {
+    connectPromise = null
+    throw err
+  })
+  return connectPromise
+}
+
 export async function publish(conversationId: string, message: unknown): Promise<void> {
-  const channel = channelName(conversationId)
-  const payload = JSON.stringify(message)
+  const payload = JSON.stringify({ c: conversationId, m: message })
   if (Buffer.byteLength(payload, 'utf8') > MAX_PAYLOAD_BYTES) {
     console.warn(`[widget-pubsub] dropping NOTIFY payload — too large (${payload.length} chars)`)
     return
   }
-  // Channel name can't be parameterized in NOTIFY; we sanitize above
-  // so it's safe. Payload IS parameterized.
   try {
-    await db.$executeRawUnsafe(`NOTIFY ${channel}, $1`, payload)
+    await db.$executeRawUnsafe(`NOTIFY ${CHANNEL}, $1`, payload)
   } catch (err: any) {
-    console.warn(`[widget-pubsub] NOTIFY failed for ${channel}:`, err.message)
+    console.warn(`[widget-pubsub] NOTIFY failed:`, err.message)
   }
 }
 
@@ -66,35 +137,27 @@ export type Subscription = {
 
 export async function subscribe(
   conversationId: string,
-  handler: (msg: unknown) => void,
-  onError?: (err: Error) => void,
+  handler: Handler,
+  onError?: ErrorHandler,
 ): Promise<Subscription> {
-  const channel = channelName(conversationId)
-  const client = new Client({
-    connectionString: directConnectionString(),
-    ssl: { rejectUnauthorized: false },
-  })
-
-  client.on('notification', (n) => {
-    if (n.channel !== channel || !n.payload) return
-    try {
-      handler(JSON.parse(n.payload))
-    } catch (err: any) {
-      console.warn('[widget-pubsub] malformed notification payload:', err.message)
-    }
-  })
-  client.on('error', (err) => {
-    console.warn(`[widget-pubsub] listener error on ${channel}:`, err.message)
-    onError?.(err)
-  })
-
-  await client.connect()
-  await client.query(`LISTEN ${channel}`)
-
+  await getSharedClient()
+  let set = subscribers.get(conversationId)
+  if (!set) { set = new Set(); subscribers.set(conversationId, set) }
+  set.add(handler)
+  let errSet: Set<ErrorHandler> | undefined
+  if (onError) {
+    errSet = errorHandlers.get(conversationId)
+    if (!errSet) { errSet = new Set(); errorHandlers.set(conversationId, errSet) }
+    errSet.add(onError)
+  }
   return {
     close: async () => {
-      try { await client.query(`UNLISTEN ${channel}`) } catch {}
-      try { await client.end() } catch {}
+      const s = subscribers.get(conversationId)
+      if (s) { s.delete(handler); if (s.size === 0) subscribers.delete(conversationId) }
+      if (errSet && onError) {
+        const es = errorHandlers.get(conversationId)
+        if (es) { es.delete(onError); if (es.size === 0) errorHandlers.delete(conversationId) }
+      }
     },
   }
 }
