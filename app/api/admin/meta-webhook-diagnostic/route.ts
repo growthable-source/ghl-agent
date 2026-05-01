@@ -274,5 +274,23 @@ async function checkMetaSide(req: NextRequest, appId: string, appSecret: string)
     }
   }
 
+  // ─── Wider Meta-side context ────────────────────────────────────
+  // App roles: who can trigger webhooks in Dev mode.
+  const rolesRes = await fetch(`${GRAPH}/${appId}/roles?access_token=${encodeURIComponent(appToken)}`)
+  findings.appRoles = await rolesRes.json().catch(() => null)
+
+  // Recent conversations on each Page from Meta's perspective. If a
+  // DM was sent to the Page but no webhook fired on our side, this
+  // shows the message exists and isolates the failure to delivery.
+  const pageConversations: any[] = []
+  for (const integ of integrations) {
+    const c = integ.credentials as any
+    if (!c?.pageId || !c?.pageAccessToken) continue
+    const r = await fetch(`${GRAPH}/${c.pageId}/conversations?fields=updated_time,message_count,unread_count,participants,messages.limit(2){message,from,created_time}&limit=5&access_token=${encodeURIComponent(c.pageAccessToken)}`)
+    const body = await r.json().catch(() => null)
+    pageConversations.push({ pageId: c.pageId, pageName: c.pageName, conversations: body })
+  }
+  findings.pageConversations = pageConversations
+
   return NextResponse.json(findings)
 }
