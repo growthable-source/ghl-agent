@@ -51,9 +51,25 @@ const ROLES = [
   { value: 'other', label: 'Other' },
 ]
 
-const STEP_LABELS = ['Workspace', 'Profile', 'Team', 'Get Started']
+const STEP_LABELS = ['Workspace', 'Profile', 'Channels', 'Team', 'Get Started']
 
 type CrmChoice = 'ghl' | 'none' | 'other' | null
+
+type ChannelChoice = 'instagram' | 'facebook' | 'sms' | 'whatsapp' | 'webchat' | 'email'
+
+const CHANNEL_OPTIONS: {
+  id: ChannelChoice
+  title: string
+  desc: string
+  comingSoon?: boolean
+}[] = [
+  { id: 'instagram', title: 'Instagram DMs',     desc: 'Reply to DMs on your Instagram business account' },
+  { id: 'facebook',  title: 'Facebook Messenger', desc: 'Reply to messages on your Facebook Page' },
+  { id: 'sms',       title: 'SMS',                desc: 'Reply to inbound texts via Twilio' },
+  { id: 'webchat',   title: 'Website chat',       desc: 'Embed a chat widget on your site' },
+  { id: 'whatsapp',  title: 'WhatsApp Business',  desc: 'Coming soon', comingSoon: true },
+  { id: 'email',     title: 'Email',              desc: 'Coming soon', comingSoon: true },
+]
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,7 +128,26 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
   const [companySize, setCompanySize] = useState('')
   const [role, setRole] = useState('')
 
-  // Step 2 — Invite
+  // Step 2 — Channels & CRM
+  // Pre-select Instagram + Facebook because that's what most onboardings
+  // start with, and pre-select the no-CRM path because it's the
+  // recommended default per the IA pivot — the agent doesn't need a CRM
+  // to handle DMs.
+  const [channels, setChannels] = useState<Set<ChannelChoice>>(
+    () => new Set<ChannelChoice>(['instagram', 'facebook'])
+  )
+  const [crmChoice, setCrmChoice] = useState<CrmChoice>('none')
+
+  function toggleChannel(id: ChannelChoice) {
+    setChannels(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Step 3 — Invite
   const [inviteInput, setInviteInput] = useState('')
   const [inviteEmails, setInviteEmails] = useState<string[]>([])
   const [inviting, setInviting] = useState(false)
@@ -169,10 +204,20 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
         body: JSON.stringify({ companyName, companySize, role }),
       })
 
-      // 4. Navigate to the new-agent wizard. New users finish onboarding
-      //    expecting to build their first agent — the dashboard overview
-      //    isn't a useful landing when there's nothing to look at yet.
-      router.push(`/dashboard/${wsData.workspaceId}/agents/new`)
+      // 4. Choose the post-onboarding landing based on what the user
+      //    just told us. CRM-first users go straight to integrations
+      //    (their next concrete task is connecting their CRM). No-CRM
+      //    users with channel preferences land on /channels so they
+      //    can wire up Meta OAuth. Everyone else falls back to the
+      //    new-agent wizard, which was the legacy default.
+      const wantsCrm = crmChoice === 'ghl' || crmChoice === 'other'
+      const hasChannelSelection = channels.size > 0
+      const next = wantsCrm
+        ? `/dashboard/${wsData.workspaceId}/integrations`
+        : hasChannelSelection
+          ? `/dashboard/${wsData.workspaceId}/channels`
+          : `/dashboard/${wsData.workspaceId}/agents/new`
+      router.push(next)
       router.refresh()
     } catch (err) {
       console.error('Onboarding error:', err)
@@ -402,8 +447,113 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
           </div>
         )}
 
-        {/* ═══ Step 2 — Invite Team ═══ */}
+        {/* ═══ Step 2 — Channels & CRM ═══ */}
         {step === 2 && (
+          <div className="space-y-6">
+            <div className="text-center">
+              <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>
+                Where do your customers message you?
+              </h2>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Pick the channels you want your agent to handle. You can add more later.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {CHANNEL_OPTIONS.map(opt => {
+                const selected = channels.has(opt.id)
+                const disabled = !!opt.comingSoon
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => !disabled && toggleChannel(opt.id)}
+                    disabled={disabled}
+                    className="text-left rounded-lg p-3 transition-colors"
+                    style={
+                      disabled
+                        ? { background: 'var(--surface-secondary)', border: '1px solid var(--border)', opacity: 0.55, cursor: 'not-allowed' }
+                        : selected
+                          ? { background: 'var(--accent-primary-bg)', border: '1.5px solid var(--accent-primary)', color: 'var(--text-primary)' }
+                          : { background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-sm font-semibold">{opt.title}</span>
+                      {selected && !disabled && (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent-primary)' }}>
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                      {disabled && (
+                        <span
+                          className="text-[9px] font-semibold tracking-wider uppercase px-1.5 py-px rounded"
+                          style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
+                        >
+                          Soon
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] leading-snug" style={{ color: 'var(--text-tertiary)' }}>
+                      {opt.desc}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                Do you already use a CRM?
+              </label>
+              <div className="space-y-1.5">
+                {([
+                  { value: 'none' as const, title: 'No, I just want the inbox', helper: 'Recommended for most small businesses' },
+                  { value: 'ghl' as const,  title: 'Yes — HighLevel / GoHighLevel' },
+                  { value: 'other' as const, title: "Yes — something else (we'll ask later)" },
+                ]).map(opt => {
+                  const selected = crmChoice === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setCrmChoice(opt.value)}
+                      className="w-full text-left rounded-lg px-3 py-2.5 flex items-start gap-3 transition-colors"
+                      style={
+                        selected
+                          ? { background: 'var(--accent-primary-bg)', border: '1.5px solid var(--accent-primary)' }
+                          : { background: 'var(--surface-secondary)', border: '1px solid var(--border)' }
+                      }
+                    >
+                      <span
+                        className="mt-0.5 w-4 h-4 rounded-full shrink-0 flex items-center justify-center"
+                        style={
+                          selected
+                            ? { border: '4px solid var(--accent-primary)', background: 'var(--background)' }
+                            : { border: '1.5px solid var(--border-secondary)' }
+                        }
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.title}</p>
+                        {opt.helper && (
+                          <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{opt.helper}</p>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setStep(1)} className="btn-secondary flex-1 justify-center">Back</button>
+              <button onClick={() => setStep(3)} className="btn-primary flex-1 justify-center">Continue</button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ Step 3 — Invite Team ═══ */}
+        {step === 3 && (
           <div className="space-y-6">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
@@ -504,16 +654,16 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
             )}
 
             <div className="flex gap-3">
-              <button onClick={() => setStep(1)} className="btn-secondary flex-1 justify-center">Back</button>
-              <button onClick={() => setStep(3)} className="btn-primary flex-1 justify-center">
+              <button onClick={() => setStep(2)} className="btn-secondary flex-1 justify-center">Back</button>
+              <button onClick={() => setStep(4)} className="btn-primary flex-1 justify-center">
                 {inviteEmails.length > 0 ? `Continue with ${inviteEmails.length} invite${inviteEmails.length !== 1 ? 's' : ''}` : 'Skip for now'}
               </button>
             </div>
           </div>
         )}
 
-        {/* ═══ Step 3 — Get started ═══ */}
-        {step === 3 && !showBooking && (
+        {/* ═══ Step 4 — Get started ═══ */}
+        {step === 4 && !showBooking && (
           <div className="space-y-6">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
@@ -576,12 +726,12 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
               </button>
             </div>
 
-            <button onClick={() => setStep(2)} className="btn-secondary w-full justify-center">Back</button>
+            <button onClick={() => setStep(3)} className="btn-secondary w-full justify-center">Back</button>
           </div>
         )}
 
-        {/* ═══ Step 3b — Booking view ═══ */}
-        {step === 3 && showBooking && (
+        {/* ═══ Step 4b — Booking view ═══ */}
+        {step === 4 && showBooking && (
           <div className="space-y-5">
             <div className="text-center">
               <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
