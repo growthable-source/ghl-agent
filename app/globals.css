@@ -206,9 +206,12 @@
   --color-zinc-300: var(--text-secondary);
   --color-zinc-200: var(--text-primary);
   --color-zinc-100: var(--text-primary);
-  /* bg-black and bg-white intentionally NOT remapped here — too
-     context-dependent (white-on-page CTAs vs page bg). Those keep the
-     dedicated overrides further down (.bg-white → btn-primary-bg etc.). */
+  /* The legacy app was dark-themed, so bg-black was used as page bg
+     and text-white for primary text. Remap both so they auto-flip with
+     theme. bg-white is left out — it's a CTA accent in dark mode and
+     would be invisible on a light page; the dedicated override block
+     below maps it to the brand orange instead. */
+  --color-black: var(--background);
 
   /* Semantic tokens (used directly via bg-surface, text-text-primary, etc.) */
   --color-background: var(--background);
