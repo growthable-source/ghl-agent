@@ -90,24 +90,38 @@ export default function DeployPage() {
   // couldn't load" since there's no error boundary here).
   if (loading || !initial || !draft?.deployments) return (
     <div className="flex items-center justify-center h-64">
-      <p className="text-zinc-500 text-sm">Loading...</p>
+      <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading...</p>
     </div>
   )
 
   return (
     <div className="p-8 max-w-2xl">
-      <p className="text-sm text-zinc-400 mb-6">
+      <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
         Deploy this agent to one or more messaging channels. The agent uses the same brain, knowledge, and tools on every channel it's deployed to.
       </p>
 
       {/* Active deployment count */}
       <div className="flex items-center gap-2 mb-6">
-        <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
-          activeCount > 0
-            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-            : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
-        }`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+        <span
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border"
+          style={
+            activeCount > 0
+              ? {
+                  background: 'var(--accent-emerald-bg)',
+                  color: 'var(--accent-emerald)',
+                  borderColor: 'var(--accent-emerald)',
+                }
+              : {
+                  background: 'var(--surface-secondary)',
+                  color: 'var(--text-tertiary)',
+                  borderColor: 'var(--border)',
+                }
+          }
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: activeCount > 0 ? 'var(--accent-emerald)' : 'var(--text-muted)' }}
+          />
           {activeCount > 0 ? `Live on ${activeCount} channel${activeCount > 1 ? 's' : ''}` : 'Not deployed'}
         </span>
       </div>
@@ -120,33 +134,49 @@ export default function DeployPage() {
             <div
               key={ch.key}
               onClick={() => toggleChannel(ch.key)}
-              className={`flex items-center gap-4 rounded-xl border p-4 cursor-pointer transition-all ${
+              className="flex items-center gap-4 rounded-xl border p-4 cursor-pointer transition-all"
+              style={
                 active
-                  ? 'border-emerald-500/40 bg-emerald-500/5'
-                  : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-              }`}
+                  ? {
+                      borderColor: 'var(--accent-emerald)',
+                      background: 'var(--accent-emerald-bg)',
+                    }
+                  : {
+                      borderColor: 'var(--border)',
+                      background: 'var(--surface)',
+                    }
+              }
             >
-              <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                active ? 'bg-zinc-800/50 ' + ch.color : 'bg-zinc-800 text-zinc-500'
-              }`}>
+              <div
+                className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${active ? ch.color : ''}`}
+                style={{
+                  background: 'var(--surface-secondary)',
+                  color: active ? undefined : 'var(--text-tertiary)',
+                }}
+              >
                 {ch.icon}
               </div>
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium ${active ? 'text-white' : 'text-zinc-300'}`}>
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                >
                   {ch.label}
                 </p>
-                <p className="text-xs text-zinc-500 mt-0.5">{ch.desc}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{ch.desc}</p>
               </div>
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); toggleChannel(ch.key) }}
-                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                  active ? 'bg-emerald-500' : 'bg-zinc-700'
-                }`}
+                className="relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                style={{ background: active ? 'var(--accent-emerald)' : 'var(--border-secondary)' }}
               >
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                  active ? 'translate-x-5' : 'translate-x-0'
-                }`} />
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${
+                    active ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                  style={{ background: 'var(--btn-primary-text)' }}
+                />
               </button>
             </div>
           )
@@ -154,18 +184,25 @@ export default function DeployPage() {
       </div>
 
       {/* Voice callout */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 mb-6">
+      <div
+        className="rounded-xl border p-4 mb-6"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
         <div className="flex items-center gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-500">
+          <div
+            className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
+            style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}
+          >
             <PhoneIcon className="w-5 h-5" />
           </div>
           <div className="flex-1">
-            <p className="text-sm text-zinc-300">Voice (Phone Calls)</p>
-            <p className="text-xs text-zinc-500 mt-0.5">Voice is configured separately with its own phone number and voice settings.</p>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Voice (Phone Calls)</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Voice is configured separately with its own phone number and voice settings.</p>
           </div>
           <Link
             href={`/dashboard/${workspaceId}/agents/${agentId}/voice`}
-            className="text-xs text-blue-400 hover:text-blue-300 transition-colors shrink-0"
+            className="text-xs transition-colors shrink-0 hover:opacity-80"
+            style={{ color: 'var(--accent-primary)' }}
           >
             Configure Voice
           </Link>
@@ -173,9 +210,12 @@ export default function DeployPage() {
       </div>
 
       {/* Info box */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 mb-6">
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          <span className="text-zinc-400 font-medium">How it works:</span> When a message arrives on any enabled channel,
+      <div
+        className="rounded-xl border p-4 mb-6"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+          <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>How it works:</span> When a message arrives on any enabled channel,
           the agent automatically responds using the same knowledge base, tools, and persona. Routing rules are applied across
           all channels. If no channels are enabled, the agent defaults to responding on all channels for backward compatibility.
         </p>

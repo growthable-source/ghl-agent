@@ -174,8 +174,8 @@ export default function NotificationsSettingsPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">Notifications</h1>
-        <p className="text-sm text-zinc-400 mt-1 max-w-2xl">
+        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Notifications</h1>
+        <p className="text-sm mt-1 max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
           Pick where you want to be pinged for each event. These preferences are personal to you — your teammates each set their own. Workspace-shared channels (Slack, Discord, team email) are managed under Settings → Integrations.
         </p>
       </div>
@@ -187,11 +187,11 @@ export default function NotificationsSettingsPage() {
       )}
 
       {/* Browser push card */}
-      <div className="mb-8 p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+      <div className="mb-8 p-5 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-sm font-semibold text-white">🔔 Browser push notifications</p>
-            <p className="text-xs text-zinc-500 mt-1 max-w-md">
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>🔔 Browser push notifications</p>
+            <p className="text-xs mt-1 max-w-md" style={{ color: 'var(--text-tertiary)' }}>
               {pushState === 'unsupported' && 'This browser doesn\'t support push notifications.'}
               {pushState === 'denied' && 'You\'ve blocked notifications in your browser. Re-enable from your browser\'s site settings.'}
               {pushState === 'inactive' && 'Get a desktop notification the moment something needs you. Works in Chrome, Firefox, Edge, and Safari (macOS 13+).'}
@@ -202,32 +202,34 @@ export default function NotificationsSettingsPage() {
           <div className="flex items-center gap-2">
             {pushState === 'inactive' && (
               <button onClick={enablePush}
-                className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors"
-                style={{ background: '#fa4d2e' }}
+                className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors"
+                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
               >Enable browser push</button>
             )}
             {pushState === 'active' && (
               <>
                 <button onClick={sendTestPush}
-                  className="text-xs font-medium px-3 py-2 rounded-lg text-zinc-300 border border-zinc-700 hover:text-white hover:border-zinc-500 transition-colors"
+                  className="text-xs font-medium px-3 py-2 rounded-lg border transition-colors"
+                  style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
                 >Send test</button>
                 <button onClick={disablePush}
-                  className="text-xs font-medium px-3 py-2 rounded-lg text-zinc-400 hover:text-red-300 transition-colors"
+                  className="text-xs font-medium px-3 py-2 rounded-lg hover:text-red-500 transition-colors"
+                  style={{ color: 'var(--text-tertiary)' }}
                 >Disable on this device</button>
               </>
             )}
           </div>
         </div>
-        {statusMsg && <p className="text-[11px] text-zinc-400 mt-3">{statusMsg}</p>}
+        {statusMsg && <p className="text-[11px] mt-3" style={{ color: 'var(--text-secondary)' }}>{statusMsg}</p>}
       </div>
 
       {/* Per-event preferences */}
       {events === null ? (
-        <div className="h-6 w-32 bg-zinc-800 rounded animate-pulse" />
+        <div className="h-6 w-32 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
       ) : (
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
           <table className="w-full">
-            <thead className="bg-zinc-900/60 text-[10px] uppercase tracking-wider text-zinc-500">
+            <thead className="text-[10px] uppercase tracking-wider" style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}>
               <tr>
                 <th className="text-left px-4 py-2.5 font-semibold">Event</th>
                 <th className="text-center px-3 py-2.5 font-semibold w-20">Email</th>
@@ -236,10 +238,10 @@ export default function NotificationsSettingsPage() {
             </thead>
             <tbody>
               {events.map(ev => (
-                <tr key={ev.id} className="border-t border-zinc-800">
+                <tr key={ev.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
                   <td className="px-4 py-3.5">
-                    <p className="text-sm text-white">{ev.label}</p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">{ev.description}</p>
+                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{ev.label}</p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{ev.description}</p>
                   </td>
                   <td className="text-center px-3">
                     <Toggle
@@ -278,10 +280,10 @@ function Toggle({ checked, onChange, disabled, title }: {
       disabled={disabled}
       title={title}
       className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-30"
-      style={{ background: checked && !disabled ? '#22c55e' : '#3f3f46' }}
+      style={{ background: checked && !disabled ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
     >
-      <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
-        style={{ transform: checked ? 'translateX(20px)' : 'translateX(4px)' }} />
+      <span className="inline-block h-3 w-3 rounded-full transition-transform"
+        style={{ background: '#fff', transform: checked ? 'translateX(20px)' : 'translateX(4px)' }} />
     </button>
   )
 }

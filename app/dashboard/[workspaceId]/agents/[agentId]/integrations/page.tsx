@@ -79,41 +79,54 @@ export default function AgentIntegrationsPage() {
 
   useEffect(() => { refresh() }, [refresh])
 
-  if (loading) return <div className="p-8"><div className="h-6 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+  if (loading) return <div className="p-8"><div className="h-6 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-white">Integrations</h1>
-          <p className="text-sm text-zinc-400 mt-1 max-w-2xl">
+          <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Integrations</h1>
+          <p className="text-sm mt-1 max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
             Connect external MCP servers and write plain-English rules for when this agent should use them.
             The agent will follow your &quot;when to use&quot; instructions exactly — keep them specific.
           </p>
         </div>
         <button
           onClick={() => setConnectOpen(true)}
-          className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors"
-          style={{ background: '#fa4d2e' }}
+          className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors"
+          style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
         >
           + Connect MCP
         </button>
       </div>
 
       {pageError && (
-        <div className="mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs text-amber-300">
+        <div
+          className="mb-4 p-3 rounded-lg text-xs"
+          style={{ border: '1px solid var(--accent-amber)', background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+        >
           {pageError}
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-zinc-800 mb-6">
+      <div className="flex gap-1 mb-6" style={{ borderBottom: '1px solid var(--border)' }}>
         <button
           onClick={() => setTab('connected')}
-          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === 'connected' ? 'border-white text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+          className="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          style={
+            tab === 'connected'
+              ? { borderColor: 'var(--text-primary)', color: 'var(--text-primary)' }
+              : { borderColor: 'transparent', color: 'var(--text-tertiary)' }
+          }
         >Connected ({servers.length})</button>
         <button
           onClick={() => setTab('logs')}
-          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === 'logs' ? 'border-white text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+          className="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          style={
+            tab === 'logs'
+              ? { borderColor: 'var(--text-primary)', color: 'var(--text-primary)' }
+              : { borderColor: 'transparent', color: 'var(--text-tertiary)' }
+          }
         >Logs</button>
       </div>
 
@@ -159,10 +172,16 @@ function ConnectedView({
 
   if (servers.length === 0) {
     return (
-      <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl">
-        <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">🔌</div>
-        <p className="text-sm font-medium text-white mb-1">No MCP servers connected yet</p>
-        <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+      <div
+        className="text-center py-16 rounded-xl"
+        style={{ border: '1px dashed var(--border)' }}
+      >
+        <div
+          className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-2xl"
+          style={{ background: 'var(--surface-tertiary)' }}
+        >🔌</div>
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No MCP servers connected yet</p>
+        <p className="text-xs max-w-sm mx-auto" style={{ color: 'var(--text-tertiary)' }}>
           Connect Meta Ads, Stripe, Linear, or any custom MCP. Then write rules for when this agent should call them.
         </p>
       </div>
@@ -189,31 +208,47 @@ function ConnectedView({
   return (
     <div className="space-y-4">
       {discoverError && (
-        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs text-red-300">
+        <div
+          className="p-3 rounded-lg text-xs"
+          style={{ border: '1px solid var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+        >
           {discoverError}
         </div>
       )}
       {servers.map(s => {
         const tools = s.discoveredTools || []
         return (
-          <div key={s.id} className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+          <div
+            key={s.id}
+            className="rounded-xl overflow-hidden"
+            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+          >
             <div className="p-5 flex items-start gap-4">
               {s.iconUrl ? (
-                <img src={s.iconUrl} alt="" className="w-10 h-10 rounded-lg bg-white/5 p-1.5 object-contain" />
+                <img src={s.iconUrl} alt="" className="w-10 h-10 rounded-lg p-1.5 object-contain" style={{ background: 'var(--surface-tertiary)' }} />
               ) : (
-                <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">🔌</div>
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
+                >🔌</div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white">{s.name}</p>
-                <p className="text-xs text-zinc-500 mt-0.5 truncate">{s.url}</p>
-                {s.description && <p className="text-xs text-zinc-400 mt-1">{s.description}</p>}
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{s.name}</p>
+                <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>{s.url}</p>
+                {s.description && <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{s.description}</p>}
               </div>
               <div className="flex items-center gap-2">
-                {!s.isActive && <span className="text-[10px] text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800">paused</span>}
+                {!s.isActive && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    style={{ color: 'var(--text-tertiary)', background: 'var(--surface-tertiary)' }}
+                  >paused</span>
+                )}
                 <button
                   onClick={() => discover(s.id)}
                   disabled={busy === s.id}
-                  className="text-[11px] px-2.5 py-1.5 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-50"
+                  className="text-[11px] px-2.5 py-1.5 rounded transition-colors disabled:opacity-50 hover:opacity-80"
+                  style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)', background: 'var(--surface-secondary)' }}
                 >
                   {busy === s.id ? 'Discovering…' : tools.length > 0 ? 'Re-discover tools' : 'Discover tools'}
                 </button>
@@ -222,12 +257,12 @@ function ConnectedView({
 
             {tools.length === 0 ? (
               <div className="px-5 pb-5">
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                   No tools discovered yet. Click &quot;Discover tools&quot; to fetch the tool list from the server.
                 </p>
               </div>
             ) : (
-              <div className="border-t border-zinc-800">
+              <div style={{ borderTop: '1px solid var(--border)' }}>
                 {tools.map(t => {
                   const att = attMap.get(`${s.id}:${t.name}`)
                   return (
@@ -329,28 +364,37 @@ function ToolRow({
   }
 
   return (
-    <div className={`px-5 py-4 border-b border-zinc-800 last:border-b-0 ${!enabled ? 'opacity-60' : ''}`}>
+    <div
+      className={`px-5 py-4 last:border-b-0 ${!enabled ? 'opacity-60' : ''}`}
+      style={{ borderBottom: '1px solid var(--border)' }}
+    >
       {rowError && (
-        <div className="mb-2 p-2 rounded border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
+        <div
+          className="mb-2 p-2 rounded text-[11px]"
+          style={{ border: '1px solid var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+        >
           {rowError}
         </div>
       )}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <code className="text-sm text-white font-mono">{tool.name}</code>
+            <code className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{tool.name}</code>
             {requireApproval && enabled && (
-              <span className="text-[10px] text-amber-300 px-1.5 py-0.5 rounded bg-amber-400/10 ring-1 ring-amber-400/20">
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded"
+                style={{ color: 'var(--accent-amber)', background: 'var(--accent-amber-bg)', boxShadow: 'inset 0 0 0 1px var(--accent-amber)' }}
+              >
                 approval required
               </span>
             )}
           </div>
           {tool.description && (
-            <p className="text-[11px] text-zinc-500 line-clamp-2">{tool.description}</p>
+            <p className="text-[11px] line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>{tool.description}</p>
           )}
           {enabled && whenToUse && (
-            <p className="text-[11px] text-zinc-300 mt-1.5 line-clamp-2">
-              <span className="text-zinc-500">When to use: </span>{whenToUse}
+            <p className="text-[11px] mt-1.5 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+              <span style={{ color: 'var(--text-tertiary)' }}>When to use: </span>{whenToUse}
             </p>
           )}
         </div>
@@ -358,15 +402,16 @@ function ToolRow({
           <button
             onClick={toggleEnabled}
             className="relative inline-flex h-5 w-9 items-center rounded-full"
-            style={{ background: enabled ? '#22c55e' : '#3f3f46' }}
+            style={{ background: enabled ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
             title={enabled ? 'Disable for this agent' : 'Enable for this agent'}
           >
-            <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
-              style={{ transform: enabled ? 'translateX(20px)' : 'translateX(4px)' }} />
+            <span className="inline-block h-3 w-3 rounded-full transition-transform"
+              style={{ background: '#fff', transform: enabled ? 'translateX(20px)' : 'translateX(4px)' }} />
           </button>
           <button
             onClick={() => setOpen(o => !o)}
-            className="text-[11px] text-zinc-400 hover:text-white px-2 py-1 transition-colors"
+            className="text-[11px] px-2 py-1 transition-colors hover:opacity-80"
+            style={{ color: 'var(--text-secondary)' }}
           >
             {open ? 'Close' : 'Edit rule'}
           </button>
@@ -374,31 +419,33 @@ function ToolRow({
       </div>
 
       {open && (
-        <div className="mt-4 pt-4 border-t border-zinc-800 space-y-3">
+        <div className="mt-4 pt-4 space-y-3" style={{ borderTop: '1px solid var(--border)' }}>
           <div>
-            <label className="text-xs text-zinc-400 mb-1 block">When should the agent use this?</label>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>When should the agent use this?</label>
             <textarea
               value={whenToUse}
               onChange={e => setWhenToUse(e.target.value)}
               rows={3}
               placeholder={`E.g. "When the contact asks about ad performance, ROAS, or wants to pause a campaign by name."`}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+              className="w-full rounded px-3 py-2 text-sm"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
-            <p className="text-[10px] text-zinc-500 mt-1">
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
               Plain English. The agent reads this every turn and decides whether the situation matches.
             </p>
           </div>
 
           <div>
-            <label className="text-xs text-zinc-400 mb-1 block">Required keywords (optional gate)</label>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Required keywords (optional gate)</label>
             <input
               type="text"
               value={keywordsText}
               onChange={e => setKeywordsText(e.target.value)}
               placeholder="e.g. ads, campaign, roas, spend"
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+              className="w-full rounded px-3 py-2 text-sm"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
-            <p className="text-[10px] text-zinc-500 mt-1">
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
               Comma-separated. If set, the tool is hidden from the agent unless at least one keyword appears in the inbound message.
             </p>
           </div>
@@ -411,8 +458,8 @@ function ToolRow({
               className="mt-0.5 w-4 h-4 accent-orange-500"
             />
             <div>
-              <p className="text-sm text-white">Require human approval before calling</p>
-              <p className="text-xs text-zinc-500">
+              <p className="text-sm" style={{ color: 'var(--text-primary)' }}>Require human approval before calling</p>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                 The agent will tell the contact it&apos;s checking with the team and stop. Useful for destructive actions.
               </p>
             </div>
@@ -422,14 +469,19 @@ function ToolRow({
             {attachment ? (
               <button
                 onClick={detach}
-                className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
+                className="text-[11px] transition-colors hover:opacity-80"
+                style={{ color: 'var(--accent-red)' }}
               >Detach from this agent</button>
             ) : <span />}
             <button
               onClick={() => save()}
               disabled={saving}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors disabled:opacity-50"
-              style={{ background: '#fa4d2e' }}
+              className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+              style={
+                saving
+                  ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }
+                  : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+              }
             >
               {saving ? 'Saving…' : 'Save rule'}
             </button>
@@ -505,15 +557,26 @@ function ConnectModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-zinc-800 flex items-start justify-between">
+      <div
+        className="w-full max-w-2xl rounded-2xl shadow-2xl"
+        style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div
+          className="p-6 flex items-start justify-between"
+          style={{ borderBottom: '1px solid var(--border)' }}
+        >
           <div>
-            <h2 className="text-lg font-bold text-white">{step === 'pick' ? 'Connect an MCP server' : (custom ? 'Custom MCP server' : picked?.name)}</h2>
-            <p className="text-xs text-zinc-500 mt-1">
+            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{step === 'pick' ? 'Connect an MCP server' : (custom ? 'Custom MCP server' : picked?.name)}</h2>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
               {step === 'pick' ? 'Pick a curated integration or paste a custom URL.' : 'One-time setup — you\'ll attach individual tools to this agent next.'}
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            className="text-xl leading-none hover:opacity-80"
+            style={{ color: 'var(--text-tertiary)' }}
+          >×</button>
         </div>
 
         {step === 'pick' && (
@@ -523,13 +586,14 @@ function ConnectModal({
                 <button
                   key={r.slug}
                   onClick={() => pick(r)}
-                  className="text-left p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900 transition-colors"
+                  className="text-left p-4 rounded-xl transition-colors hover:opacity-90"
+                  style={{ border: '1px solid var(--border)', background: 'var(--surface-secondary)' }}
                 >
                   <div className="flex items-start gap-3">
-                    <img src={r.iconUrl} alt="" className="w-8 h-8 rounded bg-white/5 p-1 object-contain" />
+                    <img src={r.iconUrl} alt="" className="w-8 h-8 rounded p-1 object-contain" style={{ background: 'var(--surface-tertiary)' }} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white">{r.name}</p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5 line-clamp-2">{r.description}</p>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{r.name}</p>
+                      <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>{r.description}</p>
                     </div>
                   </div>
                 </button>
@@ -537,10 +601,11 @@ function ConnectModal({
             </div>
             <button
               onClick={pickCustom}
-              className="w-full text-left p-4 rounded-xl border border-dashed border-zinc-700 hover:border-zinc-500 hover:bg-zinc-900 transition-colors"
+              className="w-full text-left p-4 rounded-xl transition-colors hover:opacity-90"
+              style={{ border: '1px dashed var(--border)', background: 'var(--surface-secondary)' }}
             >
-              <p className="text-sm font-semibold text-white">+ Custom MCP server</p>
-              <p className="text-[11px] text-zinc-500 mt-0.5">Paste any HTTP MCP URL. Best for self-hosted or beta integrations.</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>+ Custom MCP server</p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Paste any HTTP MCP URL. Best for self-hosted or beta integrations.</p>
             </button>
           </div>
         )}
@@ -548,34 +613,40 @@ function ConnectModal({
         {step === 'configure' && (
           <div className="p-6 space-y-4">
             {error && (
-              <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs text-red-300">{error}</div>
+              <div
+                className="p-3 rounded-lg text-xs"
+                style={{ border: '1px solid var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+              >{error}</div>
             )}
             <div>
-              <label className="text-xs text-zinc-400 mb-1 block">Display name</label>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Display name</label>
               <input
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Meta Ads"
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+                className="w-full rounded px-3 py-2 text-sm"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
               />
             </div>
             <div>
-              <label className="text-xs text-zinc-400 mb-1 block">MCP server URL</label>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>MCP server URL</label>
               <input
                 type="url"
                 value={url}
                 onChange={e => setUrl(e.target.value)}
                 placeholder="https://mcp.example.com/v1"
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white font-mono"
+                className="w-full rounded px-3 py-2 text-sm font-mono"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
               />
             </div>
             <div>
-              <label className="text-xs text-zinc-400 mb-1 block">Auth</label>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Auth</label>
               <select
                 value={authType}
                 onChange={e => setAuthType(e.target.value as any)}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white mb-2"
+                className="w-full rounded px-3 py-2 text-sm mb-2"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
               >
                 <option value="bearer">Bearer token</option>
                 <option value="header">Custom header (Header-Name: value)</option>
@@ -588,13 +659,14 @@ function ConnectModal({
                     value={authSecret}
                     onChange={e => setAuthSecret(e.target.value)}
                     placeholder={authType === 'bearer' ? 'sk-…' : 'X-API-Key: secret'}
-                    className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white font-mono"
+                    className="w-full rounded px-3 py-2 text-sm font-mono"
+                    style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
                   />
                   {picked?.authHelp && (
-                    <p className="text-[10px] text-zinc-500 mt-1">
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
                       {picked.authHelp}
                       {picked.authHelpUrl && (
-                        <> — <a href={picked.authHelpUrl} target="_blank" rel="noopener" className="text-orange-400 hover:underline">where do I find it?</a></>
+                        <> — <a href={picked.authHelpUrl} target="_blank" rel="noopener" className="hover:underline" style={{ color: 'var(--accent-primary)' }}>where do I find it?</a></>
                       )}
                     </p>
                   )}
@@ -604,13 +676,18 @@ function ConnectModal({
             <div className="flex items-center justify-between pt-2">
               <button
                 onClick={() => setStep('pick')}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="text-xs transition-colors hover:opacity-80"
+                style={{ color: 'var(--text-tertiary)' }}
               >← Back</button>
               <button
                 onClick={connect}
                 disabled={saving || !name.trim() || !url.trim()}
-                className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors disabled:opacity-50"
-                style={{ background: '#fa4d2e' }}
+                className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+                style={
+                  saving || !name.trim() || !url.trim()
+                    ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }
+                    : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+                }
               >
                 {saving ? 'Connecting…' : 'Connect & discover tools'}
               </button>
@@ -640,20 +717,26 @@ function LogsView({ workspaceId, agentId }: { workspaceId: string; agentId: stri
       .catch(e => setError(e.message))
   }, [workspaceId, agentId])
 
-  if (error) return <p className="text-xs text-red-400">{error}</p>
-  if (!logs) return <div className="h-6 w-32 bg-zinc-800 rounded animate-pulse" />
+  if (error) return <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>
+  if (!logs) return <div className="h-6 w-32 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
   if (logs.length === 0) {
     return (
-      <div className="text-center py-12 border border-dashed border-zinc-700 rounded-xl text-xs text-zinc-500">
+      <div
+        className="text-center py-12 rounded-xl text-xs"
+        style={{ border: '1px dashed var(--border)', color: 'var(--text-tertiary)' }}
+      >
         No MCP tool calls yet. Once the agent fires a connected tool, the call shows up here.
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+    >
       <table className="w-full text-sm">
-        <thead className="bg-zinc-900 text-[11px] text-zinc-500 uppercase">
+        <thead className="text-[11px] uppercase" style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}>
           <tr>
             <th className="text-left px-4 py-2 font-semibold">When</th>
             <th className="text-left px-4 py-2 font-semibold">Contact</th>
@@ -662,14 +745,18 @@ function LogsView({ workspaceId, agentId }: { workspaceId: string; agentId: stri
         </thead>
         <tbody>
           {logs.map(l => (
-            <tr key={l.id} className="border-t border-zinc-800">
-              <td className="px-4 py-3 text-xs text-zinc-400 whitespace-nowrap">
+            <tr key={l.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
                 {new Date(l.createdAt).toLocaleString()}
               </td>
-              <td className="px-4 py-3 text-xs text-zinc-300">{l.contactName || '—'}</td>
-              <td className="px-4 py-3 text-xs text-zinc-300 font-mono">
+              <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{l.contactName || '—'}</td>
+              <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
                 {l.actionsPerformed.filter(a => a.startsWith('mcp:')).map(a => (
-                  <span key={a} className="inline-block mr-2 mb-1 px-1.5 py-0.5 rounded bg-zinc-800">
+                  <span
+                    key={a}
+                    className="inline-block mr-2 mb-1 px-1.5 py-0.5 rounded"
+                    style={{ background: 'var(--surface-tertiary)' }}
+                  >
                     {a.replace(/^mcp:/, '')}
                   </span>
                 ))}

@@ -163,7 +163,7 @@ export default function BillingPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-zinc-500 text-sm">Loading billing...</p>
+        <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading billing...</p>
       </div>
     )
   }
@@ -176,14 +176,14 @@ export default function BillingPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6 flex items-center gap-3">
-        <Link href={`/dashboard/${workspaceId}/settings`} className="text-zinc-500 hover:text-white text-sm">
+        <Link href={`/dashboard/${workspaceId}/settings`} className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
           ← Settings
         </Link>
       </div>
 
       <div className="mb-8">
-        <h1 className="text-xl font-semibold mb-1">Billing & Usage</h1>
-        <p className="text-zinc-400 text-sm">Manage your plan, view usage, and update payment details.</p>
+        <h1 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Billing & Usage</h1>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your plan, view usage, and update payment details.</p>
       </div>
 
       {/* Internal-workspace banner. Replaces the trial / trial-expired
@@ -235,22 +235,22 @@ export default function BillingPage() {
       {/* Current usage */}
       {isOnPaidPlan && usage && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-500 font-medium mb-1">Current Plan</p>
-            <p className="text-lg font-semibold text-white">{usage.planLabel}</p>
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>Current Plan</p>
+            <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{usage.planLabel}</p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-500 font-medium mb-1">Messages This Period</p>
-            <p className="text-lg font-semibold text-white">
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>Messages This Period</p>
+            <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
               {usage.messages.used.toLocaleString()}
-              <span className="text-sm text-zinc-500 font-normal"> / {usage.messages.limit.toLocaleString()}</span>
+              <span className="text-sm font-normal" style={{ color: 'var(--text-tertiary)' }}> / {usage.messages.limit.toLocaleString()}</span>
             </p>
             {usage.messages.overage > 0 && (
-              <p className="text-xs text-amber-400 mt-1">
+              <p className="text-xs text-amber-500 mt-1">
                 {usage.messages.overage.toLocaleString()} overage — ~${usage.messages.estimatedOverageCost}
               </p>
             )}
-            <div className="mt-2 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-tertiary)' }}>
               <div
                 className="h-full rounded-full transition-all"
                 style={{
@@ -260,19 +260,19 @@ export default function BillingPage() {
               />
             </div>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-xs text-zinc-500 font-medium mb-1">Voice Minutes</p>
-            <p className="text-lg font-semibold text-white">
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>Voice Minutes</p>
+            <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
               {usage.voice.minutesUsed}
-              <span className="text-sm text-zinc-500 font-normal"> / {usage.voice.minuteLimit} min</span>
+              <span className="text-sm font-normal" style={{ color: 'var(--text-tertiary)' }}> / {usage.voice.minuteLimit} min</span>
             </p>
             {usage.voice.overage > 0 && (
-              <p className="text-xs text-amber-400 mt-1">
+              <p className="text-xs text-amber-500 mt-1">
                 {usage.voice.overage} min overage — ~${usage.voice.estimatedOverageCost}
               </p>
             )}
             {usage.voice.minuteLimit > 0 && (
-              <div className="mt-2 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-tertiary)' }}>
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
@@ -292,7 +292,8 @@ export default function BillingPage() {
           <button
             onClick={handlePortal}
             disabled={actionLoading === 'portal'}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 text-white text-sm px-4 py-2 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+            className="rounded-lg border text-sm px-4 py-2 transition-colors disabled:opacity-50"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-primary)' }}
           >
             {actionLoading === 'portal' ? 'Opening...' : 'Manage Subscription & Payment'}
           </button>
@@ -302,26 +303,28 @@ export default function BillingPage() {
       {/* Plan selector */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-medium text-zinc-200">
+          <h2 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
             {isOnPaidPlan ? 'Change Plan' : 'Choose a Plan'}
           </h2>
-          <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5 border border-zinc-800">
+          <div className="flex items-center gap-1 rounded-lg p-0.5 border" style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)' }}>
             <button
               onClick={() => setBillingPeriod('monthly')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                billingPeriod === 'monthly' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
-              }`}
+              className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+              style={billingPeriod === 'monthly'
+                ? { background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }
+                : { color: 'var(--text-tertiary)' }}
             >
               Monthly
             </button>
             <button
               onClick={() => setBillingPeriod('annual')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                billingPeriod === 'annual' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
-              }`}
+              className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+              style={billingPeriod === 'annual'
+                ? { background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }
+                : { color: 'var(--text-tertiary)' }}
             >
               Annual
-              <span className="ml-1 text-emerald-400">-17%</span>
+              <span className="ml-1 text-emerald-500">-17%</span>
             </button>
           </div>
         </div>
@@ -334,32 +337,32 @@ export default function BillingPage() {
             return (
               <div
                 key={plan.id}
-                className={`rounded-xl border p-5 relative ${
-                  plan.popular
-                    ? 'border-[#fa4d2e]/40 bg-zinc-950'
-                    : 'border-zinc-800 bg-zinc-950'
-                } ${isCurrent ? 'ring-1 ring-[#fa4d2e]/50' : ''}`}
+                className={`rounded-xl border p-5 relative ${isCurrent ? 'ring-1 ring-[#fa4d2e]/50' : ''}`}
+                style={{
+                  borderColor: plan.popular ? 'rgba(250, 77, 46, 0.4)' : 'var(--border)',
+                  background: 'var(--surface)',
+                }}
               >
                 {plan.popular && (
-                  <span className="absolute -top-2.5 left-4 text-[10px] font-bold uppercase tracking-wider text-[#fa4d2e] bg-zinc-950 px-2">
+                  <span className="absolute -top-2.5 left-4 text-[10px] font-bold uppercase tracking-wider text-[#fa4d2e] px-2" style={{ background: 'var(--surface)' }}>
                     Most Popular
                   </span>
                 )}
 
-                <h3 className="text-base font-semibold text-white mb-1">{plan.label}</h3>
-                <p className="text-xs text-zinc-500 mb-3">{plan.description}</p>
+                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{plan.label}</h3>
+                <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>{plan.description}</p>
 
                 <div className="mb-4">
-                  <span className="text-2xl font-bold text-white">${price}</span>
-                  <span className="text-xs text-zinc-500">/mo</span>
+                  <span className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>${price}</span>
+                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>/mo</span>
                   {billingPeriod === 'annual' && (
-                    <span className="text-xs text-zinc-600 ml-1 line-through">${plan.monthlyPrice}</span>
+                    <span className="text-xs ml-1 line-through" style={{ color: 'var(--text-muted)' }}>${plan.monthlyPrice}</span>
                   )}
                 </div>
 
                 <ul className="space-y-1.5 mb-5">
                   {plan.highlights.map(h => (
-                    <li key={h} className="flex items-center gap-2 text-xs text-zinc-400">
+                    <li key={h} className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
                       <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
@@ -369,18 +372,17 @@ export default function BillingPage() {
                 </ul>
 
                 {isCurrent ? (
-                  <div className="text-center text-xs text-zinc-500 py-2 rounded-lg border border-zinc-800 bg-zinc-900">
+                  <div className="text-center text-xs py-2 rounded-lg border" style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}>
                     Current Plan
                   </div>
                 ) : (
                   <button
                     onClick={() => isOnPaidPlan ? handleChangePlan(plan.id) : handleCheckout(plan.id)}
                     disabled={actionLoading === plan.id}
-                    className={`w-full text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-50 ${
-                      plan.popular
-                        ? 'bg-[#fa4d2e] text-white hover:bg-[#e8432a]'
-                        : 'bg-white text-black hover:bg-zinc-200'
-                    }`}
+                    className="w-full text-sm font-medium py-2 rounded-lg transition-colors hover:opacity-90 disabled:opacity-50"
+                    style={plan.popular
+                      ? { background: '#fa4d2e', color: '#fff' }
+                      : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
                   >
                     {actionLoading === plan.id
                       ? 'Processing...'
@@ -394,7 +396,7 @@ export default function BillingPage() {
           })}
         </div>
 
-        <p className="text-xs text-zinc-600 mt-4 text-center">
+        <p className="text-xs mt-4 text-center" style={{ color: 'var(--text-muted)' }}>
           All plans include a 7-day free trial. Message overage billed at $0.04/message. Voice overage at $0.18/minute.
         </p>
       </div>
