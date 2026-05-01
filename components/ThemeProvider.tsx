@@ -7,7 +7,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return (
     <NextThemesProvider
       attribute="data-theme"
-      defaultTheme="midnight"
+      defaultTheme="soft-light"
       themes={['midnight', 'soft-light', 'dim', 'sunset', 'system']}
       enableSystem
       disableTransitionOnChange

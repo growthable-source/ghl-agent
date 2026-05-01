@@ -14,7 +14,7 @@ model User {
   email                     String?              @unique
   emailVerified             DateTime?
   image                     String?
-  theme                     String               @default("midnight")
+  theme                     String               @default("soft-light")
   companyName               String?
   companySize               String?
   role                      String?

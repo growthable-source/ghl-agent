@@ -101,6 +101,28 @@ function SidebarBody() {
     )
   }
 
+  function navItemPrimary(
+    href: string,
+    label: string,
+    icon: React.ReactNode,
+    badgeCount?: number | null
+  ) {
+    const active = pathname === href || pathname.startsWith(href + '/') || pathname === href
+    return (
+      <Link
+        href={href}
+        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+          active ? '' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+        }`}
+        style={active ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+      >
+        <span className="shrink-0 w-[18px] h-[18px] flex items-center justify-center">{icon}</span>
+        <span className="flex-1 truncate font-medium">{label}</span>
+        <NavBadge count={badgeCount} />
+      </Link>
+    )
+  }
+
   return (
     <div className="hidden md:flex w-56 shrink-0 border-r border-sidebar-border flex-col h-full bg-sidebar-bg">
       {/* Logo */}
@@ -133,56 +155,96 @@ function SidebarBody() {
             </div>
             {!isOnboarding && (
               <>
-                {navLink(`/dashboard/${workspaceId}`, 'Overview')}
-                {navLink(`/dashboard/${workspaceId}/agents`, 'Agents')}
-                {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
-                {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
-                {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
-                {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
-                {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox', counts.inboxUnread)}
-                {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
-                {/* Routing Diagnostic moved to /admin — it exposed raw
-                    per-agent evaluation traces that were staff-only
-                    territory and had tenant-isolation risk across
-                    multi-workspace users. Customers troubleshoot via
-                    the per-agent Deploy-tab warning banner or support. */}
-                {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
-                {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
-                {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals', counts.approvalsPending)}
+                {/* Primary objects — the four things users actually do here */}
+                {navItemPrimary(
+                  `/dashboard/${workspaceId}/inbox`,
+                  'Inbox',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
+                  </svg>,
+                  counts.inboxUnread,
+                )}
+                {navItemPrimary(
+                  `/dashboard/${workspaceId}/contacts`,
+                  'Contacts',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>,
+                )}
+                {navItemPrimary(
+                  `/dashboard/${workspaceId}/agents`,
+                  'Agent',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
+                    <circle cx="12" cy="12" r="3.5" />
+                  </svg>,
+                )}
+                {navItemPrimary(
+                  `/dashboard/${workspaceId}/channels`,
+                  'Channels',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>,
+                )}
 
-                <div className="pt-2 pb-1 px-3">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Insights</p>
-                </div>
-                {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
-                {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
-                {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
-                {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
-                {navLink(`/dashboard/${workspaceId}/corrections`, 'Corrections')}
+                {/* Everything else — kept reachable, demoted out of primary nav.
+                    Native <details> persists open/closed across renders. */}
+                <details className="group mt-3">
+                  <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider text-zinc-500 font-semibold hover:text-zinc-300 transition-colors">
+                    <span>More</span>
+                    <span className="text-zinc-600 transition-transform group-open:rotate-90">›</span>
+                  </summary>
+                  <div className="mt-1 space-y-0.5">
+                    {navLink(`/dashboard/${workspaceId}`, 'Overview')}
+                    {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
+                    {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
+                    {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
+                    {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals', counts.approvalsPending)}
 
-                <div className="pt-2 pb-1 px-3">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Tools</p>
-                </div>
-                {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
-                {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations', null, FEATURE_SHIP_DATES.simulations)}
-                {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
-                {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
-                {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
-                {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
+                    <div className="pt-2 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Insights</p>
+                    </div>
+                    {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
+                    {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
+                    {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
+                    {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
+                    {navLink(`/dashboard/${workspaceId}/corrections`, 'Corrections')}
 
-                <div className="pt-2 pb-1 px-3">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Trust</p>
-                </div>
-                {navLink(`/dashboard/${workspaceId}/audit-log`, 'Audit Log')}
-                {navLink(`/dashboard/${workspaceId}/consent`, 'Consent')}
+                    <div className="pt-2 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Tools</p>
+                    </div>
+                    {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
+                    {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations', null, FEATURE_SHIP_DATES.simulations)}
+                    {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
+                    {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
+                    {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
+                    {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
+                    {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
+                    {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
+                    {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
+                    {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
 
-                <div className="pt-2 pb-1 px-3">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Account</p>
-                </div>
-                {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
-                {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
-                {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}
-                {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
-                {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
+                    <div className="pt-2 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Trust</p>
+                    </div>
+                    {navLink(`/dashboard/${workspaceId}/audit-log`, 'Audit Log')}
+                    {navLink(`/dashboard/${workspaceId}/consent`, 'Consent')}
+
+                    <div className="pt-2 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Account</p>
+                    </div>
+                    {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
+                    {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
+                    {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}
+                    {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
+                    {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
+                  </div>
+                </details>
               </>
             )}
           </>

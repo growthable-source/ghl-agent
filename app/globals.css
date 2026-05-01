@@ -4,8 +4,7 @@
    Voxility Brand — Precision Dark Theme System
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* ─── Default (Voxility) — deep navy-black with orange accent ─────── */
-:root,
+/* ─── Midnight — deep navy-black with orange accent (opt-in dark) ───── */
 [data-theme="midnight"] {
   --background:          #05080f;
   --foreground:          #f8fafc;
@@ -91,6 +90,10 @@
   --logo-text:           #f8fafc;
   --sidebar-bg:          #14100e;
   --sidebar-border:      #2c2420;
+
+  /* Override the soft-light card gradient with a warm-dark equivalent */
+  --gradient-card:       linear-gradient(135deg, #221c18 0%, #2c2420 100%);
+  --shadow-card:         0 4px 20px -4px rgba(20, 16, 14, 0.4);
 }
 
 /* ─── Dim — mid-tone, low-light comfort ─────────────────────────────── */
@@ -127,9 +130,14 @@
   --logo-text:           #f8fafc;
   --sidebar-bg:          #1c2128;
   --sidebar-border:      #2d333b;
+
+  /* Override the soft-light card gradient with a cool-dark equivalent */
+  --gradient-card:       linear-gradient(135deg, #2d333b 0%, #353c47 100%);
+  --shadow-card:         0 4px 20px -4px rgba(28, 33, 40, 0.4);
 }
 
-/* ─── Soft Light — warm off-white ───────────────────────────────────── */
+/* ─── Soft Light (default) — warm off-white ─────────────────────────── */
+:root,
 [data-theme="soft-light"] {
   --background:          #f8f7f4;
   --foreground:          #1c1917;
@@ -163,6 +171,18 @@
   --logo-text:           #faf9f7;
   --sidebar-bg:          #f1f0ec;
   --sidebar-border:      #e0ddd6;
+
+  /* Universal gradients / shadows / radius (orange-based, theme-agnostic) */
+  --gradient-primary:    linear-gradient(135deg, #fa4d2e, #fb8e6a);
+  --gradient-hero:       linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%);
+  --gradient-card:       linear-gradient(135deg, #faf9f7 0%, #f4f2ee 100%);
+  --shadow-primary:      0 10px 40px -10px rgba(250, 77, 46, 0.25);
+  --shadow-primary-hover: 0 14px 50px -10px rgba(250, 77, 46, 0.4);
+  --shadow-card:         0 4px 20px -4px rgba(28, 25, 23, 0.06);
+  --shadow-card-hover:   0 8px 30px rgba(250, 77, 46, 0.08);
+  --radius:              0.75rem;
+  --radius-sm:           0.5rem;
+  --radius-lg:           1rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
