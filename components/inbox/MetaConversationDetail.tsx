@@ -111,16 +111,19 @@ export default function MetaConversationDetail({ workspaceId, conversationId, on
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-zinc-700 border-t-orange-500 animate-spin" />
+      <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div
+          className="w-8 h-8 rounded-full border-2 animate-spin"
+          style={{ borderColor: 'var(--border-secondary)', borderTopColor: 'var(--accent-primary)' }}
+        />
       </div>
     )
   }
   if (notFound || !convo) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-        <p className="text-sm font-medium text-white mb-1">Conversation not found</p>
-        <p className="text-xs text-zinc-500">It may have been deleted, or it belongs to a different workspace.</p>
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-8" style={{ background: 'var(--background)' }}>
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Conversation not found</p>
+        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>It may have been deleted, or it belongs to a different workspace.</p>
       </div>
     )
   }
@@ -129,29 +132,49 @@ export default function MetaConversationDetail({ workspaceId, conversationId, on
   const senderLabel = convo.senderName || `User ${convo.senderId.slice(-6)}`
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-black overflow-hidden">
+    <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ background: 'var(--background)' }}>
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-zinc-800">
+      <div className="flex items-center gap-3 p-4 border-b" style={{ borderColor: 'var(--border)' }}>
         {convo.senderProfilePicUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={convo.senderProfilePicUrl} alt="" className="w-9 h-9 rounded-full bg-zinc-800 object-cover" />
+          <img
+            src={convo.senderProfilePicUrl}
+            alt=""
+            className="w-9 h-9 rounded-full object-cover"
+            style={{ background: 'var(--surface-tertiary)' }}
+          />
         ) : (
-          <span className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-sm font-semibold text-white">
+          <span
+            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold"
+            style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}
+          >
             {senderLabel.charAt(0).toUpperCase()}
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white truncate">{senderLabel}</p>
-          <p className="text-[11px] text-zinc-500 truncate">
+          <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{senderLabel}</p>
+          <p className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
             {channelLabel}
             {convo.pageName && <> · {convo.pageName}</>}
           </p>
         </div>
+        {/* Autopilot indicator — implies the AI is handling this thread
+            unless an operator explicitly took over. Persona alignment
+            with the IA mockup. */}
+        <span
+          className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+          style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+          title="Your agent is handling this thread automatically. Reply below to take over."
+        >
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-emerald)' }} />
+          Autopilot
+        </span>
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="text-zinc-500 hover:text-white p-1.5"
+            className="p-1.5 transition-colors"
+            style={{ color: 'var(--text-tertiary)' }}
             title="Close panel"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -164,16 +187,16 @@ export default function MetaConversationDetail({ workspaceId, conversationId, on
       {/* Message thread */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {convo.messages.length === 0 ? (
-          <p className="text-center text-xs text-zinc-500 py-8">No messages yet.</p>
+          <p className="text-center text-xs py-8" style={{ color: 'var(--text-tertiary)' }}>No messages yet.</p>
         ) : convo.messages.map(m => (
           <Bubble key={m.id} msg={m} channel={convo.channel} />
         ))}
       </div>
 
       {/* Reply box */}
-      <div className="border-t border-zinc-800 p-3">
+      <div className="border-t p-3" style={{ borderColor: 'var(--border)' }}>
         {sendError && (
-          <p className="mb-2 text-[11px] text-rose-300">{sendError}</p>
+          <p className="mb-2 text-[11px]" style={{ color: 'var(--accent-red)' }}>{sendError}</p>
         )}
         <div className="flex items-end gap-2">
           <textarea
@@ -187,18 +210,24 @@ export default function MetaConversationDetail({ workspaceId, conversationId, on
             }}
             placeholder={`Reply on ${channelLabel}…`}
             rows={1}
-            className="flex-1 resize-none bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600 max-h-32"
+            className="flex-1 resize-none rounded-lg px-3 py-2 text-sm focus:outline-none max-h-32"
+            style={{
+              background: 'var(--input-bg)',
+              color: 'var(--input-text)',
+              border: '1px solid var(--input-border)',
+            }}
           />
           <button
             type="button"
             onClick={send}
             disabled={!reply.trim() || sending}
-            className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-600"
+            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
           >
             {sending ? 'Sending…' : 'Send'}
           </button>
         </div>
-        <p className="mt-1.5 text-[10px] text-zinc-600">
+        <p className="mt-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
           Replies are subject to Meta&rsquo;s 24-hour messaging window.
         </p>
       </div>
@@ -209,20 +238,31 @@ export default function MetaConversationDetail({ workspaceId, conversationId, on
 function Bubble({ msg, channel }: { msg: Message; channel: 'messenger' | 'instagram' }) {
   const isOut = msg.direction === 'out'
   const accent = channel === 'instagram' ? '#E4405F' : '#1877F2'
+  // AI-vs-operator signal — match the mockup's "AI" pill on outbound
+  // bubbles when no operator userId is recorded.
+  const isAI = isOut && !msg.sentByUserId
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${
+        className="max-w-[80%] rounded-2xl px-3.5 py-2 text-sm"
+        style={
           isOut
-            ? 'text-white'
-            : 'bg-zinc-900 text-zinc-100 border border-zinc-800'
-        }`}
-        style={isOut ? { background: accent } : undefined}
+            ? { background: accent, color: '#fff' }
+            : { background: 'var(--surface-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }
+        }
       >
+        {isAI && (
+          <span
+            className="inline-flex items-center text-[9px] font-bold tracking-wider px-1 py-px rounded mr-1.5 align-middle"
+            style={{ background: 'rgba(255,255,255,0.25)', color: '#fff' }}
+          >
+            AI
+          </span>
+        )}
         {msg.text || <span className="italic opacity-70">(no text)</span>}
-        <div className={`text-[10px] mt-1 ${isOut ? 'text-white/70' : 'text-zinc-500'}`}>
+        <div className="text-[10px] mt-1" style={isOut ? { color: 'rgba(255,255,255,0.7)' } : { color: 'var(--text-tertiary)' }}>
           {formatTime(msg.createdAt)}
-          {msg.sentByUserId && isOut && <> · operator</>}
+          {msg.sentByUserId && isOut && <> · you</>}
           {!msg.sentByUserId && isOut && <> · agent</>}
         </div>
       </div>
