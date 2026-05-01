@@ -24,6 +24,8 @@ model User {
   locations             UserLocation[]
   workspaces            WorkspaceMember[]
   assignedConversations WidgetConversation[] @relation("ConversationAssignee")
+  assignedMetaConversations MetaConversation[] @relation("MetaConversationAssignee")
+  sentMetaMessages      MetaMessage[]      @relation("MetaMessageAuthor")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 }
@@ -1755,4 +1757,61 @@ model AdminAuditLog {
   @@index([adminId, createdAt])
   @@index([action, createdAt])
   @@index([createdAt])
+}
+
+// Messenger + Instagram Direct conversations. First-class so the
+// unified inbox can render them next to widget chats with the same
+// assignment / status / lastMessageAt semantics. Channel-specific
+// fields (page, sender PSID/IGSID) live here rather than being
+// folded into WidgetConversation, which keeps widget's brand/visitor
+// graph untouched.
+model MetaConversation {
+  id                    String   @id @default(cuid())
+  workspaceId           String
+  locationId            String
+  channel               String   // 'messenger' | 'instagram'
+  pageId                String   // entry.id from webhook (Page or IG-Business id)
+  pageName              String?
+  senderId              String   // PSID for Messenger, IGSID for Instagram
+  senderName            String?
+  senderProfilePicUrl   String?
+  agentId               String?
+  status                String   @default("active")
+  lastMessageAt         DateTime @default(now())
+  lastMessagePreview    String?
+  lastMessageDirection  String?  // 'in' | 'out'
+  unreadCount           Int      @default(0)
+  assignedUserId        String?
+  assignedUser          User?    @relation("MetaConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt            DateTime?
+  assignmentReason      String?
+  createdAt             DateTime @default(now())
+  messages              MetaMessage[]
+
+  // (page, sender, channel) is a single conversation. Same FB user
+  // could DM both your Page (Messenger) and your IG account — those
+  // are separate threads.
+  @@unique([pageId, senderId, channel])
+  @@index([workspaceId, lastMessageAt(sort: Desc)])
+  @@index([locationId])
+  @@index([assignedUserId, status])
+}
+
+model MetaMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   MetaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      String   // 'in' (end user → us) | 'out' (agent/operator → end user)
+  text           String?
+  // Meta's message id (mid). Used to dedupe webhook retries on inbound.
+  // Outbound messages may not have one (Send API doesn't always return
+  // an mid), hence nullable + partial unique index.
+  mid            String?
+  sentByUserId   String?  // non-null when an operator typed the reply
+  sentByUser     User?    @relation("MetaMessageAuthor", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  metadata       Json?    // attachments, postback payload, raw event for debugging
+  createdAt      DateTime @default(now())
+
+  @@unique([mid])
+  @@index([conversationId, createdAt])
 }

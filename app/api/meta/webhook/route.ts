@@ -22,6 +22,8 @@ import { verifyMetaSignature } from '@/lib/meta-webhook-verify'
 import { findMetaIntegrationByEntryId } from '@/lib/meta-token-store'
 import { sendMetaMessage } from '@/lib/meta-client'
 import { runChannelInbound, finalizeChannelInbound } from '@/lib/channel-inbound'
+import { recordInboundMetaMessage, recordOutboundMetaMessage } from '@/lib/meta-conversation-store'
+import { db } from '@/lib/db'
 import type { MessageChannelType } from '@/types'
 
 // Meta delivers webhooks one at a time but each may contain several
@@ -155,6 +157,31 @@ async function handleMessagingEvent(
   const contactId = `meta-${entryId}-${senderId}`
   const conversationId = `meta-conv-${entryId}-${senderId}`
 
+  // Resolve workspaceId for inbox persistence. Unattached locations
+  // (no workspace) still flow through the agent path; we just don't
+  // surface them in the inbox.
+  const location = await db.location.findUnique({
+    where: { id: integration.locationId },
+    select: { workspaceId: true },
+  }).catch(() => null)
+
+  // Persist for the inbox BEFORE running the agent so the row appears
+  // even if the agent is paused/skipped/errors.
+  if (location?.workspaceId) {
+    await recordInboundMetaMessage({
+      pageId: entryId,
+      pageName: integration.credentials.pageName,
+      senderId,
+      channel: channel === 'IG' ? 'instagram' : 'messenger',
+      workspaceId: location.workspaceId,
+      locationId: integration.locationId,
+      pageAccessToken: integration.credentials.pageAccessToken,
+      text,
+      mid: event.message?.mid,
+      metadata: event,
+    })
+  }
+
   const outcome = await runChannelInbound({
     locationId: integration.locationId,
     contactId,
@@ -186,6 +213,16 @@ async function handleMessagingEvent(
     sendErrorMessage = send.errorMessage
     if (!send.ok) {
       console.error(`[meta-webhook] send failed for ${entryId}/${senderId}: ${send.errorMessage}`)
+    } else {
+      // Mirror the agent's reply into the inbox conversation so the
+      // operator sees both sides. Sender attribution is null — this
+      // is the agent, not a human operator.
+      await recordOutboundMetaMessage({
+        pageId: entryId,
+        senderId,
+        channel: channel === 'IG' ? 'instagram' : 'messenger',
+        text: outcome.result.reply,
+      })
     }
   }
 

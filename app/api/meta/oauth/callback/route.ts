@@ -29,6 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { saveMetaIntegration } from '@/lib/meta-token-store'
+import { subscribePageToWebhooks } from '@/lib/meta-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,6 +126,19 @@ export async function GET(req: NextRequest) {
           },
         })
         connectedCount++
+
+        // Auto-subscribe the Page to webhook events so DMs actually
+        // arrive at /api/meta/webhook. Without this, OAuth completes
+        // but the inbox stays empty and the operator has no idea why.
+        // Failure here doesn't fail the connect — the integration is
+        // saved and the operator can retry from the integrations UI.
+        const sub = await subscribePageToWebhooks({
+          pageId: page.id,
+          pageAccessToken: page.accessToken,
+        })
+        if (!sub.ok) {
+          console.warn(`[meta-oauth] webhook subscribe failed for page ${page.id}: ${sub.errorMessage}`)
+        }
       } catch (err: any) {
         console.error(`[meta-oauth] failed to save integration for page ${page.id}:`, err?.message)
       }

@@ -154,3 +154,76 @@ export async function checkPageToken(pageAccessToken: string): Promise<{ ok: boo
     return { ok: false, errorMessage: `Network error: ${err?.message ?? 'unknown'}` }
   }
 }
+
+// Subscribe a Page to webhook fields so Meta actually delivers DMs to
+// our /api/meta/webhook endpoint. Without this, OAuth completes but
+// nothing ever arrives. Idempotent on Meta's side — re-subscribing a
+// Page to the same fields just refreshes the subscription.
+const MESSENGER_FIELDS = ['messages', 'messaging_postbacks', 'message_reads', 'messaging_referrals'] as const
+
+export async function subscribePageToWebhooks(params: {
+  pageId: string
+  pageAccessToken: string
+}): Promise<{ ok: true } | { ok: false; errorMessage: string }> {
+  const { pageId, pageAccessToken } = params
+  try {
+    const res = await fetch(`${GRAPH_BASE}/${encodeURIComponent(pageId)}/subscribed_apps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        subscribed_fields: MESSENGER_FIELDS.join(','),
+        access_token: pageAccessToken,
+      }).toString(),
+    })
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '')
+      return { ok: false, errorMessage: `Graph ${res.status}: ${errBody.slice(0, 300)}` }
+    }
+    return { ok: true }
+  } catch (err: any) {
+    return { ok: false, errorMessage: `Network error: ${err?.message ?? 'unknown'}` }
+  }
+}
+
+// Look up a Messenger user's display name + profile pic by PSID. Used
+// the first time we see a sender, then cached on MetaConversation so
+// the inbox row has a real name instead of "User 1234567890".
+//
+// Requires the Page access token (PSIDs are page-scoped) and the
+// pages_messaging permission, which we already request.
+export async function getMessengerUserProfile(params: {
+  psid: string
+  pageAccessToken: string
+}): Promise<{ name?: string; profilePicUrl?: string } | null> {
+  const { psid, pageAccessToken } = params
+  try {
+    const res = await fetch(
+      `${GRAPH_BASE}/${encodeURIComponent(psid)}?fields=name,profile_pic&access_token=${encodeURIComponent(pageAccessToken)}`,
+    )
+    if (!res.ok) return null
+    const data = await res.json() as { name?: string; profile_pic?: string }
+    return { name: data.name, profilePicUrl: data.profile_pic }
+  } catch {
+    return null
+  }
+}
+
+// Look up an Instagram user's username + profile pic by IGSID. The
+// `user_profile` permission is bundled with `instagram_manage_messages`
+// so this works with the same token we already have.
+export async function getInstagramUserProfile(params: {
+  igsid: string
+  pageAccessToken: string
+}): Promise<{ name?: string; profilePicUrl?: string } | null> {
+  const { igsid, pageAccessToken } = params
+  try {
+    const res = await fetch(
+      `${GRAPH_BASE}/${encodeURIComponent(igsid)}?fields=name,profile_pic,username&access_token=${encodeURIComponent(pageAccessToken)}`,
+    )
+    if (!res.ok) return null
+    const data = await res.json() as { name?: string; username?: string; profile_pic?: string }
+    return { name: data.name ?? data.username, profilePicUrl: data.profile_pic }
+  } catch {
+    return null
+  }
+}
