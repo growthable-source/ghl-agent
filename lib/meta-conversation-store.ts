@@ -24,7 +24,10 @@ interface InboundParams {
   channel: MetaChannel
   workspaceId: string
   locationId: string
-  pageAccessToken: string
+  /** Optional. When empty (e.g. CRM-marketplace forwarded the inbound)
+   *  the Graph profile lookup is skipped — sender shows up with an
+   *  unresolved fallback label until something else enriches it. */
+  pageAccessToken?: string
   text: string
   mid?: string
   /** Raw event from Meta — stashed on the message for debugging. */
@@ -81,7 +84,9 @@ export async function recordInboundMetaMessage(params: InboundParams): Promise<s
         },
       })
     } else {
-      const profile = await resolveSenderProfile({ senderId, channel, pageAccessToken })
+      const profile = pageAccessToken
+        ? await resolveSenderProfile({ senderId, channel, pageAccessToken })
+        : null
       const created = await db.metaConversation.create({
         data: {
           workspaceId,

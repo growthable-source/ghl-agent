@@ -96,6 +96,44 @@ export async function POST(req: NextRequest) {
           break
         }
 
+        // Persist FB / IG inbounds to the unified inbox BEFORE any
+        // routing / debouncing / agent gating. The thread should appear
+        // even when no agent matches (the operator may want to reply
+        // manually) and even when debouncing temporarily holds the
+        // batch. CRM-routed inbounds (i.e. Page connected via the
+        // operator's CRM marketplace, not via direct Meta OAuth) don't
+        // carry a Page Access Token here — sender display name resolves
+        // to a fallback until something else enriches it.
+        if (channel === 'FB' || channel === 'IG') {
+          try {
+            const loc = await db.location.findUnique({
+              where: { id: p.locationId },
+              select: { workspaceId: true },
+            })
+            if (loc?.workspaceId) {
+              const { recordInboundMetaMessage } = await import('@/lib/meta-conversation-store')
+              await recordInboundMetaMessage({
+                // GHL doesn't pass through Meta's page id — best stable
+                // proxy is conversationProviderId (one per provider/page
+                // per location), falling back to a synthesised value.
+                pageId: p.conversationProviderId || `${p.locationId}:${channel}`,
+                senderId: p.contactId,
+                channel: channel === 'IG' ? 'instagram' : 'messenger',
+                workspaceId: loc.workspaceId,
+                locationId: p.locationId,
+                text: p.body ?? '',
+                metadata: {
+                  source: 'crm-marketplace',
+                  conversationId: p.conversationId,
+                  conversationProviderId: p.conversationProviderId ?? null,
+                },
+              })
+            }
+          } catch (err: any) {
+            console.warn('[Webhook] meta inbox persist failed:', err?.message)
+          }
+        }
+
         const tokens = await getTokens(p.locationId)
         if (!tokens) {
           console.warn(`[Webhook] No tokens for location ${p.locationId}`)

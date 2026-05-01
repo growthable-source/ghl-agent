@@ -84,7 +84,32 @@ export async function getMessages(locationId: string, conversationId: string, li
 
 export async function sendMessage(locationId: string, payload: SendMessagePayload): Promise<{ messageId: string; conversationId: string }> {
   if (isPlaceholder(locationId)) noCrmConnected('send a CRM message')
-  return new GhlAdapter(locationId).sendMessage(payload)
+  const result = await new GhlAdapter(locationId).sendMessage(payload)
+
+  // Mirror FB / IG outbounds into the unified inbox so the operator
+  // sees the agent's reply in the same thread that surfaced the
+  // inbound. Other channels (SMS, Email, WhatsApp, etc.) live elsewhere
+  // in the inbox roadmap and aren't covered yet.
+  if (payload.type === 'FB' || payload.type === 'IG') {
+    try {
+      const { recordOutboundMetaMessage } = await import('./meta-conversation-store')
+      await recordOutboundMetaMessage({
+        // Mirror the inbound id scheme from app/api/webhooks/events/route.ts.
+        // conversationProviderId carries the same value on both sides so
+        // the (pageId, senderId, channel) lookup hits the existing row.
+        pageId: payload.conversationProviderId || `${locationId}:${payload.type}`,
+        senderId: payload.contactId,
+        channel: payload.type === 'IG' ? 'instagram' : 'messenger',
+        text: payload.message,
+        // sentByUserId stays null — this is an agent reply, not an
+        // operator typing in the inbox.
+      })
+    } catch (err: any) {
+      console.warn('[crm-client] meta inbox outbound persist failed:', err?.message)
+    }
+  }
+
+  return result
 }
 
 export async function getOpportunitiesForContact(locationId: string, contactId: string): Promise<Opportunity[]> {
