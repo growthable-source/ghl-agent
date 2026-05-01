@@ -96,13 +96,14 @@ function SliderField({ label, desc, value, onChange, min = 0, max = 1, step = 0.
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className="text-xs font-medium text-zinc-400">{label}</label>
-        <span className="text-xs text-zinc-500 font-mono">{format ? format(value) : value.toFixed(2)}</span>
+        <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</label>
+        <span className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>{format ? format(value) : value.toFixed(2)}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full accent-white h-1.5" />
-      <p className="text-xs text-zinc-600 mt-0.5">{desc}</p>
+        className="w-full h-1.5"
+        style={{ accentColor: 'var(--accent-primary)' }} />
+      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{desc}</p>
     </div>
   )
 }
@@ -386,18 +387,18 @@ export default function VoicePage() {
 
   const selectedVoice = voices.find(v => v.voice_id === config.voiceId)
 
-  if (loading) return <div className="flex items-center justify-center h-64"><p className="text-zinc-500 text-sm">Loading…</p></div>
+  if (loading) return <div className="flex items-center justify-center h-64"><p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p></div>
 
   return (
     <div className="p-8 max-w-2xl">
-      <p className="text-sm text-zinc-400 mb-6">Configure inbound call handling. Same knowledge base and brain as SMS.</p>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Configure inbound call handling. Same knowledge base and brain as SMS.</p>
 
       {!vapiReady && (
         <div className="mb-6 rounded-xl border border-amber-900/50 bg-amber-950/20 p-4 space-y-2">
           <p className="text-sm text-amber-400 font-medium">Voice AI is not configured</p>
-          <p className="text-xs text-zinc-400">
-            Add <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">VAPI_API_KEY</code> and{' '}
-            <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">VAPI_PUBLIC_KEY</code> to your environment variables, then redeploy.
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            Add <code className="px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>VAPI_API_KEY</code> and{' '}
+            <code className="px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>VAPI_PUBLIC_KEY</code> to your environment variables, then redeploy.
           </p>
           <Link
             href={`/dashboard/${workspaceId}/integrations`}
@@ -410,31 +411,32 @@ export default function VoicePage() {
       {vapiReady && vapiError && (
         <div className="mb-6 rounded-xl border border-red-900/50 bg-red-950/20 p-4 space-y-1">
           <p className="text-sm text-red-400 font-medium">Vapi API error</p>
-          <p className="text-xs font-mono text-zinc-400 break-all">{vapiError}</p>
+          <p className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{vapiError}</p>
         </div>
       )}
 
       <form onSubmit={save} className="space-y-6">
 
         {/* ── Enable toggle ── */}
-        <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-5 py-4">
+        <div className="flex items-center justify-between rounded-xl border px-5 py-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div>
-            <p className="text-sm font-medium text-zinc-200">Enable Voice</p>
-            <p className="text-xs text-zinc-500 mt-0.5">Answer inbound calls on the configured number</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Enable Voice</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Answer inbound calls on the configured number</p>
           </div>
           <button type="button" disabled={!vapiReady}
             onClick={() => setConfig(c => ({ ...c, isActive: !c.isActive }))}
-            className={`relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors disabled:opacity-40 ${config.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
-            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${config.isActive ? 'translate-x-5' : 'translate-x-0'}`} />
+            className="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors disabled:opacity-40"
+            style={{ background: config.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}>
+            <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${config.isActive ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
           </button>
         </div>
 
         {/* ── TTS provider picker ── */}
         {providers.length > 0 && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
+          <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div>
-              <p className="text-sm font-medium text-zinc-200">Voice Provider</p>
-              <p className="text-xs text-zinc-500 mt-0.5">Which TTS stack powers this agent&apos;s voice. Each provider exposes different voices and capabilities.</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice Provider</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Which TTS stack powers this agent&apos;s voice. Each provider exposes different voices and capabilities.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {providers.map(p => {
@@ -442,17 +444,20 @@ export default function VoicePage() {
                 return (
                   <button key={p.id} type="button"
                     onClick={() => setConfig(c => ({ ...c, ttsProvider: p.id }))}
-                    className={`text-left rounded-lg border p-3 transition-colors ${
-                      selected ? 'border-white bg-zinc-900' : 'border-zinc-800 hover:border-zinc-600'
-                    } ${!p.configured ? 'opacity-70' : ''}`}
+                    className="text-left rounded-lg border p-3 transition-colors"
+                    style={{
+                      borderColor: selected ? 'var(--accent-primary)' : 'var(--border)',
+                      background: selected ? 'var(--surface-secondary)' : 'transparent',
+                      opacity: !p.configured ? 0.7 : 1,
+                    }}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-zinc-100">{p.name}</span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{p.name}</span>
                       {!p.configured && (
                         <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">Needs {p.envVar}</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">{p.description}</p>
+                    <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>{p.description}</p>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {p.capabilities.phoneCalls && <Chip>Phone</Chip>}
                       {p.capabilities.widgetVoice && <Chip>Widget</Chip>}
@@ -474,9 +479,9 @@ export default function VoicePage() {
 
         {/* ── Phone number (hidden when the selected provider can't do phone) ── */}
         {caps.phoneCalls && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
+          <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-zinc-200">Phone Number</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Phone Number</p>
               {vapiReady && (
                 <button type="button" onClick={() => { setShowBuyForm(!showBuyForm); setBuyError('') }}
                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
@@ -485,15 +490,22 @@ export default function VoicePage() {
               )}
             </div>
             {showBuyForm && (
-              <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
-                <p className="text-xs text-zinc-500">Provision a US phone number via Vapi. Optionally specify a preferred area code.</p>
+              <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface-secondary)' }}>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Provision a US phone number via Vapi. Optionally specify a preferred area code.</p>
                 <div className="flex gap-2">
                   <input type="text" value={areaCode}
                     onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
                     placeholder="Area code (optional, e.g. 415)"
-                    className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+                    className="flex-1 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none"
+                    style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }} />
                   <button type="button" onClick={buyNumber} disabled={buying}
-                    className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 whitespace-nowrap">
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+                    style={{
+                      background: buying ? 'var(--surface-tertiary)' : 'var(--accent-primary)',
+                      color: buying ? 'var(--text-tertiary)' : 'var(--btn-primary-text)',
+                      cursor: buying ? 'not-allowed' : 'pointer',
+                      opacity: buying ? 0.6 : 1,
+                    }}>
                     {buying ? 'Provisioning…' : 'Get number'}
                   </button>
                 </div>
@@ -506,7 +518,8 @@ export default function VoicePage() {
                   const phone = phoneNumbers.find(ph => ph.id === e.target.value)
                   setConfig(c => ({ ...c, phoneNumberId: e.target.value, phoneNumber: phone?.number || null }))
                 }}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500">
+                className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}>
                 <option value="">Select a phone number…</option>
                 {phoneNumbers.map(p => (
                   <option key={p.id} value={p.id}>
@@ -515,15 +528,15 @@ export default function VoicePage() {
                 ))}
               </select>
             ) : (
-              <p className="text-xs text-zinc-500">No numbers yet. Click <span className="text-blue-400">+ Get a number</span> to provision one.</p>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>No numbers yet. Click <span className="text-blue-400">+ Get a number</span> to provision one.</p>
             )}
           </div>
         )}
 
         {/* ── Voice selection ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
+        <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-zinc-200">Voice</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice</p>
             <button type="button" onClick={() => setShowVoicePicker(!showVoicePicker)}
               className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
               {showVoicePicker ? 'Close' : 'Browse voices'}
@@ -532,22 +545,23 @@ export default function VoicePage() {
 
           {/* Current selection */}
           {!showVoicePicker && (
-            <div className="flex items-center gap-3 bg-zinc-900 rounded-lg px-4 py-3">
+            <div className="flex items-center gap-3 rounded-lg px-4 py-3" style={{ background: 'var(--surface-secondary)' }}>
               <button type="button"
                 onClick={() => playPreview(config.voiceId, selectedVoice?.preview_url || null)}
-                className="w-9 h-9 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-white transition-colors flex-shrink-0">
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+                style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
                 {playingId === config.voiceId ? '⏸' : '▶'}
               </button>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-200 font-medium">{config.voiceName || config.voiceId.slice(0, 12)}</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{config.voiceName || config.voiceId.slice(0, 12)}</p>
                 {selectedVoice && (
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                     {[selectedVoice.labels?.gender, selectedVoice.labels?.accent, selectedVoice.labels?.age?.replace('_', ' ')].filter(Boolean).join(' · ')}
                   </p>
                 )}
               </div>
               <button type="button" onClick={() => setShowVoicePicker(true)}
-                className="text-xs text-zinc-500 hover:text-white transition-colors">Change</button>
+                className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Change</button>
             </div>
           )}
 
@@ -558,46 +572,59 @@ export default function VoicePage() {
                 <input type="text" value={voiceSearch}
                   onChange={e => { setVoiceSearch(e.target.value); if (e.target.value.length >= 2) searchVoices(e.target.value) }}
                   placeholder="Search by name, accent, style…"
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
-                <div className="flex rounded-lg border border-zinc-700 overflow-hidden">
+                  className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }} />
+                <div className="flex rounded-lg overflow-hidden" style={{ borderColor: 'var(--border-secondary)', borderWidth: 1, borderStyle: 'solid' }}>
                   {(['all', 'female', 'male'] as const).map(f => (
                     <button key={f} type="button" onClick={() => setVoiceFilter(f)}
-                      className={`px-3 py-2 text-xs capitalize transition-colors ${voiceFilter === f ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                      className="px-3 py-2 text-xs capitalize transition-colors"
+                      style={{
+                        background: voiceFilter === f ? 'var(--surface-tertiary)' : 'transparent',
+                        color: voiceFilter === f ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      }}>
                       {f}
                     </button>
                   ))}
                 </div>
               </div>
               <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
-                {filteredVoices.map(v => (
-                  <div key={v.voice_id}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                      config.voiceId === v.voice_id ? 'bg-zinc-700 border border-zinc-600' : 'hover:bg-zinc-900 border border-transparent'
-                    }`}
-                    onClick={() => selectVoice(v)}>
-                    <button type="button"
-                      onClick={e => { e.stopPropagation(); playPreview(v.voice_id, v.preview_url) }}
-                      className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-600 flex items-center justify-center text-white text-xs flex-shrink-0 transition-colors">
-                      {playingId === v.voice_id ? '⏸' : '▶'}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-200">{v.name}</p>
-                      <p className="text-xs text-zinc-500 truncate">
-                        {[v.labels?.gender, v.labels?.accent, v.labels?.age?.replace('_', ' '), v.labels?.use_case?.replace('_', ' ')].filter(Boolean).join(' · ')}
-                      </p>
+                {filteredVoices.map(v => {
+                  const isSelected = config.voiceId === v.voice_id
+                  return (
+                    <div key={v.voice_id}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors"
+                      style={{
+                        background: isSelected ? 'var(--surface-tertiary)' : 'transparent',
+                        borderColor: isSelected ? 'var(--border-secondary)' : 'transparent',
+                        borderWidth: 1,
+                        borderStyle: 'solid',
+                      }}
+                      onClick={() => selectVoice(v)}>
+                      <button type="button"
+                        onClick={e => { e.stopPropagation(); playPreview(v.voice_id, v.preview_url) }}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 transition-colors"
+                        style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
+                        {playingId === v.voice_id ? '⏸' : '▶'}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{v.name}</p>
+                        <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>
+                          {[v.labels?.gender, v.labels?.accent, v.labels?.age?.replace('_', ' '), v.labels?.use_case?.replace('_', ' ')].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      {isSelected && <span className="text-xs" style={{ color: 'var(--accent-emerald)' }}>Selected</span>}
                     </div>
-                    {config.voiceId === v.voice_id && <span className="text-emerald-400 text-xs">Selected</span>}
-                  </div>
-                ))}
-                {filteredVoices.length === 0 && <p className="text-xs text-zinc-500 text-center py-4">No voices match your search.</p>}
+                  )
+                })}
+                {filteredVoices.length === 0 && <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)' }}>No voices match your search.</p>}
               </div>
             </div>
           )}
         </div>
 
         {/* ── Voice tuning ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
-          <p className="text-sm font-medium text-zinc-200">Voice Tuning</p>
+        <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice Tuning</p>
           <SliderField label="Speed" desc="How fast the agent speaks. 1.0 is normal." value={config.speed}
             onChange={v => setConfig(c => ({ ...c, speed: v }))} min={0.5} max={2.0} step={0.05}
             format={v => `${v.toFixed(2)}x`} />
@@ -610,31 +637,33 @@ export default function VoicePage() {
         </div>
 
         {/* ── Messages ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
-          <p className="text-sm font-medium text-zinc-200">Call Messages</p>
+        <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Call Messages</p>
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Opening Message</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Opening Message</label>
             <MergeFieldTextarea value={config.firstMessage || ''}
               onChange={e => setConfig(c => ({ ...c, firstMessage: e.target.value }))}
               onValueChange={v => setConfig(c => ({ ...c, firstMessage: v }))}
               placeholder="Hi {{contact.first_name|there}}! How can I help you today?"
               rows={2}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none" />
-            <p className="text-xs text-zinc-600 mt-1">First thing the agent says when the call connects.</p>
+              className="w-full rounded-lg pl-3 pr-3 pt-8 pb-2.5 text-sm focus:outline-none resize-none"
+              style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }} />
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>First thing the agent says when the call connects.</p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Closing Message</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Closing Message</label>
             <MergeFieldInput value={config.endCallMessage || ''}
               onChange={e => setConfig(c => ({ ...c, endCallMessage: e.target.value }))}
               onValueChange={v => setConfig(c => ({ ...c, endCallMessage: v }))}
               placeholder="Thanks for calling. Have a great day!"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+              className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
+              style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }} />
           </div>
         </div>
 
         {/* ── Call Settings ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
-          <p className="text-sm font-medium text-zinc-200">Call Settings</p>
+        <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Call Settings</p>
 
           {/* Max duration */}
           <SliderField label="Max Call Duration" desc="" value={config.maxDurationSecs}
@@ -643,20 +672,22 @@ export default function VoicePage() {
 
           {/* Language */}
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Language</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Language</label>
             <select value={config.language || ''}
               onChange={e => setConfig(c => ({ ...c, language: e.target.value || null }))}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500">
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+              style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}>
               {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
 
           {/* Background sound */}
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Background Sound</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Background Sound</label>
             <select value={config.backgroundSound || ''}
               onChange={e => setConfig(c => ({ ...c, backgroundSound: e.target.value || null }))}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500">
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+              style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}>
               {BACKGROUND_SOUNDS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
@@ -664,27 +695,29 @@ export default function VoicePage() {
           {/* Record calls toggle */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-zinc-300">Record Calls</p>
-              <p className="text-xs text-zinc-600 mt-0.5">Save audio recordings with transcripts</p>
+              <p className="text-sm" style={{ color: 'var(--text-primary)' }}>Record Calls</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Save audio recordings with transcripts</p>
             </div>
             <button type="button" onClick={() => setConfig(c => ({ ...c, recordCalls: !c.recordCalls }))}
-              className={`relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors ${config.recordCalls ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${config.recordCalls ? 'translate-x-5' : 'translate-x-0'}`} />
+              className="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors"
+              style={{ background: config.recordCalls ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}>
+              <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${config.recordCalls ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
             </button>
           </div>
 
           {/* End call phrases */}
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">End Call Phrases</label>
-            <p className="text-xs text-zinc-600 mb-2">If the caller says one of these, the agent will end the call.</p>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>End Call Phrases</label>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>If the caller says one of these, the agent will end the call.</p>
             {config.endCallPhrases.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {config.endCallPhrases.map((p, i) => (
-                  <span key={i} className="flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs rounded-full px-2.5 py-1">
+                  <span key={i} className="flex items-center gap-1 text-xs rounded-full px-2.5 py-1"
+                    style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>
                     {p}
                     <button type="button" onClick={() => setConfig(c => ({
                       ...c, endCallPhrases: c.endCallPhrases.filter((_, idx) => idx !== i)
-                    }))} className="text-zinc-500 hover:text-red-400 ml-0.5">×</button>
+                    }))} className="ml-0.5 hover:text-red-400" style={{ color: 'var(--text-tertiary)' }}>×</button>
                   </span>
                 ))}
               </div>
@@ -700,7 +733,8 @@ export default function VoicePage() {
                   }
                 }}
                 placeholder="e.g. goodbye, that's all, hang up"
-                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }} />
               <button type="button" disabled={!newPhrase.trim()}
                 onClick={() => {
                   if (newPhrase.trim()) {
@@ -708,16 +742,22 @@ export default function VoicePage() {
                     setNewPhrase('')
                   }
                 }}
-                className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors disabled:opacity-50">Add</button>
+                className="px-3 py-2 text-sm rounded-lg transition-colors"
+                style={{
+                  background: !newPhrase.trim() ? 'var(--surface-tertiary)' : 'var(--accent-primary)',
+                  color: !newPhrase.trim() ? 'var(--text-tertiary)' : 'var(--btn-primary-text)',
+                  cursor: !newPhrase.trim() ? 'not-allowed' : 'pointer',
+                  opacity: !newPhrase.trim() ? 0.6 : 1,
+                }}>Add</button>
             </div>
           </div>
         </div>
 
         {/* ── Voice Tools ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-3">
+        <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div>
-            <p className="text-sm font-medium text-zinc-200">Voice Tools</p>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice Tools</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
               The voice agent automatically uses the same tools configured on the <Link href={`/dashboard/${workspaceId}/agents/${agentId}/tools`} className="text-blue-400 hover:text-blue-300">Tools tab</Link>. These voice-specific tools are always available:
             </p>
           </div>
@@ -728,24 +768,30 @@ export default function VoicePage() {
               { name: 'tag_contact', desc: 'Tag the caller in the CRM' },
               { name: 'send_sms_followup', desc: 'Send an SMS after the call ends' },
             ].map(tool => (
-              <div key={tool.name} className="flex items-center gap-3 px-3 py-2 bg-zinc-900 rounded-lg">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                <span className="text-xs text-zinc-300 font-mono">{tool.name}</span>
-                <span className="text-xs text-zinc-600 ml-auto">{tool.desc}</span>
+              <div key={tool.name} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: 'var(--surface-secondary)' }}>
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--accent-emerald)' }} />
+                <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{tool.name}</span>
+                <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{tool.desc}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* ── Webhook info ── */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-5 py-4">
-          <p className="text-xs font-medium text-zinc-400 mb-1">Inbound Webhook</p>
-          <code className="text-xs text-zinc-400 bg-zinc-900 px-2 py-1 rounded block">{typeof window !== 'undefined' ? window.location.origin : 'https://voxilityai.vercel.app'}/api/vapi/webhook</code>
-          <p className="text-xs text-zinc-600 mt-2">Configured automatically for numbers provisioned above.</p>
+        <div className="rounded-xl border px-5 py-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Inbound Webhook</p>
+          <code className="text-xs px-2 py-1 rounded block" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>{typeof window !== 'undefined' ? window.location.origin : 'https://voxilityai.vercel.app'}/api/vapi/webhook</code>
+          <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Configured automatically for numbers provisioned above.</p>
         </div>
 
         <button type="submit" disabled={saving || !vapiReady}
-          className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50">
+          className="w-full inline-flex items-center justify-center rounded-lg font-medium text-sm h-10 transition-colors"
+          style={{
+            background: (saving || !vapiReady) ? 'var(--surface-tertiary)' : 'var(--accent-primary)',
+            color: (saving || !vapiReady) ? 'var(--text-tertiary)' : 'var(--btn-primary-text)',
+            cursor: (saving || !vapiReady) ? 'not-allowed' : 'pointer',
+            opacity: (saving || !vapiReady) ? 0.6 : 1,
+          }}>
           {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Voice Settings'}
         </button>
       </form>
@@ -762,22 +808,24 @@ export default function VoicePage() {
 
       {/* ── Test Call Panel (Vapi) ── */}
       {config.ttsProvider === 'vapi' && vapiReady && vapiPublicKey && (
-        <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
+        <div className="mt-6 rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-200">Test Call</p>
-              <p className="text-xs text-zinc-500 mt-0.5">Talk to your voice agent live in the browser. Uses your microphone.</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Test Call</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Talk to your voice agent live in the browser. Uses your microphone.</p>
             </div>
             {!testCallActive && !testCallConnecting ? (
               <button type="button" onClick={startTestCall}
-                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-white" />
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                style={{ background: 'var(--accent-emerald)', color: '#fff' }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: '#fff' }} />
                 Start call
               </button>
             ) : (
               <button type="button" onClick={stopTestCall}
-                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-medium transition-colors flex items-center gap-2"
+                style={{ color: '#fff' }}>
+                <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#fff' }} />
                 {testCallConnecting ? 'Connecting…' : 'End call'}
               </button>
             )}
@@ -789,12 +837,14 @@ export default function VoicePage() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1">
                   {Array.from({ length: 12 }).map((_, i) => (
-                    <div key={i} className={`w-1 rounded-full transition-all duration-75 ${
-                      i / 12 < testVolume ? 'bg-emerald-400' : 'bg-zinc-800'
-                    }`} style={{ height: `${8 + (i * 1.5)}px` }} />
+                    <div key={i} className="w-1 rounded-full transition-all duration-75"
+                      style={{
+                        height: `${8 + (i * 1.5)}px`,
+                        background: i / 12 < testVolume ? 'var(--accent-emerald)' : 'var(--surface-tertiary)',
+                      }} />
                   ))}
                 </div>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                   {testCallConnecting ? 'Connecting…' : testCallActive ? 'Connected' : ''}
                 </span>
               </div>
@@ -803,15 +853,22 @@ export default function VoicePage() {
 
           {/* Live transcript */}
           {testTranscript.length > 0 && (
-            <div ref={transcriptRef} className="max-h-64 overflow-y-auto space-y-2 bg-zinc-900 rounded-lg p-3">
+            <div ref={transcriptRef} className="max-h-64 overflow-y-auto space-y-2 rounded-lg p-3" style={{ background: 'var(--surface-secondary)' }}>
               {testTranscript.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                     msg.role === 'user'
                       ? 'bg-blue-600/20 text-blue-200 border border-blue-800/30'
-                      : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
-                  }`}>
-                    <p className="text-xs text-zinc-500 mb-0.5">{msg.role === 'user' ? 'You' : agentName}</p>
+                      : ''
+                  }`}
+                  style={msg.role === 'user' ? undefined : {
+                    background: 'var(--surface-tertiary)',
+                    color: 'var(--text-secondary)',
+                    borderWidth: 1,
+                    borderStyle: 'solid',
+                    borderColor: 'var(--border-secondary)',
+                  }}>
+                    <p className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{msg.role === 'user' ? 'You' : agentName}</p>
                     {msg.text}
                   </div>
                 </div>
@@ -821,12 +878,12 @@ export default function VoicePage() {
 
           {!testCallActive && !testCallConnecting && testTranscript.length === 0 && (
             <div className="text-center py-6">
-              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-900 flex items-center justify-center">
-                <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'var(--surface-secondary)' }}>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ color: 'var(--text-tertiary)' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
                 </svg>
               </div>
-              <p className="text-xs text-zinc-500">Click Start call to test your agent. You'll need to allow microphone access.</p>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Click Start call to test your agent. You'll need to allow microphone access.</p>
             </div>
           )}
         </div>
@@ -838,7 +895,8 @@ export default function VoicePage() {
 // Small capability chip used in the provider picker cards.
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[10px] font-medium text-zinc-400 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5">
+    <span className="text-[10px] font-medium rounded px-1.5 py-0.5"
+      style={{ color: 'var(--text-secondary)', background: 'var(--surface-secondary)', borderColor: 'var(--border)', borderWidth: 1, borderStyle: 'solid' }}>
       {children}
     </span>
   )

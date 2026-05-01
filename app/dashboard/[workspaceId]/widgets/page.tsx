@@ -218,9 +218,9 @@ export default function WidgetsPage() {
 
   if (loading) return (
     <div className="p-8 max-w-6xl mx-auto">
-      <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse mb-4" />
+      <div className="h-8 w-48 rounded animate-pulse mb-4" style={{ background: 'var(--surface-tertiary)' }} />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[0, 1, 2].map(i => <div key={i} className="h-44 bg-zinc-900/40 rounded-xl border border-zinc-800 animate-pulse" />)}
+        {[0, 1, 2].map(i => <div key={i} className="h-44 rounded-xl border animate-pulse" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} />)}
       </div>
     </div>
   )
@@ -230,16 +230,16 @@ export default function WidgetsPage() {
       <div className="max-w-6xl mx-auto p-8">
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+            <h1 className="text-2xl font-bold flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
               Widgets
               {totalLive > 0 && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 inline-flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1.5" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-emerald)' }} />
                   {totalLive} active conversation{totalLive === 1 ? '' : 's'}
                 </span>
               )}
             </h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Embeddable chat widgets and click-to-call buttons. Drop them anywhere — landing pages, blog posts, email signatures.
             </p>
           </div>
@@ -247,18 +247,20 @@ export default function WidgetsPage() {
             {selectMode && (
               <button
                 onClick={clearSelection}
-                className="text-xs font-medium px-3 py-2 rounded-lg text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-600 transition-colors"
+                className="text-xs font-medium px-3 py-2 rounded-lg border transition-colors"
+                style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
               >Cancel</button>
             )}
             {!selectMode ? (
               <button
                 onClick={() => setSelectMode(true)}
                 disabled={widgets.length === 0}
-                className="text-xs font-medium px-3 py-2 rounded-lg text-zinc-300 border border-zinc-700 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-30"
+                className="text-xs font-medium px-3 py-2 rounded-lg border transition-colors disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-secondary)' }}
               >Select</button>
             ) : (
               <>
-                <span className="text-xs text-zinc-400 mr-1">{selected.size} selected</span>
+                <span className="text-xs mr-1" style={{ color: 'var(--text-secondary)' }}>{selected.size} selected</span>
                 <BulkActionsMenu
                   folders={folders}
                   disabled={selected.size === 0}
@@ -274,8 +276,8 @@ export default function WidgetsPage() {
             <button
               onClick={() => setPickerOpen(true)}
               disabled={creating}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors disabled:opacity-50"
-              style={{ background: '#fa4d2e' }}
+              className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
             >{creating ? 'Creating…' : '+ New widget'}</button>
           </div>
         </div>
@@ -289,7 +291,7 @@ export default function WidgetsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-6">
           {/* Folder sidebar */}
           <aside className="space-y-1">
-            <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-2 px-2">Folders</p>
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 px-2" style={{ color: 'var(--text-tertiary)' }}>Folders</p>
             <FolderRow
               label="All widgets"
               count={widgets.length}
@@ -316,26 +318,27 @@ export default function WidgetsPage() {
             ))}
             <button
               onClick={() => setFolderDialogOpen(true)}
-              className="w-full text-left px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
+              className="w-full text-left px-3 py-2 rounded-lg text-xs transition-colors"
+              style={{ color: 'var(--text-tertiary)' }}
             >+ New folder</button>
           </aside>
 
           {/* Widget grid */}
           <div>
             {filtered.length === 0 ? (
-              <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">💬</div>
-                <p className="text-sm font-medium text-white mb-1">
+              <div className="text-center py-16 border border-dashed rounded-xl" style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}>
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-2xl" style={{ background: 'var(--surface-tertiary)' }}>💬</div>
+                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
                   {widgets.length === 0 ? 'No widgets yet' : 'Nothing in this folder'}
                 </p>
-                <p className="text-xs text-zinc-500 mb-4 max-w-sm mx-auto">
+                <p className="text-xs mb-4 max-w-sm mx-auto" style={{ color: 'var(--text-tertiary)' }}>
                   {widgets.length === 0
                     ? 'Spin up a chat widget or a click-to-call button. Both get a free hosted page you can share as a link.'
                     : 'Move some widgets in or pick a different folder.'}
                 </p>
                 {widgets.length === 0 && (
                   <button onClick={() => setPickerOpen(true)} disabled={creating}
-                    className="text-xs font-semibold px-4 py-2 rounded-lg text-white" style={{ background: '#fa4d2e' }}>
+                    className="text-xs font-semibold px-4 py-2 rounded-lg" style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}>
                     {creating ? 'Creating…' : 'Create first widget'}
                   </button>
                 )}
@@ -368,12 +371,12 @@ export default function WidgetsPage() {
 
       {pickerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPickerOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-2xl border p-6 shadow-2xl" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-1">
-              <h2 className="text-lg font-bold text-white">Create a widget</h2>
-              <button onClick={() => setPickerOpen(false)} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Create a widget</h2>
+              <button onClick={() => setPickerOpen(false)} className="text-xl leading-none" style={{ color: 'var(--text-tertiary)' }}>×</button>
             </div>
-            <p className="text-xs text-zinc-500 mb-5">Pick what you&apos;re embedding.</p>
+            <p className="text-xs mb-5" style={{ color: 'var(--text-tertiary)' }}>Pick what you&apos;re embedding.</p>
             {planLimit && <div className="mb-4"><PlanLimitNotice workspaceId={workspaceId} data={planLimit} /></div>}
             {createError && !planLimit && (
               <div className="mb-4 p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs text-red-300">{createError}</div>
@@ -382,26 +385,28 @@ export default function WidgetsPage() {
               <button
                 onClick={() => createWidget('chat')}
                 disabled={creating}
-                className="w-full text-left p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900 transition-colors disabled:opacity-50"
+                className="w-full text-left p-4 rounded-xl border transition-colors disabled:opacity-50"
+                style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)' }}
               >
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">💬</span>
                   <div>
-                    <p className="text-sm font-semibold text-white">Chat widget</p>
-                    <p className="text-[11px] text-zinc-500">Floating chat bubble with optional voice escalation.</p>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Chat widget</p>
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Floating chat bubble with optional voice escalation.</p>
                   </div>
                 </div>
               </button>
               <button
                 onClick={() => createWidget('click_to_call')}
                 disabled={creating}
-                className="w-full text-left p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900 transition-colors disabled:opacity-50"
+                className="w-full text-left p-4 rounded-xl border transition-colors disabled:opacity-50"
+                style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)' }}
               >
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">📞</span>
                   <div>
-                    <p className="text-sm font-semibold text-white">Click-to-call button</p>
-                    <p className="text-[11px] text-zinc-500">A styled button that opens a voice call instantly. Floating or inline.</p>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Click-to-call button</p>
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>A styled button that opens a voice call instantly. Floating or inline.</p>
                   </div>
                 </div>
               </button>
@@ -412,8 +417,8 @@ export default function WidgetsPage() {
 
       {folderDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setFolderDialogOpen(false)}>
-          <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950 p-5" onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-semibold text-white mb-3">New folder</p>
+          <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>New folder</p>
             <input
               autoFocus
               type="text"
@@ -421,15 +426,20 @@ export default function WidgetsPage() {
               onChange={e => setFolderDialogName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createFolder() } }}
               placeholder="Folder name"
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white mb-3"
+              className="w-full border rounded px-3 py-2 text-sm mb-3"
+              style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
             />
             <div className="flex justify-end gap-2">
-              <button onClick={() => setFolderDialogOpen(false)} className="text-xs text-zinc-400 hover:text-white px-3 py-1.5">Cancel</button>
+              <button onClick={() => setFolderDialogOpen(false)} className="text-xs px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>Cancel</button>
               <button
                 onClick={createFolder}
                 disabled={!folderDialogName.trim()}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-40"
-                style={{ background: '#fa4d2e' }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                style={
+                  !folderDialogName.trim()
+                    ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+                    : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+                }
               >Create</button>
             </div>
           </div>
@@ -461,21 +471,21 @@ function FolderRow({
   color?: string | null
 }) {
   return (
-    <div className={`group flex items-center rounded-lg overflow-hidden ${active ? 'bg-zinc-900' : ''}`}>
+    <div className="group flex items-center rounded-lg overflow-hidden" style={active ? { background: 'var(--surface-secondary)' } : undefined}>
       <button
         onClick={onClick}
-        className={`flex-1 text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors ${
-          active ? 'text-white' : muted ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-300 hover:text-white'
-        }`}
+        className="flex-1 text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors"
+        style={{ color: active ? 'var(--text-primary)' : muted ? 'var(--text-tertiary)' : 'var(--text-secondary)' }}
       >
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: color || (active ? '#fa4d2e' : '#52525b') }} />
+        <span className="w-1.5 h-1.5 rounded-full" style={{ background: color || (active ? 'var(--accent-primary)' : 'var(--text-muted)') }} />
         <span className="flex-1 truncate">{label}</span>
-        <span className="text-[10px] text-zinc-600">{count}</span>
+        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{count}</span>
       </button>
       {onDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDelete() }}
-          className="opacity-0 group-hover:opacity-100 px-2 text-zinc-600 hover:text-red-400 text-xs"
+          className="opacity-0 group-hover:opacity-100 px-2 hover:text-red-400 text-xs"
+          style={{ color: 'var(--text-muted)' }}
           title="Delete folder"
         >×</button>
       )}
@@ -496,22 +506,25 @@ function BulkActionsMenu({
       <button
         onClick={() => !disabled && setOpen(o => !o)}
         disabled={disabled}
-        className="text-xs font-medium px-3 py-2 rounded-lg text-zinc-300 border border-zinc-700 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-30"
+        className="text-xs font-medium px-3 py-2 rounded-lg border transition-colors disabled:opacity-30"
+        style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-secondary)' }}
       >Move to…</button>
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-52 rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl z-40 overflow-hidden">
+          <div className="absolute right-0 mt-1 w-52 rounded-lg border shadow-xl z-40 overflow-hidden" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
             <button
               onClick={() => { setOpen(false); onMove(null) }}
-              className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors"
+              className="w-full text-left px-3 py-2 text-xs transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
             >No folder</button>
-            {folders.length > 0 && <div className="border-t border-zinc-800" />}
+            {folders.length > 0 && <div className="border-t" style={{ borderColor: 'var(--border)' }} />}
             {folders.map(f => (
               <button
                 key={f.id}
                 onClick={() => { setOpen(false); onMove(f.id) }}
-                className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors"
+                className="w-full text-left px-3 py-2 text-xs transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
               >{f.name}</button>
             ))}
           </div>
@@ -533,16 +546,16 @@ function WidgetCard({
   onToggleSelect: () => void
   onDelete: () => void
 }) {
-  const cardCls = `relative p-5 rounded-xl border bg-zinc-900/40 transition-colors ${
-    isSelected ? 'border-orange-500/60 bg-orange-500/5'
-    : 'border-zinc-800 hover:border-zinc-700'
-  }`
+  const cardCls = 'relative p-5 rounded-xl border transition-colors'
+  const cardStyle = isSelected
+    ? { background: 'var(--accent-primary-bg)', borderColor: 'var(--accent-primary)' }
+    : { background: 'var(--surface)', borderColor: 'var(--border)' }
   const inner = (
     <>
-      <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl" style={{ background: w.isActive ? w.primaryColor : '#3f3f46' }} />
+      <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl" style={{ background: w.isActive ? w.primaryColor : 'var(--border-secondary)' }} />
       <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
-          style={{ background: w.primaryColor }}>
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center"
+          style={{ background: w.primaryColor, color: '#fff' }}>
           {isCall ? (
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -555,31 +568,31 @@ function WidgetCard({
         </div>
         <div className="flex items-center gap-1.5">
           {isLive && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 inline-flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded inline-flex items-center gap-1" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-emerald)' }} />
               {w.activeConversationsCount} live
             </span>
           )}
-          <span className="text-[10px] text-zinc-400 px-1.5 py-0.5 rounded bg-zinc-800 uppercase tracking-wide">
+          <span className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>
             {isCall ? 'call' : 'chat'}
           </span>
           {!w.isActive && (
-            <span className="text-[10px] text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800">paused</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>paused</span>
           )}
         </div>
       </div>
-      <p className="text-sm font-semibold text-white mb-1 truncate">{w.name}</p>
-      <p className="text-[11px] text-zinc-500 truncate">
+      <p className="text-sm font-semibold mb-1 truncate" style={{ color: 'var(--text-primary)' }}>{w.name}</p>
+      <p className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
         {w.allowedDomains.length > 0 ? w.allowedDomains.join(', ') : 'any domain'}
       </p>
-      <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-zinc-800">
+      <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <p className="text-lg font-bold text-white">{w._count.visitors}</p>
-          <p className="text-[10px] text-zinc-500">Visitors</p>
+          <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{w._count.visitors}</p>
+          <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Visitors</p>
         </div>
         <div>
-          <p className="text-lg font-bold text-white">{w._count.conversations}</p>
-          <p className="text-[10px] text-zinc-500">{isCall ? 'Calls' : 'Conversations'}</p>
+          <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{w._count.conversations}</p>
+          <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{isCall ? 'Calls' : 'Conversations'}</p>
         </div>
       </div>
       {w.voiceEnabled && !isCall && (
@@ -592,13 +605,18 @@ function WidgetCard({
 
   if (selectMode) {
     return (
-      <button onClick={onToggleSelect} className={`${cardCls} text-left`}>
+      <button onClick={onToggleSelect} className={`${cardCls} text-left`} style={cardStyle}>
         <div className="absolute top-3 right-3 z-10">
-          <span className={`flex items-center justify-center w-5 h-5 rounded border-2 ${
-            isSelected ? 'border-orange-500 bg-orange-500' : 'border-zinc-600 bg-zinc-950'
-          }`}>
+          <span
+            className="flex items-center justify-center w-5 h-5 rounded border-2"
+            style={
+              isSelected
+                ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary)' }
+                : { borderColor: 'var(--border-secondary)', background: 'var(--surface-secondary)' }
+            }
+          >
             {isSelected && (
-              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <svg className="w-3 h-3" style={{ color: 'var(--btn-primary-text)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             )}
@@ -610,13 +628,14 @@ function WidgetCard({
   }
 
   return (
-    <div className={`${cardCls} group`}>
+    <div className={`${cardCls} group`} style={cardStyle}>
       <Link href={`/dashboard/${workspaceId}/widgets/${w.id}`} className="block">
         {inner}
       </Link>
       <button
         onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete() }}
-        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 w-7 h-7 rounded flex items-center justify-center hover:bg-zinc-800 transition-colors"
+        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 hover:text-red-400 w-7 h-7 rounded flex items-center justify-center transition-colors"
+        style={{ color: 'var(--text-tertiary)' }}
         title="Delete widget"
         aria-label="Delete widget"
       >
@@ -646,15 +665,15 @@ function DeleteConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onCancel}>
-      <div className="w-full max-w-md rounded-2xl border border-red-500/40 bg-zinc-950 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="p-5 border-b border-zinc-800">
+      <div className="w-full max-w-md rounded-2xl border border-red-500/40 shadow-2xl" style={{ background: 'var(--surface)' }} onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-start gap-3">
             <span className="text-2xl">🗑</span>
             <div className="flex-1">
-              <p className="text-base font-bold text-white">
+              <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
                 {isSingle ? `Delete widget "${target.name}"?` : `Delete ${target.ids.length} widget${target.ids.length === 1 ? '' : 's'}?`}
               </p>
-              <p className="text-xs text-zinc-400 mt-1">
+              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                 This permanently removes the widget along with all its visitors, conversations, and stored uploads. The deletion cannot be undone.
               </p>
             </div>
@@ -662,7 +681,7 @@ function DeleteConfirmModal({
         </div>
 
         {hasActive && (
-          <div className="p-5 border-b border-zinc-800 bg-amber-500/5">
+          <div className="p-5 border-b bg-amber-500/5" style={{ borderColor: 'var(--border)' }}>
             <p className="text-xs font-semibold text-amber-300 mb-1.5">⚠ Active conversation warning</p>
             {isSingle ? (
               <p className="text-[11px] text-amber-200/90 leading-relaxed">
@@ -688,26 +707,29 @@ function DeleteConfirmModal({
         )}
 
         {error && (
-          <div className="px-5 py-3 border-b border-zinc-800 bg-red-500/5 text-[11px] text-red-300">{error}</div>
+          <div className="px-5 py-3 border-b bg-red-500/5 text-[11px] text-red-300" style={{ borderColor: 'var(--border)' }}>{error}</div>
         )}
 
         <div className="p-5 flex items-center justify-end gap-2">
           <button
             onClick={onCancel}
             disabled={deleting}
-            className="text-xs font-medium px-3 py-2 rounded-lg text-zinc-300 hover:text-white transition-colors disabled:opacity-50"
+            className="text-xs font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+            style={{ color: 'var(--text-secondary)' }}
           >Cancel</button>
           {isSingle && hasActive ? (
             <button
               onClick={() => onConfirm(true)}
               disabled={deleting}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-50"
+              className="text-xs font-semibold px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-50"
+              style={{ color: '#fff' }}
             >{deleting ? 'Deleting…' : 'Delete anyway'}</button>
           ) : (
             <button
               onClick={() => onConfirm(false)}
               disabled={deleting || (!isSingle && hasActive)}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-30"
+              className="text-xs font-semibold px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-30"
+              style={{ color: '#fff' }}
             >{deleting ? 'Deleting…' : 'Delete'}</button>
           )}
         </div>

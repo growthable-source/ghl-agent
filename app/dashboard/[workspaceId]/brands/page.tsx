@@ -58,8 +58,8 @@ export default function BrandsPage() {
   if (loading) return (
     <div className="flex-1 p-8">
       <div className="max-w-5xl mx-auto space-y-3">
-        <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" />
-        <div className="h-32 bg-zinc-900/40 rounded-xl border border-zinc-800 animate-pulse" />
+        <div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
+        <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
       </div>
     </div>
   )
@@ -69,11 +69,12 @@ export default function BrandsPage() {
       <div className="max-w-5xl mx-auto p-8">
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">Brands</h1>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Brands</h1>
           </div>
           <button
             onClick={() => setEditor({ mode: 'create' })}
-            className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
+            className="px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors"
+            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
           >
             + New brand
           </button>
@@ -95,24 +96,25 @@ export default function BrandsPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search brands…"
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+              className="w-full rounded-lg pl-9 pr-3 py-2 text-xs focus:outline-none"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
-            <svg className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <div className="ml-auto text-[11px] text-zinc-500">
+          <div className="ml-auto text-[11px]" style={{ color: 'var(--text-muted)' }}>
             {filtered.length} of {brands.length}
           </div>
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">🏷️</div>
-            <p className="text-sm font-medium text-white mb-1">
+          <div className="text-center py-16 border border-dashed rounded-xl" style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}>
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-2xl" style={{ background: 'var(--surface-tertiary)' }}>🏷️</div>
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
               {search.trim() ? 'No matches' : 'No brands yet'}
             </p>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
               {search.trim()
                 ? 'Try a different search.'
                 : 'Add a brand for each whitelabel client. Tag widgets and collections to it; the inbox and exports will filter automatically.'}
@@ -123,58 +125,62 @@ export default function BrandsPage() {
             {filtered.map(b => {
               const accent = b.primaryColor || '#fa4d2e'
               return (
-                <div key={b.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-950">
+                <div key={b.id} className="p-4 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="flex items-start gap-3 mb-3">
                     {b.logoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={b.logoUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-zinc-900 flex-shrink-0" />
+                      <img src={b.logoUrl} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" style={{ background: 'var(--surface-secondary)' }} />
                     ) : (
                       <div
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-base font-bold text-white flex-shrink-0"
-                        style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-base font-bold flex-shrink-0"
+                        style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: '#fff' }}
                       >
                         {b.name.charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{b.name}</p>
-                      <p className="text-[11px] text-zinc-500 font-mono truncate">{b.slug}</p>
+                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{b.name}</p>
+                      <p className="text-[11px] font-mono truncate" style={{ color: 'var(--text-muted)' }}>{b.slug}</p>
                       {b.description && (
-                        <p className="text-xs text-zinc-400 line-clamp-2 mt-1">{b.description}</p>
+                        <p className="text-xs line-clamp-2 mt-1" style={{ color: 'var(--text-secondary)' }}>{b.description}</p>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-zinc-500 flex-wrap">
-                    <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+                  <div className="flex items-center gap-2 text-[10px] flex-wrap" style={{ color: 'var(--text-muted)' }}>
+                    <span className="px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
                       {b.widgetCount} widget{b.widgetCount === 1 ? '' : 's'}
                     </span>
-                    <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+                    <span className="px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
                       {b.collectionCount} collection{b.collectionCount === 1 ? '' : 's'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-zinc-800">
+                  <div className="flex items-center gap-1.5 mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
                     <button
                       onClick={() => setEditor({ mode: 'edit', brand: b })}
-                      className="text-[11px] px-2.5 py-1 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                      className="text-[11px] px-2.5 py-1 rounded-lg transition-colors"
+                      style={{ border: '1px solid var(--border-secondary)', color: 'var(--text-secondary)' }}
                     >
                       Edit
                     </button>
                     <Link
                       href={`/dashboard/${workspaceId}/inbox?brand=${b.slug}`}
-                      className="text-[11px] px-2.5 py-1 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                      className="text-[11px] px-2.5 py-1 rounded-lg transition-colors"
+                      style={{ border: '1px solid var(--border-secondary)', color: 'var(--text-secondary)' }}
                     >
                       Inbox →
                     </Link>
                     <a
                       href={`/api/workspaces/${workspaceId}/brands/${b.id}/transcripts/export?format=json`}
-                      className="text-[11px] px-2.5 py-1 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                      className="text-[11px] px-2.5 py-1 rounded-lg transition-colors"
+                      style={{ border: '1px solid var(--border-secondary)', color: 'var(--text-secondary)' }}
                       title="Download a JSON export of every conversation tagged to this brand"
                     >
                       Export ↓
                     </a>
                     <button
                       onClick={() => handleDelete(b.id)}
-                      className="ml-auto text-[11px] px-2.5 py-1 rounded-lg border border-zinc-800 text-red-400 hover:text-red-300 hover:border-red-500/40 transition-colors"
+                      className="ml-auto text-[11px] px-2.5 py-1 rounded-lg text-red-400 hover:text-red-300 hover:border-red-500/40 transition-colors"
+                      style={{ border: '1px solid var(--border)' }}
                     >
                       Delete
                     </button>
@@ -365,10 +371,10 @@ function BrandEditorModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-lg overflow-hidden">
-        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-white">{mode === 'create' ? 'New brand' : 'Edit brand'}</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white">
+      <div className="rounded-2xl w-full max-w-lg overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{mode === 'create' ? 'New brand' : 'Edit brand'}</h2>
+          <button onClick={onClose} style={{ color: 'var(--text-muted)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -376,41 +382,44 @@ function BrandEditorModal({
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Name</label>
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Name</label>
             <input
               value={name}
               onChange={e => onNameChange(e.target.value)}
               placeholder="Acme Corp"
               maxLength={80}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
           </div>
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
               Slug
-              <span className="ml-2 normal-case font-normal text-zinc-600">used in export filenames + the brand-scoped inbox URL</span>
+              <span className="ml-2 normal-case font-normal" style={{ color: 'var(--text-muted)' }}>used in export filenames + the brand-scoped inbox URL</span>
             </label>
             <input
               value={slug}
               onChange={e => { setSlug(e.target.value.toLowerCase()); setSlugTouched(true) }}
               placeholder="acme-corp"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-zinc-500"
+              className="w-full rounded-lg px-3 py-2 text-sm font-mono focus:outline-none"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
           </div>
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Description (optional)</label>
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Description (optional)</label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="What does this brand do?"
               rows={2}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 resize-none"
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
           </div>
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
               Logo
-              <span className="ml-2 normal-case font-normal text-zinc-600">PNG, JPG, SVG · max 2 MB</span>
+              <span className="ml-2 normal-case font-normal" style={{ color: 'var(--text-muted)' }}>PNG, JPG, SVG · max 2 MB</span>
             </label>
             <input
               ref={fileInputRef}
@@ -420,33 +429,35 @@ function BrandEditorModal({
               onChange={e => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); if (e.target) e.target.value = '' }}
             />
             {logoUrl ? (
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+              <div className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={logoUrl} alt="" className="w-14 h-14 rounded-lg object-cover bg-zinc-950 flex-shrink-0" />
+                <img src={logoUrl} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0" style={{ background: 'var(--surface-tertiary)' }} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-zinc-300 break-all">{logoUrl}</p>
+                  <p className="text-xs break-all" style={{ color: 'var(--text-secondary)' }}>{logoUrl}</p>
                   {analyzing && (
-                    <p className="text-[10px] text-zinc-500 mt-1 inline-flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                    <p className="text-[10px] mt-1 inline-flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-primary)' }} />
                       Analyzing colours…
                     </p>
                   )}
                   {styleHint && !analyzing && (
-                    <p className="text-[10px] text-zinc-500 mt-1">Style: {styleHint}</p>
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>Style: {styleHint}</p>
                   )}
                   <div className="flex gap-1.5 mt-2">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
-                      className="text-[10px] px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 disabled:opacity-50"
+                      className="text-[10px] px-2 py-1 rounded disabled:opacity-50"
+                      style={{ border: '1px solid var(--border-secondary)', color: 'var(--text-secondary)' }}
                     >
                       Replace
                     </button>
                     <button
                       type="button"
                       onClick={() => { setLogoUrl(''); setSuggestedColors([]); setStyleHint(null) }}
-                      className="text-[10px] px-2 py-1 rounded border border-zinc-800 text-red-400 hover:text-red-300 hover:border-red-500/40"
+                      className="text-[10px] px-2 py-1 rounded text-red-400 hover:text-red-300 hover:border-red-500/40"
+                      style={{ border: '1px solid var(--border)' }}
                     >
                       Remove
                     </button>
@@ -458,17 +469,18 @@ function BrandEditorModal({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="w-full p-6 rounded-lg border-2 border-dashed border-zinc-700 hover:border-zinc-500 transition-colors text-center disabled:opacity-50"
+                className="w-full p-6 rounded-lg border-2 border-dashed transition-colors text-center disabled:opacity-50"
+                style={{ borderColor: 'var(--border-secondary)' }}
               >
-                <p className="text-sm text-zinc-300">{uploading ? 'Uploading…' : '📤  Upload logo'}</p>
-                <p className="text-[10px] text-zinc-500 mt-1">We'll suggest accent colours from the image</p>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{uploading ? 'Uploading…' : '📤  Upload logo'}</p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>We'll suggest accent colours from the image</p>
               </button>
             )}
             {uploadError && (
               <div className="mt-2 text-xs text-amber-300 space-y-1">
                 <p>{uploadError}</p>
                 {blobUnavailable && (
-                  <p className="text-[10px] text-zinc-400">
+                  <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
                     Suggestions still work locally. To persist the logo, configure
                     {' '}<code className="bg-black/30 px-1 rounded">BLOB_READ_WRITE_TOKEN</code> in Vercel Storage,
                     or paste a hosted URL below.
@@ -482,7 +494,8 @@ function BrandEditorModal({
               <button
                 type="button"
                 onClick={() => setShowUrlInput(s => !s)}
-                className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                className="text-[10px]"
+                style={{ color: 'var(--text-muted)' }}
               >
                 {showUrlInput ? 'Hide URL input' : 'Or paste a hosted logo URL'}
               </button>
@@ -493,13 +506,15 @@ function BrandEditorModal({
                     value={/^data:/i.test(logoUrl) ? '' : logoUrl}
                     onChange={e => setLogoUrl(e.target.value)}
                     placeholder="https://…"
-                    className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-500"
+                    className="flex-1 rounded-lg px-3 py-2 text-xs focus:outline-none"
+                    style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
                   />
                   <button
                     type="button"
                     onClick={() => { if (/^https?:\/\//i.test(logoUrl)) void analyzeLogoFromUrl(logoUrl) }}
                     disabled={!/^https?:\/\//i.test(logoUrl) || analyzing}
-                    className="px-3 py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 text-xs whitespace-nowrap disabled:opacity-50"
+                    className="px-3 py-2 rounded-lg text-xs whitespace-nowrap disabled:opacity-50"
+                    style={{ border: '1px solid var(--border-secondary)', color: 'var(--text-secondary)' }}
                   >
                     {analyzing ? 'Analyzing…' : 'Analyze'}
                   </button>
@@ -509,13 +524,13 @@ function BrandEditorModal({
           </div>
 
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Accent color</label>
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Accent color</label>
 
             {/* Vision-suggested swatches first when present, with a label
                 so the user knows where they came from. */}
             {suggestedColors.length > 0 && (
               <div className="mb-2">
-                <p className="text-[10px] text-orange-300 mb-1.5">✨ Suggested from your logo</p>
+                <p className="text-[10px] mb-1.5" style={{ color: 'var(--accent-primary)' }}>✨ Suggested from your logo</p>
                 <div className="flex flex-wrap gap-1.5">
                   {suggestedColors.map(c => (
                     <button
@@ -523,8 +538,8 @@ function BrandEditorModal({
                       type="button"
                       onClick={() => setColor(c)}
                       title={c}
-                      className={`w-9 h-9 rounded-lg border-2 transition-colors ${color === c ? 'border-white' : 'border-orange-500/40'}`}
-                      style={{ background: c }}
+                      className="w-9 h-9 rounded-lg border-2 transition-colors"
+                      style={{ background: c, borderColor: color === c ? 'var(--text-primary)' : 'rgba(250,77,46,0.4)' }}
                       aria-label={c}
                     />
                   ))}
@@ -532,7 +547,7 @@ function BrandEditorModal({
               </div>
             )}
 
-            <p className={`text-[10px] text-zinc-500 ${suggestedColors.length > 0 ? 'mb-1.5' : 'hidden'}`}>
+            <p className={`text-[10px] ${suggestedColors.length > 0 ? 'mb-1.5' : 'hidden'}`} style={{ color: 'var(--text-muted)' }}>
               Or pick a preset
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -541,8 +556,8 @@ function BrandEditorModal({
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className={`w-9 h-9 rounded-lg border-2 transition-colors ${color === c ? 'border-white' : 'border-transparent'}`}
-                  style={{ background: c }}
+                  className="w-9 h-9 rounded-lg border-2 transition-colors"
+                  style={{ background: c, borderColor: color === c ? 'var(--text-primary)' : 'transparent' }}
                   aria-label={c}
                 />
               ))}
@@ -550,12 +565,17 @@ function BrandEditorModal({
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
-        <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-zinc-300 hover:text-white">Cancel</button>
+        <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ color: 'var(--text-secondary)' }}>Cancel</button>
           <button
             onClick={save}
             disabled={saving || !name.trim()}
-            className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            style={
+              (saving || !name.trim())
+                ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+                : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+            }
           >
             {saving ? 'Saving…' : mode === 'create' ? 'Create' : 'Save'}
           </button>

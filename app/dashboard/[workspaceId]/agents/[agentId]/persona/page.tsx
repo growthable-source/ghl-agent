@@ -97,7 +97,7 @@ export default function PersonaPage() {
 
   if (loading || !initial) return (
     <div className="flex items-center justify-center h-64">
-      <p className="text-zinc-500 text-sm">Loading…</p>
+      <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p>
     </div>
   )
 
@@ -106,19 +106,20 @@ export default function PersonaPage() {
       <div className="max-w-2xl pb-24">
         <div className="space-y-8">
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">Agent Persona Name</label>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Agent Persona Name</label>
             <input
               type="text"
               value={draft.agentPersonaName}
               onChange={e => set({ agentPersonaName: e.target.value })}
               placeholder="e.g. Alex"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
-            <p className="text-xs text-zinc-600 mt-1">Leave blank to use no specific name.</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Leave blank to use no specific name.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-3">Response Length</label>
+            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Response Length</label>
             <div className="space-y-2">
               {[
                 { value: 'BRIEF', label: 'Brief', desc: '1 sentence max — very direct' },
@@ -135,8 +136,8 @@ export default function PersonaPage() {
                     className="mt-0.5"
                   />
                   <div>
-                    <p className="text-sm font-medium text-zinc-200">{opt.label}</p>
-                    <p className="text-xs text-zinc-500">{opt.desc}</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.label}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{opt.desc}</p>
                   </div>
                 </label>
               ))}
@@ -144,7 +145,7 @@ export default function PersonaPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-3">Formality Level</label>
+            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Formality Level</label>
             <div className="space-y-2">
               {[
                 { value: 'CASUAL', label: 'Casual', desc: 'Friendly, conversational, contractions OK' },
@@ -161,8 +162,8 @@ export default function PersonaPage() {
                     className="mt-0.5"
                   />
                   <div>
-                    <p className="text-sm font-medium text-zinc-200">{opt.label}</p>
-                    <p className="text-xs text-zinc-500">{opt.desc}</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.label}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{opt.desc}</p>
                   </div>
                 </label>
               ))}
@@ -172,50 +173,62 @@ export default function PersonaPage() {
           <div className="space-y-4">
             <label className="flex items-center justify-between cursor-pointer">
               <div>
-                <p className="text-sm font-medium text-zinc-200">Use Emojis</p>
-                <p className="text-xs text-zinc-500">Allow occasional emojis in replies</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Use Emojis</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Allow occasional emojis in replies</p>
               </div>
               <button
                 type="button"
                 onClick={() => set({ useEmojis: !draft.useEmojis })}
-                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${draft.useEmojis ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                style={{ background: draft.useEmojis ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${draft.useEmojis ? 'translate-x-4' : 'translate-x-0'}`} />
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.useEmojis ? 'translate-x-4' : 'translate-x-0'}`}
+                  style={{ background: '#fff' }}
+                />
               </button>
             </label>
 
             <label className="flex items-center justify-between cursor-pointer">
               <div>
-                <p className="text-sm font-medium text-zinc-200">Simulate Typos</p>
-                <p className="text-xs text-zinc-500">Adds subtle human-like typos to messages</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Simulate Typos</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Adds subtle human-like typos to messages</p>
               </div>
               <button
                 type="button"
                 onClick={() => set({ simulateTypos: !draft.simulateTypos })}
-                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${draft.simulateTypos ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                style={{ background: draft.simulateTypos ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${draft.simulateTypos ? 'translate-x-4' : 'translate-x-0'}`} />
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.simulateTypos ? 'translate-x-4' : 'translate-x-0'}`}
+                  style={{ background: '#fff' }}
+                />
               </button>
             </label>
 
             <div>
               <label className="flex items-center justify-between cursor-pointer">
                 <div>
-                  <p className="text-sm font-medium text-zinc-200">Typing Delay</p>
-                  <p className="text-xs text-zinc-500">Simulate human typing time before sending</p>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Typing Delay</p>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Simulate human typing time before sending</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => set({ typingDelayEnabled: !draft.typingDelayEnabled })}
-                  className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${draft.typingDelayEnabled ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                  className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                  style={{ background: draft.typingDelayEnabled ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
                 >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${draft.typingDelayEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.typingDelayEnabled ? 'translate-x-4' : 'translate-x-0'}`}
+                    style={{ background: '#fff' }}
+                  />
                 </button>
               </label>
               {draft.typingDelayEnabled && (
                 <div className="mt-4 space-y-3 pl-1">
                   <div>
-                    <div className="flex justify-between text-xs text-zinc-400 mb-1">
+                    <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>
                       <span>Min delay</span>
                       <span>{draft.typingDelayMinMs}ms</span>
                     </div>
@@ -227,7 +240,7 @@ export default function PersonaPage() {
                     />
                   </div>
                   <div>
-                    <div className="flex justify-between text-xs text-zinc-400 mb-1">
+                    <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>
                       <span>Max delay</span>
                       <span>{draft.typingDelayMaxMs}ms</span>
                     </div>
@@ -244,21 +257,31 @@ export default function PersonaPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">Never Say List</label>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Never Say List</label>
             <input
               type="text"
               value={neverSayInput}
               onChange={e => setNeverSayInput(e.target.value)}
               onKeyDown={addNeverSay}
               placeholder="Type a word or phrase and press Enter"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
             {draft.neverSayList.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {draft.neverSayList.map(word => (
-                  <span key={word} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs rounded-full px-3 py-1">
+                  <span
+                    key={word}
+                    className="inline-flex items-center gap-1 text-xs rounded-full px-3 py-1"
+                    style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
+                  >
                     {word}
-                    <button type="button" onClick={() => set({ neverSayList: draft.neverSayList.filter(w => w !== word) })} className="text-zinc-500 hover:text-red-400">
+                    <button
+                      type="button"
+                      onClick={() => set({ neverSayList: draft.neverSayList.filter(w => w !== word) })}
+                      className="hover:text-red-400"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
                       ×
                     </button>
                   </span>
@@ -268,7 +291,7 @@ export default function PersonaPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-3">Languages</label>
+            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Languages</label>
             <div className="space-y-2">
               {LANGUAGES.map(lang => (
                 <label key={lang.code} className="flex items-center gap-3 cursor-pointer">
@@ -277,7 +300,7 @@ export default function PersonaPage() {
                     checked={draft.languages.includes(lang.code)}
                     onChange={() => toggleLanguage(lang.code)}
                   />
-                  <span className="text-sm text-zinc-200">{lang.label}</span>
+                  <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{lang.label}</span>
                 </label>
               ))}
             </div>
