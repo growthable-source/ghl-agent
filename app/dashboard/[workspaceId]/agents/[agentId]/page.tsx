@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 import SaveBar from '@/components/dashboard/SaveBar'
 import { MergeFieldInput, MergeFieldTextarea } from '@/components/MergeFieldHelper'
@@ -80,8 +81,59 @@ export default function AgentSettingsPage() {
     border: '1px solid var(--input-border)',
   }
 
+  const base = `/dashboard/${workspaceId}/agents/${agentId}`
+
   return (
-    <div className="p-8 max-w-2xl pb-24">
+    <div className="p-8 max-w-3xl pb-24">
+      {/* Sectioned overview — quick deep-links into the four other
+          surfaces of agent config. Mirrors the IA mockup's section
+          cards on the Identity page so this isn't just a System Prompt
+          form. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
+        <SectionCard
+          href={`${base}/knowledge`}
+          title="Knowledge"
+          desc="What the agent knows"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg>
+          }
+        />
+        <SectionCard
+          href={`${base}/tools`}
+          title="Actions"
+          desc="What it can do"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+          }
+        />
+        <SectionCard
+          href={`${base}/rules`}
+          title="Rules"
+          desc="When to hand off"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M9 11l3 3L22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+          }
+        />
+        <SectionCard
+          href={`${base}/deploy`}
+          title="Channels"
+          desc="Where it talks"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+          }
+        />
+      </div>
+
       <div className="space-y-6">
         <div>
           <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Agent Name</label>
@@ -286,5 +338,42 @@ export default function AgentSettingsPage() {
 
       <SaveBar dirty={dirty} saving={saving} savedAt={savedAt} error={error} onSave={save} onReset={reset} />
     </div>
+  )
+}
+
+function SectionCard({
+  href,
+  title,
+  desc,
+  icon,
+}: {
+  href: string
+  title: string
+  desc: string
+  icon: React.ReactNode
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border p-3 transition-colors group"
+      style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span
+          className="w-7 h-7 rounded-lg flex items-center justify-center"
+          style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
+        >
+          {icon}
+        </span>
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</p>
+      </div>
+      <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
+      <p
+        className="text-[11px] mt-1 font-medium opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ color: 'var(--accent-primary)' }}
+      >
+        Configure →
+      </p>
+    </Link>
   )
 }
