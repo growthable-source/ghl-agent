@@ -110,48 +110,75 @@ export default function FollowUpsPage() {
 
   const selectedTrigger = TRIGGER_OPTIONS.find(o => o.value === newTriggerType)
 
+  // Theme-aware shells used throughout the page so we don't depend on
+  // legacy zinc/orange overrides.
+  const fieldStyle: React.CSSProperties = {
+    background: 'var(--input-bg)',
+    color: 'var(--input-text)',
+    border: '1px solid var(--input-border)',
+  }
+  const cardStyle: React.CSSProperties = {
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+  }
+  const infoBoxStyle: React.CSSProperties = {
+    background: 'var(--surface-secondary)',
+    border: '1px solid var(--border)',
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
-      <p className="text-zinc-500 text-sm">Loading…</p>
+      <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p>
     </div>
   )
 
   return (
     <div className="p-8">
       <div className="max-w-2xl">
-        <p className="text-sm text-zinc-400 mb-6">Automatic messages triggered by rules you define — when a contact goes quiet, says a keyword, or when the agent decides it's time.</p>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+          Automatic messages triggered by rules you define — when a contact goes quiet, says a keyword, or when the agent decides it&apos;s time.
+        </p>
 
         {/* Existing sequences */}
         {sequences.length > 0 && (
           <div className="space-y-4 mb-8">
             {sequences.map(seq => (
-              <div key={seq.id} className="rounded-lg border border-zinc-800 p-4">
+              <div key={seq.id} className="rounded-xl p-4" style={cardStyle}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <p className="text-sm font-medium text-zinc-200">{seq.name}</p>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{seq.name}</p>
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
+                    >
                       {triggerLabel(seq.triggerType, seq.triggerValue)}
                     </span>
                     <button
                       onClick={() => toggleActive(seq)}
-                      className={`relative inline-flex h-4 w-8 shrink-0 rounded-full border-2 border-transparent transition-colors ${seq.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                      className="relative inline-flex h-4 w-8 shrink-0 rounded-full transition-colors"
+                      style={{ background: seq.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition ${seq.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
+                      <span className={`inline-block h-3 w-3 transform rounded-full shadow transition ${seq.isActive ? 'translate-x-4' : 'translate-x-0.5'}`} style={{ background: '#fff' }} />
                     </button>
                   </div>
                   <button
                     onClick={() => deleteSequence(seq.id)}
-                    className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+                    className="text-xs transition-colors"
+                    style={{ color: 'var(--text-tertiary)' }}
                   >
                     Delete
                   </button>
                 </div>
                 <div className="space-y-2">
                   {seq.steps.map(step => (
-                    <div key={step.id} className="flex items-start gap-3 text-xs text-zinc-500 pl-2 border-l border-zinc-800">
-                      <span className="shrink-0 font-medium text-zinc-400">Step {step.stepNumber}</span>
+                    <div
+                      key={step.id}
+                      className="flex items-start gap-3 text-xs pl-2 border-l"
+                      style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border)' }}
+                    >
+                      <span className="shrink-0 font-medium" style={{ color: 'var(--text-secondary)' }}>Step {step.stepNumber}</span>
                       <span className="shrink-0">after {step.delayHours}h</span>
-                      <span className="text-zinc-600 line-clamp-1">{step.message}</span>
+                      <span className="line-clamp-1" style={{ color: 'var(--text-muted)' }}>{step.message}</span>
                     </div>
                   ))}
                 </div>
@@ -161,8 +188,8 @@ export default function FollowUpsPage() {
         )}
 
         {/* Create new sequence */}
-        <div className="rounded-lg border border-zinc-800 p-4">
-          <p className="text-sm font-medium text-zinc-300 mb-4">New Sequence</p>
+        <div className="rounded-xl p-4" style={cardStyle}>
+          <p className="text-sm font-medium mb-4" style={{ color: 'var(--text-primary)' }}>New Sequence</p>
           <form onSubmit={createSequence} className="space-y-4">
             <input
               type="text"
@@ -170,70 +197,91 @@ export default function FollowUpsPage() {
               onChange={e => setNewName(e.target.value)}
               placeholder="Sequence name"
               required
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+              style={fieldStyle}
             />
 
             {/* Trigger selection */}
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-2">When should this trigger?</label>
+              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>When should this trigger?</label>
               <div className="grid grid-cols-2 gap-2">
-                {TRIGGER_OPTIONS.map(opt => (
-                  <button key={opt.value} type="button" onClick={() => { setNewTriggerType(opt.value); setNewTriggerValue('') }}
-                    className={`flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors ${
-                      newTriggerType === opt.value
-                        ? 'border-white bg-zinc-900'
-                        : 'border-zinc-800 hover:border-zinc-600'
-                    }`}>
-                    <span className="text-xs font-medium text-zinc-200">{opt.label}</span>
-                    <span className="text-[11px] text-zinc-500 leading-tight">{opt.desc}</span>
-                  </button>
-                ))}
+                {TRIGGER_OPTIONS.map(opt => {
+                  const selected = newTriggerType === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setNewTriggerType(opt.value); setNewTriggerValue('') }}
+                      className="flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors"
+                      style={
+                        selected
+                          ? { background: 'var(--accent-primary-bg)', borderColor: 'var(--accent-primary)' }
+                          : { background: 'var(--surface)', borderColor: 'var(--border)' }
+                      }
+                    >
+                      <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{opt.label}</span>
+                      <span className="text-[11px] leading-tight" style={{ color: 'var(--text-tertiary)' }}>{opt.desc}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
             {selectedTrigger?.needsValue && (
               <div>
-                <label className="block text-xs text-zinc-500 mb-1.5">Keywords (comma separated)</label>
+                <label className="block text-xs mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Keywords (comma separated)</label>
                 <input
                   type="text"
                   value={newTriggerValue}
                   onChange={e => setNewTriggerValue(e.target.value)}
                   placeholder={selectedTrigger.placeholder}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                  style={fieldStyle}
                 />
               </div>
             )}
 
             {newTriggerType === 'agent' && (
-              <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
-                <p className="text-xs text-zinc-400">
-                  The agent will use the <code className="bg-zinc-800 px-1 py-0.5 rounded text-zinc-300">schedule_followup</code> tool to trigger this sequence when it detects the right moment — e.g. when a contact says "follow up with me next week."
+              <div className="rounded-lg p-3" style={infoBoxStyle}>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  The agent will use the <code className="px-1 py-0.5 rounded font-mono" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>schedule_followup</code> tool to trigger this sequence when it detects the right moment — e.g. when a contact says &ldquo;follow up with me next week.&rdquo;
                 </p>
               </div>
             )}
 
             {newTriggerType === 'no_reply' && (
-              <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
-                <p className="text-xs text-zinc-400">
-                  The first step's delay is used as the silence window. If the contact replies before the timer expires, the follow-up is automatically cancelled.
+              <div className="rounded-lg p-3" style={infoBoxStyle}>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  The first step&apos;s delay is used as the silence window. If the contact replies before the timer expires, the follow-up is automatically cancelled.
                 </p>
               </div>
             )}
 
             {/* Steps */}
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-2">Steps</label>
+              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Steps</label>
               <div className="space-y-3">
                 {newSteps.map((step, idx) => (
-                  <div key={idx} className="rounded-lg border border-zinc-700 p-3 space-y-2">
+                  <div
+                    key={idx}
+                    className="rounded-lg border p-3 space-y-2"
+                    style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+                  >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-zinc-400">Step {step.stepNumber}</span>
+                      <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Step {step.stepNumber}</span>
                       {newSteps.length > 1 && (
-                        <button type="button" onClick={() => removeStep(idx)} className="text-xs text-zinc-600 hover:text-red-400">Remove</button>
+                        <button
+                          type="button"
+                          onClick={() => removeStep(idx)}
+                          className="text-xs transition-colors"
+                          style={{ color: 'var(--text-tertiary)' }}
+                        >
+                          Remove
+                        </button>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <label className="text-xs text-zinc-500 shrink-0">
+                      <label className="text-xs shrink-0" style={{ color: 'var(--text-tertiary)' }}>
                         {idx === 0 && newTriggerType === 'no_reply' ? 'Wait for silence' : 'Send after'}
                       </label>
                       <input
@@ -241,9 +289,10 @@ export default function FollowUpsPage() {
                         min={1}
                         value={step.delayHours}
                         onChange={e => updateStep(idx, 'delayHours', Number(e.target.value))}
-                        className="w-20 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-zinc-500"
+                        className="w-20 rounded px-2 py-1 text-sm focus:outline-none"
+                        style={fieldStyle}
                       />
-                      <span className="text-xs text-zinc-500">hours</span>
+                      <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>hours</span>
                     </div>
                     <MergeFieldTextarea
                       value={step.message}
@@ -252,7 +301,8 @@ export default function FollowUpsPage() {
                       placeholder="Message to send… (try {{contact.first_name|there}})"
                       required
                       rows={2}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                      className="w-full rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm focus:outline-none resize-none"
+                      style={fieldStyle}
                     />
                   </div>
                 ))}
@@ -263,14 +313,20 @@ export default function FollowUpsPage() {
               <button
                 type="button"
                 onClick={addStep}
-                className="text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-1.5 transition-colors"
+                className="text-sm border rounded-lg px-3 py-1.5 transition-colors"
+                style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
               >
                 + Add Step
               </button>
               <button
                 type="submit"
-                disabled={creating}
-                className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                disabled={creating || !newName.trim() || newSteps.some(s => !s.message.trim())}
+                className="inline-flex items-center justify-center rounded-lg font-medium text-sm h-9 px-4 transition-colors disabled:cursor-not-allowed"
+                style={
+                  creating || !newName.trim() || newSteps.some(s => !s.message.trim())
+                    ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }
+                    : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+                }
               >
                 {creating ? 'Creating…' : 'Create Sequence'}
               </button>

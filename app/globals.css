@@ -442,12 +442,28 @@ body {
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .border-zinc-500 { border-color: #78716c !important; }
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .border-white { border-color: var(--text-primary) !important; }
 
-/* Buttons */
+/* Buttons — bg-white was the legacy "primary CTA" pattern (white pill
+   on a dark page). Remap to brand orange in light mode so all those
+   forms keep working without per-button rewrites. */
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .bg-white { background-color: var(--btn-primary-bg) !important; }
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .bg-white.text-black { color: var(--btn-primary-text) !important; }
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .hover\:bg-zinc-200:hover { background-color: var(--btn-primary-hover) !important; }
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .hover\:bg-zinc-700:hover { background-color: #e5e2dc !important; }
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .hover\:bg-zinc-900:hover { background-color: var(--surface-secondary) !important; }
+
+/* Disabled-state contrast fix — `disabled:opacity-50` on an orange
+   button against a cream page reads as pale-cream-on-pale-orange,
+   which is barely legible. Override the disabled visual to a proper
+   muted gray pill instead so it's obviously inert AND readable. */
+:root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) button:disabled.bg-white,
+:root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) button:disabled.bg-zinc-900,
+:root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) button:disabled.bg-zinc-950,
+:root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) [type="submit"]:disabled.bg-white {
+  background-color: var(--surface-tertiary) !important;
+  color: var(--text-tertiary) !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+}
 
 /* Inputs */
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) input, :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) textarea, :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) select {
