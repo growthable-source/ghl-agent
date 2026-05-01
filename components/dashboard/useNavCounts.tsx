@@ -15,9 +15,10 @@ import { createContext, useContext, useEffect, useState } from 'react'
 interface NavCounts {
   needsAttention: number | null
   approvalsPending: number | null
+  inboxUnread: number | null
 }
 
-const EMPTY: NavCounts = { needsAttention: null, approvalsPending: null }
+const EMPTY: NavCounts = { needsAttention: null, approvalsPending: null, inboxUnread: null }
 
 const Ctx = createContext<NavCounts>(EMPTY)
 
@@ -33,7 +34,7 @@ export function NavCountsProvider({ workspaceId, children }: { workspaceId: stri
     async function refresh() {
       // Parallel fetches — neither blocks the other, a failure on one
       // endpoint leaves the other's badge intact rather than wiping both.
-      const [needs, approvals] = await Promise.all([
+      const [needs, approvals, inbox] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/needs-attention`)
           .then(r => r.ok ? r.json() : null)
           .then(d => (d?.items?.length ?? null) as number | null)
@@ -42,9 +43,13 @@ export function NavCountsProvider({ workspaceId, children }: { workspaceId: stri
           .then(r => r.ok ? r.json() : null)
           .then(d => (typeof d?.count === 'number' ? d.count : d?.items?.length ?? null) as number | null)
           .catch(() => null),
+        fetch(`/api/workspaces/${workspaceId}/inbox/unread-count`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => (typeof d?.count === 'number' ? d.count : null) as number | null)
+          .catch(() => null),
       ])
       if (cancelled) return
-      setCounts({ needsAttention: needs, approvalsPending: approvals })
+      setCounts({ needsAttention: needs, approvalsPending: approvals, inboxUnread: inbox })
     }
 
     refresh()

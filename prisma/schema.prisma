@@ -9,25 +9,25 @@ datasource db {
 // ─── NextAuth Models ──────────────────────────────────────────────────────
 
 model User {
-  id                    String    @id @default(cuid())
-  name                  String?
-  email                 String?   @unique
-  emailVerified         DateTime?
-  image                 String?
-  theme                 String    @default("midnight")
-  companyName           String?
-  companySize           String?
-  role                  String?
-  onboardingCompletedAt DateTime?
-  accounts              Account[]
-  sessions              Session[]
-  locations             UserLocation[]
-  workspaces            WorkspaceMember[]
-  assignedConversations WidgetConversation[] @relation("ConversationAssignee")
-  assignedMetaConversations MetaConversation[] @relation("MetaConversationAssignee")
-  sentMetaMessages      MetaMessage[]      @relation("MetaMessageAuthor")
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id                        String               @id @default(cuid())
+  name                      String?
+  email                     String?              @unique
+  emailVerified             DateTime?
+  image                     String?
+  theme                     String               @default("midnight")
+  companyName               String?
+  companySize               String?
+  role                      String?
+  onboardingCompletedAt     DateTime?
+  accounts                  Account[]
+  sessions                  Session[]
+  locations                 UserLocation[]
+  workspaces                WorkspaceMember[]
+  assignedConversations     WidgetConversation[] @relation("ConversationAssignee")
+  assignedMetaConversations MetaConversation[]   @relation("MetaConversationAssignee")
+  sentMetaMessages          MetaMessage[]        @relation("MetaMessageAuthor")
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 }
 
 model Account {
@@ -44,6 +44,7 @@ model Account {
   scope             String?
   id_token          String? @db.Text
   session_state     String?
+
   @@unique([provider, providerAccountId])
 }
 
@@ -59,6 +60,7 @@ model VerificationToken {
   identifier String
   token      String   @unique
   expires    DateTime
+
   @@unique([identifier, token])
 }
 
@@ -70,35 +72,36 @@ model UserLocation {
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   role       String   @default("owner")
   createdAt  DateTime @default(now())
+
   @@unique([userId, locationId])
 }
 
 // ─── Workspace Architecture ──────────────────────────────────────────────────
 
 model Workspace {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  icon        String   @default("🚀")      // emoji avatar — fallback when logoUrl is unset
+  id      String  @id @default(cuid())
+  name    String
+  slug    String  @unique
+  icon    String  @default("🚀") // emoji avatar — fallback when logoUrl is unset
   // Optional hosted logo image. When set, the UI renders this instead of
   // the emoji everywhere the workspace avatar appears (sidebar, switcher,
   // workspace list). Either a Vercel Blob URL (from our upload endpoint)
   // or any arbitrary https URL the user pasted — we don't proxy or copy,
   // so broken external URLs just render as a broken image.
-  logoUrl     String?
-  domain      String?                       // e.g. "acmecorp.com" — for same-domain invite gating
+  logoUrl String?
+  domain  String? // e.g. "acmecorp.com" — for same-domain invite gating
 
   // ─── Plan & Limits ───
-  plan                    String   @default("trial")  // "trial" | "starter" | "growth" | "scale"
-  planSelectedDuringTrial String?                      // "starter" | "growth" | "scale"
-  billingPeriod           String   @default("monthly") // "monthly" | "annual"
-  agentLimit              Int      @default(3)
-  messageLimit            Int      @default(1500)      // AI messages per billing period
-  messageUsage            Int      @default(0)         // current period usage
-  voiceMinuteLimit        Int      @default(0)         // voice minutes per billing period (seconds stored)
-  voiceMinuteUsage        Int      @default(0)         // current period voice usage in seconds
-  extraAgentCount         Int      @default(0)         // agents beyond plan inclusion
-  trialEndsAt             DateTime?                    // set to now+7d on signup
+  plan                    String    @default("trial") // "trial" | "starter" | "growth" | "scale"
+  planSelectedDuringTrial String? // "starter" | "growth" | "scale"
+  billingPeriod           String    @default("monthly") // "monthly" | "annual"
+  agentLimit              Int       @default(3)
+  messageLimit            Int       @default(1500) // AI messages per billing period
+  messageUsage            Int       @default(0) // current period usage
+  voiceMinuteLimit        Int       @default(0) // voice minutes per billing period (seconds stored)
+  voiceMinuteUsage        Int       @default(0) // current period voice usage in seconds
+  extraAgentCount         Int       @default(0) // agents beyond plan inclusion
+  trialEndsAt             DateTime? // set to now+7d on signup
 
   // ─── Stripe Billing ───
   stripeCustomerId       String?   @unique
@@ -107,9 +110,9 @@ model Workspace {
   stripeCurrentPeriodEnd DateTime?
 
   // ─── Emergency Pause ───
-  isPaused   Boolean   @default(false)
-  pausedAt   DateTime?
-  pausedBy   String?                       // userId who paused the workspace
+  isPaused Boolean   @default(false)
+  pausedAt DateTime?
+  pausedBy String? // userId who paused the workspace
 
   // ─── Platform Learnings opt-out ───
   // When true, this workspace's agents do NOT receive the shared
@@ -120,53 +123,55 @@ model Workspace {
   // own opt-in choices.
   disableGlobalLearnings Boolean @default(false)
 
-  members      WorkspaceMember[]
-  invites      WorkspaceInvite[]
-  locations    Location[]         @relation("WorkspaceLocations")
-  agents       Agent[]            @relation("WorkspaceAgents")
-  usageRecords UsageRecord[]
-  templates    AgentTemplate[]    @relation("WorkspaceTemplates")
+  members              WorkspaceMember[]
+  invites              WorkspaceInvite[]
+  locations            Location[]            @relation("WorkspaceLocations")
+  agents               Agent[]               @relation("WorkspaceAgents")
+  usageRecords         UsageRecord[]
+  templates            AgentTemplate[]       @relation("WorkspaceTemplates")
   knowledgeEntries     KnowledgeEntry[]      @relation("WorkspaceKnowledge")
   knowledgeCollections KnowledgeCollection[] @relation("WorkspaceKnowledgeCollections")
-  brands       Brand[]            @relation("WorkspaceBrands")
+  brands               Brand[]               @relation("WorkspaceBrands")
+  portals              Portal[]              @relation("WorkspacePortals")
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model UsageRecord {
-  id                 String    @id @default(cuid())
-  workspaceId        String
-  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  type               String                         // "message" | "voice_minute"
-  quantity           Int                             // 1 for messages, seconds for voice
-  agentId            String?                         // which agent generated the usage
-  billingPeriod      String                          // e.g. "2026-04"
-  stripeUsageRecordId String?                        // after reporting to Stripe
-  createdAt          DateTime  @default(now())
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type                String // "message" | "voice_minute"
+  quantity            Int // 1 for messages, seconds for voice
+  agentId             String? // which agent generated the usage
+  billingPeriod       String // e.g. "2026-04"
+  stripeUsageRecordId String? // after reporting to Stripe
+  createdAt           DateTime  @default(now())
 
   @@index([workspaceId, billingPeriod])
   @@index([workspaceId, type, createdAt])
 }
 
 model WorkspaceMember {
-  id               String    @id @default(cuid())
-  userId           String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId      String
-  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  role             String    @default("owner")   // "owner" | "admin" | "member"
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId           String
+  workspace             Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role                  String    @default("owner") // "owner" | "admin" | "member"
   // Weekly digest delivery — per-user opt-in. Cron checks this before
   // dispatching; the digest page exposes a toggle.
-  digestOptIn      Boolean   @default(true)
-  lastDigestSentAt DateTime?
+  digestOptIn           Boolean   @default(true)
+  lastDigestSentAt      DateTime?
   // Inbox availability. Routing engine only assigns chats to members
   // marked available; "away" members stay in the workspace but are
   // skipped by round-robin / first-available picks. Toggled from the
   // inbox header.
-  isAvailable      Boolean   @default(true)
+  isAvailable           Boolean   @default(true)
   availabilityChangedAt DateTime?
-  createdAt        DateTime  @default(now())
+  createdAt             DateTime  @default(now())
+
   @@unique([userId, workspaceId])
   @@index([workspaceId, isAvailable])
 }
@@ -176,11 +181,12 @@ model WorkspaceInvite {
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   email       String
-  role        String    @default("member")  // "admin" | "member"
-  invitedBy   String                        // userId of inviter
+  role        String    @default("member") // "admin" | "member"
+  invitedBy   String // userId of inviter
   acceptedAt  DateTime?
   expiresAt   DateTime
   createdAt   DateTime  @default(now())
+
   @@unique([workspaceId, email])
   @@index([email])
 }
@@ -223,21 +229,21 @@ enum FormalityLevel {
 }
 
 model Location {
-  id             String   @id
-  workspaceId    String?
-  workspace      Workspace? @relation("WorkspaceLocations", fields: [workspaceId], references: [id], onDelete: Cascade)
-  companyId      String
-  userId         String
-  userType       String
-  scope          String
-  accessToken    String
-  refreshToken   String
-  refreshTokenId String
-  expiresAt      DateTime
-  crmProvider    String   @default("ghl")
-  installedAt             DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  onboardingCompletedAt   DateTime?
+  id                    String     @id
+  workspaceId           String?
+  workspace             Workspace? @relation("WorkspaceLocations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  companyId             String
+  userId                String
+  userType              String
+  scope                 String
+  accessToken           String
+  refreshToken          String
+  refreshTokenId        String
+  expiresAt             DateTime
+  crmProvider           String     @default("ghl")
+  installedAt           DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  onboardingCompletedAt DateTime?
 
   agents      Agent[]
   messageLogs MessageLog[]
@@ -248,20 +254,20 @@ model Location {
 }
 
 model Agent {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   workspaceId  String?
   workspace    Workspace? @relation("WorkspaceAgents", fields: [workspaceId], references: [id], onDelete: Cascade)
   locationId   String
-  location     Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  location     Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
   name         String
-  systemPrompt String   @db.Text
-  instructions String?  @db.Text
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  systemPrompt String     @db.Text
+  instructions String?    @db.Text
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  enabledTools     String[] @default(["get_contact_details", "send_reply", "send_sms", "send_email", "update_contact_tags", "remove_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note", "get_available_slots", "book_appointment", "cancel_appointment", "reschedule_appointment", "create_appointment_note", "get_calendar_events", "find_contact_by_email_or_phone", "upsert_contact", "create_task", "add_to_workflow", "remove_from_workflow", "cancel_scheduled_message", "list_contact_conversations", "mark_opportunity_won", "mark_opportunity_lost", "upsert_opportunity", "list_pipelines"])
-  calendarId       String?
+  enabledTools String[] @default(["get_contact_details", "send_reply", "send_sms", "send_email", "update_contact_tags", "remove_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note", "get_available_slots", "book_appointment", "cancel_appointment", "reschedule_appointment", "create_appointment_note", "get_calendar_events", "find_contact_by_email_or_phone", "upsert_contact", "create_task", "add_to_workflow", "remove_from_workflow", "cancel_scheduled_message", "list_contact_conversations", "mark_opportunity_won", "mark_opportunity_lost", "upsert_opportunity", "list_pipelines"])
+  calendarId   String?
 
   // ─── Workflow picker ───
   // When add_to_workflow / remove_from_workflow tools are enabled, the user
@@ -269,48 +275,48 @@ model Agent {
   // with denormalized names so the agent's tool schema can show them without
   // hitting GHL on every invocation. Empty/null = tool is effectively disabled
   // (we drop it from the published tool list at runtime).
-  addToWorkflowsPick       Json?   // Array<{ id: string; name: string }>
-  removeFromWorkflowsPick  Json?   // Array<{ id: string; name: string }>
+  addToWorkflowsPick      Json? // Array<{ id: string; name: string }>
+  removeFromWorkflowsPick Json? // Array<{ id: string; name: string }>
 
-  qualifyingStyle     String   @default("strict")    // "strict" | "natural"
-  fallbackBehavior    String   @default("message")  // "message" | "transfer" | "message_and_transfer"
-  fallbackMessage     String?  @db.Text
+  qualifyingStyle  String  @default("strict") // "strict" | "natural"
+  fallbackBehavior String  @default("message") // "message" | "transfer" | "message_and_transfer"
+  fallbackMessage  String? @db.Text
 
-  agentPersonaName    String?
-  responseLength      ResponseLength   @default(MODERATE)
-  formalityLevel      FormalityLevel   @default(NEUTRAL)
-  useEmojis           Boolean          @default(false)
-  neverSayList        String[]         @default([])
-  simulateTypos       Boolean          @default(false)
-  typingDelayEnabled  Boolean          @default(false)
-  typingDelayMinMs    Int              @default(500)
-  typingDelayMaxMs    Int              @default(3000)
-  languages           String[]         @default(["en"])
+  agentPersonaName   String?
+  responseLength     ResponseLength @default(MODERATE)
+  formalityLevel     FormalityLevel @default(NEUTRAL)
+  useEmojis          Boolean        @default(false)
+  neverSayList       String[]       @default([])
+  simulateTypos      Boolean        @default(false)
+  typingDelayEnabled Boolean        @default(false)
+  typingDelayMinMs   Int            @default(500)
+  typingDelayMaxMs   Int            @default(3000)
+  languages          String[]       @default(["en"])
 
   // ─── Working Hours & Quiet Periods ───
-  workingHoursEnabled Boolean          @default(false)
-  workingHoursStart   Int              @default(0)    // hour 0-23 (contact-local)
-  workingHoursEnd     Int              @default(24)   // hour 0-24
-  workingDays         String[]         @default(["mon","tue","wed","thu","fri","sat","sun"])
-  timezone            String?                         // IANA, e.g. "America/New_York"
+  workingHoursEnabled Boolean  @default(false)
+  workingHoursStart   Int      @default(0) // hour 0-23 (contact-local)
+  workingHoursEnd     Int      @default(24) // hour 0-24
+  workingDays         String[] @default(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
+  timezone            String? // IANA, e.g. "America/New_York"
 
   // ─── Emergency Pause ───
-  isPaused            Boolean          @default(false)
-  pausedAt            DateTime?
+  isPaused Boolean   @default(false)
+  pausedAt DateTime?
 
   // ─── Approval Queue ───
-  requireApproval     Boolean          @default(false)
-  approvalRules       Json?                           // { lowSentiment: true, firstContact: true, ... }
+  requireApproval Boolean @default(false)
+  approvalRules   Json? // { lowSentiment: true, firstContact: true, ... }
 
   // ─── AI Judge ───
   // When approval is required, run a cheap LLM "judge" pass on the draft
   // reply before queuing for a human. SAFE → auto-release; UNSAFE → optionally
   // auto-block; UNCERTAIN → keep in queue for review.
-  judgeEnabled        Boolean          @default(false)
-  judgeModel          String           @default("haiku")
-  judgeAutoSend       Boolean          @default(true)
-  judgeAutoBlock      Boolean          @default(false)
-  judgeInstructions   String?          @db.Text
+  judgeEnabled      Boolean @default(false)
+  judgeModel        String  @default("haiku")
+  judgeAutoSend     Boolean @default(true)
+  judgeAutoBlock    Boolean @default(false)
+  judgeInstructions String? @db.Text
 
   // ─── Agent context level ───
   // SIMPLE = minimal system prompt (name + tags only).
@@ -318,31 +324,31 @@ model Agent {
   // fields + the agent's businessContext glossary into every turn's system
   // prompt. Heavier on tokens but the agent can reason about commercial
   // context (e.g. a car dealer's vehicle inquiries) without tool calls.
-  agentType           String           @default("SIMPLE")
+  agentType       String  @default("SIMPLE")
   // Free-text glossary the operator fills once — tells the agent what
   // their custom fields / opportunities represent in their business. Only
   // used when agentType=ADVANCED.
-  businessContext     String?
+  businessContext String?
 
-  knowledgeEntries KnowledgeEntry[]
-  attachedCollections AgentCollection[]
-  routingRules     RoutingRule[]
-  detectionRules   AgentRule[]
-  experiments      AgentExperiment[]
-  listeningRules   AgentListeningRule[]
-  messageLogs      MessageLog[]
-  stopConditions      StopCondition[]
-  followUpSequences   FollowUpSequence[]
-  qualifyingQuestions QualifyingQuestion[]
-  conversationStates  ConversationStateRecord[]
-  contactMemories     ContactMemory[]
+  knowledgeEntries     KnowledgeEntry[]
+  attachedCollections  AgentCollection[]
+  routingRules         RoutingRule[]
+  detectionRules       AgentRule[]
+  experiments          AgentExperiment[]
+  listeningRules       AgentListeningRule[]
+  messageLogs          MessageLog[]
+  stopConditions       StopCondition[]
+  followUpSequences    FollowUpSequence[]
+  qualifyingQuestions  QualifyingQuestion[]
+  conversationStates   ConversationStateRecord[]
+  contactMemories      ContactMemory[]
   conversationMessages ConversationMessage[]
-  vapiConfig          VapiConfig?
-  channelDeployments  ChannelDeployment[]
-  triggers            AgentTrigger[]
-  reviews             AgentReview[]
-  platformLearnings   PlatformLearning[]
-  simulations         Simulation[]
+  vapiConfig           VapiConfig?
+  channelDeployments   ChannelDeployment[]
+  triggers             AgentTrigger[]
+  reviews              AgentReview[]
+  platformLearnings    PlatformLearning[]
+  simulations          Simulation[]
 
   @@index([locationId, isActive])
   @@index([workspaceId])
@@ -354,7 +360,7 @@ model Agent {
 // that an agent can subscribe to. Agents stack collections, not
 // individual items.
 model KnowledgeCollection {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   workspace   Workspace @relation("WorkspaceKnowledgeCollections", fields: [workspaceId], references: [id], onDelete: Cascade)
   name        String
@@ -365,18 +371,19 @@ model KnowledgeCollection {
   color       String?
   // Display order — lets operators pin "Master FAQs" to the top of the
   // workspace knowledge page. Ascending; equal values sort by createdAt.
-  order       Int      @default(0)
+  order       Int       @default(0)
   // Whitelabel brand the collection belongs to. Null = workspace-shared
   // (a "Master FAQs" set every brand can use). Set = brand-scoped, so
   // it shows up only when filtering by that brand.
   brandId     String?
-  brand       Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  brand       Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   entries     KnowledgeEntry[]
   dataSources WorkspaceDataSource[]
   attachments AgentCollection[]
+
   @@index([workspaceId, order])
   @@index([brandId])
 }
@@ -386,12 +393,13 @@ model KnowledgeCollection {
 // system prompt at runtime — both the static knowledge entries and
 // the data-source tools live inside the collection.
 model AgentCollection {
-  id           String   @id @default(cuid())
+  id           String              @id @default(cuid())
   agentId      String
-  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent        Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
   collectionId String
   collection   KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  attachedAt   DateTime @default(now())
+  attachedAt   DateTime            @default(now())
+
   @@unique([agentId, collectionId])
   @@index([collectionId])
 }
@@ -401,24 +409,24 @@ model AgentCollection {
 // columns are kept temporarily for migration tracking — collectionId is
 // the live attachment path.
 model KnowledgeEntry {
-  id            String   @id @default(cuid())
+  id            String              @id @default(cuid())
   collectionId  String
   collection    KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   workspaceId   String
-  workspace     Workspace @relation("WorkspaceKnowledge", fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace     Workspace           @relation("WorkspaceKnowledge", fields: [workspaceId], references: [id], onDelete: Cascade)
   // Origin pointer — the agent whose page first created this entry, if
   // any. Pre-collections (legacy). Nullable; not used for routing.
   agentId       String?
-  agent         Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agent         Agent?              @relation(fields: [agentId], references: [id], onDelete: SetNull)
   title         String
-  content       String   @db.Text
-  source        String   @default("manual")
+  content       String              @db.Text
+  source        String              @default("manual")
   sourceUrl     String?
-  tokenEstimate Int      @default(0)
-  status        String   @default("ready")    // "pending" | "indexing" | "ready" | "failed"
-  contentHash   String?                        // for crawl dedupe / change detection
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  tokenEstimate Int                 @default(0)
+  status        String              @default("ready") // "pending" | "indexing" | "ready" | "failed"
+  contentHash   String? // for crawl dedupe / change detection
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   @@index([collectionId])
   @@index([collectionId, status])
@@ -428,32 +436,33 @@ model KnowledgeEntry {
 
 // ─── Recurring crawl schedule ──────────────────────────────────────────────
 model CrawlSchedule {
-  id          String   @id @default(cuid())
-  agentId     String
-  url         String
-  frequency   String                              // "daily" | "weekly" | "monthly"
-  isActive    Boolean  @default(true)
-  lastRunAt   DateTime?
-  nextRunAt   DateTime
-  lastStatus  String?                             // "success" | "failed" | "no_changes"
-  lastError   String?  @db.Text
-  newChunks   Int      @default(0)                // total new chunks across all runs
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(cuid())
+  agentId    String
+  url        String
+  frequency  String // "daily" | "weekly" | "monthly"
+  isActive   Boolean   @default(true)
+  lastRunAt  DateTime?
+  nextRunAt  DateTime
+  lastStatus String? // "success" | "failed" | "no_changes"
+  lastError  String?   @db.Text
+  newChunks  Int       @default(0) // total new chunks across all runs
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
   @@index([agentId])
   @@index([isActive, nextRunAt])
 }
 
 model RoutingRule {
-  id        String   @id @default(cuid())
-  agentId   String
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  priority  Int      @default(10)
+  id       String @id @default(cuid())
+  agentId  String
+  agent    Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  priority Int    @default(10)
 
   // Legacy single-condition shape. Kept for back-compat with existing rows.
   // The evaluator falls back to this when `conditions` is null.
-  ruleType  RuleType
-  value     String?
+  ruleType RuleType
+  value    String?
 
   // Compound condition tree. When present, overrides ruleType/value.
   // Shape: { clauses: [{ ruleType: 'TAG', values: ['a','b'] }, ...] }
@@ -493,27 +502,27 @@ enum RuleType {
 // and actionType='update_contact_field' by migration default, so the
 // executor can run them unchanged.
 model AgentRule {
-  id                    String   @id @default(cuid())
-  agentId               String
-  agent                 Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
-  name                  String                 // "Out of town"
-  conditionDescription  String   @db.Text      // "contact indicates they are out of town or traveling"
-  examples              String[] @default([])  // few-shot phrases
+  name                 String // "Out of town"
+  conditionDescription String   @db.Text // "contact indicates they are out of town or traveling"
+  examples             String[] @default([]) // few-shot phrases
 
   // Action. update_contact_field uses the three legacy columns below;
   // every other actionType reads from actionParams.
-  actionType            String   @default("update_contact_field")
-  actionParams          Json?
+  actionType   String @default("update_contact_field")
+  actionParams Json?
 
-  targetFieldKey        String                 // used by update_contact_field only; empty string otherwise
-  targetValue           String                 // used by update_contact_field only; empty string otherwise
-  overwrite             Boolean  @default(false)
+  targetFieldKey String // used by update_contact_field only; empty string otherwise
+  targetValue    String // used by update_contact_field only; empty string otherwise
+  overwrite      Boolean @default(false)
 
-  isActive              Boolean  @default(true)
-  order                 Int      @default(0)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([agentId, isActive, order])
 }
@@ -536,23 +545,23 @@ model MessageLog {
   createdAt        DateTime  @default(now())
 
   // ─── Approval Queue ───
-  needsApproval    Boolean   @default(false)
-  approvalStatus   String?                    // "pending" | "approved" | "rejected" | "auto_sent" | "auto_sent_by_judge" | "rejected_by_judge"
+  needsApproval  Boolean @default(false)
+  approvalStatus String? // "pending" | "approved" | "rejected" | "auto_sent" | "auto_sent_by_judge" | "rejected_by_judge"
 
   // ─── AI Judge verdict (when judgeEnabled on the agent) ───
-  judgeVerdict     String?                    // "safe" | "unsafe" | "uncertain"
-  judgeReason      String?   @db.Text
-  judgeModel       String?
-  approvedBy       String?                    // userId
-  approvedAt       DateTime?
-  approvalReason   String?                    // why it was flagged (e.g. "low_sentiment", "first_contact")
+  judgeVerdict                   String? // "safe" | "unsafe" | "uncertain"
+  judgeReason                    String?   @db.Text
+  judgeModel                     String?
+  approvedBy                     String? // userId
+  approvedAt                     DateTime?
+  approvalReason                 String? // why it was flagged (e.g. "low_sentiment", "first_contact")
   // Channel + conversationProviderId captured at agent-run time so the
   // approval release can send on the same channel the inbound arrived on.
-  approvalChannel          String?
+  approvalChannel                String?
   approvalConversationProviderId String?
 
   // ─── Inline Correction ───
-  corrections      MessageCorrection[]
+  corrections MessageCorrection[]
 
   @@index([locationId, createdAt(sort: Desc)])
   @@index([agentId, createdAt(sort: Desc)])
@@ -567,43 +576,46 @@ enum LogStatus {
 }
 
 model MessageCorrection {
-  id             String     @id @default(cuid())
-  messageLogId   String
-  messageLog     MessageLog @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
-  originalText   String     @db.Text
-  correctedText  String     @db.Text
-  correctedBy    String                       // userId
-  reason         String?    @db.Text          // optional note for training
-  savedAsKnowledge Boolean  @default(false)
-  createdAt      DateTime   @default(now())
+  id               String     @id @default(cuid())
+  messageLogId     String
+  messageLog       MessageLog @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
+  originalText     String     @db.Text
+  correctedText    String     @db.Text
+  correctedBy      String // userId
+  reason           String?    @db.Text // optional note for training
+  savedAsKnowledge Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+
   @@index([messageLogId])
   @@index([correctedBy, createdAt(sort: Desc)])
 }
 
 // ─── Agent Prompt Versioning ───────────────────────────────────────────────
 model AgentPromptVersion {
-  id             String   @id @default(cuid())
-  agentId        String
-  systemPrompt   String   @db.Text
-  instructions   String?  @db.Text
-  changeNote     String?  @db.Text
-  editedBy       String                       // userId
-  isRollback     Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id           String   @id @default(cuid())
+  agentId      String
+  systemPrompt String   @db.Text
+  instructions String?  @db.Text
+  changeNote   String?  @db.Text
+  editedBy     String // userId
+  isRollback   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
   @@index([agentId, createdAt(sort: Desc)])
 }
 
 // ─── Agent Evaluation (Test Suite) ─────────────────────────────────────────
 model AgentEvaluation {
-  id                 String   @id @default(cuid())
-  agentId            String
-  name               String
-  scenario           String   @db.Text          // inbound message to test
-  expectedContains   String[] @default([])      // substrings that SHOULD be in reply
-  expectedNotContains String[] @default([])     // substrings that SHOULD NOT
-  expectedTool       String?                    // specific tool that should be called
-  createdAt          DateTime @default(now())
-  runs               AgentEvaluationRun[]
+  id                  String               @id @default(cuid())
+  agentId             String
+  name                String
+  scenario            String               @db.Text // inbound message to test
+  expectedContains    String[]             @default([]) // substrings that SHOULD be in reply
+  expectedNotContains String[]             @default([]) // substrings that SHOULD NOT
+  expectedTool        String? // specific tool that should be called
+  createdAt           DateTime             @default(now())
+  runs                AgentEvaluationRun[]
+
   @@index([agentId])
 }
 
@@ -615,41 +627,44 @@ model AgentEvaluationRun {
   passed         Boolean
   failureReasons String[]        @default([])
   toolsCalled    String[]        @default([])
-  runBy          String                          // userId
+  runBy          String // userId
   runAt          DateTime        @default(now())
+
   @@index([evaluationId, runAt(sort: Desc)])
 }
 
 // ─── Agent Goals + Win/Loss ────────────────────────────────────────────────
 model AgentGoal {
-  id          String   @id @default(cuid())
-  agentId     String
-  name        String
-  goalType    String                              // "appointment_booked" | "tag_added" | "opportunity_moved" | "custom"
-  value       String?                             // e.g. the tag name or stage name for matching
-  isActive    Boolean  @default(true)
-  maxTurns    Int?                                // optional: win only counts if hit within N turns
+  id             String           @id @default(cuid())
+  agentId        String
+  name           String
+  goalType       String // "appointment_booked" | "tag_added" | "opportunity_moved" | "custom"
+  value          String? // e.g. the tag name or stage name for matching
+  isActive       Boolean          @default(true)
+  maxTurns       Int? // optional: win only counts if hit within N turns
   // ─── Behavioural (how the agent should pursue the goal) ───
-  isPrimary      Boolean  @default(false)         // primary objective — pinned to top of system prompt
-  priority       Int      @default(10)            // lower = more important (secondary objectives)
-  aggressiveness String   @default("moderate")    // "soft" | "moderate" | "aggressive"
-  triggerPhrases String[] @default([])            // phrases that should immediately pursue this goal
-  preferredTool  String?                          // tool to use when pursuing (e.g. "book_appointment")
-  instruction    String?  @db.Text                // custom instruction appended to the prompt
-  createdAt      DateTime @default(now())
+  isPrimary      Boolean          @default(false) // primary objective — pinned to top of system prompt
+  priority       Int              @default(10) // lower = more important (secondary objectives)
+  aggressiveness String           @default("moderate") // "soft" | "moderate" | "aggressive"
+  triggerPhrases String[]         @default([]) // phrases that should immediately pursue this goal
+  preferredTool  String? // tool to use when pursuing (e.g. "book_appointment")
+  instruction    String?          @db.Text // custom instruction appended to the prompt
+  createdAt      DateTime         @default(now())
   events         AgentGoalEvent[]
+
   @@index([agentId])
   @@index([agentId, isPrimary, priority])
 }
 
 model AgentGoalEvent {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   goalId         String
   goal           AgentGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
   contactId      String
   conversationId String?
-  achievedAt     DateTime @default(now())
+  achievedAt     DateTime  @default(now())
   turnsToAchieve Int?
+
   @@index([goalId, achievedAt(sort: Desc)])
   @@index([contactId])
 }
@@ -658,12 +673,13 @@ model AgentGoalEvent {
 model AuditLog {
   id          String   @id @default(cuid())
   workspaceId String
-  actorId     String                              // userId who performed the action
-  action      String                              // "agent.paused" | "message.approved" | ...
-  targetType  String?                             // "agent" | "message" | "workspace" | ...
+  actorId     String // userId who performed the action
+  action      String // "agent.paused" | "message.approved" | ...
+  targetType  String? // "agent" | "message" | "workspace" | ...
   targetId    String?
-  metadata    Json?                               // free-form context
+  metadata    Json? // free-form context
   createdAt   DateTime @default(now())
+
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([actorId, createdAt(sort: Desc)])
 }
@@ -674,91 +690,95 @@ model ContactConsent {
   workspaceId String
   locationId  String
   contactId   String
-  channel     String                              // "SMS" | "Email" | "WhatsApp" | ...
-  status      String                              // "opted_in" | "opted_out" | "unknown"
-  source      String?                             // "manual" | "keyword" | "webform" | ...
-  detail      String?  @db.Text                   // e.g. the keyword that triggered opt-out
+  channel     String // "SMS" | "Email" | "WhatsApp" | ...
+  status      String // "opted_in" | "opted_out" | "unknown"
+  source      String? // "manual" | "keyword" | "webform" | ...
+  detail      String?  @db.Text // e.g. the keyword that triggered opt-out
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   @@unique([contactId, channel, workspaceId])
   @@index([workspaceId, status])
 }
 
 // ─── Live Takeover ─────────────────────────────────────────────────────────
 model LiveTakeover {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   agentId        String
   contactId      String
   conversationId String?
   locationId     String
-  takenOverBy    String                           // userId
-  reason         String?  @db.Text
-  startedAt      DateTime @default(now())
+  takenOverBy    String // userId
+  reason         String?   @db.Text
+  startedAt      DateTime  @default(now())
   endedAt        DateTime?
+
   @@index([agentId, endedAt])
   @@index([contactId, endedAt])
 }
 
 // ─── Webhook Subscriptions ─────────────────────────────────────────────────
 model WebhookSubscription {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   workspaceId String
   url         String
-  events      String[] @default([])              // ["message.sent","appointment.booked",...]
-  secret      String                              // for HMAC signing
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  events      String[]          @default([]) // ["message.sent","appointment.booked",...]
+  secret      String // for HMAC signing
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   deliveries  WebhookDelivery[]
+
   @@index([workspaceId])
 }
 
 model WebhookDelivery {
-  id             String   @id @default(cuid())
+  id             String              @id @default(cuid())
   subscriptionId String
   subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   event          String
   payload        Json
   statusCode     Int?
-  responseBody   String?  @db.Text
-  attempts       Int      @default(1)
-  succeeded      Boolean  @default(false)
-  deliveredAt    DateTime @default(now())
+  responseBody   String?             @db.Text
+  attempts       Int                 @default(1)
+  succeeded      Boolean             @default(false)
+  deliveredAt    DateTime            @default(now())
+
   @@index([subscriptionId, deliveredAt(sort: Desc)])
 }
 
 // ─── Agent Templates Marketplace ───────────────────────────────────────────
 model AgentTemplate {
-  id                 String   @id @default(cuid())
-  slug               String   @unique
-  name               String
-  description        String   @db.Text
-  category           String                       // "sales" | "support" | "real_estate" | ...
-  icon               String   @default("🤖")
-  systemPrompt       String   @db.Text
-  suggestedTools     String[] @default([])
-  suggestedChannels  String[] @default([])
+  id                        String   @id @default(cuid())
+  slug                      String   @unique
+  name                      String
+  description               String   @db.Text
+  category                  String // "sales" | "support" | "real_estate" | ...
+  icon                      String   @default("🤖")
+  systemPrompt              String   @db.Text
+  suggestedTools            String[] @default([])
+  suggestedChannels         String[] @default([])
   sampleQualifyingQuestions Json?
-  isOfficial         Boolean  @default(false)
-  installCount       Int      @default(0)
-  createdAt          DateTime @default(now())
+  isOfficial                Boolean  @default(false)
+  installCount              Int      @default(0)
+  createdAt                 DateTime @default(now())
 
   // ─── Workspace-scoped templates ───
   // null workspaceId = official/global template (seeded by Voxility).
   // non-null = saved by a customer from an existing agent; only visible
   // inside that workspace.
-  workspaceId        String?
-  workspace          Workspace? @relation("WorkspaceTemplates", fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId   String?
+  workspace     Workspace? @relation("WorkspaceTemplates", fields: [workspaceId], references: [id], onDelete: Cascade)
   // When a workspace user saves an agent as a template we stash the full
   // agent config (persona, working hours, rules, qualifying, knowledge,
   // triggers, follow-ups, stop conditions, voice config) in this JSON
   // blob. The install flow restores every relation from it. Official
   // templates leave this null and rely on the flat systemPrompt +
   // suggestedTools columns above.
-  config             Json?
+  config        Json?
   // Handy back-reference to the agent this template was snapshotted
   // from, so we can show "made from Agent X" in the UI.
-  sourceAgentId      String?
+  sourceAgentId String?
 
   @@index([category])
   @@index([workspaceId])
@@ -775,21 +795,22 @@ model AgentTemplate {
 // collection get the data-source tools automatically alongside any
 // static knowledge entries in the same collection.
 model WorkspaceDataSource {
-  id           String   @id @default(cuid())
+  id           String               @id @default(cuid())
   workspaceId  String
   // Collection ownership. Required after backfill — every data source
   // belongs to exactly one collection so agents inherit the tool when
   // they attach the collection.
   collectionId String?
   collection   KnowledgeCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  name         String                                 // slug-ish, e.g. "inventory"
-  kind         String                                 // "google_sheet" | "airtable" | "rest_get"
+  name         String // slug-ish, e.g. "inventory"
+  kind         String // "google_sheet" | "airtable" | "rest_get"
   description  String?
-  config       Json     @default("{}")                // sheet URL, base ID, table, headers, etc.
-  secretEnc    String?                                // AES-256-GCM (lib/secrets.ts)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  config       Json                 @default("{}") // sheet URL, base ID, table, headers, etc.
+  secretEnc    String? // AES-256-GCM (lib/secrets.ts)
+  isActive     Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
   @@unique([workspaceId, name])
   @@index([workspaceId])
   @@index([collectionId])
@@ -798,11 +819,12 @@ model WorkspaceDataSource {
 model NotificationChannel {
   id          String   @id @default(cuid())
   workspaceId String
-  type        String                              // "slack" | "email"
-  config      Json                                // { webhookUrl?: string, email?: string }
-  events      String[] @default([])              // ["needs_attention","approval_pending",...]
+  type        String // "slack" | "email"
+  config      Json // { webhookUrl?: string, email?: string }
+  events      String[] @default([]) // ["needs_attention","approval_pending",...]
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
+
   @@index([workspaceId, type])
 }
 
@@ -815,10 +837,11 @@ model UserNotificationPreference {
   id          String   @id @default(cuid())
   userId      String
   workspaceId String
-  event       String                                // e.g. "widget.new_conversation"
-  channels    String[] @default([])                 // subset of ["email","web_push"]
+  event       String // e.g. "widget.new_conversation"
+  channels    String[] @default([]) // subset of ["email","web_push"]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   @@unique([userId, workspaceId, event])
   @@index([workspaceId, event])
 }
@@ -827,12 +850,13 @@ model WebPushSubscription {
   id          String   @id @default(cuid())
   userId      String
   workspaceId String
-  endpoint    String   @unique                      // unique per browser/device
+  endpoint    String   @unique // unique per browser/device
   p256dh      String
   auth        String
   userAgent   String?
   lastUsedAt  DateTime @default(now())
   createdAt   DateTime @default(now())
+
   @@index([userId, workspaceId])
 }
 
@@ -855,20 +879,22 @@ model StopCondition {
   enrollWorkflowId  String?
   removeWorkflowId  String?
   createdAt         DateTime          @default(now())
+
   @@index([agentId])
 }
 
 model FollowUpSequence {
-  id            String         @id @default(cuid())
-  agentId       String
-  agent         Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  name          String
-  isActive      Boolean        @default(true)
-  triggerType   String         @default("always")   // "always" | "no_reply" | "keyword" | "agent"
-  triggerValue  String?                               // hours for no_reply, comma-sep keywords for keyword, null for agent/always
-  steps         FollowUpStep[]
-  jobs          FollowUpJob[]
-  createdAt     DateTime       @default(now())
+  id           String         @id @default(cuid())
+  agentId      String
+  agent        Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name         String
+  isActive     Boolean        @default(true)
+  triggerType  String         @default("always") // "always" | "no_reply" | "keyword" | "agent"
+  triggerValue String? // hours for no_reply, comma-sep keywords for keyword, null for agent/always
+  steps        FollowUpStep[]
+  jobs         FollowUpJob[]
+  createdAt    DateTime       @default(now())
+
   @@index([agentId])
 }
 
@@ -879,6 +905,7 @@ model FollowUpStep {
   stepNumber Int
   delayHours Int
   message    String           @db.Text
+
   @@index([sequenceId, stepNumber])
 }
 
@@ -896,20 +923,21 @@ model FollowUpJob {
   lastSentAt     DateTime?
   cancelledAt    DateTime?
   createdAt      DateTime         @default(now())
+
   @@index([status, scheduledAt])
   @@index([locationId, contactId])
 }
 
 model QualifyingQuestion {
-  id           String   @id @default(cuid())
-  agentId      String
-  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  question     String   @db.Text
-  fieldKey     String
-  required     Boolean  @default(true)
-  order        Int      @default(0)
-  answerType   String   @default("text")
-  choices      String[] @default([])
+  id         String   @id @default(cuid())
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  question   String   @db.Text
+  fieldKey   String
+  required   Boolean  @default(true)
+  order      Int      @default(0)
+  answerType String   @default("text")
+  choices    String[] @default([])
 
   // ── Conditional action — "if the answer X, then do Y" ─────────────────
   // conditionOp defines what X is. Historical ops (is_yes / is_no / contains
@@ -918,8 +946,8 @@ model QualifyingQuestion {
   //                   for multi-choice questions so the user picks allowed
   //                   answers instead of typing a single word).
   conditionOp     String?
-  conditionVal    String?    // legacy single-value string, kept for back-compat
-  conditionValues String[] @default([])   // new: multi-value for is_any_of
+  conditionVal    String? // legacy single-value string, kept for back-compat
+  conditionValues String[] @default([]) // new: multi-value for is_any_of
 
   // actionType is the verb. Historical: tag / stage / book / stop / continue.
   // New:
@@ -930,12 +958,13 @@ model QualifyingQuestion {
   //   dnd_channel           — params: { channel?: string }  (defaults to the
   //                           channel the conversation is on)
   actionType   String?
-  actionValue  String?     // legacy single-string param, kept for back-compat
-  actionParams Json?       // typed params for newer actions
+  actionValue  String? // legacy single-string param, kept for back-compat
+  actionParams Json? // typed params for newer actions
 
-  crmFieldKey  String?
-  overwrite    Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  crmFieldKey String?
+  overwrite   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
   @@index([agentId, order])
 }
 
@@ -954,6 +983,7 @@ model ConversationStateRecord {
   qualifyingAnswers Json?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
+
   @@unique([agentId, contactId])
   @@index([locationId, state])
 }
@@ -968,6 +998,7 @@ model ConversationMessage {
   role           String
   content        String   @db.Text
   createdAt      DateTime @default(now())
+
   @@index([agentId, contactId, createdAt(sort: Asc)])
   @@index([conversationId, createdAt(sort: Asc)])
 }
@@ -980,18 +1011,18 @@ model ConversationMessage {
 // personal preferences. The agent writes the content; the user only
 // declares what categories are worth listening for.
 model AgentListeningRule {
-  id                    String   @id @default(cuid())
-  agentId               String
-  agent                 Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
-  name                  String                 // "Family context", "Pain points"
-  description           String   @db.Text      // "family members, health issues, life events"
-  examples              String[] @default([])  // illustrative phrases
+  name        String // "Family context", "Pain points"
+  description String   @db.Text // "family members, health issues, life events"
+  examples    String[] @default([]) // illustrative phrases
 
-  isActive              Boolean  @default(true)
-  order                 Int      @default(0)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([agentId, isActive, order])
 }
@@ -1002,41 +1033,43 @@ model ContactMemory {
   agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   locationId String
   contactId  String
-  summary    String?  @db.Text                 // auto-generated conversation summary
-  categories Json?                              // { "Family context": "mum is sick", ... } — keyed by listening rule name
+  summary    String?  @db.Text // auto-generated conversation summary
+  categories Json? // { "Family context": "mum is sick", ... } — keyed by listening rule name
   updatedAt  DateTime @updatedAt
   createdAt  DateTime @default(now())
+
   @@unique([agentId, contactId])
 }
 
 model AgentTrigger {
-  id              String   @id @default(cuid())
-  agentId         String
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  eventType       String                         // "ContactCreate" | "ContactTagUpdate"
-  tagFilter       String?                        // only fire when this specific tag is present/added
-  channel         String   @default("SMS")       // which channel to send on: "SMS" | "WhatsApp" | "Email" etc.
-  messageMode     String   @default("AI_GENERATE") // "FIXED" | "AI_GENERATE"
-  fixedMessage    String?  @db.Text              // static first message (when mode=FIXED)
-  aiInstructions  String?  @db.Text              // extra context for the AI (when mode=AI_GENERATE)
-  delaySeconds    Int      @default(0)           // optional delay before sending (0 = immediate)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  agentId        String
+  agent          Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  eventType      String // "ContactCreate" | "ContactTagUpdate"
+  tagFilter      String? // only fire when this specific tag is present/added
+  channel        String   @default("SMS") // which channel to send on: "SMS" | "WhatsApp" | "Email" etc.
+  messageMode    String   @default("AI_GENERATE") // "FIXED" | "AI_GENERATE"
+  fixedMessage   String?  @db.Text // static first message (when mode=FIXED)
+  aiInstructions String?  @db.Text // extra context for the AI (when mode=AI_GENERATE)
+  delaySeconds   Int      @default(0) // optional delay before sending (0 = immediate)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([agentId])
   @@index([eventType, isActive])
 }
 
 model ChannelDeployment {
-  id         String   @id @default(cuid())
-  agentId    String
-  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  channel    String                         // "SMS" | "WhatsApp" | "GMB" | "FB" | "IG" | "Live_Chat" | "Email"
-  isActive   Boolean  @default(true)
-  config     Json?                          // channel-specific settings (e.g. WhatsApp template, FB page ID)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  channel   String // "SMS" | "WhatsApp" | "GMB" | "FB" | "IG" | "Live_Chat" | "Email"
+  isActive  Boolean  @default(true)
+  config    Json? // channel-specific settings (e.g. WhatsApp template, FB page ID)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([agentId, channel])
   @@index([channel, isActive])
 }
@@ -1073,37 +1106,39 @@ model VapiConfig {
 }
 
 model CallLog {
-  id           String   @id @default(cuid())
-  locationId   String
-  agentId      String?
-  contactId    String?
-  contactPhone String?
-  vapiCallId   String?  @unique
-  direction    String   @default("inbound")
-  status       String   @default("completed")
-  durationSecs Int?
-  transcript   String?  @db.Text
-  summary      String?  @db.Text
-  recordingUrl String?
+  id            String   @id @default(cuid())
+  locationId    String
+  agentId       String?
+  contactId     String?
+  contactPhone  String?
+  vapiCallId    String?  @unique
+  direction     String   @default("inbound")
+  status        String   @default("completed")
+  durationSecs  Int?
+  transcript    String?  @db.Text
+  summary       String?  @db.Text
+  recordingUrl  String?
   tokensUsed    Int      @default(0)
   endedReason   String?
   triggerSource String?
   createdAt     DateTime @default(now())
+
   @@index([locationId, createdAt(sort: Desc)])
   @@index([agentId, createdAt(sort: Desc)])
 }
 
 model ScheduledMessage {
-  id           String   @id @default(cuid())
-  locationId   String
-  agentId      String?
-  contactId    String
-  channel      String   @default("SMS")
-  message      String   @db.Text
-  scheduledAt  DateTime
-  sentAt       DateTime?
-  status       String   @default("pending")  // pending, sent, cancelled, failed
-  createdAt    DateTime @default(now())
+  id          String    @id @default(cuid())
+  locationId  String
+  agentId     String?
+  contactId   String
+  channel     String    @default("SMS")
+  message     String    @db.Text
+  scheduledAt DateTime
+  sentAt      DateTime?
+  status      String    @default("pending") // pending, sent, cancelled, failed
+  createdAt   DateTime  @default(now())
+
   @@index([status, scheduledAt])
   @@index([locationId, contactId])
 }
@@ -1116,6 +1151,7 @@ model LeadScore {
   score      Int
   reason     String
   createdAt  DateTime @default(now())
+
   @@unique([agentId, contactId])
   @@index([locationId, score(sort: Desc)])
 }
@@ -1128,6 +1164,7 @@ model MessageBuffer {
   body           String   @db.Text
   processed      Boolean  @default(false)
   createdAt      DateTime @default(now())
+
   @@index([locationId, contactId, processed, createdAt(sort: Asc)])
 }
 
@@ -1141,20 +1178,22 @@ model Integration {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
   @@index([locationId, type])
 }
 
 // ─── Chat Widgets (Intercom-clone) ──────────────────────────────────────────
 
 model WidgetFolder {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   workspaceId String
   name        String
   color       String?
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  order       Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   widgets     ChatWidget[]
+
   @@index([workspaceId, order])
 }
 
@@ -1168,9 +1207,9 @@ model WidgetFolder {
 // whitelabel agency has no brands and the inbox just shows everything
 // without a brand filter.
 model Brand {
-  id           String   @id @default(cuid())
+  id           String                @id @default(cuid())
   workspaceId  String
-  workspace    Workspace @relation("WorkspaceBrands", fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace    Workspace             @relation("WorkspaceBrands", fields: [workspaceId], references: [id], onDelete: Cascade)
   name         String
   // URL-safe identifier — used in transcript export filenames and the
   // brand-scoped inbox URL. Lowercase letters/numbers/dashes.
@@ -1180,93 +1219,96 @@ model Brand {
   // + the brand logo on each conversation row makes routing obvious.
   logoUrl      String?
   primaryColor String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
   widgets      ChatWidget[]
   collections  KnowledgeCollection[]
+  portalAccess PortalUserBrand[]     @relation("BrandPortalAccess")
+
   @@unique([workspaceId, slug])
   @@index([workspaceId])
 }
 
 model ChatWidget {
-  id                String   @id @default(cuid())
-  workspaceId       String
-  name              String
-  publicKey         String   @unique
+  id                        String               @id @default(cuid())
+  workspaceId               String
+  name                      String
+  publicKey                 String               @unique
   // Optional grouping. Operators can drop widgets into folders for
   // organization once they've got more than a handful.
-  folderId          String?
-  folder            WidgetFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folderId                  String?
+  folder                    WidgetFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
   // Whitelabel brand this widget represents. Optional — workspaces
   // that aren't running a multi-brand agency leave this null and the
   // brand UX doesn't show up. SetNull on brand delete so widgets
   // survive (they just go untagged).
-  brandId           String?
-  brand             Brand? @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  brandId                   String?
+  brand                     Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
   // Type — "chat" (full chat UI w/ optional voice) or "click_to_call" (just a styled button that opens a voice call)
-  type              String   @default("chat")
+  type                      String               @default("chat")
   // Slug — used for hosted call page at /c/{slug}. Optional, unique when set.
-  slug              String?  @unique
+  slug                      String?              @unique
   // Embed mode — "floating" (fixed launcher) or "inline" (renders into a target div on the host page)
-  embedMode         String   @default("floating")
+  embedMode                 String               @default("floating")
   // Appearance
-  primaryColor      String   @default("#fa4d2e")
-  logoUrl           String?
-  title             String   @default("Chat with us")
-  subtitle          String   @default("We typically reply within a minute")
-  welcomeMessage    String   @db.Text @default("Hi! How can we help?")
-  position          String   @default("bottom-right")
+  primaryColor              String               @default("#fa4d2e")
+  logoUrl                   String?
+  title                     String               @default("Chat with us")
+  subtitle                  String               @default("We typically reply within a minute")
+  welcomeMessage            String               @default("Hi! How can we help?") @db.Text
+  position                  String               @default("bottom-right")
   // Click-to-call button styling
-  buttonLabel       String   @default("Talk to us")
-  buttonShape       String   @default("pill")        // pill | rounded | square
-  buttonSize        String   @default("md")          // sm | md | lg
-  buttonIcon        String   @default("phone")       // phone | mic | none
-  buttonTextColor   String   @default("#ffffff")
+  buttonLabel               String               @default("Talk to us")
+  buttonShape               String               @default("pill") // pill | rounded | square
+  buttonSize                String               @default("md") // sm | md | lg
+  buttonIcon                String               @default("phone") // phone | mic | none
+  buttonTextColor           String               @default("#ffffff")
   // Hosted call page copy
-  hostedPageHeadline String?
-  hostedPageSubtext  String?
+  hostedPageHeadline        String?
+  hostedPageSubtext         String?
   // Identity
-  requireEmail      Boolean  @default(false)
-  askForNameEmail   Boolean  @default(true)
+  requireEmail              Boolean              @default(false)
+  askForNameEmail           Boolean              @default(true)
   // Voice
-  voiceEnabled      Boolean  @default(false)
-  voiceAgentId      String?
+  voiceEnabled              Boolean              @default(false)
+  voiceAgentId              String?
   // Routing
-  defaultAgentId    String?
+  defaultAgentId            String?
   // Operator assignment routing. Determines who the chat lands on when
   // a human is needed (AI handover, manual takeover). "manual" leaves
   // the conversation unassigned for any operator to claim from the
   // inbox; "round_robin" cycles through the eligible users; "first_available"
   // picks the available user with the fewest open chats.
-  routingMode       String   @default("manual")  // manual | round_robin | first_available
+  routingMode               String               @default("manual") // manual | round_robin | first_available
   // Eligible operator user IDs. Empty array means "all workspace
   // members" — useful so a brand-new widget routes to everyone without
   // explicit configuration.
-  routingTargetUserIds String[] @default([])
+  routingTargetUserIds      String[]             @default([])
   // Cursor for round-robin so we hand the next chat to the *next* person
   // in the rotation, not the same person every time.
   routingLastAssignedUserId String?
-  allowedDomains    String[] @default([])
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  visitors          WidgetVisitor[]
-  conversations     WidgetConversation[]
+  allowedDomains            String[]             @default([])
+  isActive                  Boolean              @default(true)
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  visitors                  WidgetVisitor[]
+  conversations             WidgetConversation[]
+
   @@index([workspaceId])
   @@index([folderId])
   @@index([brandId])
 }
 
 model WidgetVisitor {
-  id            String   @id @default(cuid())
+  id            String               @id @default(cuid())
   widgetId      String
-  widget        ChatWidget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  widget        ChatWidget           @relation(fields: [widgetId], references: [id], onDelete: Cascade)
   cookieId      String
   email         String?
   name          String?
   phone         String?
-  firstSeenAt   DateTime @default(now())
-  lastSeenAt    DateTime @default(now())
+  firstSeenAt   DateTime             @default(now())
+  lastSeenAt    DateTime             @default(now())
   crmContactId  String?
   userAgent     String?
   ipAddress     String?
@@ -1278,6 +1320,7 @@ model WidgetVisitor {
   currentTitle  String?
   conversations WidgetConversation[]
   events        WidgetVisitorEvent[]
+
   @@unique([widgetId, cookieId])
   @@index([widgetId, lastSeenAt])
 }
@@ -1287,51 +1330,53 @@ model WidgetVisitor {
 // panel in the inbox sidebar so operators can see where the visitor
 // has been before they hit the chat.
 model WidgetVisitorEvent {
-  id         String   @id @default(cuid())
-  visitorId  String
-  visitor    WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  id        String        @id @default(cuid())
+  visitorId String
+  visitor   WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
   // 'page_view' | 'identify' | 'custom' | reserved for future kinds
-  kind       String
+  kind      String
   // Free-shape JSON for kind-specific fields. For page_view:
   //   { url, title?, referrer?, search? }
   // For identify: { email?, name?, phone? }
   // For custom (future): caller-defined.
-  data       Json     @default("{}")
-  createdAt  DateTime @default(now())
+  data      Json          @default("{}")
+  createdAt DateTime      @default(now())
+
   @@index([visitorId, createdAt(sort: Desc)])
 }
 
 model WidgetConversation {
-  id               String   @id @default(cuid())
+  id               String            @id @default(cuid())
   widgetId         String
-  widget           ChatWidget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  widget           ChatWidget        @relation(fields: [widgetId], references: [id], onDelete: Cascade)
   visitorId        String
-  visitor          WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  visitor          WidgetVisitor     @relation(fields: [visitorId], references: [id], onDelete: Cascade)
   agentId          String?
-  status           String   @default("active")
-  lastMessageAt    DateTime @default(now())
+  status           String            @default("active")
+  lastMessageAt    DateTime          @default(now())
   // Cron debounce for conversation.stale — set when we've already paged
   // about this thread so we don't notify again until the visitor replies.
   staleNotifiedAt  DateTime?
   // Visitor satisfaction (1–5 stars). Submitted via the widget's "Rate
   // this chat" control or auto-prompted on Start-new-conversation.
   csatRating       Int?
-  csatComment      String?  @db.Text
+  csatComment      String?           @db.Text
   csatSubmittedAt  DateTime?
   // Operator assignment. assignedUserId points at WorkspaceMember.userId
   // (the User row), set either by the routing engine on handover or by
   // an operator picking up the chat manually. assignedAt drives SLA /
   // first-response timing on the inbox.
   assignedUserId   String?
-  assignedUser     User?    @relation("ConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedUser     User?             @relation("ConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
   assignedAt       DateTime?
   // Why the chat was assigned. "manual", "self" (operator self-assigned
   // by replying), "round_robin", "first_available". Useful in the inbox
   // and for debugging routing.
   assignmentReason String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime          @default(now())
   messages         WidgetMessage[]
   voiceCalls       WidgetVoiceCall[]
+
   @@index([widgetId, lastMessageAt(sort: Desc)])
   @@index([visitorId])
   @@index([agentId, status])
@@ -1339,26 +1384,28 @@ model WidgetConversation {
 }
 
 model WidgetMessage {
-  id             String   @id @default(cuid())
+  id             String             @id @default(cuid())
   conversationId String
   conversation   WidgetConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           String
-  content        String   @db.Text
-  kind           String   @default("text")
-  createdAt      DateTime @default(now())
+  content        String             @db.Text
+  kind           String             @default("text")
+  createdAt      DateTime           @default(now())
+
   @@index([conversationId, createdAt(sort: Asc)])
 }
 
 model WidgetVoiceCall {
-  id             String   @id @default(cuid())
+  id             String             @id @default(cuid())
   conversationId String
   conversation   WidgetConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   vapiCallId     String?
-  status         String   @default("requested")
-  startedAt      DateTime @default(now())
+  status         String             @default("requested")
+  startedAt      DateTime           @default(now())
   endedAt        DateTime?
   durationSecs   Int?
-  transcript     String?  @db.Text
+  transcript     String?            @db.Text
+
   @@index([conversationId])
 }
 
@@ -1367,38 +1414,40 @@ model WidgetVoiceCall {
 // in AgentMcpTool — that's where "when to use this" rules live.
 
 model McpServer {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   workspaceId      String
   name             String
-  registrySlug     String?  // null for custom; e.g. "meta-ads", "stripe", "linear"
+  registrySlug     String? // null for custom; e.g. "meta-ads", "stripe", "linear"
   description      String?
   iconUrl          String?
-  transport        String   @default("http")    // http | sse
+  transport        String         @default("http") // http | sse
   url              String
-  authType         String   @default("bearer")  // bearer | header | none
-  authSecretEnc    String?  // AES-256-GCM ciphertext (see lib/secrets.ts)
-  headers          Json?    // extra static headers
-  isActive         Boolean  @default(true)
+  authType         String         @default("bearer") // bearer | header | none
+  authSecretEnc    String? // AES-256-GCM ciphertext (see lib/secrets.ts)
+  headers          Json? // extra static headers
+  isActive         Boolean        @default(true)
   lastDiscoveredAt DateTime?
-  discoveredTools  Json?    // cached tool list from last discovery
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  discoveredTools  Json? // cached tool list from last discovery
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   agentTools       AgentMcpTool[]
+
   @@index([workspaceId])
 }
 
 model AgentMcpTool {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   agentId             String
   mcpServerId         String
   mcpServer           McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
   toolName            String
-  enabled             Boolean  @default(true)
-  whenToUse           String?  @db.Text
-  mustIncludeKeywords String[] @default([])
-  requireApproval     Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  enabled             Boolean   @default(true)
+  whenToUse           String?   @db.Text
+  mustIncludeKeywords String[]  @default([])
+  requireApproval     Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
   @@unique([agentId, mcpServerId, toolName])
   @@index([agentId])
 }
@@ -1410,38 +1459,40 @@ model AgentMcpTool {
 // records exposure/conversion against AgentGoalEvent.
 
 model AgentExperiment {
-  id              String   @id @default(cuid())
-  agentId         String
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  hypothesis      String   @db.Text
-  variantALabel   String   @default("control")
-  variantBLabel   String   @default("variant-b")
-  variantAPrompt  String?  @db.Text                // appended to system prompt for A; null = vanilla
-  variantBPrompt  String   @db.Text
-  metric          String   @default("any_goal")    // "any_goal" | "appointment_booked" | "tag_added:<value>"
-  splitPercent    Int      @default(50)            // % routed to variant B
-  status          String   @default("draft")       // "draft" | "approved" | "running" | "ended" | "rejected"
-  proposedBy      String?                          // "ai" | operator email
-  proposedAt      DateTime @default(now())
-  approvedBy      String?
-  approvedAt      DateTime?
-  startedAt       DateTime?
-  endedAt         DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  events          AgentExperimentEvent[]
+  id             String                 @id @default(cuid())
+  agentId        String
+  agent          Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  hypothesis     String                 @db.Text
+  variantALabel  String                 @default("control")
+  variantBLabel  String                 @default("variant-b")
+  variantAPrompt String?                @db.Text // appended to system prompt for A; null = vanilla
+  variantBPrompt String                 @db.Text
+  metric         String                 @default("any_goal") // "any_goal" | "appointment_booked" | "tag_added:<value>"
+  splitPercent   Int                    @default(50) // % routed to variant B
+  status         String                 @default("draft") // "draft" | "approved" | "running" | "ended" | "rejected"
+  proposedBy     String? // "ai" | operator email
+  proposedAt     DateTime               @default(now())
+  approvedBy     String?
+  approvedAt     DateTime?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  events         AgentExperimentEvent[]
+
   @@index([agentId, status])
 }
 
 model AgentExperimentEvent {
-  id            String   @id @default(cuid())
-  experimentId  String
-  experiment    AgentExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-  contactId     String
-  variant       String                             // 'A' | 'B'
-  outcome       String                             // 'exposed' | 'converted'
-  goalEventId   String?
-  createdAt     DateTime @default(now())
+  id           String          @id @default(cuid())
+  experimentId String
+  experiment   AgentExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  contactId    String
+  variant      String // 'A' | 'B'
+  outcome      String // 'exposed' | 'converted'
+  goalEventId  String?
+  createdAt    DateTime        @default(now())
+
   @@unique([experimentId, contactId, outcome])
   @@index([experimentId, variant, outcome])
 }
@@ -1451,34 +1502,36 @@ model AgentExperimentEvent {
 // in @voxility.ai). No per-workspace scoping — the help center is
 // product-global, served at /help and indexable.
 model HelpCategory {
-  id          String   @id @default(cuid())
-  slug        String   @unique
+  id          String        @id @default(cuid())
+  slug        String        @unique
   name        String
   description String?
-  icon        String?                                  // emoji or icon key
-  order       Int      @default(0)
+  icon        String? // emoji or icon key
+  order       Int           @default(0)
   articles    HelpArticle[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   @@index([order])
 }
 
 model HelpArticle {
-  id          String   @id @default(cuid())
-  slug        String   @unique
+  id          String        @id @default(cuid())
+  slug        String        @unique
   title       String
-  summary     String?  @db.Text
-  body        String   @db.Text                        // markdown
-  videoUrl    String?                                  // YouTube / Vimeo / mp4
+  summary     String?       @db.Text
+  body        String        @db.Text // markdown
+  videoUrl    String? // YouTube / Vimeo / mp4
   categoryId  String?
   category    HelpCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  status      String   @default("draft")               // "draft" | "published"
+  status      String        @default("draft") // "draft" | "published"
   publishedAt DateTime?
-  authorEmail String?                                  // whoever last saved it
-  order       Int      @default(0)
-  viewCount   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  authorEmail String? // whoever last saved it
+  order       Int           @default(0)
+  viewCount   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   @@index([categoryId, order])
   @@index([status, publishedAt])
 }
@@ -1510,7 +1563,7 @@ model SuperAdmin {
   // "admin"  — everything except managing other admins + system settings
   // "super"  — god mode: create/disable admins, edit settings
   // First-setup admin is always promoted to "super" so someone has the keys.
-  role         String    @default("admin")
+  role String @default("admin")
 
   // ─── TOTP 2FA ────────────────────────────────────────────────────
   // Secret is stored raw (base32). It's protected by the app DB and is
@@ -1521,10 +1574,11 @@ model SuperAdmin {
   // timestamp is the "2FA required on login" flag.
   twoFactorVerifiedAt DateTime?
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   auditLogs    AdminAuditLog[]
   agentReviews AgentReview[]
+
   @@index([email])
 }
 
@@ -1534,30 +1588,30 @@ model SuperAdmin {
 // accumulate in the JSON column as the thread progresses. Kept forever —
 // these are training signal, not disposable chat logs.
 model AgentReview {
-  id         String   @id @default(cuid())
-  agentId    String
-  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  id             String             @id @default(cuid())
+  agentId        String
+  agent          Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
   // The conversation under review is addressed by (agentId + contactId +
   // conversationId). We store all three so the thread survives even if
   // the ConversationMessage rows are later pruned.
   contactId      String
   conversationId String?
-  adminId    String?
-  admin      SuperAdmin? @relation(fields: [adminId], references: [id], onDelete: SetNull)
-  adminEmail String                              // denormalised for audit
+  adminId        String?
+  admin          SuperAdmin?        @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminEmail     String // denormalised for audit
   // Short auto-title derived from the first admin message. Surfaced in
   // the reviews list so operators can scan past sessions quickly.
-  title      String?
+  title          String?
   // [{ role: "admin" | "assistant", content: string, at: ISOString }]
   // Append-only from the app's perspective — new turns push onto the end.
-  messages   Json     @default("[]")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  messages       Json               @default("[]")
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  learnings      PlatformLearning[]
 
   @@index([agentId, createdAt(sort: Desc)])
   @@index([contactId, createdAt(sort: Desc)])
   @@index([adminId, createdAt(sort: Desc)])
-  learnings  PlatformLearning[]
 }
 
 // Concrete, apply-able suggestion proposed by the meta-Claude reviewer
@@ -1572,7 +1626,7 @@ model AgentReview {
 // Schema leaves room for scope=workspace|all_agents|new_agents_only and
 // type=detection_rule|listening_rule in PR 2 without a migration.
 model PlatformLearning {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   // Traceability — every learning points back to the review turn that
   // produced it. Null if the source review was deleted.
   sourceReviewId String?
@@ -1586,35 +1640,35 @@ model PlatformLearning {
   //                  block. No agent.systemPrompt mutation.
   //   all_agents   — every agent in every workspace sees it at runtime,
   //                  except workspaces that set disableGlobalLearnings.
-  scope          String   @default("this_agent")
+  scope       String  @default("this_agent")
   // Populated for this_agent (derived from the agent's workspace) and
   // workspace scopes. Null for all_agents. Enables queries like
   // "give me every applied learning that affects workspace X".
-  workspaceId    String?
-  agentId        String?                            // required when scope=this_agent
-  agent          Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  agentId     String? // required when scope=this_agent
+  agent       Agent?  @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
-  type           String                             // "prompt_addition" (PR 2: detection_rule | listening_rule)
-  title          String                             // short label for the approval queue
-  content        String   @db.Text                  // the actual guidance text
-  rationale      String?  @db.Text                  // why the reviewer suggested it
+  type      String // "prompt_addition" (PR 2: detection_rule | listening_rule)
+  title     String // short label for the approval queue
+  content   String  @db.Text // the actual guidance text
+  rationale String? @db.Text // why the reviewer suggested it
 
-  status         String   @default("proposed")      // proposed | approved | applied | rejected | retired
+  status String @default("proposed") // proposed | approved | applied | rejected | retired
 
-  proposedByEmail String                            // denormalised admin email (null-safe if admin deleted)
+  proposedByEmail String // denormalised admin email (null-safe if admin deleted)
   approvedByEmail String?
   rejectedByEmail String?
   rejectedReason  String?
 
-  appliedAt       DateTime?
+  appliedAt     DateTime?
   // When status=applied, points to the surface that was changed. For
   // prompt_addition, always "agent.systemPrompt" — the content is
   // fenced in the prompt with marker comments keyed by this learning's
   // id, so Retire is a string-replace op.
-  appliedTarget   String?
+  appliedTarget String?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([agentId, status])
   @@index([status, createdAt(sort: Desc)])
@@ -1636,55 +1690,55 @@ model PlatformLearning {
 // up queued sims one-per-minute. Manual (synchronous) runs skip the
 // queue and go straight to running.
 model Simulation {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   // Target agent under test
   agentId     String
-  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent       Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
   // Denormalised workspace for cross-workspace admin queries + auth scoping
   workspaceId String?
 
   // ─── Persona configuration ───
   // Free-text description of who the simulated contact is + what they
   // want. The persona-Claude reads this at turn 0 and stays in character.
-  personaContext String @db.Text
+  personaContext String  @db.Text
   // Which channel the simulation pretends to run on. Affects tone +
   // runAgent's internal channel-specific behaviour.
-  channel        String    // "SMS" | "Email" | "WhatsApp" | "Live_Chat"
+  channel        String // "SMS" | "Email" | "WhatsApp" | "Live_Chat"
   // Communication style: affects the persona-Claude's prompt. Enum-ish
   // but stored as string so we can add new styles without a migration.
-  style          String    // "friendly" | "aggressive" | "passive" | "skeptical" | "confused" | "ready_to_buy" | "price_shopper"
+  style          String // "friendly" | "aggressive" | "passive" | "skeptical" | "confused" | "ready_to_buy" | "price_shopper"
   // Optional: what the simulated contact is trying to achieve or what
   // behaviour the operator is testing ("try to get them to cancel").
-  goal           String?   @db.Text
+  goal           String? @db.Text
   // Turn ceiling so a persona-agent loop can't run forever.
-  maxTurns       Int       @default(10)
+  maxTurns       Int     @default(10)
 
   // ─── Execution state ───
-  status         String    @default("queued")     // queued | running | complete | failed
-  startedAt      DateTime?
-  completedAt    DateTime?
-  errorMessage   String?   @db.Text
+  status       String    @default("queued") // queued | running | complete | failed
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorMessage String?   @db.Text
 
   // ─── Results ───
-  turnCount      Int       @default(0)
+  turnCount  Int  @default(0)
   // Array<{ role: "persona" | "agent", content: string, at: ISOString,
   //         toolCalls?: Array<{tool, input, output}> }>
-  transcript     Json      @default("[]")
+  transcript Json @default("[]")
 
   // Auto-review linkage. After the sim completes, we invoke the
   // meta-Claude reviewer headlessly and store the resulting review id
   // here. reviewId is null if the auto-review hasn't run yet or failed.
-  reviewId                String?
-  proposedLearningsCount  Int  @default(0)
+  reviewId               String?
+  proposedLearningsCount Int     @default(0)
 
   // ─── Provenance ───
-  createdByType  String                           // "user" | "admin" | "swarm"
-  createdByEmail String?                          // null when swarm-driven
+  createdByType  String // "user" | "admin" | "swarm"
+  createdByEmail String? // null when swarm-driven
   swarmId        String?
   swarm          SimulationSwarm? @relation(fields: [swarmId], references: [id], onDelete: SetNull)
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([agentId, createdAt(sort: Desc)])
   @@index([workspaceId, status])
@@ -1698,31 +1752,31 @@ model Simulation {
 // worker picks them up in order. "Run 5 sims per agent across these 3
 // agents using these 4 personas" = 60 sims queued.
 model SimulationSwarm {
-  id             String   @id @default(cuid())
-  name           String
+  id              String   @id @default(cuid())
+  name            String
   // Customer swarms are scoped to one workspace (one agent × N personas).
   // Admin-driven platform swarms span workspaces and leave this null.
   // The workspace dashboard lists only its own swarms; admin lists all.
-  workspaceId    String?
+  workspaceId     String?
   // Which agents to run against. Stored as IDs so swarms survive agent
   // renames; if an agent is deleted its queued sims fail gracefully.
-  agentIds       String[]
+  agentIds        String[]
   // Array<{ context: string, channel: string, style: string, goal?: string, maxTurns?: number }>
   personaProfiles Json
-  runsPerAgent   Int      @default(1)
+  runsPerAgent    Int      @default(1)
 
-  status         String   @default("queued")     // queued | running | complete
+  status         String @default("queued") // queued | running | complete
   createdByEmail String
 
   // Precomputed at create time so the progress bar has a denominator
   // even before any simulation starts.
-  totalPlanned   Int
-  totalComplete  Int      @default(0)
-  totalFailed    Int      @default(0)
+  totalPlanned  Int
+  totalComplete Int @default(0)
+  totalFailed   Int @default(0)
 
-  simulations    Simulation[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  simulations Simulation[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([status, createdAt])
   @@index([workspaceId, createdAt(sort: Desc)])
@@ -1744,16 +1798,17 @@ model SystemSetting {
 // shouldn't have, (b) debugging "who paused that workspace at 2am?".
 // Never pruned automatically — retention is a policy call, not a default.
 model AdminAuditLog {
-  id          String      @id @default(cuid())
-  adminId     String?
-  admin       SuperAdmin? @relation(fields: [adminId], references: [id], onDelete: SetNull)
-  adminEmail  String                                   // denormalised so deletes don't lose context
-  action      String                                   // e.g. "login", "export_users_csv", "fire_webhook"
-  target      String?                                  // workspaceId / userId / "all" / etc.
-  meta        Json?                                    // arbitrary context (row count, filter, url)
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime    @default(now())
+  id         String      @id @default(cuid())
+  adminId    String?
+  admin      SuperAdmin? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminEmail String // denormalised so deletes don't lose context
+  action     String // e.g. "login", "export_users_csv", "fire_webhook"
+  target     String? // workspaceId / userId / "all" / etc.
+  meta       Json? // arbitrary context (row count, filter, url)
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+
   @@index([adminId, createdAt])
   @@index([action, createdAt])
   @@index([createdAt])
@@ -1766,27 +1821,27 @@ model AdminAuditLog {
 // folded into WidgetConversation, which keeps widget's brand/visitor
 // graph untouched.
 model MetaConversation {
-  id                    String   @id @default(cuid())
-  workspaceId           String
-  locationId            String
-  channel               String   // 'messenger' | 'instagram'
-  pageId                String   // entry.id from webhook (Page or IG-Business id)
-  pageName              String?
-  senderId              String   // PSID for Messenger, IGSID for Instagram
-  senderName            String?
-  senderProfilePicUrl   String?
-  agentId               String?
-  status                String   @default("active")
-  lastMessageAt         DateTime @default(now())
-  lastMessagePreview    String?
-  lastMessageDirection  String?  // 'in' | 'out'
-  unreadCount           Int      @default(0)
-  assignedUserId        String?
-  assignedUser          User?    @relation("MetaConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  assignedAt            DateTime?
-  assignmentReason      String?
-  createdAt             DateTime @default(now())
-  messages              MetaMessage[]
+  id                   String        @id @default(cuid())
+  workspaceId          String
+  locationId           String
+  channel              String // 'messenger' | 'instagram'
+  pageId               String // entry.id from webhook (Page or IG-Business id)
+  pageName             String?
+  senderId             String // PSID for Messenger, IGSID for Instagram
+  senderName           String?
+  senderProfilePicUrl  String?
+  agentId              String?
+  status               String        @default("active")
+  lastMessageAt        DateTime      @default(now())
+  lastMessagePreview   String?
+  lastMessageDirection String? // 'in' | 'out'
+  unreadCount          Int           @default(0)
+  assignedUserId       String?
+  assignedUser         User?         @relation("MetaConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt           DateTime?
+  assignmentReason     String?
+  createdAt            DateTime      @default(now())
+  messages             MetaMessage[]
 
   // (page, sender, channel) is a single conversation. Same FB user
   // could DM both your Page (Messenger) and your IG account — those
@@ -1798,20 +1853,116 @@ model MetaConversation {
 }
 
 model MetaMessage {
-  id             String   @id @default(cuid())
+  id             String           @id @default(cuid())
   conversationId String
   conversation   MetaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  direction      String   // 'in' (end user → us) | 'out' (agent/operator → end user)
+  direction      String // 'in' (end user → us) | 'out' (agent/operator → end user)
   text           String?
   // Meta's message id (mid). Used to dedupe webhook retries on inbound.
   // Outbound messages may not have one (Send API doesn't always return
   // an mid), hence nullable + partial unique index.
   mid            String?
-  sentByUserId   String?  // non-null when an operator typed the reply
-  sentByUser     User?    @relation("MetaMessageAuthor", fields: [sentByUserId], references: [id], onDelete: SetNull)
-  metadata       Json?    // attachments, postback payload, raw event for debugging
-  createdAt      DateTime @default(now())
+  sentByUserId   String? // non-null when an operator typed the reply
+  sentByUser     User?            @relation("MetaMessageAuthor", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  metadata       Json? // attachments, postback payload, raw event for debugging
+  createdAt      DateTime         @default(now())
 
   @@unique([mid])
   @@index([conversationId, createdAt])
+}
+
+// ─── Customer Portals ─────────────────────────────────────────────────────
+//
+// A Portal is a read-only view onto a workspace's conversations, scoped to
+// a subset of brands. The agency creates portals from /admin and invites
+// their *customers* (e.g. each whitelabel client) to log in. Portal users
+// only ever see WidgetConversations whose widget.brandId is in the brand
+// assignment set for that user.
+//
+// Auth is deliberately separate from NextAuth (workspace operators) and
+// from SuperAdmin (us). See lib/portal-auth.ts for the rationale —
+// shorthand: separate cookie, separate session table, separate password
+// hash, no cross-pollination of access between the three roles.
+
+model Portal {
+  id           String         @id @default(cuid())
+  // Each portal exposes data from exactly one workspace. Cascade so a
+  // workspace deletion takes its portals with it (otherwise orphan rows
+  // expose stale invite tokens).
+  workspaceId  String
+  workspace    Workspace      @relation("WorkspacePortals", fields: [workspaceId], references: [id], onDelete: Cascade)
+  name         String
+  // URL-safe identifier for the portal-facing pages (e.g. /portal/login
+  // shows the right branding when ?p=<slug> is set, and the slug is the
+  // human-friendly handle in the admin list). Lowercase letters/digits/dashes.
+  slug         String         @unique
+  // Optional branding override for the portal login + header. When unset
+  // we fall back to plain "Customer Portal" styling.
+  logoUrl      String?
+  primaryColor String?
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  users        PortalUser[]
+  invites      PortalInvite[]
+
+  @@index([workspaceId])
+}
+
+model PortalUser {
+  id               String            @id @default(cuid())
+  portalId         String
+  portal           Portal            @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  email            String
+  name             String?
+  // Null until the user accepts their invite and sets a password. Until
+  // then they can log in only via the invite link.
+  passwordHash     String?
+  isActive         Boolean           @default(true)
+  lastLoginAt      DateTime?
+  invitedAt        DateTime          @default(now())
+  acceptedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  brandAssignments PortalUserBrand[]
+
+  @@unique([portalId, email])
+  @@index([email])
+}
+
+model PortalUserBrand {
+  id           String     @id @default(cuid())
+  portalUserId String
+  portalUser   PortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+  brandId      String
+  brand        Brand      @relation("BrandPortalAccess", fields: [brandId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([portalUserId, brandId])
+  @@index([brandId])
+}
+
+model PortalInvite {
+  id         String    @id @default(cuid())
+  portalId   String
+  portal     Portal    @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  email      String
+  // sha256 of the random token sent via email. We never store the raw
+  // token — losing the DB doesn't leak active invites, and an attacker
+  // who steals a backup can't impersonate pending users.
+  tokenHash  String    @unique
+  // Brand IDs the inviting admin chose up-front. Materialized into
+  // PortalUserBrand rows on accept; kept here so the operator can review
+  // pending invites in the admin UI.
+  brandIds   String[]  @default([])
+  // SuperAdmin.id of the inviter. Useful for audit + "who let this
+  // person in" forensics; nullable so a deleted admin doesn't break
+  // historical invites.
+  invitedBy  String?
+  acceptedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@unique([portalId, email])
+  @@index([email])
 }

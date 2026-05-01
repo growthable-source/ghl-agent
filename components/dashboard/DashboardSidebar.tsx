@@ -139,7 +139,7 @@ function SidebarBody() {
                 {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                 {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
                 {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
-                {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox')}
+                {navLink(`/dashboard/${workspaceId}/inbox`, 'Inbox', counts.inboxUnread)}
                 {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
                 {/* Routing Diagnostic moved to /admin — it exposed raw
                     per-agent evaluation traces that were staff-only
