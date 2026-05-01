@@ -211,9 +211,9 @@ export default function InboxPage() {
   if (loading) return (
     <div className="flex-1 p-8">
       <div className="max-w-5xl mx-auto space-y-3">
-        <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" />
-        <div className="h-16 bg-zinc-900/40 rounded-xl border border-zinc-800 animate-pulse" />
-        <div className="h-16 bg-zinc-900/40 rounded-xl border border-zinc-800 animate-pulse" />
+        <div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
+        <div className="h-16 rounded-xl border animate-pulse" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} />
+        <div className="h-16 rounded-xl border animate-pulse" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} />
       </div>
     </div>
   )
@@ -224,13 +224,19 @@ export default function InboxPage() {
     <div className="flex-1 flex h-full overflow-hidden">
       {/* LEFT PANE — list, filters, search. Fixed width on md+; full
           width on mobile (right pane is hidden via md:flex). */}
-      <div className="w-full md:w-[440px] lg:w-[480px] md:flex-shrink-0 flex flex-col border-r border-zinc-800 overflow-y-auto p-4">
+      <div
+        className="w-full md:w-[440px] lg:w-[480px] md:flex-shrink-0 flex flex-col border-r overflow-y-auto p-4"
+        style={{ borderColor: 'var(--border)' }}
+      >
         <div className="flex items-center justify-between mb-3 gap-2">
-          <h1 className="text-lg font-bold text-white inline-flex items-center gap-2">
+          <h1 className="text-lg font-semibold tracking-tight inline-flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
             Inbox
             {hot > 0 && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 inline-flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+              <span
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"
+                style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+              >
+                <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: 'var(--accent-emerald)' }} />
                 {hot}
               </span>
             )}
@@ -272,14 +278,15 @@ export default function InboxPage() {
               <button
                 key={t.id}
                 onClick={() => setAssignTab(t.id)}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors border"
+                style={
                   active
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
+                    ? { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)', borderColor: 'var(--accent-primary)' }
+                    : { background: 'var(--surface)', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }
+                }
               >
                 {t.label}
-                <span className={`ml-1.5 ${active ? 'text-orange-100' : 'text-zinc-600'}`}>{count}</span>
+                <span className="ml-1.5" style={{ color: active ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>{count}</span>
               </button>
             )
           })}
@@ -419,14 +426,15 @@ export default function InboxPage() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors border"
+                style={
                   active
-                    ? 'bg-white text-black'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
+                    ? { background: 'var(--surface-tertiary)', color: 'var(--text-primary)', borderColor: 'var(--border-secondary)' }
+                    : { background: 'var(--surface)', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }
+                }
               >
                 {t.label}
-                <span className={`ml-1.5 ${active ? 'text-zinc-500' : 'text-zinc-600'}`}>{count}</span>
+                <span className="ml-1.5" style={{ color: 'var(--text-muted)' }}>{count}</span>
               </button>
             )
           })}
@@ -437,17 +445,23 @@ export default function InboxPage() {
               onChange={e => setSearch(e.target.value)}
               placeholder={brandSlug !== 'all' && brandSlug !== 'untagged'
                 ? 'Search transcripts in this brand\u2026'
-                : 'Search transcripts, visitors, assignees\u2026'}
-              className="w-80 max-w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-8 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                : 'Search conversations\u2026'}
+              className="w-80 max-w-full rounded-lg pl-9 pr-8 py-1.5 text-xs focus:outline-none transition-colors"
+              style={{
+                background: 'var(--input-bg)',
+                color: 'var(--input-text)',
+                border: '1px solid var(--input-border)',
+              }}
             />
-            <svg className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: 'var(--text-tertiary)' }}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors"
+                style={{ color: 'var(--text-tertiary)' }}
                 title="Clear search"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -524,15 +538,26 @@ export default function InboxPage() {
         })()}
 
         {filtered.length === 0 ? (
-          <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">📥</div>
-            <p className="text-sm font-medium text-white mb-1">
+          <div
+            className="text-center py-16 border border-dashed rounded-xl"
+            style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}
+          >
+            <div
+              className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
               {search.trim() ? 'No matches' :
                 assignTab === 'mine' ? 'Nothing assigned to you'
                 : assignTab === 'unassigned' ? 'Queue is empty — nice'
                 : tab === 'live' ? 'Nothing live right now' : 'No conversations'}
             </p>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
               {search.trim() ? 'Try a different query.'
                 : assignTab === 'mine' ? 'Chats land here when teammates assign them or when routing picks you.'
                 : assignTab === 'unassigned' ? 'New chats show up here until someone claims them.'
@@ -540,7 +565,10 @@ export default function InboxPage() {
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-zinc-800 divide-y divide-zinc-800 overflow-hidden bg-zinc-950">
+          <div
+            className="rounded-xl border overflow-hidden divide-y divide-zinc-800"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          >
             {filtered.map(r => {
               const visitorLabel = r.visitor.name || r.visitor.email || `Visitor ${r.visitor.cookieId.slice(-6)}`
               const initial = initialOf(r.visitor.name, r.visitor.email, 'V')
@@ -559,12 +587,15 @@ export default function InboxPage() {
                   type="button"
                   onClick={() => setSelectedId(r.id)}
                   className={`w-full text-left flex items-start gap-3 p-4 transition-colors border-l-2 ${
-                    isSelected
-                      ? 'bg-zinc-900 border-l-orange-500'
-                      : isUnread
-                        ? 'bg-zinc-950 border-l-emerald-500/60 hover:bg-zinc-900/60'
-                        : 'border-l-transparent hover:bg-zinc-900/60'
+                    isSelected ? '' : 'hover:bg-zinc-900/60'
                   }`}
+                  style={
+                    isSelected
+                      ? { background: 'var(--surface-secondary)', borderLeftColor: 'var(--accent-primary)' }
+                      : isUnread
+                        ? { background: 'var(--surface)', borderLeftColor: 'var(--accent-emerald)' }
+                        : { borderLeftColor: 'transparent' }
+                  }
                 >
                   <div className="relative flex-shrink-0">
                     {r.visitor.avatarUrl ? (
@@ -585,24 +616,24 @@ export default function InboxPage() {
                         widget (the row already lives in the widget
                         feed, so the chip would just be noise). */}
                     {r.channel === 'messenger' && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#1877F2] ring-2 ring-zinc-950 flex items-center justify-center" title="Facebook Messenger">
+                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#1877F2] ring-2 ring-[color:var(--surface)] flex items-center justify-center" title="Facebook Messenger">
                         <FacebookIcon className="w-2.5 h-2.5 text-white" />
                       </span>
                     )}
                     {r.channel === 'instagram' && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ring-2 ring-zinc-950 flex items-center justify-center"
+                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ring-2 ring-[color:var(--surface)] flex items-center justify-center"
                         style={{ background: 'linear-gradient(135deg,#F58529,#DD2A7B,#8134AF)' }}
                         title="Instagram Direct">
                         <InstagramIcon className="w-2.5 h-2.5 text-white" />
                       </span>
                     )}
                     {hot && r.channel === 'widget' && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-zinc-950" />
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-[color:var(--surface)]" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <p className="text-sm font-semibold text-white truncate">{visitorLabel}</p>
+                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{visitorLabel}</p>
                       {r.brand && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-medium"
@@ -621,22 +652,47 @@ export default function InboxPage() {
                           {r.brand.name}
                         </span>
                       )}
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{r.widget.name}</span>
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded"
+                        style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}
+                      >
+                        {r.widget.name}
+                      </span>
                       {r.status === 'active' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">live</span>
-                      )}
-                      {r.status === 'handed_off' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400">taken over</span>
-                      )}
-                      {r.status === 'ended' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">ended</span>
-                      )}
-                      {typeof r.csatRating === 'number' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 inline-flex items-center gap-0.5">
-                          ⭐ {r.csatRating}/5
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+                        >
+                          live
                         </span>
                       )}
-                      <span className="ml-auto text-[10px] text-zinc-500 whitespace-nowrap">{timeAgo(r.lastMessageAt)}</span>
+                      {r.status === 'handed_off' && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                          style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+                        >
+                          needs you
+                        </span>
+                      )}
+                      {r.status === 'ended' && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ background: 'var(--surface-secondary)', color: 'var(--text-muted)' }}
+                        >
+                          ended
+                        </span>
+                      )}
+                      {typeof r.csatRating === 'number' && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5"
+                          style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+                        >
+                          {r.csatRating}/5
+                        </span>
+                      )}
+                      <span className="ml-auto text-[10px] whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        {timeAgo(r.lastMessageAt)}
+                      </span>
                     </div>
                     {/* When the row matched on a search query, show
                         the snippets with the term highlighted. Falls
@@ -645,48 +701,63 @@ export default function InboxPage() {
                     {(r.snippets && r.snippets.length > 0) ? (
                       <div className="space-y-0.5">
                         {r.snippets.slice(0, 2).map((s, i) => (
-                          <p key={i} className="text-xs text-zinc-400 line-clamp-2">
-                            <span className="text-zinc-600">💬</span>{' '}
+                          <p key={i} className="text-xs line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
                             <Highlight text={s} term={search.trim()} />
                           </p>
                         ))}
                         {r.matchedIn && r.matchedIn.length > 0 && (
-                          <p className="text-[10px] text-zinc-600">
+                          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                             matched in {r.matchedIn.join(', ')}
                           </p>
                         )}
                       </div>
                     ) : r.lastMessage ? (
-                      <p className="text-xs text-zinc-400 truncate">
-                        <span className="text-zinc-600">
-                          {r.lastMessage.role === 'visitor' ? '👤' : r.lastMessage.role === 'agent' ? '🤖' : 'ℹ️'}
-                        </span>{' '}
-                        {lastKind === 'image' ? <span className="text-zinc-500 italic">sent an image</span>
-                          : lastKind === 'file' ? <span className="text-zinc-500 italic">sent a file</span>
-                          : r.lastMessage.content}
+                      <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>
+                        {r.lastMessage.role === 'agent' && (
+                          <span
+                            className="inline-flex items-center text-[9px] font-bold tracking-wider px-1 py-px rounded mr-1.5 align-middle"
+                            style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
+                          >
+                            AI
+                          </span>
+                        )}
+                        {lastKind === 'image'
+                          ? <span className="italic" style={{ color: 'var(--text-muted)' }}>sent an image</span>
+                          : lastKind === 'file'
+                            ? <span className="italic" style={{ color: 'var(--text-muted)' }}>sent a file</span>
+                            : r.lastMessage.content}
                       </p>
                     ) : null}
-                    <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-600 flex-wrap">
+                    <div className="flex items-center gap-2 mt-1 text-[10px] flex-wrap" style={{ color: 'var(--text-muted)' }}>
                       <span>{r.messageCount} message{r.messageCount === 1 ? '' : 's'}</span>
                       {r.visitor.email && <span>· {r.visitor.email}</span>}
                       {r.assignedUser ? (
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${
-                          isMine
-                            ? 'bg-orange-500/15 text-orange-300'
-                            : 'bg-zinc-800 text-zinc-400'
-                        }`}>
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                          style={
+                            isMine
+                              ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                              : { background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }
+                          }
+                        >
                           {r.assignedUser.image ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={r.assignedUser.image} alt="" className="w-3.5 h-3.5 rounded-full" />
                           ) : (
-                            <span className="w-3.5 h-3.5 rounded-full bg-zinc-700 flex items-center justify-center text-[8px] font-semibold text-white">
+                            <span
+                              className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-semibold"
+                              style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}
+                            >
                               {initialOf(r.assignedUser.name, r.assignedUser.email)}
                             </span>
                           )}
                           {isMine ? 'You' : (r.assignedUser.name || r.assignedUser.email || 'Assigned')}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-dashed border-zinc-700 text-zinc-500">
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-dashed"
+                          style={{ borderColor: 'var(--border-secondary)', color: 'var(--text-tertiary)' }}
+                        >
                           unassigned
                         </span>
                       )}
@@ -701,7 +772,10 @@ export default function InboxPage() {
 
       {/* RIGHT PANE — conversation detail. Renders when a row is
           selected; otherwise an empty state. */}
-      <div className="hidden md:flex flex-1 min-w-0 flex-col overflow-hidden bg-black">
+      <div
+        className="hidden md:flex flex-1 min-w-0 flex-col overflow-hidden"
+        style={{ background: 'var(--background)' }}
+      >
         {selectedId ? (
           <InboxConversationPanel
             key={selectedId}
@@ -711,11 +785,16 @@ export default function InboxPage() {
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-            <div className="w-14 h-14 rounded-full bg-zinc-900 flex items-center justify-center text-2xl mb-4">
-              💬
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center mb-4"
+              style={{ background: 'var(--surface)', color: 'var(--text-tertiary)' }}
+            >
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
             </div>
-            <p className="text-sm font-medium text-white mb-1">Pick a conversation</p>
-            <p className="text-xs text-zinc-500 max-w-sm">
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Pick a conversation</p>
+            <p className="text-xs max-w-sm" style={{ color: 'var(--text-tertiary)' }}>
               Select a chat from the list on the left to read the full thread, claim it, and reply.
             </p>
           </div>
