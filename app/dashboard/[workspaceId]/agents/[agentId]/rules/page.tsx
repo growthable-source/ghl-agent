@@ -333,14 +333,16 @@ export default function RulesPage() {
                   <button
                     type="button"
                     onClick={() => toggleActive(rule)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                      rule.isActive ? 'bg-emerald-500' : 'bg-zinc-700'
-                    }`}
+                    className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                    style={{ background: rule.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
                     role="switch"
                     aria-checked={rule.isActive}
                     aria-label={rule.isActive ? 'Disable rule' : 'Enable rule'}
                   >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${rule.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full shadow transition ${rule.isActive ? 'translate-x-4' : 'translate-x-0'}`}
+                      style={{ background: '#fff' }}
+                    />
                   </button>
                   <button onClick={() => startEdit(rule)} className="text-xs text-zinc-500 hover:text-white transition-colors">Edit</button>
                   <button onClick={() => deleteRule(rule.id)} className="text-xs text-zinc-600 hover:text-red-400 transition-colors">Remove</button>
@@ -476,7 +478,7 @@ export default function RulesPage() {
                     <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${
                       form.overwrite ? 'border-amber-500 bg-amber-500' : 'border-zinc-600'
                     }`}>
-                      {form.overwrite && <span className="text-white text-[10px] leading-none">✓</span>}
+                      {form.overwrite && <span className="text-[10px] leading-none" style={{ color: '#fff' }}>✓</span>}
                     </span>
                     <span>
                       {form.overwrite
@@ -585,7 +587,10 @@ export default function RulesPage() {
             </div>
 
             <button type="submit" disabled={saving}
-              className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center rounded-lg font-medium text-sm h-10 transition-colors"
+              style={saving
+                ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+                : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
             >
               {saving ? (editingId ? 'Saving…' : 'Adding…') : (editingId ? 'Save Changes' : 'Add Rule')}
             </button>

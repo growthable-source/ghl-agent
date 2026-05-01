@@ -80,25 +80,29 @@ export default function WorkspaceKnowledgePage() {
       <div className="max-w-5xl mx-auto p-8">
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">Knowledge</h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Knowledge</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Build named Collections — bundles of FAQs, files, web pages, Notion docs, YouTube transcripts, and live data sources.
               Stack collections onto agents to give them context.
             </p>
           </div>
           <button
             onClick={() => setCreator(true)}
-            className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
+            className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            style={{ background: 'var(--accent-primary)', color: '#fff' }}
           >
             + New collection
           </button>
         </div>
 
         {notMigrated && (
-          <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-300 font-semibold">Migration pending</p>
-            <p className="text-xs text-amber-300/80 mt-1">
-              Run <code className="bg-black/30 px-1 rounded">prisma/migrations/20260429160000_knowledge_collections/migration.sql</code> to switch to the Collections model.
+          <div
+            className="p-4 mb-6 rounded-xl border"
+            style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+          >
+            <p className="text-sm font-semibold" style={{ color: 'var(--accent-amber)' }}>Migration pending</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+              Run <code className="px-1 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>prisma/migrations/20260429160000_knowledge_collections/migration.sql</code> to switch to the Collections model.
             </p>
           </div>
         )}
@@ -124,7 +128,7 @@ export default function WorkspaceKnowledgePage() {
         {filtered.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
             <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">📚</div>
-            <p className="text-sm font-medium text-white mb-1">
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
               {search.trim() ? 'No matches' : 'No collections yet'}
             </p>
             <p className="text-xs text-zinc-500">
@@ -152,7 +156,7 @@ export default function WorkspaceKnowledgePage() {
                       {icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{c.name}</p>
+                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</p>
                       {c.description && (
                         <p className="text-xs text-zinc-400 line-clamp-2 mt-0.5">{c.description}</p>
                       )}
@@ -241,8 +245,8 @@ function CreateCollectionModal({
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-white">New collection</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white">
+          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>New collection</h2>
+          <button onClick={onClose} style={{ color: 'var(--text-tertiary)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -292,8 +296,8 @@ function CreateCollectionModal({
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className={`w-9 h-9 rounded-lg border-2 transition-colors ${color === c ? 'border-white' : 'border-transparent'}`}
-                  style={{ background: c }}
+                  className="w-9 h-9 rounded-lg border-2 transition-colors"
+                  style={{ background: c, borderColor: color === c ? 'var(--text-primary)' : 'transparent' }}
                   aria-label={c}
                 />
               ))}
@@ -318,11 +322,14 @@ function CreateCollectionModal({
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
         <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-zinc-300 hover:text-white">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ color: 'var(--text-secondary)' }}>Cancel</button>
           <button
             onClick={save}
             disabled={saving || !name.trim()}
-            className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold"
+            style={(saving || !name.trim())
+              ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+              : { background: 'var(--accent-primary)', color: '#fff' }}
           >
             {saving ? 'Creating…' : 'Create'}
           </button>

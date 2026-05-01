@@ -129,9 +129,12 @@ export default function ToolsPage() {
                         role="switch"
                         aria-checked={isEnabled}
                       >
-                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
-                          isEnabled ? 'translate-x-4' : 'translate-x-0'
-                        }`} />
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow transition duration-200 ${
+                            isEnabled ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                          style={{ background: '#fff' }}
+                        />
                       </button>
                     </div>
                   </div>
@@ -175,7 +178,12 @@ export default function ToolsPage() {
                   <select
                     value={calendarId}
                     onChange={e => saveCalendarId(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
+                    className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                    style={{
+                      background: 'var(--input-bg)',
+                      color: 'var(--input-text)',
+                      border: '1px solid var(--input-border)',
+                    }}
                   >
                     <option value="">Select a calendar…</option>
                     {calendars.map(cal => (
@@ -194,7 +202,17 @@ export default function ToolsPage() {
                     <button
                       onClick={runDiagnostic}
                       disabled={runningDiag}
-                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors disabled:opacity-50"
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                      style={runningDiag ? {
+                        background: 'var(--surface-tertiary)',
+                        color: 'var(--text-tertiary)',
+                        border: '1px solid var(--border)',
+                        cursor: 'not-allowed',
+                      } : {
+                        background: 'var(--surface-secondary)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-secondary)',
+                      }}
                     >
                       {runningDiag ? 'Testing…' : 'Test calendar connection'}
                     </button>

@@ -86,15 +86,15 @@ export default function ApprovalsPage() {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Approval Queue</h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Approval Queue</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Messages your agents flagged for human review before sending.
             </p>
           </div>
           <button
             onClick={() => setJudgeConfigOpen(true)}
-            className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors"
-            style={{ background: '#fa4d2e' }}
+            className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors"
+            style={{ background: 'var(--accent-primary)', color: '#fff' }}
           >
             🤖 AI Judge settings
           </button>
@@ -128,8 +128,8 @@ export default function ApprovalsPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-white">Inbox zero</p>
-              <p className="text-xs text-zinc-500 mt-1">No messages waiting for approval.</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Inbox zero</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>No messages waiting for approval.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -144,7 +144,8 @@ export default function ApprovalsPage() {
                       {log.agent && (
                         <Link
                           href={`/dashboard/${workspaceId}/agents/${log.agent.id}`}
-                          className="text-sm font-semibold text-white hover:underline"
+                          className="text-sm font-semibold hover:underline"
+                          style={{ color: 'var(--text-primary)' }}
                         >
                           {log.agent.name}
                         </Link>
@@ -179,23 +180,24 @@ export default function ApprovalsPage() {
                     )}
 
                     {/* Contact message */}
-                    <div className="p-3 rounded-lg bg-zinc-900 mb-2">
-                      <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Contact said</p>
-                      <p className="text-xs text-zinc-300 whitespace-pre-wrap">{log.inboundMessage}</p>
+                    <div className="p-3 rounded-lg mb-2" style={{ background: 'var(--surface-secondary)' }}>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Contact said</p>
+                      <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{log.inboundMessage}</p>
                     </div>
 
                     {/* Drafted reply */}
-                    <div className="p-3 rounded-lg bg-zinc-900 mb-3">
-                      <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Agent drafted</p>
+                    <div className="p-3 rounded-lg mb-3" style={{ background: 'var(--surface-secondary)' }}>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>Agent drafted</p>
                       {isEditing ? (
                         <textarea
                           value={editText}
                           onChange={e => setEditText(e.target.value)}
                           rows={4}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-300"
+                          className="w-full rounded px-2 py-1.5 text-xs"
+                          style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
                         />
                       ) : (
-                        <p className="text-xs text-zinc-300 whitespace-pre-wrap">{log.outboundReply}</p>
+                        <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{log.outboundReply}</p>
                       )}
                     </div>
 
@@ -205,14 +207,15 @@ export default function ApprovalsPage() {
                           <button
                             onClick={() => decide(log.id, 'approve', editText)}
                             disabled={busy === log.id}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-colors"
-                            style={{ background: '#22c55e' }}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                            style={{ background: 'var(--accent-emerald)', color: '#fff' }}
                           >
                             Send edited reply
                           </button>
                           <button
                             onClick={() => setEditing(null)}
-                            className="text-xs font-medium px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             Cancel edit
                           </button>
@@ -222,27 +225,30 @@ export default function ApprovalsPage() {
                           <button
                             onClick={() => decide(log.id, 'approve')}
                             disabled={busy === log.id}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-colors hover:opacity-90"
-                            style={{ background: '#22c55e' }}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors hover:opacity-90"
+                            style={{ background: 'var(--accent-emerald)', color: '#fff' }}
                           >
                             Approve & send
                           </button>
                           <button
                             onClick={() => { setEditing(log.id); setEditText(log.outboundReply || '') }}
-                            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                            style={{ border: '1px solid var(--border-secondary)', color: 'var(--text-secondary)' }}
                           >
                             Edit & send
                           </button>
                           <button
                             onClick={() => decide(log.id, 'reject')}
                             disabled={busy === log.id}
-                            className="text-xs font-medium px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+                            className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--accent-red)' }}
                           >
                             Reject
                           </button>
                           <Link
                             href={`/dashboard/${workspaceId}/contacts/${log.contactId}`}
-                            className="ml-auto text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                            className="ml-auto text-[11px] transition-colors"
+                            style={{ color: 'var(--text-tertiary)' }}
                           >
                             View contact →
                           </Link>
@@ -336,16 +342,16 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-zinc-800 flex items-start justify-between shrink-0">
+      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
+        <div className="p-6 flex items-start justify-between shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
           <div>
-            <h2 className="text-lg font-bold text-white">🤖 AI Judge settings</h2>
-            <p className="text-xs text-zinc-500 mt-1 max-w-xl">
+            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>🤖 AI Judge settings</h2>
+            <p className="text-xs mt-1 max-w-xl" style={{ color: 'var(--text-tertiary)' }}>
               When approval rules flag a message, run a cheap LLM pass first. SAFE → auto-release; UNSAFE → optionally
               auto-block; UNCERTAIN → keep for human review. Cuts queue volume ~80% on the typical mix.
             </p>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-xl leading-none" style={{ color: 'var(--text-tertiary)' }}>×</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-3">
@@ -357,14 +363,20 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
           {agents === null ? (
             <div className="h-6 w-32 bg-zinc-800 rounded animate-pulse" />
           ) : agents.length === 0 ? (
-            <p className="text-sm text-zinc-500">No agents in this workspace.</p>
+            <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No agents in this workspace.</p>
           ) : (
             agents.map(a => (
-              <div key={a.id} className={`p-4 rounded-xl border ${a.judgeEnabled ? 'border-orange-500/30 bg-orange-500/5' : 'border-zinc-800 bg-zinc-900/40'}`}>
+              <div
+                key={a.id}
+                className="p-4 rounded-xl"
+                style={a.judgeEnabled
+                  ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                  : { border: '1px solid var(--border)', background: 'var(--surface-secondary)' }}
+              >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">{a.name}</p>
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{a.name}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
                       {a.requireApproval
                         ? `Approval queue is on. Judge ${a.judgeEnabled ? 'will pre-screen' : 'is off — every flagged message goes to a human'}.`
                         : 'Approval queue is off — turn it on at the agent level first; the judge only runs on flagged messages.'}
@@ -374,7 +386,7 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
                     onClick={() => update(a.id, { judgeEnabled: !a.judgeEnabled })}
                     disabled={saving === a.id || !a.requireApproval}
                     className="relative inline-flex h-5 w-9 items-center rounded-full disabled:opacity-30"
-                    style={{ background: a.judgeEnabled ? '#fa4d2e' : '#3f3f46' }}
+                    style={{ background: a.judgeEnabled ? 'var(--accent-primary)' : 'var(--surface-tertiary)' }}
                   >
                     <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
                       style={{ transform: a.judgeEnabled ? 'translateX(20px)' : 'translateX(4px)' }} />
@@ -382,14 +394,15 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
                 </div>
 
                 {a.judgeEnabled && (
-                  <div className="space-y-3 mt-3 pt-3 border-t border-zinc-800">
+                  <div className="space-y-3 mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
                     <div className="grid grid-cols-2 gap-3">
-                      <label className="text-[11px] text-zinc-400">
+                      <label className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                         <span className="block mb-1">Judge model</span>
                         <select
                           value={a.judgeModel}
                           onChange={e => update(a.id, { judgeModel: e.target.value as any })}
-                          className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
+                          className="w-full rounded px-2 py-1.5 text-xs"
+                          style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
                         >
                           <option value="haiku">Haiku (fast, cheap)</option>
                           <option value="sonnet">Sonnet (slower, more nuance)</option>
@@ -404,8 +417,8 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
                         className="mt-0.5 w-4 h-4 accent-orange-500"
                       />
                       <div>
-                        <p className="text-xs text-white">Auto-release messages judged SAFE</p>
-                        <p className="text-[10px] text-zinc-500">Off = even SAFE verdicts wait for a human to click approve.</p>
+                        <p className="text-xs" style={{ color: 'var(--text-primary)' }}>Auto-release messages judged SAFE</p>
+                        <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Off = even SAFE verdicts wait for a human to click approve.</p>
                       </div>
                     </label>
                     <label className="flex items-start gap-3 cursor-pointer">
@@ -416,18 +429,19 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
                         className="mt-0.5 w-4 h-4 accent-orange-500"
                       />
                       <div>
-                        <p className="text-xs text-white">Auto-reject messages judged UNSAFE</p>
-                        <p className="text-[10px] text-zinc-500">Off = UNSAFE verdicts still surface to a human (recommended at first).</p>
+                        <p className="text-xs" style={{ color: 'var(--text-primary)' }}>Auto-reject messages judged UNSAFE</p>
+                        <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Off = UNSAFE verdicts still surface to a human (recommended at first).</p>
                       </div>
                     </label>
                     <div>
-                      <label className="text-[11px] text-zinc-400 block mb-1">Custom rubric (optional)</label>
+                      <label className="text-[11px] block mb-1" style={{ color: 'var(--text-secondary)' }}>Custom rubric (optional)</label>
                       <textarea
                         value={a.judgeInstructions || ''}
                         onChange={e => update(a.id, { judgeInstructions: e.target.value })}
                         rows={3}
                         placeholder='E.g. "Never auto-send anything that quotes a price. Auto-send anything that is just confirming a meeting time."'
-                        className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
+                        className="w-full rounded px-2 py-1.5 text-xs"
+                        style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
                       />
                     </div>
                   </div>
