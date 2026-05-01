@@ -40,8 +40,17 @@ export async function GET(req: NextRequest) {
   }
 
   const appSecret = process.env.META_APP_SECRET
-  if (!appSecret) {
-    return NextResponse.json({ error: 'META_APP_SECRET not set in runtime' }, { status: 500 })
+  const appId = process.env.META_APP_ID
+  if (!appSecret || !appId) {
+    return NextResponse.json({ error: 'META_APP_SECRET / META_APP_ID not set in runtime' }, { status: 500 })
+  }
+
+  // Branch: ?check=meta returns Meta's view of the world — what
+  // webhook subscriptions are registered at the App level, and what
+  // apps the Page has subscribed. Independent of our pipeline; used to
+  // diagnose "real DM doesn't arrive" when our pipeline test passed.
+  if (req.nextUrl.searchParams.get('check') === 'meta') {
+    return await checkMetaSide(req, appId, appSecret)
   }
 
   // Required: ?pageId=<page id of an Integration we want to test against>
@@ -162,4 +171,108 @@ export async function GET(req: NextRequest) {
       ? 'Direct Meta path is healthy end-to-end. If real DMs still don\'t arrive, the issue is on Meta\'s delivery side (App-level webhook subscription).'
       : 'Webhook returned 200 but no MetaConversation row was created within 5s. Check Vercel logs for [meta-webhook] / [meta-conversations] warnings.',
   })
+}
+
+// ─── Meta-side check + auto-fix ──────────────────────────────────────────
+
+const GRAPH = 'https://graph.facebook.com/v19.0'
+
+async function checkMetaSide(req: NextRequest, appId: string, appSecret: string) {
+  const fix = req.nextUrl.searchParams.get('fix') === 'true'
+  const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN
+  const expectedCallbackUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://app.voxility.ai').replace(/\/+$/, '') + '/api/meta/webhook'
+  const appToken = `${appId}|${appSecret}`
+  const REQUIRED_FIELDS = ['messages', 'messaging_postbacks', 'message_reads', 'messaging_referrals']
+
+  // 1. App-level subscriptions — what objects does this app receive
+  //    webhooks for, and where are they delivered?
+  const subsRes = await fetch(`${GRAPH}/${appId}/subscriptions?access_token=${encodeURIComponent(appToken)}`)
+  const subsBody = await subsRes.json().catch(() => null) as { data?: Array<{ object: string; callback_url: string; fields: Array<{ name: string; version: string }>; active: boolean }> } | null
+  const pageSub = subsBody?.data?.find(s => s.object === 'page') ?? null
+  const igSub = subsBody?.data?.find(s => s.object === 'instagram') ?? null
+
+  const findings: any = {
+    appId,
+    expectedCallbackUrl,
+    appLevelSubscriptions: subsBody?.data ?? [],
+    diagnosis: {} as Record<string, string>,
+    actionsTaken: [] as string[],
+  }
+
+  // Per-page subscription check (uses the saved Integration's page token)
+  const integrations = await db.integration.findMany({
+    where: { type: 'meta', isActive: true },
+    select: { id: true, locationId: true, credentials: true },
+  })
+  const perPage: any[] = []
+  for (const integ of integrations) {
+    const c = integ.credentials as any
+    if (!c?.pageId || !c?.pageAccessToken) continue
+    const r = await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageAccessToken)}`)
+    const body = await r.json().catch(() => null) as { data?: Array<{ id: string; name: string; subscribed_fields?: string[] }> } | null
+    perPage.push({
+      pageId: c.pageId,
+      pageName: c.pageName,
+      ourAppSubscribed: !!body?.data?.find(a => a.id === appId),
+      subscribedApps: body?.data?.map(a => ({ id: a.id, name: a.name, fields: a.subscribed_fields })) ?? [],
+    })
+  }
+  findings.perPageSubscriptions = perPage
+
+  // ─── Diagnose ───────────────────────────────────────────────────
+  if (!pageSub) {
+    findings.diagnosis.pageObject = 'NOT subscribed at app level. Meta has no callback URL registered for the "page" object — DMs are dropped before they reach any URL.'
+  } else if (pageSub.callback_url !== expectedCallbackUrl) {
+    findings.diagnosis.pageObject = `Subscribed but pointed at WRONG URL: "${pageSub.callback_url}" (expected "${expectedCallbackUrl}").`
+  } else if (!pageSub.active) {
+    findings.diagnosis.pageObject = 'Subscribed and URL matches, but marked INACTIVE on Meta\'s side.'
+  } else {
+    const subscribedFields = pageSub.fields?.map(f => f.name) ?? []
+    const missing = REQUIRED_FIELDS.filter(f => !subscribedFields.includes(f))
+    if (missing.length > 0) {
+      findings.diagnosis.pageObject = `Active and pointed at the right URL, but missing fields: ${missing.join(', ')}.`
+    } else {
+      findings.diagnosis.pageObject = '✅ App-level page subscription looks correct.'
+    }
+  }
+
+  // ─── Auto-fix ───────────────────────────────────────────────────
+  if (fix) {
+    if (!verifyToken) {
+      findings.actionsTaken.push('SKIPPED fix: META_WEBHOOK_VERIFY_TOKEN not set in runtime.')
+    } else {
+      // (Re)register the page subscription. Meta's API is idempotent
+      // for this — same URL + token + fields just refreshes.
+      const fixRes = await fetch(`${GRAPH}/${appId}/subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          object: 'page',
+          callback_url: expectedCallbackUrl,
+          fields: REQUIRED_FIELDS.join(','),
+          verify_token: verifyToken,
+          access_token: appToken,
+        }).toString(),
+      })
+      const fixText = await fixRes.text()
+      findings.actionsTaken.push(`POST /${appId}/subscriptions (page): ${fixRes.status} ${fixText.slice(0, 200)}`)
+
+      // Re-subscribe each Page to the app — covers the per-page side.
+      for (const integ of integrations) {
+        const c = integ.credentials as any
+        if (!c?.pageId || !c?.pageAccessToken) continue
+        const r = await fetch(`${GRAPH}/${c.pageId}/subscribed_apps`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            subscribed_fields: REQUIRED_FIELDS.join(','),
+            access_token: c.pageAccessToken,
+          }).toString(),
+        })
+        findings.actionsTaken.push(`POST /${c.pageId}/subscribed_apps: ${r.status} ${(await r.text()).slice(0, 100)}`)
+      }
+    }
+  }
+
+  return NextResponse.json(findings)
 }
