@@ -40,6 +40,11 @@ function SidebarBody() {
   const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string; logoUrl: string | null } | null>(null)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  // Manual disclosure for the "More" section. We previously used
+  // <details>/<summary> but Safari drops the click handler when
+  // <summary> is styled with display:flex, which made the button
+  // unclickable for some users. Plain button + state is bulletproof.
+  const [moreOpen, setMoreOpen] = useState(false)
 
   useEffect(() => {
     // Cheap check — is the signed-in user a Voxility super-admin? If yes
@@ -192,14 +197,27 @@ function SidebarBody() {
                   </svg>,
                 )}
 
-                {/* Everything else — kept reachable, demoted out of primary nav.
-                    Native <details> persists open/closed across renders. */}
-                <details className="group mt-3">
-                  <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider text-zinc-500 font-semibold hover:text-zinc-300 transition-colors">
+                {/* Everything else — kept reachable, demoted out of primary nav. */}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setMoreOpen(o => !o)}
+                    aria-expanded={moreOpen}
+                    className="cursor-pointer w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider font-semibold transition-colors hover:bg-zinc-900"
+                    style={{ color: 'var(--text-tertiary)' }}
+                  >
                     <span>More</span>
-                    <span className="text-zinc-600 transition-transform group-open:rotate-90">›</span>
-                  </summary>
-                  <div className="mt-1 space-y-0.5">
+                    <span
+                      className="transition-transform"
+                      style={{ color: 'var(--text-muted)', transform: moreOpen ? 'rotate(90deg)' : undefined }}
+                    >
+                      ›
+                    </span>
+                  </button>
+                  <div
+                    className="mt-1 space-y-0.5"
+                    style={{ display: moreOpen ? undefined : 'none' }}
+                  >
                     {navLink(`/dashboard/${workspaceId}`, 'Overview')}
                     {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
                     {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
@@ -244,7 +262,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
                     {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
                   </div>
-                </details>
+                </div>
               </>
             )}
           </>

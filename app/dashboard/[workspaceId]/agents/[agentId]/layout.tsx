@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 
@@ -124,6 +124,34 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   const moreItems = MORE_GROUPS.flatMap(g => g.items)
   const moreActive = moreItems.some(s => s.key === activeKey)
 
+  // Manual menu state instead of <details>/<summary>. Native disclosure
+  // had two problems here: <summary> styled as flex breaks the click
+  // handler in WebKit, and the parent tab strip needs overflow-x-auto
+  // for narrow viewports — which collapses overflow-y to auto and
+  // clips the dropdown. Using a button + state + click-outside handler
+  // sidesteps both.
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!moreOpen) return
+    function onPointerDown(e: PointerEvent) {
+      if (!moreRef.current) return
+      if (!moreRef.current.contains(e.target as Node)) setMoreOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMoreOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [moreOpen])
+
+  // Auto-close when the user picks any sub-page (route changes).
+  useEffect(() => { setMoreOpen(false) }, [pathname])
+
   function getTabLabel(section: Section) {
     if (section.key === 'deploy' && channelCount !== null && channelCount > 0) {
       return `${section.label} (${channelCount})`
@@ -212,81 +240,100 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
 
-      {/* Section nav — primary tabs + "More" disclosure for the long
-          tail. Kept the same routes; just trimmed what's visible at
-          rest. */}
+      {/* Section nav — primary tabs + a real <button> menu for the
+          long tail. The two halves are siblings so the dropdown can
+          escape the tab strip's overflow-x. */}
       <div
-        className="flex gap-0 px-8 mt-4 border-b shrink-0 overflow-x-auto items-stretch"
+        className="flex items-stretch px-8 mt-4 border-b shrink-0"
         style={{ borderColor: 'var(--border)' }}
       >
-        {PRIMARY_SECTIONS.map(s => {
-          const isActive = activeKey === s.key
-          return (
-            <Link
-              key={s.key}
-              href={`${base}${s.path}`}
-              className="px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
-              style={
-                isActive
-                  ? { borderBottomColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
-                  : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
-              }
-            >
-              {getTabLabel(s)}
-            </Link>
-          )
-        })}
+        {/* Scrolling primary tabs */}
+        <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
+          {PRIMARY_SECTIONS.map(s => {
+            const isActive = activeKey === s.key
+            return (
+              <Link
+                key={s.key}
+                href={`${base}${s.path}`}
+                className="px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
+                style={
+                  isActive
+                    ? { borderBottomColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
+                    : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
+                }
+              >
+                {getTabLabel(s)}
+              </Link>
+            )
+          })}
+        </div>
 
-        {/* More disclosure — native <details> for free state without a
-            new piece of useState. position: relative on parent so the
-            popover anchors to the trigger. */}
-        <details className="relative ml-1 flex items-stretch">
-          <summary
-            className="cursor-pointer list-none px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors flex items-center gap-1"
+        {/* Sticky More button — sibling to the scroller, so its
+            dropdown isn't clipped by the strip's overflow-x. */}
+        <div ref={moreRef} className="relative shrink-0 flex items-stretch ml-1">
+          <button
+            type="button"
+            onClick={() => setMoreOpen(o => !o)}
+            aria-haspopup="true"
+            aria-expanded={moreOpen}
+            className="px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors flex items-center gap-1 cursor-pointer"
             style={
-              moreActive
+              moreActive || moreOpen
                 ? { borderBottomColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
                 : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
             }
           >
             More
-            <svg className="w-3 h-3 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="w-3 h-3 opacity-70 transition-transform"
+              style={{ transform: moreOpen ? 'rotate(180deg)' : undefined }}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="6 9 12 15 18 9" />
             </svg>
-          </summary>
-          <div
-            className="absolute right-0 top-full mt-1 z-30 w-64 rounded-lg border shadow-lg overflow-hidden"
-            style={{ background: 'var(--surface)', borderColor: 'var(--border-secondary)' }}
-          >
-            {MORE_GROUPS.map(group => (
-              <div key={group.heading} className="py-1">
-                <p
-                  className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider font-semibold"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {group.heading}
-                </p>
-                {group.items.map(item => {
-                  const isActive = activeKey === item.key
-                  return (
-                    <Link
-                      key={item.key}
-                      href={`${base}${item.path}`}
-                      className="block px-3 py-1.5 text-sm transition-colors"
-                      style={
-                        isActive
-                          ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                          : { color: 'var(--text-secondary)' }
-                      }
-                    >
-                      {getTabLabel(item)}
-                    </Link>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        </details>
+          </button>
+          {moreOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-1 z-40 w-64 rounded-lg border shadow-lg overflow-hidden"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border-secondary)' }}
+            >
+              {MORE_GROUPS.map(group => (
+                <div key={group.heading} className="py-1">
+                  <p
+                    className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider font-semibold"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {group.heading}
+                  </p>
+                  {group.items.map(item => {
+                    const isActive = activeKey === item.key
+                    return (
+                      <Link
+                        key={item.key}
+                        href={`${base}${item.path}`}
+                        role="menuitem"
+                        className="block px-3 py-1.5 text-sm transition-colors"
+                        style={
+                          isActive
+                            ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                            : { color: 'var(--text-secondary)' }
+                        }
+                      >
+                        {getTabLabel(item)}
+                      </Link>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Page content */}
