@@ -500,9 +500,9 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
 
         {/* Composer */}
         {!isEnded ? (
-          <div className="p-4 border-t border-zinc-800 flex-shrink-0 bg-zinc-950">
+          <div className="p-4 border-t flex-shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="max-w-3xl mx-auto">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2">
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--text-tertiary)' }}>
                 {isHandedOff
                   ? "You've taken over — replying as yourself"
                   : 'Jump in — sending here pauses the AI and takes over'}
@@ -520,7 +520,8 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                   title="Attach a file"
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30"
+                  className="w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-30"
+                  style={{ color: 'var(--text-tertiary)' }}
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
@@ -530,7 +531,8 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                   <button
                     type="button"
                     onClick={() => setEmojiOpen(o => !o)}
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+                    className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+                    style={{ color: 'var(--text-tertiary)' }}
                     title="Emoji"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -540,13 +542,16 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                   {emojiOpen && (
                     <>
                       <div className="fixed inset-0 z-30" onClick={() => setEmojiOpen(false)} />
-                      <div className="absolute bottom-11 left-0 z-40 bg-zinc-950 border border-zinc-700 rounded-lg p-2 shadow-xl grid grid-cols-8 gap-1 w-[260px]">
+                      <div
+                        className="absolute bottom-11 left-0 z-40 rounded-lg p-2 shadow-xl grid grid-cols-8 gap-1 w-[260px]"
+                        style={{ background: 'var(--surface)', border: '1px solid var(--border-secondary)' }}
+                      >
                         {EMOJI_GRID.map(e => (
                           <button
                             key={e}
                             type="button"
                             onClick={() => { setReply(prev => prev + e); setEmojiOpen(false) }}
-                            className="text-lg w-8 h-8 hover:bg-zinc-800 rounded transition-colors"
+                            className="text-lg w-8 h-8 rounded transition-colors hover:bg-zinc-800"
                           >{e}</button>
                         ))}
                       </div>
@@ -559,23 +564,43 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                   placeholder="Type your reply…"
                   rows={2}
-                  className="flex-1 resize-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 max-h-32"
+                  className="flex-1 resize-none rounded-lg px-3 py-2 text-sm focus:outline-none max-h-32"
+                  style={{
+                    background: 'var(--input-bg)',
+                    color: 'var(--input-text)',
+                    border: '1px solid var(--input-border)',
+                  }}
                 />
                 <button
                   onClick={send}
                   disabled={!reply.trim() || sending}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40 hover:opacity-90 transition-opacity"
-                  style={{ background: accent }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
+                  style={
+                    !reply.trim() || sending
+                      ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+                      : { background: accent, color: '#fff' }
+                  }
                 >
                   {sending ? '…' : 'Send'}
                 </button>
               </div>
-              {uploading && <p className="text-[11px] text-zinc-500 mt-2">Uploading…</p>}
+              {uploading && <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>Uploading…</p>}
             </div>
           </div>
         ) : (
-          <div className="p-4 border-t border-zinc-800 flex-shrink-0 text-center text-xs text-zinc-500 bg-zinc-950">
-            This conversation is closed. Click <button onClick={() => setStatus('active')} className="text-zinc-300 underline hover:text-white">Reopen</button> to follow up.
+          <div
+            className="p-4 border-t flex-shrink-0 text-center text-xs"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface)', color: 'var(--text-tertiary)' }}
+          >
+            This conversation is closed. Click{' '}
+            <button
+              onClick={() => setStatus('active')}
+              className="underline transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Reopen
+            </button>
+            {' '}to follow up.
           </div>
         )}
       </div>
