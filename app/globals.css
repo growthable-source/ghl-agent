@@ -4,141 +4,17 @@
    Voxility Brand — Precision Dark Theme System
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* ─── Midnight — deep navy-black with orange accent (opt-in dark) ───── */
-[data-theme="midnight"] {
-  --background:          #05080f;
-  --foreground:          #f8fafc;
-  --surface:             #090d15;
-  --surface-secondary:   #0f1524;
-  --surface-tertiary:    #1a2540;
-  --border:              #121a2b;
-  --border-secondary:    #1f2b47;
-  --text-primary:        #f8fafc;
-  --text-secondary:      #94a3b8;
-  --text-tertiary:       #64748b;
-  --text-muted:          #475569;
-  --accent-primary:      #fa4d2e;
-  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
-  --accent-emerald:      #16a249;
-  --accent-emerald-bg:   rgba(22, 162, 73, 0.15);
-  --accent-amber:        #fbbf24;
-  --accent-amber-bg:     rgba(120, 53, 15, 0.3);
-  --accent-blue:         #60a5fa;
-  --accent-blue-bg:      rgba(30, 58, 138, 0.3);
-  --accent-red:          #ef4343;
-  --accent-red-bg:       rgba(239, 67, 67, 0.15);
-  --btn-primary-bg:      #fa4d2e;
-  --btn-primary-text:    #f8fafc;
-  --btn-primary-hover:   #fb8e6a;
-  --input-bg:            #0f1524;
-  --input-border:        #1a2540;
-  --input-text:          #f8fafc;
-  --input-placeholder:   #94a3b8;
-  --logo-bg:             #fa4d2e;
-  --logo-text:           #f8fafc;
-  --sidebar-bg:          #05080f;
-  --sidebar-border:      #121a2b;
-
-  /* Gradients */
-  --gradient-primary:    linear-gradient(135deg, #fa4d2e, #fb8e6a);
-  --gradient-hero:       linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%);
-  --gradient-card:       linear-gradient(135deg, #090d15 0%, #0c111d 100%);
-
-  /* Shadows */
-  --shadow-primary:      0 10px 40px -10px rgba(250, 77, 46, 0.3);
-  --shadow-primary-hover: 0 14px 50px -10px rgba(250, 77, 46, 0.45);
-  --shadow-card:         0 4px 20px -4px rgba(5, 8, 15, 0.1);
-  --shadow-card-hover:   0 8px 30px rgba(250, 77, 46, 0.08);
-
-  /* Radius */
-  --radius:              0.75rem;
-  --radius-sm:           0.5rem;
-  --radius-lg:           1rem;
-}
-
-/* ─── Sunset — warm dark with amber undertones ──────────────────────── */
-[data-theme="sunset"] {
-  --background:          #1a1412;
-  --foreground:          #e8ddd4;
-  --surface:             #221c18;
-  --surface-secondary:   #2c2420;
-  --surface-tertiary:    #382e28;
-  --border:              #382e28;
-  --border-secondary:    #4a3e36;
-  --text-primary:        #f2e8e0;
-  --text-secondary:      #b5a89d;
-  --text-tertiary:       #887b70;
-  --text-muted:          #5e544b;
-  --accent-primary:      #fa4d2e;
-  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
-  --accent-emerald:      #4ade80;
-  --accent-emerald-bg:   rgba(22, 78, 42, 0.3);
-  --accent-amber:        #fbbf24;
-  --accent-amber-bg:     rgba(120, 53, 15, 0.35);
-  --accent-blue:         #7ab8f5;
-  --accent-blue-bg:      rgba(30, 58, 110, 0.3);
-  --accent-red:          #fb7185;
-  --accent-red-bg:       rgba(127, 29, 45, 0.3);
-  --btn-primary-bg:      #fa4d2e;
-  --btn-primary-text:    #f8fafc;
-  --btn-primary-hover:   #fb8e6a;
-  --input-bg:            #2c2420;
-  --input-border:        #4a3e36;
-  --input-text:          #f2e8e0;
-  --input-placeholder:   #5e544b;
-  --logo-bg:             #fa4d2e;
-  --logo-text:           #f8fafc;
-  --sidebar-bg:          #14100e;
-  --sidebar-border:      #2c2420;
-
-  /* Override the soft-light card gradient with a warm-dark equivalent */
-  --gradient-card:       linear-gradient(135deg, #221c18 0%, #2c2420 100%);
-  --shadow-card:         0 4px 20px -4px rgba(20, 16, 14, 0.4);
-}
-
-/* ─── Dim — mid-tone, low-light comfort ─────────────────────────────── */
-[data-theme="dim"] {
-  --background:          #22272e;
-  --foreground:          #cdd9e5;
-  --surface:             #2d333b;
-  --surface-secondary:   #353c47;
-  --surface-tertiary:    #3d4450;
-  --border:              #3d4450;
-  --border-secondary:    #4d5566;
-  --text-primary:        #e6edf3;
-  --text-secondary:      #9aabb8;
-  --text-tertiary:       #768390;
-  --text-muted:          #545d68;
-  --accent-primary:      #fa4d2e;
-  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
-  --accent-emerald:      #3fb950;
-  --accent-emerald-bg:   rgba(16, 69, 31, 0.35);
-  --accent-amber:        #d29922;
-  --accent-amber-bg:     rgba(110, 64, 8, 0.35);
-  --accent-blue:         #58a6ff;
-  --accent-blue-bg:      rgba(31, 60, 115, 0.35);
-  --accent-red:          #f85149;
-  --accent-red-bg:       rgba(120, 25, 22, 0.35);
-  --btn-primary-bg:      #fa4d2e;
-  --btn-primary-text:    #f8fafc;
-  --btn-primary-hover:   #fb8e6a;
-  --input-bg:            #2d333b;
-  --input-border:        #4d5566;
-  --input-text:          #e6edf3;
-  --input-placeholder:   #545d68;
-  --logo-bg:             #fa4d2e;
-  --logo-text:           #f8fafc;
-  --sidebar-bg:          #1c2128;
-  --sidebar-border:      #2d333b;
-
-  /* Override the soft-light card gradient with a cool-dark equivalent */
-  --gradient-card:       linear-gradient(135deg, #2d333b 0%, #353c47 100%);
-  --shadow-card:         0 4px 20px -4px rgba(28, 33, 40, 0.4);
-}
-
-/* ─── Soft Light (default) — warm off-white ─────────────────────────── */
+/* ─── Soft Light (default) — warm off-white ──────────────────────────
+   IMPORTANT: this block defines the FALLBACK values on :root. The
+   dark theme blocks below use [data-theme="…"] which has the same
+   (0,1,0) specificity as :root — so cascade ORDER decides the
+   winner. Always keep the dark themes BELOW this block, otherwise
+   :root wins via "later wins" and theme switching silently breaks.
+   That bug existed for the entire May 2 sweep and explains why
+   "switching themes did nothing" — it WAS calling setTheme, but the
+   :root values just kept winning. */
 :root,
-:root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) {
+[data-theme="soft-light"] {
   --background:          #f8f7f4;
   --foreground:          #1c1917;
   --surface:             #faf9f7;
@@ -183,6 +59,125 @@
   --radius:              0.75rem;
   --radius-sm:           0.5rem;
   --radius-lg:           1rem;
+}
+
+/* ─── Midnight — deep navy-black with orange accent (opt-in dark) ───── */
+[data-theme="midnight"] {
+  --background:          #05080f;
+  --foreground:          #f8fafc;
+  --surface:             #090d15;
+  --surface-secondary:   #0f1524;
+  --surface-tertiary:    #1a2540;
+  --border:              #121a2b;
+  --border-secondary:    #1f2b47;
+  --text-primary:        #f8fafc;
+  --text-secondary:      #94a3b8;
+  --text-tertiary:       #64748b;
+  --text-muted:          #475569;
+  --accent-primary:      #fa4d2e;
+  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
+  --accent-emerald:      #16a249;
+  --accent-emerald-bg:   rgba(22, 162, 73, 0.15);
+  --accent-amber:        #fbbf24;
+  --accent-amber-bg:     rgba(120, 53, 15, 0.3);
+  --accent-blue:         #60a5fa;
+  --accent-blue-bg:      rgba(30, 58, 138, 0.3);
+  --accent-red:          #ef4343;
+  --accent-red-bg:       rgba(239, 67, 67, 0.15);
+  --btn-primary-bg:      #fa4d2e;
+  --btn-primary-text:    #f8fafc;
+  --btn-primary-hover:   #fb8e6a;
+  --input-bg:            #0f1524;
+  --input-border:        #1a2540;
+  --input-text:          #f8fafc;
+  --input-placeholder:   #94a3b8;
+  --logo-bg:             #fa4d2e;
+  --logo-text:           #f8fafc;
+  --sidebar-bg:          #05080f;
+  --sidebar-border:      #121a2b;
+
+  /* Override the soft-light card gradient + shadows for the dark feel */
+  --gradient-card:       linear-gradient(135deg, #090d15 0%, #0c111d 100%);
+  --shadow-card:         0 4px 20px -4px rgba(5, 8, 15, 0.1);
+  --shadow-card-hover:   0 8px 30px rgba(250, 77, 46, 0.08);
+}
+
+/* ─── Sunset — warm dark with amber undertones ──────────────────────── */
+[data-theme="sunset"] {
+  --background:          #1a1412;
+  --foreground:          #e8ddd4;
+  --surface:             #221c18;
+  --surface-secondary:   #2c2420;
+  --surface-tertiary:    #382e28;
+  --border:              #382e28;
+  --border-secondary:    #4a3e36;
+  --text-primary:        #f2e8e0;
+  --text-secondary:      #b5a89d;
+  --text-tertiary:       #887b70;
+  --text-muted:          #5e544b;
+  --accent-primary:      #fa4d2e;
+  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
+  --accent-emerald:      #4ade80;
+  --accent-emerald-bg:   rgba(22, 78, 42, 0.3);
+  --accent-amber:        #fbbf24;
+  --accent-amber-bg:     rgba(120, 53, 15, 0.35);
+  --accent-blue:         #7ab8f5;
+  --accent-blue-bg:      rgba(30, 58, 110, 0.3);
+  --accent-red:          #fb7185;
+  --accent-red-bg:       rgba(127, 29, 45, 0.3);
+  --btn-primary-bg:      #fa4d2e;
+  --btn-primary-text:    #f8fafc;
+  --btn-primary-hover:   #fb8e6a;
+  --input-bg:            #2c2420;
+  --input-border:        #4a3e36;
+  --input-text:          #f2e8e0;
+  --input-placeholder:   #5e544b;
+  --logo-bg:             #fa4d2e;
+  --logo-text:           #f8fafc;
+  --sidebar-bg:          #14100e;
+  --sidebar-border:      #2c2420;
+
+  --gradient-card:       linear-gradient(135deg, #221c18 0%, #2c2420 100%);
+  --shadow-card:         0 4px 20px -4px rgba(20, 16, 14, 0.4);
+}
+
+/* ─── Dim — mid-tone, low-light comfort ─────────────────────────────── */
+[data-theme="dim"] {
+  --background:          #22272e;
+  --foreground:          #cdd9e5;
+  --surface:             #2d333b;
+  --surface-secondary:   #353c47;
+  --surface-tertiary:    #3d4450;
+  --border:              #3d4450;
+  --border-secondary:    #4d5566;
+  --text-primary:        #e6edf3;
+  --text-secondary:      #9aabb8;
+  --text-tertiary:       #768390;
+  --text-muted:          #545d68;
+  --accent-primary:      #fa4d2e;
+  --accent-primary-bg:   rgba(250, 77, 46, 0.15);
+  --accent-emerald:      #3fb950;
+  --accent-emerald-bg:   rgba(16, 69, 31, 0.35);
+  --accent-amber:        #d29922;
+  --accent-amber-bg:     rgba(110, 64, 8, 0.35);
+  --accent-blue:         #58a6ff;
+  --accent-blue-bg:      rgba(31, 60, 115, 0.35);
+  --accent-red:          #f85149;
+  --accent-red-bg:       rgba(120, 25, 22, 0.35);
+  --btn-primary-bg:      #fa4d2e;
+  --btn-primary-text:    #f8fafc;
+  --btn-primary-hover:   #fb8e6a;
+  --input-bg:            #2d333b;
+  --input-border:        #4d5566;
+  --input-text:          #e6edf3;
+  --input-placeholder:   #545d68;
+  --logo-bg:             #fa4d2e;
+  --logo-text:           #f8fafc;
+  --sidebar-bg:          #1c2128;
+  --sidebar-border:      #2d333b;
+
+  --gradient-card:       linear-gradient(135deg, #2d333b 0%, #353c47 100%);
+  --shadow-card:         0 4px 20px -4px rgba(28, 33, 40, 0.4);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
