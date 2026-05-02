@@ -60,15 +60,18 @@ export default function AuditLogPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Audit Log</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Audit Log</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Every human action in this workspace — who did what, when.
           </p>
         </div>
 
         {notMigrated && (
-          <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-300">Run manual_symbiosis_wave2.sql to enable audit logging.</p>
+          <div
+            className="p-4 mb-6 rounded-xl border"
+            style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+          >
+            <p className="text-sm" style={{ color: 'var(--accent-amber)' }}>Run manual_symbiosis_wave2.sql to enable audit logging.</p>
           </div>
         )}
 
@@ -87,7 +90,7 @@ export default function AuditLogPage() {
                     </div>
                     <div className="flex-1 min-w-0 pt-1">
                       <div className="flex items-center gap-2 flex-wrap text-xs">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                           {log.actor?.name || log.actor?.email || log.actorId.slice(-6)}
                         </span>
                         <span style={{ color: info.color }}>{info.label}</span>

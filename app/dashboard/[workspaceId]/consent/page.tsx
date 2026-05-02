@@ -48,15 +48,18 @@ export default function ConsentPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Consent &amp; Compliance</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Consent &amp; Compliance</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             TCPA and GDPR consent tracking per contact per channel. Required for SMS marketing at scale.
           </p>
         </div>
 
         {notMigrated && (
-          <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-300">Run manual_symbiosis_wave2.sql to enable consent tracking.</p>
+          <div
+            className="p-4 mb-6 rounded-xl border"
+            style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+          >
+            <p className="text-sm" style={{ color: 'var(--accent-amber)' }}>Run manual_symbiosis_wave2.sql to enable consent tracking.</p>
           </div>
         )}
 
@@ -73,14 +76,14 @@ export default function ConsentPage() {
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.color }} />
                 <span className="text-xs text-zinc-500">{cfg.label}</span>
               </div>
-              <p className="text-xl font-bold text-white">{summary[key] ?? 0}</p>
+              <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{summary[key] ?? 0}</p>
             </button>
           ))}
         </div>
 
         {records.length === 0 ? (
           <div className="text-center py-12 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <p className="text-sm font-medium text-white mb-1">No consent records yet</p>
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No consent records yet</p>
             <p className="text-xs text-zinc-500">
               Records appear automatically when a contact opts in or out (via keyword, webform, or API).
             </p>

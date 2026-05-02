@@ -66,21 +66,21 @@ export default function TemplatesPage() {
   const categories = ['all', ...Array.from(new Set(templates.map(t => t.category)))]
   const filtered = category === 'all' ? templates : templates.filter(t => t.category === category)
 
-  if (loading) return <div className="p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+  if (loading) return <div className="p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Agent Templates</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Agent Templates</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Start from a proven template. Install in one click — tweak after.
           </p>
         </div>
 
         {notMigrated && (
-          <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-300">Run manual_symbiosis_wave2.sql to see templates.</p>
+          <div className="p-4 mb-6 rounded-xl" style={{ background: 'var(--accent-amber-bg)', border: '1px solid var(--accent-amber-bg)' }}>
+            <p className="text-sm" style={{ color: 'var(--accent-amber)' }}>Run manual_symbiosis_wave2.sql to see templates.</p>
           </div>
         )}
 
@@ -90,10 +90,12 @@ export default function TemplatesPage() {
             <button
               key={c}
               onClick={() => setCategory(c)}
-              className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
-                category === c ? 'text-white' : 'text-zinc-400 bg-zinc-900 hover:bg-zinc-800 hover:text-white'
-              }`}
-              style={category === c ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+              className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+              style={
+                category === c
+                  ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                  : { background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }
+              }
             >
               {c === 'all' ? 'All' : CATEGORY_LABELS[c] || c}
             </button>
@@ -101,7 +103,7 @@ export default function TemplatesPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-16 text-sm text-zinc-500">
+          <div className="text-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>
             No templates available yet.
           </div>
         ) : (
@@ -109,34 +111,35 @@ export default function TemplatesPage() {
             {filtered.map(t => (
               <div
                 key={t.id}
-                className="group relative p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 transition-all flex flex-col"
+                className="group relative p-5 rounded-xl transition-all flex flex-col"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="text-3xl">{t.icon}</div>
                   {t.isOfficial && (
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' }}
+                      style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
                     >
                       Official
                     </span>
                   )}
                 </div>
-                <h3 className="text-base font-semibold text-white mb-1">{t.name}</h3>
-                <p className="text-xs text-zinc-500 mb-4 flex-1">{t.description}</p>
+                <h3 className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{t.name}</h3>
+                <p className="text-xs mb-4 flex-1" style={{ color: 'var(--text-muted)' }}>{t.description}</p>
                 <div className="flex flex-wrap gap-1 mb-4">
                   {t.suggestedChannels.slice(0, 4).map(ch => (
-                    <span key={ch} className="text-[10px] text-zinc-400 px-1.5 py-0.5 rounded bg-zinc-800">{ch}</span>
+                    <span key={ch} className="text-[10px] px-1.5 py-0.5 rounded" style={{ color: 'var(--text-tertiary)', background: 'var(--surface-tertiary)' }}>{ch}</span>
                   ))}
                 </div>
-                <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-                  <span className="text-[10px] text-zinc-500">
+                <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+                  <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                     {t.installCount} install{t.installCount === 1 ? '' : 's'}
                   </span>
                   <button
                     onClick={() => install(t)}
                     disabled={installing === t.id}
-                    className="text-xs font-semibold px-4 py-1.5 rounded-lg text-white hover:opacity-90 transition-colors disabled:opacity-50"
-                    style={{ background: '#fa4d2e' }}
+                    className="text-xs font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+                    style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
                   >
                     {installing === t.id ? 'Installing...' : 'Install'}
                   </button>

@@ -83,15 +83,22 @@ export default function NeedsAttentionPage() {
   const filtered = filter === 'all' ? items : items.filter(i => i.type === filter)
 
   if (loading) {
-    return <div className="flex-1 p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+    return (
+      <div className="flex-1 p-8">
+        <div
+          className="h-8 w-48 rounded animate-pulse"
+          style={{ background: 'var(--surface-tertiary)' }}
+        />
+      </div>
+    )
   }
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Needs Attention</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Needs Attention</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Conversations where your agents stopped, errored, or asked for help.
           </p>
         </div>
@@ -107,31 +114,38 @@ export default function NeedsAttentionPage() {
             <button
               key={s.key}
               onClick={() => setFilter(filter === s.key ? 'all' : s.key)}
-              className={`p-4 rounded-xl border text-left transition-colors ${
+              className="p-4 rounded-xl text-left transition-colors"
+              style={
                 filter === s.key
-                  ? 'border-zinc-600 bg-zinc-900'
-                  : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700'
-              }`}
+                  ? { border: '1px solid var(--border-secondary)', background: 'var(--surface-secondary)' }
+                  : { border: '1px solid var(--border)', background: 'var(--surface)' }
+              }
             >
               <div className="flex items-center gap-1.5 mb-2">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: SEVERITY[s.sev].dot }} />
-                <span className="text-xs text-zinc-500">{s.label}</span>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.label}</span>
               </div>
-              <p className="text-xl font-bold text-white">{s.count}</p>
+              <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{s.count}</p>
             </button>
           ))}
         </div>
 
         {/* Items */}
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <div className="w-12 h-12 mb-3 rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div
+            className="flex flex-col items-center justify-center py-16 rounded-xl"
+            style={{ border: '1px dashed var(--border-secondary)', background: 'var(--surface)' }}
+          >
+            <div
+              className="w-12 h-12 mb-3 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--accent-emerald-bg)' }}
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: 'var(--accent-emerald)' }}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-white">All clear</p>
-            <p className="text-xs text-zinc-500 mt-1">No conversations need your attention right now.</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>All clear</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>No conversations need your attention right now.</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -143,7 +157,8 @@ export default function NeedsAttentionPage() {
               return (
                 <div
                   key={`${item.contactId}-${i}`}
-                  className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 transition-colors"
+                  className="p-4 rounded-xl transition-colors"
+                  style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 mt-1.5">
@@ -159,23 +174,24 @@ export default function NeedsAttentionPage() {
                         {item.agent && (
                           <Link
                             href={`/dashboard/${workspaceId}/agents/${item.agent.id}`}
-                            className="text-xs font-medium text-zinc-300 hover:text-white"
+                            className="text-xs font-medium"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             {item.agent.name}
                           </Link>
                         )}
-                        <span className="ml-auto text-xs text-zinc-500">{timeAgo(item.at)}</span>
+                        <span className="ml-auto text-xs" style={{ color: 'var(--text-tertiary)' }}>{timeAgo(item.at)}</span>
                       </div>
-                      <p className="text-sm text-zinc-300 mb-1 leading-relaxed">
+                      <p className="text-sm mb-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                         {humanised?.long ?? item.reason}
                       </p>
                       {item.lastMessage && (
-                        <p className="text-xs text-zinc-500 italic truncate">
+                        <p className="text-xs italic truncate" style={{ color: 'var(--text-tertiary)' }}>
                           Last from contact: &ldquo;{item.lastMessage}&rdquo;
                         </p>
                       )}
                       {item.messageCount !== undefined && (
-                        <p className="text-xs text-zinc-500">{item.messageCount} messages exchanged</p>
+                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.messageCount} messages exchanged</p>
                       )}
                     </div>
                     {/* Actions — Take over (pauses the agent under a human
@@ -186,7 +202,12 @@ export default function NeedsAttentionPage() {
                         <button
                           type="button"
                           onClick={() => openAction('resume', item)}
-                          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                          style={{
+                            border: '1px solid var(--accent-emerald)',
+                            background: 'var(--accent-emerald-bg)',
+                            color: 'var(--accent-emerald)',
+                          }}
                         >
                           Resume agent
                         </button>
@@ -195,14 +216,16 @@ export default function NeedsAttentionPage() {
                         <button
                           type="button"
                           onClick={() => openAction('takeover', item)}
-                          className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                          style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
                         >
                           Take over
                         </button>
                       )}
                       <Link
                         href={`/dashboard/${workspaceId}/contacts/${item.contactId}`}
-                        className="text-[11px] text-zinc-500 hover:text-zinc-300 text-center"
+                        className="text-[11px] text-center"
+                        style={{ color: 'var(--text-tertiary)' }}
                       >
                         View contact
                       </Link>
@@ -214,7 +237,7 @@ export default function NeedsAttentionPage() {
           </div>
         )}
 
-        <p className="text-xs text-zinc-600 text-center mt-8">Auto-refreshing every 30 seconds</p>
+        <p className="text-xs text-center mt-8" style={{ color: 'var(--text-muted)' }}>Auto-refreshing every 30 seconds</p>
       </div>
 
       {modal && (

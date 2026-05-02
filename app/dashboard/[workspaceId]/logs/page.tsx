@@ -10,10 +10,10 @@ type LogWithAgent = Awaited<ReturnType<typeof db.messageLog.findMany<{
 export const dynamic = 'force-dynamic'
 
 const STATUS_STYLE: Record<string, { dot: string; text: string; label: string }> = {
-  SUCCESS: { dot: 'bg-emerald-400', text: 'text-emerald-400', label: 'Success' },
-  ERROR:   { dot: 'bg-red-400',     text: 'text-red-400',     label: 'Error' },
-  SKIPPED: { dot: 'bg-zinc-500',    text: 'text-zinc-500',    label: 'Skipped' },
-  PENDING: { dot: 'bg-yellow-400',  text: 'text-yellow-400',  label: 'Pending' },
+  SUCCESS: { dot: 'var(--accent-emerald)', text: 'var(--accent-emerald)', label: 'Success' },
+  ERROR:   { dot: 'var(--accent-red)',     text: 'var(--accent-red)',     label: 'Error' },
+  SKIPPED: { dot: 'var(--text-tertiary)',  text: 'var(--text-tertiary)',  label: 'Skipped' },
+  PENDING: { dot: 'var(--accent-amber)',   text: 'var(--accent-amber)',   label: 'Pending' },
 }
 
 const STATUS_TABS = ['ALL', 'SUCCESS', 'ERROR', 'SKIPPED'] as const
@@ -119,8 +119,8 @@ export default async function LogsPage({
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold">Message Logs</h1>
-            <p className="text-zinc-500 text-sm mt-1">
+            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Message Logs</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>
               {activeStatus === 'ALL'
                 ? `${totalUnfiltered} total messages`
                 : `${total} of ${totalUnfiltered} messages`}
@@ -129,22 +129,25 @@ export default async function LogsPage({
         </div>
 
         {/* Status filter tabs */}
-        <div className="flex items-center gap-1 mb-6 border-b border-zinc-800 pb-px">
+        <div
+          className="flex items-center gap-1 mb-6 pb-px"
+          style={{ borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: 'var(--border)' }}
+        >
           {STATUS_TABS.map((tab) => {
             const isActive = tab === activeStatus
             return (
               <Link
                 key={tab}
                 href={buildHref(workspaceId, { status: tab })}
-                className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-                  isActive
-                    ? 'text-white'
-                    : 'text-zinc-500 hover:text-zinc-300'
-                }`}
+                className="px-4 py-2 text-sm font-medium transition-colors relative hover:opacity-80"
+                style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
               >
                 {tab === 'ALL' ? 'All' : tab.charAt(0) + tab.slice(1).toLowerCase()}
                 {isActive && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />
+                  <span
+                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                    style={{ backgroundColor: 'var(--text-primary)' }}
+                  />
                 )}
               </Link>
             )
@@ -153,21 +156,24 @@ export default async function LogsPage({
 
         {/* Content */}
         {logs.length === 0 ? (
-          <div className="rounded-lg border border-zinc-800 p-12 text-center">
+          <div
+            className="rounded-lg p-12 text-center"
+            style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}
+          >
             {totalUnfiltered === 0 ? (
               <>
-                <div className="text-zinc-600 mb-3">
+                <div className="mb-3" style={{ color: 'var(--text-muted)' }}>
                   <svg className="w-10 h-10 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
                   </svg>
                 </div>
-                <p className="text-zinc-400 mb-1">No messages logged yet.</p>
-                <p className="text-zinc-600 text-sm">
+                <p className="mb-1" style={{ color: 'var(--text-secondary)' }}>No messages logged yet.</p>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Send a test message from the Playground to see logs here.
                 </p>
               </>
             ) : (
-              <p className="text-zinc-400">
+              <p style={{ color: 'var(--text-secondary)' }}>
                 No {activeStatus.toLowerCase()} messages found.
               </p>
             )}
@@ -175,7 +181,10 @@ export default async function LogsPage({
         ) : (
           <>
             {/* Table header */}
-            <div className="grid grid-cols-[auto_1fr_auto] gap-x-4 px-4 pb-2 text-xs text-zinc-600 font-medium">
+            <div
+              className="grid grid-cols-[auto_1fr_auto] gap-x-4 px-4 pb-2 text-xs font-medium"
+              style={{ color: 'var(--text-muted)' }}
+            >
               <span className="w-[180px]">Time</span>
               <span>Message</span>
               <span className="w-[80px] text-right">Status</span>
@@ -190,18 +199,24 @@ export default async function LogsPage({
                   <Link
                     key={log.id}
                     href={`/dashboard/${workspaceId}/logs/${log.id}`}
-                    className="grid grid-cols-[auto_1fr_auto] gap-x-4 items-start rounded-lg border border-zinc-800/60 bg-zinc-950/50 px-4 py-3 hover:border-zinc-700 hover:bg-zinc-900/30 transition-colors"
+                    className="grid grid-cols-[auto_1fr_auto] gap-x-4 items-start rounded-lg px-4 py-3 transition-colors"
+                    style={{
+                      borderWidth: '1px',
+                      borderStyle: 'solid',
+                      borderColor: 'var(--border)',
+                      backgroundColor: 'var(--surface)',
+                    }}
                   >
                     {/* Left: timestamp + meta */}
                     <div className="w-[180px] shrink-0">
-                      <p className="text-xs text-zinc-400" title={createdAt.toISOString()}>
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }} title={createdAt.toISOString()}>
                         {formatTime(createdAt)}
                       </p>
-                      <p className="text-[11px] text-zinc-600 mt-0.5">
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                         {relativeTime(createdAt)}
                       </p>
                       {log.agent && (
-                        <p className="text-[11px] text-zinc-500 mt-1 font-medium truncate">
+                        <p className="text-[11px] mt-1 font-medium truncate" style={{ color: 'var(--text-tertiary)' }}>
                           {log.agent.name}
                         </p>
                       )}
@@ -209,22 +224,22 @@ export default async function LogsPage({
 
                     {/* Center: message preview */}
                     <div className="min-w-0">
-                      <p className="text-sm text-zinc-300 leading-relaxed">
+                      <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
                         {cleanPreview(log.inboundMessage)}
                       </p>
                       {log.outboundReply && (
-                        <p className="text-sm text-zinc-500 mt-1 leading-relaxed">
-                          <span className="text-zinc-600 font-medium">Reply: </span>
+                        <p className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                          <span className="font-medium" style={{ color: 'var(--text-muted)' }}>Reply: </span>
                           {cleanPreview(log.outboundReply, 100)}
                         </p>
                       )}
                       {log.errorMessage && (
-                        <p className="text-xs text-red-400/80 mt-1 truncate">
+                        <p className="text-xs mt-1 truncate" style={{ color: 'var(--accent-red)' }}>
                           {log.errorMessage}
                         </p>
                       )}
                       {/* Meta row */}
-                      <div className="flex items-center gap-3 mt-1.5 text-[11px] text-zinc-600">
+                      <div className="flex items-center gap-3 mt-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
                         <span className="font-mono truncate max-w-[140px]" title={log.contactId}>
                           {log.contactId}
                         </span>
@@ -241,8 +256,8 @@ export default async function LogsPage({
 
                     {/* Right: status */}
                     <div className="w-[80px] text-right pt-0.5">
-                      <span className={`inline-flex items-center gap-1.5 text-xs ${style.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                      <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: style.text }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: style.dot }} />
                         {style.label}
                       </span>
                     </div>
@@ -257,20 +272,22 @@ export default async function LogsPage({
                 {page > 1 ? (
                   <Link
                     href={buildHref(workspaceId, { status: activeStatus, page: page - 1 })}
-                    className="text-zinc-400 hover:text-white transition-colors"
+                    className="transition-colors hover:opacity-80"
+                    style={{ color: 'var(--text-secondary)' }}
                   >
                     &larr; Previous
                   </Link>
                 ) : (
                   <span />
                 )}
-                <span className="text-zinc-500">
+                <span style={{ color: 'var(--text-tertiary)' }}>
                   Page {page} of {pages}
                 </span>
                 {page < pages ? (
                   <Link
                     href={buildHref(workspaceId, { status: activeStatus, page: page + 1 })}
-                    className="text-zinc-400 hover:text-white transition-colors"
+                    className="transition-colors hover:opacity-80"
+                    style={{ color: 'var(--text-secondary)' }}
                   >
                     Next &rarr;
                   </Link>

@@ -48,33 +48,33 @@ export default function CorrectionsPage() {
       .finally(() => setLoading(false))
   }, [workspaceId])
 
-  if (loading) return <div className="flex-1 p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+  if (loading) return <div className="flex-1 p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Corrections</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Corrections</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Messages where a human edited what the agent would have said. Each correction
             is stored as a training signal for improving future responses.
           </p>
         </div>
 
         {notMigrated && (
-          <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-300 font-medium">Migration pending</p>
-            <p className="text-xs text-amber-300/70 mt-1">
+          <div className="p-4 mb-6 rounded-xl" style={{ background: 'var(--accent-amber-bg)', border: '1px solid var(--accent-amber-bg)' }}>
+            <p className="text-sm font-medium" style={{ color: 'var(--accent-amber)' }}>Migration pending</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--accent-amber)' }}>
               Run manual_symbiosis_migration.sql to enable corrections tracking.
             </p>
           </div>
         )}
 
         {corrections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <div className="w-12 h-12 mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-2xl">✎</div>
-            <p className="text-sm font-medium text-white">No corrections yet</p>
-            <p className="text-xs text-zinc-500 mt-1 max-w-md text-center">
+          <div className="flex flex-col items-center justify-center py-16 rounded-xl" style={{ border: '1px dashed var(--border-secondary)', background: 'var(--surface-secondary)' }}>
+            <div className="w-12 h-12 mb-3 rounded-full flex items-center justify-center text-2xl" style={{ background: 'var(--surface-tertiary)' }}>✎</div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>No corrections yet</p>
+            <p className="text-xs mt-1 max-w-md text-center" style={{ color: 'var(--text-muted)' }}>
               When you correct an agent reply from a conversation, it&apos;ll appear here so
               you can see what&apos;s changing over time.
             </p>
@@ -82,52 +82,54 @@ export default function CorrectionsPage() {
         ) : (
           <div className="space-y-3">
             {corrections.map(c => (
-              <div key={c.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
+              <div key={c.id} className="p-4 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {c.messageLog.agent && (
                     <Link
                       href={`/dashboard/${workspaceId}/agents/${c.messageLog.agent.id}`}
-                      className="text-sm font-semibold text-white hover:underline"
+                      className="text-sm font-semibold hover:underline"
+                      style={{ color: 'var(--text-primary)' }}
                     >
                       {c.messageLog.agent.name}
                     </Link>
                   )}
                   <Link
                     href={`/dashboard/${workspaceId}/contacts/${c.messageLog.contactId}`}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 font-mono"
+                    className="text-xs font-mono"
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     {c.messageLog.contactId.slice(-8)}
                   </Link>
-                  <span className="ml-auto text-xs text-zinc-500">{timeAgo(c.createdAt)}</span>
+                  <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{timeAgo(c.createdAt)}</span>
                 </div>
 
-                <div className="p-3 rounded-lg bg-zinc-900 mb-2">
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Contact said</p>
-                  <p className="text-xs text-zinc-300">&ldquo;{c.messageLog.inboundMessage.slice(0, 200)}&rdquo;</p>
+                <div className="p-3 rounded-lg mb-2" style={{ background: 'var(--surface-tertiary)' }}>
+                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Contact said</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>&ldquo;{c.messageLog.inboundMessage.slice(0, 200)}&rdquo;</p>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-2">
-                  <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/20">
-                    <p className="text-[10px] text-red-400 uppercase tracking-wider mb-1">Original</p>
-                    <p className="text-xs text-zinc-300 whitespace-pre-wrap line-through decoration-red-500/30 decoration-1">
+                  <div className="p-3 rounded-lg" style={{ background: 'var(--accent-red-bg)', border: '1px solid var(--accent-red-bg)' }}>
+                    <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--accent-red)' }}>Original</p>
+                    <p className="text-xs whitespace-pre-wrap line-through decoration-red-500/30 decoration-1" style={{ color: 'var(--text-secondary)' }}>
                       {c.originalText}
                     </p>
                   </div>
-                  <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                    <p className="text-[10px] text-emerald-400 uppercase tracking-wider mb-1">Corrected</p>
-                    <p className="text-xs text-zinc-300 whitespace-pre-wrap">{c.correctedText}</p>
+                  <div className="p-3 rounded-lg" style={{ background: 'var(--accent-emerald-bg)', border: '1px solid var(--accent-emerald-bg)' }}>
+                    <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--accent-emerald)' }}>Corrected</p>
+                    <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{c.correctedText}</p>
                   </div>
                 </div>
 
                 {c.reason && (
-                  <p className="text-xs text-zinc-500 mt-3 pt-3 border-t border-zinc-800">
-                    <span className="text-zinc-400">Reason:</span> {c.reason}
+                  <p className="text-xs mt-3 pt-3" style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--text-tertiary)' }}>Reason:</span> {c.reason}
                   </p>
                 )}
 
-                <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between">
+                <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: '1px solid var(--border)' }}>
                   {c.savedAsKnowledge ? (
-                    <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                    <span className="text-[11px] font-medium flex items-center gap-1" style={{ color: 'var(--accent-emerald)' }}>
                       ✓ Saved to knowledge base
                     </span>
                   ) : (
@@ -144,15 +146,16 @@ export default function CorrectionsPage() {
                           setCorrections(prev => prev.map(p => p.id === c.id ? { ...p, savedAsKnowledge: true } : p))
                         }
                       }}
-                      className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-colors text-white"
-                      style={{ background: '#fa4d2e' }}
+                      className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-colors"
+                      style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
                     >
                       + Save as knowledge entry
                     </button>
                   )}
                   <Link
                     href={`/dashboard/${workspaceId}/replay/${c.messageLog.id}`}
-                    className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="text-[11px] transition-colors"
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     View full conversation →
                   </Link>

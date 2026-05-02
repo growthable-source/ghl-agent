@@ -5,10 +5,10 @@ interface PageProps {
   searchParams: Promise<{ state?: string }>
 }
 
-const STATE_COLORS: Record<string, string> = {
-  ACTIVE: 'bg-emerald-900/40 text-emerald-400',
-  PAUSED: 'bg-amber-900/40 text-amber-400',
-  COMPLETED: 'bg-zinc-800 text-zinc-400',
+const STATE_STYLES: Record<string, React.CSSProperties> = {
+  ACTIVE: { backgroundColor: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' },
+  PAUSED: { backgroundColor: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' },
+  COMPLETED: { backgroundColor: 'var(--surface-tertiary)', color: 'var(--text-secondary)' },
 }
 
 function relativeTime(date: Date): string {
@@ -87,43 +87,54 @@ export default async function ConversationsPage({ params, searchParams }: PagePr
   return (
     <div className="p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-2">Conversations</h1>
-        <p className="text-zinc-400 text-sm mb-8">Track and manage all agent conversations for this location.</p>
+        <h1 className="text-2xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Conversations</h1>
+        <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>Track and manage all agent conversations for this location.</p>
 
         {/* Filter tabs */}
-        <div className="flex gap-1 mb-6 border-b border-zinc-800">
-          {tabs.map(tab => (
-            <a
-              key={tab}
-              href={`/dashboard/${workspaceId}/conversations${tab === 'ALL' ? '' : `?state=${tab}`}`}
-              className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 -mb-px flex items-center gap-2 ${
-                activeTab === tab
-                  ? 'border-white text-white'
-                  : 'border-transparent text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {tab.toLowerCase()}
-              <span className={`text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
-                activeTab === tab
-                  ? 'bg-zinc-700 text-zinc-200'
-                  : 'bg-zinc-800/60 text-zinc-500'
-              }`}>
-                {counts[tab] ?? 0}
-              </span>
-            </a>
-          ))}
+        <div
+          className="flex gap-1 mb-6"
+          style={{ borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: 'var(--border)' }}
+        >
+          {tabs.map(tab => {
+            const isActive = activeTab === tab
+            return (
+              <a
+                key={tab}
+                href={`/dashboard/${workspaceId}/conversations${tab === 'ALL' ? '' : `?state=${tab}`}`}
+                className="px-4 py-2.5 text-sm font-medium capitalize transition-colors -mb-px flex items-center gap-2 hover:opacity-80"
+                style={{
+                  borderBottomWidth: '2px',
+                  borderBottomStyle: 'solid',
+                  borderBottomColor: isActive ? 'var(--text-primary)' : 'transparent',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                }}
+              >
+                {tab.toLowerCase()}
+                <span
+                  className="text-xs rounded-full px-1.5 py-0.5 tabular-nums"
+                  style={
+                    isActive
+                      ? { backgroundColor: 'var(--surface-tertiary)', color: 'var(--text-primary)' }
+                      : { backgroundColor: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }
+                  }
+                >
+                  {counts[tab] ?? 0}
+                </span>
+              </a>
+            )
+          })}
         </div>
 
         {conversations.length === 0 && (
           <div className="text-center py-16">
-            <div className="text-zinc-600 text-4xl mb-4">
+            <div className="text-4xl mb-4" style={{ color: 'var(--text-muted)' }}>
               <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
               </svg>
             </div>
-            <p className="text-zinc-400 text-sm font-medium mb-1">No conversations yet</p>
-            <p className="text-zinc-600 text-sm max-w-sm mx-auto">
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>No conversations yet</p>
+            <p className="text-sm max-w-sm mx-auto" style={{ color: 'var(--text-muted)' }}>
               When your agents start handling messages, conversations will appear here.
             </p>
           </div>
@@ -133,28 +144,35 @@ export default async function ConversationsPage({ params, searchParams }: PagePr
           {conversations.map(conv => {
             const preview = previewMap.get(`${conv.agentId}:${conv.contactId}`)
             return (
-              <div key={conv.id} className="rounded-lg border border-zinc-800 px-4 py-4 hover:border-zinc-700 transition-colors">
+              <div
+                key={conv.id}
+                className="rounded-lg px-4 py-4 transition-colors"
+                style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${STATE_COLORS[conv.state] ?? ''}`}>
+                      <span
+                        className="text-xs font-medium px-2 py-0.5 rounded"
+                        style={STATE_STYLES[conv.state] ?? {}}
+                      >
                         {conv.state}
                       </span>
-                      <span className="text-xs text-zinc-500">{conv.messageCount} messages</span>
+                      <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{conv.messageCount} messages</span>
                       {conv.agent && (
-                        <span className="text-xs text-zinc-600">via {conv.agent.name}</span>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>via {conv.agent.name}</span>
                       )}
                     </div>
-                    <p className="text-xs text-zinc-500 font-mono truncate mt-0.5">{conv.contactId}</p>
+                    <p className="text-xs font-mono truncate mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{conv.contactId}</p>
                     {preview && (
-                      <p className="text-sm text-zinc-300 mt-1.5 truncate">
+                      <p className="text-sm mt-1.5 truncate" style={{ color: 'var(--text-primary)' }}>
                         {preview.length > 120 ? preview.slice(0, 120) + '...' : preview}
                       </p>
                     )}
                     {conv.pauseReason && (
-                      <p className="text-xs text-amber-500 mt-1">Paused: {conv.pauseReason}</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--accent-amber)' }}>Paused: {conv.pauseReason}</p>
                     )}
-                    <p className="text-xs text-zinc-600 mt-1">
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                       Updated {relativeTime(new Date(conv.updatedAt))}
                     </p>
                   </div>
@@ -170,7 +188,13 @@ export default async function ConversationsPage({ params, searchParams }: PagePr
                       }}>
                         <button
                           type="submit"
-                          className="text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded px-2 py-1 transition-colors"
+                          className="text-xs rounded px-2 py-1 transition-colors hover:opacity-80"
+                          style={{
+                            color: 'var(--text-secondary)',
+                            borderWidth: '1px',
+                            borderStyle: 'solid',
+                            borderColor: 'var(--border)',
+                          }}
                         >
                           Resume
                         </button>
@@ -187,7 +211,13 @@ export default async function ConversationsPage({ params, searchParams }: PagePr
                       }}>
                         <button
                           type="submit"
-                          className="text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded px-2 py-1 transition-colors"
+                          className="text-xs rounded px-2 py-1 transition-colors hover:opacity-80"
+                          style={{
+                            color: 'var(--text-secondary)',
+                            borderWidth: '1px',
+                            borderStyle: 'solid',
+                            borderColor: 'var(--border)',
+                          }}
                         >
                           Pause
                         </button>

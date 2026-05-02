@@ -158,10 +158,17 @@ export default function NextActionsPage() {
     return (
       <div className="flex-1 p-8">
         <div className="max-w-6xl mx-auto">
-          <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse mb-8" />
+          <div
+            className="h-8 w-48 rounded animate-pulse mb-8"
+            style={{ background: 'var(--surface-tertiary)' }}
+          />
           <div className="space-y-3">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-20 bg-zinc-900/60 border border-zinc-800 rounded-xl animate-pulse" />
+              <div
+                key={i}
+                className="h-20 rounded-xl animate-pulse"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+              />
             ))}
           </div>
         </div>
@@ -176,28 +183,35 @@ export default function NextActionsPage() {
         {/* ─── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white">Next Actions</h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Next Actions</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Scheduled follow-ups from your agents — auto-cancel when contacts respond.
             </p>
           </div>
           {/* View toggle */}
-          <div className="flex gap-1 p-1 rounded-lg bg-zinc-900 border border-zinc-800">
+          <div
+            className="flex gap-1 p-1 rounded-lg"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          >
             <button
               onClick={() => setViewMode('timeline')}
-              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
-                viewMode === 'timeline' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              style={viewMode === 'timeline' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+              className="text-xs font-medium px-3 py-1.5 rounded-md transition-colors"
+              style={
+                viewMode === 'timeline'
+                  ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                  : { background: 'transparent', color: 'var(--text-secondary)' }
+              }
             >
               Timeline
             </button>
             <button
               onClick={() => setViewMode('calendar')}
-              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
-                viewMode === 'calendar' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-              style={viewMode === 'calendar' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+              className="text-xs font-medium px-3 py-1.5 rounded-md transition-colors"
+              style={
+                viewMode === 'calendar'
+                  ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                  : { background: 'transparent', color: 'var(--text-secondary)' }
+              }
             >
               Calendar
             </button>
@@ -206,21 +220,33 @@ export default function NextActionsPage() {
 
         {/* ─── Summary tiles ───────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-8">
-          <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <p className="text-xs text-zinc-500 mb-1">Total Scheduled</p>
-            <p className="text-2xl font-bold text-white">{summary?.total ?? 0}</p>
+          <div
+            className="p-4 rounded-xl"
+            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+          >
+            <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>Total Scheduled</p>
+            <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{summary?.total ?? 0}</p>
           </div>
-          <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <p className="text-xs text-zinc-500 mb-1">Next Hour</p>
-            <p className="text-2xl font-bold text-white">{buckets['Next hour'].length}</p>
+          <div
+            className="p-4 rounded-xl"
+            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+          >
+            <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>Next Hour</p>
+            <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{buckets['Next hour'].length}</p>
           </div>
-          <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <p className="text-xs text-zinc-500 mb-1">Today</p>
-            <p className="text-2xl font-bold text-white">{buckets.Today.length + buckets['Next hour'].length}</p>
+          <div
+            className="p-4 rounded-xl"
+            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+          >
+            <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>Today</p>
+            <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{buckets.Today.length + buckets['Next hour'].length}</p>
           </div>
-          <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <p className="text-xs text-zinc-500 mb-1">This Week</p>
-            <p className="text-2xl font-bold text-white">
+          <div
+            className="p-4 rounded-xl"
+            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+          >
+            <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>This Week</p>
+            <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
               {buckets['Next hour'].length + buckets.Today.length + buckets.Tomorrow.length + buckets['This week'].length}
             </p>
           </div>
@@ -231,12 +257,12 @@ export default function NextActionsPage() {
           <div className="mb-6 flex flex-wrap gap-2">
             <button
               onClick={() => setAgentFilter('all')}
-              className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+              className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+              style={
                 agentFilter === 'all'
-                  ? 'text-white'
-                  : 'text-zinc-400 bg-zinc-900 hover:bg-zinc-800 hover:text-white'
-              }`}
-              style={agentFilter === 'all' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+                  ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                  : { background: 'var(--surface)', color: 'var(--text-secondary)' }
+              }
             >
               All agents ({summary?.total ?? 0})
             </button>
@@ -244,12 +270,12 @@ export default function NextActionsPage() {
               <button
                 key={a.id}
                 onClick={() => setAgentFilter(a.id)}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+                style={
                   agentFilter === a.id
-                    ? 'text-white'
-                    : 'text-zinc-400 bg-zinc-900 hover:bg-zinc-800 hover:text-white'
-                }`}
-                style={agentFilter === a.id ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+                    ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                    : { background: 'var(--surface)', color: 'var(--text-secondary)' }
+                }
               >
                 {a.agentName} ({a.count})
               </button>
@@ -259,21 +285,27 @@ export default function NextActionsPage() {
 
         {/* ─── Empty state ─────────────────────────────────────────────── */}
         {jobs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 px-6 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <div className="w-16 h-16 mb-4 rounded-full bg-zinc-800 flex items-center justify-center">
-              <svg className="w-8 h-8 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <div
+            className="flex flex-col items-center justify-center py-20 px-6 rounded-xl"
+            style={{ border: '1px dashed var(--border-secondary)', background: 'var(--surface)' }}
+          >
+            <div
+              className="w-16 h-16 mb-4 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--surface-tertiary)' }}
+            >
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} style={{ color: 'var(--text-tertiary)' }}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-white mb-1">No scheduled actions</h3>
-            <p className="text-sm text-zinc-400 text-center max-w-md mb-4">
+            <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>No scheduled actions</h3>
+            <p className="text-sm text-center max-w-md mb-4" style={{ color: 'var(--text-secondary)' }}>
               Your agents have no follow-ups queued. When they schedule one — either via sequences or by
               deciding themselves — it will appear here so you can review or cancel it.
             </p>
             <Link
               href={`/dashboard/${workspaceId}/agents`}
               className="text-sm font-medium hover:underline"
-              style={{ color: '#fa4d2e' }}
+              style={{ color: 'var(--accent-primary)' }}
             >
               Configure agent follow-ups →
             </Link>
@@ -290,12 +322,13 @@ export default function NextActionsPage() {
               return (
                 <div key={bucketName}>
                   <div className="flex items-center gap-2 mb-3">
-                    <h2 className={`text-xs font-semibold uppercase tracking-wider ${
-                      isOverdue ? 'text-red-400' : 'text-zinc-500'
-                    }`}>
+                    <h2
+                      className="text-xs font-semibold uppercase tracking-wider"
+                      style={{ color: isOverdue ? 'var(--accent-red)' : 'var(--text-tertiary)' }}
+                    >
                       {bucketName} ({bucketJobs.length})
                     </h2>
-                    <div className="flex-1 h-px bg-zinc-800" />
+                    <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
                   </div>
 
                   <div className="space-y-2">
@@ -308,17 +341,18 @@ export default function NextActionsPage() {
                       return (
                         <div
                           key={job.id}
-                          className="group flex items-start gap-4 p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 transition-colors"
+                          className="group flex items-start gap-4 p-4 rounded-xl transition-colors"
+                          style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
                         >
                           {/* Timeline dot */}
                           <div className="flex-shrink-0 mt-1">
                             <div
                               className="w-2.5 h-2.5 rounded-full"
                               style={{
-                                background: time.urgency === 'imminent' ? '#fa4d2e'
-                                  : time.urgency === 'soon' ? '#fbbf24'
-                                  : '#52525b',
-                                boxShadow: time.urgency === 'imminent' ? '0 0 0 4px rgba(250,77,46,0.15)' : undefined,
+                                background: time.urgency === 'imminent' ? 'var(--accent-primary)'
+                                  : time.urgency === 'soon' ? 'var(--accent-amber)'
+                                  : 'var(--text-muted)',
+                                boxShadow: time.urgency === 'imminent' ? '0 0 0 4px var(--accent-primary-bg)' : undefined,
                               }}
                             />
                           </div>
@@ -330,15 +364,16 @@ export default function NextActionsPage() {
                               {job.agent ? (
                                 <Link
                                   href={`/dashboard/${workspaceId}/agents/${job.agent.id}`}
-                                  className="text-sm font-semibold text-white hover:underline"
+                                  className="text-sm font-semibold hover:underline"
+                                  style={{ color: 'var(--text-primary)' }}
                                 >
                                   {job.agent.name}
                                 </Link>
                               ) : (
-                                <span className="text-sm font-semibold text-zinc-500">(deleted agent)</span>
+                                <span className="text-sm font-semibold" style={{ color: 'var(--text-tertiary)' }}>(deleted agent)</span>
                               )}
 
-                              <span className="text-zinc-600 text-xs">→</span>
+                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>→</span>
 
                               <span
                                 className="text-[11px] font-medium px-2 py-0.5 rounded-full"
@@ -349,40 +384,43 @@ export default function NextActionsPage() {
 
                               <span
                                 className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                                style={{ background: 'rgba(250,77,46,0.08)', color: '#fa4d2e' }}
+                                style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
                                 title={trigger.desc}
                               >
                                 {trigger.label}
                               </span>
 
                               {job.totalSteps > 1 && (
-                                <span className="text-[11px] text-zinc-500">
+                                <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
                                   Step {job.currentStep} of {job.totalSteps}
                                 </span>
                               )}
 
-                              <span className="ml-auto text-xs text-zinc-500" title={exact}>
-                                <span className={
-                                  time.urgency === 'imminent' ? 'text-red-400 font-medium'
-                                  : time.urgency === 'soon' ? 'text-amber-400 font-medium'
-                                  : 'text-zinc-400'
-                                }>
+                              <span className="ml-auto text-xs" style={{ color: 'var(--text-tertiary)' }} title={exact}>
+                                <span
+                                  className="font-medium"
+                                  style={{
+                                    color: time.urgency === 'imminent' ? 'var(--accent-red)'
+                                      : time.urgency === 'soon' ? 'var(--accent-amber)'
+                                      : 'var(--text-secondary)',
+                                  }}
+                                >
                                   {time.label}
                                 </span>
-                                <span className="text-zinc-600"> · {exact}</span>
+                                <span style={{ color: 'var(--text-muted)' }}> · {exact}</span>
                               </span>
                             </div>
 
                             {/* Sequence + contact */}
-                            <p className="text-xs text-zinc-500 mb-1.5">
-                              <span className="text-zinc-400">{job.sequence.name}</span>
-                              <span className="mx-1.5 text-zinc-700">·</span>
-                              Contact <span className="text-zinc-400 font-mono">{job.contactId.slice(-8)}</span>
+                            <p className="text-xs mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>{job.sequence.name}</span>
+                              <span className="mx-1.5" style={{ color: 'var(--text-muted)' }}>·</span>
+                              Contact <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>{job.contactId.slice(-8)}</span>
                             </p>
 
                             {/* Message preview */}
                             {job.preview && (
-                              <p className="text-xs text-zinc-500 italic line-clamp-1">
+                              <p className="text-xs italic line-clamp-1" style={{ color: 'var(--text-tertiary)' }}>
                                 &ldquo;{job.preview}{job.preview.length >= 120 ? '…' : ''}&rdquo;
                               </p>
                             )}
@@ -395,13 +433,15 @@ export default function NextActionsPage() {
                                 <button
                                   onClick={() => cancelJob(job.id)}
                                   disabled={cancellingId === job.id}
-                                  className="text-xs font-medium py-1.5 px-3 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                                  className="text-xs font-medium py-1.5 px-3 rounded-lg transition-colors"
+                                  style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
                                 >
                                   {cancellingId === job.id ? '...' : 'Confirm'}
                                 </button>
                                 <button
                                   onClick={() => setCancelConfirm(null)}
-                                  className="text-xs font-medium py-1.5 px-2 rounded-lg text-zinc-500 hover:text-zinc-300 transition-colors"
+                                  className="text-xs font-medium py-1.5 px-2 rounded-lg transition-colors"
+                                  style={{ color: 'var(--text-tertiary)' }}
                                 >
                                   Keep
                                 </button>
@@ -409,7 +449,8 @@ export default function NextActionsPage() {
                             ) : (
                               <button
                                 onClick={() => setCancelConfirm(job.id)}
-                                className="text-xs font-medium py-1.5 px-3 rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-500/40 transition-colors opacity-0 group-hover:opacity-100"
+                                className="text-xs font-medium py-1.5 px-3 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
                               >
                                 Cancel
                               </button>
@@ -427,7 +468,7 @@ export default function NextActionsPage() {
 
         {/* ─── Footer note ─────────────────────────────────────────────── */}
         {jobs.length > 0 && (
-          <p className="text-xs text-zinc-600 text-center mt-8">
+          <p className="text-xs text-center mt-8" style={{ color: 'var(--text-muted)' }}>
             Auto-refreshing every 30 seconds · Follow-ups cancel automatically when contacts reply
           </p>
         )}
@@ -473,7 +514,11 @@ function CalendarView({
           const d = new Date(today)
           d.setDate(today.getDate() + i)
           return (
-            <div key={i} className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 text-center">
+            <div
+              key={i}
+              className="text-[10px] font-semibold uppercase tracking-wider text-center"
+              style={{ color: 'var(--text-muted)' }}
+            >
               {dayNames[d.getDay()]}
             </div>
           )
@@ -489,23 +534,27 @@ function CalendarView({
           return (
             <div
               key={i}
-              className={`min-h-[120px] p-2 rounded-lg border transition-colors ${
+              className="min-h-[120px] p-2 rounded-lg transition-colors"
+              style={
                 isToday
-                  ? 'border-orange-500/40 bg-orange-500/5'
+                  ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
                   : day.jobs.length > 0
-                  ? 'border-zinc-700 bg-zinc-900/60'
-                  : 'border-zinc-800 bg-zinc-900/30'
-              }`}
+                  ? { border: '1px solid var(--border-secondary)', background: 'var(--surface-secondary)' }
+                  : { border: '1px solid var(--border)', background: 'var(--surface)' }
+              }
             >
               <div className="flex items-baseline justify-between mb-2">
-                <span className={`text-xs font-semibold ${isToday ? 'text-orange-400' : 'text-zinc-400'}`}>
+                <span
+                  className="text-xs font-semibold"
+                  style={{ color: isToday ? 'var(--accent-primary)' : 'var(--text-secondary)' }}
+                >
                   {dayNum}
                 </span>
                 {day.date.getDate() === 1 && (
-                  <span className="text-[10px] text-zinc-500">{monthName}</span>
+                  <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{monthName}</span>
                 )}
                 {day.jobs.length > 0 && (
-                  <span className="text-[10px] font-bold text-zinc-500">{day.jobs.length}</span>
+                  <span className="text-[10px] font-bold" style={{ color: 'var(--text-tertiary)' }}>{day.jobs.length}</span>
                 )}
               </div>
               <div className="space-y-1">
@@ -515,14 +564,16 @@ function CalendarView({
                   return (
                     <div
                       key={job.id}
-                      className="group relative text-[10px] px-1.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors truncate"
+                      className="group relative text-[10px] px-1.5 py-1 rounded transition-colors truncate"
+                      style={{ background: 'var(--surface-tertiary)' }}
                       title={`${hhmm} · ${job.agent?.name} · ${job.sequence.name}`}
                     >
-                      <span className="text-zinc-400">{hhmm}</span>{' '}
-                      <span className="text-zinc-300 truncate">{job.agent?.name || '—'}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{hhmm}</span>{' '}
+                      <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{job.agent?.name || '—'}</span>
                       <button
                         onClick={(e) => { e.stopPropagation(); onCancel(job.id) }}
-                        className="absolute top-0.5 right-0.5 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ color: 'var(--text-muted)' }}
                         title="Cancel"
                       >
                         <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -535,7 +586,8 @@ function CalendarView({
                 {day.jobs.length > 4 && (
                   <Link
                     href={`/dashboard/${workspaceId}/next-actions`}
-                    className="block text-[10px] text-orange-400 font-medium text-center py-0.5"
+                    className="block text-[10px] font-medium text-center py-0.5"
+                    style={{ color: 'var(--accent-primary)' }}
                   >
                     +{day.jobs.length - 4} more
                   </Link>

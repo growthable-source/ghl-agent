@@ -51,8 +51,8 @@ export default function DecisionsPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Decision Log</h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Decision Log</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Why your agents did what they did — every tool call, every reply, full trace.
           </p>
         </div>
@@ -64,17 +64,17 @@ export default function DecisionsPage() {
             onChange={e => setOnlyActions(e.target.checked)}
             className="w-4 h-4 rounded accent-orange-500"
           />
-          <span className="text-sm text-zinc-300">Only show messages with tool actions</span>
+          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Only show messages with tool actions</span>
         </label>
 
         {loading ? (
           <div className="space-y-2">
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-24 bg-zinc-900/40 border border-zinc-800 rounded-xl animate-pulse" />
+              <div key={i} className="h-24 rounded-xl animate-pulse" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }} />
             ))}
           </div>
         ) : decisions.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500 text-sm">No decisions logged yet</div>
+          <div className="text-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>No decisions logged yet</div>
         ) : (
           <div className="space-y-2">
             {decisions.map(d => {
@@ -82,7 +82,8 @@ export default function DecisionsPage() {
               return (
                 <div
                   key={d.id}
-                  className="border border-zinc-800 rounded-xl bg-zinc-900/40 overflow-hidden"
+                  className="rounded-xl overflow-hidden"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
                 >
                   <button
                     onClick={() => setExpanded(isOpen ? null : d.id)}
@@ -93,13 +94,14 @@ export default function DecisionsPage() {
                         <Link
                           href={`/dashboard/${workspaceId}/agents/${d.agent.id}`}
                           onClick={e => e.stopPropagation()}
-                          className="text-sm font-semibold text-white hover:underline"
+                          className="text-sm font-semibold hover:underline"
+                          style={{ color: 'var(--text-primary)' }}
                         >
                           {d.agent.name}
                         </Link>
                       )}
                       {d.status === 'ERROR' && (
-                        <span className="text-[10px] font-medium text-red-400 px-1.5 py-0.5 rounded bg-red-500/10">ERROR</span>
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ color: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}>ERROR</span>
                       )}
                       {d.actionsPerformed?.length > 0 && (
                         <div className="flex gap-1 flex-wrap">
@@ -114,56 +116,56 @@ export default function DecisionsPage() {
                           ))}
                         </div>
                       )}
-                      <span className="ml-auto text-xs text-zinc-500">{timeAgo(d.createdAt)}</span>
+                      <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{timeAgo(d.createdAt)}</span>
                     </div>
-                    <p className="text-xs text-zinc-500 mb-1">
-                      <span className="text-zinc-600">Contact said:</span>{' '}
-                      <span className="text-zinc-300">&ldquo;{d.inboundMessage?.slice(0, 140)}&rdquo;</span>
+                    <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Contact said:</span>{' '}
+                      <span style={{ color: 'var(--text-secondary)' }}>&ldquo;{d.inboundMessage?.slice(0, 140)}&rdquo;</span>
                     </p>
                     {d.outboundReply && (
-                      <p className="text-xs text-zinc-500">
-                        <span className="text-zinc-600">Agent replied:</span>{' '}
-                        <span className="text-zinc-300">&ldquo;{d.outboundReply.slice(0, 140)}&rdquo;</span>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Agent replied:</span>{' '}
+                        <span style={{ color: 'var(--text-secondary)' }}>&ldquo;{d.outboundReply.slice(0, 140)}&rdquo;</span>
                       </p>
                     )}
                   </button>
 
                   {isOpen && (
-                    <div className="px-4 pb-4 border-t border-zinc-800 pt-4 bg-zinc-950/40">
+                    <div className="px-4 pb-4 pt-4" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-secondary)' }}>
                       <div className="grid grid-cols-2 gap-3 text-xs mb-4">
-                        <div className="p-3 rounded-lg bg-zinc-900">
-                          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Tokens used</p>
-                          <p className="text-white font-semibold">{d.tokensUsed?.toLocaleString() || 0}</p>
+                        <div className="p-3 rounded-lg" style={{ background: 'var(--surface-tertiary)' }}>
+                          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Tokens used</p>
+                          <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{d.tokensUsed?.toLocaleString() || 0}</p>
                         </div>
-                        <div className="p-3 rounded-lg bg-zinc-900">
-                          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Status</p>
-                          <p className="text-white font-semibold">{d.status}</p>
+                        <div className="p-3 rounded-lg" style={{ background: 'var(--surface-tertiary)' }}>
+                          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Status</p>
+                          <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{d.status}</p>
                         </div>
                       </div>
 
                       {d.errorMessage && (
-                        <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/20 mb-3">
-                          <p className="text-[10px] text-red-400 uppercase tracking-wider mb-1">Error</p>
-                          <p className="text-xs text-red-300">{d.errorMessage}</p>
+                        <div className="p-3 rounded-lg mb-3" style={{ background: 'var(--accent-red-bg)', border: '1px solid var(--accent-red-bg)' }}>
+                          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--accent-red)' }}>Error</p>
+                          <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{d.errorMessage}</p>
                         </div>
                       )}
 
                       <div className="mb-3">
-                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Full inbound</p>
-                        <p className="text-xs text-zinc-300 p-3 bg-zinc-900 rounded-lg whitespace-pre-wrap">{d.inboundMessage}</p>
+                        <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Full inbound</p>
+                        <p className="text-xs p-3 rounded-lg whitespace-pre-wrap" style={{ color: 'var(--text-secondary)', background: 'var(--surface-tertiary)' }}>{d.inboundMessage}</p>
                       </div>
 
                       {d.outboundReply && (
                         <div className="mb-3">
-                          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Full reply</p>
-                          <p className="text-xs text-zinc-300 p-3 bg-zinc-900 rounded-lg whitespace-pre-wrap">{d.outboundReply}</p>
+                          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Full reply</p>
+                          <p className="text-xs p-3 rounded-lg whitespace-pre-wrap" style={{ color: 'var(--text-secondary)', background: 'var(--surface-tertiary)' }}>{d.outboundReply}</p>
                         </div>
                       )}
 
                       {d.toolCallTrace && (
                         <div>
-                          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Tool call trace</p>
-                          <pre className="text-[11px] text-zinc-400 p-3 bg-zinc-900 rounded-lg overflow-x-auto font-mono">
+                          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Tool call trace</p>
+                          <pre className="text-[11px] p-3 rounded-lg overflow-x-auto font-mono" style={{ color: 'var(--text-tertiary)', background: 'var(--surface-tertiary)' }}>
                             {JSON.stringify(d.toolCallTrace, null, 2)}
                           </pre>
                         </div>

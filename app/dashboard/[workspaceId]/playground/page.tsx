@@ -26,8 +26,8 @@ export default async function PlaygroundPage({
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold mb-1">Playground</h1>
-        <p className="text-zinc-400 text-sm">Send test messages to any agent and see exactly how it responds.</p>
+        <h1 className="text-2xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Playground</h1>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Send test messages to any agent and see exactly how it responds.</p>
       </div>
       <PlaygroundPanel workspaceId={workspaceId} agents={agents} defaultAgentId={defaultAgentId} />
     </div>

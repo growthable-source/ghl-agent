@@ -70,20 +70,24 @@ export default function ActivityPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white">Live Activity</h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Live Activity</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Every action your agents take, as it happens.
             </p>
           </div>
           <button
             onClick={() => setLive(!live)}
-            className={`flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+            className="flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+            style={
               live
-                ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
-                : 'border-zinc-700 text-zinc-400'
-            }`}
+                ? { border: '1px solid var(--accent-emerald)', color: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }
+                : { border: '1px solid var(--border)', color: 'var(--text-secondary)', background: 'transparent' }
+            }
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${live ? 'animate-pulse' : ''}`}
+              style={{ background: live ? 'var(--accent-emerald)' : 'var(--text-muted)' }}
+            />
             {live ? 'Live' : 'Paused'}
           </button>
         </div>
@@ -101,12 +105,12 @@ export default function ActivityPage() {
             <button
               key={f.k}
               onClick={() => setFilter(f.k)}
-              className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+              className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+              style={
                 filter === f.k
-                  ? 'text-white'
-                  : 'text-zinc-400 bg-zinc-900 hover:bg-zinc-800 hover:text-white'
-              }`}
-              style={filter === f.k ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+                  ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                  : { background: 'var(--surface)', color: 'var(--text-secondary)' }
+              }
             >
               {f.l}
             </button>
@@ -117,23 +121,33 @@ export default function ActivityPage() {
         {loading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-14 bg-zinc-900/40 border border-zinc-800 rounded-lg animate-pulse" />
+              <div
+                key={i}
+                className="h-14 rounded-lg animate-pulse"
+                style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+              />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500 text-sm">
+          <div className="text-center py-16 text-sm" style={{ color: 'var(--text-tertiary)' }}>
             No recent activity
           </div>
         ) : (
           <div className="relative">
             {/* Vertical timeline line */}
-            <div className="absolute left-[11px] top-3 bottom-3 w-px bg-zinc-800" />
+            <div
+              className="absolute left-[11px] top-3 bottom-3 w-px"
+              style={{ background: 'var(--border)' }}
+            />
 
             <div className="space-y-1">
               {filtered.map(event => (
                 <div key={event.id} className="relative flex items-start gap-3 p-2 rounded-lg hover:bg-zinc-900/40 transition-colors">
                   {/* Dot */}
-                  <div className="relative z-10 flex-shrink-0 w-6 h-6 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center text-xs">
+                  <div
+                    className="relative z-10 flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                  >
                     {event.icon}
                   </div>
 
@@ -143,32 +157,39 @@ export default function ActivityPage() {
                       {event.agent ? (
                         <Link
                           href={`/dashboard/${workspaceId}/agents/${event.agent.id}`}
-                          className="font-semibold text-white hover:underline"
+                          className="font-semibold hover:underline"
+                          style={{ color: 'var(--text-primary)' }}
                         >
                           {event.agent.name}
                         </Link>
                       ) : (
-                        <span className="font-semibold text-zinc-500">(unknown)</span>
+                        <span className="font-semibold" style={{ color: 'var(--text-tertiary)' }}>(unknown)</span>
                       )}
-                      <span className="text-zinc-400">{event.label}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{event.label}</span>
                       {event.channel && (
-                        <span className="text-[10px] font-medium text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800">
+                        <span
+                          className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                          style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
+                        >
                           {event.channel}
                         </span>
                       )}
                       {event.status === 'ERROR' && (
-                        <span className="text-[10px] font-medium text-red-400 px-1.5 py-0.5 rounded bg-red-500/10">
+                        <span
+                          className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                          style={{ color: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
+                        >
                           ERROR
                         </span>
                       )}
-                      <span className="ml-auto text-[10px] text-zinc-600">{timeAgo(event.at)}</span>
+                      <span className="ml-auto text-[10px]" style={{ color: 'var(--text-muted)' }}>{timeAgo(event.at)}</span>
                     </div>
                     {event.detail && (
-                      <p className="text-xs text-zinc-500 truncate mt-0.5">
+                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
                         &ldquo;{event.detail}&rdquo;
                       </p>
                     )}
-                    <p className="text-[10px] text-zinc-600 mt-0.5">
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                       Contact <span className="font-mono">{event.contactId.slice(-8)}</span>
                     </p>
                   </div>

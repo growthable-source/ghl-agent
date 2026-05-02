@@ -57,8 +57,8 @@ export default async function SimulationsPage({ params }: Params) {
     <div className="p-8 max-w-5xl space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold">Simulations</h1>
-          <p className="text-sm text-zinc-500 mt-1 max-w-xl">
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Simulations</h1>
+          <p className="text-sm mt-1 max-w-xl" style={{ color: 'var(--text-secondary)' }}>
             Run synthetic conversations against your agents to find failures
             before your customers do. Every completed simulation is reviewed
             automatically — improvements land in the platform learnings
@@ -69,14 +69,16 @@ export default async function SimulationsPage({ params }: Params) {
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/dashboard/${workspaceId}/simulations/swarm/new`}
-              className="text-sm font-medium border border-zinc-700 text-zinc-200 hover:text-white hover:border-zinc-500 rounded-lg px-4 py-2 transition-colors inline-flex items-center gap-2"
+              className="text-sm font-medium border rounded-lg px-4 py-2 transition-colors inline-flex items-center gap-2"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
             >
               Simulation swarm
               <NewBadge since={SWARM_SHIPPED} />
             </Link>
             <Link
               href={`/dashboard/${workspaceId}/simulations/new`}
-              className="text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 transition-colors"
+              className="text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
             >
               New simulation
             </Link>

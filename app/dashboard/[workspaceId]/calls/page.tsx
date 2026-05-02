@@ -54,15 +54,15 @@ export default async function CallsPage({
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold mb-1">Call Logs</h1>
-            <p className="text-zinc-400 text-sm">Inbound and outbound voice calls handled by your agents.</p>
+            <h1 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Call Logs</h1>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Inbound and outbound voice calls handled by your agents.</p>
           </div>
-          <p className="text-zinc-500 text-sm">{total} total</p>
+          <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{total} total</p>
         </div>
 
         {calls.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800 p-12 text-center">
-            <p className="text-zinc-400 text-sm">
+          <div className="rounded-xl p-12 text-center" style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               No calls yet. Set up a phone number in your agent&apos;s Voice tab to start receiving calls.
             </p>
           </div>
@@ -70,44 +70,76 @@ export default async function CallsPage({
           <>
             <div className="space-y-2">
               {calls.map(call => (
-                <div key={call.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+                <div
+                  key={call.id}
+                  className="rounded-xl p-4"
+                  style={{
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    borderColor: 'var(--border)',
+                    backgroundColor: 'var(--surface)',
+                  }}
+                >
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex items-center gap-3">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        call.direction === 'inbound'
-                          ? 'bg-blue-900/30 text-blue-400'
-                          : 'bg-violet-900/30 text-violet-400'
-                      }`}>
+                      <span
+                        className="text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={
+                          call.direction === 'inbound'
+                            ? { backgroundColor: 'var(--accent-blue-bg)', color: 'var(--accent-blue)' }
+                            : { backgroundColor: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                        }
+                      >
                         {call.direction === 'inbound' ? 'Inbound' : 'Outbound'}
                       </span>
                       <div>
-                        <p className="text-sm font-medium text-zinc-200">
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                           {call.contactPhone || 'No caller ID'}
                         </p>
-                        <p className="text-xs text-zinc-500">
+                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                           {new Date(call.createdAt).toLocaleString()}
-                          <span className="ml-2 text-zinc-600">{relativeTime(new Date(call.createdAt))}</span>
+                          <span className="ml-2" style={{ color: 'var(--text-muted)' }}>{relativeTime(new Date(call.createdAt))}</span>
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {call.durationSecs != null && (
-                        <span className="text-xs text-zinc-500">{Math.floor(call.durationSecs / 60)}m {call.durationSecs % 60}s</span>
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{Math.floor(call.durationSecs / 60)}m {call.durationSecs % 60}s</span>
                       )}
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        call.status === 'completed' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-red-900/30 text-red-400'
-                      }`}>
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full"
+                        style={
+                          call.status === 'completed'
+                            ? { backgroundColor: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+                            : { backgroundColor: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
+                        }
+                      >
                         {call.status}
                       </span>
                     </div>
                   </div>
                   {call.summary && (
-                    <p className="text-xs text-zinc-400 mb-2 bg-zinc-900 rounded-lg p-2">{call.summary}</p>
+                    <p
+                      className="text-xs mb-2 rounded-lg p-2"
+                      style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--surface-secondary)' }}
+                    >
+                      {call.summary}
+                    </p>
                   )}
                   {call.transcript && (
                     <details className="mt-2">
-                      <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 transition-colors">View transcript</summary>
-                      <pre className="mt-2 text-xs text-zinc-400 whitespace-pre-wrap bg-zinc-900 rounded-lg p-3 max-h-64 overflow-y-auto font-sans">{call.transcript}</pre>
+                      <summary
+                        className="text-xs cursor-pointer transition-colors hover:opacity-80"
+                        style={{ color: 'var(--text-tertiary)' }}
+                      >
+                        View transcript
+                      </summary>
+                      <pre
+                        className="mt-2 text-xs whitespace-pre-wrap rounded-lg p-3 max-h-64 overflow-y-auto font-sans"
+                        style={{ color: 'var(--text-secondary)', backgroundColor: 'var(--surface-secondary)' }}
+                      >
+                        {call.transcript}
+                      </pre>
                     </details>
                   )}
                   {call.recordingUrl && (
@@ -122,13 +154,21 @@ export default async function CallsPage({
             {pages > 1 && (
               <div className="flex items-center justify-between mt-6 text-sm">
                 {page > 1 ? (
-                  <Link href={`/dashboard/${workspaceId}/calls?page=${page - 1}`} className="text-zinc-400 hover:text-white transition-colors">
+                  <Link
+                    href={`/dashboard/${workspaceId}/calls?page=${page - 1}`}
+                    className="transition-colors hover:opacity-80"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
                     ← Previous
                   </Link>
                 ) : <span />}
-                <span className="text-zinc-500">Page {page} of {pages}</span>
+                <span style={{ color: 'var(--text-tertiary)' }}>Page {page} of {pages}</span>
                 {page < pages ? (
-                  <Link href={`/dashboard/${workspaceId}/calls?page=${page + 1}`} className="text-zinc-400 hover:text-white transition-colors">
+                  <Link
+                    href={`/dashboard/${workspaceId}/calls?page=${page + 1}`}
+                    className="transition-colors hover:opacity-80"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
                     Next →
                   </Link>
                 ) : <span />}

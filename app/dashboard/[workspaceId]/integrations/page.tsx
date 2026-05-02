@@ -275,8 +275,8 @@ export default function IntegrationsPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold mb-1">Integrations</h1>
-        <p className="text-zinc-400 text-sm">Connect your CRM, telephony, and communication platforms. Agents work across all connected channels.</p>
+        <h1 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Integrations</h1>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Connect your CRM, telephony, and communication platforms. Agents work across all connected channels.</p>
       </div>
 
       {metaBanner && (
@@ -316,9 +316,10 @@ export default function IntegrationsPage() {
                 onClick={() => switchCrmProvider(opt.value)}
                 className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
                   crmProvider === opt.value
-                    ? 'border-white bg-zinc-900'
+                    ? 'bg-zinc-900'
                     : 'border-zinc-800 hover:border-zinc-600'
                 }`}
+                style={crmProvider === opt.value ? { borderColor: 'var(--accent-primary)' } : undefined}
               >
                 <div className={`w-6 h-6 flex-shrink-0 ${opt.color}`}>
                   <opt.icon className="w-6 h-6" />
@@ -449,7 +450,8 @@ export default function IntegrationsPage() {
                 onChange={e => setTwilioForm(p => ({ ...p, accountSid: e.target.value }))}
                 placeholder="Account SID (ACxxxxxxxx)"
                 required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="w-full border rounded-lg px-3 py-2 text-sm placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
               />
               <input
                 type="password"
@@ -457,7 +459,8 @@ export default function IntegrationsPage() {
                 onChange={e => setTwilioForm(p => ({ ...p, authToken: e.target.value }))}
                 placeholder="Auth Token"
                 required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="w-full border rounded-lg px-3 py-2 text-sm placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
               />
               <input
                 type="text"
@@ -465,10 +468,12 @@ export default function IntegrationsPage() {
                 onChange={e => setTwilioForm(p => ({ ...p, phoneNumber: e.target.value }))}
                 placeholder="Phone number (e.g. +15551234567)"
                 required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="w-full border rounded-lg px-3 py-2 text-sm placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
               />
               <div className="flex gap-2">
-                <button type="submit" disabled={savingTwilio} className="flex-1 rounded-lg bg-white text-black font-medium text-sm h-9 hover:bg-zinc-200 transition-colors disabled:opacity-50">
+                <button type="submit" disabled={savingTwilio} className="flex-1 rounded-lg font-medium text-sm h-9 transition-colors disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}>
                   {savingTwilio ? 'Connecting…' : 'Connect Twilio'}
                 </button>
                 <button type="button" onClick={() => setShowTwilioForm(false)} className="px-4 rounded-lg border border-zinc-700 text-zinc-400 text-sm hover:border-zinc-500 transition-colors">
@@ -658,10 +663,12 @@ export default function IntegrationsPage() {
                 onChange={e => setCalendlyToken(e.target.value)}
                 placeholder="Personal Access Token"
                 required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                className="w-full border rounded-lg px-3 py-2 text-sm placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }} />
               {calendlyError && <p className="text-xs text-red-400">{calendlyError}</p>}
               <div className="flex gap-2">
-                <button type="submit" disabled={savingCalendly} className="flex-1 rounded-lg bg-white text-black font-medium text-sm h-9 hover:bg-zinc-200 transition-colors disabled:opacity-50">
+                <button type="submit" disabled={savingCalendly} className="flex-1 rounded-lg font-medium text-sm h-9 transition-colors disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}>
                   {savingCalendly ? 'Verifying…' : 'Connect Calendly'}
                 </button>
                 <button type="button" onClick={() => setShowCalendlyForm(false)} className="px-4 rounded-lg border border-zinc-700 text-zinc-400 text-sm hover:border-zinc-500 transition-colors">Cancel</button>
@@ -706,10 +713,12 @@ export default function IntegrationsPage() {
                 onChange={e => setCalcomKey(e.target.value)}
                 placeholder="API Key (cal_live_...)"
                 required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                className="w-full border rounded-lg px-3 py-2 text-sm placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }} />
               {calcomError && <p className="text-xs text-red-400">{calcomError}</p>}
               <div className="flex gap-2">
-                <button type="submit" disabled={savingCalcom} className="flex-1 rounded-lg bg-white text-black font-medium text-sm h-9 hover:bg-zinc-200 transition-colors disabled:opacity-50">
+                <button type="submit" disabled={savingCalcom} className="flex-1 rounded-lg font-medium text-sm h-9 transition-colors disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}>
                   {savingCalcom ? 'Verifying…' : 'Connect Cal.com'}
                 </button>
                 <button type="button" onClick={() => setShowCalcomForm(false)} className="px-4 rounded-lg border border-zinc-700 text-zinc-400 text-sm hover:border-zinc-500 transition-colors">Cancel</button>
@@ -759,10 +768,12 @@ export default function IntegrationsPage() {
                 onChange={e => setStripeKey(e.target.value)}
                 placeholder="Secret Key (sk_live_...)"
                 required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                className="w-full border rounded-lg px-3 py-2 text-sm placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }} />
               {stripeError && <p className="text-xs text-red-400">{stripeError}</p>}
               <div className="flex gap-2">
-                <button type="submit" disabled={savingStripe} className="flex-1 rounded-lg bg-white text-black font-medium text-sm h-9 hover:bg-zinc-200 transition-colors disabled:opacity-50">
+                <button type="submit" disabled={savingStripe} className="flex-1 rounded-lg font-medium text-sm h-9 transition-colors disabled:opacity-50"
+                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}>
                   {savingStripe ? 'Verifying…' : 'Connect Stripe'}
                 </button>
                 <button type="button" onClick={() => setShowStripeForm(false)} className="px-4 rounded-lg border border-zinc-700 text-zinc-400 text-sm hover:border-zinc-500 transition-colors">Cancel</button>

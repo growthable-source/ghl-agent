@@ -54,19 +54,19 @@ export default function DigestPage() {
   }, [workspaceId])
 
   if (loading) {
-    return <div className="flex-1 p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+    return <div className="flex-1 p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
   }
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
-          <div className="flex items-center gap-2 text-xs text-zinc-500 mb-2">
+          <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
             <span>📊 Weekly digest</span>
             <span>·</span>
             <span>{weekStart && fmtDate(weekStart)} — {weekEnd && fmtDate(weekEnd)}</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">Your agents this week</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Your agents this week</h1>
         </div>
 
         {/* Headline totals */}
@@ -81,10 +81,10 @@ export default function DigestPage() {
         )}
 
         <div className="mb-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4">Agent performance</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--text-muted)' }}>Agent performance</h2>
 
           {agents.length === 0 ? (
-            <div className="text-center py-12 text-sm text-zinc-500">No agent activity this week</div>
+            <div className="text-center py-12 text-sm" style={{ color: 'var(--text-muted)' }}>No agent activity this week</div>
           ) : (
             <div className="space-y-2">
               {agents.map((a, idx) => {
@@ -94,21 +94,22 @@ export default function DigestPage() {
                   <Link
                     key={a.id}
                     href={`/dashboard/${workspaceId}/agents/${a.id}`}
-                    className="block p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 transition-colors"
+                    className="block p-4 rounded-xl transition-colors"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
                   >
                     <div className="flex items-center gap-4 mb-3">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>
                         #{idx + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white">{a.name}</p>
-                        <p className="text-xs text-zinc-500">
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{a.name}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                           {a.uniqueContactsReached} contacts · {a.messages} messages · {a.toolCalls} actions
                         </p>
                       </div>
                       {(errorRate > 5 || fallbackRate > 10) && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                          style={{ background: 'rgba(245,158,11,0.1)', color: '#fbbf24' }}
+                          style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
                         >
                           Needs attention
                         </span>
@@ -125,7 +126,7 @@ export default function DigestPage() {
                     </div>
 
                     {(a.fallbackCount > 0) && (
-                      <p className="text-[11px] text-amber-400 mt-3 pt-3 border-t border-zinc-800">
+                      <p className="text-[11px] mt-3 pt-3" style={{ color: 'var(--accent-amber)', borderTop: '1px solid var(--border)' }}>
                         Said &ldquo;I don&apos;t know&rdquo; {a.fallbackCount} times · <Link href={`/dashboard/${workspaceId}/insights`} className="hover:underline font-medium">Review knowledge gaps →</Link>
                       </p>
                     )}
@@ -198,17 +199,17 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
   }
 
   if (optIn === null) {
-    return <div className="mt-12 h-16 rounded-xl border border-zinc-800 bg-zinc-900/40 animate-pulse" />
+    return <div className="mt-12 h-16 rounded-xl animate-pulse" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
   }
 
   return (
-    <div className="mt-12 p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+    <div className="mt-12 p-5 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-sm text-zinc-300 font-semibold">📬 Email me this digest every Monday</p>
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>📬 Email me this digest every Monday</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
             {email
-              ? <>We&apos;ll send to <span className="text-zinc-300 font-mono">{email}</span> at 13:00 UTC every Monday.</>
+              ? <>We&apos;ll send to <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>{email}</span> at 13:00 UTC every Monday.</>
               : <>Add an email to your account to receive digests.</>}
             {lastSent && <> · Last sent {new Date(lastSent).toLocaleDateString()}.</>}
           </p>
@@ -217,7 +218,8 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
           <button
             onClick={sendTest}
             disabled={sending || !email}
-            className="text-xs font-medium px-3 py-1.5 rounded-lg text-zinc-300 border border-zinc-700 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-40"
+            className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
           >
             {sending ? 'Sending…' : 'Send me a test now'}
           </button>
@@ -226,7 +228,7 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
             disabled={saving || !email}
             title={!email ? 'Set an email on your account first' : optIn ? 'Turn off weekly digest emails' : 'Turn on weekly digest emails'}
             className="relative inline-flex h-5 w-9 items-center rounded-full disabled:opacity-30"
-            style={{ background: optIn ? '#22c55e' : '#3f3f46' }}
+            style={{ background: optIn ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
           >
             <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
               style={{ transform: optIn ? 'translateX(20px)' : 'translateX(4px)' }} />
@@ -234,7 +236,7 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
         </div>
       </div>
       {status && (
-        <p className={`text-xs mt-3 ${status.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+        <p className="text-xs mt-3" style={{ color: status.kind === 'ok' ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>
           {status.msg}
         </p>
       )}
@@ -244,17 +246,17 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
 
 function TotalCard({ label, value, sub, delta }: { label: string; value: string | number; sub?: string; delta?: number | null }) {
   return (
-    <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
+    <div className="p-4 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
       <div className="flex items-baseline gap-2">
-        <p className="text-2xl font-bold text-white">{value}</p>
+        <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
         {delta !== null && delta !== undefined && (
-          <span className={`text-[11px] font-medium ${delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+          <span className="text-[11px] font-medium" style={{ color: delta >= 0 ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>
             {delta >= 0 ? '+' : ''}{delta}%
           </span>
         )}
       </div>
-      {sub && <p className="text-[10px] text-zinc-500 mt-1">{sub}</p>}
+      {sub && <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
     </div>
   )
 }
@@ -262,10 +264,8 @@ function TotalCard({ label, value, sub, delta }: { label: string; value: string 
 function MiniStat({ label, value, highlight, warning }: { label: string; value: string | number; highlight?: boolean; warning?: boolean }) {
   return (
     <div>
-      <p className="text-[10px] text-zinc-500 mb-0.5">{label}</p>
-      <p className={`text-sm font-semibold ${
-        highlight ? 'text-emerald-400' : warning ? 'text-red-400' : 'text-white'
-      }`}>
+      <p className="text-[10px] mb-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
+      <p className="text-sm font-semibold" style={{ color: highlight ? 'var(--accent-emerald)' : warning ? 'var(--accent-red)' : 'var(--text-primary)' }}>
         {value}
       </p>
     </div>
