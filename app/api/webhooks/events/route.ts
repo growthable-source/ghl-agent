@@ -140,53 +140,20 @@ export async function POST(req: NextRequest) {
           break
         }
 
-        // Debounce rapid messages (mainly useful for SMS/chat, still safe for others)
-        const debounced = await debounceMessage(p.locationId, p.contactId, p.conversationId, p.body)
+        // Debounce + idempotency. messageId is the GHL webhook's unique id;
+        // if GHL retries the same delivery this returns null and we drop
+        // it. (See lib/message-debounce.ts — duplicate prevention lives
+        // there, not here.)
+        const debounced = await debounceMessage(
+          p.locationId, p.contactId, p.conversationId, p.body, p.messageId ?? null,
+        )
         if (!debounced) {
-          console.log(`[Webhook] Message debounced for contact ${p.contactId}, waiting for batch`)
+          console.log(`[Webhook] Message debounced/deduped for contact ${p.contactId}`)
           break
         }
 
         // Strip HTML from email bodies (GHL sends raw HTML for email channel)
         const inboundMessage = htmlToText(debounced.combinedMessage)
-
-        // ─── IN-FLIGHT RUN LOCK ─────────────────────────────────────────
-        // A prior agent run for this contact may still be executing — its
-        // model + tool-loop can take 5–15s and the assistant message isn't
-        // saved until the run finishes. If GHL re-delivers (or an
-        // adjacent event fires) during that window, the post-save 6s guard
-        // sees nothing and a parallel run starts, producing back-to-back
-        // contradictory replies. Block here on a PENDING messageLog row
-        // for the same contact within the last 90 seconds (well above the
-        // p99 run time, well below any reasonable "real" follow-up gap).
-        const inFlightRun = await db.messageLog.findFirst({
-          where: {
-            contactId: p.contactId,
-            status: 'PENDING',
-            createdAt: { gte: new Date(Date.now() - 90_000) },
-          },
-          select: { id: true, createdAt: true },
-        })
-        if (inFlightRun) {
-          const ageMs = Date.now() - inFlightRun.createdAt.getTime()
-          // Record this skip in its own log row so operators can see why a
-          // delivery was dropped. Don't update the in-flight row — the
-          // owning request will finalise it.
-          try {
-            await db.messageLog.create({
-              data: {
-                locationId: p.locationId,
-                contactId: p.contactId,
-                conversationId: p.conversationId,
-                inboundMessage,
-                status: 'SKIPPED',
-                errorMessage: `In-flight run started ${ageMs}ms ago is still processing. Suppressed to prevent double-reply.`,
-              },
-            })
-          } catch { /* logging-only */ }
-          console.log(`[Webhook] In-flight run for ${p.contactId} (started ${ageMs}ms ago) — suppressing parallel delivery`)
-          break
-        }
 
         // Create pending log
         const log = await db.messageLog.create({
@@ -315,35 +282,6 @@ export async function POST(req: NextRequest) {
         const convState = await getOrCreateConversationState(agent.id, p.locationId, p.contactId, p.conversationId)
         if (convState.state === 'PAUSED') {
           await db.messageLog.update({ where: { id: log.id }, data: { status: 'SKIPPED', errorMessage: 'Conversation paused' } })
-          break
-        }
-
-        // PARALLEL-RUN GUARD — if this agent has sent an outbound to this
-        // contact in the last ~6 seconds, treat the current webhook as a
-        // duplicate delivery (or a piggyback from a tag/event echo) and
-        // skip. Without this, GHL re-delivering a webhook within the
-        // debounce window after our outbound has already gone out can
-        // produce a flood of redundant replies.
-        const recentAssistant = await db.conversationMessage.findFirst({
-          where: {
-            agentId: agent.id,
-            contactId: p.contactId,
-            role: 'assistant',
-            createdAt: { gte: new Date(Date.now() - 6_000) },
-          },
-          select: { id: true, createdAt: true },
-        })
-        if (recentAssistant) {
-          const ageMs = Date.now() - recentAssistant.createdAt.getTime()
-          await db.messageLog.update({
-            where: { id: log.id },
-            data: {
-              agentId: agent.id,
-              status: 'SKIPPED',
-              errorMessage: `Agent replied ${ageMs}ms ago — treating this webhook as a duplicate to avoid double-sending.`,
-            },
-          })
-          console.log(`[Webhook] Skipping run for ${p.contactId}: assistant replied ${ageMs}ms ago`)
           break
         }
 

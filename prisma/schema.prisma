@@ -1161,6 +1161,11 @@ model MessageBuffer {
   locationId     String
   contactId      String
   conversationId String
+  // GHL's webhook-level message ID. Used as the idempotency key for inbound
+  // webhooks — GHL retries the same delivery whenever our handler is slow
+  // to ack, and the only safe way to suppress those retries is to insert
+  // here under a unique constraint and treat the violation as "already seen".
+  messageId      String?  @unique
   body           String   @db.Text
   processed      Boolean  @default(false)
   createdAt      DateTime @default(now())
