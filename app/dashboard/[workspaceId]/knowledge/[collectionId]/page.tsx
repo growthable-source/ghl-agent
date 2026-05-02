@@ -109,12 +109,12 @@ export default function CollectionEditorPage() {
   if (loading) return (
     <div className="flex-1 p-8">
       <div className="max-w-4xl mx-auto space-y-3">
-        <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" />
-        <div className="h-32 bg-zinc-900/40 rounded-xl border border-zinc-800 animate-pulse" />
+        <div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
+        <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }} />
       </div>
     </div>
   )
-  if (!collection) return <div className="p-8 text-zinc-500">Collection not found</div>
+  if (!collection) return <div className="p-8" style={{ color: 'var(--text-tertiary)' }}>Collection not found</div>
 
   const accent = collection.color || '#fa4d2e'
   const totalTokens = collection.entries.reduce((s, e) => s + (e.tokenEstimate || 0), 0)
@@ -122,7 +122,7 @@ export default function CollectionEditorPage() {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-4xl mx-auto p-8">
-        <Link href={`/dashboard/${workspaceId}/knowledge`} className="text-xs text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1 mb-4">
+        <Link href={`/dashboard/${workspaceId}/knowledge`} className="text-xs hover:opacity-80 inline-flex items-center gap-1 mb-4" style={{ color: 'var(--text-tertiary)' }}>
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
@@ -137,11 +137,11 @@ export default function CollectionEditorPage() {
             {collection.icon || '📚'}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold text-white">{collection.name}</h1>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{collection.name}</h1>
             {collection.description && (
-              <p className="text-sm text-zinc-400 mt-1">{collection.description}</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{collection.description}</p>
             )}
-            <p className="text-[11px] text-zinc-500 mt-2">
+            <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>
               {collection.entries.length} item{collection.entries.length === 1 ? '' : 's'}
               {totalTokens > 0 && <> · ~{totalTokens.toLocaleString()} tokens</>}
               {collection.dataSources.length > 0 && <> · {collection.dataSources.length} data source{collection.dataSources.length === 1 ? '' : 's'}</>}
@@ -151,13 +151,14 @@ export default function CollectionEditorPage() {
           </div>
           <button
             onClick={deleteCollection}
-            className="text-[11px] px-3 py-1.5 rounded-lg border border-zinc-800 text-red-400 hover:text-red-300 hover:border-red-500/40 transition-colors"
+            className="text-[11px] px-3 py-1.5 rounded-lg hover:opacity-80 transition-colors"
+            style={{ border: '1px solid var(--border)', color: 'var(--accent-red)' }}
           >
             Delete collection
           </button>
         </div>
 
-        <div className="flex items-center gap-2 mb-4 border-b border-zinc-800">
+        <div className="flex items-center gap-2 mb-4 border-b" style={{ borderColor: 'var(--border)' }}>
           {([
             { id: 'items',        label: `Items (${collection.entries.length})` },
             { id: 'data_sources', label: `Data sources (${collection.dataSources.length})` },
@@ -168,9 +169,11 @@ export default function CollectionEditorPage() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`text-xs font-medium px-3 py-2 border-b-2 -mb-px transition-colors ${
-                  active ? 'border-orange-500 text-white' : 'border-transparent text-zinc-500 hover:text-white'
-                }`}
+                className="text-xs font-medium px-3 py-2 border-b-2 -mb-px transition-colors"
+                style={{
+                  borderColor: active ? 'var(--accent-primary)' : 'transparent',
+                  color: active ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                }}
               >
                 {t.label}
               </button>
@@ -192,7 +195,8 @@ export default function CollectionEditorPage() {
                 <button
                   key={t.id}
                   onClick={() => setAddItem(t.id)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-600"
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80"
+                  style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
                 >
                   {t.label}
                 </button>
@@ -212,30 +216,31 @@ export default function CollectionEditorPage() {
             )}
 
             {collection.entries.length === 0 ? (
-              <div className="text-center py-12 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
+              <div className="text-center py-12 rounded-xl" style={{ border: '1px dashed var(--border-secondary)', background: 'var(--surface-secondary)' }}>
                 <div className="text-2xl mb-2">📚</div>
-                <p className="text-sm font-medium text-white mb-1">Empty collection</p>
-                <p className="text-xs text-zinc-500">Add an item from the buttons above.</p>
+                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Empty collection</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Add an item from the buttons above.</p>
               </div>
             ) : (
-              <div className="rounded-xl border border-zinc-800 divide-y divide-zinc-800 overflow-hidden bg-zinc-950">
-                {collection.entries.map(e => (
-                  <div key={e.id} className="p-4 hover:bg-zinc-900/40 transition-colors">
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                {collection.entries.map((e, idx) => (
+                  <div key={e.id} className="p-4 transition-colors" style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
                     <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className="text-sm font-semibold text-white truncate">{e.title}</h3>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{sourceLabel(e.source)}</span>
+                          <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{e.title}</h3>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>{sourceLabel(e.source)}</span>
                           {e.status !== 'ready' && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300">{e.status}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>{e.status}</span>
                           )}
                         </div>
-                        <p className="text-xs text-zinc-400 line-clamp-2 whitespace-pre-wrap">{e.content}</p>
-                        <p className="text-[10px] text-zinc-600 mt-1">~{e.tokenEstimate} tokens · added {relTime(e.createdAt)}</p>
+                        <p className="text-xs line-clamp-2 whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{e.content}</p>
+                        <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>~{e.tokenEstimate} tokens · added {relTime(e.createdAt)}</p>
                       </div>
                       <button
                         onClick={() => deleteEntry(e.id)}
-                        className="text-[11px] px-2.5 py-1 rounded-lg border border-zinc-800 text-red-400 hover:text-red-300 hover:border-red-500/40 transition-colors flex-shrink-0"
+                        className="text-[11px] px-2.5 py-1 rounded-lg hover:opacity-80 transition-colors flex-shrink-0"
+                        style={{ border: '1px solid var(--border)', color: 'var(--accent-red)' }}
                       >
                         Delete
                       </button>
@@ -285,9 +290,9 @@ function AddItemPanel({
   onAdded: () => void
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+    <div className="rounded-xl p-4" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">
+        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
           {type === 'manual' ? 'Write a new item'
             : type === 'qa' ? 'Q&A pairs'
             : type === 'url' ? 'Crawl a URL'
@@ -295,7 +300,7 @@ function AddItemPanel({
             : type === 'notion' ? 'Import from Notion'
             : 'Import from YouTube'}
         </p>
-        <button onClick={onClose} className="text-zinc-500 hover:text-white">
+        <button onClick={onClose} className="hover:opacity-80" style={{ color: 'var(--text-tertiary)' }}>
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -331,12 +336,20 @@ function ManualForm({ workspaceId, collectionId, onAdded }: { workspaceId: strin
       onAdded()
     } finally { setBusy(false) }
   }
+  const valid = !!title.trim() && !!content.trim()
   return (
     <div className="space-y-2">
-      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-      <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Content" rows={6} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white resize-y" />
-      {err && <p className="text-xs text-red-400">{err}</p>}
-      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
+      <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Content" rows={6} className="w-full rounded-lg px-3 py-2 text-sm resize-y" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
+      {err && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
+      <button
+        onClick={save}
+        disabled={busy || !valid}
+        className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+        style={valid && !busy
+          ? { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+          : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }}
+      >
         {busy ? 'Saving…' : 'Add to collection'}
       </button>
     </div>
@@ -364,17 +377,25 @@ function QAForm({ workspaceId, collectionId, onAdded }: { workspaceId: string; c
       onAdded()
     } finally { setBusy(false) }
   }
+  const validQa = pairs.some(p => p.q.trim() && p.a.trim())
   return (
     <div className="space-y-2">
       {pairs.map((p, i) => (
-        <div key={i} className="space-y-1.5 p-2 rounded-lg bg-zinc-900 border border-zinc-800">
-          <input value={p.q} onChange={e => setPairs(prev => prev.map((x, j) => j === i ? { ...x, q: e.target.value } : x))} placeholder="Question" className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-white" />
-          <textarea value={p.a} onChange={e => setPairs(prev => prev.map((x, j) => j === i ? { ...x, a: e.target.value } : x))} placeholder="Answer" rows={2} className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-sm text-white resize-none" />
+        <div key={i} className="space-y-1.5 p-2 rounded-lg" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
+          <input value={p.q} onChange={e => setPairs(prev => prev.map((x, j) => j === i ? { ...x, q: e.target.value } : x))} placeholder="Question" className="w-full rounded px-2 py-1.5 text-sm" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
+          <textarea value={p.a} onChange={e => setPairs(prev => prev.map((x, j) => j === i ? { ...x, a: e.target.value } : x))} placeholder="Answer" rows={2} className="w-full rounded px-2 py-1.5 text-sm resize-none" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
         </div>
       ))}
-      <button type="button" onClick={() => setPairs(prev => [...prev, { q: '', a: '' }])} className="text-xs text-zinc-400 hover:text-white">+ Add another pair</button>
-      {err && <p className="text-xs text-red-400">{err}</p>}
-      <button onClick={save} disabled={busy} className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+      <button type="button" onClick={() => setPairs(prev => [...prev, { q: '', a: '' }])} className="text-xs hover:opacity-80" style={{ color: 'var(--text-secondary)' }}>+ Add another pair</button>
+      {err && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
+      <button
+        onClick={save}
+        disabled={busy || !validQa}
+        className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+        style={validQa && !busy
+          ? { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+          : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }}
+      >
         {busy ? 'Saving…' : 'Add to collection'}
       </button>
     </div>
@@ -399,11 +420,19 @@ function UrlForm({ workspaceId, collectionId, onAdded }: { workspaceId: string; 
       onAdded()
     } finally { setBusy(false) }
   }
+  const validUrl = !!url.trim()
   return (
     <div className="space-y-2">
-      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com/page" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
-      {status && <p className={`text-xs ${status.startsWith('✓') ? 'text-emerald-300' : 'text-red-400'}`}>{status}</p>}
-      <button onClick={save} disabled={busy || !url.trim()} className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com/page" className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
+      {status && <p className="text-xs" style={{ color: status.startsWith('✓') ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>{status}</p>}
+      <button
+        onClick={save}
+        disabled={busy || !validUrl}
+        className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+        style={validUrl && !busy
+          ? { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+          : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }}
+      >
         {busy ? 'Crawling…' : 'Crawl + add'}
       </button>
     </div>
@@ -429,26 +458,27 @@ function FileForm({ workspaceId, collectionId, onAdded }: { workspaceId: string;
     } finally { setBusy(false) }
   }
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 p-4 rounded-lg" style={{ border: '1px dashed var(--border-secondary)', background: 'var(--surface-secondary)' }}>
       <input
         ref={fileRef}
         type="file"
         accept=".pdf,.txt,.md"
         onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); if (e.target) e.target.value = '' }}
-        className="text-xs text-zinc-400"
+        className="text-xs"
+        style={{ color: 'var(--text-secondary)' }}
       />
-      <p className="text-[10px] text-zinc-500">PDF, TXT, or Markdown. Max 5 MB.</p>
-      {status && <p className={`text-xs ${status.startsWith('✓') ? 'text-emerald-300' : 'text-red-400'}`}>{status}</p>}
-      {busy && <p className="text-xs text-zinc-400">Uploading…</p>}
+      <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>PDF, TXT, or Markdown. Max 5 MB.</p>
+      {status && <p className="text-xs" style={{ color: status.startsWith('✓') ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>{status}</p>}
+      {busy && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Uploading…</p>}
     </div>
   )
 }
 
 function NotionStub() {
-  return <p className="text-xs text-zinc-400">Notion import is being moved into the Collection editor. For now, paste the page contents using the Write tab — full Notion import returns shortly.</p>
+  return <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Notion import is being moved into the Collection editor. For now, paste the page contents using the Write tab — full Notion import returns shortly.</p>
 }
 function YouTubeStub() {
-  return <p className="text-xs text-zinc-400">YouTube transcript import is being moved into the Collection editor. For now, paste the transcript using the Write tab — full import returns shortly.</p>
+  return <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>YouTube transcript import is being moved into the Collection editor. For now, paste the transcript using the Write tab — full import returns shortly.</p>
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -467,36 +497,37 @@ function DataSourcesTab({
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           Live data lookups (Google Sheets, Airtable, REST). Agents connected to this collection get these as tools.
         </p>
         <button
           onClick={() => setCreator(true)}
-          className="text-xs font-medium px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-600"
+          className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80"
+          style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
         >
           + New data source
         </button>
       </div>
       {sources.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
+        <div className="text-center py-12 rounded-xl" style={{ border: '1px dashed var(--border-secondary)', background: 'var(--surface-secondary)' }}>
           <div className="text-2xl mb-2">🔌</div>
-          <p className="text-sm font-medium text-white mb-1">No data sources yet</p>
-          <p className="text-xs text-zinc-500">Wire up a Sheet, Airtable base, or REST endpoint and it'll be available as a tool to every agent on this collection.</p>
+          <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No data sources yet</p>
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Wire up a Sheet, Airtable base, or REST endpoint and it'll be available as a tool to every agent on this collection.</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-zinc-800 divide-y divide-zinc-800 bg-zinc-950">
-          {sources.map(s => (
-            <div key={s.id} className="p-3 flex items-start gap-3">
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+          {sources.map((s, idx) => (
+            <div key={s.id} className="p-3 flex items-start gap-3" style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
               <span className="text-base flex-shrink-0">
                 {s.kind === 'google_sheet' ? '📊' : s.kind === 'airtable' ? '🟪' : '🌐'}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <code className="text-sm font-mono text-white">{s.name}</code>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{s.kind.replace('_', ' ')}</span>
-                  {!s.isActive && <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">paused</span>}
+                  <code className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{s.name}</code>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>{s.kind.replace('_', ' ')}</span>
+                  {!s.isActive && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>paused</span>}
                 </div>
-                {s.description && <p className="text-xs text-zinc-400 mt-0.5">{s.description}</p>}
+                {s.description && <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{s.description}</p>}
               </div>
             </div>
           ))}
@@ -542,12 +573,13 @@ function CreateDataSourceModal({
     } finally { setBusy(false) }
   }
 
+  const validName = /^[a-z0-9_-]{2,40}$/.test(name)
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-lg overflow-hidden">
-        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-white">New data source</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white">
+      <div className="rounded-2xl w-full max-w-lg overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>New data source</h2>
+          <button onClick={onClose} className="hover:opacity-80" style={{ color: 'var(--text-tertiary)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -555,32 +587,36 @@ function CreateDataSourceModal({
         </div>
         <div className="p-5 space-y-3">
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Kind</label>
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Kind</label>
             <div className="grid grid-cols-3 gap-2">
               {([
                 { id: 'google_sheet', label: '📊 Google Sheet' },
                 { id: 'airtable',     label: '🟪 Airtable' },
                 { id: 'rest_get',     label: '🌐 REST GET' },
-              ] as Array<{ id: typeof kind; label: string }>).map(k => (
-                <button
-                  key={k.id}
-                  type="button"
-                  onClick={() => { setKind(k.id); setConfig({}) }}
-                  className={`px-3 py-2 rounded-lg border text-xs transition-colors ${
-                    kind === k.id ? 'border-orange-500 bg-orange-500/10 text-white' : 'border-zinc-700 text-zinc-300 hover:border-zinc-500'
-                  }`}
-                >{k.label}</button>
-              ))}
+              ] as Array<{ id: typeof kind; label: string }>).map(k => {
+                const isActive = kind === k.id
+                return (
+                  <button
+                    key={k.id}
+                    type="button"
+                    onClick={() => { setKind(k.id); setConfig({}) }}
+                    className="px-3 py-2 rounded-lg text-xs transition-colors"
+                    style={isActive
+                      ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)', color: 'var(--text-primary)' }
+                      : { border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                  >{k.label}</button>
+                )
+              })}
             </div>
           </div>
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Slug name</label>
-            <input value={name} onChange={e => setName(e.target.value.toLowerCase())} placeholder="inventory" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono" />
-            <p className="text-[10px] text-zinc-500 mt-1">The agent calls it by this slug, e.g. <code>lookup_sheet(&quot;{name || 'inventory'}&quot;, ...)</code></p>
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Slug name</label>
+            <input value={name} onChange={e => setName(e.target.value.toLowerCase())} placeholder="inventory" className="w-full rounded-lg px-3 py-2 text-sm font-mono" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>The agent calls it by this slug, e.g. <code>lookup_sheet(&quot;{name || 'inventory'}&quot;, ...)</code></p>
           </div>
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1.5">Description</label>
-            <input value={description} onChange={e => setDescription(e.target.value)} placeholder="What's in it?" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Description</label>
+            <input value={description} onChange={e => setDescription(e.target.value)} placeholder="What's in it?" className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
           </div>
           {kind === 'google_sheet' && (
             <>
@@ -603,11 +639,18 @@ function CreateDataSourceModal({
               <SimpleField label="Token / API key (optional)" value={secret} onChange={setSecret} placeholder="" />
             </>
           )}
-          {err && <p className="text-xs text-red-400">{err}</p>}
+          {err && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
         </div>
-        <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-zinc-300 hover:text-white">Cancel</button>
-          <button onClick={save} disabled={busy} className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+        <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm hover:opacity-80" style={{ color: 'var(--text-secondary)' }}>Cancel</button>
+          <button
+            onClick={save}
+            disabled={busy || !validName}
+            className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            style={validName && !busy
+              ? { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+              : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }}
+          >
             {busy ? 'Creating…' : 'Create'}
           </button>
         </div>
@@ -619,10 +662,10 @@ function CreateDataSourceModal({
 function SimpleField({ label, value, onChange, placeholder, textarea }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; textarea?: boolean }) {
   return (
     <div>
-      <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-semibold block mb-1">{label}</label>
+      <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</label>
       {textarea
-        ? <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={4} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono resize-y" />
-        : <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
+        ? <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={4} className="w-full rounded-lg px-3 py-2 text-xs font-mono resize-y" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
+        : <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
       }
     </div>
   )
@@ -665,19 +708,19 @@ function ConnectedAgentsTab({
 
   return (
     <div>
-      <p className="text-xs text-zinc-400 mb-3">
+      <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
         Agents you check here will pull every item and data source from this collection at runtime. An agent can connect to as many collections as you like — they stack.
       </p>
       {allAgents.length === 0 ? (
-        <p className="text-sm text-zinc-500 italic">No agents in this workspace yet.</p>
+        <p className="text-sm italic" style={{ color: 'var(--text-tertiary)' }}>No agents in this workspace yet.</p>
       ) : (
-        <div className="rounded-xl border border-zinc-800 divide-y divide-zinc-800 bg-zinc-950">
-          {allAgents.map(a => {
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+          {allAgents.map((a, idx) => {
             const checked = picked.includes(a.id)
             return (
-              <label key={a.id} className="flex items-center gap-3 p-3 hover:bg-zinc-900/40 cursor-pointer">
+              <label key={a.id} className="flex items-center gap-3 p-3 cursor-pointer" style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
                 <input type="checkbox" checked={checked} onChange={() => toggle(a.id)} className="accent-orange-500" />
-                <span className="text-sm text-white">{a.name}</span>
+                <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{a.name}</span>
               </label>
             )
           })}
@@ -687,7 +730,10 @@ function ConnectedAgentsTab({
         <button
           onClick={save}
           disabled={saving || !dirty}
-          className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50"
+          className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+          style={dirty && !saving
+            ? { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+            : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }}
         >
           {saving ? 'Saving…' : 'Save connections'}
         </button>

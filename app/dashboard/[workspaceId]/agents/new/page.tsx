@@ -302,19 +302,32 @@ export default function NewAgentWizard() {
           {STEPS.map((s, i) => (
             <div key={s.key} className="flex items-center flex-1">
               <div className="flex items-center gap-2 flex-1">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
-                  i < currentIdx ? 'bg-emerald-500 text-white' :
-                  i === currentIdx ? 'bg-white text-black' :
-                  'bg-zinc-800 text-zinc-500'
-                }`}>
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors"
+                  style={
+                    i < currentIdx
+                      ? { background: 'var(--accent-emerald)', color: '#fff' }
+                      : i === currentIdx
+                      ? { background: 'var(--accent-primary-bg)', color: 'var(--btn-primary-text)' }
+                      : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)' }
+                  }
+                >
                   {i < currentIdx ? '✓' : i + 1}
                 </div>
-                <span className={`text-xs font-medium hidden sm:block ${
-                  i <= currentIdx ? 'text-zinc-200' : 'text-zinc-600'
-                }`}>{s.label}</span>
+                <span
+                  className="text-xs font-medium hidden sm:block"
+                  style={{
+                    color: i <= currentIdx ? 'var(--text-primary)' : 'var(--text-muted)',
+                  }}
+                >{s.label}</span>
               </div>
               {i < STEPS.length - 1 && (
-                <div className={`h-px flex-1 mx-2 ${i < currentIdx ? 'bg-emerald-500' : 'bg-zinc-800'}`} />
+                <div
+                  className="h-px flex-1 mx-2"
+                  style={{
+                    background: i < currentIdx ? 'var(--accent-emerald)' : 'var(--border)',
+                  }}
+                />
               )}
             </div>
           ))}
@@ -351,11 +364,12 @@ export default function NewAgentWizard() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {TEMPLATES.filter(t => t.initiation === 'outbound').map(t => (
                   <button key={t.id} type="button" onClick={() => selectTemplate(t)}
-                    className={`flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors ${
+                    className="flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors"
+                    style={
                       selectedTemplate?.id === t.id
-                        ? 'border-white bg-zinc-900'
-                        : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-                    }`}>
+                        ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
+                        : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                    }>
                     <span className="text-2xl">{t.icon}</span>
                     <div>
                       <p className="text-sm font-medium text-zinc-200">{ROLE_LABELS[t.role]}</p>
@@ -375,11 +389,12 @@ export default function NewAgentWizard() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {TEMPLATES.filter(t => t.initiation === 'inbound').map(t => (
                   <button key={t.id} type="button" onClick={() => selectTemplate(t)}
-                    className={`flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors ${
+                    className="flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors"
+                    style={
                       selectedTemplate?.id === t.id
-                        ? 'border-white bg-zinc-900'
-                        : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-                    }`}>
+                        ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
+                        : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                    }>
                     <span className="text-2xl">{t.icon}</span>
                     <div>
                       <p className="text-sm font-medium text-zinc-200">{ROLE_LABELS[t.role]}</p>
@@ -415,22 +430,29 @@ export default function NewAgentWizard() {
                 return (
                   <div key={opt.id}>
                     <button type="button" onClick={() => setSelectedCrm(opt.id)}
-                      className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
+                      className="w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors"
+                      style={
                         selectedCrm === opt.id
-                          ? 'border-white bg-zinc-900'
-                          : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-                      }`}>
-                      <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl text-zinc-500">--</span>}</span>
+                          ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
+                          : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                      }>
+                      <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl" style={{ color: 'var(--text-muted)' }}>--</span>}</span>
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-zinc-200">{opt.name}</p>
-                        <p className={`text-xs ${isGhl && !isConnected && !isChecking ? 'text-amber-400' : 'text-zinc-500'}`}>{desc}</p>
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.name}</p>
+                        <p className="text-xs" style={{ color: isGhl && !isConnected && !isChecking ? 'var(--accent-amber)' : 'var(--text-tertiary)' }}>{desc}</p>
                       </div>
                       {isConnected && (
-                        <span className="text-xs font-medium text-emerald-400 mr-2">✓</span>
+                        <span className="text-xs font-medium mr-2" style={{ color: 'var(--accent-emerald)' }}>✓</span>
                       )}
                       {selectedCrm === opt.id && (
-                        <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center">
-                          <span className="w-2 h-2 rounded-full bg-black" />
+                        <span
+                          className="w-5 h-5 rounded-full flex items-center justify-center"
+                          style={{ background: 'var(--accent-primary-bg)' }}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ background: 'var(--btn-primary-text)' }}
+                          />
                         </span>
                       )}
                     </button>
@@ -439,7 +461,11 @@ export default function NewAgentWizard() {
                     {isGhl && selectedCrm === 'ghl' && ghlConnected === false && (
                       <a
                         href={`/api/auth/crm/connect?workspaceId=${workspaceId}`}
-                        className="mt-2 inline-flex items-center rounded-lg bg-white text-black font-medium text-sm px-4 h-9 hover:bg-zinc-200 transition-colors"
+                        className="mt-2 inline-flex items-center rounded-lg font-medium text-sm px-4 h-9 hover:opacity-90 transition-colors"
+                        style={{
+                          background: 'var(--accent-primary-bg)',
+                          color: 'var(--btn-primary-text)',
+                        }}
                       >
                         Connect GoHighLevel →
                       </a>
@@ -459,19 +485,26 @@ export default function NewAgentWizard() {
             <div className="space-y-3">
               {CALENDAR_OPTIONS.map(opt => (
                 <button key={opt.id} type="button" onClick={() => setSelectedCalendar(opt.id)}
-                  className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
+                  className="w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors"
+                  style={
                     selectedCalendar === opt.id
-                      ? 'border-white bg-zinc-900'
-                      : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-                  }`}>
-                  <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl text-zinc-500">--</span>}</span>
+                      ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
+                      : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                  }>
+                  <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl" style={{ color: 'var(--text-muted)' }}>--</span>}</span>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-zinc-200">{opt.name}</p>
-                    <p className="text-xs text-zinc-500">{opt.desc}</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.name}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{opt.desc}</p>
                   </div>
                   {selectedCalendar === opt.id && (
-                    <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center">
-                      <span className="w-2 h-2 rounded-full bg-black" />
+                    <span
+                      className="w-5 h-5 rounded-full flex items-center justify-center"
+                      style={{ background: 'var(--accent-primary-bg)' }}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ background: 'var(--btn-primary-text)' }}
+                      />
                     </span>
                   )}
                 </button>
@@ -492,22 +525,29 @@ export default function NewAgentWizard() {
                 const active = selectedChannels.includes(ch.key)
                 return (
                   <button key={ch.key} type="button" onClick={() => toggleChannel(ch.key)}
-                    className={`w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors ${
+                    className="w-full flex items-center gap-4 rounded-xl border p-4 text-left transition-colors"
+                    style={
                       active
-                        ? 'border-emerald-500/40 bg-emerald-500/5'
-                        : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600'
-                    }`}>
-                    <span className={`w-8 flex items-center justify-center ${active ? ch.color : 'text-zinc-500'}`}>{ch.icon}</span>
+                        ? { borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }
+                        : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                    }>
+                    <span className={`w-8 flex items-center justify-center ${active ? ch.color : ''}`} style={!active ? { color: 'var(--text-tertiary)' } : undefined}>{ch.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${active ? 'text-white' : 'text-zinc-300'}`}>{ch.label}</p>
-                      <p className="text-xs text-zinc-500">{ch.desc}</p>
+                      <p className="text-sm font-medium" style={{ color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{ch.label}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{ch.desc}</p>
                     </div>
-                    <div className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                      active ? 'bg-emerald-500' : 'bg-zinc-700'
-                    }`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                        active ? 'translate-x-4' : 'translate-x-0'
-                      }`} />
+                    <div
+                      className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                      style={{
+                        background: active ? 'var(--accent-emerald)' : 'var(--surface-tertiary)',
+                      }}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full shadow transition-transform ${
+                          active ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                        style={{ background: '#fff' }}
+                      />
                     </div>
                   </button>
                 )
@@ -535,29 +575,44 @@ export default function NewAgentWizard() {
             )}
             <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Agent Name</label>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Agent Name</label>
                 <input type="text" value={name}
                   onChange={e => { setName(e.target.value); setNameManuallyEdited(true) }}
                   placeholder="e.g. Sales Assistant"
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                  className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                  style={{
+                    background: 'var(--input-bg)',
+                    border: '1px solid var(--input-border)',
+                    color: 'var(--input-text)',
+                  }} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">System Prompt</label>
-                <p className="text-xs text-zinc-500 mb-2">The core identity and role of the agent. Pre-filled from your template — edit as needed.</p>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>System Prompt</label>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-tertiary)' }}>The core identity and role of the agent. Pre-filled from your template — edit as needed.</p>
                 <textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
                   placeholder="You are a helpful sales assistant for Acme Corp..."
                   rows={7}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y" />
+                  className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none resize-y"
+                  style={{
+                    background: 'var(--input-bg)',
+                    border: '1px solid var(--input-border)',
+                    color: 'var(--input-text)',
+                  }} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Behavioral Instructions <span className="text-zinc-600">(optional)</span>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  Behavioral Instructions <span style={{ color: 'var(--text-muted)' }}>(optional)</span>
                 </label>
-                <p className="text-xs text-zinc-500 mb-2">Bullet-point rules the agent follows. Pre-filled from your template — edit as needed.</p>
+                <p className="text-xs mb-2" style={{ color: 'var(--text-tertiary)' }}>Bullet-point rules the agent follows. Pre-filled from your template — edit as needed.</p>
                 <textarea value={instructions} onChange={e => setInstructions(e.target.value)}
                   placeholder="- Always greet by first name&#10;- If they ask about pricing, send them the booking link"
                   rows={5}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y" />
+                  className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none resize-y"
+                  style={{
+                    background: 'var(--input-bg)',
+                    border: '1px solid var(--input-border)',
+                    color: 'var(--input-text)',
+                  }} />
               </div>
 
               {/* ── Context level picker ──
@@ -568,40 +623,49 @@ export default function NewAgentWizard() {
                   calling tools. Costs more tokens per turn but produces a
                   much richer conversation for data-heavy domains. */}
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
                   Context Level
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setAgentType('SIMPLE')}
-                    className={`text-left rounded-lg border p-3 transition-colors ${
+                    className="text-left rounded-lg border p-3 transition-colors"
+                    style={
                       agentType === 'SIMPLE'
-                        ? 'border-white bg-zinc-900'
-                        : 'border-zinc-800 hover:border-zinc-600'
-                    }`}
+                        ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
+                        : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                    }
                   >
-                    <p className="text-sm font-medium text-zinc-200">Simple</p>
-                    <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Simple</p>
+                    <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--text-tertiary)' }}>
                       Name, tags, and conversation history only. Best for support bots, FAQ agents, and high-volume low-context use cases.
                     </p>
                   </button>
                   <button
                     type="button"
                     onClick={() => setAgentType('ADVANCED')}
-                    className={`text-left rounded-lg border p-3 transition-colors ${
+                    className="text-left rounded-lg border p-3 transition-colors"
+                    style={
                       agentType === 'ADVANCED'
-                        ? 'border-emerald-500/60 bg-emerald-500/5'
-                        : 'border-zinc-800 hover:border-zinc-600'
-                    }`}
+                        ? { borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }
+                        : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                    }
                   >
-                    <p className="text-sm font-medium text-zinc-200 flex items-center gap-1.5">
+                    <p className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
                       Advanced
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5">
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5"
+                        style={{
+                          color: 'var(--accent-emerald)',
+                          background: 'var(--accent-emerald-bg)',
+                          border: '1px solid var(--accent-emerald)',
+                        }}
+                      >
                         context
                       </span>
                     </p>
-                    <p className="text-[11px] text-zinc-500 mt-1 leading-snug">
+                    <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--text-tertiary)' }}>
                       Also loads the contact's opportunities (last ~6 months) and custom fields. Best for sales agents that need to reason about deals, products, or pricing.
                     </p>
                   </button>
@@ -610,18 +674,24 @@ export default function NewAgentWizard() {
 
               {agentType === 'ADVANCED' && (
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Business Context <span className="text-zinc-600">(optional)</span>
+                  <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    Business Context <span style={{ color: 'var(--text-muted)' }}>(optional)</span>
                   </label>
-                  <p className="text-xs text-zinc-500 mb-2">
-                    Plain-English explanation of what your custom fields and opportunities represent. The agent reads this alongside the live data so it knows how to interpret what it&apos;s seeing. Merge fields like <span className="font-mono text-zinc-400">{'{{contact.first_name|there}}'}</span> and <span className="font-mono text-zinc-400">{'{{user.name|our team}}'}</span> resolve per-contact at runtime.
+                  <p className="text-xs mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                    Plain-English explanation of what your custom fields and opportunities represent. The agent reads this alongside the live data so it knows how to interpret what it&apos;s seeing. Merge fields like <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>{'{{contact.first_name|there}}'}</span> and <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>{'{{user.name|our team}}'}</span> resolve per-contact at runtime.
                   </p>
 
                   {/* Starter templates — operators told us a placeholder
                       alone doesn't register as "actual content." Explicit
                       pickers that write into the textarea fix that. */}
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 mb-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                  <div
+                    className="rounded-lg p-3 mb-2"
+                    style={{
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
+                    }}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
                       Start from an example
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -630,7 +700,12 @@ export default function NewAgentWizard() {
                           key={ex.id}
                           type="button"
                           onClick={() => setBusinessContext(ex.body)}
-                          className="text-xs text-zinc-300 bg-zinc-900 border border-zinc-700 hover:border-zinc-500 hover:text-white rounded-full px-3 py-1 transition-colors"
+                          className="text-xs rounded-full px-3 py-1 transition-colors"
+                          style={{
+                            color: 'var(--text-secondary)',
+                            background: 'var(--surface-secondary)',
+                            border: '1px solid var(--border)',
+                          }}
                           title={ex.description}
                         >
                           {ex.label}
@@ -640,7 +715,8 @@ export default function NewAgentWizard() {
                         <button
                           type="button"
                           onClick={() => setBusinessContext('')}
-                          className="text-xs text-zinc-500 hover:text-red-400 transition-colors px-2"
+                          className="text-xs transition-colors px-2"
+                          style={{ color: 'var(--text-tertiary)' }}
                         >
                           Clear
                         </button>
@@ -660,7 +736,12 @@ export default function NewAgentWizard() {
                     onValueChange={setBusinessContext}
                     placeholder="Write your own or pick an example above…"
                     rows={10}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 pt-10 pb-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-y"
+                    className="w-full rounded-lg px-4 pt-10 pb-2.5 text-sm focus:outline-none resize-y"
+                    style={{
+                      background: 'var(--input-bg)',
+                      border: '1px solid var(--input-border)',
+                      color: 'var(--input-text)',
+                    }}
                   />
                 </div>
               )}
@@ -691,28 +772,65 @@ export default function NewAgentWizard() {
         )}
 
         {/* Navigation buttons */}
-        <div className="flex items-center justify-between mt-8 pt-6 border-t border-zinc-800">
+        <div className="flex items-center justify-between mt-8 pt-6 border-t" style={{ borderColor: 'var(--border)' }}>
           <div>
             {currentIdx > 0 ? (
               <button type="button" onClick={back}
-                className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-1">
+                className="text-sm transition-colors flex items-center gap-1"
+                style={{ color: 'var(--text-secondary)' }}>
                 &larr; Back
               </button>
             ) : (
-              <Link href={`/dashboard/${workspaceId}`} className="text-sm text-zinc-500 hover:text-white transition-colors">
+              <Link
+                href={`/dashboard/${workspaceId}`}
+                className="text-sm transition-colors"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
                 Cancel
               </Link>
             )}
           </div>
           <div>
             {step !== 'build' ? (
-              <button type="button" onClick={next} disabled={!canProceed}
-                className="bg-white text-black font-medium text-sm h-10 px-6 rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50 inline-flex items-center justify-center">
+              <button
+                type="button"
+                onClick={next}
+                disabled={!canProceed}
+                className="font-medium text-sm h-10 px-6 rounded-lg transition-colors inline-flex items-center justify-center"
+                style={
+                  !canProceed
+                    ? {
+                        background: 'var(--surface-tertiary)',
+                        color: 'var(--text-muted)',
+                        cursor: 'not-allowed',
+                      }
+                    : {
+                        background: 'var(--accent-primary-bg)',
+                        color: 'var(--btn-primary-text)',
+                      }
+                }
+              >
                 Continue &rarr;
               </button>
             ) : (
-              <button type="button" onClick={handleCreate} disabled={saving || !canCreate}
-                className="bg-white text-black font-medium text-sm h-10 px-6 rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50 inline-flex items-center justify-center">
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={saving || !canCreate}
+                className="font-medium text-sm h-10 px-6 rounded-lg transition-colors inline-flex items-center justify-center"
+                style={
+                  saving || !canCreate
+                    ? {
+                        background: 'var(--surface-tertiary)',
+                        color: 'var(--text-muted)',
+                        cursor: 'not-allowed',
+                      }
+                    : {
+                        background: 'var(--accent-primary-bg)',
+                        color: 'var(--btn-primary-text)',
+                      }
+                }
+              >
                 {saving ? 'Creating...' : 'Create Agent'}
               </button>
             )}
