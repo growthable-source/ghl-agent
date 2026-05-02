@@ -114,54 +114,66 @@ export default function PromptVersionsPage() {
     } finally { setRollingBack(false) }
   }
 
-  if (loading) return <div className="p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+  if (loading) return <div className="p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-6xl mx-auto">
-        <Link href={`/dashboard/${workspaceId}/agents/${agentId}`} className="text-xs text-zinc-500 hover:text-zinc-300 mb-4 inline-block">
+        <Link
+          href={`/dashboard/${workspaceId}/agents/${agentId}`}
+          className="text-xs mb-4 inline-block hover:opacity-80 transition-colors"
+          style={{ color: 'var(--text-tertiary)' }}
+        >
           ← Back to {current?.name}
         </Link>
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Prompt History</h1>
-          <p className="text-sm text-zinc-400 mt-1">Every change to this agent&apos;s system prompt, with diff and rollback.</p>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Prompt History</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Every change to this agent&apos;s system prompt, with diff and rollback.</p>
         </div>
 
         {notMigrated && (
-          <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-300 font-medium">Migration pending</p>
-            <p className="text-xs text-amber-300/70 mt-1">Run manual_symbiosis_wave2.sql to enable prompt versioning.</p>
+          <div
+            className="p-4 mb-6 rounded-xl border"
+            style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+          >
+            <p className="text-sm font-medium" style={{ color: 'var(--accent-amber)' }}>Migration pending</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--accent-amber)' }}>Run manual_symbiosis_wave2.sql to enable prompt versioning.</p>
           </div>
         )}
 
         <div className="grid grid-cols-[260px_1fr] gap-6">
           {/* Version list */}
           <div className="space-y-1">
-            <div className="p-3 rounded-lg border border-orange-500/40 bg-orange-500/5">
-              <p className="text-[10px] uppercase tracking-wider text-orange-400 font-semibold mb-0.5">Current</p>
-              <p className="text-xs text-white">Live prompt</p>
+            <div
+              className="p-3 rounded-lg border"
+              style={{ borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }}
+            >
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-0.5" style={{ color: 'var(--accent-primary)' }}>Current</p>
+              <p className="text-xs" style={{ color: 'var(--text-primary)' }}>Live prompt</p>
             </div>
             {versions.length === 0 ? (
-              <p className="text-xs text-zinc-500 p-3">No prior versions yet</p>
+              <p className="text-xs p-3" style={{ color: 'var(--text-tertiary)' }}>No prior versions yet</p>
             ) : (
               versions.map((v) => (
                 <button
                   key={v.id}
                   onClick={() => setSelectedId(v.id)}
-                  className={`w-full text-left p-3 rounded-lg transition-colors ${
-                    selectedId === v.id
-                      ? 'bg-zinc-800 border border-zinc-600'
-                      : 'border border-zinc-800 hover:bg-zinc-900/40'
-                  }`}
+                  className="w-full text-left p-3 rounded-lg transition-colors border"
+                  style={selectedId === v.id
+                    ? { background: 'var(--surface-tertiary)', borderColor: 'var(--border-secondary)' }
+                    : { background: 'transparent', borderColor: 'var(--border)' }}
                 >
                   <div className="flex items-center gap-1 mb-1">
                     {v.isRollback && (
-                      <span className="text-[9px] font-bold text-amber-400 px-1 py-0.5 rounded bg-amber-500/10">ROLLBACK</span>
+                      <span
+                        className="text-[9px] font-bold px-1 py-0.5 rounded"
+                        style={{ color: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+                      >ROLLBACK</span>
                     )}
-                    <p className="text-xs text-white">{timeAgo(v.createdAt)}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{timeAgo(v.createdAt)}</p>
                   </div>
                   {v.changeNote && (
-                    <p className="text-[10px] text-zinc-500 line-clamp-2">{v.changeNote}</p>
+                    <p className="text-[10px] line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>{v.changeNote}</p>
                   )}
                 </button>
               ))
@@ -174,36 +186,40 @@ export default function PromptVersionsPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <p className="text-sm font-semibold text-white">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                       Comparing current → version from {timeAgo(selected.createdAt)}
                     </p>
                     {selected.changeNote && (
-                      <p className="text-xs text-zinc-500 mt-1">{selected.changeNote}</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{selected.changeNote}</p>
                     )}
                   </div>
                   <button
                     onClick={() => rollback(selected)}
                     disabled={rollingBack}
-                    className="text-xs font-semibold px-3 py-2 rounded-lg text-white hover:opacity-90 transition-colors disabled:opacity-50"
-                    style={{ background: '#fa4d2e' }}
+                    className="text-xs font-semibold px-3 py-2 rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+                    style={{ background: 'var(--accent-primary)', color: '#fff' }}
                   >
                     {rollingBack ? 'Rolling back...' : 'Restore this version'}
                   </button>
                 </div>
 
-                <div className="rounded-xl border border-zinc-800 overflow-hidden">
-                  <div className="bg-zinc-900 px-4 py-2 border-b border-zinc-800">
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">System prompt diff</p>
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                  <div
+                    className="px-4 py-2 border-b"
+                    style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)' }}
+                  >
+                    <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>System prompt diff</p>
                   </div>
-                  <div className="bg-zinc-950 p-4 font-mono text-xs overflow-x-auto">
+                  <div className="p-4 font-mono text-xs overflow-x-auto" style={{ background: 'var(--surface)' }}>
                     {diffLines(current.systemPrompt, selected.systemPrompt).map((d, i) => (
                       <div
                         key={i}
-                        className={`whitespace-pre-wrap ${
-                          d.type === 'add' ? 'bg-emerald-500/10 text-emerald-300 pl-2'
-                          : d.type === 'remove' ? 'bg-red-500/10 text-red-300 line-through pl-2'
-                          : 'text-zinc-400'
-                        }`}
+                        className={`whitespace-pre-wrap ${d.type === 'remove' ? 'line-through' : ''} ${d.type !== 'same' ? 'pl-2' : ''}`}
+                        style={
+                          d.type === 'add' ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+                          : d.type === 'remove' ? { background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
+                          : { color: 'var(--text-secondary)' }
+                        }
                       >
                         {d.type === 'add' ? '+ ' : d.type === 'remove' ? '- ' : '  '}{d.line}
                       </div>
@@ -212,7 +228,10 @@ export default function PromptVersionsPage() {
                 </div>
               </div>
             ) : (
-              <div className="p-8 rounded-xl border border-dashed border-zinc-700 text-center text-sm text-zinc-500">
+              <div
+                className="p-8 rounded-xl border border-dashed text-center text-sm"
+                style={{ borderColor: 'var(--border-secondary)', color: 'var(--text-tertiary)' }}
+              >
                 Select a version from the left to view the diff
               </div>
             )}

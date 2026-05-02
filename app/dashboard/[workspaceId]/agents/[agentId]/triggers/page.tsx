@@ -250,7 +250,10 @@ export default function TriggersPage() {
                       onClick={() => toggleActive(t)}
                       className={`relative inline-flex h-4 w-8 shrink-0 rounded-full border-2 border-transparent transition-colors ${t.isActive ? 'bg-emerald-500' : 'bg-zinc-700'}`}
                     >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition ${t.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
+                      <span
+                        className={`inline-block h-3 w-3 transform rounded-full shadow transition ${t.isActive ? 'translate-x-4' : 'translate-x-0'}`}
+                        style={{ background: '#fff' }}
+                      />
                     </button>
                   </div>
                   <div className="flex items-center gap-3">
@@ -309,16 +312,31 @@ export default function TriggersPage() {
                         onChange={e => setTestContact(prev => ({ ...prev, [t.id]: e.target.value }))}
                         onKeyDown={e => { if (e.key === 'Enter' && !testBusy) { e.preventDefault(); testFire(t.id) } }}
                         placeholder="Contact ID, phone (E.164), or email"
-                        className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                        className="flex-1 rounded px-3 py-1.5 text-xs focus:outline-none"
+                        style={{
+                          background: 'var(--input-bg)',
+                          color: 'var(--input-text)',
+                          border: '1px solid var(--input-border)',
+                        }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => testFire(t.id)}
-                        disabled={!!testBusy || !(testContact[t.id] ?? '').trim()}
-                        className="text-xs font-medium bg-white text-black rounded px-3 py-1.5 hover:bg-zinc-200 transition-colors disabled:opacity-50"
-                      >
-                        {testBusy === t.id ? 'Firing…' : 'Fire'}
-                      </button>
+                      {(() => {
+                        const fireDisabled = !!testBusy || !(testContact[t.id] ?? '').trim()
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => testFire(t.id)}
+                            disabled={fireDisabled}
+                            className="text-xs font-medium rounded px-3 py-1.5 transition-colors"
+                            style={{
+                              background: fireDisabled ? 'var(--surface-tertiary)' : 'var(--accent-primary)',
+                              color: fireDisabled ? 'var(--text-muted)' : 'var(--btn-primary-text)',
+                              cursor: fireDisabled ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {testBusy === t.id ? 'Firing…' : 'Fire'}
+                          </button>
+                        )
+                      })()}
                     </div>
                     {testResult[t.id]?.msg && (
                       <p className={`text-xs ${testResult[t.id].ok ? 'text-emerald-400' : 'text-amber-300'}`}>
@@ -409,7 +427,12 @@ export default function TriggersPage() {
                       value={tagFilter}
                       onChange={e => setTagFilter(e.target.value)}
                       placeholder="e.g. new-lead, form-submitted, hot-prospect"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                      className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                      style={{
+                        background: 'var(--input-bg)',
+                        color: 'var(--input-text)',
+                        border: '1px solid var(--input-border)',
+                      }}
                     />
                   )}
                   <p className="text-[11px] text-zinc-600 mt-1">Leave empty to trigger on any tag addition</p>
@@ -469,7 +492,12 @@ export default function TriggersPage() {
                     placeholder="Hi {{contact.first_name|there}}! Thanks for reaching out."
                     required
                     rows={3}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                    className="w-full rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm focus:outline-none resize-none"
+                    style={{
+                      background: 'var(--input-bg)',
+                      color: 'var(--input-text)',
+                      border: '1px solid var(--input-border)',
+                    }}
                   />
                 </div>
               )}
@@ -483,7 +511,12 @@ export default function TriggersPage() {
                     onChange={e => setAiInstructions(e.target.value)}
                     placeholder="Greet the new lead warmly, mention that you saw they filled out the form, and ask what they're looking for."
                     rows={3}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+                    style={{
+                      background: 'var(--input-bg)',
+                      color: 'var(--input-text)',
+                      border: '1px solid var(--input-border)',
+                    }}
                   />
                   <p className="text-[11px] text-zinc-600 mt-1">If left empty, the agent uses its default system prompt and persona to generate the message.</p>
                 </div>
@@ -507,7 +540,12 @@ export default function TriggersPage() {
                         max={max}
                         value={val}
                         onChange={e => onChange(Math.max(0, Number(e.target.value) || 0))}
-                        className="w-16 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2 text-sm text-white text-center focus:outline-none focus:border-zinc-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-16 rounded-lg px-2 py-2 text-sm text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        style={{
+                          background: 'var(--input-bg)',
+                          color: 'var(--input-text)',
+                          border: '1px solid var(--input-border)',
+                        }}
                       />
                       <span className="text-[10px] text-zinc-500 mt-1 uppercase tracking-wide">{label}</span>
                     </div>
@@ -528,15 +566,25 @@ export default function TriggersPage() {
 
               {/* Submit */}
               <div className="flex items-center gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={creating || (messageMode === 'FIXED' && !fixedMessage.trim())}
-                  className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
-                >
-                  {creating
-                    ? (editingId ? 'Saving…' : 'Creating…')
-                    : (editingId ? 'Save Changes' : 'Create Trigger')}
-                </button>
+                {(() => {
+                  const submitDisabled = creating || (messageMode === 'FIXED' && !fixedMessage.trim())
+                  return (
+                    <button
+                      type="submit"
+                      disabled={submitDisabled}
+                      className="inline-flex items-center justify-center rounded-lg font-medium text-sm h-9 px-4 transition-colors"
+                      style={{
+                        background: submitDisabled ? 'var(--surface-tertiary)' : 'var(--accent-primary)',
+                        color: submitDisabled ? 'var(--text-muted)' : 'var(--btn-primary-text)',
+                        cursor: submitDisabled ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {creating
+                        ? (editingId ? 'Saving…' : 'Creating…')
+                        : (editingId ? 'Save Changes' : 'Create Trigger')}
+                    </button>
+                  )
+                })()}
               </div>
             </form>
           </div>

@@ -166,14 +166,16 @@ export default function ListeningPage() {
                   <button
                     type="button"
                     onClick={() => toggleActive(rule)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${
-                      rule.isActive ? 'bg-emerald-500' : 'bg-zinc-700'
-                    }`}
+                    className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                    style={{ background: rule.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
                     role="switch"
                     aria-checked={rule.isActive}
                     aria-label={rule.isActive ? 'Disable rule' : 'Enable rule'}
                   >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${rule.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full shadow transition ${rule.isActive ? 'translate-x-4' : 'translate-x-0'}`}
+                      style={{ background: '#fff' }}
+                    />
                   </button>
                   <button onClick={() => startEdit(rule)} className="text-xs text-zinc-500 hover:text-white transition-colors">Edit</button>
                   <button onClick={() => deleteRule(rule.id)} className="text-xs text-zinc-600 hover:text-red-400 transition-colors">Remove</button>
@@ -209,7 +211,12 @@ export default function ListeningPage() {
                 onChange={e => updateForm('name', e.target.value)}
                 placeholder="e.g. Family context"
                 required
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               />
               <p className="text-xs text-zinc-600 mt-1">The agent stores captured info under this label in its memory of each contact.</p>
             </div>
@@ -222,7 +229,12 @@ export default function ListeningPage() {
                 placeholder="e.g. family members, health issues, life events, anything personal that helps the agent show empathy or remember context"
                 required
                 rows={3}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none resize-none"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               />
               <p className="text-xs text-zinc-600 mt-1">Describe the kind of context this category covers. Keep it broad — the agent will match semantically.</p>
             </div>
@@ -245,7 +257,12 @@ export default function ListeningPage() {
                   onChange={e => updateForm('newExample', e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addExample() } }}
                   placeholder="e.g. my mum is sick, just got engaged, dealing with a lot at home"
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{
+                    background: 'var(--input-bg)',
+                    border: '1px solid var(--input-border)',
+                    color: 'var(--input-text)',
+                  }}
                 />
                 <button type="button" onClick={addExample} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors">Add</button>
               </div>
@@ -253,8 +270,13 @@ export default function ListeningPage() {
 
             <button
               type="submit"
-              disabled={saving}
-              className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              disabled={saving || !form.name.trim() || !form.description.trim()}
+              className="w-full inline-flex items-center justify-center rounded-lg font-medium text-sm h-10 transition-colors"
+              style={
+                saving || !form.name.trim() || !form.description.trim()
+                  ? { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }
+                  : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+              }
             >
               {saving ? (editingId ? 'Saving…' : 'Adding…') : (editingId ? 'Save Changes' : 'Add Category')}
             </button>

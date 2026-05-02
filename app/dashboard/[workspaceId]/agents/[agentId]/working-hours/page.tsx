@@ -72,7 +72,7 @@ export default function WorkingHoursPage() {
     set({ days: draft.days.includes(day) ? draft.days.filter(d => d !== day) : [...draft.days, day] })
   }
 
-  if (loading || !initial) return <div className="p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+  if (loading || !initial) return <div className="p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
 
   const fmt = (h: number) => {
     if (h === 0) return '12am'
@@ -85,50 +85,57 @@ export default function WorkingHoursPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-2xl mx-auto pb-24">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Working Hours</h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Restrict when this agent can <strong className="text-zinc-300">proactively reach out</strong>.
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Working Hours</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Restrict when this agent can <strong style={{ color: 'var(--text-primary)' }}>proactively reach out</strong>.
             This applies to scheduled follow-ups (auto-shifted to the next valid slot)
             and trigger-fired outbound messages (skipped outside hours).
           </p>
-          <p className="text-xs text-zinc-500 mt-2">
+          <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
             Inbound replies are <em>always</em> sent immediately — your agent will still respond to
             contacts who message during off-hours so they&apos;re not left hanging.
           </p>
         </div>
 
         <div className="space-y-6">
-          <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div
+            className="p-5 rounded-xl border"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+          >
             <label className="flex items-center gap-3 cursor-pointer">
               <button
                 type="button"
                 onClick={() => set({ enabled: !draft.enabled })}
                 className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                style={{ background: draft.enabled ? '#22c55e' : '#3f3f46' }}
+                style={{ background: draft.enabled ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
               >
                 <span
-                  className="inline-block h-4 w-4 rounded-full bg-white transition-transform duration-200"
-                  style={{ transform: draft.enabled ? 'translateX(22px)' : 'translateX(4px)' }}
+                  className="inline-block h-4 w-4 rounded-full transition-transform duration-200"
+                  style={{ transform: draft.enabled ? 'translateX(22px)' : 'translateX(4px)', background: '#fff' }}
                 />
               </button>
               <div>
-                <p className="text-sm font-semibold text-white">Enable working hours</p>
-                <p className="text-xs text-zinc-400 mt-0.5">When off, the agent can send messages 24/7.</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Enable working hours</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>When off, the agent can send messages 24/7.</p>
               </div>
             </label>
           </div>
 
           {draft.enabled && (
             <>
-              <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
-                <p className="text-sm font-semibold text-white mb-3">Active hours</p>
+              <div
+                className="p-5 rounded-xl border"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+              >
+                <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Active hours</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs text-zinc-400 mb-1 block">Start</label>
+                    <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>Start</label>
                     <select
                       value={draft.start}
                       onChange={e => set({ start: parseInt(e.target.value) })}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                      className="w-full rounded-lg px-3 py-2 text-sm border"
+                      style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
                     >
                       {Array.from({ length: 24 }).map((_, i) => (
                         <option key={i} value={i}>{fmt(i)}</option>
@@ -136,11 +143,12 @@ export default function WorkingHoursPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-zinc-400 mb-1 block">End</label>
+                    <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>End</label>
                     <select
                       value={draft.end}
                       onChange={e => set({ end: parseInt(e.target.value) })}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                      className="w-full rounded-lg px-3 py-2 text-sm border"
+                      style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
                     >
                       {Array.from({ length: 25 }).map((_, i) => (
                         <option key={i} value={i} disabled={i <= draft.start}>{fmt(i)}</option>
@@ -148,14 +156,17 @@ export default function WorkingHoursPage() {
                     </select>
                   </div>
                 </div>
-                <p className="text-xs text-zinc-500 mt-3">
-                  Agent will be active from <span className="text-white font-medium">{fmt(draft.start)}</span> to{' '}
-                  <span className="text-white font-medium">{fmt(draft.end)}</span>
+                <p className="text-xs mt-3" style={{ color: 'var(--text-tertiary)' }}>
+                  Agent will be active from <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{fmt(draft.start)}</span> to{' '}
+                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{fmt(draft.end)}</span>
                 </p>
               </div>
 
-              <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
-                <p className="text-sm font-semibold text-white mb-3">Active days</p>
+              <div
+                className="p-5 rounded-xl border"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+              >
+                <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Active days</p>
                 <div className="grid grid-cols-7 gap-2">
                   {DAY_KEYS.map(day => (
                     <button
@@ -164,8 +175,8 @@ export default function WorkingHoursPage() {
                       onClick={() => toggleDay(day)}
                       className="py-2 rounded-lg text-xs font-medium transition-colors border"
                       style={draft.days.includes(day)
-                        ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e', borderColor: 'rgba(250,77,46,0.4)' }
-                        : { background: 'rgb(24,24,27)', color: '#71717a', borderColor: 'rgb(39,39,42)' }}
+                        ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' }
+                        : { background: 'var(--input-bg)', color: 'var(--text-tertiary)', borderColor: 'var(--input-border)' }}
                     >
                       {DAY_LABELS[day]}
                     </button>
@@ -173,18 +184,22 @@ export default function WorkingHoursPage() {
                 </div>
               </div>
 
-              <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
-                <p className="text-sm font-semibold text-white mb-3">Timezone</p>
+              <div
+                className="p-5 rounded-xl border"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+              >
+                <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Timezone</p>
                 <select
                   value={draft.timezone}
                   onChange={e => set({ timezone: e.target.value })}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
+                  className="w-full rounded-lg px-3 py-2 text-sm border"
+                  style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
                 >
                   {COMMON_TIMEZONES.map(tz => (
                     <option key={tz} value={tz}>{tz}</option>
                   ))}
                 </select>
-                <p className="text-xs text-zinc-500 mt-2">
+                <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
                   Working hours are evaluated in this timezone. Consider using the contact&apos;s local zone for SMS-heavy flows.
                 </p>
               </div>

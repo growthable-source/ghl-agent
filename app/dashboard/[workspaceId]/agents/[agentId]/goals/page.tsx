@@ -246,7 +246,12 @@ export default function GoalsPage() {
               <select
                 value={condType}
                 onChange={e => { setCondType(e.target.value as StopConditionType); setCondValue('') }}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
+                className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               >
                 {(Object.keys(TYPE_LABELS) as StopConditionType[]).map(t => (
                   <option key={t} value={t}>{TYPE_LABELS[t]}</option>
@@ -274,7 +279,12 @@ export default function GoalsPage() {
                     'Pipeline stage ID'
                   }
                   required={condType !== 'SENTIMENT'}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                  style={{
+                    background: 'var(--input-bg)',
+                    border: '1px solid var(--input-border)',
+                    color: 'var(--input-text)',
+                  }}
                 />
               </div>
             )}
@@ -326,7 +336,12 @@ export default function GoalsPage() {
                     value={enrollWorkflowId}
                     onChange={e => setEnrollWorkflowId(e.target.value)}
                     disabled={workflows.length === 0}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 disabled:opacity-50"
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none disabled:opacity-50"
+                    style={{
+                      background: 'var(--input-bg)',
+                      border: '1px solid var(--input-border)',
+                      color: 'var(--input-text)',
+                    }}
                   >
                     <option value="">— none —</option>
                     {workflows.map(w => (
@@ -343,7 +358,12 @@ export default function GoalsPage() {
                     value={removeWorkflowId}
                     onChange={e => setRemoveWorkflowId(e.target.value)}
                     disabled={workflows.length === 0}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 disabled:opacity-50"
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none disabled:opacity-50"
+                    style={{
+                      background: 'var(--input-bg)',
+                      border: '1px solid var(--input-border)',
+                      color: 'var(--input-text)',
+                    }}
                   >
                     <option value="">— none —</option>
                     {workflows.map(w => (
@@ -367,7 +387,12 @@ export default function GoalsPage() {
             <button
               type="submit"
               disabled={adding}
-              className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-9 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-lg font-medium text-sm h-9 px-4 transition-colors"
+              style={
+                adding
+                  ? { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }
+                  : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+              }
             >
               {adding ? 'Adding…' : 'Add condition'}
             </button>

@@ -200,13 +200,13 @@ export default function RoutingPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-48">
-      <p className="text-zinc-500 text-sm">Loading…</p>
+      <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p>
     </div>
   )
 
   return (
     <div className="p-8 max-w-3xl space-y-6">
-      <p className="text-sm text-zinc-400">
+      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
         These rules decide which conversations this agent runs on. Rules are evaluated in priority order — the first matching rule deploys the agent. Inside a rule: conditions in the same group must all match (AND), any group matching wins (OR), and each condition can be negated (NOT).
       </p>
 
@@ -214,16 +214,19 @@ export default function RoutingPage() {
           engine denies by default (no rules → no inbounds match), so
           without this the agent is silently broken. Make it unmissable. */}
       {rules.length === 0 && (
-        <div className="rounded-xl border-2 border-red-500/40 bg-red-500/[0.07] p-4">
+        <div
+          className="rounded-xl border-2 p-4"
+          style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
+        >
           <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-red)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-red-300">
+              <p className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>
                 This agent has no Deploy rules — it won&apos;t receive any inbound messages.
               </p>
-              <p className="text-xs text-red-200/80 mt-1 leading-relaxed">
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--accent-red)' }}>
                 Every agent in Voxility is deny-by-default: if you don&apos;t tell it which
                 conversations to take, it takes none. Add at least one rule below. For a
                 catch-all, pick <span className="font-mono">All inbound messages</span>.
@@ -239,13 +242,17 @@ export default function RoutingPage() {
           {rules.map(rule => {
             const groups = ruleToGroups(rule)
             return (
-              <div key={rule.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+              <div
+                key={rule.id}
+                className="rounded-xl border p-4"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-zinc-600 font-mono">priority {rule.priority}</span>
+                      <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>priority {rule.priority}</span>
                       {groups.length > 1 && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/80">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--accent-amber)' }}>
                           {groups.length} OR groups
                         </span>
                       )}
@@ -254,23 +261,30 @@ export default function RoutingPage() {
                       <div key={gi} className="space-y-1.5">
                         {gi > 0 && (
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 h-px bg-amber-500/20" />
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">or</span>
-                            <div className="flex-1 h-px bg-amber-500/20" />
+                            <div className="flex-1 h-px" style={{ background: 'var(--accent-amber-bg)' }} />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--accent-amber)' }}>or</span>
+                            <div className="flex-1 h-px" style={{ background: 'var(--accent-amber-bg)' }} />
                           </div>
                         )}
                         {group.clauses.map((cl, ci) => (
                           <div key={ci} className="flex items-start gap-2 flex-wrap">
-                            {ci > 0 && <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mt-1">and</span>}
-                            <span className={`text-xs font-medium rounded px-2 py-0.5 ${
-                              cl.negate ? 'bg-red-500/10 text-red-300 border border-red-500/20' : 'bg-zinc-800 text-zinc-300'
-                            }`}>
+                            {ci > 0 && <span className="text-[10px] font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-muted)' }}>and</span>}
+                            <span
+                              className="text-xs font-medium rounded px-2 py-0.5"
+                              style={cl.negate
+                                ? { background: 'var(--accent-red-bg)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }
+                                : { background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}
+                            >
                               {labelForType(cl.ruleType, cl.negate)}
                             </span>
                             {cl.values.length > 0 && (
                               <div className="flex flex-wrap gap-1">
                                 {cl.values.map(v => (
-                                  <span key={v} className="text-xs bg-zinc-900 border border-zinc-800 text-zinc-300 rounded px-2 py-0.5 break-all">
+                                  <span
+                                    key={v}
+                                    className="text-xs rounded px-2 py-0.5 break-all border"
+                                    style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+                                  >
                                     {v}
                                   </span>
                                 ))}
@@ -283,7 +297,8 @@ export default function RoutingPage() {
                   </div>
                   <button
                     onClick={() => deleteRule(rule.id)}
-                    className="text-xs text-zinc-600 hover:text-red-400 transition-colors shrink-0"
+                    className="text-xs hover:opacity-80 transition-colors shrink-0"
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     Delete
                   </button>
@@ -295,10 +310,16 @@ export default function RoutingPage() {
       )}
 
       {/* Builder */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-        <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between flex-wrap gap-2">
-          <p className="text-sm font-medium text-zinc-200">Add rule</p>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+      <div
+        className="rounded-xl border overflow-hidden"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
+        <div
+          className="px-5 py-3 border-b flex items-center justify-between flex-wrap gap-2"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Add rule</p>
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
             group = AND · between groups = OR
           </span>
         </div>
@@ -309,22 +330,26 @@ export default function RoutingPage() {
               {/* OR divider between groups */}
               {gi > 0 && (
                 <div className="flex items-center gap-2 py-3">
-                  <div className="flex-1 h-px bg-amber-500/30" />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">or</span>
-                  <div className="flex-1 h-px bg-amber-500/30" />
+                  <div className="flex-1 h-px" style={{ background: 'var(--accent-amber-bg)' }} />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--accent-amber)' }}>or</span>
+                  <div className="flex-1 h-px" style={{ background: 'var(--accent-amber-bg)' }} />
                 </div>
               )}
 
-              <div className="rounded-lg border border-amber-500/10 bg-amber-500/[0.02] p-3 space-y-3">
+              <div
+                className="rounded-lg border p-3 space-y-3"
+                style={{ borderColor: 'var(--accent-amber-bg)', background: 'var(--accent-amber-bg)' }}
+              >
                 {builderGroups.length > 1 && (
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/70">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--accent-amber)' }}>
                       Group {gi + 1}
                     </span>
                     <button
                       type="button"
                       onClick={() => removeGroup(gi)}
-                      className="text-[11px] text-zinc-500 hover:text-red-400 transition-colors"
+                      className="text-[11px] hover:opacity-80 transition-colors"
+                      style={{ color: 'var(--text-tertiary)' }}
                     >
                       Remove group
                     </button>
@@ -337,13 +362,16 @@ export default function RoutingPage() {
                     <div key={ci} className="space-y-2">
                       {ci > 0 && (
                         <div className="flex items-center gap-2">
-                          <div className="flex-1 h-px bg-zinc-800" />
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">and</span>
-                          <div className="flex-1 h-px bg-zinc-800" />
+                          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>and</span>
+                          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
                         </div>
                       )}
 
-                      <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 space-y-3">
+                      <div
+                        className="rounded-lg border p-3 space-y-3"
+                        style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+                      >
                         {/* Row 1 — type selector + (optional) NOT toggle + remove.
                             flex-wrap so it collapses gracefully on narrow widths
                             instead of clipping the remove button. */}
@@ -351,7 +379,8 @@ export default function RoutingPage() {
                           <select
                             value={clause.ruleType}
                             onChange={e => updateClause(gi, ci, { ruleType: e.target.value as RuleType, values: [], negate: false })}
-                            className="flex-1 min-w-[180px] bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                            className="flex-1 min-w-[180px] rounded-lg px-3 py-2 text-sm focus:outline-none border"
+                            style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
                           >
                             {RULE_TYPE_OPTIONS.map(o => (
                               <option key={o.value} value={o.value}>{o.label}</option>
@@ -365,11 +394,10 @@ export default function RoutingPage() {
                               title={clause.negate
                                 ? 'Currently negated — click to remove NOT'
                                 : 'Invert this condition (DOES NOT HAVE / NOT IN / NOT CONTAINS)'}
-                              className={`shrink-0 text-xs font-medium rounded-lg px-2.5 py-2 border transition-colors ${
-                                clause.negate
-                                  ? 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-                                  : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
-                              }`}
+                              className="shrink-0 text-xs font-medium rounded-lg px-2.5 py-2 border transition-colors hover:opacity-80"
+                              style={clause.negate
+                                ? { borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
+                                : { borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--text-secondary)' }}
                             >
                               {clause.negate ? 'NOT ✓' : 'NOT'}
                             </button>
@@ -379,7 +407,8 @@ export default function RoutingPage() {
                             <button
                               type="button"
                               onClick={() => removeClause(gi, ci)}
-                              className="shrink-0 text-xs text-zinc-500 hover:text-red-400 px-2 py-2 transition-colors"
+                              className="shrink-0 text-xs px-2 py-2 transition-colors hover:opacity-80"
+                              style={{ color: 'var(--text-tertiary)' }}
                             >
                               Remove
                             </button>
@@ -391,12 +420,17 @@ export default function RoutingPage() {
                             {clause.values.length > 0 && (
                               <div className="flex flex-wrap gap-1.5">
                                 {clause.values.map(v => (
-                                  <span key={v} className="flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs rounded-full pl-2.5 pr-1 py-1 max-w-full break-all">
+                                  <span
+                                    key={v}
+                                    className="flex items-center gap-1 text-xs rounded-full pl-2.5 pr-1 py-1 max-w-full break-all"
+                                    style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}
+                                  >
                                     {v}
                                     <button
                                       type="button"
                                       onClick={() => removeValue(gi, ci, v)}
-                                      className="w-4 h-4 flex items-center justify-center rounded-full text-zinc-500 hover:text-red-400 hover:bg-zinc-700 transition-colors shrink-0"
+                                      className="w-4 h-4 flex items-center justify-center rounded-full transition-colors shrink-0 hover:opacity-80"
+                                      style={{ color: 'var(--text-tertiary)' }}
                                     >
                                       ×
                                     </button>
@@ -432,7 +466,7 @@ export default function RoutingPage() {
                               />
                             )}
 
-                            <p className="text-[11px] text-zinc-600">
+                            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                               Any of these {clause.values.length > 0 ? 'matches' : 'will match'} (OR within the condition)
                             </p>
                           </>
@@ -445,7 +479,8 @@ export default function RoutingPage() {
                 <button
                   type="button"
                   onClick={() => addClause(gi)}
-                  className="w-full border border-dashed border-zinc-700 hover:border-zinc-500 rounded-lg py-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="w-full border border-dashed rounded-lg py-1.5 text-[11px] transition-colors hover:opacity-80"
+                  style={{ borderColor: 'var(--border-secondary)', color: 'var(--text-tertiary)' }}
                 >
                   + Add condition (AND) to this group
                 </button>
@@ -456,7 +491,8 @@ export default function RoutingPage() {
           <button
             type="button"
             onClick={addGroup}
-            className="w-full border border-dashed border-amber-500/30 hover:border-amber-500/60 rounded-lg py-2 text-xs text-amber-400/80 hover:text-amber-300 transition-colors"
+            className="w-full border border-dashed rounded-lg py-2 text-xs transition-colors hover:opacity-80"
+            style={{ borderColor: 'var(--accent-amber)', color: 'var(--accent-amber)' }}
           >
             + Add OR group
           </button>
@@ -465,7 +501,10 @@ export default function RoutingPage() {
             type="button"
             onClick={addRule}
             disabled={saving}
-            className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center rounded-lg font-medium text-sm h-10 transition-colors"
+            style={saving
+              ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+              : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
           >
             {saving ? 'Saving…' : 'Save rule'}
           </button>
@@ -492,7 +531,8 @@ function ValueInput({ placeholder, onSubmit }: { placeholder: string; onSubmit: 
         }
       }}
       placeholder={placeholder}
-      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none border"
+      style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)' }}
     />
   )
 }

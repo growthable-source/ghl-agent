@@ -417,7 +417,12 @@ export default function QualifyingPage() {
               placeholder="Hi {{contact.first_name|there}}, are you looking to buy or rent?"
               required
               rows={2}
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+              className="w-full rounded-lg pl-3 pr-3 pt-8 pb-2 text-sm focus:outline-none resize-none"
+              style={{
+                background: 'var(--input-bg)',
+                color: 'var(--input-text)',
+                border: '1px solid var(--input-border)',
+              }}
             />
             <p className="text-[11px] text-zinc-600 mt-1">
               Use <span className="font-mono">{'{{'}contact.first_name|there{'}}'}</span> or any custom field to personalise — resolved at send time.
@@ -465,7 +470,12 @@ export default function QualifyingPage() {
                   onChange={e => setForm(p => ({ ...p, newChoice: e.target.value }))}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addChoice() }}}
                   placeholder="Type an option and press Enter…"
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{
+                    background: 'var(--input-bg)',
+                    color: 'var(--input-text)',
+                    border: '1px solid var(--input-border)',
+                  }}
                 />
                 <button type="button" onClick={addChoice} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors">
                   Add
@@ -490,7 +500,12 @@ export default function QualifyingPage() {
                     updateForm('fieldKey', slug)
                   }
                 }}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                style={{
+                  background: 'var(--input-bg)',
+                  color: 'var(--input-text)',
+                  border: '1px solid var(--input-border)',
+                }}
               >
                 <option value="">Don&apos;t save to contact</option>
                 {standardFields.length > 0 && (
@@ -523,7 +538,7 @@ export default function QualifyingPage() {
                 <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${
                   form.overwrite ? 'border-blue-500 bg-blue-500' : 'border-zinc-600'
                 }`}>
-                  {form.overwrite && <span className="text-white text-[10px] leading-none">✓</span>}
+                  {form.overwrite && <span className="text-[10px] leading-none" style={{ color: '#fff' }}>✓</span>}
                 </span>
                 <span>
                   {form.overwrite
@@ -575,7 +590,12 @@ export default function QualifyingPage() {
                     <select
                       value={form.conditionOp}
                       onChange={e => updateForm('conditionOp', e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{
+                        background: 'var(--input-bg)',
+                        color: 'var(--input-text)',
+                        border: '1px solid var(--input-border)',
+                      }}
                     >
                       <option value="">Select condition</option>
                       {Object.entries(CONDITION_OPS)
@@ -593,7 +613,12 @@ export default function QualifyingPage() {
                         value={form.conditionVal}
                         onChange={e => updateForm('conditionVal', e.target.value)}
                         placeholder="e.g. yes, buy, 500000"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                        style={{
+                          background: 'var(--input-bg)',
+                          color: 'var(--input-text)',
+                          border: '1px solid var(--input-border)',
+                        }}
                       />
                     </div>
                   )}
@@ -649,7 +674,12 @@ export default function QualifyingPage() {
                           updateForm('actionValue', '')
                           updateForm('actionParams', {})
                         }}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                        style={{
+                          background: 'var(--input-bg)',
+                          color: 'var(--input-text)',
+                          border: '1px solid var(--input-border)',
+                        }}
                       >
                         <option value="">Select action</option>
                         {Object.entries(ACTION_TYPES).map(([k, v]) => (
@@ -665,7 +695,12 @@ export default function QualifyingPage() {
                           value={form.actionValue}
                           onChange={e => updateForm('actionValue', e.target.value)}
                           placeholder={actInfo.placeholder ?? ''}
-                          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                          className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                          style={{
+                            background: 'var(--input-bg)',
+                            color: 'var(--input-text)',
+                            border: '1px solid var(--input-border)',
+                          }}
                         />
                       </div>
                     )}
@@ -718,7 +753,12 @@ export default function QualifyingPage() {
                     <select
                       value={form.actionParams.status ?? ''}
                       onChange={e => updateForm('actionParams', { ...form.actionParams, status: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{
+                        background: 'var(--input-bg)',
+                        color: 'var(--input-text)',
+                        border: '1px solid var(--input-border)',
+                      }}
                     >
                       <option value="">Select status</option>
                       {OPPORTUNITY_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -737,7 +777,12 @@ export default function QualifyingPage() {
                       value={form.actionParams.monetaryValue ?? ''}
                       onChange={e => updateForm('actionParams', { ...form.actionParams, monetaryValue: e.target.value === '' ? null : parseFloat(e.target.value) })}
                       placeholder="e.g. 5000"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{
+                        background: 'var(--input-bg)',
+                        color: 'var(--input-text)',
+                        border: '1px solid var(--input-border)',
+                      }}
                     />
                   </div>
                 )}
@@ -749,7 +794,12 @@ export default function QualifyingPage() {
                     <select
                       value={form.actionParams.channel ?? ''}
                       onChange={e => updateForm('actionParams', { ...form.actionParams, channel: e.target.value || null })}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{
+                        background: 'var(--input-bg)',
+                        color: 'var(--input-text)',
+                        border: '1px solid var(--input-border)',
+                      }}
                     >
                       {DND_CHANNELS.map(c => <option key={c.value || 'current'} value={c.value}>{c.label}</option>)}
                     </select>
@@ -780,7 +830,12 @@ export default function QualifyingPage() {
           <button
             type="submit"
             disabled={adding}
-            className="w-full inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center rounded-lg font-medium text-sm h-10 transition-colors"
+            style={{
+              background: adding ? 'var(--surface-tertiary)' : 'var(--accent-primary)',
+              color: adding ? 'var(--text-muted)' : 'var(--btn-primary-text)',
+              cursor: adding ? 'not-allowed' : 'pointer',
+            }}
           >
             {adding ? (editingId ? 'Saving…' : 'Adding…') : (editingId ? 'Save Changes' : 'Add Question')}
           </button>

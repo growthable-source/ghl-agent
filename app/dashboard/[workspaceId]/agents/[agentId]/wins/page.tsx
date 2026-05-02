@@ -182,7 +182,7 @@ export default function WinsPage() {
               Without a primary objective, your agent chats politely but may never book the meeting.
               Set one to make the agent act.
             </p>
-            <button onClick={startNew} className="text-xs font-semibold px-4 py-2 rounded-lg text-white" style={{ background: '#fa4d2e' }}>
+            <button onClick={startNew} className="text-xs font-semibold px-4 py-2 rounded-lg" style={{ background: '#fa4d2e', color: '#fff' }}>
               Set first objective
             </button>
           </div>
@@ -196,11 +196,11 @@ export default function WinsPage() {
                   <button
                     onClick={() => toggle(g.id, g.isActive)}
                     className="mt-0.5 relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
-                    style={{ background: g.isActive ? '#22c55e' : '#3f3f46' }}
+                    style={{ background: g.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
                     title={g.isActive ? 'Active' : 'Paused'}
                   >
-                    <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
-                      style={{ transform: g.isActive ? 'translateX(20px)' : 'translateX(4px)' }} />
+                    <span className="inline-block h-3 w-3 rounded-full transition-transform"
+                      style={{ background: '#fff', transform: g.isActive ? 'translateX(20px)' : 'translateX(4px)' }} />
                   </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -282,13 +282,23 @@ export default function WinsPage() {
             <Field label="Name">
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="e.g. Book demo with qualified leads"
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white"
+                className="w-full rounded px-3 py-2 text-xs"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               />
             </Field>
 
             <Field label="What counts as a win">
               <select value={form.goalType} onChange={e => applyTypeDefaults(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white"
+                className="w-full rounded px-3 py-2 text-xs"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               >
                 {GOAL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
@@ -303,7 +313,12 @@ export default function WinsPage() {
               <Field label="Value">
                 <input value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))}
                   placeholder={selectedType.placeholder}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white"
+                  className="w-full rounded px-3 py-2 text-xs"
+                  style={{
+                    background: 'var(--input-bg)',
+                    border: '1px solid var(--input-border)',
+                    color: 'var(--input-text)',
+                  }}
                 />
               </Field>
             )}
@@ -322,9 +337,9 @@ export default function WinsPage() {
                       className="text-left p-3 rounded-lg border transition-colors"
                       style={selected
                         ? { borderColor: cfg.color, background: `${cfg.color}15` }
-                        : { borderColor: '#27272a', background: 'transparent' }}
+                        : { borderColor: 'var(--border)', background: 'transparent' }}
                     >
-                      <p className="text-xs font-semibold" style={{ color: selected ? cfg.color : '#e4e4e7' }}>{cfg.label}</p>
+                      <p className="text-xs font-semibold" style={{ color: selected ? cfg.color : 'var(--text-primary)' }}>{cfg.label}</p>
                       <p className="text-[10px] text-zinc-500 mt-1 leading-snug">{cfg.desc}</p>
                     </button>
                   )
@@ -338,7 +353,12 @@ export default function WinsPage() {
                 onChange={e => setForm(f => ({ ...f, triggerPhrases: e.target.value }))}
                 placeholder={"speak to sales\nschedule a call\nbook a demo"}
                 rows={4}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono"
+                className="w-full rounded px-3 py-2 text-xs font-mono"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               />
             </Field>
 
@@ -348,7 +368,12 @@ export default function WinsPage() {
                 onChange={e => setForm(f => ({ ...f, instruction: e.target.value }))}
                 placeholder="e.g. Always confirm the time zone before booking. Offer 3 slots in the next 48 hours."
                 rows={3}
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white"
+                className="w-full rounded px-3 py-2 text-xs"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               />
             </Field>
 
@@ -357,14 +382,23 @@ export default function WinsPage() {
               <input type="number" value={form.maxTurns}
                 onChange={e => setForm(f => ({ ...f, maxTurns: e.target.value }))}
                 placeholder="5"
-                className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white"
+                className="w-full rounded px-3 py-2 text-xs"
+                style={{
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: 'var(--input-text)',
+                }}
               />
             </Field>
 
             <div className="flex gap-2 pt-2">
               <button onClick={save} disabled={!form.name}
-                className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 hover:opacity-90 transition-colors"
-                style={{ background: '#fa4d2e' }}
+                className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors"
+                style={
+                  !form.name
+                    ? { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }
+                    : { background: '#fa4d2e', color: '#fff' }
+                }
               >
                 {editingId ? 'Save changes' : 'Save objective'}
               </button>

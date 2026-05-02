@@ -87,23 +87,25 @@ export default function EvaluationsPage() {
   const passCount = evals.filter(e => e.runs[0]?.passed).length
   const hasRuns = evals.filter(e => e.runs.length > 0).length
 
-  if (loading) return <div className="p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
+  if (loading) return <div className="p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
+
+  const createDisabled = !name || !scenario
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
-        <Link href={`/dashboard/${workspaceId}/agents/${agentId}`} className="text-xs text-zinc-500 hover:text-zinc-300 mb-4 inline-block">← Back</Link>
+        <Link href={`/dashboard/${workspaceId}/agents/${agentId}`} className="text-xs mb-4 inline-block transition-colors hover:opacity-80" style={{ color: 'var(--text-muted)' }}>← Back</Link>
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white">Evaluations</h1>
-            <p className="text-sm text-zinc-400 mt-1">Canned test scenarios. Run them before shipping prompt changes.</p>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Evaluations</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Canned test scenarios. Run them before shipping prompt changes.</p>
           </div>
           {evals.length > 0 && (
             <button
               onClick={runAll}
               disabled={runningAll}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors"
-              style={{ background: '#fa4d2e' }}
+              className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors"
+              style={{ background: '#fa4d2e', color: '#fff', opacity: runningAll ? 0.6 : 1 }}
             >
               {runningAll ? 'Running...' : `Run all (${evals.length})`}
             </button>
@@ -111,17 +113,17 @@ export default function EvaluationsPage() {
         </div>
 
         {notMigrated && (
-          <div className="p-4 mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-300 font-medium">Migration pending</p>
-            <p className="text-xs text-amber-300/70 mt-1">Run manual_symbiosis_wave2.sql</p>
+          <div className="p-4 mb-6 rounded-xl border" style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}>
+            <p className="text-sm font-medium" style={{ color: 'var(--accent-amber)' }}>Migration pending</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--accent-amber)', opacity: 0.7 }}>Run manual_symbiosis_wave2.sql</p>
           </div>
         )}
 
         {hasRuns > 0 && (
-          <div className="mb-6 p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
+          <div className="mb-6 p-4 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="flex items-center gap-2">
               <div className="flex-1">
-                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-tertiary)' }}>
                   <div className="h-full transition-all"
                     style={{
                       width: `${(passCount / hasRuns) * 100}%`,
@@ -130,7 +132,7 @@ export default function EvaluationsPage() {
                   />
                 </div>
               </div>
-              <span className="text-sm font-semibold text-white">
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {passCount}/{hasRuns} passing
               </span>
             </div>
@@ -138,13 +140,13 @@ export default function EvaluationsPage() {
         )}
 
         {evals.length === 0 && !showNew ? (
-          <div className="text-center py-12 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <p className="text-sm font-medium text-white mb-1">No evaluations yet</p>
-            <p className="text-xs text-zinc-500 mb-4">Create a test scenario to verify agent behavior.</p>
+          <div className="text-center py-12 border border-dashed rounded-xl" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No evaluations yet</p>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Create a test scenario to verify agent behavior.</p>
             <button
               onClick={() => setShowNew(true)}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white hover:opacity-90 transition-colors"
-              style={{ background: '#fa4d2e' }}
+              className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors"
+              style={{ background: '#fa4d2e', color: '#fff' }}
             >
               Create first evaluation
             </button>
@@ -155,24 +157,24 @@ export default function EvaluationsPage() {
               const last = e.runs[0]
               const isOpen = expanded === e.id
               return (
-                <div key={e.id} className="border border-zinc-800 rounded-xl bg-zinc-900/40 overflow-hidden">
+                <div key={e.id} className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
                   <div className="p-4 flex items-start gap-3">
                     <div className="flex-shrink-0 mt-0.5">
                       {last == null ? (
-                        <div className="w-2 h-2 rounded-full bg-zinc-600" title="Never run" />
+                        <div className="w-2 h-2 rounded-full" title="Never run" style={{ background: 'var(--text-muted)' }} />
                       ) : last.passed ? (
-                        <div className="w-2 h-2 rounded-full bg-emerald-500" title="Passing" />
+                        <div className="w-2 h-2 rounded-full" title="Passing" style={{ background: 'var(--accent-emerald)' }} />
                       ) : (
-                        <div className="w-2 h-2 rounded-full bg-red-500" title="Failing" />
+                        <div className="w-2 h-2 rounded-full" title="Failing" style={{ background: 'var(--accent-red)' }} />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white">{e.name}</p>
-                      <p className="text-xs text-zinc-500 italic mt-0.5 truncate">&ldquo;{e.scenario}&rdquo;</p>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{e.name}</p>
+                      <p className="text-xs italic mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>&ldquo;{e.scenario}&rdquo;</p>
                       {last && !last.passed && last.failureReasons.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {last.failureReasons.map((r, i) => (
-                            <span key={i} className="text-[10px] font-medium text-red-400 px-2 py-0.5 rounded-full bg-red-500/10">
+                            <span key={i} className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ color: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}>
                               {r}
                             </span>
                           ))}
@@ -181,18 +183,19 @@ export default function EvaluationsPage() {
                     </div>
                     <div className="flex items-center gap-1">
                       {last && (
-                        <button onClick={() => setExpanded(isOpen ? null : e.id)} className="text-[11px] text-zinc-400 hover:text-white px-2 py-1">
+                        <button onClick={() => setExpanded(isOpen ? null : e.id)} className="text-[11px] px-2 py-1 transition-colors hover:opacity-80" style={{ color: 'var(--text-secondary)' }}>
                           {isOpen ? 'Hide' : 'Details'}
                         </button>
                       )}
                       <button
                         onClick={() => runOne(e.id)}
                         disabled={running === e.id}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
+                        className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors hover:opacity-80"
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
                       >
                         {running === e.id ? '...' : 'Run'}
                       </button>
-                      <button onClick={() => deleteEval(e.id)} className="text-zinc-500 hover:text-red-400 p-1">
+                      <button onClick={() => deleteEval(e.id)} className="p-1 transition-colors hover:opacity-80" style={{ color: 'var(--text-muted)' }}>
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                         </svg>
@@ -200,17 +203,17 @@ export default function EvaluationsPage() {
                     </div>
                   </div>
                   {isOpen && last && (
-                    <div className="px-4 pb-4 border-t border-zinc-800 bg-zinc-950/40">
+                    <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}>
                       <div className="mt-3">
-                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Actual response</p>
-                        <p className="text-xs text-zinc-300 p-3 rounded bg-zinc-900 whitespace-pre-wrap">{last.actualResponse || '—'}</p>
+                        <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Actual response</p>
+                        <p className="text-xs p-3 rounded whitespace-pre-wrap" style={{ color: 'var(--text-secondary)', background: 'var(--surface-tertiary)' }}>{last.actualResponse || '—'}</p>
                       </div>
                       {last.toolsCalled.length > 0 && (
                         <div className="mt-2">
-                          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Tools called</p>
+                          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Tools called</p>
                           <div className="flex gap-1 flex-wrap">
                             {last.toolsCalled.map(t => (
-                              <span key={t} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400">🔧 {t}</span>
+                              <span key={t} className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'rgba(168, 85, 247, 0.12)', color: 'rgb(147, 51, 234)' }}>🔧 {t}</span>
                             ))}
                           </div>
                         </div>
@@ -224,8 +227,8 @@ export default function EvaluationsPage() {
         )}
 
         {showNew ? (
-          <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/60 space-y-4">
-            <h3 className="text-sm font-semibold text-white">New evaluation</h3>
+          <div className="p-5 rounded-xl border space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>New evaluation</h3>
             <Input label="Name" value={name} onChange={setName} placeholder="e.g. Qualifies large team" />
             <Textarea label="Scenario (what the contact says)" value={scenario} onChange={setScenario} placeholder="Hi, I have a team of 50 engineers and need to start next week." />
             <Textarea
@@ -242,20 +245,21 @@ export default function EvaluationsPage() {
             />
             <Input label="Expected tool (optional)" value={expectedTool} onChange={setExpectedTool} placeholder="book_appointment" />
             <div className="flex gap-2">
-              <button onClick={createEval} disabled={!name || !scenario}
-                className="text-xs font-semibold px-4 py-2 rounded-lg text-white disabled:opacity-50 transition-colors"
-                style={{ background: '#fa4d2e' }}
+              <button onClick={createEval} disabled={createDisabled}
+                className="text-xs font-semibold px-4 py-2 rounded-lg transition-colors hover:opacity-90"
+                style={{ background: createDisabled ? 'var(--surface-tertiary)' : '#fa4d2e', color: createDisabled ? 'var(--text-muted)' : '#fff', opacity: createDisabled ? 0.6 : 1 }}
               >
                 Save evaluation
               </button>
-              <button onClick={() => setShowNew(false)} className="text-xs font-medium px-3 py-2 rounded-lg text-zinc-400 hover:text-white">
+              <button onClick={() => setShowNew(false)} className="text-xs font-medium px-3 py-2 rounded-lg transition-colors hover:opacity-80" style={{ color: 'var(--text-secondary)' }}>
                 Cancel
               </button>
             </div>
           </div>
         ) : evals.length > 0 && (
           <button onClick={() => setShowNew(true)}
-            className="w-full text-center text-xs font-medium py-3 rounded-xl border border-dashed border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors"
+            className="w-full text-center text-xs font-medium py-3 rounded-xl border border-dashed transition-colors hover:opacity-80"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
           >
             + Add evaluation
           </button>
@@ -268,12 +272,13 @@ export default function EvaluationsPage() {
 function Input({ label, value, onChange, placeholder }: any) {
   return (
     <div>
-      <label className="text-xs text-zinc-400 mb-1 block">{label}</label>
+      <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>{label}</label>
       <input
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white"
+        className="w-full border rounded px-3 py-2 text-xs"
+        style={{ background: 'var(--input-bg)', color: 'var(--input-text)', borderColor: 'var(--input-border)' }}
       />
     </div>
   )
@@ -281,13 +286,14 @@ function Input({ label, value, onChange, placeholder }: any) {
 function Textarea({ label, value, onChange, placeholder }: any) {
   return (
     <div>
-      <label className="text-xs text-zinc-400 mb-1 block">{label}</label>
+      <label className="text-xs mb-1 block" style={{ color: 'var(--text-secondary)' }}>{label}</label>
       <textarea
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         rows={3}
-        className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono"
+        className="w-full border rounded px-3 py-2 text-xs font-mono"
+        style={{ background: 'var(--input-bg)', color: 'var(--input-text)', borderColor: 'var(--input-border)' }}
       />
     </div>
   )
