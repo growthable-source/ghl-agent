@@ -47,6 +47,10 @@
   --logo-text:           #faf9f7;
   --sidebar-bg:          #f1f0ec;
   --sidebar-border:      #e0ddd6;
+  /* Toggle off-state — needs to be visibly darker than --surface so
+     OFF switches don't disappear into card backgrounds. surface-tertiary
+     is too close to surface in light mode. */
+  --toggle-off-bg:       #b5b1a8;
 
   /* Universal gradients / shadows / radius (orange-based, theme-agnostic) */
   --gradient-primary:    linear-gradient(135deg, #fa4d2e, #fb8e6a);
@@ -95,6 +99,7 @@
   --logo-text:           #f8fafc;
   --sidebar-bg:          #05080f;
   --sidebar-border:      #121a2b;
+  --toggle-off-bg:       #1a2540;
 
   /* Override the soft-light card gradient + shadows for the dark feel */
   --gradient-card:       linear-gradient(135deg, #090d15 0%, #0c111d 100%);
@@ -136,6 +141,7 @@
   --logo-text:           #f8fafc;
   --sidebar-bg:          #14100e;
   --sidebar-border:      #2c2420;
+  --toggle-off-bg:       #382e28;
 
   --gradient-card:       linear-gradient(135deg, #221c18 0%, #2c2420 100%);
   --shadow-card:         0 4px 20px -4px rgba(20, 16, 14, 0.4);
@@ -175,6 +181,7 @@
   --logo-text:           #f8fafc;
   --sidebar-bg:          #1c2128;
   --sidebar-border:      #2d333b;
+  --toggle-off-bg:       #3d4450;
 
   --gradient-card:       linear-gradient(135deg, #2d333b 0%, #353c47 100%);
   --shadow-card:         0 4px 20px -4px rgba(28, 33, 40, 0.4);

@@ -107,7 +107,7 @@ export default function WorkingHoursPage() {
                 type="button"
                 onClick={() => set({ enabled: !draft.enabled })}
                 className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                style={{ background: draft.enabled ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+                style={{ background: draft.enabled ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
               >
                 <span
                   className="inline-block h-4 w-4 rounded-full transition-transform duration-200"

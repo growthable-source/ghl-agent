@@ -350,7 +350,7 @@ export default function AgentsPage() {
                       disabled={togglingId === agent.id}
                       className="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
                       style={{
-                        background: agent.isActive ? '#22c55e' : 'var(--surface-tertiary)',
+                        background: agent.isActive ? '#22c55e' : 'var(--toggle-off-bg)',
                         opacity: togglingId === agent.id ? 0.5 : 1,
                       }}
                       title={agent.isActive ? 'Active — click to deactivate' : 'Inactive — click to activate'}

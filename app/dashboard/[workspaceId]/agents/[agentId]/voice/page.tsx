@@ -426,7 +426,7 @@ export default function VoicePage() {
           <button type="button" disabled={!vapiReady}
             onClick={() => setConfig(c => ({ ...c, isActive: !c.isActive }))}
             className="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors disabled:opacity-40"
-            style={{ background: config.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}>
+            style={{ background: config.isActive ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}>
             <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${config.isActive ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
           </button>
         </div>
@@ -700,7 +700,7 @@ export default function VoicePage() {
             </div>
             <button type="button" onClick={() => setConfig(c => ({ ...c, recordCalls: !c.recordCalls }))}
               className="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors"
-              style={{ background: config.recordCalls ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}>
+              style={{ background: config.recordCalls ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}>
               <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${config.recordCalls ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
             </button>
           </div>

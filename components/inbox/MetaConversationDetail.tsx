@@ -131,106 +131,238 @@ export default function MetaConversationDetail({ workspaceId, conversationId, on
   const channelLabel = convo.channel === 'instagram' ? 'Instagram Direct' : 'Facebook Messenger'
   const senderLabel = convo.senderName || `User ${convo.senderId.slice(-6)}`
 
+  // The most-recent message determines whether we offer to "Generate
+  // an AI draft" — surfaces as a Suggested Draft card above the
+  // composer when the visitor has spoken last and the operator hasn't
+  // typed anything yet. Matches the mockup pattern.
+  const lastMsg = convo.messages[convo.messages.length - 1]
+  const visitorWaitingForReply = lastMsg?.direction === 'in' && !reply.trim()
+
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ background: 'var(--background)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b" style={{ borderColor: 'var(--border)' }}>
-        {convo.senderProfilePicUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={convo.senderProfilePicUrl}
-            alt=""
-            className="w-9 h-9 rounded-full object-cover"
-            style={{ background: 'var(--surface-tertiary)' }}
-          />
-        ) : (
+    <div className="flex-1 flex h-full overflow-hidden" style={{ background: 'var(--background)' }}>
+      {/* ─── Main chat column ─── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <div className="flex items-center gap-3 p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          {convo.senderProfilePicUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={convo.senderProfilePicUrl}
+              alt=""
+              className="w-9 h-9 rounded-full object-cover"
+              style={{ background: 'var(--surface-tertiary)' }}
+            />
+          ) : (
+            <span
+              className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold"
+              style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}
+            >
+              {senderLabel.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{senderLabel}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span
+                className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded"
+                style={
+                  convo.channel === 'instagram'
+                    ? { background: 'rgba(228, 64, 95, 0.12)', color: '#E4405F' }
+                    : { background: 'rgba(24, 119, 242, 0.12)', color: '#1877F2' }
+                }
+              >
+                {convo.channel === 'instagram' ? 'Instagram' : 'Messenger'}
+              </span>
+              {convo.pageName && (
+                <span className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+                  · {convo.pageName}
+                </span>
+              )}
+            </div>
+          </div>
           <span
-            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold"
-            style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+            style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+            title="Your agent is handling this thread automatically. Reply below to take over."
           >
-            {senderLabel.charAt(0).toUpperCase()}
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-emerald)' }} />
+            Autopilot
           </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{senderLabel}</p>
-          <p className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
-            {channelLabel}
-            {convo.pageName && <> · {convo.pageName}</>}
+          <button
+            type="button"
+            className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            title="Mark this conversation resolved"
+          >
+            Mark resolved
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 transition-colors"
+              style={{ color: 'var(--text-tertiary)' }}
+              title="Close panel"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Message thread */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+          {convo.messages.length === 0 ? (
+            <p className="text-center text-xs py-8" style={{ color: 'var(--text-tertiary)' }}>No messages yet.</p>
+          ) : convo.messages.map(m => (
+            <Bubble key={m.id} msg={m} channel={convo.channel} />
+          ))}
+        </div>
+
+        {/* Reply box */}
+        <div className="border-t p-3" style={{ borderColor: 'var(--border)' }}>
+          {/* AI Suggested Draft card — shown when visitor has spoken
+              last and operator hasn't started typing. Plumbing for an
+              actual auto-draft endpoint is TODO; the UI surface is in
+              place so the agent can drop a draft into the composer. */}
+          {visitorWaitingForReply && (
+            <div
+              className="mb-2 rounded-lg border p-3"
+              style={{ background: 'var(--accent-primary-bg)', borderColor: 'var(--accent-primary)' }}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--accent-primary)' }}>
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2l1.5 5L19 8l-4.5 3.5L16 17l-4-2.5L8 17l1.5-5.5L5 8l5.5-1z" />
+                  </svg>
+                  AI Suggested Draft
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                  Autopilot:
+                  <span className="font-semibold" style={{ color: 'var(--accent-emerald)' }}>ON</span>
+                </span>
+              </div>
+              <p className="text-xs italic mb-2" style={{ color: 'var(--text-secondary)' }}>
+                Your agent will auto-reply on its next polling cycle. Type below to take over and write your own.
+              </p>
+            </div>
+          )}
+
+          {sendError && (
+            <p className="mb-2 text-[11px]" style={{ color: 'var(--accent-red)' }}>{sendError}</p>
+          )}
+          <div className="flex items-end gap-2">
+            <textarea
+              value={reply}
+              onChange={e => setReply(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
+              }}
+              placeholder={`Type a message…`}
+              rows={1}
+              className="flex-1 resize-none rounded-lg px-3 py-2 text-sm focus:outline-none max-h-32"
+              style={{
+                background: 'var(--input-bg)',
+                color: 'var(--input-text)',
+                border: '1px solid var(--input-border)',
+              }}
+            />
+            <button
+              type="button"
+              onClick={send}
+              disabled={!reply.trim() || sending}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={
+                !reply.trim() || sending
+                  ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+                  : { background: 'var(--accent-primary)', color: '#fff' }
+              }
+            >
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+          <p className="mt-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            Replies are subject to Meta&rsquo;s 24-hour messaging window.
           </p>
         </div>
-        {/* Autopilot indicator — implies the AI is handling this thread
-            unless an operator explicitly took over. Persona alignment
-            with the IA mockup. */}
-        <span
-          className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-          style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
-          title="Your agent is handling this thread automatically. Reply below to take over."
-        >
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-emerald)' }} />
-          Autopilot
-        </span>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 transition-colors"
-            style={{ color: 'var(--text-tertiary)' }}
-            title="Close panel"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
       </div>
 
-      {/* Message thread */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
-        {convo.messages.length === 0 ? (
-          <p className="text-center text-xs py-8" style={{ color: 'var(--text-tertiary)' }}>No messages yet.</p>
-        ) : convo.messages.map(m => (
-          <Bubble key={m.id} msg={m} channel={convo.channel} />
-        ))}
-      </div>
-
-      {/* Reply box */}
-      <div className="border-t p-3" style={{ borderColor: 'var(--border)' }}>
-        {sendError && (
-          <p className="mb-2 text-[11px]" style={{ color: 'var(--accent-red)' }}>{sendError}</p>
-        )}
-        <div className="flex items-end gap-2">
-          <textarea
-            value={reply}
-            onChange={e => setReply(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                send()
-              }
-            }}
-            placeholder={`Reply on ${channelLabel}…`}
-            rows={1}
-            className="flex-1 resize-none rounded-lg px-3 py-2 text-sm focus:outline-none max-h-32"
-            style={{
-              background: 'var(--input-bg)',
-              color: 'var(--input-text)',
-              border: '1px solid var(--input-border)',
-            }}
-          />
-          <button
-            type="button"
-            onClick={send}
-            disabled={!reply.trim() || sending}
-            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-          >
-            {sending ? 'Sending…' : 'Send'}
-          </button>
+      {/* ─── About contact rail (right side) ─── */}
+      <aside
+        className="hidden lg:flex w-72 shrink-0 flex-col border-l overflow-y-auto"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
+        <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <p className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: 'var(--text-tertiary)' }}>
+            About {senderLabel.split(' ')[0]}
+          </p>
         </div>
-        <p className="mt-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-          Replies are subject to Meta&rsquo;s 24-hour messaging window.
-        </p>
-      </div>
+        {/* Contact card */}
+        <div className="p-4 border-b text-center" style={{ borderColor: 'var(--border)' }}>
+          {convo.senderProfilePicUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={convo.senderProfilePicUrl}
+              alt=""
+              className="w-16 h-16 rounded-full mx-auto mb-2 object-cover"
+              style={{ background: 'var(--surface-tertiary)' }}
+            />
+          ) : (
+            <span
+              className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-semibold mx-auto mb-2"
+              style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}
+            >
+              {senderLabel.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{senderLabel}</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            via {channelLabel}
+          </p>
+          {convo.assignedUser && (
+            <span
+              className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-2"
+              style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
+            >
+              Assigned to {convo.assignedUser.name || convo.assignedUser.email || 'someone'}
+            </span>
+          )}
+        </div>
+        {/* Recent activity */}
+        <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <p className="text-[10px] font-semibold tracking-wider uppercase mb-2" style={{ color: 'var(--text-tertiary)' }}>
+            Recent activity
+          </p>
+          <div className="space-y-2 text-xs">
+            <ActivityRow label="First contacted" value={relTime(convo.createdAt)} />
+            <ActivityRow label="Last message" value={relTime(convo.lastMessageAt)} />
+            <ActivityRow label="Total messages" value={`${convo.messages.length}`} />
+            <ActivityRow label="Status" value={convo.status === 'active' ? 'Live' : convo.status} />
+          </div>
+        </div>
+        {/* Notes placeholder */}
+        <div className="p-4 flex-1">
+          <p className="text-[10px] font-semibold tracking-wider uppercase mb-2" style={{ color: 'var(--text-tertiary)' }}>
+            Notes
+          </p>
+          <p className="text-xs italic" style={{ color: 'var(--text-tertiary)' }}>
+            No notes yet. Click to add a private note about {senderLabel.split(' ')[0]}.
+          </p>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+function ActivityRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+      <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{value}</span>
     </div>
   )
 }

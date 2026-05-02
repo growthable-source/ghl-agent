@@ -280,7 +280,7 @@ function Toggle({ checked, onChange, disabled, title }: {
       disabled={disabled}
       title={title}
       className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-30"
-      style={{ background: checked && !disabled ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+      style={{ background: checked && !disabled ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
     >
       <span className="inline-block h-3 w-3 rounded-full transition-transform"
         style={{ background: '#fff', transform: checked ? 'translateX(20px)' : 'translateX(4px)' }} />

@@ -180,7 +180,7 @@ export default function PersonaPage() {
                 type="button"
                 onClick={() => set({ useEmojis: !draft.useEmojis })}
                 className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
-                style={{ background: draft.useEmojis ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+                style={{ background: draft.useEmojis ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.useEmojis ? 'translate-x-4' : 'translate-x-0'}`}
@@ -198,7 +198,7 @@ export default function PersonaPage() {
                 type="button"
                 onClick={() => set({ simulateTypos: !draft.simulateTypos })}
                 className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
-                style={{ background: draft.simulateTypos ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+                style={{ background: draft.simulateTypos ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.simulateTypos ? 'translate-x-4' : 'translate-x-0'}`}
@@ -217,7 +217,7 @@ export default function PersonaPage() {
                   type="button"
                   onClick={() => set({ typingDelayEnabled: !draft.typingDelayEnabled })}
                   className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
-                  style={{ background: draft.typingDelayEnabled ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+                  style={{ background: draft.typingDelayEnabled ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.typingDelayEnabled ? 'translate-x-4' : 'translate-x-0'}`}

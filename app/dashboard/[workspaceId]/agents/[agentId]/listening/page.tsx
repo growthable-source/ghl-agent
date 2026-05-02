@@ -167,7 +167,7 @@ export default function ListeningPage() {
                     type="button"
                     onClick={() => toggleActive(rule)}
                     className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
-                    style={{ background: rule.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+                    style={{ background: rule.isActive ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
                     role="switch"
                     aria-checked={rule.isActive}
                     aria-label={rule.isActive ? 'Disable rule' : 'Enable rule'}

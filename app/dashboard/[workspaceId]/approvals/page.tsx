@@ -386,7 +386,7 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
                     onClick={() => update(a.id, { judgeEnabled: !a.judgeEnabled })}
                     disabled={saving === a.id || !a.requireApproval}
                     className="relative inline-flex h-5 w-9 items-center rounded-full disabled:opacity-30"
-                    style={{ background: a.judgeEnabled ? 'var(--accent-primary)' : 'var(--surface-tertiary)' }}
+                    style={{ background: a.judgeEnabled ? 'var(--accent-primary)' : 'var(--toggle-off-bg)' }}
                   >
                     <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
                       style={{ transform: a.judgeEnabled ? 'translateX(20px)' : 'translateX(4px)' }} />

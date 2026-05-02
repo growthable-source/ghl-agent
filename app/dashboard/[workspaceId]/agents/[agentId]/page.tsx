@@ -498,7 +498,7 @@ function ToggleStatic({ on }: { on: boolean }) {
   return (
     <span
       className="relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors"
-      style={{ background: on ? 'var(--accent-primary)' : 'var(--surface-tertiary)' }}
+      style={{ background: on ? 'var(--accent-primary)' : 'var(--toggle-off-bg)' }}
       aria-hidden
     >
       <span

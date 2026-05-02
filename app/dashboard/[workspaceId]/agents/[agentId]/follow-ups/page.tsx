@@ -156,7 +156,7 @@ export default function FollowUpsPage() {
                     <button
                       onClick={() => toggleActive(seq)}
                       className="relative inline-flex h-4 w-8 shrink-0 rounded-full transition-colors"
-                      style={{ background: seq.isActive ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+                      style={{ background: seq.isActive ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
                     >
                       <span className={`inline-block h-3 w-3 transform rounded-full shadow transition ${seq.isActive ? 'translate-x-4' : 'translate-x-0.5'}`} style={{ background: '#fff' }} />
                     </button>

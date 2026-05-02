@@ -46,8 +46,19 @@ interface Row {
   snippets?: string[]
 }
 
-type StatusTab = 'live' | 'handed_off' | 'ended' | 'all'
+// Mockup-faithful filter buckets: All / Unread / Needs human / AI handled.
+// Maps onto the existing data shape — see the counts useMemo for the
+// exact predicates. The "ended" status doesn't get a chip in the new
+// IA; it's accessible via the brand picker / search if needed.
+type StatusTab = 'all' | 'unread' | 'needs_human' | 'ai_handled'
 type AssignTab = 'all' | 'mine' | 'unassigned'
+
+function isUnreadRow(r: { status: string; lastMessage?: { role: string } | null }): boolean {
+  return r.lastMessage?.role === 'visitor' && r.status !== 'ended'
+}
+function isAiHandledRow(r: { status: string; lastMessage?: { role: string } | null }): boolean {
+  return r.lastMessage?.role === 'agent' && r.status === 'active'
+}
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -76,7 +87,7 @@ export default function InboxPage() {
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
   const [notMigrated, setNotMigrated] = useState(false)
-  const [tab, setTab] = useState<StatusTab>('live')
+  const [tab, setTab] = useState<StatusTab>('all')
   const [assignTab, setAssignTab] = useState<AssignTab>('all')
   const [search, setSearch] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
@@ -183,19 +194,19 @@ export default function InboxPage() {
   }
 
   const counts = useMemo(() => {
-    const live = rows.filter(r => r.status === 'active').length
-    const handed = rows.filter(r => r.status === 'handed_off').length
-    const ended = rows.filter(r => r.status === 'ended').length
+    const unread = rows.filter(isUnreadRow).length
+    const needs_human = rows.filter(r => r.status === 'handed_off').length
+    const ai_handled = rows.filter(isAiHandledRow).length
     const mine = meId ? rows.filter(r => r.assignedUserId === meId).length : 0
     const unassigned = rows.filter(r => !r.assignedUserId).length
-    return { live, handed_off: handed, ended, all: rows.length, mine, unassigned }
+    return { all: rows.length, unread, needs_human, ai_handled, mine, unassigned }
   }, [rows, meId])
 
   const filtered = useMemo(() => {
     let f = rows
-    if (tab === 'live') f = f.filter(r => r.status === 'active')
-    else if (tab === 'handed_off') f = f.filter(r => r.status === 'handed_off')
-    else if (tab === 'ended') f = f.filter(r => r.status === 'ended')
+    if (tab === 'unread') f = f.filter(isUnreadRow)
+    else if (tab === 'needs_human') f = f.filter(r => r.status === 'handed_off')
+    else if (tab === 'ai_handled') f = f.filter(isAiHandledRow)
 
     if (assignTab === 'mine' && meId) f = f.filter(r => r.assignedUserId === meId)
     else if (assignTab === 'unassigned') f = f.filter(r => !r.assignedUserId)
@@ -415,10 +426,10 @@ export default function InboxPage() {
 
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {([
-            { id: 'live', label: 'Live' },
-            { id: 'handed_off', label: 'Handed off' },
-            { id: 'ended', label: 'Ended' },
             { id: 'all', label: 'All' },
+            { id: 'unread', label: 'Unread' },
+            { id: 'needs_human', label: 'Needs human' },
+            { id: 'ai_handled', label: 'AI handled' },
           ] as Array<{ id: StatusTab; label: string }>).map(t => {
             const active = tab === t.id
             const count = counts[t.id]
@@ -555,7 +566,10 @@ export default function InboxPage() {
               {search.trim() ? 'No matches' :
                 assignTab === 'mine' ? 'Nothing assigned to you'
                 : assignTab === 'unassigned' ? 'Queue is empty — nice'
-                : tab === 'live' ? 'Nothing live right now' : 'No conversations'}
+                : tab === 'unread' ? 'You’re caught up'
+                : tab === 'needs_human' ? 'Nothing waiting on you'
+                : tab === 'ai_handled' ? 'Agent hasn’t replied to anything yet'
+                : 'No conversations'}
             </p>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
               {search.trim() ? 'Try a different query.'

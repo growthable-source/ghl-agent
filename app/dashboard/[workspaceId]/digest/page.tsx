@@ -228,7 +228,7 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
             disabled={saving || !email}
             title={!email ? 'Set an email on your account first' : optIn ? 'Turn off weekly digest emails' : 'Turn on weekly digest emails'}
             className="relative inline-flex h-5 w-9 items-center rounded-full disabled:opacity-30"
-            style={{ background: optIn ? 'var(--accent-emerald)' : 'var(--surface-tertiary)' }}
+            style={{ background: optIn ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
           >
             <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
               style={{ transform: optIn ? 'translateX(20px)' : 'translateX(4px)' }} />
