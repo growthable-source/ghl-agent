@@ -223,7 +223,7 @@ export default function AgentsPage() {
         {/* ─── Header ──────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-white">Agents</h1>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Agents</h1>
             <p className="text-sm text-zinc-400 mt-1">Manage your AI agents, channels, and deployments</p>
           </div>
 
@@ -296,7 +296,7 @@ export default function AgentsPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-white mb-1">No agents yet</h3>
+            <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>No agents yet</h3>
             <p className="text-sm text-zinc-400 text-center max-w-sm mb-6">
               Create your first AI agent to start automating conversations across SMS, WhatsApp, Email, and more.
             </p>
@@ -335,7 +335,7 @@ export default function AgentsPage() {
                     <div className="flex-1 min-w-0 mr-3">
                       <Link
                         href={`/dashboard/${workspaceId}/agents/${agent.id}`}
-                        className="text-base font-semibold text-white hover:underline truncate block"
+                        className="text-base font-semibold hover:underline truncate block" style={{ color: 'var(--text-primary)' }}
                       >
                         {agent.name}
                       </Link>
@@ -396,15 +396,15 @@ export default function AgentsPage() {
                   {/* Stats row */}
                   <div className="grid grid-cols-3 gap-3 py-3 border-t border-zinc-800">
                     <div>
-                      <p className="text-lg font-bold text-white">{agent._count.messageLogs.toLocaleString()}</p>
+                      <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{agent._count.messageLogs.toLocaleString()}</p>
                       <p className="text-[11px] text-zinc-500">Messages</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-white">{agent._count.conversationStates}</p>
+                      <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{agent._count.conversationStates}</p>
                       <p className="text-[11px] text-zinc-500">Conversations</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-white">{agent._count.attachedCollections ?? agent._count.attachedKnowledge ?? agent._count.knowledgeEntries ?? 0}</p>
+                      <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{agent._count.attachedCollections ?? agent._count.attachedKnowledge ?? agent._count.knowledgeEntries ?? 0}</p>
                       <p className="text-[11px] text-zinc-500">Collections</p>
                     </div>
                   </div>
