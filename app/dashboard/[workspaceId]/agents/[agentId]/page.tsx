@@ -4,48 +4,128 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useDirtyForm } from '@/lib/use-dirty-form'
-import SaveBar from '@/components/dashboard/SaveBar'
-import { MergeFieldInput, MergeFieldTextarea } from '@/components/MergeFieldHelper'
-import { BUSINESS_CONTEXT_EXAMPLES } from '@/lib/business-context-examples'
 
-type FallbackBehavior = 'message' | 'transfer' | 'message_and_transfer'
+/**
+ * Agent Identity / overview page — mockup-faithful sectioned layout.
+ *
+ * Replaces the old Settings/System-Prompt-only editor with a single
+ * scrollable page composed of section cards (Identity / Knowledge /
+ * Actions / Handoff / Channels). Each section uses a two-column shell:
+ * a left column with the heading + description, and a right column
+ * with the actual editable controls.
+ *
+ * Editable on this page: agent name + persona description (mapped to
+ * systemPrompt for now). Knowledge / Actions / Handoff / Channels
+ * sections summarise live state and deep-link out to the existing
+ * sub-pages for full editing.
+ */
 
-interface Settings {
+interface AgentRecord {
   name: string
   systemPrompt: string
-  instructions: string
-  fallbackBehavior: FallbackBehavior
-  fallbackMessage: string
-  agentType: 'SIMPLE' | 'ADVANCED'
-  businessContext: string
+  isActive: boolean
+  enabledTools: string[]
+  fallbackBehavior: 'message' | 'transfer' | 'message_and_transfer'
+  agentPersonaName: string | null
 }
 
-export default function AgentSettingsPage() {
+interface KnowledgeSource {
+  id: string
+  name: string
+  type: string
+  syncedAt: string | null
+}
+
+interface ChannelDeployment {
+  channel: string
+  isActive: boolean
+}
+
+const ACTION_LABELS: Record<string, { label: string; desc: string }> = {
+  send_reply: { label: 'Send reply', desc: 'Reply to inbound messages on any channel' },
+  send_sms: { label: 'Send SMS', desc: 'Compose and send SMS messages' },
+  send_email: { label: 'Send email', desc: 'Compose and send emails to the contact' },
+  get_contact_details: { label: 'Look up contact details', desc: 'Fetch CRM info before replying' },
+  update_contact_tags: { label: 'Tag the contact', desc: 'Add tags based on the conversation' },
+  remove_contact_tags: { label: 'Remove tags', desc: 'Strip tags when the conversation moves on' },
+  get_opportunities: { label: 'Look up opportunities', desc: 'Pull open deals for the contact' },
+  upsert_opportunity: { label: 'Create or update an opportunity', desc: 'Move deal forward in the pipeline' },
+  move_opportunity_stage: { label: 'Move opportunity stage', desc: 'Advance deals through your pipeline' },
+  mark_opportunity_won: { label: 'Mark opportunity won', desc: 'Close a deal as won' },
+  mark_opportunity_lost: { label: 'Mark opportunity lost', desc: 'Close a deal as lost' },
+  add_contact_note: { label: 'Add a note', desc: 'Leave a note on the contact record' },
+  get_available_slots: { label: 'Check calendar availability', desc: 'Find open slots before booking' },
+  book_appointment: { label: 'Book an appointment', desc: 'Schedule a time with the contact' },
+  cancel_appointment: { label: 'Cancel an appointment', desc: 'Cancel previously-booked appointments' },
+  reschedule_appointment: { label: 'Reschedule an appointment', desc: 'Move existing bookings' },
+  create_appointment_note: { label: 'Add appointment note', desc: 'Annotate booked appointments' },
+  get_calendar_events: { label: 'Read calendar events', desc: 'See upcoming events on the calendar' },
+  find_contact_by_email_or_phone: { label: 'Find contact by email/phone', desc: 'Look up before creating a duplicate' },
+  upsert_contact: { label: 'Create or update contact', desc: 'Capture lead details into your CRM' },
+  create_task: { label: 'Create a task', desc: 'Queue a task for the team' },
+  add_to_workflow: { label: 'Add to workflow', desc: 'Trigger an automation' },
+  remove_from_workflow: { label: 'Remove from workflow', desc: 'Pull the contact out of an automation' },
+  cancel_scheduled_message: { label: 'Cancel a scheduled message', desc: 'Stop a queued send' },
+  list_contact_conversations: { label: 'List past conversations', desc: 'See previous threads with this contact' },
+  list_pipelines: { label: 'List pipelines', desc: 'See available CRM pipelines' },
+}
+
+const CHANNEL_BADGES: Record<string, { label: string; color: string }> = {
+  SMS: { label: 'SMS', color: 'var(--accent-blue)' },
+  WhatsApp: { label: 'WhatsApp', color: '#25D366' },
+  FB: { label: 'Facebook Messenger', color: '#1877F2' },
+  IG: { label: 'Instagram DMs', color: '#E4405F' },
+  GMB: { label: 'Google Business', color: 'var(--text-secondary)' },
+  Live_Chat: { label: 'Website chat', color: 'var(--accent-amber)' },
+  Email: { label: 'Email', color: 'var(--accent-primary)' },
+}
+
+export default function AgentIdentityPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
+  const base = `/dashboard/${workspaceId}/agents/${agentId}`
 
   const [loading, setLoading] = useState(true)
-  const [initial, setInitial] = useState<Settings | null>(null)
+  const [initial, setInitial] = useState<AgentRecord | null>(null)
+  const [knowledge, setKnowledge] = useState<KnowledgeSource[]>([])
+  const [channels, setChannels] = useState<ChannelDeployment[]>([])
+  const [autopilotPending, setAutopilotPending] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
-      .then(r => r.json())
-      .then(({ agent }) => {
-        setInitial({
-          name: agent.name,
-          systemPrompt: agent.systemPrompt,
-          instructions: agent.instructions ?? '',
-          fallbackBehavior: agent.fallbackBehavior ?? 'message',
-          fallbackMessage: agent.fallbackMessage ?? '',
-          agentType: (agent.agentType === 'ADVANCED' ? 'ADVANCED' : 'SIMPLE'),
-          businessContext: agent.businessContext ?? '',
-        })
+    Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`).then(r => r.json()),
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/knowledge`).then(r => r.json()).catch(() => ({})),
+    ])
+      .then(([agentRes, channelsRes, knowledgeRes]) => {
+        const agent = agentRes.agent
+        if (agent) {
+          setInitial({
+            name: agent.name ?? '',
+            systemPrompt: agent.systemPrompt ?? '',
+            isActive: agent.isActive ?? true,
+            enabledTools: agent.enabledTools ?? [],
+            fallbackBehavior: agent.fallbackBehavior ?? 'message',
+            agentPersonaName: agent.agentPersonaName ?? null,
+          })
+        }
+        if (Array.isArray(channelsRes.deployments)) setChannels(channelsRes.deployments)
+        // Knowledge endpoint shape varies — try a few common keys.
+        const ks = knowledgeRes.collections ?? knowledgeRes.knowledge ?? knowledgeRes.entries ?? []
+        if (Array.isArray(ks)) {
+          setKnowledge(ks.slice(0, 6).map((k: any) => ({
+            id: k.id,
+            name: k.name ?? k.title ?? 'Untitled',
+            type: k.type ?? 'collection',
+            syncedAt: k.syncedAt ?? k.updatedAt ?? null,
+          })))
+        }
       })
       .finally(() => setLoading(false))
   }, [workspaceId, agentId])
 
-  const { draft, set, dirty, saving, savedAt, error, save, reset } = useDirtyForm<Settings>({
+  const { draft, set, dirty, saving, savedAt, error, save, reset } = useDirtyForm<AgentRecord>({
     initial,
     onSave: async (d) => {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
@@ -54,326 +134,432 @@ export default function AgentSettingsPage() {
         body: JSON.stringify({
           name: d.name,
           systemPrompt: d.systemPrompt,
-          instructions: d.instructions,
-          fallbackBehavior: d.fallbackBehavior,
-          fallbackMessage: d.fallbackMessage || null,
-          agentType: d.agentType,
-          // Send null when the textarea is blank so the DB column reflects
-          // "no glossary" rather than an empty string.
-          businessContext: d.businessContext.trim() || null,
+          agentPersonaName: d.agentPersonaName || null,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'Save failed')
     },
   })
 
-  if (loading || !initial) return (
-    <div className="flex items-center justify-center h-48">
-      <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p>
-    </div>
-  )
-
-  // Inputs/textareas all share the same theme-aware shell. Inline
-  // styles so we never depend on the override block firing.
-  const fieldStyle: React.CSSProperties = {
-    background: 'var(--input-bg)',
-    color: 'var(--input-text)',
-    border: '1px solid var(--input-border)',
+  async function toggleAutopilot() {
+    if (!draft) return
+    setAutopilotPending(true)
+    const next = !draft.isActive
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: next }),
+      })
+      if (res.ok) {
+        // Mutate both initial + draft so the toggle reflects truth and
+        // doesn't show as a "dirty" field.
+        setInitial(prev => prev ? { ...prev, isActive: next } : prev)
+        set({ isActive: next })
+      }
+    } finally {
+      setAutopilotPending(false)
+    }
   }
 
-  const base = `/dashboard/${workspaceId}/agents/${agentId}`
+  if (loading || !initial || !draft) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading agent…</p>
+      </div>
+    )
+  }
+
+  // Simple deterministic monogram avatar for the persona, coloured by name.
+  const monogram = (draft.agentPersonaName || draft.name || 'A').charAt(0).toUpperCase()
+  const avatarHue = ((draft.agentPersonaName || draft.name).charCodeAt(0) || 200) * 137 % 360
+
+  const enabledActions = draft.enabledTools ?? []
+  const liveChannels = channels.filter(c => c.isActive)
 
   return (
-    <div className="p-8 max-w-3xl pb-24">
-      {/* Sectioned overview — quick deep-links into the four other
-          surfaces of agent config. Mirrors the IA mockup's section
-          cards on the Identity page so this isn't just a System Prompt
-          form. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
-        <SectionCard
-          href={`${base}/knowledge`}
-          title="Knowledge"
-          desc="What the agent knows"
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-            </svg>
-          }
-        />
-        <SectionCard
-          href={`${base}/tools`}
-          title="Actions"
-          desc="What it can do"
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-            </svg>
-          }
-        />
-        <SectionCard
-          href={`${base}/rules`}
-          title="Rules"
-          desc="When to hand off"
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M9 11l3 3L22 4" />
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-            </svg>
-          }
-        />
-        <SectionCard
-          href={`${base}/deploy`}
-          title="Channels"
-          desc="Where it talks"
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
-          }
-        />
-      </div>
-
-      <div className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Agent Name</label>
-          <input
-            type="text"
-            value={draft.name}
-            onChange={e => set({ name: e.target.value })}
-            className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
-            style={fieldStyle}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>System Prompt</label>
-          <p className="text-xs mb-2" style={{ color: 'var(--text-tertiary)' }}>Defines the agent&apos;s role, tone, and context. This is the base of every conversation.</p>
-          <textarea
-            value={draft.systemPrompt}
-            onChange={e => set({ systemPrompt: e.target.value })}
-            rows={10}
-            className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none resize-y font-mono"
-            style={fieldStyle}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
-            Extra Instructions <span className="font-normal" style={{ color: 'var(--text-muted)' }}>(optional)</span>
-          </label>
-          <p className="text-xs mb-2" style={{ color: 'var(--text-tertiary)' }}>Appended to every conversation. Useful for campaign-specific rules or temporary overrides.</p>
-          <textarea
-            value={draft.instructions}
-            onChange={e => set({ instructions: e.target.value })}
-            rows={3}
-            className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none resize-y"
-            style={fieldStyle}
-          />
-        </div>
-
-        {/* Context Level ──
-            SIMPLE matches the long-standing behaviour (name + tags in the
-            prompt). ADVANCED additionally pre-loads the contact's recent
-            opportunities and custom fields every turn, plus the operator's
-            businessContext glossary. Upgrade/downgrade is instant — no
-            migration — since every read of these fields is guarded by the
-            agentType check in runAgent. */}
-        <div className="border-t pt-6" style={{ borderColor: 'var(--border)' }}>
-          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Context Level</label>
-          <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>How much CRM context the agent sees on every turn. You can change this at any time.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+    <div className="pb-24" style={{ background: 'var(--background)' }}>
+      {/* ─── Sticky header ─── */}
+      <div
+        className="sticky top-0 z-20 border-b backdrop-blur"
+        style={{
+          borderColor: 'var(--border)',
+          background: 'color-mix(in srgb, var(--background) 92%, transparent)',
+        }}
+      >
+        <div className="max-w-5xl mx-auto px-8 py-5 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Agent
+            </h1>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              How your AI replies to customers across every channel
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
             <button
               type="button"
-              onClick={() => set({ agentType: 'SIMPLE' })}
-              className="text-left rounded-lg border p-3 transition-colors"
+              onClick={toggleAutopilot}
+              disabled={autopilotPending}
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60"
               style={
-                draft.agentType === 'SIMPLE'
-                  ? { background: 'var(--accent-primary-bg)', borderColor: 'var(--accent-primary)' }
-                  : { background: 'var(--surface)', borderColor: 'var(--border)' }
+                draft.isActive
+                  ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+                  : { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }
               }
+              title={draft.isActive ? 'Click to pause — agent will stop replying' : 'Click to activate — agent will reply on connected channels'}
             >
-              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Simple</p>
-              <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--text-tertiary)' }}>
-                Name, tags, and conversation history. Zero extra token cost.
-              </p>
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: draft.isActive ? 'var(--accent-emerald)' : 'var(--text-muted)' }}
+              />
+              Autopilot {draft.isActive ? 'ON' : 'OFF'}
             </button>
             <button
               type="button"
-              onClick={() => set({ agentType: 'ADVANCED' })}
-              className="text-left rounded-lg border p-3 transition-colors"
+              onClick={save}
+              disabled={!dirty || saving}
+              className="inline-flex items-center justify-center rounded-lg text-sm font-semibold px-4 h-9 transition-colors"
               style={
-                draft.agentType === 'ADVANCED'
-                  ? { background: 'var(--accent-emerald-bg)', borderColor: 'var(--accent-emerald)' }
-                  : { background: 'var(--surface)', borderColor: 'var(--border)' }
+                !dirty || saving
+                  ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+                  : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
               }
             >
-              <p className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
-                Advanced
-                <span
-                  className="text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5"
-                  style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
-                >
-                  context
-                </span>
-              </p>
-              <p className="text-[11px] mt-1 leading-snug" style={{ color: 'var(--text-tertiary)' }}>
-                Also loads opportunities (last ~6 months) + custom fields. Best for commercial agents.
-              </p>
+              {saving ? 'Saving…' : 'Save changes'}
             </button>
           </div>
+        </div>
+        {error && (
+          <div
+            className="max-w-5xl mx-auto px-8 pb-3 text-xs"
+            style={{ color: 'var(--accent-red)' }}
+          >
+            {error}
+          </div>
+        )}
+        {savedAt && !dirty && !saving && (
+          <div
+            className="max-w-5xl mx-auto px-8 pb-3 text-xs"
+            style={{ color: 'var(--accent-emerald)' }}
+          >
+            Saved.
+          </div>
+        )}
+      </div>
 
-          {draft.agentType === 'ADVANCED' && (
-            <div>
-              <label className="block text-xs mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
-                Business Context <span style={{ color: 'var(--text-muted)' }}>(optional)</span>
-              </label>
-              <p className="text-xs mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                Plain-English explanation of what your custom fields and opportunities represent. The agent reads this alongside the live data so it knows how to interpret what it&apos;s seeing. Merge fields like <span className="font-mono" style={{ color: 'var(--text-tertiary)' }}>{'{{contact.first_name|there}}'}</span> and <span className="font-mono" style={{ color: 'var(--text-tertiary)' }}>{'{{user.name|our team}}'}</span> resolve per-contact at runtime.
-              </p>
-
-              {/* Starter templates — same picker as the new-agent wizard.
-                  Clicking a chip overwrites the textarea; operators can
-                  mix and edit from there. Reset SaveBar handles undo. */}
+      {/* ─── Sections ─── */}
+      <div className="max-w-5xl mx-auto px-8 py-8 space-y-8">
+        {/* Identity */}
+        <Section
+          title="Identity"
+          desc="How your agent introduces itself to the world."
+        >
+          <div className="rounded-2xl border p-6" style={cardStyle}>
+            <div className="flex items-start gap-5">
               <div
-                className="rounded-lg border p-3 mb-2"
-                style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+                className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold shrink-0"
+                style={{
+                  background: `linear-gradient(135deg, hsl(${avatarHue}, 70%, 55%), hsl(${(avatarHue + 40) % 360}, 70%, 65%))`,
+                  color: '#fff',
+                }}
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                  Start from an example
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {BUSINESS_CONTEXT_EXAMPLES.map(ex => (
-                    <button
-                      key={ex.id}
-                      type="button"
-                      onClick={() => set({ businessContext: ex.body })}
-                      className="text-xs border rounded-full px-3 py-1 transition-colors"
-                      style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border-secondary)', color: 'var(--text-secondary)' }}
-                      title={ex.description}
-                    >
-                      {ex.label}
-                    </button>
-                  ))}
-                  {draft.businessContext.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => set({ businessContext: '' })}
-                      className="text-xs transition-colors px-2"
-                      style={{ color: 'var(--text-tertiary)' }}
-                    >
-                      Clear
-                    </button>
-                  )}
+                {monogram}
+              </div>
+              <div className="flex-1 min-w-0 space-y-4">
+                <div>
+                  <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    Agent name
+                  </label>
+                  <input
+                    type="text"
+                    value={draft.name}
+                    onChange={e => set({ name: e.target.value })}
+                    placeholder="Bella"
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    style={fieldStyle}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    Persona description
+                  </label>
+                  <textarea
+                    value={draft.systemPrompt}
+                    onChange={e => set({ systemPrompt: e.target.value })}
+                    rows={4}
+                    placeholder="Friendly, knowledgeable assistant for…"
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-y"
+                    style={fieldStyle}
+                  />
                 </div>
               </div>
-
-              {/* MergeFieldTextarea adds the {{…}} Insert value picker
-                  — same component used for trigger messages, follow-up
-                  steps, and fallbacks. Tokens inserted here render
-                  against the live contact + user at every turn. */}
-              <MergeFieldTextarea
-                value={draft.businessContext}
-                onChange={e => set({ businessContext: e.target.value })}
-                onValueChange={v => set({ businessContext: v })}
-                placeholder="Write your own or pick an example above…"
-                rows={10}
-                className="w-full rounded-lg px-4 pt-10 pb-2.5 text-sm focus:outline-none resize-y"
-                style={fieldStyle}
-              />
             </div>
-          )}
-        </div>
-
-        {/* Fallback behavior */}
-        <div className="border-t pt-6" style={{ borderColor: 'var(--border)' }}>
-          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>When the agent doesn&apos;t know the answer</label>
-          <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>What should the agent do when a contact asks something it has no knowledge about?</p>
-          <div className="space-y-2 mb-4">
-            {([
-              { value: 'message' as const, label: 'Send a fallback message', desc: 'Reply with a custom message and stay in the conversation' },
-              { value: 'transfer' as const, label: 'Transfer to a human', desc: 'Immediately hand off to a human agent' },
-              { value: 'message_and_transfer' as const, label: 'Message then transfer', desc: 'Send a message and then hand off to a human' },
-            ] as const).map(opt => {
-              const selected = draft.fallbackBehavior === opt.value
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => set({ fallbackBehavior: opt.value })}
-                  className="w-full flex items-start gap-3 rounded-lg border p-3 text-left transition-colors"
-                  style={
-                    selected
-                      ? { background: 'var(--accent-primary-bg)', borderColor: 'var(--accent-primary)' }
-                      : { background: 'var(--surface)', borderColor: 'var(--border)' }
-                  }
-                >
-                  <span
-                    className="mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
-                    style={{ borderColor: selected ? 'var(--accent-primary)' : 'var(--border-secondary)' }}
-                  >
-                    {selected && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-primary)' }} />}
-                  </span>
-                  <div>
-                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{opt.label}</p>
-                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{opt.desc}</p>
-                  </div>
-                </button>
-              )
-            })}
           </div>
-          {(draft.fallbackBehavior === 'message' || draft.fallbackBehavior === 'message_and_transfer') && (
-            <div>
-              <label className="block text-xs mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Fallback message</label>
-              <MergeFieldInput
-                value={draft.fallbackMessage}
-                onChange={e => set({ fallbackMessage: e.target.value })}
-                onValueChange={v => set({ fallbackMessage: v })}
-                placeholder="{{contact.first_name|There}}, great question — let me find out and get back to you."
-                className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
-                style={fieldStyle}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+        </Section>
 
-      <SaveBar dirty={dirty} saving={saving} savedAt={savedAt} error={error} onSave={save} onReset={reset} />
+        {/* Knowledge */}
+        <Section
+          title="Knowledge"
+          desc="What your agent knows about your business and operations."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {knowledge.length === 0 ? (
+              <KnowledgeEmpty href={`${base}/knowledge`} />
+            ) : (
+              knowledge.map(k => (
+                <div key={k.id} className="rounded-xl border p-4" style={cardStyle}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>
+                      <KnowledgeIcon />
+                    </div>
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                      style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+                    >
+                      Synced
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{k.name}</p>
+                  {k.syncedAt && (
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                      {syncedLabel(k.syncedAt)}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+            <Link
+              href={`${base}/knowledge`}
+              className="rounded-xl border-2 border-dashed p-4 flex items-center justify-center gap-2 text-sm font-medium transition-colors"
+              style={{ borderColor: 'var(--border-secondary)', color: 'var(--text-tertiary)' }}
+            >
+              <span style={{ fontSize: '16px' }}>+</span>
+              Add knowledge source
+            </Link>
+          </div>
+        </Section>
+
+        {/* Actions */}
+        <Section
+          title="Actions"
+          desc="Automated tasks your agent can perform during a conversation."
+        >
+          <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
+            {Object.entries(ACTION_LABELS)
+              .filter(([k]) => enabledActions.includes(k) || ['send_reply', 'get_contact_details', 'update_contact_tags', 'book_appointment', 'add_contact_note'].includes(k))
+              .slice(0, 5)
+              .map(([key, info], idx, arr) => {
+                const active = enabledActions.includes(key)
+                return (
+                  <div
+                    key={key}
+                    className={`flex items-center justify-between gap-3 px-4 py-3 ${idx < arr.length - 1 ? 'border-b' : ''}`}
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{info.label}</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{info.desc}</p>
+                    </div>
+                    <ToggleStatic on={active} />
+                  </div>
+                )
+              })}
+            <Link
+              href={`${base}/tools`}
+              className="block px-4 py-3 text-xs font-medium border-t text-center transition-colors"
+              style={{ borderColor: 'var(--border)', color: 'var(--accent-primary)', background: 'var(--surface-secondary)' }}
+            >
+              Configure all {enabledActions.length} actions →
+            </Link>
+          </div>
+        </Section>
+
+        {/* Handoff to human */}
+        <Section
+          title="Handoff to human"
+          desc="When the agent should step back and ping your team."
+        >
+          <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
+            <HandoffRow
+              label="Customer asks for a human"
+              desc="Words like 'agent', 'representative', 'speak to someone'"
+              on={true}
+            />
+            <HandoffRow
+              label="Customer mentions a complaint or refund"
+              desc="Triggers handoff for delicate situations"
+              on={draft.fallbackBehavior !== 'message'}
+            />
+            <HandoffRow
+              label="Conversation goes &gt; 5 messages without resolution"
+              desc="Pings your team if the agent is going in circles"
+              on={false}
+              isLast
+            />
+            <Link
+              href={`${base}/rules`}
+              className="block px-4 py-3 text-xs font-medium border-t text-center transition-colors"
+              style={{ borderColor: 'var(--border)', color: 'var(--accent-primary)', background: 'var(--surface-secondary)' }}
+            >
+              Manage handoff rules →
+            </Link>
+          </div>
+        </Section>
+
+        {/* Channels (read-only summary) */}
+        <Section
+          title="Channels"
+          desc="Where this specific agent is currently live and replying."
+        >
+          <div className="rounded-2xl border p-5" style={cardStyle}>
+            {liveChannels.length === 0 ? (
+              <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+                Not deployed on any channels yet.{' '}
+                <Link href={`${base}/deploy`} className="font-medium hover:underline" style={{ color: 'var(--accent-primary)' }}>
+                  Deploy this agent →
+                </Link>
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {liveChannels.map(c => {
+                    const meta = CHANNEL_BADGES[c.channel] ?? { label: c.channel, color: 'var(--text-secondary)' }
+                    return (
+                      <span
+                        key={c.channel}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border"
+                        style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.color }} />
+                        {meta.label}
+                      </span>
+                    )
+                  })}
+                </div>
+                <Link
+                  href={`${base}/deploy`}
+                  className="inline-block mt-4 text-xs font-medium hover:underline"
+                  style={{ color: 'var(--accent-primary)' }}
+                >
+                  Manage in Channels →
+                </Link>
+              </>
+            )}
+          </div>
+        </Section>
+
+        {/* Reset link if dirty */}
+        {dirty && (
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={reset}
+              className="text-xs font-medium hover:underline"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Discard changes
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function SectionCard({
-  href,
-  title,
-  desc,
-  icon,
-}: {
-  href: string
-  title: string
-  desc: string
-  icon: React.ReactNode
-}) {
+// ─── Style tokens ─────────────────────────────────────────────────────────
+
+const cardStyle: React.CSSProperties = {
+  background: 'var(--surface)',
+  borderColor: 'var(--border)',
+}
+
+const fieldStyle: React.CSSProperties = {
+  background: 'var(--input-bg)',
+  color: 'var(--input-text)',
+  border: '1px solid var(--input-border)',
+}
+
+// ─── Subcomponents ────────────────────────────────────────────────────────
+
+function Section({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-x-8 gap-y-3 items-start">
+      <div className="md:pt-1">
+        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  )
+}
+
+function ToggleStatic({ on }: { on: boolean }) {
+  return (
+    <span
+      className="relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors"
+      style={{ background: on ? 'var(--accent-primary)' : 'var(--surface-tertiary)' }}
+      aria-hidden
+    >
+      <span
+        className={`inline-block h-4 w-4 mt-0.5 rounded-full shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`}
+        style={{ background: '#fff' }}
+      />
+    </span>
+  )
+}
+
+function HandoffRow({ label, desc, on, isLast }: { label: string; desc: string; on: boolean; isLast?: boolean }) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 px-4 py-3 ${!isLast ? 'border-b' : ''}`}
+      style={{ borderColor: 'var(--border)' }}
+    >
+      <div className="min-w-0">
+        <p
+          className="text-sm font-medium"
+          style={{ color: 'var(--text-primary)' }}
+          dangerouslySetInnerHTML={{ __html: label }}
+        />
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
+      </div>
+      <ToggleStatic on={on} />
+    </div>
+  )
+}
+
+function KnowledgeEmpty({ href }: { href: string }) {
   return (
     <Link
       href={href}
-      className="rounded-xl border p-3 transition-colors group"
+      className="rounded-xl border p-4 transition-colors"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
     >
-      <div className="flex items-center gap-2 mb-1">
-        <span
-          className="w-7 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
-        >
-          {icon}
-        </span>
-        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</p>
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>
+        <KnowledgeIcon />
       </div>
-      <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
-      <p
-        className="text-[11px] mt-1 font-medium opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{ color: 'var(--accent-primary)' }}
-      >
-        Configure →
+      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>No knowledge yet</p>
+      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+        Connect your website, product catalog, or upload docs.
       </p>
     </Link>
   )
+}
+
+function KnowledgeIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  )
+}
+
+function syncedLabel(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(ms / 60000)
+  if (m < 60) return `Synced ${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `Synced ${h}h ago`
+  const d = Math.floor(h / 24)
+  return `Synced ${d}d ago`
 }
