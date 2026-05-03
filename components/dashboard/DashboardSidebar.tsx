@@ -197,7 +197,13 @@ function SidebarBody() {
                   </svg>,
                 )}
 
-                {/* Everything else — kept reachable, demoted out of primary nav. */}
+                {/* Everything else, demoted out of primary nav and
+                    grouped into mental hubs that mirror the agent
+                    sidebar (Activity / Queue / Insights / Library /
+                    Tools / Workspace). The kitchen-sink "Tools" group
+                    that used to mix Playground with Knowledge with
+                    Logs is gone — each item now lives under the heading
+                    that best describes its job. */}
                 <div className="mt-3">
                   <button
                     type="button"
@@ -218,48 +224,65 @@ function SidebarBody() {
                     className="mt-1 space-y-0.5"
                     style={{ display: moreOpen ? undefined : 'none' }}
                   >
+                    {/* Workspace home — overview dashboard. Kept at the
+                        top because it's the canonical "where am I"
+                        landing. */}
                     {navLink(`/dashboard/${workspaceId}`, 'Overview')}
-                    {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
-                    {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
-                    {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
-                    {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals', counts.approvalsPending)}
 
-                    <div className="pt-2 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Insights</p>
+                    {/* ── Activity — what the agents are doing ── */}
+                    <div className="pt-3 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Activity</p>
+                    </div>
+                    {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
+                    {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
+                    {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
+                    {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
+
+                    {/* ── Queue — things needing a human ── */}
+                    <div className="pt-3 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Queue</p>
+                    </div>
+                    {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
+                    {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals', counts.approvalsPending)}
+                    {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
+                    {navLink(`/dashboard/${workspaceId}/corrections`, 'Corrections')}
+
+                    {/* ── Insights — analytics ── */}
+                    <div className="pt-3 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Insights</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
                     {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
                     {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
                     {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
-                    {navLink(`/dashboard/${workspaceId}/corrections`, 'Corrections')}
 
-                    <div className="pt-2 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Tools</p>
+                    {/* ── Library — content the agents pull from ── */}
+                    <div className="pt-3 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Library</p>
                     </div>
-                    {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
-                    {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations', null, FEATURE_SHIP_DATES.simulations)}
-                    {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
-                    {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
-                    {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
-                    {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
                     {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
                     {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                     {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
                     {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
 
-                    <div className="pt-2 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Trust</p>
+                    {/* ── Tools — try it before it ships ── */}
+                    <div className="pt-3 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Tools</p>
                     </div>
-                    {navLink(`/dashboard/${workspaceId}/audit-log`, 'Audit Log')}
-                    {navLink(`/dashboard/${workspaceId}/consent`, 'Consent')}
+                    {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
+                    {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations', null, FEATURE_SHIP_DATES.simulations)}
 
-                    <div className="pt-2 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">Account</p>
+                    {/* ── Workspace — admin & plumbing ── */}
+                    <div className="pt-3 pb-1 px-3">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Workspace</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
+                    {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
                     {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
                     {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}
                     {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
+                    {navLink(`/dashboard/${workspaceId}/audit-log`, 'Audit Log')}
+                    {navLink(`/dashboard/${workspaceId}/consent`, 'Consent')}
                     {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
                   </div>
                 </div>
