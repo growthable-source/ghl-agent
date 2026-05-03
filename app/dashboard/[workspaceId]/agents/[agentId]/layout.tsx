@@ -47,15 +47,17 @@ const HUBS: Hub[] = [
     // The whole reason this refactor exists. Channels, Rules, Routing,
     // Working hours and Contact triggers all answer the same question
     // — "when does this agent fire?" — and were spread across five
-    // separate top-level tabs. They live under Trigger now.
+    // separate top-level tabs. They live under Trigger now, with an
+    // Overview landing page that summarises every system in one view.
     key: 'trigger',
     label: 'Trigger',
     tabs: [
+      { key: 'overview',      label: 'Overview',         path: '/trigger' },
       { key: 'deploy',        label: 'Channels',         path: '/deploy' },
-      { key: 'rules',         label: 'Match rules',      path: '/rules' },
       { key: 'routing',       label: 'Routing',          path: '/routing' },
+      { key: 'rules',         label: 'Detection rules',  path: '/rules' },
       { key: 'working-hours', label: 'Working hours',    path: '/working-hours' },
-      { key: 'triggers',      label: 'Contact triggers', path: '/triggers' },
+      { key: 'triggers',      label: 'Proactive',        path: '/triggers' },
     ],
   },
   {
