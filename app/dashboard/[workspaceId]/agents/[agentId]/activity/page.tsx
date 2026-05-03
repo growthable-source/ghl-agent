@@ -65,7 +65,7 @@ export default function ActivityOverviewPage() {
         })),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/replay`)
         .then(r => r.json())
-        .then(d => setReplays(d.replays ?? d.items ?? []))
+        .then(d => setReplays(d.logs ?? []))
         .catch(() => setReplays([])),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/evaluations`)
         .then(r => r.json())
@@ -166,16 +166,19 @@ export default function ActivityOverviewPage() {
         subtitle="Re-run past conversations against an updated prompt or knowledge to see what would have changed."
         pill={
           replays.length > 0
-            ? { tone: 'info', label: `${replays.length} saved` }
-            : { tone: 'idle', label: 'None yet' }
+            ? { tone: 'info', label: `${replays.length} replayable` }
+            : { tone: 'idle', label: 'No history' }
         }
         editHref={`${base}/replay`}
         editLabel="Open replay"
       >
         {replays.length === 0 ? (
-          <EmptyHint>No replay sessions saved yet. Replay is the fastest way to test prompt changes against real past conversations.</EmptyHint>
+          <EmptyHint>No conversations to replay yet — once the agent has handled a few messages, you'll be able to re-run them against prompt changes here.</EmptyHint>
         ) : (
-          <OverviewRow label="Saved replay sessions" value={replays.length.toLocaleString()} />
+          <OverviewRow
+            label="Past conversations available"
+            value={`${replays.length}${replays.length >= 50 ? '+' : ''}`}
+          />
         )}
       </OverviewSection>
 
