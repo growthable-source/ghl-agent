@@ -115,14 +115,22 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
   const base = `/dashboard/${workspaceId}/agents/${agentId}`
 
-  const [agent, setAgent] = useState<{ name: string; isActive: boolean } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number } | null>(null)
   const [toggling, setToggling] = useState(false)
   const [channelCount, setChannelCount] = useState<number | null>(null)
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
       .then(r => r.json())
-      .then(({ agent }) => setAgent({ name: agent.name, isActive: agent.isActive }))
+      .then(({ agent }) => setAgent({
+        name: agent.name,
+        isActive: agent.isActive,
+        // Routing rules are required for the agent to actually pick up
+        // an inbound (the webhook pre-filter checks for ≥1). Surface the
+        // count here so the header banner can flag the misconfig the
+        // same way the listening pill on the agents list does.
+        ruleCount: agent.routingRules?.length ?? 0,
+      }))
   }, [workspaceId, agentId])
 
   useEffect(() => {
@@ -162,17 +170,23 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
     return tab.label
   }
 
-  // Status:
-  //   Live   = active + at least one channel deployed
-  //   Idle   = active but zero channels (no inbound will land)
-  //   Paused = isActive=false
+  // Status. Mirrors the listening pill on the agents list — same three
+  // states, same logic, same words. Webhook pre-filter requires both
+  // a channel deployment AND at least one routing rule, so both have
+  // to be true before the banner reads "Live".
+  //   Live    = active + at least one channel + at least one routing rule
+  //   No rules = active + channels but no routing rules
+  //   Idle    = active but zero channels
+  //   Paused  = isActive=false
   const isActive = agent?.isActive ?? false
   const hasChannels = (channelCount ?? 0) > 0
-  const statusKey = !isActive ? 'paused' : !hasChannels ? 'idle' : 'live'
+  const hasRules = (agent?.ruleCount ?? 0) > 0
+  const statusKey = !isActive ? 'paused' : !hasChannels ? 'idle' : !hasRules ? 'norules' : 'live'
   const statusConfig = {
-    live:   { label: 'Live', color: 'emerald', tooltip: 'Agent is active and deployed on at least one channel.' },
-    idle:   { label: 'Active · No channels', color: 'amber', tooltip: 'Agent is active but not deployed on any channel. Add one in Trigger → Channels.' },
-    paused: { label: 'Paused', color: 'zinc', tooltip: "Agent is paused — it won't respond to any inbounds until you activate it." },
+    live:    { label: 'Live', color: 'emerald', tooltip: 'Agent is active, has channels deployed, and has routing rules — it will pick up matching inbounds.' },
+    idle:    { label: 'Active · No channels', color: 'amber', tooltip: 'Agent is active but not deployed on any channel. Add one in Trigger → Channels.' },
+    norules: { label: 'Active · No rules', color: 'amber', tooltip: 'Agent has channels but no routing rules. The webhook pre-filter will skip every inbound until at least one rule is added in Trigger → Routing.' },
+    paused:  { label: 'Paused', color: 'zinc', tooltip: "Agent is paused — it won't respond to any inbounds until you activate it." },
   }[statusKey]
 
   return (
