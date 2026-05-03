@@ -16,9 +16,15 @@ type Hub = { key: string; label: string; tabs: Tab[] }
 
 const HUBS: Hub[] = [
   {
+    // Each hub's first tab is its Overview — a read-only summary of every
+    // sub-page's current state. Operators land there when they click the
+    // primary tab and drill into specific editors only when they need to
+    // make a change. The overview pages live at /identity, /knowledge/overview,
+    // /skills, /trigger, /activity respectively.
     key: 'identity',
     label: 'Identity',
     tabs: [
+      { key: 'identity', label: 'Overview', path: '/identity' },
       { key: 'settings', label: 'Settings', path: '' },
       { key: 'persona',  label: 'Persona',  path: '/persona' },
       { key: 'voice',    label: 'Voice',    path: '/voice' },
@@ -28,19 +34,21 @@ const HUBS: Hub[] = [
     key: 'knowledge',
     label: 'Knowledge',
     tabs: [
-      { key: 'knowledge',  label: 'Knowledge',  path: '/knowledge' },
-      { key: 'listening',  label: 'Listening',  path: '/listening' },
-      { key: 'qualifying', label: 'Qualifying', path: '/qualifying' },
+      { key: 'knowledge-overview', label: 'Overview',   path: '/knowledge/overview' },
+      { key: 'knowledge',          label: 'Entries',    path: '/knowledge' },
+      { key: 'listening',          label: 'Listening',  path: '/listening' },
+      { key: 'qualifying',         label: 'Qualifying', path: '/qualifying' },
     ],
   },
   {
     key: 'skills',
     label: 'Skills',
     tabs: [
-      { key: 'tools',        label: 'Actions',        path: '/tools' },
-      { key: 'integrations', label: 'Integrations',   path: '/integrations' },
-      { key: 'follow-ups',   label: 'Follow-ups',     path: '/follow-ups' },
-      { key: 'goals',        label: 'Stop conditions', path: '/goals' },
+      { key: 'skills',       label: 'Overview',         path: '/skills' },
+      { key: 'tools',        label: 'Actions',          path: '/tools' },
+      { key: 'integrations', label: 'Integrations',     path: '/integrations' },
+      { key: 'follow-ups',   label: 'Follow-ups',       path: '/follow-ups' },
+      { key: 'goals',        label: 'Stop conditions',  path: '/goals' },
     ],
   },
   {
@@ -64,6 +72,7 @@ const HUBS: Hub[] = [
     key: 'activity',
     label: 'Activity',
     tabs: [
+      { key: 'activity',        label: 'Overview',       path: '/activity' },
       { key: 'replay',          label: 'Replay',         path: '/replay' },
       { key: 'wins',            label: 'Objectives',     path: '/wins' },
       { key: 'evaluations',     label: 'Evaluations',    path: '/evaluations' },
@@ -78,16 +87,23 @@ const ALL_TABS: { hub: Hub; tab: Tab }[] = HUBS.flatMap(h =>
 )
 
 // Resolve a URL suffix back to the hub + tab it belongs to. Anything we
-// don't recognise falls through to Identity / Settings — historically
-// the agent root.
+// don't recognise falls through to Identity / Overview.
 function resolveActive(suffix: string): { hub: Hub; tab: Tab } {
   const trimmed = suffix === '/' ? '' : suffix
-  // Exact match first (handles '' → settings, '/voice' → voice).
+  // Exact match first (handles '' → settings, '/voice' → voice,
+  // '/knowledge/overview' → knowledge-overview, etc.).
   const exact = ALL_TABS.find(({ tab }) => tab.path === trimmed)
   if (exact) return exact
-  // Prefix match for nested routes (e.g. '/replay/abc' → replay).
-  const prefix = ALL_TABS.find(({ tab }) => tab.path !== '' && trimmed.startsWith(tab.path))
-  if (prefix) return prefix
+  // Prefix match for nested routes (e.g. '/replay/abc' → replay). Pick
+  // the LONGEST match so '/knowledge/overview/anything' resolves to the
+  // overview tab, not the parent /knowledge editor.
+  const prefixMatches = ALL_TABS
+    .filter(({ tab }) => tab.path !== '' && trimmed.startsWith(tab.path + '/'))
+    .sort((a, b) => b.tab.path.length - a.tab.path.length)
+  if (prefixMatches.length > 0) return prefixMatches[0]
+  // Bare prefix match (e.g. '/replay' itself, no trailing segment).
+  const bare = ALL_TABS.find(({ tab }) => tab.path !== '' && trimmed === tab.path)
+  if (bare) return bare
   return ALL_TABS[0]
 }
 
