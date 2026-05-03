@@ -306,7 +306,7 @@ export default function IntegrationsPage() {
           <p className="text-xs text-zinc-500 mb-3">Choose which CRM your agents use for contacts, deals, messaging, and calendar.</p>
           <div className="grid grid-cols-2 gap-2">
             {([
-              { value: 'ghl', label: 'GoHighLevel', icon: GoHighLevelIcon, color: '' },
+              { value: 'ghl', label: 'LeadConnector', icon: GoHighLevelIcon, color: '' },
               { value: 'hubspot', label: 'HubSpot', icon: HubSpotIcon, color: 'text-[#FF7A59]' },
             ] as const).map(opt => (
               <button
@@ -344,7 +344,7 @@ export default function IntegrationsPage() {
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><GoHighLevelIcon className="w-8 h-8" /></div>
               <div>
-                <p className="text-sm font-medium text-zinc-200">GoHighLevel</p>
+                <p className="text-sm font-medium text-zinc-200">LeadConnector</p>
                 <p className="text-xs text-zinc-500">CRM, pipelines, SMS, email, calendars</p>
               </div>
             </div>
@@ -362,7 +362,7 @@ export default function IntegrationsPage() {
           </div>
           {ghlConnected && crmProvider === 'ghl' && hubspotIntegrations.length > 0 && (
             <p className="text-xs text-emerald-500/70 mt-3">
-              GoHighLevel is your primary CRM — agents use it for contacts, deals, and messaging.
+              LeadConnector is your primary CRM — agents use it for contacts, deals, and messaging.
             </p>
           )}
           {ghlConnected && !(crmProvider === 'ghl' && hubspotIntegrations.length > 0) && (

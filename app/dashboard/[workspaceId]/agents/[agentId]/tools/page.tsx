@@ -173,7 +173,7 @@ export default function ToolsPage() {
                 {loadingCalendars ? (
                   <p className="text-sm text-zinc-500">Loading…</p>
                 ) : calendars.length === 0 ? (
-                  <p className="text-sm text-red-400">No calendars found in this GHL location. Create one in GoHighLevel first, then come back here.</p>
+                  <p className="text-sm text-red-400">No calendars found in this location. Create one in LeadConnector first, then come back here.</p>
                 ) : (
                   <select
                     value={calendarId}

@@ -82,7 +82,7 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'update_contact_tags',
-    description: 'Add tags to a contact to categorise or flag them. IMPORTANT: you may only apply tags that already exist in the CRM. Do not invent new tags. If a tag you want is not available, skip it — operators create the tag set in GoHighLevel ahead of time and the system silently drops any tag you request that is not on that list.',
+    description: 'Add tags to a contact to categorise or flag them. IMPORTANT: you may only apply tags that already exist in the CRM. Do not invent new tags. If a tag you want is not available, skip it — operators create the tag set in the CRM ahead of time and the system silently drops any tag you request that is not on that list.',
     input_schema: {
       type: 'object' as const,
       properties: {

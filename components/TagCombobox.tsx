@@ -189,7 +189,7 @@ export default function TagCombobox({
               >
                 Integrations
               </a>{' '}
-              and click Reconnect on GoHighLevel. You can still type a tag name by hand in the meantime.
+              and click Reconnect on LeadConnector. You can still type a tag name by hand in the meantime.
             </p>
           )}
         </div>

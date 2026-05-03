@@ -104,7 +104,7 @@ export default function ArticleEditor({
               type="text"
               value={draft.title}
               onChange={e => set('title', e.target.value)}
-              placeholder="How to connect GoHighLevel"
+              placeholder="How to connect LeadConnector"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
             />
           </Field>

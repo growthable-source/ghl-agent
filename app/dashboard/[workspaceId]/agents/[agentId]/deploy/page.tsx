@@ -22,13 +22,13 @@ interface DeployState {
 }
 
 const CHANNELS = [
-  { key: 'SMS', label: 'SMS', desc: 'Text messages via GoHighLevel', icon: <SmsIcon className="w-5 h-5" />, color: 'text-blue-400' },
-  { key: 'WhatsApp', label: 'WhatsApp', desc: 'WhatsApp Business via GoHighLevel', icon: <WhatsAppIcon className="w-5 h-5" />, color: 'text-[#25D366]' },
+  { key: 'SMS', label: 'SMS', desc: 'Text messages via LeadConnector', icon: <SmsIcon className="w-5 h-5" />, color: 'text-blue-400' },
+  { key: 'WhatsApp', label: 'WhatsApp', desc: 'WhatsApp Business via LeadConnector', icon: <WhatsAppIcon className="w-5 h-5" />, color: 'text-[#25D366]' },
   { key: 'FB', label: 'Facebook Messenger', desc: 'Facebook page messages', icon: <FacebookIcon className="w-5 h-5" />, color: 'text-[#1877F2]' },
   { key: 'IG', label: 'Instagram DMs', desc: 'Instagram direct messages', icon: <InstagramIcon className="w-5 h-5" />, color: 'text-[#E4405F]' },
   { key: 'GMB', label: 'Google Business', desc: 'Google Business Profile messages', icon: <GoogleIcon className="w-5 h-5" />, color: 'text-white' },
   { key: 'Live_Chat', label: 'Live Chat', desc: 'Website chat widget', icon: <LiveChatIcon className="w-5 h-5" />, color: 'text-violet-400' },
-  { key: 'Email', label: 'Email', desc: 'Email conversations via GoHighLevel', icon: <EmailIcon className="w-5 h-5" />, color: 'text-amber-400' },
+  { key: 'Email', label: 'Email', desc: 'Email conversations via LeadConnector', icon: <EmailIcon className="w-5 h-5" />, color: 'text-amber-400' },
 ]
 
 export default function DeployPage() {

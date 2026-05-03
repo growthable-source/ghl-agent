@@ -509,7 +509,7 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
               <div className="space-y-1.5">
                 {([
                   { value: 'none' as const, title: 'No, I just want the inbox', helper: 'Recommended for most small businesses' },
-                  { value: 'ghl' as const,  title: 'Yes — HighLevel / GoHighLevel' },
+                  { value: 'ghl' as const,  title: 'Yes — LeadConnector' },
                   { value: 'other' as const, title: "Yes — something else (we'll ask later)" },
                 ]).map(opt => {
                   const selected = crmChoice === opt.value

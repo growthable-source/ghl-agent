@@ -50,8 +50,8 @@ const ACTION_LABELS: Record<ActionType, { label: string; hint: string }> = {
   update_contact_field:  { label: 'Update contact field',          hint: 'Write a value to a standard or custom field' },
   update_contact_tags:   { label: 'Add tag(s) to contact',          hint: 'Apply one or more tags' },
   remove_contact_tags:   { label: 'Remove tag(s) from contact',     hint: 'Strip tags off the contact' },
-  add_to_workflow:       { label: 'Enrol contact in workflow(s)',   hint: 'Add to one or more GHL workflows' },
-  remove_from_workflow:  { label: 'Remove contact from workflow(s)',hint: 'Remove from GHL workflows' },
+  add_to_workflow:       { label: 'Enrol contact in workflow(s)',   hint: 'Add to one or more LeadConnector workflows' },
+  remove_from_workflow:  { label: 'Remove contact from workflow(s)',hint: 'Remove from LeadConnector workflows' },
   opportunity_status:    { label: 'Change opportunity status',      hint: 'Mark an opp as won / lost / abandoned / open' },
   opportunity_value:     { label: 'Set opportunity value',          hint: 'Update the monetary value of the opp' },
   dnd_channel:           { label: 'Mark contact as Do Not Disturb', hint: 'Block the channel this conversation is on (or a specific one)' },
@@ -522,7 +522,7 @@ export default function RulesPage() {
                   {workflowsError ? (
                     <p className="text-xs text-red-400">{workflowsError}</p>
                   ) : workflows.length === 0 ? (
-                    <p className="text-xs text-zinc-500">No published workflows in GHL yet. Publish one, then refresh this page.</p>
+                    <p className="text-xs text-zinc-500">No published workflows in LeadConnector yet. Publish one, then refresh this page.</p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {workflows.map(wf => {

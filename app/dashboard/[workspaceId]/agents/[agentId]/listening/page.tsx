@@ -135,7 +135,7 @@ export default function ListeningPage() {
         Categories of context the agent listens for passively — without asking.
       </p>
       <p className="text-xs text-zinc-600 mb-6">
-        Example: when someone mentions <span className="text-zinc-400">&ldquo;my mum is sick&rdquo;</span> or <span className="text-zinc-400">&ldquo;I just got engaged&rdquo;</span>, it goes into the agent&apos;s private notes about this contact. The info isn&apos;t pushed to GoHighLevel — it&apos;s remembered across future conversations so the agent can reference it naturally.
+        Example: when someone mentions <span className="text-zinc-400">&ldquo;my mum is sick&rdquo;</span> or <span className="text-zinc-400">&ldquo;I just got engaged&rdquo;</span>, it goes into the agent&apos;s private notes about this contact. The info isn&apos;t pushed to your CRM — it&apos;s remembered across future conversations so the agent can reference it naturally.
       </p>
 
       {rules.length > 0 && (

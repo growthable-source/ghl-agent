@@ -90,7 +90,7 @@ export default function MergeFieldsHelpPage() {
       {/* ── Custom fields ── */}
       <Section title="Custom fields">
         <P>
-          Anything you&apos;ve defined as a custom field in GoHighLevel is available by its
+          Anything you&apos;ve defined as a custom field in LeadConnector is available by its
           field key, prefixed with <Mono>custom.</Mono>:
         </P>
         <Example

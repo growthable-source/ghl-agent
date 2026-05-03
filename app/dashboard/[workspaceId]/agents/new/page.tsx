@@ -148,12 +148,12 @@ You are warm, conversational, and efficient.`,
 // via OAuth" the very first time they hit the wizard, before they'd ever
 // clicked Connect.
 const CRM_OPTIONS = [
-  { id: 'ghl', name: 'GoHighLevel', icon: <GoHighLevelIcon className="w-8 h-8" /> },
+  { id: 'ghl', name: 'LeadConnector', icon: <GoHighLevelIcon className="w-8 h-8" /> },
   { id: 'none', name: 'No CRM', desc: 'Skip for now — you can connect later', icon: null },
 ]
 
 const CALENDAR_OPTIONS = [
-  { id: 'ghl', name: 'GHL Calendar', desc: 'Use your GoHighLevel calendar', icon: <GoHighLevelIcon className="w-8 h-8" /> },
+  { id: 'ghl', name: 'LeadConnector Calendar', desc: 'Use your LeadConnector calendar', icon: <GoHighLevelIcon className="w-8 h-8" /> },
   { id: 'none', name: 'No Calendar', desc: 'Skip — agent won\'t book appointments', icon: null },
 ]
 
@@ -467,7 +467,7 @@ export default function NewAgentWizard() {
                           color: 'var(--btn-primary-text)',
                         }}
                       >
-                        Connect GoHighLevel →
+                        Connect LeadConnector →
                       </a>
                     )}
                   </div>

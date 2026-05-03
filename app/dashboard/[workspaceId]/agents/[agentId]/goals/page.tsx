@@ -142,7 +142,7 @@ export default function GoalsPage() {
         <p className="text-sm text-zinc-400 mb-6">
           Define when the agent should stop and pause the conversation. Each condition can also
           flag the contact as <span className="font-mono text-zinc-300">needs-attention</span> and
-          enrol or remove them from a GoHighLevel workflow the moment it trips.
+          enrol or remove them from a LeadConnector workflow the moment it trips.
         </p>
 
         {/* Existing conditions */}
@@ -374,12 +374,12 @@ export default function GoalsPage() {
               </div>
               {workflowsError && (
                 <p className="text-[11px] text-amber-400">
-                  {workflowsError} — connect GoHighLevel and reconnect with the <span className="font-mono">workflows.readonly</span> scope to use workflow actions.
+                  {workflowsError} — connect LeadConnector and reconnect with the <span className="font-mono">workflows.readonly</span> scope to use workflow actions.
                 </p>
               )}
               {!workflowsError && workflows.length === 0 && (
                 <p className="text-[11px] text-zinc-600">
-                  No workflows found. Either GHL isn&apos;t connected or the location has no published workflows.
+                  No workflows found. Either LeadConnector isn&apos;t connected or the location has no published workflows.
                 </p>
               )}
             </div>

@@ -82,7 +82,7 @@ export default function DocsPage() {
               <div className="flex-1 pt-1.5">
                 <h3 className="font-semibold mb-2">Connect your CRM</h3>
                 <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                  Head to <strong>Integrations</strong> in the sidebar and connect GoHighLevel or HubSpot. This lets Voxility read your contacts, book appointments, and sync conversation history back to your CRM.
+                  Head to <strong>Integrations</strong> in the sidebar and connect LeadConnector or HubSpot. This lets Voxility read your contacts, book appointments, and sync conversation history back to your CRM.
                 </p>
               </div>
             </div>
@@ -152,7 +152,7 @@ export default function DocsPage() {
 
             <SectionCard title="Appointment booking">
               <p>Connect your calendar and let the agent check availability, suggest times, and confirm bookings — all within the conversation flow.</p>
-              <p>Supports Google Calendar and CRM-native calendars in GoHighLevel.</p>
+              <p>Supports Google Calendar and CRM-native calendars in LeadConnector.</p>
             </SectionCard>
 
             <SectionCard title="Rules and stop conditions">
@@ -180,8 +180,8 @@ export default function DocsPage() {
         <div className="max-w-3xl mx-auto">
           <h2 className="text-xl font-semibold mb-8">CRM integration</h2>
           <div className="space-y-4">
-            <SectionCard title="GoHighLevel">
-              <p>Voxility is a GoHighLevel Marketplace app. Install it from the GHL Marketplace or connect from <strong>Integrations &rarr; Connect GoHighLevel</strong> in your dashboard.</p>
+            <SectionCard title="LeadConnector">
+              <p>Voxility is a LeadConnector Marketplace app. Install it from the LeadConnector Marketplace or connect from <strong>Integrations &rarr; Connect LeadConnector</strong> in your dashboard.</p>
               <p>Once connected, Voxility can access contacts, conversations, calendars, pipelines, and custom fields. All agent interactions are logged as CRM activities.</p>
               <p>OAuth scopes requested: contacts, conversations, calendars, locations, and opportunities.</p>
             </SectionCard>
@@ -202,7 +202,7 @@ export default function DocsPage() {
           <h2 className="text-xl font-semibold mb-8">Frequently asked questions</h2>
           <div className="space-y-3">
             <FaqItem q="Is Voxility free?" a="Yes, Voxility is free during the beta period. We'll introduce pricing with plans designed for agencies and SMBs as we exit beta." />
-            <FaqItem q="What CRMs do you support?" a="GoHighLevel and HubSpot are supported today. We're actively working on Salesforce and other integrations." />
+            <FaqItem q="What CRMs do you support?" a="LeadConnector and HubSpot are supported today. We're actively working on Salesforce and other integrations." />
             <FaqItem q="Can I use my own phone number?" a="Yes. You can port an existing number or purchase a new one directly through the platform. Twilio and Vonage numbers are supported." />
             <FaqItem q="How does the AI handle things it doesn't know?" a="You configure fallback behavior — it can transfer to a human, take a message, or offer to call back. You set the rules, and the agent follows them." />
             <FaqItem q="Is my data secure?" a="All data is encrypted in transit and at rest. We do not use your conversations to train AI models. Your CRM credentials are stored encrypted and never shared." />

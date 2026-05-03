@@ -235,7 +235,7 @@ export default function TriggersPage() {
     <div className="p-8">
       <div className="max-w-2xl">
         <p className="text-sm text-zinc-400 mb-6">
-          Automatically send the first message when a contact is created or tagged in GoHighLevel — perfect for form submissions, imports, and automations.
+          Automatically send the first message when a contact is created or tagged in LeadConnector — perfect for form submissions, imports, and automations.
         </p>
 
         {/* Existing triggers */}
@@ -402,7 +402,7 @@ export default function TriggersPage() {
                 <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
                   <p className="text-xs font-medium text-amber-300 mb-1">⚠️ This fires on every new contact</p>
                   <p className="text-[11px] text-amber-200/80 leading-relaxed">
-                    There is no filter — <strong>any</strong> contact created in this GHL location (form submissions, imports, manual adds, API calls, other workflows) will trigger the agent. If you only want to fire for a specific source, use <strong>Tag added to contact</strong> instead and tag leads from your intended source.
+                    There is no filter — <strong>any</strong> contact created in this location (form submissions, imports, manual adds, API calls, other workflows) will trigger the agent. If you only want to fire for a specific source, use <strong>Tag added to contact</strong> instead and tag leads from your intended source.
                   </p>
                 </div>
               )}
@@ -593,7 +593,7 @@ export default function TriggersPage() {
         {/* Info box */}
         <div className="mt-8 rounded-lg bg-zinc-900/50 border border-zinc-800 p-4">
           <p className="text-xs text-zinc-500 leading-relaxed">
-            <strong className="text-zinc-400">How triggers work:</strong> When GoHighLevel fires a ContactCreate or ContactTagUpdate webhook event, the agent automatically sends the first message to the contact on the selected channel. The contact's reply (if any) continues through normal agent routing. Make sure the webhook events are enabled in your GHL Marketplace app settings.
+            <strong className="text-zinc-400">How triggers work:</strong> When LeadConnector fires a ContactCreate or ContactTagUpdate webhook event, the agent automatically sends the first message to the contact on the selected channel. The contact's reply (if any) continues through normal agent routing. Make sure the webhook events are enabled in your LeadConnector Marketplace app settings.
           </p>
         </div>
       </div>

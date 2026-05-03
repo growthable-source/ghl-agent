@@ -716,7 +716,7 @@ export default function QualifyingPage() {
                     {workflowsError ? (
                       <p className="text-xs text-red-400">{workflowsError}</p>
                     ) : workflows.length === 0 ? (
-                      <p className="text-xs text-zinc-500">No published workflows in this location. Publish one in GoHighLevel, then refresh.</p>
+                      <p className="text-xs text-zinc-500">No published workflows in this location. Publish one in LeadConnector, then refresh.</p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {workflows.map(wf => {
