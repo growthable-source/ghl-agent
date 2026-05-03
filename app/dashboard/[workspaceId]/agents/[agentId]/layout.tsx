@@ -225,27 +225,30 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
 
-      {/* Primary tabs — five hubs */}
-      <div
-        className="flex items-stretch px-8 mt-4 border-b shrink-0"
-        style={{ borderColor: 'var(--border)' }}
-      >
-        <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
+      {/* Primary tabs — five hubs. Renders without a bottom border when
+          a secondary strip follows it, so the two strips read as one
+          continuous nav rather than stacked banners. */}
+      <div className="flex items-stretch px-8 mt-4 shrink-0">
+        <div className="flex items-stretch gap-1 overflow-x-auto min-w-0 flex-1">
           {HUBS.map(h => {
             const isActive = activeHub.key === h.key
-            // Each hub's primary link goes to the FIRST tab in that hub —
-            // that tab acts as the hub's landing page.
             const href = `${base}${h.tabs[0].path}`
             return (
               <Link
                 key={h.key}
                 href={href}
-                className="px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
+                className="px-3 py-2 text-[13px] font-medium tracking-tight whitespace-nowrap rounded-md transition-colors"
                 style={
                   isActive
-                    ? { borderBottomColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
-                    : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
+                    ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                    : { color: 'var(--text-secondary)' }
                 }
+                onMouseEnter={e => {
+                  if (!isActive) e.currentTarget.style.color = 'var(--text-primary)'
+                }}
+                onMouseLeave={e => {
+                  if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
+                }}
               >
                 {h.label}
               </Link>
@@ -254,14 +257,17 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
 
-      {/* Secondary tabs — sections within the active hub. Hidden when a
-          hub has only one section; otherwise rendered as a second strip
-          so operators can see every setting at the level they care about. */}
+      {/* Divider that sits between primary and secondary strips. Single
+          line, full bleed under the page padding. */}
+      <div className="px-8 mt-2 shrink-0">
+        <div className="h-px" style={{ background: 'var(--border)' }} />
+      </div>
+
+      {/* Secondary tabs — sections within the active hub. Underline-style
+          on the same canvas (no banner background), smaller text and
+          tighter padding so the hierarchy is obvious without shouting. */}
       {activeHub.tabs.length > 1 && (
-        <div
-          className="flex items-stretch px-8 border-b shrink-0"
-          style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface-secondary)' }}
-        >
+        <div className="flex items-stretch px-8 shrink-0">
           <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
             {activeHub.tabs.map(t => {
               const isActive = activeTab.key === t.key
@@ -269,20 +275,39 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={t.key}
                   href={`${base}${t.path}`}
-                  className="px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
+                  className="relative px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors"
                   style={
                     isActive
-                      ? { borderBottomColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
-                      : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
+                      ? { color: 'var(--accent-primary)' }
+                      : { color: 'var(--text-tertiary)' }
                   }
+                  onMouseEnter={e => {
+                    if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
+                  }}
+                  onMouseLeave={e => {
+                    if (!isActive) e.currentTarget.style.color = 'var(--text-tertiary)'
+                  }}
                 >
                   {tabLabel(t)}
+                  {isActive && (
+                    <span
+                      className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"
+                      style={{ background: 'var(--accent-primary)' }}
+                    />
+                  )}
                 </Link>
               )
             })}
           </div>
         </div>
       )}
+
+      {/* Bottom divider — separates the nav from page content. Always
+          present so the canvas reads consistently whether or not a
+          secondary strip is showing. */}
+      <div className="shrink-0">
+        <div className="h-px" style={{ background: 'var(--border)' }} />
+      </div>
 
       {/* Page content */}
       <div className="flex-1 overflow-y-auto">

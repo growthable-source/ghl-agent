@@ -384,16 +384,31 @@ export default function AgentsPage() {
                       </Link>
                       {(() => {
                         const status = getListeningState(agent)
-                        const styles: Record<ListeningState, { bg: string; color: string; dot: string }> = {
-                          live:          { bg: 'rgba(34,197,94,0.12)',  color: '#22c55e', dot: '#22c55e' },
-                          misconfigured: { bg: 'rgba(251,191,36,0.14)', color: '#f59e0b', dot: '#f59e0b' },
-                          off:           { bg: 'rgba(113,113,122,0.18)', color: '#a1a1aa', dot: '#71717a' },
+                        // CSS-token styling so the pill sits in the same
+                        // visual register as every other status surface in
+                        // the app (theme-aware, no hardcoded RGB).
+                        const tone: Record<ListeningState, { bg: string; fg: string; dot: string }> = {
+                          live: {
+                            bg:  'var(--accent-emerald-bg)',
+                            fg:  'var(--accent-emerald)',
+                            dot: 'var(--accent-emerald)',
+                          },
+                          misconfigured: {
+                            bg:  'var(--accent-amber-bg)',
+                            fg:  'var(--accent-amber)',
+                            dot: 'var(--accent-amber)',
+                          },
+                          off: {
+                            bg:  'var(--surface-secondary)',
+                            fg:  'var(--text-tertiary)',
+                            dot: 'var(--text-tertiary)',
+                          },
                         }
-                        const s = styles[status.state]
+                        const s = tone[status.state]
                         const pill = (
                           <span
-                            className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                            style={{ background: s.bg, color: s.color }}
+                            className="inline-flex items-center gap-1.5 mt-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full"
+                            style={{ background: s.bg, color: s.fg }}
                             title={status.reason}
                           >
                             <span
@@ -402,14 +417,14 @@ export default function AgentsPage() {
                             />
                             {status.label}
                             {status.state === 'misconfigured' && (
-                              <span className="opacity-70">— fix</span>
+                              <span className="opacity-60">· fix</span>
                             )}
                           </span>
                         )
                         return status.fixHref ? (
                           <Link
                             href={`/dashboard/${workspaceId}/agents/${agent.id}/${status.fixHref}`}
-                            className="inline-block hover:opacity-80"
+                            className="inline-block transition-opacity hover:opacity-80"
                           >
                             {pill}
                           </Link>
