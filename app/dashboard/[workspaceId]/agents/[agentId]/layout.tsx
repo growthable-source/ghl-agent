@@ -1,69 +1,93 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 
-type Section = { key: string; label: string; path: string }
+// ─── IA ──────────────────────────────────────────────────────────────────────
+// Five primary "hubs" that answer the only five questions an operator has
+// about an agent: who is it, what does it know, what can it do, when does
+// it fire, and what's it been doing lately. Every legacy sub-page is
+// reachable from one of these — old URLs still work, just framed under
+// the hub their setting belongs to.
 
-// Surfaced as visible tabs — the things operators touch every day.
-// Order matches the mental model from the IA mockup: who the agent is
-// → what it knows → what it does → where it lives.
-const PRIMARY_SECTIONS: Section[] = [
-  { key: 'settings',    label: 'Identity',    path: '' },
-  { key: 'knowledge',   label: 'Knowledge',   path: '/knowledge' },
-  { key: 'tools',       label: 'Actions',     path: '/tools' },
-  { key: 'rules',       label: 'Rules',       path: '/rules' },
-  { key: 'deploy',      label: 'Channels',    path: '/deploy' },
-]
+type Tab = { key: string; label: string; path: string }
+type Hub = { key: string; label: string; tabs: Tab[] }
 
-// Tucked under "More" — kept fully reachable, demoted out of the
-// horizontal strip so the primary surface stays scannable. Grouped by
-// concept; the headings render as section labels inside the menu.
-const MORE_GROUPS: { heading: string; items: Section[] }[] = [
+const HUBS: Hub[] = [
   {
-    heading: 'Identity',
-    items: [
-      { key: 'persona', label: 'Persona',  path: '/persona' },
-      { key: 'voice',   label: 'Voice',    path: '/voice' },
+    key: 'identity',
+    label: 'Identity',
+    tabs: [
+      { key: 'settings', label: 'Settings', path: '' },
+      { key: 'persona',  label: 'Persona',  path: '/persona' },
+      { key: 'voice',    label: 'Voice',    path: '/voice' },
     ],
   },
   {
-    heading: 'Behaviour',
-    items: [
-      { key: 'triggers',   label: 'Triggers',   path: '/triggers' },
-      { key: 'qualifying', label: 'Qualifying', path: '/qualifying' },
+    key: 'knowledge',
+    label: 'Knowledge',
+    tabs: [
+      { key: 'knowledge',  label: 'Knowledge',  path: '/knowledge' },
       { key: 'listening',  label: 'Listening',  path: '/listening' },
-      { key: 'follow-ups', label: 'Follow-ups', path: '/follow-ups' },
+      { key: 'qualifying', label: 'Qualifying', path: '/qualifying' },
     ],
   },
   {
-    heading: 'Outcomes',
-    items: [
-      { key: 'wins',  label: 'Objectives',     path: '/wins' },
-      { key: 'goals', label: 'Stop conditions', path: '/goals' },
+    key: 'skills',
+    label: 'Skills',
+    tabs: [
+      { key: 'tools',        label: 'Actions',        path: '/tools' },
+      { key: 'integrations', label: 'Integrations',   path: '/integrations' },
+      { key: 'follow-ups',   label: 'Follow-ups',     path: '/follow-ups' },
+      { key: 'goals',        label: 'Stop conditions', path: '/goals' },
     ],
   },
   {
-    heading: 'Deploy',
-    items: [
-      { key: 'routing',      label: 'Routing',       path: '/routing' },
-      { key: 'integrations', label: 'Integrations',  path: '/integrations' },
+    // The whole reason this refactor exists. Channels, Rules, Routing,
+    // Working hours and Contact triggers all answer the same question
+    // — "when does this agent fire?" — and were spread across five
+    // separate top-level tabs. They live under Trigger now.
+    key: 'trigger',
+    label: 'Trigger',
+    tabs: [
+      { key: 'deploy',        label: 'Channels',         path: '/deploy' },
+      { key: 'rules',         label: 'Match rules',      path: '/rules' },
+      { key: 'routing',       label: 'Routing',          path: '/routing' },
+      { key: 'working-hours', label: 'Working hours',    path: '/working-hours' },
+      { key: 'triggers',      label: 'Contact triggers', path: '/triggers' },
     ],
   },
   {
-    heading: 'Optimise',
-    items: [
-      { key: 'replay',      label: 'Replay',      path: '/replay' },
-      { key: 'experiments', label: 'Experiments', path: '/experiments' },
+    key: 'activity',
+    label: 'Activity',
+    tabs: [
+      { key: 'replay',          label: 'Replay',         path: '/replay' },
+      { key: 'wins',            label: 'Objectives',     path: '/wins' },
+      { key: 'evaluations',     label: 'Evaluations',    path: '/evaluations' },
+      { key: 'experiments',     label: 'Experiments',    path: '/experiments' },
+      { key: 'prompt-versions', label: 'Prompt history', path: '/prompt-versions' },
     ],
   },
 ]
 
-const ALL_SECTIONS: Section[] = [
-  ...PRIMARY_SECTIONS,
-  ...MORE_GROUPS.flatMap(g => g.items),
-]
+const ALL_TABS: { hub: Hub; tab: Tab }[] = HUBS.flatMap(h =>
+  h.tabs.map(t => ({ hub: h, tab: t })),
+)
+
+// Resolve a URL suffix back to the hub + tab it belongs to. Anything we
+// don't recognise falls through to Identity / Settings — historically
+// the agent root.
+function resolveActive(suffix: string): { hub: Hub; tab: Tab } {
+  const trimmed = suffix === '/' ? '' : suffix
+  // Exact match first (handles '' → settings, '/voice' → voice).
+  const exact = ALL_TABS.find(({ tab }) => tab.path === trimmed)
+  if (exact) return exact
+  // Prefix match for nested routes (e.g. '/replay/abc' → replay).
+  const prefix = ALL_TABS.find(({ tab }) => tab.path !== '' && trimmed.startsWith(tab.path))
+  if (prefix) return prefix
+  return ALL_TABS[0]
+}
 
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
   const params = useParams()
@@ -110,66 +134,27 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
     setToggling(false)
   }
 
-  // Determine active section across the full universe of routes (not
-  // just the visible primary tabs) so a "More" item highlights its
-  // grouping correctly.
   const suffix = pathname.replace(base, '')
-  const activeKey = ALL_SECTIONS.find(s => {
-    if (s.path === '') return suffix === '' || suffix === '/'
-    return suffix.startsWith(s.path)
-  })?.key ?? 'settings'
+  const { hub: activeHub, tab: activeTab } = resolveActive(suffix)
 
-  // True when the active route lives under the "More" disclosure — the
-  // trigger button highlights to confirm the user it isn't lost.
-  const moreItems = MORE_GROUPS.flatMap(g => g.items)
-  const moreActive = moreItems.some(s => s.key === activeKey)
-
-  // Manual menu state instead of <details>/<summary>. Native disclosure
-  // had two problems here: <summary> styled as flex breaks the click
-  // handler in WebKit, and the parent tab strip needs overflow-x-auto
-  // for narrow viewports — which collapses overflow-y to auto and
-  // clips the dropdown. Using a button + state + click-outside handler
-  // sidesteps both.
-  const [moreOpen, setMoreOpen] = useState(false)
-  const moreRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!moreOpen) return
-    function onPointerDown(e: PointerEvent) {
-      if (!moreRef.current) return
-      if (!moreRef.current.contains(e.target as Node)) setMoreOpen(false)
+  function tabLabel(tab: Tab) {
+    if (tab.key === 'deploy' && channelCount !== null && channelCount > 0) {
+      return `${tab.label} (${channelCount})`
     }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setMoreOpen(false)
-    }
-    window.addEventListener('pointerdown', onPointerDown)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [moreOpen])
-
-  // Auto-close when the user picks any sub-page (route changes).
-  useEffect(() => { setMoreOpen(false) }, [pathname])
-
-  function getTabLabel(section: Section) {
-    if (section.key === 'deploy' && channelCount !== null && channelCount > 0) {
-      return `${section.label} (${channelCount})`
-    }
-    return section.label
+    return tab.label
   }
 
-  // Compute status:
-  //   - Live: isActive=true AND at least one channel deployed
-  //   - Active but idle: isActive=true but no channels deployed (agent won't receive anything)
-  //   - Paused: isActive=false
+  // Status:
+  //   Live   = active + at least one channel deployed
+  //   Idle   = active but zero channels (no inbound will land)
+  //   Paused = isActive=false
   const isActive = agent?.isActive ?? false
   const hasChannels = (channelCount ?? 0) > 0
   const statusKey = !isActive ? 'paused' : !hasChannels ? 'idle' : 'live'
   const statusConfig = {
-    live: { label: 'Live', color: 'emerald', tooltip: 'Agent is active and deployed on at least one channel.' },
-    idle: { label: 'Active · No channels', color: 'amber', tooltip: 'Agent is active but not deployed on any channel. Add one in the Channels tab to start receiving messages.' },
-    paused: { label: 'Paused', color: 'zinc', tooltip: 'Agent is paused — it won\'t respond to any inbounds until you activate it.' },
+    live:   { label: 'Live', color: 'emerald', tooltip: 'Agent is active and deployed on at least one channel.' },
+    idle:   { label: 'Active · No channels', color: 'amber', tooltip: 'Agent is active but not deployed on any channel. Add one in Trigger → Channels.' },
+    paused: { label: 'Paused', color: 'zinc', tooltip: "Agent is paused — it won't respond to any inbounds until you activate it." },
   }[statusKey]
 
   return (
@@ -240,21 +225,21 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
 
-      {/* Section nav — primary tabs + a real <button> menu for the
-          long tail. The two halves are siblings so the dropdown can
-          escape the tab strip's overflow-x. */}
+      {/* Primary tabs — five hubs */}
       <div
         className="flex items-stretch px-8 mt-4 border-b shrink-0"
         style={{ borderColor: 'var(--border)' }}
       >
-        {/* Scrolling primary tabs */}
         <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
-          {PRIMARY_SECTIONS.map(s => {
-            const isActive = activeKey === s.key
+          {HUBS.map(h => {
+            const isActive = activeHub.key === h.key
+            // Each hub's primary link goes to the FIRST tab in that hub —
+            // that tab acts as the hub's landing page.
+            const href = `${base}${h.tabs[0].path}`
             return (
               <Link
-                key={s.key}
-                href={`${base}${s.path}`}
+                key={h.key}
+                href={href}
                 className="px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
                 style={
                   isActive
@@ -262,79 +247,42 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
                     : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
                 }
               >
-                {getTabLabel(s)}
+                {h.label}
               </Link>
             )
           })}
         </div>
-
-        {/* Sticky More button — sibling to the scroller, so its
-            dropdown isn't clipped by the strip's overflow-x. */}
-        <div ref={moreRef} className="relative shrink-0 flex items-stretch ml-1">
-          <button
-            type="button"
-            onClick={() => setMoreOpen(o => !o)}
-            aria-haspopup="true"
-            aria-expanded={moreOpen}
-            className="px-3.5 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors flex items-center gap-1 cursor-pointer"
-            style={
-              moreActive || moreOpen
-                ? { borderBottomColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
-                : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
-            }
-          >
-            More
-            <svg
-              className="w-3 h-3 opacity-70 transition-transform"
-              style={{ transform: moreOpen ? 'rotate(180deg)' : undefined }}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-          {moreOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full mt-1 z-40 w-64 rounded-lg border shadow-lg overflow-hidden"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border-secondary)' }}
-            >
-              {MORE_GROUPS.map(group => (
-                <div key={group.heading} className="py-1">
-                  <p
-                    className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider font-semibold"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    {group.heading}
-                  </p>
-                  {group.items.map(item => {
-                    const isActive = activeKey === item.key
-                    return (
-                      <Link
-                        key={item.key}
-                        href={`${base}${item.path}`}
-                        role="menuitem"
-                        className="block px-3 py-1.5 text-sm transition-colors"
-                        style={
-                          isActive
-                            ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                            : { color: 'var(--text-secondary)' }
-                        }
-                      >
-                        {getTabLabel(item)}
-                      </Link>
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
+
+      {/* Secondary tabs — sections within the active hub. Hidden when a
+          hub has only one section; otherwise rendered as a second strip
+          so operators can see every setting at the level they care about. */}
+      {activeHub.tabs.length > 1 && (
+        <div
+          className="flex items-stretch px-8 border-b shrink-0"
+          style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface-secondary)' }}
+        >
+          <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
+            {activeHub.tabs.map(t => {
+              const isActive = activeTab.key === t.key
+              return (
+                <Link
+                  key={t.key}
+                  href={`${base}${t.path}`}
+                  className="px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors"
+                  style={
+                    isActive
+                      ? { borderBottomColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }
+                      : { borderBottomColor: 'transparent', color: 'var(--text-tertiary)' }
+                  }
+                >
+                  {tabLabel(t)}
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Page content */}
       <div className="flex-1 overflow-y-auto">
