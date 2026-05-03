@@ -72,6 +72,49 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+// ─── Listening status ───────────────────────────────────────────────────────
+// Three-state pill that tells operators at a glance whether an agent will
+// actually pick up an inbound. Derived from the same conditions the webhook
+// pre-filter uses, so what you see here matches what would happen if a real
+// SMS arrived right now.
+
+type ListeningState = 'live' | 'misconfigured' | 'off'
+
+function getListeningState(agent: AgentData): {
+  state: ListeningState
+  label: string
+  reason: string
+  fixHref: string | null
+} {
+  if (!agent.isActive) {
+    return {
+      state: 'off',
+      label: 'Off',
+      reason: 'Agent is turned off — flip the toggle to activate.',
+      fixHref: null,
+    }
+  }
+  const hasRules = (agent._count?.routingRules ?? 0) > 0
+  const hasChannels = (agent.channelDeployments?.length ?? 0) > 0
+  if (!hasRules || !hasChannels) {
+    const missing: string[] = []
+    if (!hasChannels) missing.push('channel deployment')
+    if (!hasRules) missing.push('routing rule')
+    return {
+      state: 'misconfigured',
+      label: 'Not deployed',
+      reason: `Active but missing ${missing.join(' + ')} — inbounds will be skipped.`,
+      fixHref: 'routing',
+    }
+  }
+  return {
+    state: 'live',
+    label: 'Listening',
+    reason: 'Active and listening on at least one channel.',
+    fixHref: null,
+  }
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
@@ -339,9 +382,39 @@ export default function AgentsPage() {
                       >
                         {agent.name}
                       </Link>
-                      <span className="text-xs text-zinc-500">
-                        Created {timeAgo(agent.createdAt)}
-                      </span>
+                      {(() => {
+                        const status = getListeningState(agent)
+                        const styles: Record<ListeningState, { bg: string; color: string; dot: string }> = {
+                          live:          { bg: 'rgba(34,197,94,0.12)',  color: '#22c55e', dot: '#22c55e' },
+                          misconfigured: { bg: 'rgba(251,191,36,0.14)', color: '#f59e0b', dot: '#f59e0b' },
+                          off:           { bg: 'rgba(113,113,122,0.18)', color: '#a1a1aa', dot: '#71717a' },
+                        }
+                        const s = styles[status.state]
+                        const pill = (
+                          <span
+                            className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
+                            style={{ background: s.bg, color: s.color }}
+                            title={status.reason}
+                          >
+                            <span
+                              className="inline-block w-1.5 h-1.5 rounded-full"
+                              style={{ background: s.dot }}
+                            />
+                            {status.label}
+                            {status.state === 'misconfigured' && (
+                              <span className="opacity-70">— fix</span>
+                            )}
+                          </span>
+                        )
+                        return status.fixHref ? (
+                          <Link
+                            href={`/dashboard/${workspaceId}/agents/${agent.id}/${status.fixHref}`}
+                            className="inline-block hover:opacity-80"
+                          >
+                            {pill}
+                          </Link>
+                        ) : pill
+                      })()}
                     </div>
 
                     {/* Active toggle */}
