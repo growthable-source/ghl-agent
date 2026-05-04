@@ -5,7 +5,7 @@ import { invalidateGuidelinesCache } from '@/lib/platform-learning'
 
 export const dynamic = 'force-dynamic'
 
-type Params = { params: Promise<{ id: string }> }
+type Params = { params: Promise<{ workspaceId: string }> }
 
 /**
  * Flip a workspace's platform-learnings opt-out. Admin-only; viewer-tier
@@ -22,30 +22,30 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { id } = await params
+  const { workspaceId } = await params
   const ws = await db.workspace.findUnique({
-    where: { id },
+    where: { id: workspaceId },
     select: { id: true, disableGlobalLearnings: true },
   })
   if (!ws) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
 
   const next = !ws.disableGlobalLearnings
   await db.workspace.update({
-    where: { id },
+    where: { id: workspaceId },
     data: { disableGlobalLearnings: next },
   })
 
   // Toggling affects what buildSystemPrompt injects into every agent in
   // this workspace on the very next inbound — drop the cache entry so
   // the change is visible immediately rather than up to 2 minutes later.
-  invalidateGuidelinesCache('workspace', id)
+  invalidateGuidelinesCache('workspace', workspaceId)
 
   logAdminActionAfter({
     admin: session,
     action: 'workspace_toggle_global_learnings',
-    target: id,
+    target: workspaceId,
     meta: { disableGlobalLearnings: next },
   })
 
-  return NextResponse.redirect(new URL(`/admin/workspaces/${id}`, req.url))
+  return NextResponse.redirect(new URL(`/admin/workspaces/${workspaceId}`, req.url))
 }

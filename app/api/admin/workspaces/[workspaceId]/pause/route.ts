@@ -4,7 +4,7 @@ import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
-type Params = { params: Promise<{ id: string }> }
+type Params = { params: Promise<{ workspaceId: string }> }
 
 /**
  * Toggle a workspace's paused state. Admin+ can do this; it's an
@@ -16,16 +16,16 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const session = await requireAdminRole('admin')
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { id } = await params
+  const { workspaceId } = await params
   const ws = await db.workspace.findUnique({
-    where: { id },
+    where: { id: workspaceId },
     select: { id: true, isPaused: true, name: true },
   })
   if (!ws) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const nowPausing = !ws.isPaused
   await db.workspace.update({
-    where: { id },
+    where: { id: workspaceId },
     data: {
       isPaused: nowPausing,
       pausedAt: nowPausing ? new Date() : null,
@@ -36,9 +36,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
   logAdminActionAfter({
     admin: session,
     action: nowPausing ? 'pause_workspace' : 'unpause_workspace',
-    target: id,
+    target: workspaceId,
     meta: { name: ws.name },
   })
 
-  return NextResponse.redirect(new URL(`/admin/workspaces/${id}`, _req.url))
+  return NextResponse.redirect(new URL(`/admin/workspaces/${workspaceId}`, _req.url))
 }
