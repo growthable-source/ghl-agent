@@ -134,6 +134,17 @@ model Workspace {
   brands               Brand[]               @relation("WorkspaceBrands")
   portals              Portal[]              @relation("WorkspacePortals")
 
+  // ─── Native (built-in) CRM ───
+  // Populated only for workspaces using crmProvider='native' on their
+  // Location. Workspaces still on GHL/HubSpot leave these collections empty.
+  nativeContacts       NativeContact[]
+  nativeContactLists   NativeContactList[]
+  nativeContactImports NativeContactImport[]
+  nativeSuppressions   NativeSuppression[]
+  nativeConversations  NativeConversation[]
+  nativeMessages       NativeMessage[]
+  nativeCustomFields   NativeCustomField[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -1970,4 +1981,226 @@ model PortalInvite {
 
   @@unique([portalId, email])
   @@index([email])
+}
+
+// ─── Native CRM ──────────────────────────────────────────────────────────
+// Built-in contacts/lists/messaging for workspaces that don't connect an
+// external CRM. Each table is workspace-scoped — the Location row is just
+// a placeholder (`native:<workspaceId>`) kept so Agent.locationId still
+// resolves through the same factory path as GHL/HubSpot.
+
+model NativeContact {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  firstName String?
+  lastName  String?
+  email     String? // stored lowercased — normalize on write
+  phone     String? // stored E.164 — normalize on write
+  tags      String[] @default([])
+  source    String? // free-form: "csv-import", "widget", "manual", etc.
+
+  // { fieldKey: string|number|boolean|string[] } — keys must match an
+  // existing NativeCustomField.fieldKey for the workspace.
+  customFields Json?
+
+  // Workspace member the contact is "owned" by — drives merge fields like
+  // {{user.name}} the same way GHL contacts have an assigned user.
+  assignedToUserId String?
+
+  // Set when this contact has opted out via STOP/unsubscribe. The
+  // suppression list is the source of truth for sends; this flag is a fast
+  // read-side hint so list views can show the badge without joining.
+  isSuppressed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listMemberships NativeContactListMember[]
+  conversations   NativeConversation[]
+  messages        NativeMessage[]
+
+  @@index([workspaceId, email])
+  @@index([workspaceId, phone])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, isSuppressed])
+}
+
+// Static or smart segment of contacts. Static lists own their members via
+// NativeContactListMember; smart lists store a JSON filter and resolve at
+// read time (smart support is a follow-up — for now `type='static'` is
+// the only fully-implemented mode).
+model NativeContactList {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  type        String  @default("static") // "static" | "smart"
+  filter      Json? // smart-list query, ignored when type='static'
+
+  createdBy String? // userId who created the list
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members NativeContactListMember[]
+  imports NativeContactImport[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+model NativeContactListMember {
+  id        String            @id @default(cuid())
+  listId    String
+  list      NativeContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   NativeContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  addedAt   DateTime          @default(now())
+
+  @@unique([listId, contactId])
+  @@index([contactId])
+}
+
+// CSV import job. Rows are parsed by the upload route and handed to
+// processNativeImport(); per-row errors land in NativeContactImportRow so
+// the operator can fix and re-upload just the rejected rows.
+model NativeContactImport {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  filename String
+  status   String @default("pending") // "pending" | "processing" | "completed" | "failed"
+
+  totalRows     Int @default(0)
+  importedCount Int @default(0)
+  skippedCount  Int @default(0) // duplicates / suppressed / no email+phone
+  errorCount    Int @default(0)
+
+  // { csvHeader: string, contactField: string }[] — captured so re-imports
+  // of the same file shape can skip the mapping step.
+  columnMapping Json?
+
+  // Optional list to add every successfully imported contact to. Cleared
+  // on the import row when the list is deleted.
+  listId String?
+  list   NativeContactList? @relation(fields: [listId], references: [id], onDelete: SetNull)
+
+  createdBy   String? // userId who triggered the import
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  errorRows NativeContactImportRow[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+model NativeContactImportRow {
+  id        String              @id @default(cuid())
+  importId  String
+  import    NativeContactImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  rowNumber Int
+  rawData   Json // the original row, so the operator can fix and re-import
+  error     String              @db.Text
+  createdAt DateTime            @default(now())
+
+  @@index([importId, rowNumber])
+}
+
+// Suppression list — workspace-wide opt-outs. Checked at send time and
+// at import time. Phone values are E.164; email values are lowercased.
+model NativeSuppression {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  type      String // "email" | "phone"
+  value     String // lowercased email or E.164 phone
+  reason    String? // "stop_reply" | "manual" | "bounce" | "complaint" | free-form
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, type, value])
+  @@index([workspaceId, type])
+}
+
+model NativeConversation {
+  id          String        @id @default(cuid())
+  workspaceId String
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contactId   String
+  contact     NativeContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  channel       String // "sms" | "email" | "whatsapp" | "voice" | "widget" | "custom"
+  unreadCount   Int       @default(0)
+  lastMessageAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages NativeMessage[]
+
+  @@index([workspaceId, contactId])
+  @@index([workspaceId, lastMessageAt(sort: Desc)])
+  @@index([contactId, channel])
+}
+
+model NativeMessage {
+  id             String             @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   NativeConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        NativeContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  direction String // "inbound" | "outbound"
+  channel   String // mirrors NativeConversation.channel
+  body      String  @db.Text
+  subject   String? // email only
+
+  // queued = persisted but not yet handed to a delivery rail.
+  // sent/delivered/failed are set by the rail callback (Twilio webhook etc.).
+  // received = inbound message ingested from a webhook.
+  status String @default("queued")
+
+  // ID returned by the underlying sender (Twilio sid, SMTP message-id, etc.)
+  // so we can correlate webhooks back to this row.
+  providerMessageId String?
+  providerError     String? @db.Text
+
+  // Optional attachment metadata for multimodal inbound messages, mirroring
+  // the Message type in @/types so the agent's getMessages() output is uniform.
+  attachmentKind String?
+  attachmentUrl  String?
+  attachmentName String?
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([contactId, createdAt(sort: Desc)])
+}
+
+// Workspace-defined custom fields. The agent's getCustomFields() reads
+// these so prompts can reference {{contact.<fieldKey>}} merge tokens.
+model NativeCustomField {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name        String // human-readable label
+  fieldKey    String // snake_case identifier used in NativeContact.customFields keys
+  dataType    String // "text" | "number" | "date" | "select" | "multiselect" | "boolean" | "phone" | "email" | "url"
+  options     Json? // for select/multiselect: string[]
+  placeholder String?
+  position    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, fieldKey])
+  @@index([workspaceId, position])
 }

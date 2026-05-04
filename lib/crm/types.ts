@@ -10,7 +10,11 @@ import type { Contact, Conversation, CrmUser, Message, Opportunity, SendMessageP
 // never connected a real CRM but still needs a Location row for Agent FK
 // purposes. Methods on a NoCrmAdapter throw a clear "CRM not connected"
 // error so misconfigurations are visible.
-export type CrmProvider = 'ghl' | 'hubspot' | 'none'
+//
+// 'native' is the built-in CRM (NativeAdapter) — workspaces that don't
+// connect GHL/HubSpot get a real contacts/messaging backend backed by
+// our own DB tables.
+export type CrmProvider = 'ghl' | 'hubspot' | 'none' | 'native'
 
 export interface CustomField {
   id: string

@@ -63,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json()
 
   if (body.crmProvider) {
-    const allowed = ['ghl', 'hubspot']
+    const allowed = ['ghl', 'hubspot', 'native']
     if (!allowed.includes(body.crmProvider)) {
       return NextResponse.json({ error: `Invalid CRM provider. Must be one of: ${allowed.join(', ')}` }, { status: 400 })
     }
