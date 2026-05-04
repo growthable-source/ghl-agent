@@ -6,6 +6,8 @@ import { findMatchingAgent } from '@/lib/routing'
 import { getOrCreateConversationState, incrementMessageCount } from '@/lib/conversation-state'
 import { saveMessages, getMessageHistory } from '@/lib/conversation-memory'
 import { trackMessageUsage } from '@/lib/usage'
+import { normalizePhone } from '@/lib/crm/native/normalize'
+import { addSuppression } from '@/lib/crm/native/suppression'
 
 // SMS webhook triggers a full agent loop. Vercel's default would kill
 // it after 10–15s, dropping the reply silently. 300s is the Pro cap.
@@ -38,7 +40,90 @@ export async function POST(req: NextRequest) {
     return new NextResponse('', { status: 200 })
   }
 
-  const locationId = integration.locationId
+  let locationId = integration.locationId
+
+  // ─── Native CRM branch ─────────────────────────────────────────────
+  // For native workspaces we use the real NativeContact.id as the
+  // agent's contactId, persist the inbound to NativeMessage, and handle
+  // STOP keywords inline (auto-suppression) before the agent ever sees
+  // the message. The rest of the flow continues unchanged — runAgent
+  // reads/writes through CrmAdapter, which routes to NativeAdapter for
+  // native locations automatically.
+  let nativeContactId: string | null = null
+  if (locationId.startsWith('native:')) {
+    const workspaceId = locationId.slice('native:'.length)
+    const phone = normalizePhone(from) ?? from
+
+    // STOP-keyword auto-suppression. Twilio also handles this at the
+    // carrier level for opted-in numbers, but doing it ourselves is
+    // belt-and-suspenders and lets us record a reason in our own
+    // suppression list — so re-imports don't accidentally re-message.
+    const stopMatch = /\b(stop|stopall|unsubscribe|cancel|end|quit)\b/i.test(body.trim())
+    if (stopMatch) {
+      await addSuppression({ workspaceId, type: 'phone', value: phone, reason: 'stop_reply' })
+      // Twilio sends an auto-confirmation by default; we don't reply
+      // ourselves to avoid double-acks. Just log and exit cleanly.
+      console.log(`[Twilio] STOP from ${from} on workspace ${workspaceId} — phone suppressed`)
+      return new NextResponse('', { status: 200 })
+    }
+
+    // Find or create the NativeContact. Phone is the keying identifier
+    // since SMS doesn't carry email. If the contact already exists from
+    // a prior import or widget visit, we attach the message to it.
+    let nc = await db.nativeContact.findFirst({
+      where: { workspaceId, phone },
+      select: { id: true, isSuppressed: true },
+    })
+    if (!nc) {
+      nc = await db.nativeContact.create({
+        data: { workspaceId, phone, source: 'twilio-sms-inbound' },
+        select: { id: true, isSuppressed: true },
+      })
+    }
+    if (nc.isSuppressed) {
+      // Suppressed contact — record the inbound for audit but don't run
+      // the agent. The operator can review in /suppressions.
+      console.log(`[Twilio] Inbound from suppressed ${from} dropped`)
+      return new NextResponse('', { status: 200 })
+    }
+    nativeContactId = nc.id
+
+    // Find or create the NativeConversation for this (contact, sms) pair.
+    // Same logic as NativeAdapter.findOrCreateConversationId — duplicating
+    // here avoids spinning up an adapter just for the lookup.
+    let conv = await db.nativeConversation.findFirst({
+      where: { workspaceId, contactId: nc.id, channel: 'sms' },
+      select: { id: true },
+    })
+    if (!conv) {
+      conv = await db.nativeConversation.create({
+        data: { workspaceId, contactId: nc.id, channel: 'sms' },
+        select: { id: true },
+      })
+    }
+
+    // Persist inbound. Status='received' marks it as ingested, distinct
+    // from outbound's queued/sent/delivered/failed lifecycle.
+    await db.nativeMessage.create({
+      data: {
+        workspaceId,
+        conversationId: conv.id,
+        contactId: nc.id,
+        direction: 'inbound',
+        channel: 'sms',
+        body,
+        status: 'received',
+        providerMessageId: (formData.get('MessageSid') as string) || null,
+      },
+    })
+    await db.nativeConversation.update({
+      where: { id: conv.id },
+      data: { lastMessageAt: new Date(), unreadCount: { increment: 1 } },
+    })
+  }
+  // ─────────────────────────────────────────────────────────────────────
+
+  const effectiveContactId = nativeContactId ?? contactId
 
   // Persist the inbound IMMEDIATELY — even if the agent never runs (paused
   // conversation, no matching agent, errors), the inbound is preserved so
@@ -50,7 +135,7 @@ export async function POST(req: NextRequest) {
     log = await db.messageLog.create({
       data: {
         locationId,
-        contactId,
+        contactId: effectiveContactId,
         conversationId,
         inboundMessage: body,
         status: 'PENDING',
@@ -82,7 +167,7 @@ export async function POST(req: NextRequest) {
 
     // Find matching agent. No implicit fallback — agents with zero rules
     // don't match by design.
-    const agent = await findMatchingAgent(locationId, contactId, body)
+    const agent = await findMatchingAgent(locationId, effectiveContactId, body)
     if (!agent) {
       if (log) {
         await db.messageLog.update({
@@ -112,7 +197,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check conversation state
-    const state = await getOrCreateConversationState(agent.id, locationId, contactId, conversationId)
+    const state = await getOrCreateConversationState(agent.id, locationId, effectiveContactId, conversationId)
     if (state.state === 'PAUSED') {
       if (log) {
         await db.messageLog.update({
@@ -126,7 +211,7 @@ export async function POST(req: NextRequest) {
     // Load prior conversation history so day-7 sees day-1. Without this
     // every Twilio turn is a fresh introduction with no memory of prior
     // exchanges — a "human can see history but the agent can't" gap.
-    const dbHistory = await getMessageHistory(agent.id, contactId, 20)
+    const dbHistory = await getMessageHistory(agent.id, effectiveContactId, 20)
     const messageHistory: import('@/types').Message[] = dbHistory.map(m => ({
       id: m.id,
       conversationId: m.conversationId,
@@ -148,7 +233,7 @@ export async function POST(req: NextRequest) {
     const result = await runAgent({
       agentId: agent.id,
       locationId,
-      contactId,
+      contactId: effectiveContactId,
       conversationId,
       channel: 'SMS',
       incomingMessage: body,
@@ -204,12 +289,12 @@ export async function POST(req: NextRequest) {
       if (result.reply && twilioOk) {
         toSave.push({ role: 'assistant', content: result.reply })
       }
-      await saveMessages(agent.id, locationId, contactId, conversationId, toSave)
+      await saveMessages(agent.id, locationId, effectiveContactId, conversationId, toSave)
     } catch (err: any) {
       console.warn('[Twilio] saveMessages failed (non-fatal):', err?.message)
     }
 
-    await incrementMessageCount(agent.id, contactId).catch(() => {})
+    await incrementMessageCount(agent.id, effectiveContactId).catch(() => {})
 
     // Bill metered usage on successful sends, mirroring the GHL webhook
     // path. Without this, Twilio-direct conversations were uncounted —

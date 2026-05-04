@@ -38,6 +38,9 @@ function SidebarBody() {
   const pathname = usePathname()
   const counts = useNavCounts()
   const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string; logoUrl: string | null } | null>(null)
+  // True when the active workspace has any Location with crmProvider='native'.
+  // Drives the Native CRM nav section (Lists / Imports / Suppressions / Custom fields).
+  const [isNative, setIsNative] = useState(false)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   // Manual disclosure for the "More" section. We previously used
@@ -68,16 +71,19 @@ function SidebarBody() {
   const workspaceId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
 
   useEffect(() => {
-    if (!workspaceId) { setWorkspaceInfo(null); return }
+    if (!workspaceId) { setWorkspaceInfo(null); setIsNative(false); return }
     fetch('/api/workspaces')
       .then(r => r.json())
       .then(data => {
         const ws = data.workspaces?.find((w: any) => w.id === workspaceId)
-        if (ws) setWorkspaceInfo({
-          name: ws.name,
-          icon: ws.icon || '🚀',
-          logoUrl: ws.logoUrl ?? null,
-        })
+        if (ws) {
+          setWorkspaceInfo({
+            name: ws.name,
+            icon: ws.icon || '🚀',
+            logoUrl: ws.logoUrl ?? null,
+          })
+          setIsNative(Array.isArray(ws.locations) && ws.locations.some((l: any) => l.crmProvider === 'native'))
+        }
       })
       .catch(() => {})
   }, [workspaceId])
@@ -255,6 +261,19 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
                     {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
                     {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
+
+                    {/* ── Native CRM (only when workspace is on the built-in CRM) ── */}
+                    {isNative && (
+                      <>
+                        <div className="pt-3 pb-1 px-3">
+                          <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Native CRM</p>
+                        </div>
+                        {navLink(`/dashboard/${workspaceId}/lists`, 'Lists')}
+                        {navLink(`/dashboard/${workspaceId}/imports`, 'Imports')}
+                        {navLink(`/dashboard/${workspaceId}/suppressions`, 'Suppressions')}
+                        {navLink(`/dashboard/${workspaceId}/custom-fields`, 'Custom fields')}
+                      </>
+                    )}
 
                     {/* ── Library — content the agents pull from ── */}
                     <div className="pt-3 pb-1 px-3">
