@@ -99,11 +99,11 @@ export default function ContactTimelinePage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <Link
-          href={`/dashboard/${workspaceId}/conversations`}
+          href={`/dashboard/${workspaceId}/contacts`}
           className="text-xs hover:opacity-80 transition-colors mb-4 inline-block"
           style={{ color: 'var(--text-tertiary)' }}
         >
-          ← Back to conversations
+          ← All contacts
         </Link>
 
         <div className="mb-8 flex items-start justify-between">

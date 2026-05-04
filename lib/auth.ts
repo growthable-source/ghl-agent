@@ -18,6 +18,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     maxAge: 60 * 60 * 24 * 90,      // 90 days
     updateAge: 60 * 60 * 24 * 7,    // regenerate after 7 days of activity
   },
+  // Explicit session-token cookie maxAge so the browser writes a
+  // persistent cookie instead of a session cookie. Without this, some
+  // browsers (Chrome's "Continue where you left off" off, Safari ITP)
+  // drop the cookie when the last window closes — which is what
+  // surfaced as "Google sign-in doesn't remember me." session.maxAge
+  // alone only controls the *server-side* DB session lifetime; the
+  // cookie itself needs its own maxAge to survive a browser restart.
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === 'production'
+        ? '__Secure-authjs.session-token'
+        : 'authjs.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 24 * 90, // 90 days — must match session.maxAge
+      },
+    },
+  },
   providers: [
     ...(process.env.GOOGLE_CLIENT_ID ? [Google({
       clientId: process.env.GOOGLE_CLIENT_ID,

@@ -47,6 +47,11 @@ const ROUTE_LABELS: Record<string, string> = {
   replay: 'Replay',
   widgets: 'Chat Widgets',
   inbox: 'Inbox',
+  // Native CRM
+  lists: 'Lists',
+  imports: 'Imports',
+  suppressions: 'Suppressions',
+  'custom-fields': 'Custom Fields',
 }
 
 // Reserved segments that are NOT a workspaceId

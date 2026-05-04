@@ -21,8 +21,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
     orderBy: { createdAt: 'asc' },
   })
 
-  const ghlConnected = locations.some(l => !!l.accessToken)
-  const crmProvider = locations[0]?.crmProvider ?? 'ghl'
+  // ghlConnected means specifically "real LeadConnector OAuth install".
+  // Excludes the `native:<wsId>` row (which carries sentinel accessToken
+  // values, not a real OAuth token) and `placeholder:` rows. Without
+  // this guard, every workspace with auto-provisioned native shows
+  // LeadConnector as connected — surfacing a "Reconnect" button on a
+  // CRM the user never linked.
+  const ghlConnected = locations.some(l =>
+    !!l.accessToken &&
+    l.crmProvider === 'ghl' &&
+    !l.id.startsWith('native:') &&
+    !l.id.startsWith('placeholder:')
+  )
+  // Pick the canonical CRM provider for this workspace. Prefer a real
+  // GHL/HubSpot install if present, otherwise fall back to the first
+  // location's provider (typically the native: row).
+  const realLocation = locations.find(l => !l.id.startsWith('native:') && !l.id.startsWith('placeholder:'))
+  const crmProvider = realLocation?.crmProvider ?? locations[0]?.crmProvider ?? 'ghl'
 
   const vapiActive = !!process.env.VAPI_API_KEY
 
