@@ -145,6 +145,15 @@ model Workspace {
   nativeMessages       NativeMessage[]
   nativeCustomFields   NativeCustomField[]
 
+  // ─── Voxility funnel layer ───
+  // Campaigns + landing pages + form submissions + conversion events
+  // + per-campaign pixel configs. Workspace-scoped, plan-gated (Pro+).
+  campaigns        Campaign[]
+  landingPages     LandingPage[]
+  formSubmissions  FormSubmission[]
+  conversionEvents ConversionEvent[]
+  pixelConfigs     PixelConfig[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -259,6 +268,7 @@ model Location {
   agents      Agent[]
   messageLogs MessageLog[]
   users       UserLocation[]
+  campaigns   Campaign[]
 
   @@index([companyId])
   @@index([workspaceId])
@@ -360,6 +370,13 @@ model Agent {
   reviews              AgentReview[]
   platformLearnings    PlatformLearning[]
   simulations          Simulation[]
+
+  // Voxility funnel layer — agents can be wired into a Campaign as either
+  // the triggered responder (instant SMS/voice) or the conversational
+  // handler (callback that qualifies + books). Same Agent row can serve
+  // both roles or many campaigns.
+  campaignsAsTriggered      Campaign[] @relation("CampaignTriggeredAgent")
+  campaignsAsConversational Campaign[] @relation("CampaignConversationalAgent")
 
   @@index([locationId, isActive])
   @@index([workspaceId])
@@ -1195,6 +1212,10 @@ model Integration {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Voxility funnel layer — pixel configs reference Integration for OAuth tokens.
+  pixelConfigsAsMeta   PixelConfig[] @relation("PixelMetaIntegration")
+  pixelConfigsAsGoogle PixelConfig[] @relation("PixelGoogleIntegration")
+
   @@index([locationId, type])
 }
 
@@ -1999,7 +2020,7 @@ model NativeContact {
   email     String? // stored lowercased — normalize on write
   phone     String? // stored E.164 — normalize on write
   tags      String[] @default([])
-  source    String? // free-form: "csv-import", "widget", "manual", etc.
+  source    String? // free-form: "csv-import", "widget", "manual", "funnel", etc.
 
   // { fieldKey: string|number|boolean|string[] } — keys must match an
   // existing NativeCustomField.fieldKey for the workspace.
@@ -2014,17 +2035,29 @@ model NativeContact {
   // read-side hint so list views can show the badge without joining.
   isSuppressed Boolean @default(false)
 
+  // ─── Voxility funnel attribution ───
+  // Set on first form submission via a Voxility landing page. Lets us
+  // answer "which campaign did this contact come from" without joining
+  // every form_submission for them.
+  sourceCampaignId String?
+  sourceCampaign   Campaign? @relation("ContactSourceCampaign", fields: [sourceCampaignId], references: [id], onDelete: SetNull)
+  sourceUrl        String?
+  sourceUtm        Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listMemberships NativeContactListMember[]
-  conversations   NativeConversation[]
-  messages        NativeMessage[]
+  listMemberships  NativeContactListMember[]
+  conversations    NativeConversation[]
+  messages         NativeMessage[]
+  formSubmissions  FormSubmission[]
+  conversionEvents ConversionEvent[]
 
   @@index([workspaceId, email])
   @@index([workspaceId, phone])
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([workspaceId, isSuppressed])
+  @@index([sourceCampaignId])
 }
 
 // Static or smart segment of contacts. Static lists own their members via
@@ -2203,4 +2236,245 @@ model NativeCustomField {
 
   @@unique([workspaceId, fieldKey])
   @@index([workspaceId, position])
+}
+
+// ─── Voxility funnel layer ─────────────────────────────────────────────
+//
+// Campaign = the unifying primitive: one offer's worth of landing page +
+// form + agent response + ad tracking. Workspace-scoped. Plan-gated to
+// Pro/Agency tiers. The lead-hacker-daily voxility-integration branch is
+// the React Router + Supabase reference design these models port from.
+
+// ─── Campaign ──────────────────────────────────────────────────────────
+model Campaign {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // Optional CRM scoping. When set, contacts created from this campaign's
+  // form go to the CrmAdapter for that location (GHL/Hubspot/native). When
+  // null, contacts default to the workspace's native CRM.
+  locationId  String?
+  location    Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  name   String
+  // What success looks like — drives the wizard's default copy + the
+  // conversational agent's objective string.
+  goal   String @default("lead_gen") // "lead_gen" | "book_call" | "webinar_signup" | "sale" | "application" | "waitlist"
+  status String @default("draft") // "draft" | "live" | "paused" | "ended"
+
+  // ─── 6-question intake ───
+  // Filled by the wizard. Becomes the input to the AI page generator.
+  // Shape: { business_name, offer, dream_outcome, false_belief, mechanism,
+  //         proof, price?, audience?, industry?, brand_voice? }
+  offerSummary String? @db.Text
+  intake       Json?
+  brandVoice   String?
+  primaryColor String? @default("#0A84FF")
+
+  // ─── Budget + flight ───
+  // Planning fields only — actual ad spend is tracked by the ad-launcher
+  // epic (separate, not in this Phase 1).
+  dailyBudget Decimal?  @db.Decimal(10, 2)
+  totalBudget Decimal?  @db.Decimal(10, 2)
+  startDate   DateTime? @db.Date
+  endDate     DateTime? @db.Date
+
+  // ─── Generated artifacts ───
+  landingPageId         String?      @unique
+  landingPage           LandingPage? @relation("CampaignLandingPage", fields: [landingPageId], references: [id], onDelete: SetNull)
+  triggeredAgentId      String?
+  triggeredAgent        Agent?       @relation("CampaignTriggeredAgent", fields: [triggeredAgentId], references: [id], onDelete: SetNull)
+  conversationalAgentId String?
+  conversationalAgent   Agent?       @relation("CampaignConversationalAgent", fields: [conversationalAgentId], references: [id], onDelete: SetNull)
+
+  // ─── External ad-launcher linkback ───
+  // Filled by the ad-ops integration epic when Meta/Google campaigns are
+  // launched against this funnel. Until then both stay null.
+  metaCampaignExternalId   String?
+  googleCampaignExternalId String?
+
+  targetValuePerLead Decimal? @db.Decimal(10, 2)
+  notes              String?  @db.Text
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  sourceContacts   NativeContact[]   @relation("ContactSourceCampaign")
+  formSubmissions  FormSubmission[]
+  conversionEvents ConversionEvent[]
+  pixelConfig      PixelConfig?
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([locationId])
+}
+
+// ─── LandingPage (VSL / lead-gen / webinar / book-call / application) ──
+model LandingPage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template    String    @default("vsl") // "vsl" | "lead_gen" | "webinar_optin" | "application" | "book_call"
+  // url-safe, addresses the public renderer at /p/<slug>. Globally unique
+  // — a slug is the URL.
+  slug        String    @unique
+  title       String
+
+  // Structured page spec — array of typed sections (Hero, Problem, Mechanism,
+  // Proof, Offer, Guarantee, Urgency, FAQ, CTA, Form marker, Footer). The
+  // canonical TypeScript shape lives at lib/page-spec.ts (ported from
+  // lead-hacker-daily's src/lib/page-spec.ts).
+  spec       Json @default("{}")
+  // Standardized form schema — which canonical fields to show + which is
+  // required + cta label + consent text. NO custom fields; these are the
+  // only ones supported by design (form-fields-as-CRM-properties via the
+  // CrmAdapter promise breaks against external CRMs otherwise).
+  formSchema Json @default("{}")
+
+  // ─── Tracking ids (denormalized for runtime perf) ───
+  // The /p/<slug> renderer reads these to inject browser pixels without a
+  // join to PixelConfig at request time.
+  metaPixelId           String?
+  googleConversionId    String?
+  googleConversionLabel String?
+
+  // SEO / OG
+  ogImageUrl      String?
+  metaDescription String?
+
+  // ─── Publish state ───
+  published    Boolean   @default(false)
+  publishedAt  DateTime?
+  customDomain String? // v2 — currently null
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Reverse relations
+  campaign        Campaign?        @relation("CampaignLandingPage")
+  formSubmissions FormSubmission[]
+
+  @@index([workspaceId])
+  @@index([published, publishedAt(sort: Desc)])
+}
+
+// ─── FormSubmission ─────────────────────────────────────────────────────
+// One row per form submit. Service-role write only (via the public
+// /api/public/form-submit route handler) — never written from the client.
+model FormSubmission {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaignId    String?
+  campaign      Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  landingPageId String?
+  landingPage   LandingPage?   @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
+  contactId     String?
+  contact       NativeContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  // Raw submission payload, exactly as sent. Includes all fields the form
+  // rendered (subset of canonical: first_name, last_name, email, phone, message).
+  rawPayload Json    @default("{}")
+  utm        Json    @default("{}")
+  referrer   String?
+  ipAddress  String?
+  userAgent  String? @db.Text
+
+  // Browser cookies captured at submit so server-side conversion firing
+  // can dedupe with Meta's browser pixel and credit Google clicks.
+  fbp   String? // _fbp cookie
+  fbc   String? // _fbc cookie
+  gclid String?
+
+  submittedAt DateTime @default(now())
+
+  conversionEvents ConversionEvent[]
+
+  @@index([workspaceId, submittedAt(sort: Desc)])
+  @@index([campaignId, submittedAt(sort: Desc)])
+  @@index([contactId])
+}
+
+// ─── ConversionEvent ────────────────────────────────────────────────────
+// Server-side conversion event log. Powers Meta CAPI + Google Ads
+// uploadClickConversions. Idempotent via eventId — same event safely
+// retryable without duplicating on Meta/Google.
+model ConversionEvent {
+  id           String          @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaignId   String?
+  campaign     Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contactId    String?
+  contact      NativeContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  submissionId String?
+  submission   FormSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+
+  eventName String // "lead" | "call_connected" | "qualified" | "booked" | "sale" | "no_show" | "lost"
+
+  // Idempotency key used as Meta's event_id and Google's order_id so a
+  // retried fire merges with the original.
+  eventId String @unique @default(cuid())
+
+  value    Decimal? @db.Decimal(10, 2)
+  currency String   @default("USD")
+
+  // Per-platform send status
+  metaSentAt     DateTime?
+  metaResponse   Json?
+  metaError      String?   @db.Text
+  googleSentAt   DateTime?
+  googleResponse Json?
+  googleError    String?   @db.Text
+
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId, eventName, occurredAt(sort: Desc)])
+  @@index([contactId])
+  @@index([workspaceId, occurredAt(sort: Desc)])
+}
+
+// ─── PixelConfig ────────────────────────────────────────────────────────
+// One config per campaign. A campaignId-null row holds the workspace
+// default (used when a campaign hasn't been individually configured).
+// Credentials (CAPI token, Google refresh token) are NOT stored here —
+// they live in the existing Integration model and are referenced by id.
+model PixelConfig {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // null campaignId = workspace default (one per workspace)
+  campaignId  String?   @unique
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  // ─── Meta pixel ───
+  metaPixelId       String?
+  metaIntegrationId String?
+  metaIntegration   Integration? @relation("PixelMetaIntegration", fields: [metaIntegrationId], references: [id], onDelete: SetNull)
+  // For sandboxing CAPI test events without affecting production attribution.
+  metaTestEventCode String?
+
+  // ─── Google Ads conversion action ───
+  googleConversionId    String? // "AW-1234567"
+  googleConversionLabel String? // "abc123XYZ"
+  googleIntegrationId   String?
+  googleIntegration     Integration? @relation("PixelGoogleIntegration", fields: [googleIntegrationId], references: [id], onDelete: SetNull)
+
+  // Per-event value override. Shape: { lead: 50, booked: 250, sale: 1000 }.
+  // When unset, ConversionEvent.value is sent as-is.
+  eventValueMap Json @default("{}")
+
+  // Which event_names to fire to which platform. Defaults to the full set;
+  // operators can opt out of pre-purchase events to keep their CPA model clean.
+  metaEvents   String[] @default(["lead", "call_connected", "qualified", "booked", "sale"])
+  googleEvents String[] @default(["lead", "call_connected", "qualified", "booked", "sale"])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
 }
