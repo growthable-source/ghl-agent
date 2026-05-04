@@ -32,13 +32,6 @@ interface RoutingRule {
   conditions: { groups?: { clauses: { ruleType: string; values: string[]; negate?: boolean }[] }[] } | null
 }
 
-interface DetectionRule {
-  id: string
-  name: string
-  isActive: boolean
-  actionType: string
-}
-
 interface ContactTrigger {
   id: string
   eventType: string
@@ -72,17 +65,6 @@ const RULE_TYPE_LABEL: Record<string, string> = {
   TAG: 'has tag',
   PIPELINE_STAGE: 'in pipeline stage',
   KEYWORD: 'message contains',
-}
-
-const DETECTION_ACTION_LABEL: Record<string, string> = {
-  update_contact_field:  'Update contact field',
-  update_contact_tags:   'Add tags',
-  remove_contact_tags:   'Remove tags',
-  add_to_workflow:       'Enrol in workflow',
-  remove_from_workflow:  'Remove from workflow',
-  opportunity_status:    'Change opportunity status',
-  opportunity_value:     'Set opportunity value',
-  dnd_channel:           'Mark as Do Not Disturb',
 }
 
 const DAY_LABEL: Record<string, string> = {
@@ -139,11 +121,12 @@ export default function TriggerOverviewPage() {
 
   const [channels, setChannels] = useState<ChannelDeployment[] | null>(null)
   const [agent, setAgent] = useState<AgentDetails | null>(null)
-  const [detection, setDetection] = useState<DetectionRule[] | null>(null)
   const [triggers, setTriggers] = useState<ContactTrigger[] | null>(null)
 
   useEffect(() => {
     // Parallel load — every sub-page reads from independent endpoints.
+    // Detection rules used to surface here too; they moved to Skills →
+    // Playbook so this page focuses on routing-time questions only.
     Promise.all([
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`)
         .then(r => r.json())
@@ -161,10 +144,6 @@ export default function TriggerOverviewPage() {
           routingRules: d.agent?.routingRules ?? [],
         }))
         .catch(() => setAgent(null)),
-      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/rules`)
-        .then(r => r.json())
-        .then(d => setDetection(d.rules ?? []))
-        .catch(() => setDetection([])),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers`)
         .then(r => r.json())
         .then(d => setTriggers(d.triggers ?? []))
@@ -172,7 +151,7 @@ export default function TriggerOverviewPage() {
     ])
   }, [workspaceId, agentId])
 
-  const loading = channels === null || agent === null || detection === null || triggers === null
+  const loading = channels === null || agent === null || triggers === null
   if (loading) {
     return (
       <div className="p-8 max-w-3xl">
@@ -193,7 +172,6 @@ export default function TriggerOverviewPage() {
   const activeChannels = channels!.filter(c => c.isActive)
   const inactiveChannels = ALL_CHANNELS.filter(k => !activeChannels.some(c => c.channel === k))
   const routingRules = agent!.routingRules
-  const activeDetection = detection!.filter(r => r.isActive)
   const activeTriggers = triggers!.filter(t => t.isActive)
 
   // ── Top summary banner ────────────────────────────────────────────────
@@ -296,36 +274,6 @@ export default function TriggerOverviewPage() {
             {routingRules.length > 4 && (
               <li className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                 +{routingRules.length - 4} more
-              </li>
-            )}
-          </ul>
-        )}
-      </OverviewSection>
-
-      {/* Detection rules */}
-      <OverviewSection
-        title="Detection rules"
-        subtitle="Once the agent is in a conversation, these rules detect specific things the contact says and fire CRM actions in response."
-        pill={
-          activeDetection.length > 0
-            ? { tone: 'info', label: `${activeDetection.length} active` }
-            : { tone: 'idle', label: 'None' }
-        }
-        editHref={`${base}/rules`}
-      >
-        {activeDetection.length === 0 ? (
-          <EmptyHint>No detection rules — that's fine. Add some if you want CRM side-effects when the contact says specific things.</EmptyHint>
-        ) : (
-          <ul className="space-y-1.5">
-            {activeDetection.slice(0, 4).map(r => (
-              <li key={r.id} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                <span style={{ color: 'var(--text-tertiary)' }}>•</span> {r.name}
-                <span style={{ color: 'var(--text-tertiary)' }}> — {DETECTION_ACTION_LABEL[r.actionType] ?? r.actionType}</span>
-              </li>
-            ))}
-            {activeDetection.length > 4 && (
-              <li className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                +{activeDetection.length - 4} more
               </li>
             )}
           </ul>

@@ -1,10 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
-import { ALL_TOOLS } from '@/lib/tools'
+/**
+ * Reflexes — tools the model is allowed to call freely during a
+ * conversation. Reads, replies, calendar coordination, handover.
+ *
+ * Write-actions that mutate CRM state (change pipeline stage, set deal
+ * value, enrol in workflow, etc.) used to live here as toggles. They
+ * moved to Playbook so the operator authors a "when X, do Y" rule
+ * instead of letting the model decide.
+ */
 
-export default function ToolsPage() {
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import {
+  REFLEXES,
+  REFLEX_GROUP_LABEL,
+  REFLEX_GROUP_ORDER,
+} from '@/lib/agent-tools-catalog'
+
+export default function ReflexesPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
@@ -24,7 +39,6 @@ export default function ToolsPage() {
       })
       .finally(() => setLoading(false))
 
-    // Preload calendars
     setLoadingCalendars(true)
     fetch(`/api/workspaces/${workspaceId}/calendars`)
       .then(r => r.json())
@@ -33,10 +47,10 @@ export default function ToolsPage() {
       .finally(() => setLoadingCalendars(false))
   }, [workspaceId, agentId])
 
-  async function toggleTool(toolName: string) {
-    const updated = enabledTools.includes(toolName)
-      ? enabledTools.filter(t => t !== toolName)
-      : [...enabledTools, toolName]
+  async function toggleReflex(key: string) {
+    const updated = enabledTools.includes(key)
+      ? enabledTools.filter(t => t !== key)
+      : [...enabledTools, key]
     setEnabledTools(updated)
     await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
       method: 'PATCH',
@@ -47,14 +61,12 @@ export default function ToolsPage() {
 
   async function saveCalendarId(id: string) {
     setCalendarId(id)
-
-    // Auto-enable booking tools when a calendar is selected. Without these
-    // tools, setting a calendar ID is a no-op — the agent has no way to use it.
+    // Auto-enable booking reflexes when a calendar is selected. Without
+    // them, setting a calendar ID is a no-op.
     const autoEnable = ['get_available_slots', 'book_appointment', 'create_appointment_note']
     const missing = autoEnable.filter(t => !enabledTools.includes(t))
     const updatedTools = missing.length > 0 ? [...enabledTools, ...missing] : enabledTools
     if (missing.length > 0) setEnabledTools(updatedTools)
-
     await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -65,120 +77,175 @@ export default function ToolsPage() {
     })
   }
 
-  const [diag, setDiag] = useState<{ ok: boolean; results: Array<{ step: string; status: string; detail: string; fix?: string }> } | null>(null)
-  const [runningDiag, setRunningDiag] = useState(false)
-
-  async function runDiagnostic() {
-    setRunningDiag(true)
-    setDiag(null)
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/calendar-diagnostic`)
-      const data = await res.json()
-      setDiag(data)
-    } finally { setRunningDiag(false) }
+  if (loading) {
+    return (
+      <div className="p-8 max-w-2xl">
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div
+              key={i}
+              className="h-20 rounded-xl animate-pulse"
+              style={{ background: 'var(--surface-tertiary)' }}
+            />
+          ))}
+        </div>
+      </div>
+    )
   }
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-48">
-      <p className="text-zinc-500 text-sm">Loading…</p>
-    </div>
-  )
-
-  const calendarToolsEnabled = (['get_available_slots', 'book_appointment'] as const).some(t => enabledTools.includes(t))
+  const calendarReflexesOn = ['get_available_slots', 'book_appointment'].some(t => enabledTools.includes(t))
 
   return (
-    <div className="p-8 max-w-2xl space-y-8">
-      {(['messaging', 'contacts', 'pipeline', 'calendar', 'intelligence', 'automation'] as const).map(category => {
-        const categoryTools = ALL_TOOLS.filter(t => t.category === category)
-        if (categoryTools.length === 0) return null
+    <div className="p-8 max-w-2xl space-y-6">
+      {/* Top explainer — sets up the Reflex vs Playbook split */}
+      <div
+        className="rounded-xl border p-4"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+      >
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
+          Reflexes
+        </p>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          These are the tools the agent uses naturally during a conversation —
+          looking up contacts, replying, coordinating bookings. The model
+          decides when each is appropriate.
+        </p>
+        <p className="text-xs leading-relaxed mt-2" style={{ color: 'var(--text-tertiary)' }}>
+          Anything that <em>changes</em> CRM state (pipeline stages, deal
+          values, workflow enrolments) lives in{' '}
+          <Link
+            href={`/dashboard/${workspaceId}/agents/${agentId}/playbook`}
+            className="font-medium hover:opacity-80"
+            style={{ color: 'var(--accent-primary)' }}
+          >
+            Playbook
+          </Link>{' '}
+          — there you author "when X happens, do Y" so the agent only mutates
+          your data deliberately.
+        </p>
+      </div>
+
+      {REFLEX_GROUP_ORDER.map(group => {
+        const groupReflexes = REFLEXES.filter(r => r.group === group)
+        if (groupReflexes.length === 0) return null
         return (
-          <div key={category}>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3 capitalize">{category}</h3>
+          <div key={group}>
+            <h3
+              className="text-[11px] font-semibold uppercase tracking-wider mb-2.5"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              {REFLEX_GROUP_LABEL[group]}
+            </h3>
             <div className="space-y-2">
-              {categoryTools.map(tool => {
-                const isEnabled = enabledTools.includes(tool.name)
-                // add_to_workflow / remove_from_workflow used to expose a
-                // workflow-picker here. That's redundant now — Rules (and
-                // Qualifying actions) name the specific workflow when they
-                // fire, so this toggle is a plain enable/disable again.
-                // See the Rules page for per-rule workflow selection.
-                const isWorkflowTool = tool.name === 'add_to_workflow' || tool.name === 'remove_from_workflow'
+              {groupReflexes.map(reflex => {
+                const isOn = enabledTools.includes(reflex.key) || reflex.required
+                const locked = reflex.required
                 return (
-                  <div key={tool.name}>
-                    <div
-                      className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${
-                        isEnabled ? 'border-zinc-700 bg-zinc-900/50' : 'border-zinc-800'
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${isEnabled ? 'text-zinc-100' : 'text-zinc-500'}`}>
-                          {tool.label}
-                        </p>
-                        <p className="text-xs text-zinc-600 mt-0.5">{tool.description}</p>
-                        {isWorkflowTool && isEnabled && (
-                          <p className="text-[11px] text-zinc-500 mt-1.5">
-                            Pick the specific workflow on the <a href={`/dashboard/${workspaceId}/agents/${agentId}/rules`} className="text-blue-400 hover:text-blue-300">Rules tab</a> — rules fire this tool with the right workflow.
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => toggleTool(tool.name)}
-                        className={`ml-4 relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                          isEnabled ? 'bg-emerald-500' : 'bg-zinc-700'
-                        }`}
-                        role="switch"
-                        aria-checked={isEnabled}
+                  <div
+                    key={reflex.key}
+                    className="flex items-center justify-between gap-4 rounded-xl border p-3.5 transition-colors"
+                    style={{
+                      borderColor: isOn ? 'var(--border)' : 'var(--border-secondary)',
+                      background: 'var(--surface)',
+                    }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-sm font-medium"
+                        style={{ color: isOn ? 'var(--text-primary)' : 'var(--text-secondary)' }}
                       >
-                        <span
-                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow transition duration-200 ${
-                            isEnabled ? 'translate-x-4' : 'translate-x-0'
-                          }`}
-                          style={{ background: '#fff' }}
-                        />
-                      </button>
+                        {reflex.label}
+                        {locked && (
+                          <span
+                            className="ml-2 text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded"
+                            style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}
+                          >
+                            Required
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        {reflex.description}
+                      </p>
                     </div>
+                    <button
+                      onClick={() => !locked && toggleReflex(reflex.key)}
+                      disabled={locked}
+                      className="relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ background: isOn ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
+                      role="switch"
+                      aria-checked={isOn}
+                      title={locked ? 'Required — the agent cannot function without this' : undefined}
+                    >
+                      <span
+                        className="pointer-events-none inline-block h-5 w-5 transform rounded-full shadow transition-transform"
+                        style={{
+                          background: 'var(--btn-primary-text)',
+                          transform: isOn ? 'translateX(20px)' : 'translateX(0)',
+                        }}
+                      />
+                    </button>
                   </div>
                 )
               })}
             </div>
 
-            {category === 'calendar' && (
-              <div className={`rounded-lg border px-4 py-4 mt-3 ${
-                calendarId
-                  ? 'border-emerald-500/30 bg-emerald-500/5'
-                  : calendarToolsEnabled
-                  ? 'border-amber-500/40 bg-amber-500/5'
-                  : 'border-zinc-700 bg-zinc-900/50'
-              }`}>
-                <div className="flex items-start gap-2 mb-1">
-                  <label className="block text-sm font-medium text-zinc-300">Connected Calendar</label>
+            {/* Calendar config card lives under the Calendar group */}
+            {group === 'calendar' && (
+              <div
+                className="mt-3 rounded-xl border p-4"
+                style={{
+                  borderColor: calendarId
+                    ? 'var(--accent-emerald)'
+                    : calendarReflexesOn
+                      ? 'var(--accent-amber)'
+                      : 'var(--border)',
+                  background: calendarId
+                    ? 'var(--accent-emerald-bg)'
+                    : calendarReflexesOn
+                      ? 'var(--accent-amber-bg)'
+                      : 'var(--surface)',
+                }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    Connected calendar
+                  </p>
                   {calendarId && (
-                    <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10">
-                      ✓ Configured
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+                    >
+                      Configured
                     </span>
                   )}
-                  {!calendarId && calendarToolsEnabled && (
-                    <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10">
-                      ⚠ Required
+                  {!calendarId && calendarReflexesOn && (
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+                    >
+                      Required
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-zinc-500 mb-3">
+                <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
                   {calendarId
                     ? 'The agent will use this calendar to check availability and book appointments.'
-                    : calendarToolsEnabled
-                    ? 'Your agent has booking tools enabled but no calendar to use. Pick one below — booking will not work without it.'
-                    : 'Select a calendar to enable booking. The booking tools will be enabled automatically when you pick one.'}
+                    : calendarReflexesOn
+                      ? 'Booking reflexes are on but no calendar is selected — pick one or the agent will say it booked without anything happening.'
+                      : 'Pick a calendar to enable booking. The booking reflexes turn on automatically.'}
                 </p>
                 {loadingCalendars ? (
-                  <p className="text-sm text-zinc-500">Loading…</p>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading…</p>
                 ) : calendars.length === 0 ? (
-                  <p className="text-sm text-red-400">No calendars found in this location. Create one in LeadConnector first, then come back here.</p>
+                  <p className="text-xs" style={{ color: 'var(--accent-amber)' }}>
+                    No calendars found in this location. Create one in LeadConnector first, then come back.
+                  </p>
                 ) : (
                   <select
                     value={calendarId}
                     onChange={e => saveCalendarId(e.target.value)}
-                    className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                     style={{
                       background: 'var(--input-bg)',
                       color: 'var(--input-text)',
@@ -191,63 +258,11 @@ export default function ToolsPage() {
                     ))}
                   </select>
                 )}
-                {calendarId && <p className="text-xs text-zinc-600 mt-2 font-mono">{calendarId}</p>}
-
-                {/* Diagnostic */}
-                <div className="mt-4 pt-3 border-t border-zinc-800">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-zinc-400">
-                      Booking not working? Run a full connection test.
-                    </p>
-                    <button
-                      onClick={runDiagnostic}
-                      disabled={runningDiag}
-                      className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-                      style={runningDiag ? {
-                        background: 'var(--surface-tertiary)',
-                        color: 'var(--text-tertiary)',
-                        border: '1px solid var(--border)',
-                        cursor: 'not-allowed',
-                      } : {
-                        background: 'var(--surface-secondary)',
-                        color: 'var(--text-secondary)',
-                        border: '1px solid var(--border-secondary)',
-                      }}
-                    >
-                      {runningDiag ? 'Testing…' : 'Test calendar connection'}
-                    </button>
-                  </div>
-
-                  {diag && (
-                    <div className={`mt-3 p-3 rounded-lg border ${
-                      diag.ok ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-red-500/40 bg-red-500/5'
-                    }`}>
-                      <p className={`text-xs font-semibold mb-2 ${diag.ok ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {diag.ok ? '✓ Calendar integration is working' : '✗ Something is blocking booking'}
-                      </p>
-                      <div className="space-y-1.5">
-                        {diag.results.map((r, i) => (
-                          <div key={i} className="flex items-start gap-2 text-[11px]">
-                            <span className={`mt-0.5 shrink-0 ${
-                              r.status === 'ok' ? 'text-emerald-400'
-                              : r.status === 'warn' ? 'text-amber-400'
-                              : 'text-red-400'
-                            }`}>
-                              {r.status === 'ok' ? '✓' : r.status === 'warn' ? '⚠' : '✗'}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-zinc-200 font-medium">{r.step}</p>
-                              <p className="text-zinc-500 break-words">{r.detail}</p>
-                              {r.fix && (
-                                <p className="text-amber-300 mt-0.5">→ {r.fix}</p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {calendarId && (
+                  <p className="text-[11px] mt-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                    {calendarId}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -256,4 +271,3 @@ export default function ToolsPage() {
     </div>
   )
 }
-

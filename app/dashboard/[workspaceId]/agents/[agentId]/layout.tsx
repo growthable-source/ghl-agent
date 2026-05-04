@@ -41,29 +41,35 @@ const HUBS: Hub[] = [
     ],
   },
   {
+    // Skills splits into two complementary surfaces:
+    //   • Reflexes — model-callable tools (read, reply, calendar)
+    //   • Playbook — operator-authored "when X, do Y" deterministic rules
+    // The reflex/playbook split is deliberate: read tools are benign and
+    // the model needs them as primitives; CRM mutations should never
+    // fire on the model's discretion.
     key: 'skills',
     label: 'Skills',
     tabs: [
-      { key: 'skills',       label: 'Overview',         path: '/skills' },
-      { key: 'tools',        label: 'Actions',          path: '/tools' },
-      { key: 'integrations', label: 'Integrations',     path: '/integrations' },
-      { key: 'follow-ups',   label: 'Follow-ups',       path: '/follow-ups' },
-      { key: 'goals',        label: 'Stop conditions',  path: '/goals' },
+      { key: 'skills',       label: 'Overview',     path: '/skills' },
+      { key: 'tools',        label: 'Reflexes',     path: '/tools' },
+      { key: 'playbook',     label: 'Playbook',     path: '/playbook' },
+      { key: 'integrations', label: 'Integrations', path: '/integrations' },
+      { key: 'follow-ups',   label: 'Follow-ups',   path: '/follow-ups' },
+      { key: 'goals',        label: 'Stop conditions', path: '/goals' },
     ],
   },
   {
-    // The whole reason this refactor exists. Channels, Rules, Routing,
-    // Working hours and Contact triggers all answer the same question
-    // — "when does this agent fire?" — and were spread across five
-    // separate top-level tabs. They live under Trigger now, with an
-    // Overview landing page that summarises every system in one view.
+    // Channels, Rules, Routing, Working hours and Contact triggers all
+    // answer "when does this agent fire?" Detection rules used to live
+    // here; they moved to Skills → Playbook because they're the same
+    // shape as Plays (when X, do Y). The /rules URL still resolves —
+    // it just isn't surfaced in nav anymore.
     key: 'trigger',
     label: 'Trigger',
     tabs: [
       { key: 'overview',      label: 'Overview',         path: '/trigger' },
       { key: 'deploy',        label: 'Channels',         path: '/deploy' },
       { key: 'routing',       label: 'Routing',          path: '/routing' },
-      { key: 'rules',         label: 'Detection rules',  path: '/rules' },
       { key: 'working-hours', label: 'Working hours',    path: '/working-hours' },
       { key: 'triggers',      label: 'Proactive',        path: '/triggers' },
     ],

@@ -4,8 +4,9 @@
  * Skills Overview — landing for the Skills hub.
  *
  * Surfaces every system that controls what the agent can DO:
- *   • Tools          — CRM actions the agent can call
- *   • Integrations   — calendar, voice, etc.
+ *   • Reflexes       — tools the model uses freely during conversation
+ *   • Playbook       — operator-authored "when X, do Y" CRM mutations
+ *   • Integrations   — calendar wiring
  *   • Follow-ups     — outbound sequences this agent can schedule
  *   • Stop conditions — circuit breakers that pause the conversation
  */
@@ -13,6 +14,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { OverviewSection, OverviewRow, EmptyHint, Tag } from '@/components/dashboard/AgentOverview'
+import { REFLEXES, getPlayAction, getReflex } from '@/lib/agent-tools-catalog'
 
 interface AgentSkills {
   enabledTools: string[]
@@ -20,32 +22,12 @@ interface AgentSkills {
 }
 interface FollowUpSequence { id: string; name: string; isActive: boolean }
 interface StopCondition { id: string; name: string; isActive: boolean }
+interface Play { id: string; name: string; actionType: string; isActive: boolean }
 
-const TOOL_LABEL: Record<string, string> = {
-  send_reply: 'Send reply',
-  send_sms: 'Send SMS',
-  get_contact_details: 'Read contact',
-  update_contact_field: 'Update contact field',
-  update_contact_tags: 'Add tags',
-  remove_contact_tags: 'Remove tags',
-  update_contact_memory: 'Capture context',
-  get_opportunities: 'Read opportunities',
-  move_opportunity_stage: 'Move opportunity stage',
-  add_contact_note: 'Add note',
-  get_available_slots: 'Check calendar',
-  book_appointment: 'Book appointment',
-  search_contacts: 'Search contacts',
-  find_contact_by_email_or_phone: 'Find contact',
-  upsert_contact: 'Upsert contact',
-  add_to_workflow: 'Enrol in workflow',
-  remove_from_workflow: 'Remove from workflow',
-  schedule_followup: 'Schedule follow-up',
-  cancel_scheduled_message: 'Cancel scheduled message',
-  get_calendar_events: 'List appointments',
-  cancel_appointment: 'Cancel appointment',
-  reschedule_appointment: 'Reschedule appointment',
-  create_appointment_note: 'Add appointment note',
-  transfer_to_human: 'Transfer to human',
+// Tool labels are read from the catalog — single source of truth across
+// the Reflexes editor, this Overview, and any future surfaces.
+function reflexLabel(key: string): string {
+  return getReflex(key)?.label ?? key
 }
 
 export default function SkillsOverviewPage() {
@@ -57,6 +39,7 @@ export default function SkillsOverviewPage() {
   const [agent, setAgent] = useState<AgentSkills | null>(null)
   const [followUps, setFollowUps] = useState<FollowUpSequence[] | null>(null)
   const [stopConditions, setStopConditions] = useState<StopCondition[] | null>(null)
+  const [plays, setPlays] = useState<Play[] | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -75,10 +58,14 @@ export default function SkillsOverviewPage() {
         .then(r => r.json())
         .then(d => setStopConditions(d.conditions ?? []))
         .catch(() => setStopConditions([])),
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/rules`)
+        .then(r => r.json())
+        .then(d => setPlays(d.rules ?? []))
+        .catch(() => setPlays([])),
     ])
   }, [workspaceId, agentId])
 
-  if (agent === null || followUps === null || stopConditions === null) {
+  if (agent === null || followUps === null || stopConditions === null || plays === null) {
     return (
       <div className="p-8 max-w-3xl">
         <div className="space-y-3">
@@ -100,27 +87,86 @@ export default function SkillsOverviewPage() {
   const activeFollowUps = followUps.filter(f => f.isActive)
   const activeStopConditions = stopConditions.filter(s => s.isActive)
 
+  // Reflexes are the read/reply tools enabled in enabledTools. We filter
+  // to the catalog so legacy entries that aren't reflexes don't clutter
+  // the count.
+  const reflexKeys = new Set(REFLEXES.map(r => r.key))
+  const enabledReflexes = agent.enabledTools.filter(t => reflexKeys.has(t))
+  // Count required reflexes that are missing — those should be flagged.
+  const requiredReflexes = REFLEXES.filter(r => r.required).map(r => r.key)
+  const missingRequired = requiredReflexes.filter(k => !agent.enabledTools.includes(k))
+
+  const activePlays = plays.filter(p => p.isActive)
+
   return (
     <div className="p-8 max-w-3xl space-y-5">
-      {/* Tools */}
+      {/* Reflexes — what the agent uses naturally */}
       <OverviewSection
-        title="Actions"
-        subtitle="What the agent can DO during a conversation, beyond replying. Each enabled action is exposed to the model as a tool it can call."
+        title="Reflexes"
+        subtitle="Tools the agent uses naturally during a conversation — looking up contacts, replying, coordinating bookings. The model decides when each is appropriate."
         pill={
-          agent.enabledTools.length > 0
-            ? { tone: 'live', label: `${agent.enabledTools.length} enabled` }
+          missingRequired.length > 0
+            ? { tone: 'warn', label: 'Required reflex off' }
+            : enabledReflexes.length > 0
+            ? { tone: 'live', label: `${enabledReflexes.length} enabled` }
             : { tone: 'warn', label: 'None' }
         }
         editHref={`${base}/tools`}
       >
-        {agent.enabledTools.length === 0 ? (
-          <EmptyHint>No actions enabled — the agent can only reply with text. Add tools to let it touch the CRM.</EmptyHint>
+        {missingRequired.length > 0 && (
+          <p
+            className="text-[11px] mb-2"
+            style={{ color: 'var(--accent-amber)' }}
+          >
+            Missing: {missingRequired.map(reflexLabel).join(', ')}. The agent can\'t function without these.
+          </p>
+        )}
+        {enabledReflexes.length === 0 ? (
+          <EmptyHint>No reflexes enabled — the agent has no way to reply.</EmptyHint>
         ) : (
           <div className="flex flex-wrap gap-1.5">
-            {agent.enabledTools.map(t => (
-              <Tag key={t}>{TOOL_LABEL[t] ?? t}</Tag>
+            {enabledReflexes.map(t => (
+              <Tag key={t}>{reflexLabel(t)}</Tag>
             ))}
           </div>
+        )}
+      </OverviewSection>
+
+      {/* Playbook — what the agent does deliberately */}
+      <OverviewSection
+        title="Playbook"
+        subtitle="Specific actions the agent takes when specific things happen — pipeline stage changes, tag updates, deal values. Each Play is one trigger and one action, deterministic."
+        pill={
+          activePlays.length > 0
+            ? { tone: 'live', label: `${activePlays.length} ${activePlays.length === 1 ? 'Play' : 'Plays'}` }
+            : { tone: 'idle', label: 'None' }
+        }
+        editHref={`${base}/playbook`}
+      >
+        {activePlays.length === 0 ? (
+          <EmptyHint>
+            No Plays yet. Add some to make the agent change CRM data deliberately —
+            e.g. "When the customer commits to buying, mark opportunity as Won."
+          </EmptyHint>
+        ) : (
+          <ul className="space-y-1.5">
+            {activePlays.slice(0, 4).map(p => {
+              const def = getPlayAction(p.actionType as any)
+              return (
+                <li key={p.id} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <span style={{ color: 'var(--text-tertiary)' }}>•</span> {p.name || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>(unnamed)</span>}
+                  {def && (
+                    <span style={{ color: 'var(--text-tertiary)' }}> — {def.label}</span>
+                  )}
+                </li>
+              )
+            })}
+            {activePlays.length > 4 && (
+              <li className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                +{activePlays.length - 4} more
+              </li>
+            )}
+          </ul>
         )}
       </OverviewSection>
 
@@ -148,7 +194,7 @@ export default function SkillsOverviewPage() {
             value={<span className="font-mono text-xs">{agent.calendarId}</span>}
           />
         ) : (
-          <EmptyHint>This agent doesn't use the calendar. Enable booking tools in Actions to wire one up.</EmptyHint>
+          <EmptyHint>This agent doesn't use the calendar. Enable booking reflexes in Reflexes to wire one up.</EmptyHint>
         )}
       </OverviewSection>
 
