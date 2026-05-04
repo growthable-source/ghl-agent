@@ -95,6 +95,54 @@ function extractPublicKey(req: Request): string | null {
   return url.searchParams.get('pk')
 }
 
+/**
+ * In-memory TTL cache for validated widgets, keyed by `widgetId:publicKey`.
+ *
+ * The widget SSE endpoint is hit hard during normal operation: every
+ * 5 minutes the EventSource cycles past Vercel's `maxDuration` and
+ * the browser auto-reconnects. Without a cache, each reconnect runs
+ * the full `loadWidget` Prisma query before the first byte flows,
+ * which on a cold function easily exceeds the client's connection
+ * grace window and surfaces as a "Connection dropped" banner even
+ * when nothing actually broke.
+ *
+ * Keying on `widgetId:publicKey` means a wrong key never gets cached
+ * (validation fails before we store anything). 30 s TTL is short
+ * enough that disabling a widget kicks all clients within half a
+ * minute, long enough that routine reconnects skip the DB.
+ */
+type CachedWidget = NonNullable<Awaited<ReturnType<typeof loadWidget>>>
+const widgetCache = new Map<string, { widget: CachedWidget; expiresAt: number }>()
+const WIDGET_CACHE_TTL_MS = 30_000
+
+function getCachedWidget(widgetId: string, publicKey: string): CachedWidget | null {
+  const hit = widgetCache.get(`${widgetId}:${publicKey}`)
+  if (!hit) return null
+  if (hit.expiresAt <= Date.now()) {
+    widgetCache.delete(`${widgetId}:${publicKey}`)
+    return null
+  }
+  return hit.widget
+}
+
+function setCachedWidget(widgetId: string, publicKey: string, widget: CachedWidget): void {
+  widgetCache.set(`${widgetId}:${publicKey}`, {
+    widget,
+    expiresAt: Date.now() + WIDGET_CACHE_TTL_MS,
+  })
+}
+
+/**
+ * Force-evict a widget from the validation cache. Call from settings
+ * mutations that change `isActive`, `publicKey`, or `allowedDomains`
+ * so changes propagate immediately instead of waiting out the TTL.
+ */
+export function invalidateWidgetAuthCache(widgetId: string): void {
+  for (const key of widgetCache.keys()) {
+    if (key.startsWith(`${widgetId}:`)) widgetCache.delete(key)
+  }
+}
+
 function isOurOrigin(origin: string): boolean {
   const app = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || ''
   if (!app) return false
@@ -125,15 +173,26 @@ export async function validateWidgetRequest(
   req: Request,
   widgetId: string,
 ): Promise<ValidationResult> {
-  const widget = await loadWidget(widgetId)
-  if (!widget) return { ok: false, error: 'Widget not found', status: 404 }
-  if (!widget.isActive) return { ok: false, error: 'Widget is disabled', status: 403 }
-
+  // Pull the public key first so we can hit the cache without paying
+  // for the DB query on warm reconnects. A missing key short-circuits
+  // before we ever touch Postgres.
   const providedKey = extractPublicKey(req)
-  if (providedKey !== widget.publicKey) {
-    return { ok: false, error: 'Invalid public key', status: 401 }
+  if (!providedKey) return { ok: false, error: 'Invalid public key', status: 401 }
+
+  let widget = getCachedWidget(widgetId, providedKey)
+  if (!widget) {
+    const loaded = await loadWidget(widgetId)
+    if (!loaded) return { ok: false, error: 'Widget not found', status: 404 }
+    if (!loaded.isActive) return { ok: false, error: 'Widget is disabled', status: 403 }
+    if (loaded.publicKey !== providedKey) {
+      return { ok: false, error: 'Invalid public key', status: 401 }
+    }
+    setCachedWidget(widgetId, providedKey, loaded)
+    widget = loaded
   }
 
+  // Origin check stays per-request — it's pure string comparison
+  // against the cached widget.allowedDomains, no DB needed.
   const origin = req.headers.get('origin')
   if (origin && !isOurOrigin(origin) && !originMatches(origin, widget.allowedDomains)) {
     return { ok: false, error: `Origin ${origin} not allowed for this widget`, status: 403 }

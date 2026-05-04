@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { isMissingColumn } from '@/lib/migration-error'
+import { invalidateWidgetAuthCache } from '@/lib/widget-auth'
 
 type Params = { params: Promise<{ workspaceId: string; widgetId: string }> }
 
@@ -67,6 +68,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   try {
     const widget = await db.chatWidget.update({ where: { id: widgetId }, data })
+    invalidateWidgetAuthCache(widgetId)
     return NextResponse.json({ widget })
   } catch (err: any) {
     if (err.code === 'P2002') {
@@ -78,6 +80,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       for (const k of tolerantKeys) delete legacyData[k]
       try {
         const widget = await db.chatWidget.update({ where: { id: widgetId }, data: legacyData })
+        invalidateWidgetAuthCache(widgetId)
         const skipped = tolerantKeys.filter(k => data[k] !== undefined)
         return NextResponse.json({
           widget,
@@ -128,5 +131,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   await db.chatWidget.delete({ where: { id: widgetId } })
+  invalidateWidgetAuthCache(widgetId)
   return NextResponse.json({ success: true, forced: force && widget.conversations.length > 0 })
 }

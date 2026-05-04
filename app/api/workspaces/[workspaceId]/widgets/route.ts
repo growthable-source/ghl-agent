@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { generatePublicKey } from '@/lib/widget-auth'
+import { generatePublicKey, invalidateWidgetAuthCache } from '@/lib/widget-auth'
 import { canCreateWidget, widgetLimit, recommendPlanForLimit, PLAN_FEATURES } from '@/lib/plans'
 
 type Params = { params: Promise<{ workspaceId: string }> }
@@ -86,6 +86,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'No matching widgets found' }, { status: 404 })
   }
   await db.chatWidget.deleteMany({ where: { id: { in: deletable } } })
+  for (const id of deletable) invalidateWidgetAuthCache(id)
   return NextResponse.json({ ok: true, deleted: deletable.length })
 }
 

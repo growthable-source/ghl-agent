@@ -72,8 +72,12 @@ export default function WidgetEmbedPage() {
   const [csatStatus, setCsatStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [csatSubmitting, setCsatSubmitting] = useState(false)
 
-  // Connection / emoji / typing
-  const [disconnected, setDisconnected] = useState(false)
+  // Connection state machine. Banner only surfaces in `offline`;
+  // `reconnecting` is silent because the browser's auto-retry covers
+  // the routine maxDuration cycle invisibly. See setupStream below.
+  type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'offline'
+  const [connStatus, setConnStatus] = useState<ConnStatus>('connecting')
+  const [reconnectNonce, setReconnectNonce] = useState(0)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const typingPingTimer = useRef<any>(null)
   const lastTypingPing = useRef<number>(0)
@@ -82,6 +86,15 @@ export default function WidgetEmbedPage() {
   const esRef = useRef<EventSource | null>(null)
   const vapiRef = useRef<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Resume cursor — the SSE `id:` of the last persisted message we
+  // received. We pass it as `?since=` on manual reconnects since the
+  // browser only auto-attaches Last-Event-ID on its OWN retries, not
+  // on a freshly constructed EventSource.
+  const lastEventIdRef = useRef<string | null>(null)
+  // Watchdog — last time anything (event OR ping) arrived. If the
+  // server stops talking to us without the TCP layer noticing (mobile
+  // networks, suspended laptops), we'll force a reconnect ourselves.
+  const lastSeenAtRef = useRef<number>(Date.now())
 
   // Generate/restore stable cookieId
   function getCookieId(): string {
@@ -150,61 +163,206 @@ export default function WidgetEmbedPage() {
       })
   }, [visitorId, widgetId, publicKey, config])
 
-  // Step 4: connect SSE once we have a conversationId
+  // Step 4: connect SSE once we have a conversationId.
+  //
+  // Connection model:
+  //   • The server's `maxDuration = 300` means the stream cycles every
+  //     ~5 min. The browser's EventSource transparently reconnects with
+  //     its built-in backoff and re-sends `Last-Event-ID`, so the
+  //     server can backfill any messages broadcast during the gap.
+  //     During that brief auto-retry we sit in `reconnecting` SILENTLY
+  //     — no banner, because nothing actually broke from the visitor's
+  //     point of view.
+  //   • If the auto-retry doesn't recover within RECONNECT_GRACE_MS
+  //     (real network drop, server down, laptop asleep), we escalate
+  //     to `offline` and surface the banner. From there a watchdog
+  //     keeps trying with exponential backoff, and the visitor can
+  //     also click "Try again" to skip the wait.
+  //   • If the connection silently dies (TCP wedged, mobile handover)
+  //     the per-tick heartbeat the server sends every ~20s stops, and
+  //     a separate watchdog forces a reconnect after STALE_THRESHOLD_MS
+  //     of silence even though `onerror` never fired.
   useEffect(() => {
     if (!conversationId || !widgetId) return
-    const url = `/api/widget/${widgetId}/conversations/${conversationId}/stream?pk=${encodeURIComponent(publicKey)}`
-    const es = new EventSource(url)
-    esRef.current = es
 
-    es.onopen = () => setDisconnected(false)
-    es.onmessage = (e) => {
-      setDisconnected(false)
-      try {
-        const data = JSON.parse(e.data)
-        if (data.type === 'agent_message') {
-          setMessages(m => [...m, {
+    const RECONNECT_GRACE_MS = 8000     // CONNECTING → offline if not back by this
+    const STALE_THRESHOLD_MS = 35000    // no event/ping → assume dead, force reconnect
+    const BACKOFF_SCHEDULE_MS = [1000, 2000, 5000, 10000, 30000]
+    let escalateTimer: ReturnType<typeof setTimeout> | null = null
+    let backoffTimer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+
+    const buildUrl = () => {
+      const base = `/api/widget/${widgetId}/conversations/${conversationId}/stream?pk=${encodeURIComponent(publicKey)}`
+      const since = lastEventIdRef.current
+      return since ? `${base}&since=${encodeURIComponent(since)}` : base
+    }
+
+    const clearEscalate = () => {
+      if (escalateTimer) { clearTimeout(escalateTimer); escalateTimer = null }
+    }
+    const clearBackoff = () => {
+      if (backoffTimer) { clearTimeout(backoffTimer); backoffTimer = null }
+    }
+
+    setConnStatus('connecting')
+    let attempt = 0
+
+    const handleEvent = (data: any) => {
+      if (data.type === 'ping') return
+      if (data.type === 'hello' || data.type === 'resume_truncated') return
+      if (data.type === 'agent_message') {
+        setMessages(m => {
+          if (m.some(x => x.id === data.id)) return m
+          return [...m, {
             id: data.id, role: 'agent', content: data.content, createdAt: data.createdAt,
             kind: data.kind,
             quickReplies: Array.isArray(data.quickReplies) ? data.quickReplies : undefined,
-          }])
-        } else if (data.type === 'visitor_message') {
-          setMessages(m => {
-            // Already have it under the real id (SSE replayed twice) — no-op
-            if (m.some(x => x.id === data.id)) return m
-            // Replace the optimistic copy if we sent this turn ourselves.
-            const optIdx = m.findIndex(x =>
-              x.role === 'visitor' &&
-              x.id.startsWith('opt-') &&
-              x.content === data.content
-            )
-            if (optIdx >= 0) {
-              const next = m.slice()
-              next[optIdx] = { id: data.id, role: 'visitor', content: data.content, kind: data.kind, createdAt: data.createdAt }
-              return next
-            }
-            return [...m, { id: data.id, role: 'visitor', content: data.content, kind: data.kind, createdAt: data.createdAt }]
-          })
-        } else if (data.type === 'agent_typing') {
-          setTyping(!!data.isTyping)
-        } else if (data.type === 'agent_error') {
-          setMessages(m => [...m, { id: 'err-' + Date.now(), role: 'system', content: data.message || 'Something went wrong.' }])
+          }]
+        })
+      } else if (data.type === 'visitor_message') {
+        setMessages(m => {
+          if (m.some(x => x.id === data.id)) return m
+          // Replace the optimistic copy if we sent this turn ourselves.
+          const optIdx = m.findIndex(x =>
+            x.role === 'visitor' &&
+            x.id.startsWith('opt-') &&
+            x.content === data.content
+          )
+          if (optIdx >= 0) {
+            const next = m.slice()
+            next[optIdx] = { id: data.id, role: 'visitor', content: data.content, kind: data.kind, createdAt: data.createdAt }
+            return next
+          }
+          return [...m, { id: data.id, role: 'visitor', content: data.content, kind: data.kind, createdAt: data.createdAt }]
+        })
+      } else if (data.type === 'agent_typing') {
+        setTyping(!!data.isTyping)
+      } else if (data.type === 'agent_error') {
+        setMessages(m => [...m, { id: 'err-' + Date.now(), role: 'system', content: data.message || 'Something went wrong.' }])
+      }
+    }
+
+    const open = () => {
+      if (cancelled) return
+      clearBackoff()
+      // Defense in depth: if a prior EventSource is still attached
+      // (e.g. two reconnect signals raced), close it first so we don't
+      // double-up on streams.
+      if (esRef.current) {
+        try { esRef.current.close() } catch {}
+        esRef.current = null
+      }
+      const es = new EventSource(buildUrl())
+      esRef.current = es
+
+      es.onopen = () => {
+        attempt = 0
+        clearEscalate()
+        lastSeenAtRef.current = Date.now()
+        setConnStatus('open')
+      }
+
+      es.onmessage = (e) => {
+        lastSeenAtRef.current = Date.now()
+        clearEscalate()
+        setConnStatus('open')
+        if (e.lastEventId) lastEventIdRef.current = e.lastEventId
+        try { handleEvent(JSON.parse(e.data)) } catch {}
+      }
+
+      es.onerror = () => {
+        if (cancelled) return
+        if (es.readyState === EventSource.CLOSED) {
+          // Browser gave up. Take over with manual exponential backoff
+          // so we don't sit forever in a closed state.
+          esRef.current = null
+          try { es.close() } catch {}
+          clearEscalate()
+          setConnStatus('offline')
+          const delay = BACKOFF_SCHEDULE_MS[Math.min(attempt, BACKOFF_SCHEDULE_MS.length - 1)]
+          attempt++
+          backoffTimer = setTimeout(open, delay)
+        } else {
+          // CONNECTING — browser is auto-retrying. Stay quiet briefly,
+          // then escalate to offline if it doesn't recover.
+          setConnStatus(prev => (prev === 'open' || prev === 'connecting' ? 'reconnecting' : prev))
+          if (!escalateTimer) {
+            escalateTimer = setTimeout(() => {
+              escalateTimer = null
+              if (!cancelled && es.readyState !== EventSource.OPEN) {
+                setConnStatus('offline')
+              }
+            }, RECONNECT_GRACE_MS)
+          }
         }
-      } catch {}
+      }
     }
-    // Surface dropped connections after a short grace period so brief
-    // network blips don't flicker the banner. Browser auto-retries; we
-    // also expose a manual "Try again" if the visitor is impatient.
-    let dropTimer: any = null
-    es.onerror = () => {
-      if (dropTimer) return
-      dropTimer = setTimeout(() => {
-        if (es.readyState !== EventSource.OPEN) setDisconnected(true)
-        dropTimer = null
-      }, 3000)
+
+    open()
+
+    // Watchdog — catches silent TCP deaths (the server stopped sending
+    // pings but the browser never noticed). Runs cheaply on a 5s tick.
+    const watchdog = setInterval(() => {
+      if (cancelled) return
+      const idle = Date.now() - lastSeenAtRef.current
+      const es = esRef.current
+      if (es && idle > STALE_THRESHOLD_MS && es.readyState === EventSource.OPEN) {
+        try { es.close() } catch {}
+        esRef.current = null
+        setConnStatus('reconnecting')
+        attempt = 0
+        open()
+      }
+    }, 5000)
+
+    // Force an immediate reconnect when the network or tab visibility
+    // changes — way faster than waiting for the next backoff tick.
+    const onOnline = () => {
+      if (cancelled) return
+      attempt = 0
+      const es = esRef.current
+      if (!es || es.readyState === EventSource.CLOSED) {
+        try { es?.close() } catch {}
+        esRef.current = null
+        clearBackoff()
+        open()
+      }
     }
-    return () => { es.close(); esRef.current = null }
-  }, [conversationId, widgetId, publicKey])
+    const onOffline = () => {
+      if (cancelled) return
+      clearEscalate()
+      setConnStatus('offline')
+    }
+    const onVisible = () => {
+      if (cancelled || document.visibilityState !== 'visible') return
+      const idle = Date.now() - lastSeenAtRef.current
+      const es = esRef.current
+      if (idle > STALE_THRESHOLD_MS || !es || es.readyState !== EventSource.OPEN) {
+        try { es?.close() } catch {}
+        esRef.current = null
+        clearBackoff()
+        attempt = 0
+        open()
+      }
+    }
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelled = true
+      clearEscalate()
+      clearBackoff()
+      clearInterval(watchdog)
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      document.removeEventListener('visibilitychange', onVisible)
+      const es = esRef.current
+      if (es) { try { es.close() } catch {} }
+      esRef.current = null
+    }
+  }, [conversationId, widgetId, publicKey, reconnectNonce])
 
   // Auto-scroll on new message
   useEffect(() => {
@@ -287,19 +445,11 @@ export default function WidgetEmbedPage() {
   }
 
   function reconnectStream() {
-    setDisconnected(false)
-    // Bumping conversationId effect by toggling a re-render is overkill;
-    // simplest: close + null the existing ES so the conversationId effect
-    // recreates it. Trick: clone setConversationId(prev => prev) doesn't
-    // re-run — but closing esRef + setting a fresh value via refresh works.
-    if (esRef.current) {
-      esRef.current.close()
-      esRef.current = null
-    }
-    // Toggle conversationId state to retrigger the SSE effect.
-    const cur = conversationId
-    setConversationId(null)
-    setTimeout(() => setConversationId(cur), 0)
+    // Force the SSE effect to tear down + restart immediately, skipping
+    // any in-flight backoff. The new connection still includes the
+    // resume cursor so the visitor doesn't lose context.
+    setConnStatus('connecting')
+    setReconnectNonce(n => n + 1)
   }
 
   async function uploadFile(file: File) {
@@ -545,9 +695,9 @@ export default function WidgetEmbedPage() {
         </div>
       </div>
 
-      {disconnected && (
+      {connStatus === 'offline' && (
         <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300 flex items-center justify-between">
-          <span>Connection dropped. Messages will deliver once you&apos;re back online.</span>
+          <span>You&apos;re offline. Your messages will send once you&apos;re back online.</span>
           <button
             onClick={reconnectStream}
             className="font-semibold text-amber-200 hover:text-white transition-colors"

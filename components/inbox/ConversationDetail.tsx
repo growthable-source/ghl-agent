@@ -81,7 +81,14 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const [sending, setSending] = useState(false)
   const [visitorTyping, setVisitorTyping] = useState(false)
   const [agentTyping, setAgentTyping] = useState<{ active: boolean; fromHuman: boolean }>({ active: false, fromHuman: false })
-  const [disconnected, setDisconnected] = useState(false)
+  // Connection state machine. Banner only surfaces in `offline`;
+  // `reconnecting` stays silent so the routine maxDuration cycle
+  // doesn't flicker UI every five minutes.
+  type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'offline'
+  const [connStatus, setConnStatus] = useState<ConnStatus>('connecting')
+  const [reconnectNonce, setReconnectNonce] = useState(0)
+  const lastEventIdRef = useRef<string | null>(null)
+  const lastSeenAtRef = useRef<number>(Date.now())
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [statusBusy, setStatusBusy] = useState(false)
@@ -142,75 +149,188 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
     }
   }
 
-  // SSE: replace polling with a live subscription so the operator sees
-  // every visitor turn, agent turn, typing event, and status change the
-  // moment it happens.
+  // SSE: live subscription so the operator sees every visitor/agent
+  // turn the moment it happens. Same connection state machine the
+  // visitor widget uses — silent during the routine maxDuration
+  // cycle, banner only when truly offline. See the embed page for the
+  // full rationale.
   useEffect(() => {
     if (!conversationId) return
-    const url = `/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/stream`
-    const es = new EventSource(url)
-    esRef.current = es
-    es.onopen = () => setDisconnected(false)
-    es.onmessage = (e) => {
-      setDisconnected(false)
-      try {
-        const data = JSON.parse(e.data)
-        if (data.type === 'agent_message') {
-          setConvo(c => c ? { ...c, messages: appendOrReplace(c.messages, {
-            id: data.id, role: 'agent', content: data.content, kind: data.kind || 'text',
-            createdAt: data.createdAt, fromHuman: !!data.fromHuman, quickReplies: data.quickReplies,
-          }) } : c)
-          setAgentTyping({ active: false, fromHuman: false })
-        } else if (data.type === 'visitor_message') {
-          setConvo(c => c ? { ...c, messages: appendOrReplace(c.messages, {
-            id: data.id, role: 'visitor', content: data.content, kind: data.kind || 'text',
-            createdAt: data.createdAt,
-          }) } : c)
-          setVisitorTyping(false)
-        } else if (data.type === 'agent_typing') {
-          setAgentTyping({ active: !!data.isTyping, fromHuman: !!data.fromHuman })
-        } else if (data.type === 'visitor_typing') {
-          setVisitorTyping(!!data.isTyping)
-        } else if (data.type === 'status_changed') {
-          setConvo(c => c ? { ...c, status: data.status } : c)
-        } else if (data.type === 'assignment_changed') {
-          setConvo(c => {
-            if (!c) return c
-            // The SSE event carries the bare assignee (id + name). To
-            // hydrate the avatar we look the user up in our members
-            // cache; if they're not there (e.g. just joined) we fall
-            // back to a name-only stub.
-            const matched = members.find(m => m.user.id === data.assignedUserId)
-            return {
-              ...c,
-              assignedUserId: data.assignedUserId,
-              assignedAt: data.at ?? null,
-              assignmentReason: data.reason ?? null,
-              assignedUser: data.assignedUserId
-                ? matched
-                  ? { id: matched.user.id, name: matched.user.name, email: matched.user.email, image: matched.user.image }
-                  : { id: data.assignedUserId, name: data.assigneeName ?? null, email: null, image: null }
-                : null,
-            }
-          })
-        } else if (data.type === 'agent_error') {
-          setConvo(c => c ? { ...c, messages: [...c.messages, {
-            id: 'err-' + Date.now(), role: 'system', content: data.message || 'Agent error', kind: 'text',
-            createdAt: new Date().toISOString(),
-          }] } : c)
+
+    const RECONNECT_GRACE_MS = 8000
+    const STALE_THRESHOLD_MS = 35000
+    const BACKOFF_SCHEDULE_MS = [1000, 2000, 5000, 10000, 30000]
+    let escalateTimer: ReturnType<typeof setTimeout> | null = null
+    let backoffTimer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+
+    const buildUrl = () => {
+      const base = `/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/stream`
+      const since = lastEventIdRef.current
+      return since ? `${base}?since=${encodeURIComponent(since)}` : base
+    }
+    const clearEscalate = () => { if (escalateTimer) { clearTimeout(escalateTimer); escalateTimer = null } }
+    const clearBackoff = () => { if (backoffTimer) { clearTimeout(backoffTimer); backoffTimer = null } }
+
+    setConnStatus('connecting')
+    let attempt = 0
+
+    const handleEvent = (data: any) => {
+      if (data.type === 'ping') return
+      if (data.type === 'hello' || data.type === 'resume_truncated') return
+      if (data.type === 'agent_message') {
+        setConvo(c => c ? { ...c, messages: appendOrReplace(c.messages, {
+          id: data.id, role: 'agent', content: data.content, kind: data.kind || 'text',
+          createdAt: data.createdAt, fromHuman: !!data.fromHuman, quickReplies: data.quickReplies,
+        }) } : c)
+        setAgentTyping({ active: false, fromHuman: false })
+      } else if (data.type === 'visitor_message') {
+        setConvo(c => c ? { ...c, messages: appendOrReplace(c.messages, {
+          id: data.id, role: 'visitor', content: data.content, kind: data.kind || 'text',
+          createdAt: data.createdAt,
+        }) } : c)
+        setVisitorTyping(false)
+      } else if (data.type === 'agent_typing') {
+        setAgentTyping({ active: !!data.isTyping, fromHuman: !!data.fromHuman })
+      } else if (data.type === 'visitor_typing') {
+        setVisitorTyping(!!data.isTyping)
+      } else if (data.type === 'status_changed') {
+        setConvo(c => c ? { ...c, status: data.status } : c)
+      } else if (data.type === 'assignment_changed') {
+        setConvo(c => {
+          if (!c) return c
+          // The SSE event carries the bare assignee (id + name). To
+          // hydrate the avatar we look the user up in our members
+          // cache; if they're not there (e.g. just joined) we fall
+          // back to a name-only stub.
+          const matched = members.find(m => m.user.id === data.assignedUserId)
+          return {
+            ...c,
+            assignedUserId: data.assignedUserId,
+            assignedAt: data.at ?? null,
+            assignmentReason: data.reason ?? null,
+            assignedUser: data.assignedUserId
+              ? matched
+                ? { id: matched.user.id, name: matched.user.name, email: matched.user.email, image: matched.user.image }
+                : { id: data.assignedUserId, name: data.assigneeName ?? null, email: null, image: null }
+              : null,
+          }
+        })
+      } else if (data.type === 'agent_error') {
+        setConvo(c => c ? { ...c, messages: [...c.messages, {
+          id: 'err-' + Date.now(), role: 'system', content: data.message || 'Agent error', kind: 'text',
+          createdAt: new Date().toISOString(),
+        }] } : c)
+      }
+    }
+
+    const open = () => {
+      if (cancelled) return
+      clearBackoff()
+      if (esRef.current) {
+        try { esRef.current.close() } catch {}
+        esRef.current = null
+      }
+      const es = new EventSource(buildUrl())
+      esRef.current = es
+
+      es.onopen = () => {
+        attempt = 0
+        clearEscalate()
+        lastSeenAtRef.current = Date.now()
+        setConnStatus('open')
+      }
+
+      es.onmessage = (e) => {
+        lastSeenAtRef.current = Date.now()
+        clearEscalate()
+        setConnStatus('open')
+        if (e.lastEventId) lastEventIdRef.current = e.lastEventId
+        try { handleEvent(JSON.parse(e.data)) } catch {}
+      }
+
+      es.onerror = () => {
+        if (cancelled) return
+        if (es.readyState === EventSource.CLOSED) {
+          esRef.current = null
+          try { es.close() } catch {}
+          clearEscalate()
+          setConnStatus('offline')
+          const delay = BACKOFF_SCHEDULE_MS[Math.min(attempt, BACKOFF_SCHEDULE_MS.length - 1)]
+          attempt++
+          backoffTimer = setTimeout(open, delay)
+        } else {
+          setConnStatus(prev => (prev === 'open' || prev === 'connecting' ? 'reconnecting' : prev))
+          if (!escalateTimer) {
+            escalateTimer = setTimeout(() => {
+              escalateTimer = null
+              if (!cancelled && es.readyState !== EventSource.OPEN) setConnStatus('offline')
+            }, RECONNECT_GRACE_MS)
+          }
         }
-      } catch {}
+      }
     }
-    let dropTimer: any = null
-    es.onerror = () => {
-      if (dropTimer) return
-      dropTimer = setTimeout(() => {
-        if (es.readyState !== EventSource.OPEN) setDisconnected(true)
-        dropTimer = null
-      }, 3000)
+
+    open()
+
+    const watchdog = setInterval(() => {
+      if (cancelled) return
+      const idle = Date.now() - lastSeenAtRef.current
+      const es = esRef.current
+      if (es && idle > STALE_THRESHOLD_MS && es.readyState === EventSource.OPEN) {
+        try { es.close() } catch {}
+        esRef.current = null
+        setConnStatus('reconnecting')
+        attempt = 0
+        open()
+      }
+    }, 5000)
+
+    const onOnline = () => {
+      if (cancelled) return
+      attempt = 0
+      const es = esRef.current
+      if (!es || es.readyState === EventSource.CLOSED) {
+        try { es?.close() } catch {}
+        esRef.current = null
+        clearBackoff()
+        open()
+      }
     }
-    return () => { es.close(); esRef.current = null }
-  }, [workspaceId, conversationId])
+    const onOffline = () => {
+      if (cancelled) return
+      clearEscalate()
+      setConnStatus('offline')
+    }
+    const onVisible = () => {
+      if (cancelled || document.visibilityState !== 'visible') return
+      const idle = Date.now() - lastSeenAtRef.current
+      const es = esRef.current
+      if (idle > STALE_THRESHOLD_MS || !es || es.readyState !== EventSource.OPEN) {
+        try { es?.close() } catch {}
+        esRef.current = null
+        clearBackoff()
+        attempt = 0
+        open()
+      }
+    }
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelled = true
+      clearEscalate()
+      clearBackoff()
+      clearInterval(watchdog)
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      document.removeEventListener('visibilitychange', onVisible)
+      const es = esRef.current
+      if (es) { try { es.close() } catch {} }
+      esRef.current = null
+    }
+  }, [workspaceId, conversationId, reconnectNonce])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -459,9 +579,13 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           </div>
         </div>
 
-        {disconnected && (
-          <div className="px-6 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300">
-            Live updates dropped — the page will keep retrying.
+        {connStatus === 'offline' && (
+          <div className="px-6 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300 flex items-center justify-between">
+            <span>Live updates paused — you appear to be offline.</span>
+            <button
+              onClick={() => setReconnectNonce(n => n + 1)}
+              className="font-semibold text-amber-200 hover:text-white transition-colors"
+            >Retry now</button>
           </div>
         )}
 
