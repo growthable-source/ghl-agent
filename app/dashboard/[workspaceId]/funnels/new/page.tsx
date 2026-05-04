@@ -62,6 +62,17 @@ export default function NewFunnelWizard() {
   const [step, setStep] = useState<Step>(1)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [access, setAccess] = useState<{ allowed: boolean; reason?: string; currentPlan?: string } | null>(null)
+
+  // Plan gate — fetched once on mount. Renders a paywall instead of the
+  // wizard if the workspace isn't on growth/scale (or trial-within-window).
+  useEffect(() => {
+    if (!workspaceId) return
+    fetch(`/api/workspaces/${workspaceId}/funnels`)
+      .then((r) => r.json() as Promise<{ access: { allowed: boolean; reason?: string; currentPlan?: string } }>)
+      .then((d) => setAccess(d.access))
+      .catch(() => setAccess({ allowed: false, reason: 'unknown' }))
+  }, [workspaceId])
 
   // Step 1
   const [name, setName] = useState('')
@@ -232,6 +243,31 @@ export default function NewFunnelWizard() {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (access && !access.allowed) {
+    return (
+      <main className="mx-auto w-full max-w-2xl px-6 py-20">
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-8 text-center">
+          <h1 className="text-xl font-semibold text-amber-900">
+            {access.reason === 'trial_expired' ? 'Your trial has expired' : 'Funnel builder requires Growth or Scale'}
+          </h1>
+          <p className="mt-2 text-sm text-amber-800">
+            {access.reason === 'trial_expired'
+              ? 'Upgrade to keep using the funnel builder. Existing funnels stay accessible.'
+              : `You're on the ${access.currentPlan ?? 'free'} plan. Funnels are available on Growth and Scale.`}
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href={`/dashboard/${workspaceId}/funnels`} className="inline-flex h-10 items-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium hover:bg-neutral-50">
+              Back to funnels
+            </Link>
+            <Link href={`/dashboard/${workspaceId}/settings/billing`} className="inline-flex h-10 items-center rounded-md bg-amber-600 px-4 text-sm font-semibold text-white hover:bg-amber-700">
+              Upgrade plan
+            </Link>
+          </div>
+        </div>
+      </main>
+    )
   }
 
   return (

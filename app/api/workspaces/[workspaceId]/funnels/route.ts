@@ -10,6 +10,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceRole } from '@/lib/require-workspace-role'
+import { canUseFunnelBuilder } from '@/lib/plans'
+
+async function loadAccess(workspaceId: string) {
+  const ws = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { plan: true, trialEndsAt: true },
+  })
+  return canUseFunnelBuilder(ws?.plan ?? 'free', ws?.trialEndsAt ?? null)
+}
 
 export async function GET(
   _req: NextRequest,
@@ -18,6 +27,8 @@ export async function GET(
   const { workspaceId } = await params
   const auth = await requireWorkspaceRole(workspaceId, 'member')
   if (auth instanceof NextResponse) return auth
+
+  const access = await loadAccess(workspaceId)
 
   const campaigns = await db.campaign.findMany({
     where: { workspaceId },
@@ -36,7 +47,7 @@ export async function GET(
       _count: { select: { formSubmissions: true, conversionEvents: true } },
     },
   })
-  return NextResponse.json({ campaigns })
+  return NextResponse.json({ campaigns, access })
 }
 
 interface CreateBody {
@@ -67,6 +78,22 @@ export async function POST(
   }
   if (!body.name?.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  }
+
+  // Plan gate — also enforced server-side so a direct API call from a
+  // downgraded workspace can't sneak past the wizard's UI gate.
+  const access = await loadAccess(workspaceId)
+  if (!access.allowed) {
+    return NextResponse.json(
+      {
+        error:
+          access.reason === 'trial_expired'
+            ? 'Your trial has expired. Upgrade to Growth or Scale to use the funnel builder.'
+            : 'The funnel builder requires the Growth or Scale plan.',
+        access,
+      },
+      { status: 402 },
+    )
   }
 
   // Verify location_id (if provided) belongs to this workspace.

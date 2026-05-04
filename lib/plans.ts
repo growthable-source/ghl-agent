@@ -359,3 +359,24 @@ export function getPlanDefaults(plan: PlanId): {
     voiceMinuteLimit: features.voiceMinutes,
   }
 }
+
+// ─── Funnel builder access ────────────────────────────────────────────
+//
+// Voxility funnel layer is gated to Growth and Scale tiers (and Trial
+// within its 7-day window). Starter / Free workspaces see the Funnels
+// nav item but the wizard and APIs return a paywall.
+
+export type FunnelBuilderAccess =
+  | { allowed: true }
+  | { allowed: false; reason: 'plan' | 'trial_expired'; currentPlan: string }
+
+export function canUseFunnelBuilder(plan: string, trialEndsAt: Date | null): FunnelBuilderAccess {
+  if (plan === 'growth' || plan === 'scale') return { allowed: true }
+  if (plan === 'trial') {
+    if (isTrialExpired(trialEndsAt)) {
+      return { allowed: false, reason: 'trial_expired', currentPlan: plan }
+    }
+    return { allowed: true }
+  }
+  return { allowed: false, reason: 'plan', currentPlan: plan }
+}

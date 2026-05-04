@@ -16,6 +16,10 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
+type Access =
+  | { allowed: true }
+  | { allowed: false; reason: 'plan' | 'trial_expired'; currentPlan: string }
+
 interface CampaignRow {
   id: string
   name: string
@@ -41,6 +45,7 @@ export default function FunnelsListPage() {
   const params = useParams<{ workspaceId: string }>()
   const workspaceId = params.workspaceId
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([])
+  const [access, setAccess] = useState<Access | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,9 +58,9 @@ export default function FunnelsListPage() {
           const body = (await r.json().catch(() => ({}))) as { error?: string }
           throw new Error(body.error ?? `Load failed (HTTP ${r.status})`)
         }
-        return r.json() as Promise<{ campaigns: CampaignRow[] }>
+        return r.json() as Promise<{ campaigns: CampaignRow[]; access: Access }>
       })
-      .then((d) => setCampaigns(d.campaigns))
+      .then((d) => { setCampaigns(d.campaigns); setAccess(d.access) })
       .catch((e) => setError(e instanceof Error ? e.message : 'Load failed'))
       .finally(() => setLoading(false))
   }, [workspaceId])
@@ -69,13 +74,36 @@ export default function FunnelsListPage() {
             Each funnel = landing page + form + agent response + tracking — in one workflow.
           </p>
         </div>
-        <Link
-          href={`/dashboard/${workspaceId}/funnels/new`}
-          className="inline-flex h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          New funnel
-        </Link>
+        {access?.allowed && (
+          <Link
+            href={`/dashboard/${workspaceId}/funnels/new`}
+            className="inline-flex h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            New funnel
+          </Link>
+        )}
       </header>
+
+      {access && !access.allowed && (
+        <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4">
+          <div className="text-sm font-semibold text-amber-900">
+            {access.reason === 'trial_expired'
+              ? 'Your trial has expired'
+              : 'Funnel builder requires Growth or Scale'}
+          </div>
+          <p className="mt-1 text-sm text-amber-800">
+            {access.reason === 'trial_expired'
+              ? 'Upgrade to keep using the funnel builder. Your existing funnels stay accessible.'
+              : `You are on the ${access.currentPlan} plan. Funnels are available on Growth and Scale.`}
+          </p>
+          <Link
+            href={`/dashboard/${workspaceId}/settings/billing`}
+            className="mt-3 inline-flex h-9 items-center rounded-md bg-amber-600 px-4 text-xs font-semibold text-white hover:bg-amber-700"
+          >
+            Upgrade plan
+          </Link>
+        </div>
+      )}
 
       {error && (
         <div className="mt-6 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
