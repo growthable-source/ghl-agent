@@ -147,9 +147,14 @@ You are warm, conversational, and efficient.`,
 // hardcoded `connected: true` meant every new user saw "Already connected
 // via OAuth" the very first time they hit the wizard, before they'd ever
 // clicked Connect.
+// 'native' is the recommended default — workspaces auto-provision native
+// on creation, so the wizard's "Native CRM" option is already active by
+// the time the user sees this step. It still routes through the same
+// switch/provision endpoint when they explicitly pick it (idempotent),
+// which covers the older workspaces created before auto-provision shipped.
 const CRM_OPTIONS = [
+  { id: 'native', name: 'Native CRM', desc: 'Built-in contacts, lists, SMS & email — recommended for new workspaces', icon: '📇' as const },
   { id: 'ghl', name: 'LeadConnector', icon: <GoHighLevelIcon className="w-8 h-8" /> },
-  { id: 'none', name: 'No CRM', desc: 'Skip for now — you can connect later', icon: null },
 ]
 
 const CALENDAR_OPTIONS = [
@@ -177,18 +182,31 @@ export default function NewAgentWizard() {
 
   const [step, setStep] = useState<Step>('template')
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null)
-  const [selectedCrm, setSelectedCrm] = useState<string>('ghl')
-  const [selectedCalendar, setSelectedCalendar] = useState<string>('ghl')
+  // Default to 'native' — workspace creation auto-provisions native, so
+  // every new workspace lands here with the native CRM already active.
+  // Users who connect LeadConnector switch by clicking the GHL card,
+  // which fires the workspace-level provider switch on Continue.
+  const [selectedCrm, setSelectedCrm] = useState<string>('native')
+  const [selectedCalendar, setSelectedCalendar] = useState<string>('none')
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['SMS'])
 
-  // Real GHL connection status for this workspace. New users haven't
-  // installed yet — show them a Connect button; returning users see
-  // "Connected" and continue.
+  // Real provider state. ghlConnected drives the LeadConnector card's
+  // Connect button; nativeProvisioned tells us whether the workspace's
+  // current CRM is native (so we can show "Active ✓" up front).
   const [ghlConnected, setGhlConnected] = useState<boolean | null>(null)
+  const [currentCrm, setCurrentCrm] = useState<string | null>(null)
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/integrations`)
       .then(r => r.json())
-      .then(d => setGhlConnected(!!d.ghlConnected))
+      .then(d => {
+        setGhlConnected(!!d.ghlConnected)
+        setCurrentCrm(d.crmProvider ?? null)
+        // If the workspace is already on native, pre-select the native
+        // option even on a returning visit so the Continue button is
+        // immediately enabled.
+        if (d.crmProvider === 'native') setSelectedCrm('native')
+        else if (d.crmProvider === 'ghl' && d.ghlConnected) setSelectedCrm('ghl')
+      })
       .catch(() => setGhlConnected(false))
   }, [workspaceId])
 
@@ -216,7 +234,26 @@ export default function NewAgentWizard() {
 
   const currentIdx = STEPS.findIndex(s => s.key === step)
 
-  function next() {
+  async function next() {
+    // Leaving the CRM step: persist the selection at the workspace level
+    // so the agent's locationId resolves to the right Location row, the
+    // sidebar's Native CRM section appears, and the runtime adapter
+    // factory routes correctly. Idempotent — safe to re-fire.
+    if (step === 'crm' && currentCrm !== selectedCrm) {
+      try {
+        if (selectedCrm === 'native') {
+          await fetch(`/api/workspaces/${workspaceId}/crm/native/provision`, { method: 'POST' })
+        }
+        await fetch(`/api/workspaces/${workspaceId}/integrations`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ crmProvider: selectedCrm }),
+        })
+        setCurrentCrm(selectedCrm)
+      } catch (err) {
+        console.warn('[agent-wizard] CRM switch failed:', err)
+      }
+    }
     const nextIdx = currentIdx + 1
     if (nextIdx < STEPS.length) setStep(STEPS[nextIdx].key)
   }
@@ -413,17 +450,18 @@ export default function NewAgentWizard() {
         {/* Step: CRM */}
         {step === 'crm' && (
           <div>
-            <h1 className="text-2xl font-semibold mb-2">Connect your CRM</h1>
-            <p className="text-zinc-400 text-sm mb-6">Your agent will read contacts, update tags, and manage pipelines through your CRM.</p>
+            <h1 className="text-2xl font-semibold mb-2">Pick your CRM</h1>
+            <p className="text-zinc-400 text-sm mb-6">
+              Native is the built-in option — contacts, lists, SMS &amp; email all included. Already active for new workspaces, so you can keep moving. LeadConnector is for teams that already have one.
+            </p>
             <div className="space-y-3">
               {CRM_OPTIONS.map(opt => {
-                // Render GHL with real connection state: "Connected" when
-                // the workspace has an install, otherwise a Connect CTA
-                // that kicks off the OAuth flow inline. The 'none' option
-                // always shows its static description.
                 const isGhl = opt.id === 'ghl'
+                const isNative = opt.id === 'native'
                 const isConnected = isGhl && ghlConnected === true
                 const isChecking = isGhl && ghlConnected === null
+                const isActiveNow = (isNative && currentCrm === 'native') || (isGhl && currentCrm === 'ghl' && isConnected)
+
                 const desc = isGhl
                   ? (isChecking ? 'Checking…' : isConnected ? 'Connected via OAuth' : 'Not connected yet — click Connect below')
                   : (opt as any).desc
@@ -436,13 +474,22 @@ export default function NewAgentWizard() {
                           ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
                           : { borderColor: 'var(--border)', background: 'var(--surface)' }
                       }>
-                      <span className="w-8 h-8 flex items-center justify-center flex-shrink-0">{opt.icon || <span className="text-2xl" style={{ color: 'var(--text-muted)' }}>--</span>}</span>
+                      <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-2xl">
+                        {typeof opt.icon === 'string'
+                          ? opt.icon
+                          : (opt.icon || <span style={{ color: 'var(--text-muted)' }}>--</span>)}
+                      </span>
                       <div className="flex-1">
                         <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.name}</p>
                         <p className="text-xs" style={{ color: isGhl && !isConnected && !isChecking ? 'var(--accent-amber)' : 'var(--text-tertiary)' }}>{desc}</p>
                       </div>
-                      {isConnected && (
-                        <span className="text-xs font-medium mr-2" style={{ color: 'var(--accent-emerald)' }}>✓</span>
+                      {isActiveNow && (
+                        <span
+                          className="text-xs font-semibold mr-2 px-2 py-0.5 rounded-full"
+                          style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+                        >
+                          Active
+                        </span>
                       )}
                       {selectedCrm === opt.id && (
                         <span

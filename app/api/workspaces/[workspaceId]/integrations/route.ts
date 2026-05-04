@@ -67,9 +67,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!allowed.includes(body.crmProvider)) {
       return NextResponse.json({ error: `Invalid CRM provider. Must be one of: ${allowed.join(', ')}` }, { status: 400 })
     }
-    // Update all locations in this workspace
+    // Only flip non-native Location rows — the `native:<wsId>` row's
+    // crmProvider must stay 'native' regardless of what the workspace's
+    // active CRM is, because the factory's prefix-based routing keys off
+    // the row's identity. The active CRM is determined by which Location
+    // an agent's locationId points to (which is set at agent creation).
     await db.location.updateMany({
-      where: { workspaceId },
+      where: {
+        workspaceId,
+        NOT: { id: { startsWith: 'native:' } },
+      },
       data: { crmProvider: body.crmProvider },
     })
     return NextResponse.json({ crmProvider: body.crmProvider })

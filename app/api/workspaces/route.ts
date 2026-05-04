@@ -113,5 +113,34 @@ export async function POST(req: NextRequest) {
     workspace = await db.workspace.create({ data: createData })
   }
 
+  // Auto-provision the native CRM as the default. Without this, every new
+  // workspace lands with no Location row, the agent wizard has nothing
+  // selected, and the user gets stuck at "Connect your CRM" with no way
+  // forward unless they happen to know about the Integrations switch.
+  // Native is reversible (Integrations → Switch to LeadConnector), so
+  // making it the default removes the dead-end without locking anyone in.
+  try {
+    await db.location.create({
+      data: {
+        id: `native:${workspace.id}`,
+        workspaceId: workspace.id,
+        companyId: 'native',
+        userId: 'native',
+        userType: 'Location',
+        scope: 'native',
+        accessToken: 'native',
+        refreshToken: 'native',
+        refreshTokenId: 'native',
+        expiresAt: new Date('2099-12-31T23:59:59.000Z'),
+        crmProvider: 'native',
+      },
+    })
+  } catch (err: any) {
+    // NativeContact tables may not exist on the very first deploy of this
+    // change (migration not yet applied). The workspace itself is fine —
+    // the user can still switch CRMs from Integrations once tables exist.
+    console.warn('[Workspaces] Native CRM auto-provision failed (non-fatal):', err?.message)
+  }
+
   return NextResponse.json({ workspace, workspaceId: workspace.id }, { status: 201 })
 }

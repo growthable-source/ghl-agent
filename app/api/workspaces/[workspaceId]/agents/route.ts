@@ -161,12 +161,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     // violated the Location FK because workspaceId isn't a Location.id —
     // that's the bug new users hit the first time they tried to create
     // an agent before connecting GHL.
-    let location = await db.location.findFirst({
-      where: { workspaceId },
-      select: { id: true },
-      // Prefer the most-recent install (real GHL location wins over any old placeholder)
-      orderBy: { installedAt: 'desc' },
-    })
+    // Respect the wizard's CRM pick. body.crmProvider is one of:
+    //   'native' → bind the agent to the native:<wsId> Location
+    //   'ghl'    → bind to the most-recent GHL install
+    //   undefined or 'none' → fall through to the legacy "most recent
+    //   install wins" path, which preserves existing behaviour for
+    //   callers that don't pass a provider.
+    let location: { id: string } | null = null
+    const requestedProvider: string | undefined = body.crmProvider
+    if (requestedProvider === 'native') {
+      location = await db.location.findFirst({
+        where: { id: `native:${workspaceId}` },
+        select: { id: true },
+      })
+    } else if (requestedProvider === 'ghl') {
+      location = await db.location.findFirst({
+        where: { workspaceId, NOT: { id: { startsWith: 'native:' } } },
+        select: { id: true },
+        orderBy: { installedAt: 'desc' },
+      })
+    }
+    if (!location) {
+      location = await db.location.findFirst({
+        where: { workspaceId },
+        select: { id: true },
+        // Prefer the most-recent install (real GHL location wins over any old placeholder)
+        orderBy: { installedAt: 'desc' },
+      })
+    }
     if (!location) {
       const placeholderId = `placeholder:${workspaceId}`
       location = await db.location.upsert({
