@@ -20,8 +20,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ events: [], summary: {} })
   }
 
-  // Pull everything related to this contact across workspace locations
-  const [messages, convoMessages, followUps, states, memories] = await Promise.all([
+  // Pull everything related to this contact across workspace locations.
+  // nativeMessages captures the native-CRM ledger — covers outbound sends
+  // from the cron drainer (which never touches ConversationMessage) and
+  // anything the widget or other surfaces wrote directly through
+  // NativeAdapter. Safe to query unconditionally since contactId may be
+  // either a GHL synthetic id (which won't match any NativeMessage row)
+  // or a native cuid (which will).
+  const [messages, convoMessages, followUps, states, memories, nativeMessages] = await Promise.all([
     db.messageLog.findMany({
       where: { contactId, locationId: { in: locationIds } },
       include: { agent: { select: { id: true, name: true } } },
@@ -45,6 +51,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       where: { contactId, locationId: { in: locationIds } },
       include: { agent: { select: { id: true, name: true } } },
     }),
+    db.nativeMessage.findMany({
+      where: { contactId, workspaceId },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => []),
   ])
 
   type TimelineEvent = {
@@ -69,6 +79,31 @@ export async function GET(_req: NextRequest, { params }: Params) {
       agent: m.agent,
       label: m.role === 'user' ? 'Contact said' : 'Agent replied',
       content: m.content,
+    })
+  }
+
+  // Native CRM messages — covers anything written directly through
+  // NativeAdapter that didn't go through the runAgent → ConversationMessage
+  // path (e.g. the outbound cron drainer sending a campaign blast).
+  // De-dupe against ConversationMessage by skipping messages within 5s of
+  // an existing event of the same direction; the inbound webhook writes
+  // both, so we'd otherwise show every SMS twice.
+  const seenWindows = events.map(e => ({ at: new Date(e.at).getTime(), type: e.type }))
+  const isDuplicate = (at: Date, direction: string) => {
+    const t = at.getTime()
+    return seenWindows.some(s => s.type === direction && Math.abs(s.at - t) < 5000)
+  }
+  for (const m of nativeMessages) {
+    const direction = m.direction === 'inbound' ? 'inbound' : 'outbound'
+    if (isDuplicate(m.createdAt, direction)) continue
+    events.push({
+      id: `native-${m.id}`,
+      at: m.createdAt.toISOString(),
+      type: direction,
+      agent: null,
+      label: direction === 'inbound' ? `Inbound (${m.channel})` : `Outbound (${m.channel}, ${m.status})`,
+      content: m.body,
+      detail: m.providerError ?? undefined,
     })
   }
 

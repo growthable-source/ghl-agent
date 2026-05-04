@@ -319,6 +319,35 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
     }
 
+    // Native CRM: the agent's send_sms tool wrote a queued NativeMessage
+    // through NativeAdapter, but THIS route also fired Twilio synchronously
+    // for a faster reply. Mark the queued row as 'sent' so the cron
+    // drainer doesn't pick it up and double-send. Match by (contactId,
+    // direction='outbound', status='queued') most-recent, which is safe
+    // because runAgent only queues one outbound per turn.
+    if (locationId.startsWith('native:') && result.reply && twilioOk) {
+      try {
+        const queued = await db.nativeMessage.findFirst({
+          where: {
+            workspaceId: locationId.slice('native:'.length),
+            contactId: effectiveContactId,
+            direction: 'outbound',
+            status: 'queued',
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        })
+        if (queued) {
+          await db.nativeMessage.update({
+            where: { id: queued.id },
+            data: { status: 'sent' },
+          })
+        }
+      } catch (err: any) {
+        console.warn('[Twilio] Failed to dedupe native queued message (non-fatal):', err?.message)
+      }
+    }
+
     return new NextResponse('', { status: 200 })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

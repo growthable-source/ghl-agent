@@ -241,6 +241,13 @@ export default function IntegrationsPage() {
 
   async function switchCrmProvider(provider: string) {
     setSwitchingCrm(true)
+    // Flipping to 'native' requires an extra step — there's no OAuth flow,
+    // but we do need a placeholder Location row keyed `native:<wsId>` so
+    // Agent.locationId can resolve through the factory. The provision
+    // route is idempotent so it's safe to call every time.
+    if (provider === 'native') {
+      await fetch(`/api/workspaces/${workspaceId}/crm/native/provision`, { method: 'POST' })
+    }
     await fetch(`/api/workspaces/${workspaceId}/integrations`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -248,6 +255,12 @@ export default function IntegrationsPage() {
     })
     setCrmProvider(provider)
     setSwitchingCrm(false)
+    // Sidebar reads workspace.locations to decide whether to show the
+    // Native CRM nav section, so a hard reload is the cleanest way to
+    // make the new menu items appear after switching.
+    if (provider === 'native') {
+      window.location.reload()
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center h-64"><p className="text-zinc-500 text-sm">Loading…</p></div>
@@ -338,6 +351,56 @@ export default function IntegrationsPage() {
       )}
 
       <div className="space-y-3">
+
+        {/* Native CRM — the built-in option. Always visible so workspaces
+            without GHL connected can flip to it without curling an
+            endpoint. Provision is idempotent so re-clicking is safe. */}
+        <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-base"
+                style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
+              >
+                📇
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Native CRM</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  Built-in contacts, lists, suppression, SMS &amp; email — no external CRM required.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {crmProvider === 'native' ? (
+                <span
+                  className="text-xs px-2.5 py-1 rounded-full font-semibold"
+                  style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+                >
+                  Active
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => switchCrmProvider('native')}
+                  disabled={switchingCrm}
+                  className="text-xs font-semibold px-3 h-8 rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' }}
+                >
+                  {switchingCrm ? 'Switching…' : 'Switch to Native'}
+                </button>
+              )}
+            </div>
+          </div>
+          {crmProvider === 'native' && (
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <a href={`/dashboard/${workspaceId}/contacts`} className="text-xs px-3 py-2 rounded-md text-center transition-opacity hover:opacity-80" style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)' }}>Contacts →</a>
+              <a href={`/dashboard/${workspaceId}/lists`} className="text-xs px-3 py-2 rounded-md text-center transition-opacity hover:opacity-80" style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)' }}>Lists →</a>
+              <a href={`/dashboard/${workspaceId}/imports`} className="text-xs px-3 py-2 rounded-md text-center transition-opacity hover:opacity-80" style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)' }}>Import CSV →</a>
+              <a href={`/dashboard/${workspaceId}/suppressions`} className="text-xs px-3 py-2 rounded-md text-center transition-opacity hover:opacity-80" style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)' }}>Suppressions →</a>
+            </div>
+          )}
+        </div>
 
         {/* GHL */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">

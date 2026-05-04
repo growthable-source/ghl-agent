@@ -51,6 +51,16 @@ export default function ContactTimelinePage() {
   const [events, setEvents] = useState<TimelineEvent[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
+  // Populated when the contactId resolves to a native contact. Drives the
+  // header so native contacts show name/email/phone instead of a bare cuid.
+  const [nativeContact, setNativeContact] = useState<{
+    firstName: string | null
+    lastName: string | null
+    email: string | null
+    phone: string | null
+    tags: string[]
+    isSuppressed: boolean
+  } | null>(null)
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/contacts/${contactId}/timeline`)
@@ -60,6 +70,25 @@ export default function ContactTimelinePage() {
         setSummary(data.summary)
       })
       .finally(() => setLoading(false))
+
+    // Best-effort native-contact lookup. 404 means this contactId is a
+    // GHL/HubSpot/external id — header silently falls back to the cuid.
+    fetch(`/api/workspaces/${workspaceId}/native/contacts/${contactId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data?.contact) {
+          const c = data.contact
+          setNativeContact({
+            firstName: c.firstName ?? null,
+            lastName: c.lastName ?? null,
+            email: c.email ?? null,
+            phone: c.phone ?? null,
+            tags: c.tags ?? [],
+            isSuppressed: !!c.isSuppressed,
+          })
+        }
+      })
+      .catch(() => {})
   }, [workspaceId, contactId])
 
   if (loading) {
@@ -78,9 +107,48 @@ export default function ContactTimelinePage() {
         </Link>
 
         <div className="mb-8 flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Contact Timeline</h1>
-            <p className="text-sm mt-1 font-mono" style={{ color: 'var(--text-tertiary)' }}>{contactId}</p>
+          <div className="min-w-0">
+            {nativeContact ? (
+              <>
+                <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {[nativeContact.firstName, nativeContact.lastName].filter(Boolean).join(' ') || '(no name)'}
+                </h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {nativeContact.email && (
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{nativeContact.email}</span>
+                  )}
+                  {nativeContact.phone && (
+                    <span className="text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{nativeContact.phone}</span>
+                  )}
+                  {nativeContact.isSuppressed && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                      style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+                    >
+                      opted out
+                    </span>
+                  )}
+                </div>
+                {nativeContact.tags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {nativeContact.tags.map(t => (
+                      <span
+                        key={t}
+                        className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                        style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Contact Timeline</h1>
+                <p className="text-sm mt-1 font-mono" style={{ color: 'var(--text-tertiary)' }}>{contactId}</p>
+              </>
+            )}
           </div>
           {summary?.agentsInvolved && summary.agentsInvolved[0] && (
             <TakeoverControl
