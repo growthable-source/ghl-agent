@@ -317,7 +317,7 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
             <div key={i} className={`flex ${line.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                 line.role === 'user'
-                  ? 'bg-blue-600/20 text-blue-200 border border-blue-800/30'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-800/30'
                   : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
               }`}>
                 <p className="text-xs text-zinc-500 mb-0.5">{line.role === 'user' ? 'You' : agentName}</p>

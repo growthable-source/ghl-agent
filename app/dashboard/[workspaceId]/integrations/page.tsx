@@ -281,14 +281,15 @@ export default function IntegrationsPage() {
 
       {metaBanner && (
         <div
-          className={`rounded-xl border p-4 mb-6 flex items-start justify-between gap-3 ${
+          className="rounded-xl border p-4 mb-6 flex items-start justify-between gap-3"
+          style={
             metaBanner.kind === 'success'
-              ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-200'
-              : 'border-red-900/60 bg-red-950/40 text-red-200'
-          }`}
+              ? { borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+              : { borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
+          }
           role="status"
         >
-          <p className="text-sm">{metaBanner.text}</p>
+          <p className="text-sm font-medium">{metaBanner.text}</p>
           <button
             onClick={() => setMetaBanner(null)}
             className="text-xs opacity-60 hover:opacity-100"
@@ -554,10 +555,14 @@ export default function IntegrationsPage() {
           {inactiveMetaIntegrations.length > 0 && (
             <div className="space-y-1 mb-3">
               {inactiveMetaIntegrations.map(i => (
-                <div key={i.id} className="flex items-center justify-between bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2">
-                  <span className="text-xs text-amber-200 truncate">{i.name}</span>
+                <div
+                  key={i.id}
+                  className="flex items-center justify-between border rounded-lg px-3 py-2"
+                  style={{ background: 'var(--accent-amber-bg)', borderColor: 'var(--accent-amber)' }}
+                >
+                  <span className="text-xs font-medium truncate" style={{ color: 'var(--accent-amber)' }}>{i.name}</span>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-amber-400">Token expired — reconnect</span>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--accent-amber)' }}>Token expired — reconnect</span>
                     <button
                       type="button"
                       onClick={() => disconnectMetaPage(i.id)}

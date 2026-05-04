@@ -49,15 +49,22 @@ export default function ConnectionHealthBanner({ workspaceId }: Props) {
 
   if (!data || data.status !== 'needs_attention' || dismissed) return null
 
+  // Theme-token-driven colours — raw amber-950/300/200 weren't in
+  // globals.css's light-mode override map, so the banner rendered as
+  // pale-on-pale on the soft-light theme.
   return (
-    <div className="bg-amber-950/30 border-b border-amber-800/30 px-4 py-2 flex items-center justify-between gap-3">
-      <p className="text-xs text-amber-300/80 truncate">
+    <div
+      className="px-4 py-2 flex items-center justify-between gap-3 border-b"
+      style={{ background: 'var(--accent-amber-bg)', borderColor: 'var(--accent-amber)' }}
+    >
+      <p className="text-xs font-medium truncate" style={{ color: 'var(--accent-amber)' }}>
         {data.message ?? 'Your integration may need a refresh.'}
       </p>
       <div className="flex items-center gap-2 shrink-0">
         <Link
           href={`/dashboard/${workspaceId}/integrations`}
-          className="text-xs font-medium text-amber-200 bg-amber-900/30 px-3 py-1 rounded-md hover:bg-amber-900/50 transition-colors"
+          className="text-xs font-semibold px-3 py-1 rounded-md transition-opacity hover:opacity-90"
+          style={{ background: 'var(--accent-amber)', color: 'var(--btn-primary-text)' }}
         >
           Reconnect
         </Link>
@@ -65,7 +72,8 @@ export default function ConnectionHealthBanner({ workspaceId }: Props) {
           type="button"
           onClick={() => setDismissed(true)}
           aria-label="Dismiss"
-          className="text-amber-300/60 hover:text-amber-200 text-sm leading-none px-1"
+          className="text-sm leading-none px-1 transition-opacity hover:opacity-100"
+          style={{ color: 'var(--accent-amber)', opacity: 0.7 }}
         >
           ×
         </button>

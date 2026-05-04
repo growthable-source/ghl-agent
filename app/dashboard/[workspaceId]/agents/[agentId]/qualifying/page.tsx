@@ -646,7 +646,7 @@ export default function QualifyingPage() {
                               )}
                               className={`text-xs rounded-full px-2.5 py-1 border transition-colors ${
                                 on
-                                  ? 'border-blue-600 bg-blue-900/30 text-blue-200'
+                                  ? 'border-blue-600 bg-blue-900/30 text-blue-400'
                                   : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
                               }`}
                             >
@@ -733,7 +733,7 @@ export default function QualifyingPage() {
                               }}
                               className={`text-xs rounded-full px-2.5 py-1 border transition-colors ${
                                 on
-                                  ? 'border-blue-600 bg-blue-900/30 text-blue-200'
+                                  ? 'border-blue-600 bg-blue-900/30 text-blue-400'
                                   : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500'
                               }`}
                             >

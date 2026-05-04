@@ -401,7 +401,7 @@ export default function TriggersPage() {
               {eventType === 'ContactCreate' && (
                 <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
                   <p className="text-xs font-medium text-amber-300 mb-1">⚠️ This fires on every new contact</p>
-                  <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                  <p className="text-[11px] text-amber-400/80 leading-relaxed">
                     There is no filter — <strong>any</strong> contact created in this location (form submissions, imports, manual adds, API calls, other workflows) will trigger the agent. If you only want to fire for a specific source, use <strong>Tag added to contact</strong> instead and tag leads from your intended source.
                   </p>
                 </div>

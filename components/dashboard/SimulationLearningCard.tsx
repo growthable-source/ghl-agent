@@ -104,7 +104,7 @@ export default function SimulationLearningCard({ learning, workspaceId, canManag
             type="button"
             onClick={retire}
             disabled={busy}
-            className="text-[11px] font-medium border border-amber-500/30 text-amber-300 hover:text-amber-200 hover:border-amber-500/50 rounded px-2 py-0.5 transition-colors ml-auto disabled:opacity-50"
+            className="text-[11px] font-medium border border-amber-500/30 text-amber-300 hover:text-amber-400 hover:border-amber-500/50 rounded px-2 py-0.5 transition-colors ml-auto disabled:opacity-50"
           >
             {busy ? 'Retiring…' : 'Retire'}
           </button>

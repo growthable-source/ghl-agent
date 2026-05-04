@@ -140,22 +140,22 @@ export default function IntegrationsPage() {
         </div>
 
         {connected && (
-          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
             <span>
               ✓ Connected <span className="font-semibold capitalize">{connected}</span>. You can pick which events it receives below.
             </span>
             <button
               onClick={() => router.replace(`/dashboard/${workspaceId}/settings/integrations`)}
-              className="text-emerald-200 hover:text-white text-xs"
+              className="text-emerald-400 hover:text-white text-xs"
             >Dismiss</button>
           </div>
         )}
         {flashError && (
-          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             <span>Couldn&apos;t connect: <span className="font-mono">{flashError}</span></span>
             <button
               onClick={() => router.replace(`/dashboard/${workspaceId}/settings/integrations`)}
-              className="text-red-200 hover:text-white text-xs"
+              className="text-red-400 hover:text-white text-xs"
             >Dismiss</button>
           </div>
         )}

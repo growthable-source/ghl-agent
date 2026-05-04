@@ -185,7 +185,7 @@ export default function NewWorkspacePage() {
                       cursor: 'not-allowed',
                     }
                   : {
-                      background: 'var(--accent-primary-bg)',
+                      background: 'var(--btn-primary-bg)',
                       color: 'var(--btn-primary-text)',
                     }
               }

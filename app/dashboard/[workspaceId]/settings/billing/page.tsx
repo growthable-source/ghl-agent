@@ -189,44 +189,66 @@ export default function BillingPage() {
       {/* Internal-workspace banner. Replaces the trial / trial-expired
           banners for Voxility staff workspaces. */}
       {isInternal && (
-        <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/30 p-4 mb-6 flex items-center justify-between">
+        <div
+          className="rounded-xl border p-4 mb-6 flex items-center justify-between"
+          style={{ borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }}
+        >
           <div>
-            <p className="text-sm font-medium text-emerald-300">Internal workspace</p>
-            <p className="text-xs text-emerald-400/80 mt-0.5">
+            <p className="text-sm font-semibold" style={{ color: 'var(--accent-emerald)' }}>Internal workspace</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--accent-emerald)', opacity: 0.85 }}>
               No billing required. Pick any plan below to apply its feature set instantly — no card, no Stripe.
             </p>
           </div>
-          <span className="text-xs text-emerald-400 bg-emerald-900/40 px-2.5 py-1 rounded-full font-medium">
+          <span
+            className="text-xs px-2.5 py-1 rounded-full font-semibold"
+            style={{ background: 'var(--accent-emerald)', color: 'var(--btn-primary-text)' }}
+          >
             {usage?.planLabel ?? usage?.plan ?? 'trial'}
           </span>
         </div>
       )}
 
       {internalJustSwitched && switchedPlan && (
-        <div className="rounded-xl border border-emerald-600/50 bg-emerald-500/10 p-4 mb-6 text-sm text-emerald-200">
+        <div
+          className="rounded-xl border p-4 mb-6 text-sm font-medium"
+          style={{
+            borderColor: 'var(--accent-emerald)',
+            background: 'var(--accent-emerald-bg)',
+            color: 'var(--accent-emerald)',
+          }}
+        >
           ✓ Plan set to <span className="font-semibold capitalize">{switchedPlan}</span>. No billing was triggered — internal workspace.
         </div>
       )}
 
       {/* Trial banner — hidden for internal workspaces */}
       {!isInternal && usage?.plan === 'trial' && !usage.trialExpired && (
-        <div className="rounded-xl border border-amber-800/50 bg-amber-950/30 p-4 mb-6 flex items-center justify-between">
+        <div
+          className="rounded-xl border p-4 mb-6 flex items-center justify-between"
+          style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+        >
           <div>
-            <p className="text-sm font-medium text-amber-300">Free Trial</p>
-            <p className="text-xs text-amber-400/70 mt-0.5">
+            <p className="text-sm font-semibold" style={{ color: 'var(--accent-amber)' }}>Free Trial</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--accent-amber)', opacity: 0.85 }}>
               {trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''} remaining — full access to all Growth-tier features.
             </p>
           </div>
-          <span className="text-xs text-amber-500 bg-amber-900/40 px-2.5 py-1 rounded-full font-medium">
+          <span
+            className="text-xs px-2.5 py-1 rounded-full font-semibold"
+            style={{ background: 'var(--accent-amber)', color: 'var(--btn-primary-text)' }}
+          >
             {trialDaysLeft}d left
           </span>
         </div>
       )}
 
       {!isInternal && usage?.trialExpired && (
-        <div className="rounded-xl border border-red-800/50 bg-red-950/30 p-4 mb-6">
-          <p className="text-sm font-medium text-red-300">Trial Expired</p>
-          <p className="text-xs text-red-400/70 mt-0.5">
+        <div
+          className="rounded-xl border p-4 mb-6"
+          style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
+        >
+          <p className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>Trial Expired</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--accent-red)', opacity: 0.85 }}>
             Your trial has ended. Select a plan below to continue using Voxility.
           </p>
         </div>

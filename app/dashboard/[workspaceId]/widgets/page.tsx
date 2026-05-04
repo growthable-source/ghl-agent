@@ -269,7 +269,7 @@ export default function WidgetsPage() {
                 <button
                   onClick={openBulkConfirm}
                   disabled={selected.size === 0}
-                  className="text-xs font-semibold px-3 py-2 rounded-lg text-red-300 border border-red-500/40 bg-red-500/5 hover:text-red-200 hover:border-red-500/60 transition-colors disabled:opacity-30"
+                  className="text-xs font-semibold px-3 py-2 rounded-lg text-red-300 border border-red-500/40 bg-red-500/5 hover:text-red-400 hover:border-red-500/60 transition-colors disabled:opacity-30"
                 >Delete</button>
               </>
             )}
@@ -684,21 +684,21 @@ function DeleteConfirmModal({
           <div className="p-5 border-b bg-amber-500/5" style={{ borderColor: 'var(--border)' }}>
             <p className="text-xs font-semibold text-amber-300 mb-1.5">⚠ Active conversation warning</p>
             {isSingle ? (
-              <p className="text-[11px] text-amber-200/90 leading-relaxed">
+              <p className="text-[11px] text-amber-400/90 leading-relaxed">
                 This widget has <strong>{target.activeCount}</strong> active conversation{target.activeCount === 1 ? '' : 's'} right now.
                 Deleting kicks {target.activeCount === 1 ? 'that visitor' : 'those visitors'} mid-chat. Resolve or take over first if you can.
               </p>
             ) : (
               <>
-                <p className="text-[11px] text-amber-200/90 leading-relaxed mb-2">
+                <p className="text-[11px] text-amber-400/90 leading-relaxed mb-2">
                   {target.blocked.length} of the {target.ids.length} selected widget{target.ids.length === 1 ? ' has' : 's have'} active conversations:
                 </p>
-                <ul className="text-[11px] text-amber-200 space-y-0.5 ml-4 list-disc">
+                <ul className="text-[11px] text-amber-400 space-y-0.5 ml-4 list-disc">
                   {target.blocked.map(b => (
                     <li key={b.id}><strong>{b.name}</strong> — {b.activeCount} active</li>
                   ))}
                 </ul>
-                <p className="text-[11px] text-amber-200/70 mt-2">
+                <p className="text-[11px] text-amber-400/70 mt-2">
                   Bulk delete will refuse if any widget has active chats. Take those over from the inbox first, or remove them from your selection.
                 </p>
               </>

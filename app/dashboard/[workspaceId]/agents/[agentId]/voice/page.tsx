@@ -394,23 +394,30 @@ export default function VoicePage() {
       <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Configure inbound call handling. Same knowledge base and brain as SMS.</p>
 
       {!vapiReady && (
-        <div className="mb-6 rounded-xl border border-amber-900/50 bg-amber-950/20 p-4 space-y-2">
-          <p className="text-sm text-amber-400 font-medium">Voice AI is not configured</p>
+        <div
+          className="mb-6 rounded-xl border p-4 space-y-2"
+          style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+        >
+          <p className="text-sm font-semibold" style={{ color: 'var(--accent-amber)' }}>Voice AI is not configured</p>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             Add <code className="px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>VAPI_API_KEY</code> and{' '}
             <code className="px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>VAPI_PUBLIC_KEY</code> to your environment variables, then redeploy.
           </p>
           <Link
             href={`/dashboard/${workspaceId}/integrations`}
-            className="inline-block text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            className="inline-block text-xs transition-opacity hover:opacity-80"
+            style={{ color: 'var(--accent-blue)' }}
           >
             Go to Integrations →
           </Link>
         </div>
       )}
       {vapiReady && vapiError && (
-        <div className="mb-6 rounded-xl border border-red-900/50 bg-red-950/20 p-4 space-y-1">
-          <p className="text-sm text-red-400 font-medium">Vapi API error</p>
+        <div
+          className="mb-6 rounded-xl border p-4 space-y-1"
+          style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
+        >
+          <p className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>Vapi API error</p>
           <p className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{vapiError}</p>
         </div>
       )}
@@ -858,7 +865,7 @@ export default function VoicePage() {
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                     msg.role === 'user'
-                      ? 'bg-blue-600/20 text-blue-200 border border-blue-800/30'
+                      ? 'bg-blue-600/20 text-blue-400 border border-blue-800/30'
                       : ''
                   }`}
                   style={msg.role === 'user' ? undefined : {
