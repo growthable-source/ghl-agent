@@ -29,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { resolveCrmLocationId } from '@/lib/funnel-locator'
 import { normalizeEmail, normalizePhone } from '@/lib/crm/native/normalize'
+import { fireConversion } from '@/lib/conversion-fire'
 
 // Form submissions never need anywhere close to 300s; 60s is plenty even
 // with tail-latency CRM upserts. Reduce default to keep the route hot.
@@ -199,9 +200,14 @@ export async function POST(req: NextRequest) {
     select: { id: true, eventId: true },
   })
 
-  // TODO(voxility:phase-4) — invoke conversion-fire (Meta CAPI + Google
-  //   Ads) in the background. For now the event row is persisted; a
-  //   cron or post-write hook in the next phase will fan it out.
+  // Fire the lead conversion to Meta CAPI + Google Ads in the
+  // background. We don't await — Meta CAPI is fast (~500ms) but on a
+  // cold pixel-config lookup it can run longer, and the form submitter
+  // shouldn't pay that latency. If the fire fails we leave a marker on
+  // the event row and the cron-retry job picks it up.
+  void fireConversion(conversion.id).catch((err) => {
+    console.error('[form-submit] conversion-fire failed for event', conversion.id, err)
+  })
   // TODO(voxility:phase-5) — invoke the campaign's triggered agent
   //   (instant SMS) using the existing agent infrastructure.
 
