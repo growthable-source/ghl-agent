@@ -15,6 +15,61 @@ export const RELEASES_CATEGORY = {
 
 export const RELEASES_ARTICLES = [
   // ───────────────────────────────────────────────────────────────────
+  // Native CRM (rolling out)
+  // ───────────────────────────────────────────────────────────────────
+  {
+    slug: 'native-crm-rolling-out',
+    title: 'Native CRM: skip the GoHighLevel setup and start with built-in contacts',
+    summary: 'Workspaces without a CRM can now run on a built-in contacts and outbound backend instead of being forced to connect GoHighLevel first. Foundation is live; dashboard UI lands next.',
+    order: 5,
+    body: `Until now, building an agent meant connecting GoHighLevel before you
+could do anything beyond a website widget. For teams who just want to load
+a lead list and let an agent reach out, that was the friction point that
+made people bounce.
+
+**Native CRM** is the built-in alternative. Your workspace gets its own
+contacts, lists, conversations, and messaging — all backed by us, no
+external CRM required. Connect GoHighLevel later if you outgrow it; nothing
+moves until you decide to.
+
+## What you get
+
+- **Contacts database** — name, email, phone, tags, custom fields. Every
+  contact is workspace-scoped and dedupes automatically by email + phone.
+- **Lists and segments** — static lists you build manually, or smart lists
+  that resolve at read time from a tag or name filter.
+- **CSV import** — upload a lead list, map columns, and the importer
+  handles dedupe, suppression, and per-row error tracking so you can fix
+  and re-upload just the rejected rows.
+- **Suppression list** — workspace-wide opt-out store. STOP replies and
+  bounces register here automatically; you can also block addresses
+  manually.
+- **Custom fields** — define your own fields and reference them in agent
+  merge tags ({{contact.<field_key>}}) the same way you would on GHL.
+
+## What's *not* on the native plan
+
+Pipelines, deals, and calendar booking. If your agent needs to move
+opportunities through stages or book appointments, connect GoHighLevel or
+HubSpot — those are the upgrade path.
+
+## What's live today vs. coming next
+
+The backend foundation is **live as of this release**: schema, the adapter
+the agent runs on, the import pipeline, suppression, and the provisioning
+endpoint. If you're API-savvy you can already drive everything via direct
+calls.
+
+The dashboard UI for managing contacts, lists, and imports is **rolling
+out next sprint** — that's the missing piece for self-serve. Twilio/SMTP
+outbound delivery (turning a queued message into an actual SMS or email)
+is the sprint after that.
+
+We'll bump this article when each piece lands. If you want early access
+to the API while the UI is still in flight, reach out.`,
+  },
+
+  // ───────────────────────────────────────────────────────────────────
   // Click-to-call widget
   // ───────────────────────────────────────────────────────────────────
   {
