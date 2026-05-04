@@ -27,15 +27,23 @@ export default function TrialBanner({ workspaceId }: Props) {
     ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0
 
+  // Theme-token-driven colours so the banner reads correctly in both light
+  // (cream page) and dark themes. The previous version used raw Tailwind
+  // amber-950/300/200 which aren't in globals.css's light-mode override
+  // map — text rendered pale on pale on the soft-light theme.
   if (data.trialExpired) {
     return (
-      <div className="bg-red-950/50 border-b border-red-800/50 px-4 py-2 flex items-center justify-between">
-        <p className="text-xs text-red-300">
+      <div
+        className="px-4 py-2 flex items-center justify-between border-b"
+        style={{ background: 'var(--accent-red-bg)', borderColor: 'var(--accent-red)' }}
+      >
+        <p className="text-xs font-medium" style={{ color: 'var(--accent-red)' }}>
           Your trial has expired. Upgrade to continue using Voxility.
         </p>
         <Link
           href={`/dashboard/${workspaceId}/settings/billing`}
-          className="text-xs font-medium text-red-200 bg-red-900/50 px-3 py-1 rounded-md hover:bg-red-900 transition-colors"
+          className="text-xs font-semibold px-3 py-1 rounded-md transition-opacity hover:opacity-90"
+          style={{ background: 'var(--accent-red)', color: 'var(--btn-primary-text)' }}
         >
           Upgrade Now
         </Link>
@@ -44,13 +52,17 @@ export default function TrialBanner({ workspaceId }: Props) {
   }
 
   return (
-    <div className="bg-amber-950/30 border-b border-amber-800/30 px-4 py-2 flex items-center justify-between">
-      <p className="text-xs text-amber-300/80">
+    <div
+      className="px-4 py-2 flex items-center justify-between border-b"
+      style={{ background: 'var(--accent-amber-bg)', borderColor: 'var(--accent-amber)' }}
+    >
+      <p className="text-xs font-medium" style={{ color: 'var(--accent-amber)' }}>
         Free trial — {daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining
       </p>
       <Link
         href={`/dashboard/${workspaceId}/settings/billing`}
-        className="text-xs font-medium text-amber-200 bg-amber-900/30 px-3 py-1 rounded-md hover:bg-amber-900/50 transition-colors"
+        className="text-xs font-semibold px-3 py-1 rounded-md transition-opacity hover:opacity-90"
+        style={{ background: 'var(--accent-amber)', color: 'var(--btn-primary-text)' }}
       >
         Choose Plan
       </Link>

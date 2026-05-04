@@ -308,7 +308,7 @@ export default function NewAgentWizard() {
                     i < currentIdx
                       ? { background: 'var(--accent-emerald)', color: '#fff' }
                       : i === currentIdx
-                      ? { background: 'var(--accent-primary-bg)', color: 'var(--btn-primary-text)' }
+                      ? { background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' }
                       : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)' }
                   }
                 >
@@ -447,7 +447,7 @@ export default function NewAgentWizard() {
                       {selectedCrm === opt.id && (
                         <span
                           className="w-5 h-5 rounded-full flex items-center justify-center"
-                          style={{ background: 'var(--accent-primary-bg)' }}
+                          style={{ background: 'var(--btn-primary-bg)' }}
                         >
                           <span
                             className="w-2 h-2 rounded-full"
@@ -463,7 +463,7 @@ export default function NewAgentWizard() {
                         href={`/api/auth/crm/connect?workspaceId=${workspaceId}`}
                         className="mt-2 inline-flex items-center rounded-lg font-medium text-sm px-4 h-9 hover:opacity-90 transition-colors"
                         style={{
-                          background: 'var(--accent-primary-bg)',
+                          background: 'var(--btn-primary-bg)',
                           color: 'var(--btn-primary-text)',
                         }}
                       >
@@ -499,7 +499,7 @@ export default function NewAgentWizard() {
                   {selectedCalendar === opt.id && (
                     <span
                       className="w-5 h-5 rounded-full flex items-center justify-center"
-                      style={{ background: 'var(--accent-primary-bg)' }}
+                      style={{ background: 'var(--btn-primary-bg)' }}
                     >
                       <span
                         className="w-2 h-2 rounded-full"
@@ -805,7 +805,7 @@ export default function NewAgentWizard() {
                         cursor: 'not-allowed',
                       }
                     : {
-                        background: 'var(--accent-primary-bg)',
+                        background: 'var(--btn-primary-bg)',
                         color: 'var(--btn-primary-text)',
                       }
                 }
@@ -826,7 +826,7 @@ export default function NewAgentWizard() {
                         cursor: 'not-allowed',
                       }
                     : {
-                        background: 'var(--accent-primary-bg)',
+                        background: 'var(--btn-primary-bg)',
                         color: 'var(--btn-primary-text)',
                       }
                 }
