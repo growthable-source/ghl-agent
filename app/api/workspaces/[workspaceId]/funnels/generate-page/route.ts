@@ -98,23 +98,34 @@ export async function POST(
   // ─── Image generation (best-effort) ────────────────────────────────
   // After Claude returns the spec, fan out 3 Gemini Imagen calls in
   // parallel for hero photo + offer-section background + OG image.
-  // Failures are swallowed — the page still saves with text-only
-  // sections if Gemini is unreachable, the API key is missing, or any
-  // single prompt fails.
-  if (isGeminiImageEnabled()) {
+  // Failures don't break the page — but the per-image errors flow back
+  // up so the wizard can show "0/3 images succeeded — reason X" rather
+  // than silently producing a text-only page.
+  let imageGen: { enabled: boolean; attempted: number; succeeded: number; errors: string[] } = {
+    enabled: isGeminiImageEnabled(),
+    attempted: 0,
+    succeeded: 0,
+    errors: [],
+  }
+  if (imageGen.enabled) {
     try {
-      const images = await generatePageImages({
+      const out = await generatePageImagesDetailed({
         intake: body.intake,
         spec: result.spec,
         brandKit: body.brand_kit,
         keyPrefix: `landing/${body.save_to_landing_page_id ?? 'preview'}`,
       })
-      if (images.hero_url || images.offer_bg_url || images.og_url) {
-        result.spec.images = images
+      if (out.images.hero_url || out.images.offer_bg_url || out.images.og_url) {
+        result.spec.images = out.images
       }
+      imageGen = { enabled: true, attempted: out.attempted, succeeded: out.succeeded, errors: out.errors }
     } catch (err) {
-      console.warn('[generate-page] image generation failed (continuing):', err instanceof Error ? err.message : err)
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[generate-page] image generation crashed (continuing):', msg)
+      imageGen.errors.push(`unhandled: ${msg}`)
     }
+  } else {
+    imageGen.errors.push('GEMINI_API_KEY not set on this deployment')
   }
 
   // Persist to a specific LandingPage if requested. Verify the page
@@ -138,21 +149,27 @@ export async function POST(
     })
   }
 
-  return NextResponse.json(result)
+  return NextResponse.json({ ...result, imageGen })
+}
+
+interface ImageGenReport {
+  images: PageImages
+  attempted: number
+  succeeded: number
+  errors: string[]
 }
 
 /**
  * Build prompts from the spec, fan out to Gemini in parallel, return
- * a PageImages map. Each promise is independently caught so one image
- * failing doesn't sink the others. Returns an empty object if every
- * call fails.
+ * a PageImages map plus per-image errors. Each promise is independently
+ * caught so one image failing doesn't sink the others.
  */
-async function generatePageImages(args: {
+async function generatePageImagesDetailed(args: {
   intake: CampaignIntake
   spec: PageSpec
   brandKit?: BrandKit
   keyPrefix: string
-}): Promise<PageImages> {
+}): Promise<ImageGenReport> {
   const { intake, spec, brandKit, keyPrefix } = args
   const primaryColour = spec.style?.primary_color ?? '#0A84FF'
 
@@ -210,33 +227,30 @@ async function generatePageImages(args: {
       aspect: 'wide',
       keyPrefix: `${keyPrefix}/hero`,
       referenceImages: refImages,
-    }).catch((e) => {
-      console.warn('[generate-page] hero image failed:', e instanceof Error ? e.message : e)
-      return null
-    }),
+    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })),
     generateAndUpload({
       prompt: offerBgPrompt,
       aspect: 'wide',
       keyPrefix: `${keyPrefix}/offer-bg`,
       referenceImages: refImages,
-    }).catch((e) => {
-      console.warn('[generate-page] offer-bg image failed:', e instanceof Error ? e.message : e)
-      return null
-    }),
+    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })),
     generateAndUpload({
       prompt: ogPrompt,
       aspect: 'og',
       keyPrefix: `${keyPrefix}/og`,
       referenceImages: refImages,
-    }).catch((e) => {
-      console.warn('[generate-page] og image failed:', e instanceof Error ? e.message : e)
-      return null
-    }),
+    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })),
   ])
 
-  return {
-    ...(hero ? { hero_url: hero } : {}),
-    ...(offerBg ? { offer_bg_url: offerBg } : {}),
-    ...(og ? { og_url: og } : {}),
+  const images: PageImages = {
+    ...(hero.ok && hero.url ? { hero_url: hero.url } : {}),
+    ...(offerBg.ok && offerBg.url ? { offer_bg_url: offerBg.url } : {}),
+    ...(og.ok && og.url ? { og_url: og.url } : {}),
   }
+  const errors: string[] = []
+  if (!hero.ok && hero.error) errors.push(`hero: ${hero.error}`)
+  if (!offerBg.ok && offerBg.error) errors.push(`offer-bg: ${offerBg.error}`)
+  if (!og.ok && og.error) errors.push(`og: ${og.error}`)
+  const succeeded = (hero.ok ? 1 : 0) + (offerBg.ok ? 1 : 0) + (og.ok ? 1 : 0)
+  return { images, attempted: 3, succeeded, errors }
 }

@@ -31,7 +31,16 @@ interface AgentRow { id: string; name: string }
 interface GeneratedPage {
   title: string
   meta_description: string
-  spec: { version: 1; style: { primary_color?: string }; sections: { type: string; headline?: string; body?: string }[] }
+  spec: {
+    version: 1
+    style: { primary_color?: string }
+    sections: { type: string; headline?: string; body?: string }[]
+    images?: { hero_url?: string; offer_bg_url?: string; og_url?: string }
+  }
+  /** Image-gen diagnostic from the API. Populated whether or not any
+   *  images succeeded — `errors[]` contains per-image failure reasons
+   *  so the wizard can tell the operator exactly why imagery is empty. */
+  imageGen?: { enabled: boolean; attempted: number; succeeded: number; errors: string[] }
 }
 
 const GOALS = [
@@ -721,6 +730,35 @@ export default function NewFunnelWizard() {
             <GeneratingAnimation />
           ) : generated ? (
             <div className="space-y-4">
+              {generated.imageGen && (generated.imageGen.attempted > 0 || !generated.imageGen.enabled) && (
+                <div
+                  className="rounded-lg p-3 text-xs"
+                  style={
+                    generated.imageGen.succeeded === generated.imageGen.attempted && generated.imageGen.attempted > 0
+                      ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+                      : generated.imageGen.succeeded > 0
+                        ? { background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }
+                        : { background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
+                  }
+                >
+                  <div className="font-medium">
+                    AI imagery: {generated.imageGen.succeeded}/{generated.imageGen.attempted || 3} generated
+                    {!generated.imageGen.enabled && ' — disabled'}
+                  </div>
+                  {generated.imageGen.errors.length > 0 && (
+                    <ul className="mt-1.5 list-disc list-inside space-y-0.5">
+                      {generated.imageGen.errors.map((e, i) => <li key={i} className="font-mono text-[11px]">{e}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {/* Hero image preview when one was generated. Tells the
+                  operator immediately whether Gemini fired. */}
+              {generated.spec.images?.hero_url && (
+                <div className="overflow-hidden rounded-lg" style={surface}>
+                  <img src={generated.spec.images.hero_url} alt="" className="block h-auto w-full" />
+                </div>
+              )}
               <div className="rounded-lg p-4" style={{ background: 'var(--surface-secondary)' }}>
                 <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Page title</div>
                 <div className="mt-1 font-semibold" style={{ color: 'var(--text-primary)' }}>{generated.title}</div>

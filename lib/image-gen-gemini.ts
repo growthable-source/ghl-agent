@@ -21,13 +21,25 @@
  */
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
-const GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image-preview'
+// GA'd as gemini-2.5-flash-image — dropped the -preview suffix.
+// Override via env if a newer name ships before this code is updated.
+const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image'
 
 export interface GeneratedImage {
   /** Base64-encoded image bytes (PNG, no data: prefix). */
   base64: string
   /** MIME type Gemini reported. Almost always 'image/png'. */
   mimeType: string
+}
+
+/** Result wrapper for callers that want to know WHY a generation
+ *  failed (caller wants to surface it to the operator). The plain
+ *  generateImage() helper still returns null-on-failure for backward
+ *  compatibility with the simpler call sites. */
+export interface GenerateImageResult {
+  ok: boolean
+  image?: GeneratedImage
+  error?: string
 }
 
 /** Returns true if Gemini image gen is configured for this deployment. */
@@ -55,11 +67,20 @@ export async function generateImage(args: {
   aspect?: 'wide' | 'square' | 'portrait' | 'og'
   referenceImages?: string[]
 }): Promise<GeneratedImage | null> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) return null
+  const r = await generateImageDetailed(args)
+  return r.ok ? (r.image ?? null) : null
+}
 
-  const aspectHint = aspectPromptHint(args.aspect)
-  const fullPrompt = `${args.prompt}\n\n${aspectHint}`
+/** Same as generateImage but returns a structured result with an
+ *  error reason on failure, so the caller can surface "0/3 images
+ *  generated — reason X" to the operator instead of swallowing. */
+export async function generateImageDetailed(args: {
+  prompt: string
+  aspect?: 'wide' | 'square' | 'portrait' | 'og'
+  referenceImages?: string[]
+}): Promise<GenerateImageResult> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) return { ok: false, error: 'GEMINI_API_KEY not set' }
 
   // Fetch reference images and convert to inline base64 parts. Each
   // fetch is wrapped — a 404 on one reference shouldn't kill the
@@ -95,25 +116,36 @@ export async function generateImage(args: {
             // these, then generate matching X" rather than the other
             // way around (which Gemini sometimes ignores).
             ...refParts,
-            { text: fullPrompt },
+            { text: args.prompt },
           ],
         }],
+        // imageConfig.aspectRatio is the native aspect knob (GA'd
+        // alongside the gemini-2.5-flash-image release). responseModalities
+        // forces image-out so the model doesn't return a text description
+        // when the prompt is ambiguous.
         generationConfig: {
-          // Image-out only. Without this the model may return text
-          // describing the image instead of bytes.
           responseModalities: ['IMAGE'],
+          imageConfig: { aspectRatio: aspectRatioFor(args.aspect) },
         },
       }),
     })
   } catch (err) {
-    console.warn('[gemini-image] network error:', err instanceof Error ? err.message : err)
-    return null
+    const reason = err instanceof Error ? err.message : 'network_error'
+    console.warn('[gemini-image] network error:', reason)
+    return { ok: false, error: `network: ${reason}` }
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    console.warn(`[gemini-image] HTTP ${res.status} — ${body.slice(0, 300)}`)
-    return null
+    let reason = `HTTP ${res.status}`
+    try {
+      const json = JSON.parse(body)
+      if (json?.error?.message) reason = `HTTP ${res.status}: ${json.error.message}`
+    } catch {
+      if (body) reason = `HTTP ${res.status}: ${body.slice(0, 200)}`
+    }
+    console.warn(`[gemini-image] ${reason}`)
+    return { ok: false, error: reason }
   }
 
   let json: {
@@ -122,14 +154,24 @@ export async function generateImage(args: {
         parts?: Array<{
           inlineData?: { mimeType?: string; data?: string }
           inline_data?: { mime_type?: string; data?: string }
+          text?: string
         }>
       }
+      finishReason?: string
     }>
+    promptFeedback?: { blockReason?: string }
   }
   try {
     json = await res.json()
   } catch {
-    return null
+    return { ok: false, error: 'response was not JSON' }
+  }
+
+  // Surface safety blocks explicitly — Gemini sometimes blocks
+  // photographic prompts ("real people") and returns 200 with no
+  // inline data. The blockReason in promptFeedback explains why.
+  if (json.promptFeedback?.blockReason) {
+    return { ok: false, error: `blocked: ${json.promptFeedback.blockReason}` }
   }
 
   // Gemini occasionally returns either inlineData (camelCase, the docs
@@ -141,24 +183,25 @@ export async function generateImage(args: {
       if (!inline?.data) continue
       const mimeType =
         (part.inlineData?.mimeType ?? (part.inline_data as { mime_type?: string } | undefined)?.mime_type) ?? 'image/png'
-      return { base64: inline.data, mimeType }
+      return { ok: true, image: { base64: inline.data, mimeType } }
     }
   }
-  return null
+  // No inline data — finishReason explains why (often SAFETY or
+  // MAX_TOKENS for the rare cases the model ran out without emitting).
+  const finish = json.candidates?.[0]?.finishReason
+  return { ok: false, error: finish ? `no image returned (finishReason=${finish})` : 'no image returned' }
 }
 
-function aspectPromptHint(aspect?: 'wide' | 'square' | 'portrait' | 'og'): string {
+/** Map our internal aspect labels to the native imageConfig.aspectRatio
+ *  enum. Gemini accepts a small fixed set; '16:9' and '1.91:1' (the
+ *  Open Graph aspect) are the relevant ones for landing-page imagery. */
+function aspectRatioFor(aspect?: 'wide' | 'square' | 'portrait' | 'og'): string {
   switch (aspect) {
-    case 'wide':
-      return 'Output a wide 16:9 photograph suitable for a hero banner. No text overlays, no logos, no watermarks.'
-    case 'og':
-      return 'Output a 1200x630 image suitable for an Open Graph social preview. Simple, bold composition. No text overlays. Brand-color tints welcome.'
-    case 'portrait':
-      return 'Output a tall 3:4 photograph. Minimal background. No text overlays.'
-    case 'square':
-      return 'Output a 1:1 square image suitable for a small icon-style illustration. Flat, modern, single subject. No text overlays. Brand-color background welcome.'
-    default:
-      return 'No text overlays, no logos, no watermarks.'
+    case 'wide':     return '16:9'
+    case 'og':       return '16:9' // closest supported value to 1.91:1
+    case 'portrait': return '3:4'
+    case 'square':   return '1:1'
+    default:         return '16:9'
   }
 }
 
@@ -169,31 +212,37 @@ function aspectPromptHint(aspect?: 'wide' | 'square' | 'portrait' | 'og'): strin
  * Caller passes a `keyPrefix` like `landing/<pageId>/hero` so the
  * resulting Blob path is debuggable.
  */
+export interface GenerateAndUploadResult {
+  ok: boolean
+  url?: string
+  error?: string
+}
+
 export async function generateAndUpload(args: {
   prompt: string
   aspect?: 'wide' | 'square' | 'portrait' | 'og'
   keyPrefix: string
   referenceImages?: string[]
-}): Promise<string | null> {
+}): Promise<GenerateAndUploadResult> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.warn('[gemini-image] BLOB_READ_WRITE_TOKEN missing — cannot persist generated image')
-    return null
+    return { ok: false, error: 'BLOB_READ_WRITE_TOKEN not set' }
   }
-  const img = await generateImage({
+  const r = await generateImageDetailed({
     prompt: args.prompt,
     aspect: args.aspect,
     referenceImages: args.referenceImages,
   })
-  if (!img) return null
-  // Lazy-import @vercel/blob so build environments without the package
-  // installed (none currently, but keeps this file self-contained)
-  // surface a useful error rather than a missing-module crash.
-  const { put } = await import('@vercel/blob')
-  const buffer = Buffer.from(img.base64, 'base64')
-  const ext = img.mimeType === 'image/jpeg' ? 'jpg' : 'png'
-  const blob = await put(`${args.keyPrefix}-${Date.now()}.${ext}`, buffer, {
-    access: 'public',
-    contentType: img.mimeType,
-  })
-  return blob.url
+  if (!r.ok || !r.image) return { ok: false, error: r.error ?? 'unknown_image_gen_failure' }
+  try {
+    const { put } = await import('@vercel/blob')
+    const buffer = Buffer.from(r.image.base64, 'base64')
+    const ext = r.image.mimeType === 'image/jpeg' ? 'jpg' : 'png'
+    const blob = await put(`${args.keyPrefix}-${Date.now()}.${ext}`, buffer, {
+      access: 'public',
+      contentType: r.image.mimeType,
+    })
+    return { ok: true, url: blob.url }
+  } catch (err) {
+    return { ok: false, error: `blob_put_failed: ${err instanceof Error ? err.message : String(err)}` }
+  }
 }
