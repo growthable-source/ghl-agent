@@ -83,8 +83,14 @@ export async function generateImageDetailed(args: {
   if (!apiKey) return { ok: false, error: 'GEMINI_API_KEY not set' }
 
   // Fetch reference images and convert to inline base64 parts. Each
-  // fetch is wrapped — a 404 on one reference shouldn't kill the
-  // whole image gen, we just drop it from the parts list.
+  // fetch is wrapped — a 404, oversized payload, or unsupported MIME
+  // shouldn't kill the whole image gen, we just drop it from the
+  // parts list and continue with the text prompt only.
+  //
+  // Gemini's vision input only accepts raster formats — SVG, GIF,
+  // HEIC, etc. all return HTTP 400 "Unsupported MIME type" and sink
+  // the entire generateContent call. So we filter aggressively.
+  const GEMINI_SUPPORTED_MIME = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
   const refParts: Array<{ inlineData: { mimeType: string; data: string } }> = []
   for (const refUrl of args.referenceImages ?? []) {
     try {
@@ -94,8 +100,12 @@ export async function generateImageDetailed(args: {
       // Cap at 4MB per reference — Gemini limits the request payload
       // and oversized refs (uncompressed PNGs) will reject the call.
       if (buf.byteLength > 4 * 1024 * 1024) continue
-      const mimeType = r.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png'
-      refParts.push({ inlineData: { mimeType, data: buf.toString('base64') } })
+      const rawMime = r.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() || 'image/png'
+      if (!GEMINI_SUPPORTED_MIME.has(rawMime)) {
+        console.warn(`[gemini-image] skipping reference ${refUrl} — unsupported MIME ${rawMime} (Gemini accepts PNG/JPEG/WebP only). Falling back to text-only prompt.`)
+        continue
+      }
+      refParts.push({ inlineData: { mimeType: rawMime, data: buf.toString('base64') } })
     } catch {
       // Skip silently — operator-supplied URL might be on a CDN that
       // 403s us, that's fine.
