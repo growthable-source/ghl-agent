@@ -370,10 +370,13 @@ export async function generateVslPage(input: {
   const template = input.template ?? 'vsl'
   const primaryColor = input.primary_color ?? '#0A84FF'
 
+  // NOTE: `thinking` is not allowed when tool_choice forces a specific
+  // tool — Anthropic returns 400. For structured-output generation that's
+  // fine: forcing the tool call is what we need, and the model doesn't
+  // benefit from extended thinking to fill a typed schema.
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 16000,
-    thinking: { type: 'adaptive' },
     system: [
       {
         type: 'text',
