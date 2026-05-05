@@ -142,10 +142,23 @@ export function FormBlock({ section, schema, pageId, campaignId }: FormBlockProp
 
   if (submitted) {
     return (
-      <section id="form" className="px-4 py-16 md:py-20">
-        <div className="mx-auto max-w-md rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-          <div className="text-2xl font-bold">{schema.success_headline ?? "You're in."}</div>
-          <p className="mt-3 text-neutral-600">
+      <section id="form" className="px-4 py-20 md:py-28">
+        <div className="mx-auto max-w-md rounded-3xl border bg-white p-10 text-center"
+          style={{
+            borderColor: 'rgba(0,0,0,0.06)',
+            boxShadow: '0 30px 60px -25px rgba(0,0,0,0.18), 0 0 0 1px var(--brand-soft, rgba(10,132,255,0.12)) inset',
+          }}>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full"
+            style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))' }}>
+            <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+              style={{ color: 'var(--brand, #0A84FF)' }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--page-font-display, inherit)' }}>
+            {schema.success_headline ?? "You're in."}
+          </div>
+          <p className="mt-3 text-base" style={{ color: 'rgba(0,0,0,0.65)' }}>
             {schema.success_body ?? "We'll be in touch shortly."}
           </p>
         </div>
@@ -154,20 +167,30 @@ export function FormBlock({ section, schema, pageId, campaignId }: FormBlockProp
   }
 
   return (
-    <section id="form" className="bg-neutral-50 px-4 py-16 md:py-20">
-      <div className="mx-auto max-w-md rounded-xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8">
+    <section id="form" className="px-4 py-20 md:py-28" style={{ background: '#fafafa' }}>
+      <div className="mx-auto max-w-md rounded-3xl border bg-white p-7 md:p-9"
+        style={{
+          borderColor: 'rgba(0,0,0,0.06)',
+          boxShadow: '0 30px 60px -25px rgba(0,0,0,0.18), 0 0 0 1px var(--brand-soft, rgba(10,132,255,0.12)) inset',
+        }}>
         {section?.headline && (
-          <h2 className="text-xl font-bold tracking-tight md:text-2xl">{section.headline}</h2>
+          <h2 className="text-2xl font-bold tracking-tight md:text-3xl"
+            style={{ fontFamily: 'var(--page-font-display, inherit)', letterSpacing: '-0.02em' }}>
+            {section.headline}
+          </h2>
         )}
-        {section?.body && <p className="mt-2 text-sm text-neutral-600">{section.body}</p>}
-        <form onSubmit={onSubmit} className="mt-5 space-y-4">
+        {section?.body && (
+          <p className="mt-2 text-sm" style={{ color: 'rgba(0,0,0,0.65)' }}>{section.body}</p>
+        )}
+        <form onSubmit={onSubmit} className="mt-6 space-y-4">
           {schema.fields.map((f) => {
             const isRequired = schema.required.includes(f)
             const isTextarea = FIELD_INPUT_TYPES[f] === 'textarea'
             return (
               <div key={f}>
-                <label className="block text-sm font-medium" htmlFor={`f_${f}`}>
-                  {FIELD_LABELS[f]} {isRequired && <span className="text-red-500">*</span>}
+                <label className="block text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: 'rgba(0,0,0,0.6)' }} htmlFor={`f_${f}`}>
+                  {FIELD_LABELS[f]} {isRequired && <span style={{ color: 'var(--brand, #0A84FF)' }}>*</span>}
                 </label>
                 {isTextarea ? (
                   <textarea
@@ -178,7 +201,11 @@ export function FormBlock({ section, schema, pageId, campaignId }: FormBlockProp
                     placeholder={FIELD_PLACEHOLDERS[f]}
                     value={values[f] ?? ''}
                     onChange={(e) => setField(f, e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="mt-1.5 block w-full rounded-xl border bg-white px-3 py-2.5 text-sm transition focus:outline-none focus:ring-2"
+                    style={{
+                      borderColor: 'rgba(0,0,0,0.12)',
+                      ['--tw-ring-color' as string]: 'var(--brand, #0A84FF)',
+                    }}
                   />
                 ) : (
                   <input
@@ -200,24 +227,35 @@ export function FormBlock({ section, schema, pageId, campaignId }: FormBlockProp
                     }
                     value={values[f] ?? ''}
                     onChange={(e) => setField(f, e.target.value)}
-                    className="mt-1 block h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="mt-1.5 block h-12 w-full rounded-xl border bg-white px-3.5 text-sm transition focus:outline-none focus:ring-2"
+                    style={{
+                      borderColor: 'rgba(0,0,0,0.12)',
+                      ['--tw-ring-color' as string]: 'var(--brand, #0A84FF)',
+                    }}
                   />
                 )}
               </div>
             )
           })}
           {error && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+            <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(239,68,68,0.08)', color: '#b91c1c' }}>
+              {error}
+            </div>
           )}
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex h-12 w-full items-center justify-center rounded-md bg-blue-600 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-700 disabled:opacity-60"
+            className="inline-flex h-14 w-full items-center justify-center rounded-xl text-base font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-60 disabled:translate-y-0"
+            style={{
+              background: 'var(--brand, #0A84FF)',
+              color: 'var(--brand-fg, #ffffff)',
+              boxShadow: '0 14px 30px -10px var(--brand-glow, rgba(10,132,255,0.4))',
+            }}
           >
             {submitting ? 'Submitting…' : schema.cta_label}
           </button>
           {schema.consent_text && (
-            <p className="text-center text-[11px] leading-relaxed text-neutral-500">
+            <p className="text-center text-[11px] leading-relaxed" style={{ color: 'rgba(0,0,0,0.5)' }}>
               {schema.consent_text}
             </p>
           )}

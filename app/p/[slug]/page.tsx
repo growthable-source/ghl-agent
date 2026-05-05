@@ -23,6 +23,7 @@ import {
   type FormSection,
   type PageSection,
 } from '@/lib/page-spec'
+import { buildPageBackgroundStyle, buildPageThemeStyle } from '@/lib/brand-theme'
 
 type Params = { params: Promise<{ slug: string }> }
 
@@ -46,16 +47,20 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   // No catch — let DB errors surface. Was masking actual problems as 404s.
   const page = await db.landingPage.findUnique({
     where: { slug },
-    select: { title: true, metaDescription: true, ogImageUrl: true, published: true },
+    select: { title: true, metaDescription: true, ogImageUrl: true, published: true, spec: true },
   })
   if (!page || !page.published) return { title: 'Not found' }
+  // Prefer the operator-uploaded OG image; fall back to the AI-generated
+  // `spec.images.og_url` if no manual override was set.
+  const spec = parsePageSpec(page.spec)
+  const ogImage = page.ogImageUrl ?? spec.images?.og_url ?? null
   return {
     title: page.title,
     description: page.metaDescription ?? undefined,
     openGraph: {
       title: page.title,
       description: page.metaDescription ?? undefined,
-      images: page.ogImageUrl ? [{ url: page.ogImageUrl }] : undefined,
+      images: ogImage ? [{ url: ogImage }] : undefined,
     },
   }
 }
@@ -109,13 +114,26 @@ export default async function PublicLandingPage({ params }: Params) {
     }
   }
 
+  // Brand-color + font theming: derive a palette from spec.style and
+  // expose it as CSS custom properties on the page wrapper. Every
+  // <section> reads `var(--brand)` / `var(--brand-soft)` etc. instead
+  // of hard-coding a colour, so changing the AI's primary_color now
+  // actually changes the page.
+  const themeStyle = buildPageThemeStyle({
+    primaryColor: spec.style?.primary_color,
+    fontFamily: spec.style?.font_family,
+    background: spec.style?.background,
+  })
+  const bgStyle = buildPageBackgroundStyle(spec.style?.background)
+  const images = spec.images
+
   return (
     <main
-      className="min-h-screen bg-white text-neutral-900"
-      style={{ scrollBehavior: 'smooth' }}
+      className="min-h-screen"
+      style={{ scrollBehavior: 'smooth', ...themeStyle, ...bgStyle }}
     >
       {sectionsBeforeForm.map((section, i) => (
-        <SectionRenderer key={i} section={section} />
+        <SectionRenderer key={i} section={section} images={images} />
       ))}
 
       <FormBlock
@@ -126,7 +144,7 @@ export default async function PublicLandingPage({ params }: Params) {
       />
 
       {sectionsAfterForm.map((section, i) => (
-        <SectionRenderer key={`a${i}`} section={section} />
+        <SectionRenderer key={`a${i}`} section={section} images={images} />
       ))}
 
       {/* ─── Browser pixels — Meta + Google. Server-side conversions

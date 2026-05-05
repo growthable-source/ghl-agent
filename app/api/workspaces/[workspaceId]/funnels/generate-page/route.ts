@@ -24,6 +24,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { requireWorkspaceRole } from '@/lib/require-workspace-role'
 import { generateVslPage, type CampaignIntake, type PageTemplate } from '@/lib/vsl-generator'
+import { generateAndUpload, isGeminiImageEnabled } from '@/lib/image-gen-gemini'
+import type { PageImages, PageSpec } from '@/lib/page-spec'
 
 // Tool-call generation with thinking can take 30–60s on cold cache.
 // Keep well under the route handler default cap.
@@ -91,6 +93,27 @@ export async function POST(
     )
   }
 
+  // ─── Image generation (best-effort) ────────────────────────────────
+  // After Claude returns the spec, fan out 3 Gemini Imagen calls in
+  // parallel for hero photo + offer-section background + OG image.
+  // Failures are swallowed — the page still saves with text-only
+  // sections if Gemini is unreachable, the API key is missing, or any
+  // single prompt fails.
+  if (isGeminiImageEnabled()) {
+    try {
+      const images = await generatePageImages({
+        intake: body.intake,
+        spec: result.spec,
+        keyPrefix: `landing/${body.save_to_landing_page_id ?? 'preview'}`,
+      })
+      if (images.hero_url || images.offer_bg_url || images.og_url) {
+        result.spec.images = images
+      }
+    } catch (err) {
+      console.warn('[generate-page] image generation failed (continuing):', err instanceof Error ? err.message : err)
+    }
+  }
+
   // Persist to a specific LandingPage if requested. Verify the page
   // belongs to this workspace before writing — never trust the id from
   // the request body.
@@ -113,4 +136,69 @@ export async function POST(
   }
 
   return NextResponse.json(result)
+}
+
+/**
+ * Build prompts from the spec, fan out to Gemini in parallel, return
+ * a PageImages map. Each promise is independently caught so one image
+ * failing doesn't sink the others. Returns an empty object if every
+ * call fails.
+ */
+async function generatePageImages(args: {
+  intake: CampaignIntake
+  spec: PageSpec
+  keyPrefix: string
+}): Promise<PageImages> {
+  const { intake, spec, keyPrefix } = args
+
+  // Pull a description of the offer + audience for prompt context.
+  // Industry hints help Gemini pick a visually appropriate setting.
+  const context = [
+    intake.business_name,
+    intake.offer,
+    intake.industry ? `Industry: ${intake.industry}` : '',
+    intake.audience ? `Audience: ${intake.audience}` : '',
+  ].filter(Boolean).join('. ')
+
+  const heroPrompt =
+    `Editorial-quality photograph for a landing-page hero. ` +
+    `Subject: ${context}. The image should evoke the dream outcome: "${intake.dream_outcome}". ` +
+    `Modern, well-lit, shallow depth of field. Real people if relevant — not stock-photo poses. ` +
+    `Negative space on one side for headline overlay (the headline is added separately, do not draw text). ` +
+    `Color palette should harmonise with brand colour ${spec.style?.primary_color ?? '#0A84FF'}.`
+
+  const offerBgPrompt =
+    `Subtle abstract background pattern for an offer/CTA section. ` +
+    `Brand: ${intake.business_name}. Industry: ${intake.industry ?? 'business services'}. ` +
+    `Soft geometric shapes or organic gradients in a near-white setting, ` +
+    `with accent tones derived from brand colour ${spec.style?.primary_color ?? '#0A84FF'}. ` +
+    `Very low contrast — this image will be rendered at ~7% opacity behind text.`
+
+  const ogPrompt =
+    `Open Graph social preview image for a landing page. ` +
+    `Business: ${intake.business_name}. Offer: ${intake.offer}. ` +
+    `Bold, simple composition. Strong focal point centred. ` +
+    `Use brand colour ${spec.style?.primary_color ?? '#0A84FF'} as a primary accent. ` +
+    `Looks great as a thumbnail in LinkedIn, Slack, Twitter previews.`
+
+  const [hero, offerBg, og] = await Promise.all([
+    generateAndUpload({ prompt: heroPrompt, aspect: 'wide', keyPrefix: `${keyPrefix}/hero` }).catch((e) => {
+      console.warn('[generate-page] hero image failed:', e instanceof Error ? e.message : e)
+      return null
+    }),
+    generateAndUpload({ prompt: offerBgPrompt, aspect: 'wide', keyPrefix: `${keyPrefix}/offer-bg` }).catch((e) => {
+      console.warn('[generate-page] offer-bg image failed:', e instanceof Error ? e.message : e)
+      return null
+    }),
+    generateAndUpload({ prompt: ogPrompt, aspect: 'og', keyPrefix: `${keyPrefix}/og` }).catch((e) => {
+      console.warn('[generate-page] og image failed:', e instanceof Error ? e.message : e)
+      return null
+    }),
+  ])
+
+  return {
+    ...(hero ? { hero_url: hero } : {}),
+    ...(offerBg ? { offer_bg_url: offerBg } : {}),
+    ...(og ? { og_url: og } : {}),
+  }
 }

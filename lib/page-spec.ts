@@ -57,7 +57,13 @@ export interface MechanismSection {
   type: 'mechanism'
   headline: string
   body: string
-  steps?: { label: string; description: string }[]
+  steps?: {
+    label: string
+    description: string
+    /** AI-generated icon image URL (Gemini Imagen). Optional — falls
+     *  back to a numbered chip in the renderer when absent. */
+    icon_url?: string
+  }[]
 }
 
 export interface ProofSection {
@@ -152,10 +158,24 @@ export interface PageStyle {
   max_width?: 'narrow' | 'default' | 'wide'
 }
 
+/** AI-generated imagery, populated by lib/image-gen-gemini after the
+ *  text spec lands. All fields optional — the renderer degrades
+ *  gracefully when an image fetch fails or no GEMINI_API_KEY is set. */
+export interface PageImages {
+  /** Hero feature image. Wide aspect (16:9 or 3:2), photographic. */
+  hero_url?: string
+  /** Wide background image for the offer / CTA strip. */
+  offer_bg_url?: string
+  /** OG image (1200x630). Used for social link previews. */
+  og_url?: string
+}
+
 export interface PageSpec {
   version: 1
   style: PageStyle
   sections: PageSection[]
+  /** AI-generated imagery layered on top of the text spec. Optional. */
+  images?: PageImages
 }
 
 /** Empty page spec — used as a fallback when LandingPage.spec is unset. */
@@ -188,6 +208,7 @@ export function parsePageSpec(raw: unknown): PageSpec {
     version: 1,
     style: candidate.style ?? EMPTY_PAGE_SPEC.style,
     sections: candidate.sections,
+    images: candidate.images,
   }
 }
 
