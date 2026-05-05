@@ -93,13 +93,22 @@ export default function AdsDashboardPage() {
         </div>
         <div className="flex gap-2">
           {!noAdAccounts && (
-            <Link
-              href={`/dashboard/${workspaceId}/ads/new`}
-              className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-medium"
-              style={btnPrimary}
-            >
-              + New campaign
-            </Link>
+            <>
+              <Link
+                href={`/dashboard/${workspaceId}/ads/performance`}
+                className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-medium"
+                style={{ background: 'var(--surface-secondary)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              >
+                Performance →
+              </Link>
+              <Link
+                href={`/dashboard/${workspaceId}/ads/new`}
+                className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-medium"
+                style={btnPrimary}
+              >
+                + New campaign
+              </Link>
+            </>
           )}
         </div>
       </header>
