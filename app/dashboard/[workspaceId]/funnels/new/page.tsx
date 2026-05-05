@@ -11,6 +11,7 @@
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { GeneratingAnimation } from './GeneratingAnimation'
 
 interface Intake {
   business_name: string
@@ -95,6 +96,10 @@ export default function NewFunnelWizard() {
   const [step, setStep] = useState<Step>(1)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Distinct from `busy` so the GeneratingAnimation stays visible across
+  // the boundary between campaign-create and generate-page (busy bounces
+  // briefly, generating stays on for the whole AI call).
+  const [generating, setGenerating] = useState(false)
   const [access, setAccess] = useState<{ allowed: boolean; reason?: string; currentPlan?: string } | null>(null)
 
   useEffect(() => {
@@ -161,6 +166,11 @@ export default function NewFunnelWizard() {
       return
     }
     setBusy(true)
+    // Set generating BEFORE the campaign is created so step 2 paints
+    // the loading animation the moment we transition. Otherwise there's
+    // a 1–2 frame window where step 2 shows "No page yet" before
+    // generatePage() flips the flag.
+    setGenerating(true)
     try {
       const created = await fetch(`/api/workspaces/${workspaceId}/funnels`, {
         method: 'POST',
@@ -177,13 +187,14 @@ export default function NewFunnelWizard() {
       void generatePage(campaign.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed')
+      setGenerating(false)
     } finally {
       setBusy(false)
     }
   }
 
   async function generatePage(_campaignId: string) {
-    setBusy(true)
+    setGenerating(true)
     setError(null)
     try {
       const r = await fetch(`/api/workspaces/${workspaceId}/funnels/generate-page`, {
@@ -197,7 +208,7 @@ export default function NewFunnelWizard() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Generation failed')
     } finally {
-      setBusy(false)
+      setGenerating(false)
     }
   }
 
@@ -403,10 +414,8 @@ export default function NewFunnelWizard() {
 
       {step === 2 && (
         <Card title="Your generated page" subtitle="Click any section to edit later — for now, regenerate until the structure looks right.">
-          {busy && !generated ? (
-            <div className="flex h-72 items-center justify-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
-              Generating…
-            </div>
+          {generating ? (
+            <GeneratingAnimation />
           ) : generated ? (
             <div className="space-y-4">
               <div className="rounded-lg p-4" style={{ background: 'var(--surface-secondary)' }}>
@@ -447,8 +456,8 @@ export default function NewFunnelWizard() {
                   ))}
                 </ul>
               </div>
-              <button type="button" onClick={() => campaignId && void generatePage(campaignId)} disabled={busy} className={btnSecondaryCls} style={btnSecondary}>
-                {busy ? 'Regenerating…' : 'Regenerate'}
+              <button type="button" onClick={() => campaignId && void generatePage(campaignId)} disabled={generating} className={btnSecondaryCls} style={btnSecondary}>
+                {generating ? 'Regenerating…' : 'Regenerate'}
               </button>
             </div>
           ) : (
@@ -456,7 +465,7 @@ export default function NewFunnelWizard() {
           )}
           <div className="mt-6 flex justify-between">
             <button type="button" onClick={() => setStep(1)} className={btnGhostCls} style={btnGhost}>← Back</button>
-            <button type="button" disabled={!generated || busy} onClick={() => setStep(3)} className={btnPrimaryCls} style={btnPrimary}>
+            <button type="button" disabled={!generated || generating} onClick={() => setStep(3)} className={btnPrimaryCls} style={btnPrimary}>
               Next: Agents →
             </button>
           </div>
