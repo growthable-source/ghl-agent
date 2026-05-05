@@ -63,8 +63,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ workspaceI
       addRandomSuffix: false,
       contentType: file.type,
     })
+    console.log(`[brand-asset-upload] OK workspace=${workspaceId} size=${file.size} type=${file.type} → ${blob.url}`)
     return NextResponse.json({ logoUrl: blob.url })
   } catch (err) {
+    // Log the full error so Vercel runtime logs show the actual cause
+    // (auth, network, quota, malformed multipart). Without this the
+    // operator just sees "Upload failed" with no path to diagnosis.
+    console.error('[brand-asset-upload] put() failed:', {
+      workspaceId,
+      size: file.size,
+      type: file.type,
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
     return NextResponse.json(
       { error: `Upload failed: ${err instanceof Error ? err.message : 'unknown'}` },
       { status: 500 },

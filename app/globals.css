@@ -508,3 +508,32 @@ body {
 /* Ring / focus */
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .ring-zinc-800 { --tw-ring-color: var(--border) !important; }
 :root:not([data-theme="midnight"]):not([data-theme="dim"]):not([data-theme="sunset"]) .focus\:border-zinc-500:focus { border-color: #78716c !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Pointer cursor on interactive elements
+   ═══════════════════════════════════════════════════════════════════════
+   Tailwind v4 / modern CSS resets leave <button> with cursor:default by
+   default, which makes flat-styled UIs feel unclickable. Force pointer
+   on every interactive element so the wizard, integrations, and brand
+   pickers all read as obviously clickable.
+   :disabled / [aria-disabled] still get the not-allowed treatment.
+*/
+button:not(:disabled):not([aria-disabled="true"]),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+label[for],
+summary,
+select:not(:disabled),
+input[type="file"]:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+input[type="color"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="reset"]:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}

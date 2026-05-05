@@ -194,7 +194,26 @@ export default function NewFunnelWizard() {
       const form = new FormData()
       form.append('file', file)
       const r = await fetch(`/api/workspaces/${workspaceId}/funnels/brand-asset-upload`, { method: 'POST', body: form })
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Upload failed')
+      if (!r.ok) {
+        // Read the body as text once so we can surface either parsed
+        // JSON `error` fields OR the raw HTML/text Vercel returns when
+        // a serverless function 500s (e.g. missing BLOB token). Without
+        // this the operator just sees "Upload failed" and has to read
+        // logs to find out why.
+        const raw = await r.text().catch(() => '')
+        let detail = `HTTP ${r.status}`
+        try {
+          const json = JSON.parse(raw)
+          if (json?.error) detail = json.error
+          else if (json?.message) detail = json.message
+        } catch {
+          // Strip HTML tags + truncate so a Vercel error page renders cleanly.
+          const stripped = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+          if (stripped) detail = stripped.slice(0, 240)
+        }
+        console.error('[brand upload] failed:', r.status, raw.slice(0, 500))
+        throw new Error(`Logo upload failed (${detail})`)
+      }
       const { logoUrl } = (await r.json()) as { logoUrl: string }
       setLogoUrl(logoUrl)
       // Sample dominant non-grey colours from the logo via canvas.
