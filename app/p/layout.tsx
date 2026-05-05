@@ -24,11 +24,11 @@ const inter = Inter({
 const fraunces = Fraunces({
   variable: '--font-fraunces',
   subsets: ['latin'],
-  // 'opsz' is Fraunces' optical-sizing axis — letting it auto-size by
-  // viewport gives big display headlines real warmth instead of looking
-  // like a stretched body face.
+  // Loaded as a fully-variable font (no explicit weight array) so CSS
+  // can pick any weight 100–900 at use site, AND so we can opt into
+  // the 'opsz' (optical sizing) and 'SOFT' axes — next/font requires
+  // weight to be unset/'variable' before `axes` is allowed.
   axes: ['opsz', 'SOFT'],
-  weight: ['400', '500', '600', '700', '900'],
   display: 'swap',
 })
 
