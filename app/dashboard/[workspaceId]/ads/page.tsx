@@ -62,11 +62,16 @@ export default function AdsDashboardPage() {
     Promise.all([
       fetch(`/api/workspaces/${workspaceId}/ad-accounts`).then((r) => r.json()).catch(() => ({ meta: [], google: [] })),
       fetch(`/api/workspaces/${workspaceId}/ad-drafts/meta`).then((r) => r.json()).catch(() => ({ drafts: [] })),
+      fetch(`/api/workspaces/${workspaceId}/ad-drafts/google`).then((r) => r.json()).catch(() => ({ drafts: [] })),
     ])
-      .then(([accounts, draftsRes]) => {
+      .then(([accounts, metaDrafts, googleDrafts]) => {
         setMeta(accounts.meta || [])
         setGoogle(accounts.google || [])
-        setDrafts(draftsRes.drafts || [])
+        // Combine + sort by createdAt desc so newest from either platform
+        // surfaces first.
+        const combined: DraftRow[] = [...(metaDrafts.drafts || []), ...(googleDrafts.drafts || [])]
+        combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        setDrafts(combined)
       })
       .finally(() => setLoading(false))
   }, [workspaceId])

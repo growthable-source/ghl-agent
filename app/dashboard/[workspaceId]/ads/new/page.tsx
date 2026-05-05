@@ -46,12 +46,24 @@ const inputStyle: CSSProperties = {
   color: 'var(--input-text)',
 }
 
-const OBJECTIVES: { value: string; label: string; description: string }[] = [
+const META_OBJECTIVES: { value: string; label: string; description: string }[] = [
   { value: 'OUTCOME_LEADS', label: 'Leads', description: 'Maximise lead-form completions or offsite conversions' },
   { value: 'OUTCOME_SALES', label: 'Sales', description: 'Optimise for purchases tracked via your Pixel' },
   { value: 'OUTCOME_TRAFFIC', label: 'Traffic', description: 'Pure link clicks — best when no Pixel events exist yet' },
   { value: 'OUTCOME_AWARENESS', label: 'Awareness', description: 'Reach + brand lift; not for direct response' },
   { value: 'OUTCOME_ENGAGEMENT', label: 'Engagement', description: 'Comments, shares, post engagement' },
+]
+const GOOGLE_OBJECTIVES: { value: string; label: string; description: string }[] = [
+  { value: 'LEADS', label: 'Leads', description: 'Form fills, calls, sign-ups — most B2B and service businesses' },
+  { value: 'SALES', label: 'Sales', description: 'Purchases tracked via Google Ads conversion actions' },
+  { value: 'WEBSITE_TRAFFIC', label: 'Traffic', description: 'Clicks to your site' },
+  { value: 'BRAND_AWARENESS', label: 'Awareness', description: 'Display + YouTube reach campaigns' },
+]
+const GOOGLE_CAMPAIGN_TYPES: { value: string; label: string }[] = [
+  { value: 'SEARCH', label: 'Search — text ads on Google search results' },
+  { value: 'PERFORMANCE_MAX', label: 'Performance Max — automated cross-channel' },
+  { value: 'DISPLAY', label: 'Display — banner ads on the GDN' },
+  { value: 'VIDEO', label: 'Video — YouTube ads' },
 ]
 
 export default function NewAdCampaignPage() {
@@ -81,6 +93,12 @@ export default function NewAdCampaignPage() {
   const [ageMin, setAgeMin] = useState('25')
   const [ageMax, setAgeMax] = useState('65')
 
+  // Google-specific extras (only used when platform === 'google')
+  const [googleCampaignType, setGoogleCampaignType] = useState<'SEARCH' | 'PERFORMANCE_MAX' | 'DISPLAY' | 'VIDEO'>('SEARCH')
+  const [googleConversionAction, setGoogleConversionAction] = useState('')
+  const [googleTargetCpa, setGoogleTargetCpa] = useState('')
+  const [googleTargetRoas, setGoogleTargetRoas] = useState('')
+
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -108,6 +126,17 @@ export default function NewAdCampaignPage() {
     if (f.name && !productOffer) setProductOffer(f.name)
   }, [funnelCampaignId, funnels, productOffer])
 
+  // Reset objective default when platform flips so the operator never
+  // sees a Meta-shaped objective on the Google form (or vice versa).
+  useEffect(() => {
+    if (platform === 'meta' && !META_OBJECTIVES.find((o) => o.value === objective)) {
+      setObjective('OUTCOME_LEADS')
+    }
+    if (platform === 'google' && !GOOGLE_OBJECTIVES.find((o) => o.value === objective)) {
+      setObjective('LEADS')
+    }
+  }, [platform, objective])
+
   const activeMeta = meta.filter((a) => a.isActive)
   const activeGoogle = google.filter((a) => a.isActive)
   const noAccounts = activeMeta.length === 0 && activeGoogle.length === 0
@@ -124,27 +153,40 @@ export default function NewAdCampaignPage() {
     setGenerating(true)
     setError(null)
     try {
-      if (platform === 'google') {
-        // Phase 7d will wire this. Surface a clear 501 instead of a
-        // mysterious 404.
-        throw new Error('Google Ads campaign generation lands in Phase 7d. For now use Meta or generate the brief and we’ll wire Google next.')
-      }
       const dailyBudgetCents = Math.round(parseFloat(dailyBudget) * 100)
       const countryList = countries.split(/[,\s]+/).map((c) => c.trim().toUpperCase()).filter(Boolean)
-      const body = {
+      const sharedBody = {
         business_name: businessName.trim(),
         product_offer: productOffer.trim(),
         dream_outcome: dreamOutcome.trim(),
         audience_description: audience.trim(),
         destination_url: destinationUrl.trim(),
         daily_budget_cents: dailyBudgetCents,
-        objective,
         countries: countryList.length ? countryList : ['US'],
-        age_min: parseInt(ageMin, 10) || 18,
-        age_max: parseInt(ageMax, 10) || 65,
         ...(funnelCampaignId ? { campaignId: funnelCampaignId } : {}),
       }
-      const r = await fetch(`/api/workspaces/${workspaceId}/ad-drafts/meta`, {
+      let url: string
+      let body: Record<string, unknown>
+      if (platform === 'meta') {
+        url = `/api/workspaces/${workspaceId}/ad-drafts/meta`
+        body = {
+          ...sharedBody,
+          objective,
+          age_min: parseInt(ageMin, 10) || 18,
+          age_max: parseInt(ageMax, 10) || 65,
+        }
+      } else {
+        url = `/api/workspaces/${workspaceId}/ad-drafts/google`
+        body = {
+          ...sharedBody,
+          objective,
+          campaign_type: googleCampaignType,
+          ...(googleConversionAction.trim() ? { conversion_action: googleConversionAction.trim() } : {}),
+          ...(googleTargetCpa ? { target_cpa_cents: Math.round(parseFloat(googleTargetCpa) * 100) } : {}),
+          ...(googleTargetRoas ? { target_roas: parseFloat(googleTargetRoas) } : {}),
+        }
+      }
+      const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -154,7 +196,7 @@ export default function NewAdCampaignPage() {
         throw new Error(err.detail || err.error || `HTTP ${r.status}`)
       }
       const { draft } = await r.json()
-      router.push(`/dashboard/${workspaceId}/ads/drafts/${draft.id}`)
+      router.push(`/dashboard/${workspaceId}/ads/drafts/${draft.id}?platform=${platform}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Generation failed')
     } finally {
@@ -319,20 +361,52 @@ export default function NewAdCampaignPage() {
               <div>
                 <label className="block text-xs mb-1.5" style={{ color: 'var(--text-secondary)' }}>Objective</label>
                 <select value={objective} onChange={(e) => setObjective(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm" style={inputStyle}>
-                  {OBJECTIVES.map((o) => (
+                  {(platform === 'meta' ? META_OBJECTIVES : GOOGLE_OBJECTIVES).map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
                 <p className="mt-1 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-                  {OBJECTIVES.find((o) => o.value === objective)?.description}
+                  {(platform === 'meta' ? META_OBJECTIVES : GOOGLE_OBJECTIVES).find((o) => o.value === objective)?.description}
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Countries (comma-separated)" value={countries} onChange={setCountries} placeholder="US, AU" />
-              <Field label="Age min" value={ageMin} onChange={setAgeMin} type="number" />
-              <Field label="Age max" value={ageMax} onChange={setAgeMax} type="number" />
-            </div>
+            {platform === 'meta' ? (
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Countries (comma-separated)" value={countries} onChange={setCountries} placeholder="US, AU" />
+                <Field label="Age min" value={ageMin} onChange={setAgeMin} type="number" />
+                <Field label="Age max" value={ageMax} onChange={setAgeMax} type="number" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Countries (comma-separated)" value={countries} onChange={setCountries} placeholder="US, AU" />
+                  <div>
+                    <label className="block text-xs mb-1.5" style={{ color: 'var(--text-secondary)' }}>Campaign type</label>
+                    <select
+                      value={googleCampaignType}
+                      onChange={(e) => setGoogleCampaignType(e.target.value as typeof googleCampaignType)}
+                      className="w-full rounded-lg px-3 py-2 text-sm"
+                      style={inputStyle}
+                    >
+                      {GOOGLE_CAMPAIGN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field
+                    label="Conversion action"
+                    value={googleConversionAction}
+                    onChange={setGoogleConversionAction}
+                    placeholder="customers/123/conversionActions/456"
+                  />
+                  <Field label="Target CPA ($)" value={googleTargetCpa} onChange={setGoogleTargetCpa} type="number" placeholder="optional" />
+                  <Field label="Target ROAS" value={googleTargetRoas} onChange={setGoogleTargetRoas} type="number" placeholder="e.g. 3.5" />
+                </div>
+                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                  Conversion action is required for Smart Bidding (TARGET_CPA / TARGET_ROAS / Performance Max). Without it the AI falls back to MAXIMIZE_CONVERSIONS and surfaces a warning.
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex justify-between">
