@@ -31,14 +31,25 @@ import { PrismaClient } from '@prisma/client'
 const MIGRATIONS_DIR = 'prisma/migrations'
 
 async function main() {
-  // Vercel's build sandbox doesn't always expose runtime env vars unless
-  // the operator ticked "Build" on the variable. Without DATABASE_URL we
-  // literally can't connect, so skip cleanly — the build will still
-  // produce a working app and migrations can run on the next deploy
-  // (or be applied manually). Exiting 0 here keeps the build green.
-  if (!process.env.DATABASE_URL) {
-    console.warn('[migrate] ⚠ DATABASE_URL not set — skipping migrations. If you expected this to run, check your Vercel env vars have the "Build" scope enabled.')
-    process.exit(0)
+  // Vercel's build sandbox only exposes env vars whose "Build" scope is
+  // ticked. If DATABASE_URL is missing we can't migrate — and we MUST
+  // NOT ship Prisma-client code that doesn't match the live schema.
+  // Bias toward a loud failure here: a red Vercel deploy is far better
+  // than a silent shipping of code with `column does not exist` errors
+  // at runtime.
+  //
+  // Override for legitimate "we know the DB isn't reachable from build
+  // and migrations will be applied separately" cases:
+  //   PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true
+  if (!process.env.DATABASE_URL && !process.env.POSTGRES_PRISMA_URL && !process.env.POSTGRES_URL) {
+    if (process.env.PRISMA_MIGRATE_SKIP_IF_UNREACHABLE === 'true') {
+      console.warn('[migrate] ⚠ DATABASE_URL unset; PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true → exiting 0.')
+      process.exit(0)
+    }
+    console.error('[migrate] ✗ FATAL: DATABASE_URL / POSTGRES_PRISMA_URL / POSTGRES_URL all unset.')
+    console.error('[migrate]   On Vercel, tick the "Build" scope on the variable in Project → Settings → Environment Variables.')
+    console.error('[migrate]   To intentionally skip (e.g. the DB really isn\'t reachable from build), set PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true.')
+    process.exit(1)
   }
 
   const db = new PrismaClient()
@@ -55,9 +66,14 @@ async function main() {
       const msg = String(err?.message ?? err)
       const isConnection = /P1001|P1002|ECONNREFUSED|ENOTFOUND|connect\s+timeout/i.test(msg)
       if (isConnection) {
-        console.error('[migrate] ⚠ Cannot reach database at build time:', msg)
-        console.error('[migrate] Build will continue; run migrations manually once the DB is reachable.')
-        process.exit(0)
+        if (process.env.PRISMA_MIGRATE_SKIP_IF_UNREACHABLE === 'true') {
+          console.warn('[migrate] ⚠ Cannot reach DB; PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true → exiting 0.', msg)
+          process.exit(0)
+        }
+        console.error('[migrate] ✗ FATAL: Cannot reach database at build time:', msg)
+        console.error('[migrate]   The Prisma client about to ship will produce runtime errors against the unmigrated schema.')
+        console.error('[migrate]   To intentionally skip, set PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true.')
+        process.exit(1)
       }
       hasState = false
     }
@@ -83,12 +99,18 @@ async function main() {
 }
 
 main().catch(err => {
-  // Log the error clearly but let the build continue. A failed migration
-  // is better than a failed deploy that never ships the new code — the
-  // worst case is schema stays on the old version and prisma migrate
-  // runs on the next deploy or manual invocation.
+  // Migration failures FAIL THE BUILD. Previous behaviour (exit 0) led
+  // to silent prod outages where Prisma client shipped expecting columns
+  // the live DB didn't have. A red Vercel deploy is the right signal.
+  //
+  // Override only if you know the migration is intentionally skipped:
+  //   PRISMA_MIGRATE_FAIL_OPEN=true
   console.error('[migrate] ✗ Migration step failed:')
   console.error(err?.message ?? err)
-  console.error('[migrate] Build will continue. Re-run `npm run db:migrate:deploy` manually or check your DATABASE_URL.')
-  process.exit(0)
+  if (process.env.PRISMA_MIGRATE_FAIL_OPEN === 'true') {
+    console.error('[migrate] PRISMA_MIGRATE_FAIL_OPEN=true → exiting 0 anyway. Be careful.')
+    process.exit(0)
+  }
+  console.error('[migrate] Failing the build. Run `npm run db:migrate:deploy` from a machine that can reach the DB, or set PRISMA_MIGRATE_FAIL_OPEN=true to deploy anyway.')
+  process.exit(1)
 })
