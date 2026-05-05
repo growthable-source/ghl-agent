@@ -2,127 +2,142 @@
 /**
  * Vercel-build wrapper for Prisma migrations.
  *
- * This solves the "DB already has schema but `_prisma_migrations` table
- * doesn't exist yet" problem that bites every team the first time they
- * switch to `prisma migrate`. Flow:
+ * Uses raw pg (NOT @prisma/client) for the precheck queries — Prisma 7
+ * requires a driver-adapter on construction (`new PrismaClient({ adapter })`)
+ * and the script doesn't need Prisma's query layer for SELECTs against
+ * `_prisma_migrations`. Keeping it on raw pg also means a busted Prisma
+ * client install can't break the migrate step.
  *
- *   1. If `_prisma_migrations` doesn't exist, the DB was built by hand
- *      (our old manual_*.sql workflow). Create the table and mark every
- *      migration folder in prisma/migrations/ as `applied` so Prisma
- *      treats them as historical. This runs once.
- *   2. `npx prisma migrate deploy` — applies any NEW migrations in
- *      prisma/migrations/ that aren't yet in `_prisma_migrations`.
- *      On subsequent deploys this is the only thing that runs (the
- *      baseline step short-circuits).
+ * Flow:
+ *   1. Probe `_prisma_migrations` with raw pg.
+ *   2. If the table doesn't exist, mark every migration in the
+ *      filesystem as applied (one-time baseline).
+ *   3. Diff filesystem vs `_prisma_migrations`. If everything is
+ *      already applied, skip `npx prisma migrate deploy` entirely —
+ *      avoids transient prisma-side failures (drift checks, checksum
+ *      mismatches) when migrations were applied out-of-band via SQL.
+ *   4. Otherwise call `npx prisma migrate deploy`.
  *
- * After the first deploy, adding schema changes is the standard
- * Prisma flow: `npx prisma migrate dev --name description` locally
- * creates a new migration folder, commit it, Vercel applies it on
- * the next deploy.
+ * Failure modes that fail the build (exit 1):
+ *   - DATABASE_URL/POSTGRES_PRISMA_URL/POSTGRES_URL all unset
+ *   - Cannot reach DB at build time
+ *   - prisma migrate deploy fails (when it actually had work to do)
  *
- * Called from package.json build: "build": "node scripts/prisma-migrate.mjs && next build"
+ * Override env vars:
+ *   PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true → exit 0 if DB unreachable
+ *   PRISMA_MIGRATE_FAIL_OPEN=true            → exit 0 even if migrate fails
  */
 
 import { execSync } from 'node:child_process'
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { PrismaClient } from '@prisma/client'
+import pg from 'pg'
 
 const MIGRATIONS_DIR = 'prisma/migrations'
 
+function pickConnectionString() {
+  return (
+    process.env.POSTGRES_PRISMA_URL ??
+    process.env.POSTGRES_URL ??
+    process.env.DATABASE_URL ??
+    null
+  )
+}
+
 async function main() {
-  // Vercel's build sandbox only exposes env vars whose "Build" scope is
-  // ticked. If DATABASE_URL is missing we can't migrate — and we MUST
-  // NOT ship Prisma-client code that doesn't match the live schema.
-  // Bias toward a loud failure here: a red Vercel deploy is far better
-  // than a silent shipping of code with `column does not exist` errors
-  // at runtime.
-  //
-  // Override for legitimate "we know the DB isn't reachable from build
-  // and migrations will be applied separately" cases:
-  //   PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true
-  if (!process.env.DATABASE_URL && !process.env.POSTGRES_PRISMA_URL && !process.env.POSTGRES_URL) {
+  const connectionString = pickConnectionString()
+
+  if (!connectionString) {
     if (process.env.PRISMA_MIGRATE_SKIP_IF_UNREACHABLE === 'true') {
-      console.warn('[migrate] ⚠ DATABASE_URL unset; PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true → exiting 0.')
+      console.warn('[migrate] ⚠ No DB URL set; PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true → exiting 0.')
       process.exit(0)
     }
     console.error('[migrate] ✗ FATAL: DATABASE_URL / POSTGRES_PRISMA_URL / POSTGRES_URL all unset.')
     console.error('[migrate]   On Vercel, tick the "Build" scope on the variable in Project → Settings → Environment Variables.')
-    console.error('[migrate]   To intentionally skip (e.g. the DB really isn\'t reachable from build), set PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true.')
+    console.error('[migrate]   To intentionally skip, set PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true.')
     process.exit(1)
   }
 
-  const db = new PrismaClient()
+  const pool = new pg.Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+    // Cap at 1 connection — we make a couple of one-off queries then exit.
+    max: 1,
+    connectionTimeoutMillis: 15_000,
+  })
+
+  let hasState = false
   try {
-    // Probe for Prisma's internal state table. Any error (including
-    // "relation does not exist") means first-time setup.
-    let hasState = false
-    try {
-      await db.$queryRawUnsafe(`SELECT 1 FROM "_prisma_migrations" LIMIT 1`)
-      hasState = true
-    } catch (err) {
-      // Differentiate "table doesn't exist" (expected) from "can't reach
-      // the DB at all" (bad — fail fast so the operator sees it).
-      const msg = String(err?.message ?? err)
-      const isConnection = /P1001|P1002|ECONNREFUSED|ENOTFOUND|connect\s+timeout/i.test(msg)
-      if (isConnection) {
-        if (process.env.PRISMA_MIGRATE_SKIP_IF_UNREACHABLE === 'true') {
-          console.warn('[migrate] ⚠ Cannot reach DB; PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true → exiting 0.', msg)
-          process.exit(0)
-        }
-        console.error('[migrate] ✗ FATAL: Cannot reach database at build time:', msg)
-        console.error('[migrate]   The Prisma client about to ship will produce runtime errors against the unmigrated schema.')
-        console.error('[migrate]   To intentionally skip, set PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true.')
-        process.exit(1)
+    await pool.query(`SELECT 1 FROM "_prisma_migrations" LIMIT 1`)
+    hasState = true
+  } catch (err) {
+    const msg = String(err?.message ?? err)
+    const isMissingTable = /relation .*"_prisma_migrations".* does not exist|undefined_table|42P01/i.test(msg)
+    const isConnection = /ECONNREFUSED|ENOTFOUND|connect\s+timeout|getaddrinfo|EHOSTUNREACH|connection terminated/i.test(msg)
+    if (isConnection) {
+      if (process.env.PRISMA_MIGRATE_SKIP_IF_UNREACHABLE === 'true') {
+        console.warn('[migrate] ⚠ Cannot reach DB; PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true → exiting 0.', msg)
+        await pool.end().catch(() => {})
+        process.exit(0)
       }
-      hasState = false
+      console.error('[migrate] ✗ FATAL: Cannot reach database at build time:', msg)
+      console.error('[migrate]   To intentionally skip, set PRISMA_MIGRATE_SKIP_IF_UNREACHABLE=true.')
+      await pool.end().catch(() => {})
+      process.exit(1)
     }
-
-    if (!hasState) {
-      console.log('[migrate] First run — initialising Prisma migration state against existing schema.')
-      const names = readdirSync(MIGRATIONS_DIR)
-        .filter(n => statSync(join(MIGRATIONS_DIR, n)).isDirectory())
-        .sort()   // timestamp-prefixed names sort chronologically
-      console.log(`[migrate] Marking ${names.length} existing migration(s) as applied:`)
-      for (const name of names) {
-        console.log(`[migrate]   • ${name}`)
-        execSync(`npx prisma migrate resolve --applied "${name}"`, { stdio: 'inherit' })
-      }
+    if (!isMissingTable) {
+      // Re-throw anything that isn't a known "table doesn't exist yet"
+      // — there's nothing graceful we can do with an unexpected error.
+      await pool.end().catch(() => {})
+      throw err
     }
-
-    // Fast path: if every migration directory is already recorded as
-    // finished in `_prisma_migrations`, there's nothing to do — skip the
-    // npx call entirely. Avoids transient `migrate deploy` failures
-    // (drift checks, checksum issues) when the DB is already in sync,
-    // typically after an out-of-band manual SQL apply.
-    const dirNames = readdirSync(MIGRATIONS_DIR)
-      .filter(n => statSync(join(MIGRATIONS_DIR, n)).isDirectory())
-    const applied = await db.$queryRawUnsafe(
-      `SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`,
-    )
-    const appliedSet = new Set(applied.map(r => r.migration_name))
-    const pending = dirNames.filter(n => !appliedSet.has(n))
-
-    if (pending.length === 0) {
-      console.log(`[migrate] ✓ All ${dirNames.length} migrations already applied — skipping migrate deploy.`)
-    } else {
-      console.log(`[migrate] ${pending.length} pending migration(s): ${pending.join(', ')}`)
-      console.log('[migrate] Running prisma migrate deploy…')
-      execSync('npx prisma migrate deploy', { stdio: 'inherit' })
-      console.log('[migrate] ✓ Done.')
-    }
-  } finally {
-    await db.$disconnect().catch(() => {})
+    hasState = false
   }
+
+  if (!hasState) {
+    console.log('[migrate] First run — initialising Prisma migration state against existing schema.')
+    const names = readdirSync(MIGRATIONS_DIR)
+      .filter(n => statSync(join(MIGRATIONS_DIR, n)).isDirectory())
+      .sort()
+    console.log(`[migrate] Marking ${names.length} existing migration(s) as applied:`)
+    for (const name of names) {
+      console.log(`[migrate]   • ${name}`)
+      execSync(`npx prisma migrate resolve --applied "${name}"`, { stdio: 'inherit' })
+    }
+  }
+
+  // Fast-path skip when DB is in sync. Avoids the prisma-side migrate
+  // deploy call (and its drift / checksum checks) when there's nothing
+  // to actually deploy — typical state after an out-of-band manual SQL
+  // apply.
+  const dirNames = readdirSync(MIGRATIONS_DIR)
+    .filter(n => statSync(join(MIGRATIONS_DIR, n)).isDirectory())
+  let appliedRows
+  try {
+    appliedRows = (await pool.query(
+      `SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`,
+    )).rows
+  } catch (err) {
+    appliedRows = []
+    console.warn('[migrate] ⚠ Could not list applied migrations:', err?.message ?? err)
+  }
+  const appliedSet = new Set(appliedRows.map(r => r.migration_name))
+  const pending = dirNames.filter(n => !appliedSet.has(n))
+
+  await pool.end().catch(() => {})
+
+  if (pending.length === 0) {
+    console.log(`[migrate] ✓ All ${dirNames.length} migration(s) already applied — skipping migrate deploy.`)
+    return
+  }
+
+  console.log(`[migrate] ${pending.length} pending migration(s): ${pending.join(', ')}`)
+  console.log('[migrate] Running prisma migrate deploy…')
+  execSync('npx prisma migrate deploy', { stdio: 'inherit' })
+  console.log('[migrate] ✓ Done.')
 }
 
 main().catch(err => {
-  // Migration failures FAIL THE BUILD. Previous behaviour (exit 0) led
-  // to silent prod outages where Prisma client shipped expecting columns
-  // the live DB didn't have. A red Vercel deploy is the right signal.
-  //
-  // Override only if you know the migration is intentionally skipped:
-  //   PRISMA_MIGRATE_FAIL_OPEN=true
   console.error('[migrate] ✗ Migration step failed:')
   console.error(err?.message ?? err)
   if (process.env.PRISMA_MIGRATE_FAIL_OPEN === 'true') {
