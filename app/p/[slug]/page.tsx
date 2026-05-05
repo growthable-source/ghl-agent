@@ -84,7 +84,10 @@ export default async function PublicLandingPage({ params }: Params) {
   // back to the right campaign.
   const campaign = await db.campaign.findUnique({
     where: { landingPageId: page.id },
-    select: { id: true },
+    // logoUrl flows into the HeaderBlock as a fallback when the AI
+    // didn't bake one onto the section itself. Branded sites with no
+    // header logo look unfinished.
+    select: { id: true, logoUrl: true },
   })
 
   const spec = parsePageSpec(page.spec)
@@ -114,6 +117,13 @@ export default async function PublicLandingPage({ params }: Params) {
     }
   }
 
+  // Detect a form-in-hero layout. When the hero opted into that
+  // layout, we render the FormBlock inline INSIDE the hero (right
+  // column) and suppress the standalone form section between offer
+  // and footer — the form already exists above the fold.
+  const heroSection = sectionsBeforeForm.find((s) => s.type === 'hero')
+  const formInHero = heroSection?.type === 'hero' && heroSection.layout === 'form-in-hero'
+
   // Brand-color + font theming: derive a palette from spec.style and
   // expose it as CSS custom properties on the page wrapper. Every
   // <section> reads `var(--brand)` / `var(--brand-soft)` etc. instead
@@ -126,6 +136,21 @@ export default async function PublicLandingPage({ params }: Params) {
   })
   const bgStyle = buildPageBackgroundStyle(spec.style?.background)
   const images = spec.images
+  const fallbackLogoUrl = campaign?.logoUrl ?? null
+
+  // Pre-render the inline form so it can be passed into the hero as a
+  // ReactNode. Server-component + client-island compose cleanly here
+  // because FormBlock is a 'use client' island and we're handing the
+  // already-rendered JSX through a normal prop.
+  const inlineForm = formInHero ? (
+    <FormBlock
+      section={formSection ?? undefined}
+      schema={formSchema}
+      pageId={page.id}
+      campaignId={campaign?.id ?? null}
+      variant="inline"
+    />
+  ) : null
 
   return (
     <main
@@ -133,18 +158,33 @@ export default async function PublicLandingPage({ params }: Params) {
       style={{ scrollBehavior: 'smooth', ...themeStyle, ...bgStyle }}
     >
       {sectionsBeforeForm.map((section, i) => (
-        <SectionRenderer key={i} section={section} images={images} />
+        <SectionRenderer
+          key={i}
+          section={section}
+          images={images}
+          fallbackLogoUrl={fallbackLogoUrl}
+          inlineForm={section.type === 'hero' ? inlineForm : null}
+        />
       ))}
 
-      <FormBlock
-        section={formSection ?? undefined}
-        schema={formSchema}
-        pageId={page.id}
-        campaignId={campaign?.id ?? null}
-      />
+      {/* Standalone form between offer + footer. Skipped when the
+          hero already hosts the form (form-in-hero layout). */}
+      {!formInHero && (
+        <FormBlock
+          section={formSection ?? undefined}
+          schema={formSchema}
+          pageId={page.id}
+          campaignId={campaign?.id ?? null}
+        />
+      )}
 
       {sectionsAfterForm.map((section, i) => (
-        <SectionRenderer key={`a${i}`} section={section} images={images} />
+        <SectionRenderer
+          key={`a${i}`}
+          section={section}
+          images={images}
+          fallbackLogoUrl={fallbackLogoUrl}
+        />
       ))}
 
       {/* ─── Browser pixels — Meta + Google. Server-side conversions

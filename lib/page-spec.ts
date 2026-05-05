@@ -34,6 +34,9 @@ export interface FormSchema {
 export interface HeroSection {
   type: 'hero'
   eyebrow?: string
+  /** Headline. Supports the [accent]…[/accent] markup the renderer
+   *  parses into a script-font, brand-coloured span (Manus-style
+   *  emotional anchor like "Beauty Brand" set in red script). */
   headline: string
   subheadline?: string
   // VSL: video; lead-gen: image; either: skip
@@ -43,7 +46,37 @@ export interface HeroSection {
     | { kind: 'none' }
   cta_label?: string
   cta_target?: 'form' | 'video' | string
+  /** Secondary CTA — phone number with icon, alt link, or
+   *  "watch video". Renders alongside the primary CTA. */
+  secondary_cta?: {
+    label: string
+    href?: string
+    /** Visual style: 'phone' adds a phone icon + dark fill,
+     *  'ghost' is a transparent border button. */
+    kind?: 'phone' | 'ghost'
+  }
   trust_badges?: string[]
+  /** Layout hint — drives which Hero variant the renderer picks.
+   *  When omitted, auto-resolved by the page renderer based on
+   *  template + presence of media + form. */
+  layout?: 'gradient' | 'split-image' | 'image-bg' | 'form-in-hero'
+}
+
+/** Top navigation header (logo + nav links + primary CTA). AI auto-
+ *  emits this on lead-gen-style templates so pages don't look like
+ *  raw scrolljacks without a brand surround. */
+export interface HeaderSection {
+  type: 'header'
+  /** Optional override — defaults to the brand kit's logo URL.
+   *  When neither is set, falls back to business name as text. */
+  logo_url?: string
+  business_name?: string
+  /** 3-5 nav links. Anchor links to on-page sections (#proof,
+   *  #faq, #contact) or external. */
+  nav_links?: { label: string; href: string }[]
+  /** Header-right CTA — usually mirrors the hero CTA. */
+  cta_label?: string
+  cta_target?: 'form' | string
 }
 
 export interface ProblemSection {
@@ -137,6 +170,7 @@ export interface FooterSection {
 }
 
 export type PageSection =
+  | HeaderSection
   | HeroSection
   | ProblemSection
   | MechanismSection

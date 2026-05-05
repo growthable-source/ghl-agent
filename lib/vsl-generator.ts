@@ -68,35 +68,55 @@ export interface GeneratedPage {
   spec: PageSpec
 }
 
-const SYSTEM_PROMPT = `You are a senior direct-response copywriter who has written VSLs that have generated $100M+ across health, wealth, education, and B2B services.
+const SYSTEM_PROMPT = `You are a senior direct-response copywriter who has written landing pages that have generated $100M+ across health, wealth, education, and B2B services.
 
 You build pages that CONVERT. You know the structure cold:
 
-  1. HERO — Hook with the dream outcome, in a specific timeframe, with reduced effort. Subhead amplifies. Optional video for VSL pages.
-  2. PROBLEM — Agitate the pain. Name what they've tried that didn't work. Surface the specific frustrations.
-  3. MECHANISM — Reveal the new opportunity / your unique angle. This is what makes the offer different from everything else they've tried. Often a 3-step framework.
-  4. PROOF — Testimonials with names + roles, hard stats with units, brand logos. Concrete > vague.
-  5. OFFER — Stack of deliverables with named values. "Here's exactly what you get."
-  6. GUARANTEE — Reverse the risk. Money-back, results-based, or pay-only-if-it-works language.
-  7. URGENCY — Real reason for urgency (cohort closing, limited capacity, price increase). Avoid fake countdowns.
-  8. FAQ — 4–7 questions handling the top objections. Always include "How is this different from...?"
-  9. CTA — Final restatement of the offer with a clear button.
-  10. FOOTER — Business name, address (if shared), legal links, disclaimer.
+  1. HEADER — Logo (left), 3-5 nav links (center, anchor links to on-page sections like #proof / #faq / #contact), primary CTA button (right). ALWAYS emit on lead_gen, book_call, application templates. Skip on pure VSL pages where there should be NO escape from the video.
+  2. HERO — Hook with the dream outcome, in a specific timeframe, with reduced effort. Subhead amplifies. ALWAYS provide a primary CTA AND a secondary CTA (phone number for service businesses with kind:'phone', or 'Watch demo' / 'See features' for SaaS with kind:'ghost').
+  3. PROBLEM — Agitate the pain. Name what they've tried that didn't work. Surface the specific frustrations.
+  4. MECHANISM — Reveal the new opportunity / your unique angle. This is what makes the offer different from everything else they've tried. Often a 3-step framework.
+  5. PROOF — Testimonials with names + roles, hard stats with units, brand logos. Concrete > vague.
+  6. OFFER — Stack of deliverables with named values. "Here's exactly what you get."
+  7. GUARANTEE — Reverse the risk. Money-back, results-based, or pay-only-if-it-works language.
+  8. URGENCY — Real reason for urgency (cohort closing, limited capacity, price increase). Avoid fake countdowns.
+  9. FAQ — 4–7 questions handling the top objections. Always include "How is this different from...?"
+  10. CTA — Final restatement of the offer with a clear button.
+  11. FOOTER — Business name, address (if shared), legal links, disclaimer.
 
-Rules:
-- The HERO headline is the single most important sentence on the page. Specific outcome > vague benefit.
+HERO HEADLINE — the single most important sentence on the page.
+- Specific outcome > vague benefit. Numbers + timeframes win.
   Bad: "Transform your business"
   Good: "How Brisbane chiros add 12 new patients/month without spending a dollar on ads"
+- ACCENT MARKUP: wrap one short emotional/keyword phrase (1–4 words) in [accent]…[/accent]. The renderer renders it in a script font + brand color on its own visual line — emotional anchor for the headline.
+  Good: "Launch Your [accent]Beauty Brand[/accent] With Confidence"
+  Good: "Brisbane chiros [accent]worth driving for[/accent] — book a 15-min consult"
+  Use accents on lead_gen / consumer / service pages. Skip on technical/B2B SaaS where it reads cheesy.
+
+HERO LAYOUT — set hero.layout to one of:
+  • 'form-in-hero' — best for lead_gen / book_call / application. Form sits on the right of the hero. The standalone 'form' section marker is suppressed.
+  • 'image-bg' — full-bleed hero photo as background with overlay. Best for service businesses, restaurants, hospitality, anything where a real photograph IS the brand.
+  • 'split-image' — text-left, image-right card. Best for SaaS / product pages.
+  • 'gradient' — text-only on a brand-color gradient. Best for editorial, B2B SaaS, when no good imagery is available.
+  When omitted, the renderer auto-picks based on template + media presence. Set it explicitly when you have a strong opinion.
+
+SECONDARY CTA — alongside the primary:
+  • Service businesses: { kind: 'phone', label: '954-332-2000', href: 'tel:+19543322000' } — direct, high-intent.
+  • SaaS / B2B: { kind: 'ghost', label: 'Watch a 2-min demo', href: '#video' }.
+  • Always provide one — single-CTA heroes feel sparse.
+
+Other rules:
 - Avoid AI-tells: "unlock," "supercharge," "elevate," "in today's world," generic adjectives, em-dashes everywhere, three-item parallel sentences.
 - Headlines: 6–14 words, specific, concrete, ideally with a number.
 - Bullets in problem section: punchy, 5–10 words, present tense.
+- Trust badges (4-6): brand-color check icons render alongside. Each 2-4 words: "Made in USA", "60+ years experience", "No lab needed", "Low minimums".
 - Testimonials: 1–3 sentences, written like a person actually said it. NEVER invent the author's full name or company — use placeholder names like "Sarah K., chiropractor" rather than fabricating identities.
 - Stats: pair a number with a unit and a label. "$2.1M" / "Generated in pipeline".
 - Offer items: each has a label, optional description, optional dollar value.
 - Guarantee body: 2–3 sentences. State the exact terms.
 - FAQ answers: short paragraph, 2–4 sentences each.
-- DO NOT include section types beyond: hero, problem, mechanism, proof, offer, guarantee, urgency, faq, cta, form, footer.
-- Always include a "form" section as a marker right after the OFFER (the actual form is rendered by the platform — this is just a placement marker with optional headline/body).
+- ALLOWED section types: header, hero, problem, mechanism, proof, offer, guarantee, urgency, faq, cta, form, footer.
+- HEADER first when present, then HERO. Always include a "form" section as a marker right after the OFFER — even when hero.layout='form-in-hero', the marker is harmless (the renderer will suppress the standalone form when form-in-hero is set).
 - Match brand voice if specified. Default = friendly + authoritative.
 - Never invent specific URLs, phone numbers, addresses, or testimonial names with real identifiers. Use placeholders the operator will replace.
 
@@ -116,6 +136,7 @@ const TOOL_SCHEMA = {
           type: {
             type: 'string',
             enum: [
+              'header',
               'hero', 'problem', 'mechanism', 'proof', 'offer',
               'guarantee', 'urgency', 'faq', 'cta', 'form', 'footer',
             ],
@@ -124,6 +145,31 @@ const TOOL_SCHEMA = {
           headline: { type: 'string' },
           subheadline: { type: 'string' },
           cta_label: { type: 'string' },
+          cta_target: { type: 'string' },
+          secondary_cta: {
+            type: 'object',
+            description: 'Hero secondary CTA. kind=phone for service businesses, kind=ghost for SaaS demos.',
+            properties: {
+              label: { type: 'string' },
+              href: { type: 'string' },
+              kind: { type: 'string', enum: ['phone', 'ghost'] },
+            },
+            required: ['label'],
+          },
+          layout: {
+            type: 'string',
+            description: 'Hero layout hint. Use form-in-hero for lead_gen/book_call, image-bg for service businesses, split-image for SaaS, gradient for editorial.',
+            enum: ['gradient', 'split-image', 'image-bg', 'form-in-hero'],
+          },
+          nav_links: {
+            type: 'array',
+            description: 'Header section: 3-5 nav links (anchors to on-page sections like #proof, #faq, #contact).',
+            items: {
+              type: 'object',
+              properties: { label: { type: 'string' }, href: { type: 'string' } },
+              required: ['label', 'href'],
+            },
+          },
           trust_badges: { type: 'array', items: { type: 'string' } },
           body: { type: 'string' },
           bullets: { type: 'array', items: { type: 'string' } },
@@ -221,7 +267,48 @@ function normalizeSection(raw: RawSection): PageSection | null {
   const r = raw as Record<string, unknown>
 
   switch (r.type) {
-    case 'hero':
+    case 'header': {
+      const navLinks = arrayOrUndefined(r.nav_links, 6, (link) => {
+        if (!link || typeof link !== 'object') return null
+        const o = link as Record<string, unknown>
+        const label = toStr(o.label, 30)
+        const href = toStr(o.href, 200)
+        if (!label || !href) return null
+        return { label, href }
+      })
+      return {
+        type: 'header',
+        logo_url: r.logo_url ? toStr(r.logo_url) : undefined,
+        business_name: r.business_name ? toStr(r.business_name, 60) : undefined,
+        nav_links: navLinks,
+        cta_label: r.cta_label ? toStr(r.cta_label, 40) : undefined,
+        cta_target: r.cta_target ? toStr(r.cta_target) : 'form',
+      }
+    }
+    case 'hero': {
+      // Secondary CTA — only emit when both label and a sensible kind
+      // are present. Defaults href to a tel: scheme when kind=phone
+      // and the operator gave a numeric label without an explicit href.
+      let secondaryCta: { label: string; href?: string; kind?: 'phone' | 'ghost' } | undefined
+      if (r.secondary_cta && typeof r.secondary_cta === 'object') {
+        const sc = r.secondary_cta as Record<string, unknown>
+        const label = toStr(sc.label, 60)
+        if (label) {
+          const kind = sc.kind === 'phone' || sc.kind === 'ghost' ? sc.kind : undefined
+          let href = sc.href ? toStr(sc.href) : undefined
+          if (!href && kind === 'phone') {
+            // Best-effort tel: link from a numeric-looking label.
+            const digits = label.replace(/[^\d+]/g, '')
+            if (digits.length >= 7) href = `tel:${digits}`
+          }
+          secondaryCta = { label, ...(href ? { href } : {}), ...(kind ? { kind } : {}) }
+        }
+      }
+      const layout = (() => {
+        const v = typeof r.layout === 'string' ? r.layout.trim() : ''
+        if (v === 'gradient' || v === 'split-image' || v === 'image-bg' || v === 'form-in-hero') return v
+        return undefined
+      })()
       return {
         type: 'hero',
         eyebrow: r.eyebrow ? toStr(r.eyebrow, 60) : undefined,
@@ -229,9 +316,12 @@ function normalizeSection(raw: RawSection): PageSection | null {
         subheadline: r.subheadline ? toStr(r.subheadline) : undefined,
         cta_label: toStr(r.cta_label) || 'Get instant access',
         cta_target: 'form',
-        trust_badges: arrayOrUndefined(r.trust_badges, 5, (b) => toStr(b, 60) || null),
+        secondary_cta: secondaryCta,
+        layout,
+        trust_badges: arrayOrUndefined(r.trust_badges, 6, (b) => toStr(b, 60) || null),
         media: { kind: 'none' },
       }
+    }
     case 'problem':
       return {
         type: 'problem',
@@ -516,6 +606,20 @@ export async function generateVslPage(input: {
       cta_label: 'Get instant access',
       cta_target: 'form',
       media: { kind: 'none' },
+    })
+  }
+  // Auto-emit a header on lead-gen-style templates so pages get the
+  // brand surround Manus / Stripe / Linear all use. Keeps the page
+  // from looking like a raw scrolljack. Skip on pure VSL where the
+  // operator wants no escape from the video.
+  if (!haveTypes.has('header') && template !== 'vsl') {
+    sections.unshift({
+      type: 'header',
+      logo_url: input.brand_kit?.logo_url ?? undefined,
+      business_name: input.intake.business_name,
+      nav_links: undefined,
+      cta_label: 'Get started',
+      cta_target: 'form',
     })
   }
   if (!haveTypes.has('form')) {

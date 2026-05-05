@@ -58,9 +58,15 @@ export interface FormBlockProps {
   schema: FormSchema
   pageId: string
   campaignId: string | null
+  /** 'standalone' = full-width section with its own padding + section
+   *  background (default behaviour, used when the form gets its own
+   *  scroll target between offer + footer). 'inline' = compact card
+   *  with no section padding, suitable for embedding INSIDE the hero's
+   *  right column (form-in-hero layout). */
+  variant?: 'standalone' | 'inline'
 }
 
-export function FormBlock({ section, schema, pageId, campaignId }: FormBlockProps) {
+export function FormBlock({ section, schema, pageId, campaignId, variant = 'standalone' }: FormBlockProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -140,35 +146,45 @@ export function FormBlock({ section, schema, pageId, campaignId }: FormBlockProp
     }
   }
 
+  // Inline variant skips the outer section wrapper + section padding
+  // so the form sits directly inside the hero's right column. The
+  // id="form" anchor is preserved on the inner card so scroll-to-form
+  // still works regardless of layout. Standalone variant gets the
+  // section + bg treatment we've always shipped.
+  const isInline = variant === 'inline'
+
   if (submitted) {
-    return (
-      <section id="form" className="px-4 py-20 md:py-28">
-        <div className="mx-auto max-w-md rounded-3xl border bg-white p-10 text-center"
-          style={{
-            borderColor: 'rgba(0,0,0,0.06)',
-            boxShadow: '0 30px 60px -25px rgba(0,0,0,0.18), 0 0 0 1px var(--brand-soft, rgba(10,132,255,0.12)) inset',
-          }}>
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full"
-            style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))' }}>
-            <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-              style={{ color: 'var(--brand, #0A84FF)' }}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <div className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--page-font-display, inherit)' }}>
-            {schema.success_headline ?? "You're in."}
-          </div>
-          <p className="mt-3 text-base" style={{ color: 'rgba(0,0,0,0.65)' }}>
-            {schema.success_body ?? "We'll be in touch shortly."}
-          </p>
+    const SuccessCard = (
+      <div
+        id="form"
+        className={`rounded-3xl border bg-white text-center ${isInline ? 'p-7 md:p-9' : 'mx-auto max-w-md p-10'}`}
+        style={{
+          borderColor: 'rgba(0,0,0,0.06)',
+          boxShadow: '0 30px 60px -25px rgba(0,0,0,0.18), 0 0 0 1px var(--brand-soft, rgba(10,132,255,0.12)) inset',
+        }}
+      >
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full"
+          style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))' }}>
+          <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+            style={{ color: 'var(--brand, #0A84FF)' }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
         </div>
-      </section>
+        <div className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--page-font-display, inherit)' }}>
+          {schema.success_headline ?? "You're in."}
+        </div>
+        <p className="mt-3 text-base" style={{ color: 'rgba(0,0,0,0.65)' }}>
+          {schema.success_body ?? "We'll be in touch shortly."}
+        </p>
+      </div>
     )
+    return isInline ? SuccessCard : <section className="px-4 py-20 md:py-28">{SuccessCard}</section>
   }
 
-  return (
-    <section id="form" className="px-4 py-20 md:py-28" style={{ background: '#fafafa' }}>
-      <div className="mx-auto max-w-md rounded-3xl border bg-white p-7 md:p-9"
+  const Card = (
+    <div
+      id={isInline ? 'form' : undefined}
+      className={`rounded-3xl border bg-white p-7 md:p-9 ${isInline ? '' : 'mx-auto max-w-md'}`}
         style={{
           borderColor: 'rgba(0,0,0,0.06)',
           boxShadow: '0 30px 60px -25px rgba(0,0,0,0.18), 0 0 0 1px var(--brand-soft, rgba(10,132,255,0.12)) inset',
@@ -261,6 +277,12 @@ export function FormBlock({ section, schema, pageId, campaignId }: FormBlockProp
           )}
         </form>
       </div>
-    </section>
   )
+  return isInline
+    ? Card
+    : (
+      <section id="form" className="px-4 py-20 md:py-28" style={{ background: '#fafafa' }}>
+        {Card}
+      </section>
+    )
 }

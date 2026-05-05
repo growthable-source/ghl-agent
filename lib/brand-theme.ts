@@ -106,6 +106,9 @@ export function buildPageThemeStyle(args: {
     // Fonts (next/font variables resolve to a real font-family stack)
     ['--page-font-body' as string]: body,
     ['--page-font-display' as string]: display,
+    // Always-available script face for [accent]…[/accent] hero markup.
+    // Falls back to Brush Script if next/font hasn't loaded.
+    ['--page-font-script' as string]: 'var(--font-allura), "Brush Script MT", cursive',
     // Body font on the wrapper itself; display font is opt-in per-element
     fontFamily: body,
   }

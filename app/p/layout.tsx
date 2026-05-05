@@ -12,7 +12,7 @@
  * lead-gen page tints every brand the same way.
  */
 
-import { Inter, Fraunces, Plus_Jakarta_Sans } from 'next/font/google'
+import { Inter, Fraunces, Plus_Jakarta_Sans, Allura } from 'next/font/google'
 
 const inter = Inter({
   variable: '--font-inter',
@@ -39,9 +39,20 @@ const jakarta = Plus_Jakarta_Sans({
   display: 'swap',
 })
 
+// Allura — formal script face used for hero-headline [accent]…[/accent]
+// markup (the Manus-style emotional anchor like "Beauty Brand" set in
+// red script). Single weight is enough — script faces aren't varied
+// across the page.
+const allura = Allura({
+  variable: '--font-allura',
+  subsets: ['latin'],
+  weight: ['400'],
+  display: 'swap',
+})
+
 export default function PublicLandingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${inter.variable} ${fraunces.variable} ${jakarta.variable}`}>
+    <div className={`${inter.variable} ${fraunces.variable} ${jakarta.variable} ${allura.variable}`}>
       {children}
     </div>
   )
