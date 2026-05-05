@@ -202,6 +202,14 @@ function SidebarBody() {
                   </svg>,
                 )}
                 {navItemPrimary(
+                  `/dashboard/${workspaceId}/ads`,
+                  'Ads',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M3 11l18-8v18l-18-8z" />
+                    <path d="M11.6 16.8L13 21" />
+                  </svg>,
+                )}
+                {navItemPrimary(
                   `/dashboard/${workspaceId}/channels`,
                   'Channels',
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
