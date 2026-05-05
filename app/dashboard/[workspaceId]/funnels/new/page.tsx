@@ -282,6 +282,10 @@ export default function NewFunnelWizard() {
   }
 
   // Step 1 — Brand (new)
+  // 'gradient' is the better default: most landing pages look better
+  // with a Stripe-style gradient + huge typography hero than with
+  // mediocre AI photography. AI photo is opt-in, ~$0.06/page extra.
+  const [heroStyle, setHeroStyle] = useState<'gradient' | 'ai_photo'>('gradient')
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [logoUploading, setLogoUploading] = useState(false)
   const [referenceUrl, setReferenceUrl] = useState('')
@@ -406,9 +410,11 @@ export default function NewFunnelWizard() {
         body: JSON.stringify({
           intake,
           primary_color: primaryColor,
+          hero_style: heroStyle,
           // Brand kit forwarded to the generator so Claude reads the
-          // brand guide + vision analysis for voice/tone, and Gemini
-          // can reference the logo AND screenshot in image prompts.
+          // brand guide + vision analysis for voice/tone, and image
+          // gen (Replicate Flux or Gemini) can reference the logo
+          // AND screenshot in prompts.
           brand_kit: {
             logo_url: logoUrl,
             brand_guide_text: brandGuideText.trim() || null,
@@ -700,6 +706,48 @@ export default function NewFunnelWizard() {
               <div className="flex items-center gap-2">
                 <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-12 rounded-lg" style={inputStyle} />
                 <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className={inputCls} style={inputStyle} />
+              </div>
+            </Field>
+
+            <Field
+              label="Hero style"
+              hint="Gradient is usually the better choice — Stripe/Linear-style typography on a brand-color backdrop. AI photo costs ~$0.06 extra and works best for service/consumer brands where a real-feeling photo matters."
+            >
+              <div className="grid gap-2 md:grid-cols-2">
+                {([
+                  {
+                    value: 'gradient' as const,
+                    title: 'Gradient + typography',
+                    desc: 'Bold brand-color backdrop, huge headline. No AI photo. Free.',
+                  },
+                  {
+                    value: 'ai_photo' as const,
+                    title: 'AI photograph',
+                    desc: 'Flux 1.1 Pro Ultra renders a hero photo matched to your brand. ~$0.06.',
+                  },
+                ]).map((o) => {
+                  const active = heroStyle === o.value
+                  return (
+                    <button
+                      type="button"
+                      key={o.value}
+                      onClick={() => setHeroStyle(o.value)}
+                      className="rounded-lg p-3 text-left text-sm transition-colors"
+                      style={{
+                        background: active ? 'var(--accent-primary-bg)' : 'var(--surface-secondary)',
+                        borderWidth: '1px',
+                        borderStyle: 'solid',
+                        borderColor: active ? 'var(--accent-primary)' : 'var(--border)',
+                        color: active ? 'var(--accent-primary)' : 'var(--text-primary)',
+                      }}
+                    >
+                      <div className="font-medium">{o.title}</div>
+                      <div className="mt-0.5 text-xs" style={{ color: active ? 'var(--accent-primary)' : 'var(--text-tertiary)' }}>
+                        {o.desc}
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             </Field>
           </Card>

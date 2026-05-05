@@ -58,23 +58,80 @@ const displayFont: CSSProperties = { fontFamily: 'var(--page-font-display, inher
 function HeroBlock({ s, images }: { s: HeroSection; images?: PageImages }) {
   const heroImage = (s.media?.kind === 'image' && s.media.url) ? { url: s.media.url, alt: s.media.alt } : null
   const aiHero = images?.hero_url
-  // Two layouts: split (text + image) when we have a hero image,
-  // centered when only text. Video media always renders centered.
   const usingImage = heroImage || (aiHero && s.media?.kind !== 'video')
   const isVideo = s.media?.kind === 'video'
+  // Gradient-only mode: no AI photo, no operator media, no video.
+  // We render a full-bleed Stripe-style gradient hero with HUGE
+  // typography — dramatically better than the split-layout fallback
+  // that used to render with empty whitespace where the image went.
+  const gradientHero = !usingImage && !isVideo
 
   return (
-    <section className="relative overflow-hidden px-4 pt-20 pb-24 md:pt-28 md:pb-32">
-      {/* Soft gradient backdrop tied to the brand color. Two off-screen
-          radial blobs give the hero depth without distracting from the copy. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          background:
-            'radial-gradient(800px 500px at 80% -10%, var(--brand-soft, rgba(10,132,255,0.12)), transparent 60%), radial-gradient(700px 400px at -10% 30%, var(--brand-soft, rgba(10,132,255,0.12)), transparent 55%)',
-        }}
-      />
+    <section
+      className={`relative overflow-hidden px-4 ${gradientHero ? 'pt-28 pb-32 md:pt-36 md:pb-40' : 'pt-20 pb-24 md:pt-28 md:pb-32'}`}
+    >
+      {/* Backdrop. Gradient-only hero gets a richer multi-stop mesh —
+          three radial blobs at different intensities to create depth.
+          Image-hero gets the simpler two-blob backdrop so the photo
+          stays the focal point. */}
+      {gradientHero ? (
+        <>
+          {/* Mesh-style brand-color backdrop. Multiple radial gradients
+              layered to create the Stripe/Linear depth feel — single
+              flat color reads as a flat hero, multi-layer reads as
+              "designed". */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10"
+            style={{
+              background:
+                'radial-gradient(900px 600px at 85% -10%, var(--brand-soft, rgba(10,132,255,0.18)), transparent 55%),' +
+                'radial-gradient(700px 500px at -10% 20%, var(--brand-soft, rgba(10,132,255,0.14)), transparent 60%),' +
+                'radial-gradient(600px 400px at 50% 110%, var(--brand-soft, rgba(10,132,255,0.10)), transparent 60%)',
+            }}
+          />
+          {/* Subtle noise / grain so the gradient doesn't look flat
+              on retina screens. Pure SVG, no extra HTTP request. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10 opacity-[0.025]"
+            style={{
+              backgroundImage:
+                'url("data:image/svg+xml;utf8,<svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"160\\" height=\\"160\\"><filter id=\\"n\\"><feTurbulence type=\\"fractalNoise\\" baseFrequency=\\"0.85\\"/></filter><rect width=\\"100%25\\" height=\\"100%25\\" filter=\\"url(%23n)\\"/></svg>")',
+            }}
+          />
+          {/* Brand-color blob, animated very slowly — gives a sense of
+              life without distracting. Hidden on small screens to keep
+              mobile fast. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -z-10 hidden md:block"
+            style={{
+              top: '-15%',
+              right: '-5%',
+              width: '50vw',
+              height: '50vw',
+              maxWidth: '700px',
+              maxHeight: '700px',
+              background:
+                'radial-gradient(closest-side, var(--brand, #0A84FF), transparent 70%)',
+              opacity: 0.18,
+              filter: 'blur(40px)',
+              animation: 'voxBlobFloat 20s ease-in-out infinite alternate',
+            }}
+          />
+          <style>{`@keyframes voxBlobFloat { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(-40px, 30px) scale(1.05); } }`}</style>
+        </>
+      ) : (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10"
+          style={{
+            background:
+              'radial-gradient(800px 500px at 80% -10%, var(--brand-soft, rgba(10,132,255,0.12)), transparent 60%), radial-gradient(700px 400px at -10% 30%, var(--brand-soft, rgba(10,132,255,0.12)), transparent 55%)',
+          }}
+        />
+      )}
 
       <div className={`mx-auto ${usingImage ? 'max-w-6xl' : 'max-w-4xl'} grid items-center gap-12 ${usingImage ? 'md:grid-cols-2' : ''}`}>
         <div className={usingImage ? 'text-left' : 'text-center'}>
@@ -91,9 +148,14 @@ function HeroBlock({ s, images }: { s: HeroSection; images?: PageImages }) {
             className="font-bold tracking-tight"
             style={{
               ...displayFont,
-              fontSize: 'clamp(2.25rem, 5vw + 0.5rem, 4.5rem)',
-              lineHeight: 1.05,
-              letterSpacing: '-0.02em',
+              // Gradient hero gets significantly bigger type since the
+              // headline carries the whole hero — no photo to compete
+              // for attention.
+              fontSize: gradientHero
+                ? 'clamp(2.5rem, 6.5vw + 0.5rem, 6rem)'
+                : 'clamp(2.25rem, 5vw + 0.5rem, 4.5rem)',
+              lineHeight: gradientHero ? 0.98 : 1.05,
+              letterSpacing: '-0.025em',
             }}
           >
             {s.headline}
