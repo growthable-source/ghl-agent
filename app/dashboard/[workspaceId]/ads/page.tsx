@@ -95,11 +95,18 @@ export default function AdsDashboardPage() {
           {!noAdAccounts && (
             <>
               <Link
+                href={`/dashboard/${workspaceId}/ads/recommendations`}
+                className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-medium"
+                style={{ background: 'var(--surface-secondary)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              >
+                Recommendations
+              </Link>
+              <Link
                 href={`/dashboard/${workspaceId}/ads/performance`}
                 className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-medium"
                 style={{ background: 'var(--surface-secondary)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
               >
-                Performance →
+                Performance
               </Link>
               <Link
                 href={`/dashboard/${workspaceId}/ads/new`}
