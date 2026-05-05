@@ -81,11 +81,12 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const [sending, setSending] = useState(false)
   const [visitorTyping, setVisitorTyping] = useState(false)
   const [agentTyping, setAgentTyping] = useState<{ active: boolean; fromHuman: boolean }>({ active: false, fromHuman: false })
-  // Connection state machine. Banner only surfaces in `offline`;
-  // `reconnecting` stays silent so the routine maxDuration cycle
-  // doesn't flicker UI every five minutes.
-  type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'offline'
-  const [connStatus, setConnStatus] = useState<ConnStatus>('connecting')
+  // The "live updates paused" banner is gated on the BROWSER's
+  // navigator.onLine, not on SSE reconnect latency. The same fix as the
+  // visitor widget — calling slow Vercel cold-start reconnects "offline"
+  // flashed the banner on every routine cycle. SSE reconnect machinery
+  // (backoff, watchdog, Last-Event-ID resume) still runs underneath.
+  const [networkOffline, setNetworkOffline] = useState(false)
   const [reconnectNonce, setReconnectNonce] = useState(0)
   const lastEventIdRef = useRef<string | null>(null)
   const lastSeenAtRef = useRef<number>(Date.now())
@@ -157,10 +158,8 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   useEffect(() => {
     if (!conversationId) return
 
-    const RECONNECT_GRACE_MS = 8000
     const STALE_THRESHOLD_MS = 35000
     const BACKOFF_SCHEDULE_MS = [1000, 2000, 5000, 10000, 30000]
-    let escalateTimer: ReturnType<typeof setTimeout> | null = null
     let backoffTimer: ReturnType<typeof setTimeout> | null = null
     let cancelled = false
 
@@ -169,10 +168,9 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
       const since = lastEventIdRef.current
       return since ? `${base}?since=${encodeURIComponent(since)}` : base
     }
-    const clearEscalate = () => { if (escalateTimer) { clearTimeout(escalateTimer); escalateTimer = null } }
     const clearBackoff = () => { if (backoffTimer) { clearTimeout(backoffTimer); backoffTimer = null } }
 
-    setConnStatus('connecting')
+    if (typeof navigator !== 'undefined') setNetworkOffline(!navigator.onLine)
     let attempt = 0
 
     const handleEvent = (data: any) => {
@@ -236,15 +234,11 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
 
       es.onopen = () => {
         attempt = 0
-        clearEscalate()
         lastSeenAtRef.current = Date.now()
-        setConnStatus('open')
       }
 
       es.onmessage = (e) => {
         lastSeenAtRef.current = Date.now()
-        clearEscalate()
-        setConnStatus('open')
         if (e.lastEventId) lastEventIdRef.current = e.lastEventId
         try { handleEvent(JSON.parse(e.data)) } catch {}
       }
@@ -254,19 +248,9 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
         if (es.readyState === EventSource.CLOSED) {
           esRef.current = null
           try { es.close() } catch {}
-          clearEscalate()
-          setConnStatus('offline')
           const delay = BACKOFF_SCHEDULE_MS[Math.min(attempt, BACKOFF_SCHEDULE_MS.length - 1)]
           attempt++
           backoffTimer = setTimeout(open, delay)
-        } else {
-          setConnStatus(prev => (prev === 'open' || prev === 'connecting' ? 'reconnecting' : prev))
-          if (!escalateTimer) {
-            escalateTimer = setTimeout(() => {
-              escalateTimer = null
-              if (!cancelled && es.readyState !== EventSource.OPEN) setConnStatus('offline')
-            }, RECONNECT_GRACE_MS)
-          }
         }
       }
     }
@@ -280,7 +264,6 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
       if (es && idle > STALE_THRESHOLD_MS && es.readyState === EventSource.OPEN) {
         try { es.close() } catch {}
         esRef.current = null
-        setConnStatus('reconnecting')
         attempt = 0
         open()
       }
@@ -288,6 +271,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
 
     const onOnline = () => {
       if (cancelled) return
+      setNetworkOffline(false)
       attempt = 0
       const es = esRef.current
       if (!es || es.readyState === EventSource.CLOSED) {
@@ -299,8 +283,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
     }
     const onOffline = () => {
       if (cancelled) return
-      clearEscalate()
-      setConnStatus('offline')
+      setNetworkOffline(true)
     }
     const onVisible = () => {
       if (cancelled || document.visibilityState !== 'visible') return
@@ -320,7 +303,6 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
 
     return () => {
       cancelled = true
-      clearEscalate()
       clearBackoff()
       clearInterval(watchdog)
       window.removeEventListener('online', onOnline)
@@ -579,7 +561,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           </div>
         </div>
 
-        {connStatus === 'offline' && (
+        {networkOffline && (
           <div className="px-6 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300 flex items-center justify-between">
             <span>Live updates paused — you appear to be offline.</span>
             <button

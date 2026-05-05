@@ -72,11 +72,14 @@ export default function WidgetEmbedPage() {
   const [csatStatus, setCsatStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [csatSubmitting, setCsatSubmitting] = useState(false)
 
-  // Connection state machine. Banner only surfaces in `offline`;
-  // `reconnecting` is silent because the browser's auto-retry covers
-  // the routine maxDuration cycle invisibly. See setupStream below.
-  type ConnStatus = 'connecting' | 'open' | 'reconnecting' | 'offline'
-  const [connStatus, setConnStatus] = useState<ConnStatus>('connecting')
+  // The "You're offline" banner is gated on the BROWSER's navigator.onLine,
+  // not on SSE reconnect latency. A slow Vercel cold-start reconnect is
+  // not "being offline" — calling it that flashed the banner on every
+  // routine maxDuration cycle and was the actual user complaint. The
+  // SSE reconnect machinery still runs underneath (backoff, watchdog,
+  // resume via Last-Event-ID); it's just silent unless the browser
+  // itself has lost network.
+  const [networkOffline, setNetworkOffline] = useState(false)
   const [reconnectNonce, setReconnectNonce] = useState(0)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const typingPingTimer = useRef<any>(null)
@@ -167,28 +170,23 @@ export default function WidgetEmbedPage() {
   //
   // Connection model:
   //   • The server's `maxDuration = 300` means the stream cycles every
-  //     ~5 min. The browser's EventSource transparently reconnects with
-  //     its built-in backoff and re-sends `Last-Event-ID`, so the
-  //     server can backfill any messages broadcast during the gap.
-  //     During that brief auto-retry we sit in `reconnecting` SILENTLY
-  //     — no banner, because nothing actually broke from the visitor's
-  //     point of view.
-  //   • If the auto-retry doesn't recover within RECONNECT_GRACE_MS
-  //     (real network drop, server down, laptop asleep), we escalate
-  //     to `offline` and surface the banner. From there a watchdog
-  //     keeps trying with exponential backoff, and the visitor can
-  //     also click "Try again" to skip the wait.
-  //   • If the connection silently dies (TCP wedged, mobile handover)
-  //     the per-tick heartbeat the server sends every ~20s stops, and
-  //     a separate watchdog forces a reconnect after STALE_THRESHOLD_MS
-  //     of silence even though `onerror` never fired.
+  //     ~5 min. The browser's EventSource transparently reconnects and
+  //     re-sends `Last-Event-ID`, so the server can backfill any
+  //     messages broadcast during the gap. The visitor sees nothing.
+  //   • If EventSource hits CLOSED (browser gave up after several
+  //     internal retries), we take over with our own exponential backoff
+  //     so we don't sit dead. STILL no banner — the visitor's POSTs
+  //     still work, missed messages will replay on the next successful
+  //     reconnect, and "the realtime stream is down" is not visitor UX.
+  //   • Watchdog catches silent TCP deaths via the server's periodic
+  //     ping events.
+  //   • The "You're offline" banner is driven SOLELY by the browser's
+  //     online/offline events. Reconnect latency is never called offline.
   useEffect(() => {
     if (!conversationId || !widgetId) return
 
-    const RECONNECT_GRACE_MS = 8000     // CONNECTING → offline if not back by this
     const STALE_THRESHOLD_MS = 35000    // no event/ping → assume dead, force reconnect
     const BACKOFF_SCHEDULE_MS = [1000, 2000, 5000, 10000, 30000]
-    let escalateTimer: ReturnType<typeof setTimeout> | null = null
     let backoffTimer: ReturnType<typeof setTimeout> | null = null
     let cancelled = false
 
@@ -198,14 +196,13 @@ export default function WidgetEmbedPage() {
       return since ? `${base}&since=${encodeURIComponent(since)}` : base
     }
 
-    const clearEscalate = () => {
-      if (escalateTimer) { clearTimeout(escalateTimer); escalateTimer = null }
-    }
     const clearBackoff = () => {
       if (backoffTimer) { clearTimeout(backoffTimer); backoffTimer = null }
     }
 
-    setConnStatus('connecting')
+    // Seed the banner from the current navigator state so a refresh
+    // mid-offline shows the right thing.
+    if (typeof navigator !== 'undefined') setNetworkOffline(!navigator.onLine)
     let attempt = 0
 
     const handleEvent = (data: any) => {
@@ -258,43 +255,28 @@ export default function WidgetEmbedPage() {
 
       es.onopen = () => {
         attempt = 0
-        clearEscalate()
         lastSeenAtRef.current = Date.now()
-        setConnStatus('open')
       }
 
       es.onmessage = (e) => {
         lastSeenAtRef.current = Date.now()
-        clearEscalate()
-        setConnStatus('open')
         if (e.lastEventId) lastEventIdRef.current = e.lastEventId
         try { handleEvent(JSON.parse(e.data)) } catch {}
       }
 
       es.onerror = () => {
         if (cancelled) return
+        // Browser gave up after its own retries — take over with manual
+        // exponential backoff so we don't sit dead. CONNECTING is left
+        // alone; the browser is already auto-retrying and the visitor
+        // doesn't need to know about a transient hiccup. Banner state
+        // is driven by navigator.onLine, not by SSE state.
         if (es.readyState === EventSource.CLOSED) {
-          // Browser gave up. Take over with manual exponential backoff
-          // so we don't sit forever in a closed state.
           esRef.current = null
           try { es.close() } catch {}
-          clearEscalate()
-          setConnStatus('offline')
           const delay = BACKOFF_SCHEDULE_MS[Math.min(attempt, BACKOFF_SCHEDULE_MS.length - 1)]
           attempt++
           backoffTimer = setTimeout(open, delay)
-        } else {
-          // CONNECTING — browser is auto-retrying. Stay quiet briefly,
-          // then escalate to offline if it doesn't recover.
-          setConnStatus(prev => (prev === 'open' || prev === 'connecting' ? 'reconnecting' : prev))
-          if (!escalateTimer) {
-            escalateTimer = setTimeout(() => {
-              escalateTimer = null
-              if (!cancelled && es.readyState !== EventSource.OPEN) {
-                setConnStatus('offline')
-              }
-            }, RECONNECT_GRACE_MS)
-          }
         }
       }
     }
@@ -310,16 +292,17 @@ export default function WidgetEmbedPage() {
       if (es && idle > STALE_THRESHOLD_MS && es.readyState === EventSource.OPEN) {
         try { es.close() } catch {}
         esRef.current = null
-        setConnStatus('reconnecting')
         attempt = 0
         open()
       }
     }, 5000)
 
     // Force an immediate reconnect when the network or tab visibility
-    // changes — way faster than waiting for the next backoff tick.
+    // changes — way faster than waiting for the next backoff tick. The
+    // online/offline events also drive the banner.
     const onOnline = () => {
       if (cancelled) return
+      setNetworkOffline(false)
       attempt = 0
       const es = esRef.current
       if (!es || es.readyState === EventSource.CLOSED) {
@@ -331,8 +314,7 @@ export default function WidgetEmbedPage() {
     }
     const onOffline = () => {
       if (cancelled) return
-      clearEscalate()
-      setConnStatus('offline')
+      setNetworkOffline(true)
     }
     const onVisible = () => {
       if (cancelled || document.visibilityState !== 'visible') return
@@ -352,7 +334,6 @@ export default function WidgetEmbedPage() {
 
     return () => {
       cancelled = true
-      clearEscalate()
       clearBackoff()
       clearInterval(watchdog)
       window.removeEventListener('online', onOnline)
@@ -448,7 +429,6 @@ export default function WidgetEmbedPage() {
     // Force the SSE effect to tear down + restart immediately, skipping
     // any in-flight backoff. The new connection still includes the
     // resume cursor so the visitor doesn't lose context.
-    setConnStatus('connecting')
     setReconnectNonce(n => n + 1)
   }
 
@@ -695,7 +675,7 @@ export default function WidgetEmbedPage() {
         </div>
       </div>
 
-      {connStatus === 'offline' && (
+      {networkOffline && (
         <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300 flex items-center justify-between">
           <span>You&apos;re offline. Your messages will send once you&apos;re back online.</span>
           <button
