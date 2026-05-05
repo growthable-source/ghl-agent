@@ -15,6 +15,26 @@ interface Integration {
   createdAt: string
 }
 
+interface MetaAdAccountRow {
+  id: string
+  accountName: string
+  metaAccountId: string
+  isActive: boolean
+  autoPilotEnabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+interface GoogleAdAccountRow {
+  id: string
+  accountName: string
+  googleCustomerId: string
+  isActive: boolean
+  autoPilotEnabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export default function IntegrationsPage() {
   const params = useParams()
   const search = useSearchParams()
@@ -73,6 +93,16 @@ export default function IntegrationsPage() {
   const [savingStripe, setSavingStripe] = useState(false)
   const [stripeError, setStripeError] = useState('')
 
+  // Ad accounts (Meta Ads + Google Ads). These live in their own tables
+  // (MetaAdAccount / GoogleAdAccount) rather than the generic Integration
+  // table — they need account-level toggles (isActive, autoPilotEnabled)
+  // that the Integration shape doesn't model.
+  const [metaAdAccounts, setMetaAdAccounts] = useState<MetaAdAccountRow[]>([])
+  const [googleAdAccounts, setGoogleAdAccounts] = useState<GoogleAdAccountRow[]>([])
+  const [metaAdsBanner, setMetaAdsBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const [googleAdsBanner, setGoogleAdsBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const [busyAdAccount, setBusyAdAccount] = useState<string | null>(null)
+
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/integrations`)
       .then(r => r.json())
@@ -88,6 +118,16 @@ export default function IntegrationsPage() {
         setCrmProvider(crm || 'ghl')
       })
       .finally(() => setLoading(false))
+
+    // Load ad accounts in parallel — failures here don't block the rest
+    // of the page (workspace may not have any ad accounts yet).
+    fetch(`/api/workspaces/${workspaceId}/ad-accounts`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((data: { meta: MetaAdAccountRow[]; google: GoogleAdAccountRow[] }) => {
+        setMetaAdAccounts(data.meta || [])
+        setGoogleAdAccounts(data.google || [])
+      })
+      .catch(err => console.warn('[integrations] ad-accounts load failed:', err))
   }, [workspaceId])
 
   // Read the Meta OAuth callback redirect query params once on mount and
@@ -121,6 +161,139 @@ export default function IntegrationsPage() {
     url.searchParams.delete('detail')
     window.history.replaceState({}, '', url.toString())
   }, [search])
+
+  // Same pattern for the Meta Ads + Google Ads OAuth callbacks. Each
+  // callback redirects with its own marker param so we can distinguish
+  // success/failure and surface a tailored banner. We also re-fetch the
+  // ad-account list on success so the new rows show up immediately.
+  useEffect(() => {
+    const m = search.get('meta_ads')
+    const g = search.get('google_ads')
+    if (!m && !g) return
+
+    function pretty(provider: string, reason: string): string {
+      switch (reason) {
+        case 'no_ad_accounts': return `No ${provider} ad accounts on the authorising user. Confirm "Manage campaigns" task is granted in Business Settings.`
+        case 'no_customers': return `The Google account doesn't have access to any Google Ads customers.`
+        case 'invalid_state': return `OAuth state was invalid or expired. Try connecting again.`
+        case 'token_exchange_failed': return `${provider} rejected the OAuth code. Check your client credentials and developer token.`
+        case 'server_misconfigured': return `${provider} integration env vars are missing on this deployment.`
+        case 'missing_code_or_state': return `OAuth callback was missing required parameters.`
+        case 'access_denied': return `Authorisation was declined.`
+        default: return `${provider} connection failed (${reason}).`
+      }
+    }
+
+    if (m === 'connected') {
+      const c = parseInt(search.get('connected') ?? '0', 10) || 0
+      const u = parseInt(search.get('updated') ?? '0', 10) || 0
+      const bits: string[] = []
+      if (c > 0) bits.push(`${c} new`)
+      if (u > 0) bits.push(`${u} reconnected`)
+      setMetaAdsBanner({
+        kind: 'success',
+        text: bits.length
+          ? `Meta Ads — ${bits.join(', ')} ad ${(c + u) === 1 ? 'account' : 'accounts'}.`
+          : 'Meta Ads connected.',
+      })
+      // Refetch so the new rows appear without a manual reload.
+      fetch(`/api/workspaces/${workspaceId}/ad-accounts`)
+        .then(r => r.json())
+        .then((data: { meta: MetaAdAccountRow[]; google: GoogleAdAccountRow[] }) => {
+          setMetaAdAccounts(data.meta || [])
+          setGoogleAdAccounts(data.google || [])
+        })
+        .catch(() => {})
+    } else if (m === 'error') {
+      const reason = search.get('reason') ?? 'unknown'
+      const detail = search.get('detail')
+      setMetaAdsBanner({ kind: 'error', text: detail ? `${pretty('Meta Ads', reason)} (${detail})` : pretty('Meta Ads', reason) })
+    }
+
+    if (g === 'connected') {
+      const c = parseInt(search.get('connected') ?? '0', 10) || 0
+      const u = parseInt(search.get('updated') ?? '0', 10) || 0
+      const bits: string[] = []
+      if (c > 0) bits.push(`${c} new`)
+      if (u > 0) bits.push(`${u} reconnected`)
+      setGoogleAdsBanner({
+        kind: 'success',
+        text: bits.length
+          ? `Google Ads — ${bits.join(', ')} ${(c + u) === 1 ? 'customer' : 'customers'}.`
+          : 'Google Ads connected.',
+      })
+      fetch(`/api/workspaces/${workspaceId}/ad-accounts`)
+        .then(r => r.json())
+        .then((data: { meta: MetaAdAccountRow[]; google: GoogleAdAccountRow[] }) => {
+          setMetaAdAccounts(data.meta || [])
+          setGoogleAdAccounts(data.google || [])
+        })
+        .catch(() => {})
+    } else if (g === 'error') {
+      const reason = search.get('reason') ?? 'unknown'
+      const detail = search.get('detail')
+      setGoogleAdsBanner({ kind: 'error', text: detail ? `${pretty('Google Ads', reason)} (${detail})` : pretty('Google Ads', reason) })
+    }
+
+    const url = new URL(window.location.href)
+    url.searchParams.delete('meta_ads')
+    url.searchParams.delete('google_ads')
+    url.searchParams.delete('connected')
+    url.searchParams.delete('updated')
+    url.searchParams.delete('reason')
+    url.searchParams.delete('detail')
+    window.history.replaceState({}, '', url.toString())
+  }, [search, workspaceId])
+
+  async function disconnectAdAccount(provider: 'meta' | 'google', id: string, name: string) {
+    if (!confirm(`Disconnect "${name}"? Drafts, recommendations, and historical metrics for this account will be deleted.`)) return
+    setBusyAdAccount(id)
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/ad-accounts/${provider}/${id}`, { method: 'DELETE' })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `HTTP ${r.status}`)
+      if (provider === 'meta') setMetaAdAccounts(prev => prev.filter(a => a.id !== id))
+      else setGoogleAdAccounts(prev => prev.filter(a => a.id !== id))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Disconnect failed'
+      if (provider === 'meta') setMetaAdsBanner({ kind: 'error', text: msg })
+      else setGoogleAdsBanner({ kind: 'error', text: msg })
+    } finally {
+      setBusyAdAccount(null)
+    }
+  }
+
+  async function toggleAdAccount(
+    provider: 'meta' | 'google',
+    id: string,
+    field: 'isActive' | 'autoPilotEnabled',
+    next: boolean,
+  ) {
+    setBusyAdAccount(id)
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/ad-accounts/${provider}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: next }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `HTTP ${r.status}`)
+      const { account } = await r.json()
+      if (provider === 'meta') {
+        setMetaAdAccounts(prev => prev.map(a => a.id === id ? { ...a, ...account } : a))
+      } else {
+        setGoogleAdAccounts(prev => prev.map(a => a.id === id ? { ...a, ...account } : a))
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Update failed'
+      if (provider === 'meta') setMetaAdsBanner({ kind: 'error', text: msg })
+      else setGoogleAdsBanner({ kind: 'error', text: msg })
+    } finally {
+      setBusyAdAccount(null)
+    }
+  }
+
+  function formatGoogleCustomerId(id: string): string {
+    return /^\d{10}$/.test(id) ? `${id.slice(0,3)}-${id.slice(3,6)}-${id.slice(6)}` : id
+  }
 
   async function connectTwilio(e: React.FormEvent) {
     e.preventDefault()
@@ -847,6 +1020,207 @@ export default function IntegrationsPage() {
                 <button type="button" onClick={() => setShowStripeForm(false)} className="px-4 rounded-lg border border-zinc-700 text-zinc-400 text-sm hover:border-zinc-500 transition-colors">Cancel</button>
               </div>
             </form>
+          )}
+        </div>
+
+        {/* ── Section: Advertising ── */}
+        <div className="pt-4 pb-1">
+          <p className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Advertising</p>
+        </div>
+
+        {/* Banners — separate from the Pages banner so they don't get
+            swallowed when both fire on the same load. */}
+        {metaAdsBanner && (
+          <div
+            className="rounded-xl border p-3 flex items-start justify-between gap-3"
+            style={
+              metaAdsBanner.kind === 'success'
+                ? { borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+                : { borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
+            }
+            role="status"
+          >
+            <p className="text-sm font-medium">{metaAdsBanner.text}</p>
+            <button onClick={() => setMetaAdsBanner(null)} className="text-xs opacity-60 hover:opacity-100" aria-label="Dismiss">✕</button>
+          </div>
+        )}
+        {googleAdsBanner && (
+          <div
+            className="rounded-xl border p-3 flex items-start justify-between gap-3"
+            style={
+              googleAdsBanner.kind === 'success'
+                ? { borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+                : { borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
+            }
+            role="status"
+          >
+            <p className="text-sm font-medium">{googleAdsBanner.text}</p>
+            <button onClick={() => setGoogleAdsBanner(null)} className="text-xs opacity-60 hover:opacity-100" aria-label="Dismiss">✕</button>
+          </div>
+        )}
+
+        {/* Meta Ads — campaigns + budgets + creatives via Marketing API */}
+        <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#1877F2]"><FacebookIcon className="w-7 h-7" /></div>
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Meta Ads</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Create + manage Facebook and Instagram ad campaigns</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {metaAdAccounts.filter(a => a.isActive).length > 0 && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
+                  {metaAdAccounts.filter(a => a.isActive).length} {metaAdAccounts.filter(a => a.isActive).length === 1 ? 'account' : 'accounts'}
+                </span>
+              )}
+              <a
+                href={`/api/meta-ads/oauth/connect?workspaceId=${workspaceId}`}
+                className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                {metaAdAccounts.length > 0 ? '+ Add account' : 'Connect Meta Ads'}
+              </a>
+            </div>
+          </div>
+
+          {metaAdAccounts.length > 0 && (
+            <div className="space-y-1 mb-2">
+              {metaAdAccounts.map(a => (
+                <div key={a.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'var(--surface-secondary)' }}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{a.accountName}</p>
+                    <p className="text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>act_{a.metaAccountId}</p>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: 'var(--text-tertiary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={a.autoPilotEnabled}
+                        disabled={busyAdAccount === a.id}
+                        onChange={(e) => toggleAdAccount('meta', a.id, 'autoPilotEnabled', e.target.checked)}
+                        className="w-3 h-3"
+                      />
+                      Autopilot
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: 'var(--text-tertiary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={a.isActive}
+                        disabled={busyAdAccount === a.id}
+                        onChange={(e) => toggleAdAccount('meta', a.id, 'isActive', e.target.checked)}
+                        className="w-3 h-3"
+                      />
+                      Active
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => disconnectAdAccount('meta', a.id, a.accountName)}
+                      disabled={busyAdAccount === a.id}
+                      className="text-xs hover:opacity-100 transition-opacity disabled:opacity-30"
+                      style={{ color: 'var(--accent-red)' }}
+                      title="Disconnect"
+                    >
+                      {busyAdAccount === a.id ? '…' : 'Disconnect'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {metaAdAccounts.length === 0 && (
+            <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
+              Connect Meta Ads to draft, launch, and optimise Facebook and Instagram campaigns from inside Voxility. Requires the Marketing API permissions on your Meta App and a user with the &quot;Manage campaigns&quot; task on the ad account.
+            </p>
+          )}
+        </div>
+
+        {/* Google Ads — Search, Performance Max, Display, etc. */}
+        <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
+                {/* Inline G mark — avoids pulling in another brand-icons file
+                    just for the Ads variant. The G is universally recognised. */}
+                <svg viewBox="0 0 24 24" className="w-7 h-7" aria-hidden>
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Google Ads</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Search, Performance Max, Display, and YouTube campaigns</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {googleAdAccounts.filter(a => a.isActive).length > 0 && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
+                  {googleAdAccounts.filter(a => a.isActive).length} {googleAdAccounts.filter(a => a.isActive).length === 1 ? 'customer' : 'customers'}
+                </span>
+              )}
+              <a
+                href={`/api/google-ads/oauth/connect?workspaceId=${workspaceId}`}
+                className="text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                {googleAdAccounts.length > 0 ? '+ Add customer' : 'Connect Google Ads'}
+              </a>
+            </div>
+          </div>
+
+          {googleAdAccounts.length > 0 && (
+            <div className="space-y-1 mb-2">
+              {googleAdAccounts.map(a => (
+                <div key={a.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'var(--surface-secondary)' }}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{a.accountName}</p>
+                    <p className="text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>{formatGoogleCustomerId(a.googleCustomerId)}</p>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: 'var(--text-tertiary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={a.autoPilotEnabled}
+                        disabled={busyAdAccount === a.id}
+                        onChange={(e) => toggleAdAccount('google', a.id, 'autoPilotEnabled', e.target.checked)}
+                        className="w-3 h-3"
+                      />
+                      Autopilot
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: 'var(--text-tertiary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={a.isActive}
+                        disabled={busyAdAccount === a.id}
+                        onChange={(e) => toggleAdAccount('google', a.id, 'isActive', e.target.checked)}
+                        className="w-3 h-3"
+                      />
+                      Active
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => disconnectAdAccount('google', a.id, a.accountName)}
+                      disabled={busyAdAccount === a.id}
+                      className="text-xs hover:opacity-100 transition-opacity disabled:opacity-30"
+                      style={{ color: 'var(--accent-red)' }}
+                      title="Disconnect"
+                    >
+                      {busyAdAccount === a.id ? '…' : 'Disconnect'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {googleAdAccounts.length === 0 && (
+            <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
+              Connect Google Ads to draft, launch, and optimise Search, Performance Max, Display, and YouTube campaigns. Requires <code style={{ color: 'var(--accent-primary)' }}>GOOGLE_DEVELOPER_TOKEN</code> on the deployment and access to at least one Google Ads customer.
+            </p>
           )}
         </div>
 
