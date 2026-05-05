@@ -44,7 +44,11 @@ const GOALS = [
 ] as const
 
 type Goal = (typeof GOALS)[number]['value']
-type Step = 1 | 2 | 3 | 4 | 5
+// 6-step wizard: Brand (new) → Intake → Page → Agents → Tracking → Publish.
+// Brand-step inputs (logo upload, reference website, brand guide,
+// extracted colours) feed both the Claude generator and the Gemini
+// image prompts so generated pages stay on-brand.
+type Step = 1 | 2 | 3 | 4 | 5 | 6
 
 // ─── Design-token style helpers ────────────────────────────────────────
 
@@ -86,6 +90,72 @@ const btnPrimaryCls = 'inline-flex h-10 items-center rounded-lg px-5 text-sm fon
 const btnSecondaryCls = 'inline-flex h-9 items-center rounded-lg px-4 text-sm font-medium transition-colors disabled:opacity-60'
 const btnGhostCls = 'inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium transition-colors hover:underline'
 
+// ─── Brand-step helpers ────────────────────────────────────────────────
+
+/** De-dup hex strings case-insensitively while preserving order. */
+function mergeUnique(arr: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const c of arr) {
+    const key = c.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(c.trim())
+  }
+  return out
+}
+
+/**
+ * Sample dominant non-grey colours from an image URL via canvas.
+ * Returns up to 3 hex strings sorted by frequency. Best-effort —
+ * throws on CORS / decode failures and the caller swallows.
+ *
+ * Algorithm: bucket each pixel into 16-step quantised RGB, count
+ * buckets, drop near-grey/near-white/near-black, sort, top-N.
+ */
+async function extractColorsFromImage(url: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') return resolve([])
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onerror = () => reject(new Error('image load failed'))
+    img.onload = () => {
+      try {
+        const target = 80 // small canvas, good enough for colour signal
+        const w = target
+        const h = Math.round((img.naturalHeight / img.naturalWidth) * target) || target
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return reject(new Error('no canvas ctx'))
+        ctx.drawImage(img, 0, 0, w, h)
+        const { data } = ctx.getImageData(0, 0, w, h)
+        const counts = new Map<string, number>()
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3]
+          if (a < 200) continue
+          const r = data[i] & 0xf0
+          const g = data[i + 1] & 0xf0
+          const b = data[i + 2] & 0xf0
+          const lum = (r + g + b) / 3
+          if (lum < 25 || lum > 235) continue
+          const max = Math.max(r, g, b)
+          const min = Math.min(r, g, b)
+          if (max - min < 18) continue
+          const hex = '#' + [r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')
+          counts.set(hex, (counts.get(hex) ?? 0) + 1)
+        }
+        const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k)
+        resolve(top)
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)))
+      }
+    }
+    img.src = url
+  })
+}
+
 // ─── Component ─────────────────────────────────────────────────────────
 
 export default function NewFunnelWizard() {
@@ -108,9 +178,88 @@ export default function NewFunnelWizard() {
       .then((r) => r.json() as Promise<{ access: { allowed: boolean; reason?: string; currentPlan?: string } }>)
       .then((d) => setAccess(d.access))
       .catch(() => setAccess({ allowed: false, reason: 'unknown' }))
+    // Lightweight diagnostic — has GEMINI_API_KEY been wired in Vercel?
+    // Endpoint returns { enabled: bool } without leaking key material.
+    fetch(`/api/workspaces/${workspaceId}/funnels/image-gen-status`)
+      .then((r) => r.json() as Promise<{ enabled: boolean }>)
+      .then((d) => setImageGenAvailable(d.enabled))
+      .catch(() => setImageGenAvailable(false))
   }, [workspaceId])
 
-  // Step 1
+  // ─── Brand-step handlers ───────────────────────────────────────────
+  async function uploadLogo(file: File) {
+    setLogoUploading(true)
+    setError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/brand-asset-upload`, { method: 'POST', body: form })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Upload failed')
+      const { logoUrl } = (await r.json()) as { logoUrl: string }
+      setLogoUrl(logoUrl)
+      // Sample dominant non-grey colours from the logo via canvas.
+      // Best-effort — failures are silent (operator can pick a colour
+      // by hand on the next step).
+      try {
+        const colours = await extractColorsFromImage(logoUrl)
+        if (colours.length > 0) {
+          setExtractedColors((prev) => mergeUnique([...colours, ...prev]).slice(0, 6))
+          // Auto-pick the first vibrant colour as the primary, but don't
+          // overwrite if the operator has already picked one manually.
+          if (primaryColor === '#e84425') setPrimaryColor(colours[0])
+        }
+      } catch {
+        // canvas failures (CORS on the Blob URL, exotic image format) are
+        // not worth surfacing — colour pickers below still work.
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Logo upload failed')
+    } finally {
+      setLogoUploading(false)
+    }
+  }
+
+  async function scrapeReference() {
+    const u = referenceUrl.trim()
+    if (!u) return
+    setScrapingRef(true)
+    setScrapeError(null)
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/scrape-brand?url=${encodeURIComponent(u)}`)
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Scrape failed')
+      const data = (await r.json()) as {
+        themeColor: string | null
+        extractedColors: string[]
+        textSamples: string[]
+      }
+      const colours = [data.themeColor, ...data.extractedColors].filter((c): c is string => !!c)
+      if (colours.length > 0) {
+        setExtractedColors((prev) => mergeUnique([...colours, ...prev]).slice(0, 6))
+        if (primaryColor === '#e84425') setPrimaryColor(colours[0])
+      }
+      setLogoTextSamples((prev) => mergeUnique([...prev, ...data.textSamples]).slice(0, 8))
+    } catch (err) {
+      setScrapeError(err instanceof Error ? err.message : 'Scrape failed')
+    } finally {
+      setScrapingRef(false)
+    }
+  }
+
+  // Step 1 — Brand (new)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [referenceUrl, setReferenceUrl] = useState('')
+  const [scrapingRef, setScrapingRef] = useState(false)
+  const [scrapeError, setScrapeError] = useState<string | null>(null)
+  const [brandGuideText, setBrandGuideText] = useState('')
+  const [extractedColors, setExtractedColors] = useState<string[]>([])
+  const [logoTextSamples, setLogoTextSamples] = useState<string[]>([])
+  // Whether GEMINI_API_KEY is set on the deployment (read-only fact;
+  // operator can't fix from here, but we surface a warning so the
+  // 'no images on my page' question doesn't keep coming back).
+  const [imageGenAvailable, setImageGenAvailable] = useState<boolean | null>(null)
+
+  // Step 2 — Intake
   const [name, setName] = useState('')
   const [goal, setGoal] = useState<Goal>('lead_gen')
   const [intake, setIntake] = useState<Intake>({
@@ -158,7 +307,7 @@ export default function NewFunnelWizard() {
     return () => window.removeEventListener('beforeunload', onUnload)
   }, [name, intake.business_name, campaignId, step])
 
-  async function submitStep1(e: FormEvent) {
+  async function submitIntake(e: FormEvent) {
     e.preventDefault()
     setError(null)
     if (!name.trim() || !intake.business_name.trim() || !intake.offer.trim() || !intake.dream_outcome.trim()) {
@@ -166,10 +315,6 @@ export default function NewFunnelWizard() {
       return
     }
     setBusy(true)
-    // Set generating BEFORE the campaign is created so step 2 paints
-    // the loading animation the moment we transition. Otherwise there's
-    // a 1–2 frame window where step 2 shows "No page yet" before
-    // generatePage() flips the flag.
     setGenerating(true)
     try {
       const created = await fetch(`/api/workspaces/${workspaceId}/funnels`, {
@@ -178,12 +323,18 @@ export default function NewFunnelWizard() {
         body: JSON.stringify({
           name, goal, offer_summary: intake.offer, intake,
           brand_voice: intake.brand_voice, primary_color: primaryColor,
+          // Brand kit captured on Step 1 — flows through to the
+          // Campaign row + Claude system prompt + Gemini image prompts.
+          logo_url: logoUrl,
+          brand_guide_text: brandGuideText.trim() || null,
+          reference_url: referenceUrl.trim() || null,
+          extracted_colors: extractedColors,
         }),
       })
       if (!created.ok) throw new Error((await created.json()).error ?? 'Create failed')
       const { campaign } = (await created.json()) as { campaign: { id: string } }
       setCampaignId(campaign.id)
-      setStep(2)
+      setStep(3)
       void generatePage(campaign.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed')
@@ -200,7 +351,20 @@ export default function NewFunnelWizard() {
       const r = await fetch(`/api/workspaces/${workspaceId}/funnels/generate-page`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intake, primary_color: primaryColor }),
+        body: JSON.stringify({
+          intake,
+          primary_color: primaryColor,
+          // Brand kit forwarded to the generator so Claude reads the
+          // brand guide for voice/tone, and Gemini can reference the
+          // logo + extracted palette in image prompts.
+          brand_kit: {
+            logo_url: logoUrl,
+            brand_guide_text: brandGuideText.trim() || null,
+            reference_url: referenceUrl.trim() || null,
+            extracted_colors: extractedColors,
+            text_samples: logoTextSamples,
+          },
+        }),
       })
       if (!r.ok) throw new Error((await r.json()).error ?? 'Generation failed')
       const data = (await r.json()) as GeneratedPage
@@ -226,7 +390,7 @@ export default function NewFunnelWizard() {
         }),
       })
       if (!r.ok) throw new Error((await r.json()).error ?? 'Save failed')
-      setStep(4)
+      setStep(5)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
@@ -261,7 +425,7 @@ export default function NewFunnelWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'live' }),
       })
-      setStep(5)
+      setStep(6)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Publish failed')
     } finally {
@@ -325,7 +489,134 @@ export default function NewFunnelWizard() {
       )}
 
       {step === 1 && (
-        <form onSubmit={submitStep1} className="mt-6 space-y-6">
+        <form onSubmit={(e) => { e.preventDefault(); setStep(2) }} className="mt-6 space-y-6">
+          {imageGenAvailable === false && (
+            <div
+              className="rounded-lg p-3 text-sm"
+              style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+            >
+              <div className="font-medium">AI imagery is off on this deployment.</div>
+              <div className="mt-0.5 text-xs">
+                Pages will render text-only. Add <code>GEMINI_API_KEY</code> in Vercel → Project → Settings → Environment Variables to enable Gemini hero/OG image generation (~$0.12/page).
+              </div>
+            </div>
+          )}
+
+          <Card
+            title="Brand"
+            subtitle="Drop in your logo, paste your existing site, and tell us how you sound. The AI uses this for colours, voice, and image generation — not just defaults."
+          >
+            <Field label="Logo" hint="PNG / JPG / SVG / WebP, up to 2 MB. We'll sample its dominant colour automatically.">
+              <div className="flex items-center gap-4">
+                {logoUrl ? (
+                  <div
+                    className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg"
+                    style={{ background: 'var(--surface-secondary)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}
+                  >
+                    <img src={logoUrl} alt="" className="max-h-14 max-w-14 object-contain" />
+                  </div>
+                ) : (
+                  <div
+                    className="flex h-16 w-16 items-center justify-center rounded-lg text-xs"
+                    style={{ background: 'var(--surface-secondary)', borderWidth: '1px', borderStyle: 'dashed', borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}
+                  >
+                    No logo
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                  disabled={logoUploading}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) void uploadLogo(f)
+                  }}
+                  className="block w-full text-xs"
+                  style={{ color: 'var(--text-secondary)' }}
+                />
+                {logoUploading && <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Uploading…</span>}
+              </div>
+            </Field>
+
+            <Field
+              label="Reference website (optional)"
+              hint="Paste an existing site URL — we'll pull its theme colour, dominant accent colours, and a few headlines so generated copy stays in your voice."
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  value={referenceUrl}
+                  onChange={(e) => setReferenceUrl(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                  placeholder="https://yourbusiness.com"
+                />
+                <button
+                  type="button"
+                  onClick={scrapeReference}
+                  disabled={!referenceUrl.trim() || scrapingRef}
+                  className={btnSecondaryCls}
+                  style={btnSecondary}
+                >
+                  {scrapingRef ? 'Reading…' : 'Pull brand'}
+                </button>
+              </div>
+              {scrapeError && <p className="mt-1 text-xs" style={{ color: 'var(--accent-red)' }}>{scrapeError}</p>}
+            </Field>
+
+            <Field
+              label="Brand guide / voice notes (optional)"
+              hint="Paste anything — voice rules, dos/don'ts, sample copy, style guide markdown. The AI reads this verbatim before writing."
+            >
+              <textarea
+                rows={4}
+                value={brandGuideText}
+                onChange={(e) => setBrandGuideText(e.target.value)}
+                className={textareaCls}
+                style={inputStyle}
+                placeholder={'e.g. "We sound like a friend, not a salesperson. Never use words like ‘unlock’, ‘elevate’, ‘game-changer’. Numbers > adjectives. Always reference our 12-year track record in Brisbane."'}
+              />
+            </Field>
+
+            {extractedColors.length > 0 && (
+              <Field label="Detected colours" hint="Click any swatch to make it the brand primary.">
+                <div className="flex flex-wrap gap-2">
+                  {extractedColors.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setPrimaryColor(c)}
+                      title={c}
+                      className="h-9 w-9 rounded-md transition-transform hover:scale-110"
+                      style={{
+                        background: c,
+                        borderWidth: '2px',
+                        borderStyle: 'solid',
+                        borderColor: primaryColor.toLowerCase() === c.toLowerCase() ? 'var(--text-primary)' : 'var(--border)',
+                      }}
+                    />
+                  ))}
+                </div>
+              </Field>
+            )}
+
+            <Field label="Brand colour" hint="Used everywhere — buttons, headlines, CTAs, image-gen tints.">
+              <div className="flex items-center gap-2">
+                <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-12 rounded-lg" style={inputStyle} />
+                <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className={inputCls} style={inputStyle} />
+              </div>
+            </Field>
+          </Card>
+
+          <div className="flex justify-end gap-2">
+            <button type="submit" className={btnPrimaryCls} style={btnPrimary}>
+              Next: Intake →
+            </button>
+          </div>
+        </form>
+      )}
+
+      {step === 2 && (
+        <form onSubmit={submitIntake} className="mt-6 space-y-6">
           <Card title="Tell us about the campaign" subtitle="This drives the AI page generator. Be specific — vague inputs make vague pages.">
             <Field label="Campaign name" hint="Internal — not shown to leads.">
               <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} style={inputStyle} placeholder="e.g. Brisbane chiro — Q3" />
@@ -386,25 +677,18 @@ export default function NewFunnelWizard() {
                 <input value={intake.industry ?? ''} onChange={(e) => setIntake({ ...intake, industry: e.target.value })} className={inputCls} style={inputStyle} placeholder="Health & wellness" />
               </Field>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Brand voice">
-                <select value={intake.brand_voice ?? 'friendly'} onChange={(e) => setIntake({ ...intake, brand_voice: e.target.value as Intake['brand_voice'] })} className={inputCls} style={inputStyle}>
-                  <option value="friendly">Friendly</option>
-                  <option value="authoritative">Authoritative</option>
-                  <option value="playful">Playful</option>
-                  <option value="luxury">Luxury</option>
-                </select>
-              </Field>
-              <Field label="Brand color">
-                <div className="flex items-center gap-2">
-                  <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-12 rounded-lg" style={inputStyle} />
-                  <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className={inputCls} style={inputStyle} />
-                </div>
-              </Field>
-            </div>
+            <Field label="Brand voice">
+              <select value={intake.brand_voice ?? 'friendly'} onChange={(e) => setIntake({ ...intake, brand_voice: e.target.value as Intake['brand_voice'] })} className={inputCls} style={inputStyle}>
+                <option value="friendly">Friendly</option>
+                <option value="authoritative">Authoritative</option>
+                <option value="playful">Playful</option>
+                <option value="luxury">Luxury</option>
+              </select>
+            </Field>
           </Card>
 
-          <div className="flex justify-end">
+          <div className="flex justify-between">
+            <button type="button" onClick={() => setStep(1)} className={btnGhostCls} style={btnGhost}>← Back</button>
             <button type="submit" disabled={busy} className={btnPrimaryCls} style={btnPrimary}>
               {busy ? 'Creating…' : 'Generate page →'}
             </button>
@@ -412,7 +696,7 @@ export default function NewFunnelWizard() {
         </form>
       )}
 
-      {step === 2 && (
+      {step === 3 && (
         <Card title="Your generated page" subtitle="Click any section to edit later — for now, regenerate until the structure looks right.">
           {generating ? (
             <GeneratingAnimation />
@@ -464,15 +748,15 @@ export default function NewFunnelWizard() {
             <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No page yet.</div>
           )}
           <div className="mt-6 flex justify-between">
-            <button type="button" onClick={() => setStep(1)} className={btnGhostCls} style={btnGhost}>← Back</button>
-            <button type="button" disabled={!generated || generating} onClick={() => setStep(3)} className={btnPrimaryCls} style={btnPrimary}>
+            <button type="button" onClick={() => setStep(2)} className={btnGhostCls} style={btnGhost}>← Back</button>
+            <button type="button" disabled={!generated || generating} onClick={() => setStep(4)} className={btnPrimaryCls} style={btnPrimary}>
               Next: Agents →
             </button>
           </div>
         </Card>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <Card title="Configure response" subtitle="The triggered agent fires within seconds; the conversational agent calls back to qualify and book.">
           <div className="grid gap-6 md:grid-cols-2">
             <Field label="Triggered agent (instant SMS)">
@@ -498,7 +782,7 @@ export default function NewFunnelWizard() {
             in another tab and refresh.
           </p>
           <div className="mt-6 flex justify-between">
-            <button type="button" onClick={() => setStep(2)} className={btnGhostCls} style={btnGhost}>← Back</button>
+            <button type="button" onClick={() => setStep(3)} className={btnGhostCls} style={btnGhost}>← Back</button>
             <button type="button" onClick={submitStep3} disabled={busy} className={btnPrimaryCls} style={btnPrimary}>
               {busy ? 'Saving…' : 'Next: Tracking →'}
             </button>
@@ -506,7 +790,7 @@ export default function NewFunnelWizard() {
         </Card>
       )}
 
-      {step === 4 && (
+      {step === 5 && (
         <Card title="Conversion tracking" subtitle="Server-side conversion events fire to Meta CAPI + Google Ads at every funnel stage. The ad platforms then optimize on bookings, not just clicks.">
           <div className="grid gap-6 md:grid-cols-2">
             <Field label="Meta Pixel ID" hint="Find in Meta Events Manager → Data Sources.">
@@ -525,7 +809,7 @@ export default function NewFunnelWizard() {
             You can skip this step and configure tracking later. Without it, the ad platforms can&rsquo;t optimize on downstream events.
           </p>
           <div className="mt-6 flex justify-between">
-            <button type="button" onClick={() => setStep(3)} className={btnGhostCls} style={btnGhost}>← Back</button>
+            <button type="button" onClick={() => setStep(4)} className={btnGhostCls} style={btnGhost}>← Back</button>
             <button type="button" onClick={submitStep4} disabled={busy} className={btnPrimaryCls} style={btnPrimary}>
               {busy ? 'Publishing…' : 'Publish funnel'}
             </button>
@@ -533,7 +817,7 @@ export default function NewFunnelWizard() {
         </Card>
       )}
 
-      {step === 5 && publishedUrl && (
+      {step === 6 && publishedUrl && (
         <Card title="Funnel is live" subtitle="The landing page is published, the form is wired, and conversion tracking is firing.">
           <div className="rounded-lg p-4" style={{ background: 'var(--surface-secondary)' }}>
             <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Landing URL</div>
@@ -560,8 +844,8 @@ export default function NewFunnelWizard() {
 // ─── small UI primitives ────────────────────────────────────────────
 
 function Stepper({ step }: { step: Step }) {
-  const labels: Record<Step, string> = { 1: 'Intake', 2: 'Page', 3: 'Agents', 4: 'Tracking', 5: 'Publish' }
-  const numbers: Step[] = [1, 2, 3, 4, 5]
+  const labels: Record<Step, string> = { 1: 'Brand', 2: 'Intake', 3: 'Page', 4: 'Agents', 5: 'Tracking', 6: 'Publish' }
+  const numbers: Step[] = [1, 2, 3, 4, 5, 6]
   return (
     <div
       className="flex items-center gap-2 overflow-x-auto rounded-xl p-3 text-sm"

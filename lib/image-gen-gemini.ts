@@ -43,16 +43,43 @@ export function isGeminiImageEnabled(): boolean {
  * `aspect` is a hint baked into the prompt — Gemini doesn't expose a
  * native aspect-ratio knob on this model, but giving it explicit
  * dimensions in the prompt tilts output toward that shape.
+ *
+ * `referenceImages` is an optional list of public image URLs (logos,
+ * brand inspo, the operator's existing hero photo). They're fetched
+ * and inlined into the request as additional `parts` so Gemini can
+ * key its output to brand visuals — colour, style, mark — instead of
+ * inventing a vibe.
  */
 export async function generateImage(args: {
   prompt: string
   aspect?: 'wide' | 'square' | 'portrait' | 'og'
+  referenceImages?: string[]
 }): Promise<GeneratedImage | null> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return null
 
   const aspectHint = aspectPromptHint(args.aspect)
   const fullPrompt = `${args.prompt}\n\n${aspectHint}`
+
+  // Fetch reference images and convert to inline base64 parts. Each
+  // fetch is wrapped — a 404 on one reference shouldn't kill the
+  // whole image gen, we just drop it from the parts list.
+  const refParts: Array<{ inlineData: { mimeType: string; data: string } }> = []
+  for (const refUrl of args.referenceImages ?? []) {
+    try {
+      const r = await fetch(refUrl)
+      if (!r.ok) continue
+      const buf = Buffer.from(await r.arrayBuffer())
+      // Cap at 4MB per reference — Gemini limits the request payload
+      // and oversized refs (uncompressed PNGs) will reject the call.
+      if (buf.byteLength > 4 * 1024 * 1024) continue
+      const mimeType = r.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png'
+      refParts.push({ inlineData: { mimeType, data: buf.toString('base64') } })
+    } catch {
+      // Skip silently — operator-supplied URL might be on a CDN that
+      // 403s us, that's fine.
+    }
+  }
 
   const url = `${GEMINI_API_BASE}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`
 
@@ -62,7 +89,15 @@ export async function generateImage(args: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
+        contents: [{
+          parts: [
+            // Reference images come FIRST so the prompt is "look at
+            // these, then generate matching X" rather than the other
+            // way around (which Gemini sometimes ignores).
+            ...refParts,
+            { text: fullPrompt },
+          ],
+        }],
         generationConfig: {
           // Image-out only. Without this the model may return text
           // describing the image instead of bytes.
@@ -138,12 +173,17 @@ export async function generateAndUpload(args: {
   prompt: string
   aspect?: 'wide' | 'square' | 'portrait' | 'og'
   keyPrefix: string
+  referenceImages?: string[]
 }): Promise<string | null> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     console.warn('[gemini-image] BLOB_READ_WRITE_TOKEN missing — cannot persist generated image')
     return null
   }
-  const img = await generateImage({ prompt: args.prompt, aspect: args.aspect })
+  const img = await generateImage({
+    prompt: args.prompt,
+    aspect: args.aspect,
+    referenceImages: args.referenceImages,
+  })
   if (!img) return null
   // Lazy-import @vercel/blob so build environments without the package
   // installed (none currently, but keeps this file self-contained)

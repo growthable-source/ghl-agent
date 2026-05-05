@@ -2280,6 +2280,17 @@ model Campaign {
   brandVoice   String?
   primaryColor String? @default("#0A84FF")
 
+  // ─── Brand kit ───
+  // Operator-supplied source material that the AI generator uses to
+  // make pages look on-brand instead of like generic AI templates.
+  // Logo + reference URL drive colour extraction; brand guide drives
+  // voice in the Claude system prompt; logo is also passed to Gemini
+  // image gen so generated photography stays visually coherent.
+  logoUrl         String?
+  brandGuideText  String?  @db.Text
+  referenceUrl    String?
+  extractedColors String[] @default([])
+
   // ─── Budget + flight ───
   // Planning fields only — actual ad spend is tracked by the ad-launcher
   // epic (separate, not in this Phase 1).

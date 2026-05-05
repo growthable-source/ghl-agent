@@ -60,6 +60,13 @@ interface CreateBody {
   daily_budget?: number | null
   total_budget?: number | null
   location_id?: string | null
+  // Brand kit — set on the wizard's Brand step (uploads happen via
+  // /funnels/brand-asset-upload + /funnels/scrape-brand before this
+  // POST fires; the wizard ships the resulting URLs/text here).
+  logo_url?: string | null
+  brand_guide_text?: string | null
+  reference_url?: string | null
+  extracted_colors?: string[]
 }
 
 export async function POST(
@@ -121,6 +128,15 @@ export async function POST(
       dailyBudget: body.daily_budget ?? null,
       totalBudget: body.total_budget ?? null,
       createdBy: auth.session.user.id!,
+      logoUrl: body.logo_url ?? null,
+      brandGuideText: body.brand_guide_text ?? null,
+      referenceUrl: body.reference_url ?? null,
+      extractedColors: Array.isArray(body.extracted_colors)
+        ? body.extracted_colors
+            .filter((c) => typeof c === 'string' && /^#?[0-9a-fA-F]{6}$/.test(c.trim()))
+            .map((c) => (c.trim().startsWith('#') ? c.trim() : `#${c.trim()}`))
+            .slice(0, 8)
+        : [],
     },
     select: { id: true, name: true, status: true, createdAt: true },
   })

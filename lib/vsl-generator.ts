@@ -30,6 +30,21 @@ export interface CampaignIntake {
   brand_voice?: 'friendly' | 'authoritative' | 'playful' | 'luxury'
 }
 
+/**
+ * Brand kit captured by the wizard's Brand step. Optional in every
+ * field — the generator reads what's there and ignores what isn't,
+ * so a workspace that skips the brand step still gets a page.
+ */
+export interface BrandKit {
+  logo_url?: string | null
+  brand_guide_text?: string | null
+  reference_url?: string | null
+  extracted_colors?: string[]
+  /** Headlines / og:description copy lifted from the operator's
+   *  reference website. Used as a VOICE reference, not copied verbatim. */
+  text_samples?: string[]
+}
+
 export type PageTemplate = 'vsl' | 'lead_gen' | 'webinar_optin' | 'application' | 'book_call'
 
 export interface GeneratedPage {
@@ -327,6 +342,33 @@ function normalizeSection(raw: RawSection): PageSection | null {
   }
 }
 
+/**
+ * Brand-kit context appended as a second user-message text block.
+ * Kept out of the system prompt so the prompt cache stays warm across
+ * different brands.
+ */
+function brandKitPrompt(kit: BrandKit): string {
+  const bits: string[] = ['—— BRAND KIT (use these to ground voice, copy, and visual choices) ——']
+  if (kit.brand_guide_text && kit.brand_guide_text.trim()) {
+    bits.push(`Brand voice / style guide (operator-supplied — follow these rules verbatim):\n${kit.brand_guide_text.trim()}`)
+  }
+  if (kit.text_samples && kit.text_samples.length > 0) {
+    bits.push(
+      `Sample copy from the operator's existing site (use as VOICE reference only — do NOT copy verbatim):\n${kit.text_samples.map((s) => `• ${s}`).join('\n')}`,
+    )
+  }
+  if (kit.extracted_colors && kit.extracted_colors.length > 0) {
+    bits.push(`Brand palette (already wired into renderer — don't restate, but stay tonally consistent): ${kit.extracted_colors.join(', ')}`)
+  }
+  if (kit.reference_url) {
+    bits.push(`Reference site: ${kit.reference_url}`)
+  }
+  if (kit.logo_url) {
+    bits.push(`Logo URL: ${kit.logo_url} (the renderer will display this; don't generate a placeholder)`)
+  }
+  return bits.join('\n\n')
+}
+
 function userPrompt(intake: CampaignIntake, template: PageTemplate): string {
   return `Build a ${template} landing page for this business.
 
@@ -362,6 +404,7 @@ export async function generateVslPage(input: {
   intake: CampaignIntake
   template?: PageTemplate
   primary_color?: string
+  brand_kit?: BrandKit
 }): Promise<GeneratedPage> {
   if (!input.intake?.business_name || !input.intake?.offer || !input.intake?.dream_outcome) {
     throw new Error('intake.business_name, offer, and dream_outcome are required')
@@ -393,7 +436,15 @@ export async function generateVslPage(input: {
       },
     ],
     tool_choice: { type: 'tool', name: 'return_page_spec' },
-    messages: [{ role: 'user', content: userPrompt(input.intake, template) }],
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: userPrompt(input.intake, template) },
+          ...(input.brand_kit ? [{ type: 'text' as const, text: brandKitPrompt(input.brand_kit) }] : []),
+        ],
+      },
+    ],
   })
 
   let parsed: AiPageRaw | null = null

@@ -23,7 +23,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { requireWorkspaceRole } from '@/lib/require-workspace-role'
-import { generateVslPage, type CampaignIntake, type PageTemplate } from '@/lib/vsl-generator'
+import { generateVslPage, type BrandKit, type CampaignIntake, type PageTemplate } from '@/lib/vsl-generator'
 import { generateAndUpload, isGeminiImageEnabled } from '@/lib/image-gen-gemini'
 import type { PageImages, PageSpec } from '@/lib/page-spec'
 
@@ -36,6 +36,7 @@ interface Body {
   template?: PageTemplate
   primary_color?: string
   save_to_landing_page_id?: string
+  brand_kit?: BrandKit
 }
 
 export async function POST(
@@ -67,6 +68,7 @@ export async function POST(
       intake: body.intake,
       template: body.template,
       primary_color: body.primary_color,
+      brand_kit: body.brand_kit,
     })
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) {
@@ -104,6 +106,7 @@ export async function POST(
       const images = await generatePageImages({
         intake: body.intake,
         spec: result.spec,
+        brandKit: body.brand_kit,
         keyPrefix: `landing/${body.save_to_landing_page_id ?? 'preview'}`,
       })
       if (images.hero_url || images.offer_bg_url || images.og_url) {
@@ -147,12 +150,12 @@ export async function POST(
 async function generatePageImages(args: {
   intake: CampaignIntake
   spec: PageSpec
+  brandKit?: BrandKit
   keyPrefix: string
 }): Promise<PageImages> {
-  const { intake, spec, keyPrefix } = args
+  const { intake, spec, brandKit, keyPrefix } = args
+  const primaryColour = spec.style?.primary_color ?? '#0A84FF'
 
-  // Pull a description of the offer + audience for prompt context.
-  // Industry hints help Gemini pick a visually appropriate setting.
   const context = [
     intake.business_name,
     intake.offer,
@@ -160,37 +163,72 @@ async function generatePageImages(args: {
     intake.audience ? `Audience: ${intake.audience}` : '',
   ].filter(Boolean).join('. ')
 
+  // Brand-kit context fed into every prompt so generated imagery looks
+  // like the same brand as the logo, not stock photography. The actual
+  // logo image is also passed as a multimodal reference (referenceImages)
+  // so Gemini can match marks/colours/style — text alone isn't enough.
+  const brandContext: string[] = []
+  if (brandKit?.brand_guide_text) {
+    brandContext.push(`Brand guide notes: ${brandKit.brand_guide_text.slice(0, 600)}`)
+  }
+  if (brandKit?.extracted_colors && brandKit.extracted_colors.length > 0) {
+    brandContext.push(`Brand palette to harmonise with: ${brandKit.extracted_colors.join(', ')}`)
+  }
+  if (brandKit?.logo_url) {
+    brandContext.push(`A reference image of the brand logo is included — match its colour palette, geometry, and feel.`)
+  }
+  const brandContextText = brandContext.length > 0 ? `\n\n${brandContext.join('\n')}` : ''
+
+  // Only the logo is small enough + brand-defining enough to be worth
+  // sending as a reference. Reference URL og:image is too noisy.
+  const refImages = brandKit?.logo_url ? [brandKit.logo_url] : undefined
+
   const heroPrompt =
     `Editorial-quality photograph for a landing-page hero. ` +
     `Subject: ${context}. The image should evoke the dream outcome: "${intake.dream_outcome}". ` +
     `Modern, well-lit, shallow depth of field. Real people if relevant — not stock-photo poses. ` +
     `Negative space on one side for headline overlay (the headline is added separately, do not draw text). ` +
-    `Color palette should harmonise with brand colour ${spec.style?.primary_color ?? '#0A84FF'}.`
+    `Color palette should harmonise with brand colour ${primaryColour}.${brandContextText}`
 
   const offerBgPrompt =
     `Subtle abstract background pattern for an offer/CTA section. ` +
     `Brand: ${intake.business_name}. Industry: ${intake.industry ?? 'business services'}. ` +
     `Soft geometric shapes or organic gradients in a near-white setting, ` +
-    `with accent tones derived from brand colour ${spec.style?.primary_color ?? '#0A84FF'}. ` +
-    `Very low contrast — this image will be rendered at ~7% opacity behind text.`
+    `with accent tones derived from brand colour ${primaryColour}. ` +
+    `Very low contrast — this image will be rendered at ~7% opacity behind text.${brandContextText}`
 
   const ogPrompt =
     `Open Graph social preview image for a landing page. ` +
     `Business: ${intake.business_name}. Offer: ${intake.offer}. ` +
     `Bold, simple composition. Strong focal point centred. ` +
-    `Use brand colour ${spec.style?.primary_color ?? '#0A84FF'} as a primary accent. ` +
-    `Looks great as a thumbnail in LinkedIn, Slack, Twitter previews.`
+    `Use brand colour ${primaryColour} as a primary accent. ` +
+    `Looks great as a thumbnail in LinkedIn, Slack, Twitter previews.${brandContextText}`
 
   const [hero, offerBg, og] = await Promise.all([
-    generateAndUpload({ prompt: heroPrompt, aspect: 'wide', keyPrefix: `${keyPrefix}/hero` }).catch((e) => {
+    generateAndUpload({
+      prompt: heroPrompt,
+      aspect: 'wide',
+      keyPrefix: `${keyPrefix}/hero`,
+      referenceImages: refImages,
+    }).catch((e) => {
       console.warn('[generate-page] hero image failed:', e instanceof Error ? e.message : e)
       return null
     }),
-    generateAndUpload({ prompt: offerBgPrompt, aspect: 'wide', keyPrefix: `${keyPrefix}/offer-bg` }).catch((e) => {
+    generateAndUpload({
+      prompt: offerBgPrompt,
+      aspect: 'wide',
+      keyPrefix: `${keyPrefix}/offer-bg`,
+      referenceImages: refImages,
+    }).catch((e) => {
       console.warn('[generate-page] offer-bg image failed:', e instanceof Error ? e.message : e)
       return null
     }),
-    generateAndUpload({ prompt: ogPrompt, aspect: 'og', keyPrefix: `${keyPrefix}/og` }).catch((e) => {
+    generateAndUpload({
+      prompt: ogPrompt,
+      aspect: 'og',
+      keyPrefix: `${keyPrefix}/og`,
+      referenceImages: refImages,
+    }).catch((e) => {
       console.warn('[generate-page] og image failed:', e instanceof Error ? e.message : e)
       return null
     }),
