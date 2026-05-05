@@ -90,9 +90,27 @@ async function main() {
       }
     }
 
-    console.log('[migrate] Running prisma migrate deploy…')
-    execSync('npx prisma migrate deploy', { stdio: 'inherit' })
-    console.log('[migrate] ✓ Done.')
+    // Fast path: if every migration directory is already recorded as
+    // finished in `_prisma_migrations`, there's nothing to do — skip the
+    // npx call entirely. Avoids transient `migrate deploy` failures
+    // (drift checks, checksum issues) when the DB is already in sync,
+    // typically after an out-of-band manual SQL apply.
+    const dirNames = readdirSync(MIGRATIONS_DIR)
+      .filter(n => statSync(join(MIGRATIONS_DIR, n)).isDirectory())
+    const applied = await db.$queryRawUnsafe(
+      `SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`,
+    )
+    const appliedSet = new Set(applied.map(r => r.migration_name))
+    const pending = dirNames.filter(n => !appliedSet.has(n))
+
+    if (pending.length === 0) {
+      console.log(`[migrate] ✓ All ${dirNames.length} migrations already applied — skipping migrate deploy.`)
+    } else {
+      console.log(`[migrate] ${pending.length} pending migration(s): ${pending.join(', ')}`)
+      console.log('[migrate] Running prisma migrate deploy…')
+      execSync('npx prisma migrate deploy', { stdio: 'inherit' })
+      console.log('[migrate] ✓ Done.')
+    }
   } finally {
     await db.$disconnect().catch(() => {})
   }

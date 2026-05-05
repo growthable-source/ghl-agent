@@ -3,22 +3,15 @@
 /**
  * Funnels list page.
  *
- * One row per Campaign in the workspace. Status badges drive the
- * sort/scan logic at a glance. The "New funnel" CTA jumps to the
- * 5-step wizard at /funnels/new.
- *
- * Client component — uses fetch() against the funnels API. No edit
- * surface here; the wizard creates campaigns and the per-campaign
- * detail page (Phase 5b) handles edits.
+ * Styled with Voxility design tokens (CSS variables on :root) — never
+ * hardcoded Tailwind color utilities like bg-white/bg-blue-600. Match
+ * the visual language of /dashboard/[workspaceId]/calls and the agents
+ * pages so this page slots in cleanly.
  */
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-
-type Access =
-  | { allowed: true }
-  | { allowed: false; reason: 'plan' | 'trial_expired'; currentPlan: string }
 
 interface CampaignRow {
   id: string
@@ -34,11 +27,15 @@ interface CampaignRow {
   _count: { formSubmissions: number; conversionEvents: number }
 }
 
-const STATUS_COLOR: Record<CampaignRow['status'], string> = {
-  draft: 'bg-neutral-100 text-neutral-600',
-  live: 'bg-green-100 text-green-700',
-  paused: 'bg-amber-100 text-amber-700',
-  ended: 'bg-red-100 text-red-700',
+type Access =
+  | { allowed: true }
+  | { allowed: false; reason: 'plan' | 'trial_expired'; currentPlan: string }
+
+const STATUS_TOKEN: Record<CampaignRow['status'], { bg: string; fg: string }> = {
+  draft: { bg: 'var(--surface-secondary)', fg: 'var(--text-tertiary)' },
+  live: { bg: 'var(--accent-emerald-bg)', fg: 'var(--accent-emerald)' },
+  paused: { bg: 'var(--accent-amber-bg)', fg: 'var(--accent-amber)' },
+  ended: { bg: 'var(--accent-red-bg)', fg: 'var(--accent-red)' },
 }
 
 export default function FunnelsListPage() {
@@ -69,110 +66,187 @@ export default function FunnelsListPage() {
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Funnels</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <h1 className="text-2xl font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+            Funnels
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
             Each funnel = landing page + form + agent response + tracking — in one workflow.
           </p>
         </div>
         {access?.allowed && (
           <Link
             href={`/dashboard/${workspaceId}/funnels/new`}
-            className="inline-flex h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+            className="inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium transition-colors"
+            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
           >
             New funnel
           </Link>
         )}
       </header>
 
+      {error && (
+        <div
+          className="mt-6 rounded-lg p-3 text-sm"
+          style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+        >
+          {error}
+        </div>
+      )}
+
       {access && !access.allowed && (
-        <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4">
-          <div className="text-sm font-semibold text-amber-900">
+        <div
+          className="mt-6 rounded-xl p-5"
+          style={{
+            background: 'var(--accent-amber-bg)',
+            borderWidth: '1px',
+            borderStyle: 'solid',
+            borderColor: 'var(--border)',
+          }}
+        >
+          <div className="text-sm font-semibold" style={{ color: 'var(--accent-amber)' }}>
             {access.reason === 'trial_expired'
               ? 'Your trial has expired'
               : 'Funnel builder requires Growth or Scale'}
           </div>
-          <p className="mt-1 text-sm text-amber-800">
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
             {access.reason === 'trial_expired'
               ? 'Upgrade to keep using the funnel builder. Your existing funnels stay accessible.'
               : `You are on the ${access.currentPlan} plan. Funnels are available on Growth and Scale.`}
           </p>
           <Link
             href={`/dashboard/${workspaceId}/settings/billing`}
-            className="mt-3 inline-flex h-9 items-center rounded-md bg-amber-600 px-4 text-xs font-semibold text-white hover:bg-amber-700"
+            className="mt-3 inline-flex h-9 items-center rounded-lg px-4 text-xs font-medium"
+            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
           >
             Upgrade plan
           </Link>
         </div>
       )}
 
-      {error && (
-        <div className="mt-6 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
-      )}
-
       <section className="mt-6">
         {loading ? (
-          <div className="rounded-md border border-neutral-200 bg-white p-8 text-center text-sm text-neutral-500">
+          <div
+            className="rounded-xl p-8 text-center text-sm"
+            style={{
+              background: 'var(--surface)',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              borderColor: 'var(--border)',
+              color: 'var(--text-tertiary)',
+            }}
+          >
             Loading…
           </div>
         ) : campaigns.length === 0 ? (
-          <div className="rounded-md border border-dashed border-neutral-300 bg-white p-12 text-center">
-            <h2 className="text-lg font-semibold">No funnels yet</h2>
-            <p className="mt-2 text-sm text-neutral-600">
+          <div
+            className="rounded-xl p-12 text-center"
+            style={{
+              background: 'var(--surface)',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              borderColor: 'var(--border)',
+            }}
+          >
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+              No funnels yet
+            </h2>
+            <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
               Launch your first funnel — describe the offer, generate a page, pick agents, and publish in under five minutes.
             </p>
-            <Link
-              href={`/dashboard/${workspaceId}/funnels/new`}
-              className="mt-5 inline-flex h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
-            >
-              Create your first funnel
-            </Link>
+            {access?.allowed && (
+              <Link
+                href={`/dashboard/${workspaceId}/funnels/new`}
+                className="mt-5 inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium"
+                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+              >
+                Create your first funnel
+              </Link>
+            )}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-md border border-neutral-200 bg-white">
+          <div
+            className="overflow-hidden rounded-xl"
+            style={{
+              background: 'var(--surface)',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              borderColor: 'var(--border)',
+            }}
+          >
             <table className="w-full text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-left text-xs uppercase tracking-wider text-neutral-500">
-                <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Goal</th>
-                  <th className="px-4 py-3">Submissions</th>
-                  <th className="px-4 py-3">Page</th>
-                  <th className="px-4 py-3 text-right">Updated</th>
+              <thead
+                style={{
+                  background: 'var(--surface-secondary)',
+                  borderBottomWidth: '1px',
+                  borderBottomStyle: 'solid',
+                  borderBottomColor: 'var(--border)',
+                }}
+              >
+                <tr style={{ color: 'var(--text-tertiary)' }}>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wider font-medium">Name</th>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wider font-medium">Status</th>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wider font-medium">Goal</th>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wider font-medium">Submissions</th>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wider font-medium">Page</th>
+                  <th className="px-4 py-3 text-right text-xs uppercase tracking-wider font-medium">Updated</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {campaigns.map((c) => (
-                  <tr key={c.id} className="hover:bg-neutral-50">
+              <tbody>
+                {campaigns.map((c, i) => (
+                  <tr
+                    key={c.id}
+                    style={{
+                      borderTopWidth: i === 0 ? '0' : '1px',
+                      borderTopStyle: 'solid',
+                      borderTopColor: 'var(--border)',
+                    }}
+                  >
                     <td className="px-4 py-3">
-                      <Link href={`/dashboard/${workspaceId}/funnels/${c.id}`} className="font-medium text-neutral-900 hover:underline">
+                      <Link
+                        href={`/dashboard/${workspaceId}/funnels/${c.id}`}
+                        className="font-medium hover:underline"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
                         {c.name}
                       </Link>
                       {c.offerSummary && (
-                        <div className="mt-0.5 truncate text-xs text-neutral-500">{c.offerSummary}</div>
+                        <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                          {c.offerSummary}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_COLOR[c.status]}`}>
+                      <span
+                        className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+                        style={{ background: STATUS_TOKEN[c.status].bg, color: STATUS_TOKEN[c.status].fg }}
+                      >
                         {c.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-neutral-600 capitalize">{c.goal.replace(/_/g, ' ')}</td>
-                    <td className="px-4 py-3 tabular-nums">{c._count.formSubmissions}</td>
+                    <td className="px-4 py-3 capitalize" style={{ color: 'var(--text-secondary)' }}>
+                      {c.goal.replace(/_/g, ' ')}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                      {c._count.formSubmissions}
+                    </td>
                     <td className="px-4 py-3">
                       {c.landingPage ? (
                         <a
                           href={`/p/${c.landingPage.slug}`}
                           target="_blank"
                           rel="noreferrer"
-                          className={`text-xs ${c.landingPage.published ? 'text-blue-600 hover:underline' : 'text-neutral-400'}`}
+                          className="text-xs hover:underline"
+                          style={{
+                            color: c.landingPage.published ? 'var(--accent-primary)' : 'var(--text-muted)',
+                          }}
                         >
-                          /p/{c.landingPage.slug} {!c.landingPage.published && '(draft)'}
+                          /p/{c.landingPage.slug}{!c.landingPage.published && ' (draft)'}
                         </a>
                       ) : (
-                        <span className="text-xs text-neutral-400">no page</span>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>no page</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-xs text-neutral-500">
+                    <td className="px-4 py-3 text-right text-xs" style={{ color: 'var(--text-tertiary)' }}>
                       {new Date(c.updatedAt).toLocaleDateString()}
                     </td>
                   </tr>
