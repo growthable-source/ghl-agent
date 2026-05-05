@@ -154,6 +154,15 @@ model Workspace {
   conversionEvents ConversionEvent[]
   pixelConfigs     PixelConfig[]
 
+  // ─── Voxility ad-launcher layer ───
+  // Connected Meta + Google Ads accounts, AI drafts, UTM templates.
+  // Daily metrics + recommendations + activity_log live on each
+  // account row (cascade through workspace deletion).
+  metaAdAccounts   MetaAdAccount[]
+  googleAdAccounts GoogleAdAccount[]
+  adCampaignDrafts AdCampaignDraft[]
+  utmTemplates     UtmTemplate[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -2305,6 +2314,7 @@ model Campaign {
   formSubmissions  FormSubmission[]
   conversionEvents ConversionEvent[]
   pixelConfig      PixelConfig?
+  adCampaignDrafts AdCampaignDraft[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, createdAt(sort: Desc)])
@@ -2453,8 +2463,13 @@ model PixelConfig {
 
   // ─── Meta pixel ───
   metaPixelId       String?
+  // Legacy: pointed at the generic Integration table when ad accounts
+  // weren't yet first-class. New code should use metaAdAccountId below.
+  // Both stay nullable; conversion-fire prefers metaAdAccountId when set.
   metaIntegrationId String?
-  metaIntegration   Integration? @relation("PixelMetaIntegration", fields: [metaIntegrationId], references: [id], onDelete: SetNull)
+  metaIntegration   Integration?   @relation("PixelMetaIntegration", fields: [metaIntegrationId], references: [id], onDelete: SetNull)
+  metaAdAccountId   String?
+  metaAdAccount     MetaAdAccount? @relation("PixelMetaAdAccount", fields: [metaAdAccountId], references: [id], onDelete: SetNull)
   // For sandboxing CAPI test events without affecting production attribution.
   metaTestEventCode String?
 
@@ -2462,7 +2477,9 @@ model PixelConfig {
   googleConversionId    String? // "AW-1234567"
   googleConversionLabel String? // "abc123XYZ"
   googleIntegrationId   String?
-  googleIntegration     Integration? @relation("PixelGoogleIntegration", fields: [googleIntegrationId], references: [id], onDelete: SetNull)
+  googleIntegration     Integration?     @relation("PixelGoogleIntegration", fields: [googleIntegrationId], references: [id], onDelete: SetNull)
+  googleAdAccountId     String?
+  googleAdAccount       GoogleAdAccount? @relation("PixelGoogleAdAccount", fields: [googleAdAccountId], references: [id], onDelete: SetNull)
 
   // Per-event value override. Shape: { lead: 50, booked: 250, sale: 1000 }.
   // When unset, ConversionEvent.value is sent as-is.
@@ -2476,5 +2493,337 @@ model PixelConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([workspaceId])
+}
+
+// ─── Voxility ad-launcher layer ────────────────────────────────────────
+//
+// Connected Meta Ads + Google Ads accounts, AI-generated campaign drafts,
+// daily metric snapshots, AI recommendations, account-level audit log.
+// Ported from the lead-hacker-daily reference (workspace-scoped instead
+// of folder-scoped — Voxility's Workspace IS the agency-client unit).
+
+// ─── MetaAdAccount ────────────────────────────────────────────────────
+model MetaAdAccount {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // Display name (operator-supplied or fetched from Meta during connect).
+  accountName      String
+  // Meta's act_<id> identifier — what Marketing API requests target.
+  metaAccountId    String
+  // CAPI / system-user access token. Stored cleartext in this column;
+  // when we move to vault encryption, this column becomes nullable
+  // alongside an `accessTokenSecretRef` pointer.
+  accessToken      String    @db.Text
+  // Operator can pause an account without disconnecting (preserves
+  // metrics history + drafts).
+  isActive         Boolean   @default(true)
+  // Opt-in to autopilot rule execution against this account.
+  autoPilotEnabled Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  dailyMetrics    AdDailyMetric[]
+  creativeMetrics AdCreativeMetric[]
+  audienceMetrics AdAudienceMetric[]
+  recommendations AdRecommendation[] @relation("MetaRecommendations")
+  activityLog     AdActivityLog[]    @relation("MetaActivityLog")
+  autopilotRules  AdAutopilotRule[]  @relation("MetaAutopilotRules")
+  pixelConfigs    PixelConfig[]      @relation("PixelMetaAdAccount")
+
+  @@unique([workspaceId, metaAccountId])
+  @@index([workspaceId, isActive])
+}
+
+// ─── GoogleAdAccount ──────────────────────────────────────────────────
+model GoogleAdAccount {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accountName      String
+  // Google Ads customer id, stored unhyphenated. The API expects no
+  // dashes when constructing resource names.
+  googleCustomerId String
+  // OAuth refresh token used to mint short-lived access tokens for
+  // Google Ads API calls. Anthropic-side, we never expose this beyond
+  // the server runtime.
+  refreshToken     String    @db.Text
+  isActive         Boolean   @default(true)
+  autoPilotEnabled Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  dailyMetrics    GoogleAdMetric[]
+  campaignDetails GoogleCampaignDetail[]
+  adAssets        GoogleAdAsset[]
+  recommendations AdRecommendation[]     @relation("GoogleRecommendations")
+  activityLog     AdActivityLog[]        @relation("GoogleActivityLog")
+  autopilotRules  AdAutopilotRule[]      @relation("GoogleAutopilotRules")
+  pixelConfigs    PixelConfig[]          @relation("PixelGoogleAdAccount")
+
+  @@unique([workspaceId, googleCustomerId])
+  @@index([workspaceId, isActive])
+}
+
+// ─── AdCampaignDraft ──────────────────────────────────────────────────
+// AI-generated campaign drafts (Meta or Google). Stored before deploy
+// so the operator can review + tweak. payload Json shape varies by
+// platform — see lib/vsl-generator pattern but for ad copy + targeting.
+model AdCampaignDraft {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // Optional link to the funnel Campaign that owns this ad campaign —
+  // when set, the launched campaign's destination URL is auto-set to
+  // the funnel's landing page.
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  platform           String // "meta" | "google"
+  name               String
+  // Full campaign spec — see lib/ad-meta-generator + lib/ad-google-generator
+  // for the typed shapes.
+  payload            Json
+  // The "why" the AI emitted alongside the spec. Shown to the operator
+  // before they hit Deploy.
+  aiReasoning        String? @db.Text
+  // Once deployed, the platform-side campaign id (act_<id>/<campaign_id>
+  // for Meta, customers/<id>/campaigns/<id> for Google) so we can link
+  // metrics back.
+  externalCampaignId String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId, platform, createdAt(sort: Desc)])
+  @@index([campaignId])
+}
+
+// ─── AdDailyMetric ────────────────────────────────────────────────────
+// Meta-side daily snapshot. One row per (account, date).
+model AdDailyMetric {
+  id          String        @id @default(cuid())
+  accountId   String
+  account     MetaAdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date        DateTime      @db.Date
+  spend       Decimal       @default(0) @db.Decimal(12, 2)
+  leads       Int           @default(0)
+  impressions BigInt        @default(0)
+  clicks      Int           @default(0)
+  cpl         Decimal?      @db.Decimal(10, 4)
+  cpm         Decimal?      @db.Decimal(10, 4)
+  ctr         Decimal?      @db.Decimal(8, 4)
+  cpc         Decimal?      @db.Decimal(10, 4)
+  createdAt   DateTime      @default(now())
+
+  @@unique([accountId, date])
+  @@index([accountId, date(sort: Desc)])
+}
+
+// Per-creative perf for a Meta account on a given date. Used by the
+// AI-analysis function to identify winning + losing ads.
+model AdCreativeMetric {
+  id          String        @id @default(cuid())
+  accountId   String
+  account     MetaAdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date        DateTime      @db.Date
+  adId        String
+  adName      String?
+  status      String?
+  spend       Decimal       @default(0) @db.Decimal(12, 2)
+  impressions BigInt        @default(0)
+  clicks      Int           @default(0)
+  leads       Int           @default(0)
+  ctr         Decimal?      @db.Decimal(8, 4)
+  cpl         Decimal?      @db.Decimal(10, 4)
+  createdAt   DateTime      @default(now())
+
+  @@unique([accountId, adId, date])
+  @@index([accountId, date(sort: Desc)])
+}
+
+// Audience demographic + placement breakdowns (Meta).
+model AdAudienceMetric {
+  id                String        @id @default(cuid())
+  accountId         String
+  account           MetaAdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date              DateTime      @db.Date
+  adId              String
+  adName            String?
+  age               String?
+  gender            String?
+  publisherPlatform String?
+  country           String?
+  spend             Decimal       @default(0) @db.Decimal(12, 2)
+  impressions       BigInt        @default(0)
+  clicks            Int           @default(0)
+  leads             Int           @default(0)
+  createdAt         DateTime      @default(now())
+
+  @@index([accountId, date(sort: Desc)])
+}
+
+// ─── GoogleAdMetric ───────────────────────────────────────────────────
+// Google-side metrics, far more granular than Meta's daily aggregate.
+model GoogleAdMetric {
+  id                String          @id @default(cuid())
+  accountId         String
+  account           GoogleAdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date              DateTime        @db.Date
+  campaignId        String
+  adGroupId         String?
+  adId              String?
+  keywordId         String?
+  spend             Decimal         @default(0) @db.Decimal(12, 2)
+  impressions       BigInt          @default(0)
+  clicks            Int             @default(0)
+  conversions       Decimal         @default(0) @db.Decimal(12, 2)
+  conversionValue   Decimal         @default(0) @db.Decimal(12, 2)
+  ctr               Decimal?        @db.Decimal(8, 4)
+  cpc               Decimal?        @db.Decimal(10, 4)
+  cpm               Decimal?        @db.Decimal(10, 4)
+  costPerConversion Decimal?        @db.Decimal(10, 4)
+  qualityScore      Int?
+  impressionShare   Decimal?        @db.Decimal(8, 4)
+  createdAt         DateTime        @default(now())
+
+  @@index([accountId, date(sort: Desc)])
+  @@index([accountId, campaignId, date(sort: Desc)])
+}
+
+// Campaign-level Google Ads details (bidding strategy, IS-loss reasons).
+model GoogleCampaignDetail {
+  id                    String          @id @default(cuid())
+  accountId             String
+  account               GoogleAdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  campaignId            String
+  biddingStrategyType   String?
+  budgetAmount          Decimal?        @db.Decimal(12, 2)
+  searchImpressionShare Decimal?        @db.Decimal(8, 4)
+  searchLostIsBudget    Decimal?        @db.Decimal(8, 4)
+  searchLostIsRank      Decimal?        @db.Decimal(8, 4)
+  syncedAt              DateTime        @default(now())
+
+  @@unique([accountId, campaignId])
+  @@index([accountId])
+}
+
+// Per-asset perf for Google Ads RSAs (headline + description performance
+// labels: BEST / GOOD / LOW / PENDING / UNRATED).
+model GoogleAdAsset {
+  id               String          @id @default(cuid())
+  accountId        String
+  account          GoogleAdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  campaignId       String
+  adGroupId        String
+  adId             String
+  assetType        String
+  assetText        String?         @db.Text
+  performanceLabel String?
+  pinnedField      String?
+  impressions      BigInt          @default(0)
+  clicks           Int             @default(0)
+  conversions      Decimal         @default(0) @db.Decimal(12, 2)
+  spend            Decimal         @default(0) @db.Decimal(12, 2)
+  syncedAt         DateTime        @default(now())
+
+  @@index([accountId, adId])
+  @@index([accountId, performanceLabel])
+}
+
+// ─── AdRecommendation ─────────────────────────────────────────────────
+// AI-generated optimization recommendations. Either Meta- or Google-
+// scoped (one of the two FKs is set, the other null).
+model AdRecommendation {
+  id              String           @id @default(cuid())
+  metaAccountId   String?
+  metaAccount     MetaAdAccount?   @relation("MetaRecommendations", fields: [metaAccountId], references: [id], onDelete: Cascade)
+  googleAccountId String?
+  googleAccount   GoogleAdAccount? @relation("GoogleRecommendations", fields: [googleAccountId], references: [id], onDelete: Cascade)
+
+  category       String   @default("budget") // "budget" | "creative" | "audience" | "keywords" | "structure"
+  title          String
+  description    String   @db.Text
+  rationale      String?  @db.Text
+  affectedEntity String?
+  expectedImpact String?
+  impactRange    String?
+  priority       String   @default("medium") // "high" | "medium" | "low"
+  confidence     String   @default("medium") // "high" | "medium" | "low"
+  status         String   @default("pending") // "pending" | "applied" | "dismissed"
+  // Optional structured suggestions the AI proposed alongside the prose.
+  actionSteps    String[] @default([])
+  draftNegatives String[] @default([])
+  draftCopy      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([metaAccountId, status, createdAt(sort: Desc)])
+  @@index([googleAccountId, status, createdAt(sort: Desc)])
+}
+
+// ─── AdActivityLog ────────────────────────────────────────────────────
+// Per-account audit trail. Distinct from Voxility's workspace AuditLog
+// because ad-account actions (sync, autopilot fire, manual deploy)
+// have a different audience (ops + advertisers, not workspace admins).
+model AdActivityLog {
+  id              String           @id @default(cuid())
+  metaAccountId   String?
+  metaAccount     MetaAdAccount?   @relation("MetaActivityLog", fields: [metaAccountId], references: [id], onDelete: Cascade)
+  googleAccountId String?
+  googleAccount   GoogleAdAccount? @relation("GoogleActivityLog", fields: [googleAccountId], references: [id], onDelete: Cascade)
+
+  actionType  String // "data_sync" | "ai_analysis" | "manual_deploy" | "autopilot_fire" | etc.
+  description String
+  details     Json?
+  performedBy String   @default("system") // user id, "system", or "auto-pilot"
+  createdAt   DateTime @default(now())
+
+  @@index([metaAccountId, createdAt(sort: Desc)])
+  @@index([googleAccountId, createdAt(sort: Desc)])
+}
+
+// ─── AdAutopilotRule ──────────────────────────────────────────────────
+// Conditional rules that auto-execute on metric thresholds. e.g. "if
+// CPL > $50 for 3 consecutive days, pause this ad set". Off by default;
+// per-account opt-in via MetaAdAccount.autoPilotEnabled.
+model AdAutopilotRule {
+  id              String           @id @default(cuid())
+  metaAccountId   String?
+  metaAccount     MetaAdAccount?   @relation("MetaAutopilotRules", fields: [metaAccountId], references: [id], onDelete: Cascade)
+  googleAccountId String?
+  googleAccount   GoogleAdAccount? @relation("GoogleAutopilotRules", fields: [googleAccountId], references: [id], onDelete: Cascade)
+
+  ruleName  String
+  ruleType  String // "pause_high_cpl" | "increase_budget_low_cpa" | etc.
+  threshold Decimal? @db.Decimal(12, 4)
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([metaAccountId, isEnabled])
+  @@index([googleAccountId, isEnabled])
+}
+
+// ─── UtmTemplate ──────────────────────────────────────────────────────
+// Reusable UTM presets the campaign builder pre-fills from.
+model UtmTemplate {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name         String
+  baseUrl      String
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  utmTerm      String?
+  utmContent   String?
+  customParams Json?
+  createdBy    String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([workspaceId, name])
   @@index([workspaceId])
 }
