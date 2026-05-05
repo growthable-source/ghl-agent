@@ -26,9 +26,11 @@ import {
 
 type Params = { params: Promise<{ slug: string }> }
 
+// LandingPage has NO campaignId column — the FK lives on Campaign.landingPageId
+// (which is @unique, so the reverse relation is one-to-one). To get the
+// owning campaign we look it up by landingPageId in a separate query below.
 const PAGE_SELECT = {
   id: true,
-  campaignId: true,
   title: true,
   metaDescription: true,
   ogImageUrl: true,
@@ -72,19 +74,13 @@ export default async function PublicLandingPage({ params }: Params) {
 
   if (!page || !page.published) notFound()
 
-  // Find the campaign id (we joined-via-LandingPage above; the reverse
-  // relation lives on Campaign.landingPageId so we look it up cheaply).
-  // Skipping the join here keeps the public render fast — campaignId is
-  // only needed for the FormBlock to attribute the submission.
-  const campaign = page.campaignId
-    ? await db.campaign.findUnique({
-        where: { id: page.campaignId },
-        select: { id: true },
-      }).catch(() => null)
-    : await db.campaign.findFirst({
-        where: { landingPageId: page.id },
-        select: { id: true },
-      }).catch(() => null)
+  // Owning campaign — Campaign.landingPageId is @unique so this is a
+  // single-row lookup. Only used so the form can attribute submissions
+  // back to the right campaign.
+  const campaign = await db.campaign.findUnique({
+    where: { landingPageId: page.id },
+    select: { id: true },
+  })
 
   const spec = parsePageSpec(page.spec)
   const formSchema = parseFormSchema(page.formSchema)
