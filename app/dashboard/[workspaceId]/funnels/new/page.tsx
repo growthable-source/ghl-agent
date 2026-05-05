@@ -256,16 +256,24 @@ export default function NewFunnelWizard() {
       const r = await fetch(`/api/workspaces/${workspaceId}/funnels/scrape-brand?url=${encodeURIComponent(u)}`)
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Scrape failed')
       const data = (await r.json()) as {
+        tier: 'vision' | 'scrape'
         themeColor: string | null
         extractedColors: string[]
         textSamples: string[]
+        screenshotUrl?: string | null
+        analysis?: typeof brandAnalysis
+        analysisError?: string | null
       }
+      setScrapeTier(data.tier)
       const colours = [data.themeColor, ...data.extractedColors].filter((c): c is string => !!c)
       if (colours.length > 0) {
-        setExtractedColors((prev) => mergeUnique([...colours, ...prev]).slice(0, 6))
+        setExtractedColors((prev) => mergeUnique([...colours, ...prev]).slice(0, 8))
         if (primaryColor === '#e84425') setPrimaryColor(colours[0])
       }
       setLogoTextSamples((prev) => mergeUnique([...prev, ...data.textSamples]).slice(0, 8))
+      if (data.screenshotUrl) setScreenshotUrl(data.screenshotUrl)
+      if (data.analysis) setBrandAnalysis(data.analysis)
+      if (data.analysisError) setScrapeError(`Vision analysis warning: ${data.analysisError}`)
     } catch (err) {
       setScrapeError(err instanceof Error ? err.message : 'Scrape failed')
     } finally {
@@ -282,6 +290,22 @@ export default function NewFunnelWizard() {
   const [brandGuideText, setBrandGuideText] = useState('')
   const [extractedColors, setExtractedColors] = useState<string[]>([])
   const [logoTextSamples, setLogoTextSamples] = useState<string[]>([])
+  // Vision-pipeline outputs from /scrape-brand. Held in state until
+  // funnel-create + generate-page time, then forwarded so Claude reads
+  // the analysis and Gemini sees the screenshot as a visual reference.
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null)
+  const [scrapeTier, setScrapeTier] = useState<'vision' | 'scrape' | null>(null)
+  const [brandAnalysis, setBrandAnalysis] = useState<{
+    primary_color?: string
+    accent_colors?: string[]
+    typography_style?: string
+    typography_descriptor?: string
+    photography_style?: string
+    design_vibe?: string
+    voice_tone?: string
+    visual_motifs?: string[]
+    industry_guess?: string
+  } | null>(null)
   // Whether GEMINI_API_KEY is set on the deployment (read-only fact;
   // operator can't fix from here, but we surface a warning so the
   // 'no images on my page' question doesn't keep coming back).
@@ -383,14 +407,16 @@ export default function NewFunnelWizard() {
           intake,
           primary_color: primaryColor,
           // Brand kit forwarded to the generator so Claude reads the
-          // brand guide for voice/tone, and Gemini can reference the
-          // logo + extracted palette in image prompts.
+          // brand guide + vision analysis for voice/tone, and Gemini
+          // can reference the logo AND screenshot in image prompts.
           brand_kit: {
             logo_url: logoUrl,
             brand_guide_text: brandGuideText.trim() || null,
             reference_url: referenceUrl.trim() || null,
             extracted_colors: extractedColors,
             text_samples: logoTextSamples,
+            screenshot_url: screenshotUrl,
+            analysis: brandAnalysis,
           },
         }),
       })
@@ -589,6 +615,49 @@ export default function NewFunnelWizard() {
                 </button>
               </div>
               {scrapeError && <p className="mt-1 text-xs" style={{ color: 'var(--accent-red)' }}>{scrapeError}</p>}
+              {(screenshotUrl || brandAnalysis) && (
+                <div
+                  className="mt-3 rounded-lg p-3 text-xs"
+                  style={{ background: 'var(--surface-secondary)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                      What we read from your site
+                    </p>
+                    {scrapeTier === 'vision' && (
+                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
+                        vision
+                      </span>
+                    )}
+                  </div>
+                  {screenshotUrl && (
+                    <img
+                      src={screenshotUrl}
+                      alt="Reference site screenshot"
+                      className="mb-3 block w-full max-h-64 object-cover object-top rounded-md"
+                      style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}
+                    />
+                  )}
+                  {brandAnalysis && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                      {brandAnalysis.industry_guess && <Fact label="Industry" value={brandAnalysis.industry_guess} />}
+                      {brandAnalysis.design_vibe && <Fact label="Vibe" value={brandAnalysis.design_vibe} />}
+                      {brandAnalysis.voice_tone && brandAnalysis.voice_tone !== 'unknown' && <Fact label="Voice" value={brandAnalysis.voice_tone} />}
+                      {brandAnalysis.typography_style && brandAnalysis.typography_style !== 'unknown' && (
+                        <Fact label="Typography" value={`${brandAnalysis.typography_style}${brandAnalysis.typography_descriptor ? ' — ' + brandAnalysis.typography_descriptor : ''}`} />
+                      )}
+                      {brandAnalysis.photography_style && brandAnalysis.photography_style !== 'unknown' && (
+                        <Fact label="Photography" value={brandAnalysis.photography_style.replace(/_/g, ' ')} />
+                      )}
+                      {brandAnalysis.visual_motifs && brandAnalysis.visual_motifs.length > 0 && (
+                        <div className="col-span-full">
+                          <Fact label="Motifs" value={brandAnalysis.visual_motifs.join(' · ')} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </Field>
 
             <Field
@@ -941,6 +1010,15 @@ function Card(props: { title: string; subtitle?: string; children: ReactNode }) 
       {props.subtitle && <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>{props.subtitle}</p>}
       <div className="mt-5 space-y-4">{props.children}</div>
     </section>
+  )
+}
+
+function Fact(props: { label: string; value: string }) {
+  return (
+    <div>
+      <span className="uppercase text-[10px] tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{props.label}: </span>
+      <span style={{ color: 'var(--text-primary)' }}>{props.value}</span>
+    </div>
   )
 }
 

@@ -43,6 +43,21 @@ export interface BrandKit {
   /** Headlines / og:description copy lifted from the operator's
    *  reference website. Used as a VOICE reference, not copied verbatim. */
   text_samples?: string[]
+  /** Vision-rendered screenshot URL (from Browserbase + Sonnet 4.6
+   *  vision pipeline). Forwarded to Gemini as a visual reference so
+   *  generated imagery matches the brand's design vibe, not just colour. */
+  screenshot_url?: string | null
+  /** Structured BrandAnalysis output from the vision pipeline. Fed to
+   *  Claude here for voice/photography/design-vibe guidance. */
+  analysis?: {
+    typography_style?: string
+    typography_descriptor?: string
+    photography_style?: string
+    design_vibe?: string
+    voice_tone?: string
+    visual_motifs?: string[]
+    industry_guess?: string
+  } | null
 }
 
 export type PageTemplate = 'vsl' | 'lead_gen' | 'webinar_optin' | 'application' | 'book_call'
@@ -352,6 +367,29 @@ function brandKitPrompt(kit: BrandKit): string {
   if (kit.brand_guide_text && kit.brand_guide_text.trim()) {
     bits.push(`Brand voice / style guide (operator-supplied — follow these rules verbatim):\n${kit.brand_guide_text.trim()}`)
   }
+  // Vision-derived analysis carries strong, structured signal — surface
+  // it ahead of raw text samples so the model knows the WHY before the
+  // examples. The brand guide takes precedence over both because it's
+  // operator-stated truth.
+  if (kit.analysis) {
+    const a = kit.analysis
+    const lines: string[] = []
+    if (a.industry_guess) lines.push(`Industry: ${a.industry_guess}`)
+    if (a.design_vibe) lines.push(`Design vibe: ${a.design_vibe}`)
+    if (a.voice_tone && a.voice_tone !== 'unknown') lines.push(`Voice tone: ${a.voice_tone}`)
+    if (a.typography_style && a.typography_style !== 'unknown') {
+      lines.push(`Typography: ${a.typography_style}${a.typography_descriptor ? ` (${a.typography_descriptor})` : ''}`)
+    }
+    if (a.photography_style && a.photography_style !== 'unknown') {
+      lines.push(`Photography style: ${a.photography_style}`)
+    }
+    if (a.visual_motifs && a.visual_motifs.length > 0) {
+      lines.push(`Visual motifs: ${a.visual_motifs.join(', ')}`)
+    }
+    if (lines.length > 0) {
+      bits.push(`Brand identity (extracted from a screenshot of the operator's existing site):\n${lines.map((l) => `• ${l}`).join('\n')}`)
+    }
+  }
   if (kit.text_samples && kit.text_samples.length > 0) {
     bits.push(
       `Sample copy from the operator's existing site (use as VOICE reference only — do NOT copy verbatim):\n${kit.text_samples.map((s) => `• ${s}`).join('\n')}`,
@@ -365,6 +403,9 @@ function brandKitPrompt(kit: BrandKit): string {
   }
   if (kit.logo_url) {
     bits.push(`Logo URL: ${kit.logo_url} (the renderer will display this; don't generate a placeholder)`)
+  }
+  if (kit.screenshot_url) {
+    bits.push(`Reference site screenshot: ${kit.screenshot_url} (the operator's actual current site — match its energy)`)
   }
   return bits.join('\n\n')
 }

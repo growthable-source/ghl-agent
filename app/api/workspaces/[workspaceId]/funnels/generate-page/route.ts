@@ -181,24 +181,47 @@ async function generatePageImagesDetailed(args: {
   ].filter(Boolean).join('. ')
 
   // Brand-kit context fed into every prompt so generated imagery looks
-  // like the same brand as the logo, not stock photography. The actual
-  // logo image is also passed as a multimodal reference (referenceImages)
-  // so Gemini can match marks/colours/style — text alone isn't enough.
+  // like the same brand as the operator's site, not stock photography.
+  // The screenshot of the existing site (when available) is passed as a
+  // multimodal reference too — Gemini matches design vibe, photography
+  // style, and colour energy when it can SEE the brand.
   const brandContext: string[] = []
   if (brandKit?.brand_guide_text) {
     brandContext.push(`Brand guide notes: ${brandKit.brand_guide_text.slice(0, 600)}`)
   }
+  if (brandKit?.analysis) {
+    const a = brandKit.analysis
+    const visionBits: string[] = []
+    if (a.design_vibe) visionBits.push(`Design vibe: ${a.design_vibe}`)
+    if (a.photography_style && a.photography_style !== 'unknown') {
+      visionBits.push(`Photography style: ${a.photography_style} (match this — don't switch styles)`)
+    }
+    if (a.visual_motifs && a.visual_motifs.length > 0) {
+      visionBits.push(`Visual motifs: ${a.visual_motifs.join(', ')}`)
+    }
+    if (a.industry_guess) visionBits.push(`Industry: ${a.industry_guess}`)
+    if (visionBits.length > 0) {
+      brandContext.push(`Brand identity (extracted from the operator's existing site):\n${visionBits.join('\n')}`)
+    }
+  }
   if (brandKit?.extracted_colors && brandKit.extracted_colors.length > 0) {
     brandContext.push(`Brand palette to harmonise with: ${brandKit.extracted_colors.join(', ')}`)
   }
-  if (brandKit?.logo_url) {
-    brandContext.push(`A reference image of the brand logo is included — match its colour palette, geometry, and feel.`)
+  const refImageNotes: string[] = []
+  if (brandKit?.screenshot_url) refImageNotes.push("the operator's actual existing site")
+  if (brandKit?.logo_url) refImageNotes.push('the brand logo')
+  if (refImageNotes.length > 0) {
+    brandContext.push(`Reference images included: ${refImageNotes.join(' and ')}. Match their colour palette, photography style, and overall design energy.`)
   }
   const brandContextText = brandContext.length > 0 ? `\n\n${brandContext.join('\n')}` : ''
 
-  // Only the logo is small enough + brand-defining enough to be worth
-  // sending as a reference. Reference URL og:image is too noisy.
-  const refImages = brandKit?.logo_url ? [brandKit.logo_url] : undefined
+  // Pass BOTH the screenshot and the logo to Gemini when we have them.
+  // Screenshot first — it's the richer visual signal (full design vibe,
+  // not just a mark). Both are filtered to PNG/JPEG/WebP server-side
+  // (Gemini rejects SVG); SVG logos are silently skipped there.
+  const refImages: string[] = []
+  if (brandKit?.screenshot_url) refImages.push(brandKit.screenshot_url)
+  if (brandKit?.logo_url) refImages.push(brandKit.logo_url)
 
   const heroPrompt =
     `Editorial-quality photograph for a landing-page hero. ` +
@@ -226,19 +249,19 @@ async function generatePageImagesDetailed(args: {
       prompt: heroPrompt,
       aspect: 'wide',
       keyPrefix: `${keyPrefix}/hero`,
-      referenceImages: refImages,
+      referenceImages: refImages.length > 0 ? refImages : undefined,
     }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })),
     generateAndUpload({
       prompt: offerBgPrompt,
       aspect: 'wide',
       keyPrefix: `${keyPrefix}/offer-bg`,
-      referenceImages: refImages,
+      referenceImages: refImages.length > 0 ? refImages : undefined,
     }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })),
     generateAndUpload({
       prompt: ogPrompt,
       aspect: 'og',
       keyPrefix: `${keyPrefix}/og`,
-      referenceImages: refImages,
+      referenceImages: refImages.length > 0 ? refImages : undefined,
     }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })),
   ])
 
