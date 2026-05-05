@@ -41,9 +41,11 @@ const PAGE_SELECT = {
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params
-  const page = await db.landingPage
-    .findUnique({ where: { slug }, select: { title: true, metaDescription: true, ogImageUrl: true, published: true } })
-    .catch(() => null)
+  // No catch — let DB errors surface. Was masking actual problems as 404s.
+  const page = await db.landingPage.findUnique({
+    where: { slug },
+    select: { title: true, metaDescription: true, ogImageUrl: true, published: true },
+  })
   if (!page || !page.published) return { title: 'Not found' }
   return {
     title: page.title,
@@ -59,9 +61,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 export default async function PublicLandingPage({ params }: Params) {
   const { slug } = await params
 
-  const page = await db.landingPage
-    .findUnique({ where: { slug }, select: PAGE_SELECT })
-    .catch(() => null)
+  // No catch — let DB errors propagate to the Next.js error handler so
+  // they show up in Vercel runtime logs instead of being swallowed as
+  // a generic 404. We log slug + result so the runtime trace is grep-able.
+  const page = await db.landingPage.findUnique({
+    where: { slug },
+    select: PAGE_SELECT,
+  })
+  console.log(`[PublicLandingPage] slug=${slug} found=${!!page} published=${page?.published ?? 'n/a'}`)
 
   if (!page || !page.published) notFound()
 
