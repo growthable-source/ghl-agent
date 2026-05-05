@@ -1,43 +1,45 @@
 /**
  * Cross-instance pub/sub for chat-widget SSE events, backed by Postgres
- * LISTEN/NOTIFY.
+ * LISTEN/NOTIFY when reachable — graceful in-memory fallback when not.
  *
- * Why this exists: the in-memory Map keyed by conversationId worked on a
- * single Vercel function instance, but on multi-instance deployments the
- * visitor's SSE landed on instance A while the agent ran on instance B —
- * so the broadcast on B found an empty map and the message was lost.
+ * Why this exists: the in-memory Map keyed by conversationId works on a
+ * single Vercel function instance. On multi-instance deployments, the
+ * visitor's SSE lands on instance A while the agent runs on B — without
+ * cross-instance delivery, B's broadcast finds an empty map and the
+ * message is lost.
  *
  * Connection model:
- *  - publish() goes through Prisma's pool (cheap, short-lived).
- *  - subscribe() shares ONE pg.Client per function instance. The client
- *    LISTENs on a single fan-in channel ("widget_events") and we demux
- *    in-process by conversationId. Earlier the route opened a dedicated
- *    pg.Client per SSE stream — that saturated Postgres direct-connection
- *    limits (Neon caps direct connections aggressively) once a handful
- *    of visitors were chatting concurrently, and any pg-side blip closed
- *    every active stream. Sharing the connection makes widget capacity
- *    bounded by function-instance count, not by visitor count.
+ *  - publish() ALWAYS delivers to the in-memory subscriber map first
+ *    (so local subscribers get the message even with no DB reachable),
+ *    then ATTEMPTS Postgres NOTIFY for cross-instance fan-out. If NOTIFY
+ *    has been disabled (DNS failed once), this is a no-op.
+ *  - subscribe() ALWAYS registers in the in-memory map. It also tries
+ *    to ensure the shared LISTEN connection is open — but never throws
+ *    if it can't, because losing cross-instance delivery should NOT
+ *    break the SSE stream for the visitor in front of you.
+ *  - Cross-instance delivery requires a SESSION-MODE Postgres connection
+ *    (LISTEN survives across statements). On Supabase that's the direct
+ *    db.<ref>.supabase.co:5432 host, which is IPv6-only on the free
+ *    tier and unreachable from Vercel — that's where degradation kicks
+ *    in. Setting POSTGRES_URL_SESSION_POOLER (or whichever env var
+ *    points at the IPv4-reachable session-mode pooler) restores it.
  *
- * The shared client is lazy: it opens on the first subscribe(), gets
- * recycled on error so the next subscribe() reconnects, and is held
- * open for the lifetime of the function instance.
+ * Once a connection attempt fails with a DNS error (ENOTFOUND), pubsub
+ * is marked unavailable for FAIL_BACKOFF_MS so we don't hammer DNS on
+ * every SSE reconnect. After the backoff, we try again — the env var
+ * may have been added in the meantime.
  */
 
 import { Client } from 'pg'
 import { db } from './db'
 
 const CHANNEL = 'widget_events'
-
-// Postgres has an 8000-byte hard cap on NOTIFY payloads. We refuse
-// anything close to that — operator messages and agent replies are far
-// smaller in practice (~4KB max for a long agent reply).
 const MAX_PAYLOAD_BYTES = 7000
+const FAIL_BACKOFF_MS = 5 * 60_000 // 5 minutes
 
 function directConnectionString(): string {
-  // LISTEN must run on a connection that won't be returned to a
-  // transaction-mode pooler between statements. Vercel Postgres /
-  // Neon expose a NON_POOLING URL specifically for this.
   return (
+    process.env.POSTGRES_URL_SESSION_POOLER ??
     process.env.POSTGRES_URL_NON_POOLING ??
     process.env.DATABASE_URL ??
     process.env.POSTGRES_URL ??
@@ -56,80 +58,157 @@ let sharedClient: Client | null = null
 let connectPromise: Promise<Client> | null = null
 let heartbeat: ReturnType<typeof setInterval> | null = null
 
+// Tracks whether cross-instance pubsub is currently attemptable.
+// 'unknown'  — never tried, will attempt on first subscribe()
+// 'available' — connection open and LISTENing
+// 'unavailable' — recent attempt failed; respect FAIL_BACKOFF_MS before retrying
+let pubsubState: 'unknown' | 'available' | 'unavailable' = 'unknown'
+let pubsubFailedAt = 0
+let pubsubFailLogged = false
+
+function deliverInMemory(conversationId: string, message: unknown): void {
+  const handlers = subscribers.get(conversationId)
+  if (!handlers || handlers.size === 0) return
+  for (const handler of handlers) {
+    try {
+      handler(message)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[widget-pubsub] subscriber threw:', msg)
+    }
+  }
+}
+
 function tearDownSharedClient() {
-  if (heartbeat) { clearInterval(heartbeat); heartbeat = null }
+  if (heartbeat) {
+    clearInterval(heartbeat)
+    heartbeat = null
+  }
   const client = sharedClient
   sharedClient = null
   connectPromise = null
   if (client) client.end().catch(() => {})
 }
 
-async function getSharedClient(): Promise<Client> {
+function markUnavailable(reason: string) {
+  pubsubState = 'unavailable'
+  pubsubFailedAt = Date.now()
+  if (!pubsubFailLogged) {
+    console.warn(
+      '[widget-pubsub] cross-instance pubsub unavailable — falling back to in-memory only delivery.',
+      `reason=${reason}`,
+      `(retry after ${FAIL_BACKOFF_MS / 60_000}min)`,
+    )
+    pubsubFailLogged = true
+  }
+}
+
+function shouldRetry(): boolean {
+  if (pubsubState !== 'unavailable') return true
+  if (Date.now() - pubsubFailedAt > FAIL_BACKOFF_MS) {
+    pubsubFailLogged = false // allow a fresh log on retry-failure
+    return true
+  }
+  return false
+}
+
+/** Try to open the shared LISTEN connection. Returns null on any failure
+ *  rather than throwing — callers must treat null as "no cross-instance
+ *  pubsub available, in-memory only." */
+async function tryGetSharedClient(): Promise<Client | null> {
   if (sharedClient) return sharedClient
-  if (connectPromise) return connectPromise
+  if (!shouldRetry()) return null
+  if (connectPromise) {
+    return connectPromise.catch(() => null)
+  }
   connectPromise = (async () => {
     const client = new Client({
       connectionString: directConnectionString(),
       ssl: { rejectUnauthorized: false },
+      // Cap the connect attempt — hung DNS lookups would otherwise hold
+      // up the SSE response indefinitely.
+      connectionTimeoutMillis: 8_000,
     })
     client.on('notification', (n) => {
       if (n.channel !== CHANNEL || !n.payload) return
-      let parsed: { c?: string; m?: unknown }
-      try { parsed = JSON.parse(n.payload) } catch (err: any) {
-        console.warn('[widget-pubsub] malformed notification payload:', err.message)
+      let parsed: { c?: string; m?: unknown; s?: string }
+      try {
+        parsed = JSON.parse(n.payload)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn('[widget-pubsub] malformed notification payload:', msg)
         return
       }
       const cid = parsed.c
       if (!cid) return
-      const handlers = subscribers.get(cid)
-      if (!handlers || handlers.size === 0) return
-      for (const handler of handlers) {
-        try { handler(parsed.m) } catch (err: any) {
-          console.warn('[widget-pubsub] subscriber threw:', err.message)
-        }
-      }
+      // Dedup: skip our own broadcasts. publish() already delivered
+      // them in-memory directly, so we'd double-deliver if we re-ran
+      // them on the round-trip.
+      if (parsed.s === SENDER_ID) return
+      deliverInMemory(cid, parsed.m)
     })
     client.on('error', (err) => {
       console.warn('[widget-pubsub] shared LISTEN connection error:', err.message)
-      // Tear down so the next subscribe() reconnects, and notify every
-      // active stream so it can close + tell the visitor to retry.
       tearDownSharedClient()
+      markUnavailable(err.message)
       const allErrorHandlers: ErrorHandler[] = []
       for (const set of errorHandlers.values()) {
         for (const h of set) allErrorHandlers.push(h)
       }
       for (const h of allErrorHandlers) {
-        try { h(err) } catch {}
+        try {
+          h(err)
+        } catch {}
       }
     })
     await client.connect()
     await client.query(`LISTEN ${CHANNEL}`)
     sharedClient = client
-    // Idle ping so connection-tracking middleboxes don't reap us during
-    // a quiet stretch.
+    pubsubState = 'available'
+    pubsubFailLogged = false
     heartbeat = setInterval(() => {
       client.query('SELECT 1').catch(() => {})
     }, 30_000)
     return client
   })().catch((err) => {
     connectPromise = null
-    throw err
-  })
-  return connectPromise
+    const msg = err instanceof Error ? err.message : String(err)
+    markUnavailable(msg)
+    return null
+  }) as Promise<Client | null> as Promise<Client>
+  return connectPromise.catch(() => null)
 }
 
 export async function publish(conversationId: string, message: unknown): Promise<void> {
-  const payload = JSON.stringify({ c: conversationId, m: message })
+  // 1. Always deliver in-memory first. If everyone's on this instance,
+  //    we're done — no DB needed.
+  deliverInMemory(conversationId, message)
+
+  // 2. Best-effort fan-out via NOTIFY. Skip entirely if pubsub is in
+  //    backoff. NOTIFY round-trips back to our own LISTEN connection,
+  //    but our own subscribers were already delivered above — to avoid
+  //    double-delivery we tag the payload with a sender id and have the
+  //    receiver skip its own messages.
+  if (pubsubState === 'unavailable' && !shouldRetry()) return
+  const payload = JSON.stringify({ c: conversationId, m: message, s: SENDER_ID })
   if (Buffer.byteLength(payload, 'utf8') > MAX_PAYLOAD_BYTES) {
     console.warn(`[widget-pubsub] dropping NOTIFY payload — too large (${payload.length} chars)`)
     return
   }
   try {
     await db.$executeRawUnsafe(`NOTIFY ${CHANNEL}, $1`, payload)
-  } catch (err: any) {
-    console.warn(`[widget-pubsub] NOTIFY failed:`, err.message)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    // NOTIFY through the Prisma pool can fail independently of LISTEN —
+    // log quietly without disabling the whole module.
+    console.warn(`[widget-pubsub] NOTIFY failed:`, msg)
   }
 }
+
+// Per-instance unique id so we can ignore our own NOTIFY round-trips
+// (referenced from publish() and the on('notification') handler in
+// tryGetSharedClient — both run after module init so TDZ is fine).
+const SENDER_ID = Math.random().toString(36).slice(2, 10)
 
 export type Subscription = {
   close: () => Promise<void>
@@ -140,24 +219,44 @@ export async function subscribe(
   handler: Handler,
   onError?: ErrorHandler,
 ): Promise<Subscription> {
-  await getSharedClient()
+  // Register the in-memory subscriber FIRST. This is the only thing that
+  // must succeed for the SSE stream to be useful on this instance.
   let set = subscribers.get(conversationId)
-  if (!set) { set = new Set(); subscribers.set(conversationId, set) }
+  if (!set) {
+    set = new Set()
+    subscribers.set(conversationId, set)
+  }
   set.add(handler)
   let errSet: Set<ErrorHandler> | undefined
   if (onError) {
     errSet = errorHandlers.get(conversationId)
-    if (!errSet) { errSet = new Set(); errorHandlers.set(conversationId, errSet) }
+    if (!errSet) {
+      errSet = new Set()
+      errorHandlers.set(conversationId, errSet)
+    }
     errSet.add(onError)
   }
+
+  // Best-effort: try to open the shared LISTEN connection so we ALSO
+  // receive cross-instance broadcasts. Never throws — null result just
+  // means we're in single-instance mode.
+  await tryGetSharedClient()
+
   return {
     close: async () => {
       const s = subscribers.get(conversationId)
-      if (s) { s.delete(handler); if (s.size === 0) subscribers.delete(conversationId) }
+      if (s) {
+        s.delete(handler)
+        if (s.size === 0) subscribers.delete(conversationId)
+      }
       if (errSet && onError) {
         const es = errorHandlers.get(conversationId)
-        if (es) { es.delete(onError); if (es.size === 0) errorHandlers.delete(conversationId) }
+        if (es) {
+          es.delete(onError)
+          if (es.size === 0) errorHandlers.delete(conversationId)
+        }
       }
     },
   }
 }
+
