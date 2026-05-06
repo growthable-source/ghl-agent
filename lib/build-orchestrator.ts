@@ -200,7 +200,10 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
         status: 'complete',
         critique: critique as unknown as object,
         score: critique.score,
-        specSnapshot: currentSpec as unknown as object,
+        // specSnapshot intentionally carries title + meta_description
+        // alongside the spec so the wizard can publish a non-final
+        // iteration without a separate lookup.
+        specSnapshot: { title: currentTitle, meta_description: currentMeta, spec: currentSpec } as unknown as object,
         completedAt: new Date(),
       },
     })

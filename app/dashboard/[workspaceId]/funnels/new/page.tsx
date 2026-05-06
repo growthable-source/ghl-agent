@@ -8,10 +8,15 @@
  * language of the rest of the dashboard (calls, agents pages).
  */
 
-import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GeneratingAnimation } from './GeneratingAnimation'
+import {
+  BuildTimeline,
+  type BuildState,
+  type BuildIteration,
+} from '@/components/funnels/BuildTimeline'
 
 interface Intake {
   business_name: string
@@ -28,19 +33,11 @@ interface Intake {
 
 interface AgentRow { id: string; name: string }
 
-interface GeneratedPage {
-  title: string
-  meta_description: string
-  spec: {
-    version: 1
-    style: { primary_color?: string }
-    sections: { type: string; headline?: string; body?: string }[]
-    images?: { hero_url?: string; offer_bg_url?: string; og_url?: string }
-  }
-  /** Image-gen diagnostic from the API. Populated whether or not any
-   *  images succeeded — `errors[]` contains per-image failure reasons
-   *  so the wizard can tell the operator exactly why imagery is empty. */
-  imageGen?: { enabled: boolean; attempted: number; succeeded: number; errors: string[] }
+interface GeneratedSpec {
+  version?: 1
+  style?: { primary_color?: string }
+  sections?: { type: string; headline?: string; body?: string }[]
+  images?: { hero_url?: string; offer_bg_url?: string; og_url?: string }
 }
 
 const GOALS = [
@@ -175,10 +172,6 @@ export default function NewFunnelWizard() {
   const [step, setStep] = useState<Step>(1)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Distinct from `busy` so the GeneratingAnimation stays visible across
-  // the boundary between campaign-create and generate-page (busy bounces
-  // briefly, generating stays on for the whole AI call).
-  const [generating, setGenerating] = useState(false)
   const [access, setAccess] = useState<{ allowed: boolean; reason?: string; currentPlan?: string } | null>(null)
 
   useEffect(() => {
@@ -247,39 +240,10 @@ export default function NewFunnelWizard() {
     }
   }
 
-  async function scrapeReference() {
-    const u = referenceUrl.trim()
-    if (!u) return
-    setScrapingRef(true)
-    setScrapeError(null)
-    try {
-      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/scrape-brand?url=${encodeURIComponent(u)}`)
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Scrape failed')
-      const data = (await r.json()) as {
-        tier: 'vision' | 'scrape'
-        themeColor: string | null
-        extractedColors: string[]
-        textSamples: string[]
-        screenshotUrl?: string | null
-        analysis?: typeof brandAnalysis
-        analysisError?: string | null
-      }
-      setScrapeTier(data.tier)
-      const colours = [data.themeColor, ...data.extractedColors].filter((c): c is string => !!c)
-      if (colours.length > 0) {
-        setExtractedColors((prev) => mergeUnique([...colours, ...prev]).slice(0, 8))
-        if (primaryColor === '#e84425') setPrimaryColor(colours[0])
-      }
-      setLogoTextSamples((prev) => mergeUnique([...prev, ...data.textSamples]).slice(0, 8))
-      if (data.screenshotUrl) setScreenshotUrl(data.screenshotUrl)
-      if (data.analysis) setBrandAnalysis(data.analysis)
-      if (data.analysisError) setScrapeError(`Vision analysis warning: ${data.analysisError}`)
-    } catch (err) {
-      setScrapeError(err instanceof Error ? err.message : 'Scrape failed')
-    } finally {
-      setScrapingRef(false)
-    }
-  }
+  // Brand scrape now runs implicitly server-side on funnel-create when a
+  // reference_url is set. The vision pipeline output (screenshot +
+  // analysis) lands on the Campaign row and feeds the build loop's
+  // critique. The wizard no longer needs a manual "Pull brand" button.
 
   // Step 1 — Brand (new)
   // 'gradient' is the better default: most landing pages look better
@@ -289,27 +253,8 @@ export default function NewFunnelWizard() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [logoUploading, setLogoUploading] = useState(false)
   const [referenceUrl, setReferenceUrl] = useState('')
-  const [scrapingRef, setScrapingRef] = useState(false)
-  const [scrapeError, setScrapeError] = useState<string | null>(null)
   const [brandGuideText, setBrandGuideText] = useState('')
   const [extractedColors, setExtractedColors] = useState<string[]>([])
-  const [logoTextSamples, setLogoTextSamples] = useState<string[]>([])
-  // Vision-pipeline outputs from /scrape-brand. Held in state until
-  // funnel-create + generate-page time, then forwarded so Claude reads
-  // the analysis and Gemini sees the screenshot as a visual reference.
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null)
-  const [scrapeTier, setScrapeTier] = useState<'vision' | 'scrape' | null>(null)
-  const [brandAnalysis, setBrandAnalysis] = useState<{
-    primary_color?: string
-    accent_colors?: string[]
-    typography_style?: string
-    typography_descriptor?: string
-    photography_style?: string
-    design_vibe?: string
-    voice_tone?: string
-    visual_motifs?: string[]
-    industry_guess?: string
-  } | null>(null)
   // Whether GEMINI_API_KEY is set on the deployment (read-only fact;
   // operator can't fix from here, but we surface a warning so the
   // 'no images on my page' question doesn't keep coming back).
@@ -328,8 +273,26 @@ export default function NewFunnelWizard() {
   // Persisted server state
   const [campaignId, setCampaignId] = useState<string | null>(null)
 
-  // Step 2
-  const [generated, setGenerated] = useState<GeneratedPage | null>(null)
+  // Build loop — replaces the old single-shot generate. Build state +
+  // a polling flag drive the timeline UI on step 3. Selected iteration
+  // is what gets published in step 5 (defaults to the build's bestIterationId).
+  const [build, setBuild] = useState<BuildState | null>(null)
+  const [buildPolling, setBuildPolling] = useState(false)
+  const [selectedIterationId, setSelectedIterationId] = useState<string | null>(null)
+
+  // Convenience derivation: the iteration the operator has selected,
+  // and its title/meta/spec for the publish step.
+  const selectedIteration = useMemo<BuildIteration | null>(
+    () => build?.iterations.find((i) => i.id === selectedIterationId) ?? null,
+    [build, selectedIterationId],
+  )
+  const selectedSnapshot = useMemo(() => {
+    const raw = (selectedIteration as { specSnapshot?: unknown })?.specSnapshot
+    if (!raw || typeof raw !== 'object') return null
+    const obj = raw as { title?: string; meta_description?: string; spec?: GeneratedSpec }
+    if (!obj.spec) return null
+    return { title: obj.title ?? name, meta_description: obj.meta_description ?? '', spec: obj.spec }
+  }, [selectedIteration, name])
 
   // Step 3
   const [agents, setAgents] = useState<AgentRow[]>([])
@@ -352,6 +315,27 @@ export default function NewFunnelWizard() {
       .catch(() => {})
   }, [step, workspaceId, agents.length])
 
+  // Build polling — while step 3 is showing the build timeline AND
+  // the build is still running, refresh every 2s so iteration cards
+  // appear as Browserbase + the critic finish each one. The polling
+  // flag is set true by kickOffBuild and false by refreshBuild once
+  // the build hits a terminal state.
+  useEffect(() => {
+    if (step !== 3 || !campaignId || !buildPolling) return
+    let cancelled = false
+    const tick = async () => {
+      const next = await refreshBuild(campaignId)
+      if (cancelled) return
+      if (next && (next.status === 'passed' || next.status === 'capped' || next.status === 'failed')) {
+        return // refreshBuild already cleared buildPolling
+      }
+      window.setTimeout(tick, 2000)
+    }
+    void tick()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, campaignId, buildPolling])
+
   useEffect(() => {
     const hasProgress = name || intake.business_name || campaignId
     if (!hasProgress || step === 5) return
@@ -371,7 +355,6 @@ export default function NewFunnelWizard() {
       return
     }
     setBusy(true)
-    setGenerating(true)
     try {
       const created = await fetch(`/api/workspaces/${workspaceId}/funnels`, {
         method: 'POST',
@@ -391,48 +374,56 @@ export default function NewFunnelWizard() {
       const { campaign } = (await created.json()) as { campaign: { id: string } }
       setCampaignId(campaign.id)
       setStep(3)
-      void generatePage(campaign.id)
+      void kickOffBuild(campaign.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed')
-      setGenerating(false)
     } finally {
       setBusy(false)
     }
   }
 
-  async function generatePage(_campaignId: string) {
-    setGenerating(true)
+  async function kickOffBuild(forCampaignId: string) {
+    setBuild(null)
+    setSelectedIterationId(null)
+    setBuildPolling(true)
     setError(null)
     try {
-      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/generate-page`, {
+      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/${forCampaignId}/build`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          intake,
-          primary_color: primaryColor,
-          hero_style: heroStyle,
-          // Brand kit forwarded to the generator so Claude reads the
-          // brand guide + vision analysis for voice/tone, and image
-          // gen (Replicate Flux or Gemini) can reference the logo
-          // AND screenshot in prompts.
-          brand_kit: {
-            logo_url: logoUrl,
-            brand_guide_text: brandGuideText.trim() || null,
-            reference_url: referenceUrl.trim() || null,
-            extracted_colors: extractedColors,
-            text_samples: logoTextSamples,
-            screenshot_url: screenshotUrl,
-            analysis: brandAnalysis,
-          },
-        }),
+        body: JSON.stringify({}),
       })
-      if (!r.ok) throw new Error((await r.json()).error ?? 'Generation failed')
-      const data = (await r.json()) as GeneratedPage
-      setGenerated(data)
+      if (!r.ok && r.status !== 409) {
+        throw new Error((await r.json().catch(() => ({}))).error ?? 'Could not start build')
+      }
+      // 409 means a build is already running — poll picks it up.
+      // Initial fetch to populate the timeline immediately.
+      await refreshBuild(forCampaignId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Generation failed')
-    } finally {
-      setGenerating(false)
+      setBuildPolling(false)
+      setError(err instanceof Error ? err.message : 'Build failed to start')
+    }
+  }
+
+  async function refreshBuild(forCampaignId: string): Promise<BuildState | null> {
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/${forCampaignId}/build`)
+      if (!r.ok) return null
+      const data = (await r.json()) as { build: BuildState | null }
+      const next = data.build
+      if (next) {
+        setBuild(next)
+        // Auto-select the best iteration once the build is in a
+        // terminal state, unless the operator already picked one.
+        const terminal = next.status === 'passed' || next.status === 'capped' || next.status === 'failed'
+        if (terminal) {
+          setBuildPolling(false)
+          setSelectedIterationId((prev) => prev ?? next.bestIterationId ?? null)
+        }
+      }
+      return next
+    } catch {
+      return null
     }
   }
 
@@ -459,7 +450,7 @@ export default function NewFunnelWizard() {
   }
 
   async function submitStep4() {
-    if (!campaignId || !generated) return
+    if (!campaignId || !selectedSnapshot) return
     setBusy(true)
     setError(null)
     try {
@@ -467,9 +458,9 @@ export default function NewFunnelWizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: generated.title,
-          meta_description: generated.meta_description,
-          spec: generated.spec,
+          title: selectedSnapshot.title,
+          meta_description: selectedSnapshot.meta_description,
+          spec: selectedSnapshot.spec,
           template: 'vsl',
           meta_pixel_id: metaPixelId.trim() || null,
           google_conversion_id: googleConversionId.trim() || null,
@@ -600,70 +591,15 @@ export default function NewFunnelWizard() {
 
             <Field
               label="Reference website (optional)"
-              hint="Paste an existing site URL — we'll pull its theme colour, dominant accent colours, and a few headlines so generated copy stays in your voice."
+              hint="Paste your existing site URL. We render it in a real browser, screenshot it, and feed both the screenshot and the extracted brand identity into the page generator AND the iteration loop's design critic — so what gets built actually looks like your brand."
             >
-              <div className="flex items-center gap-2">
-                <input
-                  value={referenceUrl}
-                  onChange={(e) => setReferenceUrl(e.target.value)}
-                  className={inputCls}
-                  style={inputStyle}
-                  placeholder="https://yourbusiness.com"
-                />
-                <button
-                  type="button"
-                  onClick={scrapeReference}
-                  disabled={!referenceUrl.trim() || scrapingRef}
-                  className={btnSecondaryCls}
-                  style={btnSecondary}
-                >
-                  {scrapingRef ? 'Reading…' : 'Pull brand'}
-                </button>
-              </div>
-              {scrapeError && <p className="mt-1 text-xs" style={{ color: 'var(--accent-red)' }}>{scrapeError}</p>}
-              {(screenshotUrl || brandAnalysis) && (
-                <div
-                  className="mt-3 rounded-lg p-3 text-xs"
-                  style={{ background: 'var(--surface-secondary)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                      What we read from your site
-                    </p>
-                    {scrapeTier === 'vision' && (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
-                        vision
-                      </span>
-                    )}
-                  </div>
-                  {screenshotUrl && (
-                    <img
-                      src={screenshotUrl}
-                      alt="Reference site screenshot"
-                      className="mb-3 block w-full max-h-64 object-cover object-top rounded-md"
-                      style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--border)' }}
-                    />
-                  )}
-                  {brandAnalysis && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                      {brandAnalysis.industry_guess && <Fact label="Industry" value={brandAnalysis.industry_guess} />}
-                      {brandAnalysis.design_vibe && <Fact label="Vibe" value={brandAnalysis.design_vibe} />}
-                      {brandAnalysis.voice_tone && brandAnalysis.voice_tone !== 'unknown' && <Fact label="Voice" value={brandAnalysis.voice_tone} />}
-                      {brandAnalysis.typography_style && brandAnalysis.typography_style !== 'unknown' && (
-                        <Fact label="Typography" value={`${brandAnalysis.typography_style}${brandAnalysis.typography_descriptor ? ' — ' + brandAnalysis.typography_descriptor : ''}`} />
-                      )}
-                      {brandAnalysis.photography_style && brandAnalysis.photography_style !== 'unknown' && (
-                        <Fact label="Photography" value={brandAnalysis.photography_style.replace(/_/g, ' ')} />
-                      )}
-                      {brandAnalysis.visual_motifs && brandAnalysis.visual_motifs.length > 0 && (
-                        <div className="col-span-full">
-                          <Fact label="Motifs" value={brandAnalysis.visual_motifs.join(' · ')} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+              <input
+                value={referenceUrl}
+                onChange={(e) => setReferenceUrl(e.target.value)}
+                className={inputCls}
+                style={inputStyle}
+                placeholder="https://yourbusiness.com"
+              />
             </Field>
 
             <Field
@@ -842,89 +778,58 @@ export default function NewFunnelWizard() {
       )}
 
       {step === 3 && (
-        <Card title="Your generated page" subtitle="Click any section to edit later — for now, regenerate until the structure looks right.">
-          {generating ? (
-            <GeneratingAnimation />
-          ) : generated ? (
-            <div className="space-y-4">
-              {generated.imageGen && (generated.imageGen.attempted > 0 || !generated.imageGen.enabled) && (
-                <div
-                  className="rounded-lg p-3 text-xs"
-                  style={
-                    generated.imageGen.succeeded === generated.imageGen.attempted && generated.imageGen.attempted > 0
-                      ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
-                      : generated.imageGen.succeeded > 0
-                        ? { background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }
-                        : { background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }
-                  }
-                >
-                  <div className="font-medium">
-                    AI imagery: {generated.imageGen.succeeded}/{generated.imageGen.attempted || 3} generated
-                    {!generated.imageGen.enabled && ' — disabled'}
+        <Card
+          title={
+            buildPolling
+              ? 'Building your page'
+              : build?.status === 'passed'
+                ? 'Your page passed the design review'
+                : build?.status === 'capped'
+                  ? 'Iteration cap hit — best version selected'
+                  : build?.status === 'failed'
+                    ? 'Build failed'
+                    : 'Building your page'
+          }
+          subtitle={
+            buildPolling
+              ? 'Each iteration: render in a real browser, screenshot, vision-critique, regenerate. Stops when the page clears 8/10 or hits the iteration cap.'
+              : build?.status === 'passed'
+                ? `Cleared the ${build.scoreThreshold}/10 quality bar at iteration ${build.iterations.find(i => i.id === build.bestIterationId)?.iteration ?? 1}. Pick a different iteration below if you'd rather ship that one.`
+                : build?.status === 'capped'
+                  ? `Ran ${build.iterations.length} iterations and didn't quite clear ${build.scoreThreshold}/10 — the best one (${build.bestScore?.toFixed(1) ?? '—'}) is selected by default. You can still publish; or regenerate from the funnel page.`
+                  : 'Click a card to inspect its critique. The selected iteration is what gets published.'
+          }
+        >
+          {!build && buildPolling && <GeneratingAnimation />}
+          {build && (
+            <BuildTimeline
+              build={build}
+              selectedIterationId={selectedIterationId}
+              onSelect={setSelectedIterationId}
+              banner={
+                imageGenAvailable === false ? (
+                  <div className="rounded-lg p-3 text-xs" style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>
+                    AI imagery is off on this deployment — pages render text-only. Add <code>GEMINI_API_KEY</code> to enable hero/OG generation.
                   </div>
-                  {generated.imageGen.errors.length > 0 && (
-                    <ul className="mt-1.5 list-disc list-inside space-y-0.5">
-                      {generated.imageGen.errors.map((e, i) => <li key={i} className="font-mono text-[11px]">{e}</li>)}
-                    </ul>
-                  )}
-                </div>
-              )}
-              {/* Hero image preview when one was generated. Tells the
-                  operator immediately whether Gemini fired. */}
-              {generated.spec.images?.hero_url && (
-                <div className="overflow-hidden rounded-lg" style={surface}>
-                  <img src={generated.spec.images.hero_url} alt="" className="block h-auto w-full" />
-                </div>
-              )}
-              <div className="rounded-lg p-4" style={{ background: 'var(--surface-secondary)' }}>
-                <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Page title</div>
-                <div className="mt-1 font-semibold" style={{ color: 'var(--text-primary)' }}>{generated.title}</div>
-                <div className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>{generated.meta_description}</div>
-              </div>
-              <div className="rounded-lg" style={surface}>
-                <div
-                  className="px-4 py-2 text-xs"
-                  style={{
-                    background: 'var(--surface-secondary)',
-                    color: 'var(--text-tertiary)',
-                    borderTopLeftRadius: '0.5rem',
-                    borderTopRightRadius: '0.5rem',
-                    borderBottomWidth: '1px',
-                    borderBottomStyle: 'solid',
-                    borderBottomColor: 'var(--border)',
-                  }}
-                >
-                  {generated.spec.sections.length} sections
-                </div>
-                <ul>
-                  {generated.spec.sections.map((s, i) => (
-                    <li
-                      key={i}
-                      className="px-4 py-3"
-                      style={{
-                        borderTopWidth: i === 0 ? '0' : '1px',
-                        borderTopStyle: 'solid',
-                        borderTopColor: 'var(--border)',
-                      }}
-                    >
-                      <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{s.type}</div>
-                      {s.headline && <div className="mt-0.5 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{s.headline}</div>}
-                      {s.body && <div className="mt-1 text-xs line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{s.body}</div>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <button type="button" onClick={() => campaignId && void generatePage(campaignId)} disabled={generating} className={btnSecondaryCls} style={btnSecondary}>
-                {generating ? 'Regenerating…' : 'Regenerate'}
-              </button>
+                ) : undefined
+              }
+            />
+          )}
+          {build?.status === 'failed' && build.error && (
+            <div className="mt-4 rounded-lg p-3 text-sm" style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}>
+              {build.error}
             </div>
-          ) : (
-            <div className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No page yet.</div>
           )}
           <div className="mt-6 flex justify-between">
             <button type="button" onClick={() => setStep(2)} className={btnGhostCls} style={btnGhost}>← Back</button>
-            <button type="button" disabled={!generated || generating} onClick={() => setStep(4)} className={btnPrimaryCls} style={btnPrimary}>
-              Next: Agents →
+            <button
+              type="button"
+              disabled={!selectedSnapshot || buildPolling}
+              onClick={() => setStep(4)}
+              className={btnPrimaryCls}
+              style={btnPrimary}
+            >
+              {buildPolling ? 'Building…' : 'Next: Agents →'}
             </button>
           </div>
         </Card>
@@ -1058,15 +963,6 @@ function Card(props: { title: string; subtitle?: string; children: ReactNode }) 
       {props.subtitle && <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>{props.subtitle}</p>}
       <div className="mt-5 space-y-4">{props.children}</div>
     </section>
-  )
-}
-
-function Fact(props: { label: string; value: string }) {
-  return (
-    <div>
-      <span className="uppercase text-[10px] tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{props.label}: </span>
-      <span style={{ color: 'var(--text-primary)' }}>{props.value}</span>
-    </div>
   )
 }
 

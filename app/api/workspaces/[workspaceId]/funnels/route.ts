@@ -7,10 +7,11 @@
  *        has the AI-generated spec (see ./[campaignId]/landing-page).
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceRole } from '@/lib/require-workspace-role'
 import { canUseFunnelBuilder } from '@/lib/plans'
+import { runBrandScrapePipeline } from '@/lib/brand-scrape-pipeline'
 
 async function loadAccess(workspaceId: string) {
   const ws = await db.workspace.findUnique({
@@ -140,5 +141,62 @@ export async function POST(
     },
     select: { id: true, name: true, status: true, createdAt: true },
   })
+
+  // Implicit brand scrape — when the operator pastes a reference URL
+  // we ALWAYS run the vision pipeline and persist the screenshot +
+  // analysis on the Campaign row. Runs in `after()` so the wizard's
+  // POST returns immediately; the build orchestrator (or operator
+  // refresh) picks up the brand kit once it lands.
+  if (body.reference_url) {
+    const refUrl = body.reference_url
+    after(async () => {
+      try {
+        const result = await runBrandScrapePipeline({
+          url: refUrl,
+          blobPathPrefix: `workspaces/${workspaceId}/campaigns/${campaign.id}`,
+        })
+        if (!result.ok) {
+          console.warn(`[funnels.create ${campaign.id}] brand scrape skipped: ${result.reason}${result.error ? ` (${result.error})` : ''}`)
+          return
+        }
+        await db.campaign.update({
+          where: { id: campaign.id },
+          data: {
+            brandScreenshotUrl: result.screenshotUrl,
+            brandAnalysis: result.analysis as unknown as object,
+            // Merge palette: vision primary + accents first, then DOM
+            // computed colours. Keeps the operator-supplied list as a
+            // floor — never narrows what they already had.
+            extractedColors: mergeColours(
+              [result.analysis.primary_color, ...result.analysis.accent_colors],
+              result.computedColors,
+              body.extracted_colors ?? [],
+            ),
+          },
+        })
+      } catch (err) {
+        console.error(`[funnels.create ${campaign.id}] brand scrape crashed:`, err)
+      }
+    })
+  }
+
   return NextResponse.json({ campaign }, { status: 201 })
+}
+
+function mergeColours(...lists: string[][]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const list of lists) {
+    for (const c of list) {
+      if (typeof c !== 'string') continue
+      const v = c.trim()
+      if (!/^#?[0-9a-fA-F]{6}$/.test(v)) continue
+      const hex = v.startsWith('#') ? v.toLowerCase() : `#${v.toLowerCase()}`
+      if (seen.has(hex)) continue
+      seen.add(hex)
+      out.push(hex)
+      if (out.length >= 8) return out
+    }
+  }
+  return out
 }

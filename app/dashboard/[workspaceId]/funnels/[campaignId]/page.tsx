@@ -11,9 +11,10 @@
  * Edit the page spec → /pages/[id]/edit (Phase 5b followup).
  */
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { BuildTimeline, type BuildState } from '@/components/funnels/BuildTimeline'
 
 interface CampaignDetail {
   id: string
@@ -90,6 +91,14 @@ export default function CampaignDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Latest build for this campaign — drives the rebuild UI.
+  const [build, setBuild] = useState<BuildState | null>(null)
+  const [buildPolling, setBuildPolling] = useState(false)
+  const [selectedIterationId, setSelectedIterationId] = useState<string | null>(null)
+  const [buildBusy, setBuildBusy] = useState(false)
+  const [publishingIteration, setPublishingIteration] = useState(false)
+  const [buildError, setBuildError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!workspaceId || !campaignId) return
     setLoading(true)
@@ -140,6 +149,107 @@ export default function CampaignDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
       setBusy(false)
+    }
+  }
+
+  // ─── Build loop ────────────────────────────────────────────────────
+  // The detail page mirrors the wizard's step 3 — the operator can
+  // re-run the Manus-style build at any time. Existing builds are
+  // surfaced on first load (so the operator can pick up where they
+  // left off if a build is already running).
+
+  const refreshBuild = useCallback(async (): Promise<BuildState | null> => {
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/${campaignId}/build`)
+      if (!r.ok) return null
+      const data = (await r.json()) as { build: BuildState | null }
+      const next = data.build
+      if (next) {
+        setBuild(next)
+        const terminal = next.status === 'passed' || next.status === 'capped' || next.status === 'failed'
+        if (terminal) {
+          setBuildPolling(false)
+          setSelectedIterationId((prev) => prev ?? next.bestIterationId ?? null)
+        } else {
+          setBuildPolling(true)
+        }
+      }
+      return next
+    } catch {
+      return null
+    }
+  }, [workspaceId, campaignId])
+
+  useEffect(() => {
+    if (!workspaceId || !campaignId) return
+    void refreshBuild()
+  }, [workspaceId, campaignId, refreshBuild])
+
+  useEffect(() => {
+    if (!buildPolling) return
+    let cancelled = false
+    const tick = async () => {
+      const next = await refreshBuild()
+      if (cancelled) return
+      if (next && (next.status === 'passed' || next.status === 'capped' || next.status === 'failed')) return
+      window.setTimeout(tick, 2000)
+    }
+    void tick()
+    return () => { cancelled = true }
+  }, [buildPolling, refreshBuild])
+
+  async function startRebuild() {
+    setBuildBusy(true)
+    setBuildError(null)
+    setSelectedIterationId(null)
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/${campaignId}/build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!r.ok && r.status !== 409) {
+        throw new Error((await r.json().catch(() => ({}))).error ?? 'Could not start build')
+      }
+      setBuildPolling(true)
+      await refreshBuild()
+    } catch (err) {
+      setBuildError(err instanceof Error ? err.message : 'Could not start build')
+    } finally {
+      setBuildBusy(false)
+    }
+  }
+
+  async function publishSelectedIteration() {
+    if (!build || !selectedIterationId) return
+    const iter = build.iterations.find((i) => i.id === selectedIterationId)
+    if (!iter || !iter.specSnapshot?.spec) {
+      setBuildError('Selected iteration has no spec to publish.')
+      return
+    }
+    setPublishingIteration(true)
+    setBuildError(null)
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/funnels/${campaignId}/landing-page`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: iter.specSnapshot.title ?? campaign?.name ?? 'Landing page',
+          meta_description: iter.specSnapshot.meta_description ?? null,
+          spec: iter.specSnapshot.spec,
+          template: 'vsl',
+          publish: true,
+        }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Publish failed')
+      // Reload the campaign so the landing page card reflects the
+      // new published timestamp.
+      const fresh = await fetch(`/api/workspaces/${workspaceId}/funnels/${campaignId}`).then((res) => res.json())
+      setCampaign(fresh.campaign)
+    } catch (err) {
+      setBuildError(err instanceof Error ? err.message : 'Publish failed')
+    } finally {
+      setPublishingIteration(false)
     }
   }
 
@@ -216,6 +326,15 @@ export default function CampaignDetailPage() {
               Open page ↗
             </a>
           )}
+          <button
+            onClick={startRebuild}
+            disabled={buildBusy || buildPolling}
+            className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-medium"
+            style={btnSecondary}
+            title="Re-run the Manus-style build loop: render the page, vision-critique it, patch the issues, repeat until it scores 8/10."
+          >
+            {buildBusy ? 'Starting…' : buildPolling ? 'Building…' : 'Rebuild with vision feedback'}
+          </button>
         </div>
       </header>
 
@@ -300,6 +419,47 @@ export default function CampaignDetailPage() {
           </div>
         </div>
       </section>
+
+      {build && (
+        <section className="mt-6 rounded-xl p-5" style={card}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                Latest build
+              </h2>
+              <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {build.status === 'queued' && 'Queued — orchestrator picking it up.'}
+                {build.status === 'running' && 'Render → critique → patch loop in progress. Each iteration takes ~90 seconds.'}
+                {build.status === 'passed' && `Cleared the ${build.scoreThreshold}/10 quality bar. Best score: ${build.bestScore?.toFixed(1) ?? '—'}.`}
+                {build.status === 'capped' && `Hit the ${build.maxIterations}-iteration cap without clearing ${build.scoreThreshold}/10. Best score: ${build.bestScore?.toFixed(1) ?? '—'}.`}
+                {build.status === 'failed' && (build.error ?? 'Build failed.')}
+              </p>
+            </div>
+            {selectedIterationId && (build.status === 'passed' || build.status === 'capped') && (
+              <button
+                onClick={publishSelectedIteration}
+                disabled={publishingIteration}
+                className="inline-flex h-9 shrink-0 items-center rounded-lg px-3 text-xs font-medium"
+                style={btnPrimary}
+              >
+                {publishingIteration ? 'Publishing…' : 'Publish this iteration'}
+              </button>
+            )}
+          </div>
+          {buildError && (
+            <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}>
+              {buildError}
+            </div>
+          )}
+          <div className="mt-4">
+            <BuildTimeline
+              build={build}
+              selectedIterationId={selectedIterationId}
+              onSelect={setSelectedIterationId}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="mt-6 rounded-xl p-5" style={card}>
         <h2 className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Danger zone</h2>

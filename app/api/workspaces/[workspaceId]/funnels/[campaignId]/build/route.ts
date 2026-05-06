@@ -144,6 +144,10 @@ export async function GET(
         select: {
           id: true, iteration: true, status: true,
           screenshotUrl: true, score: true, critique: true, error: true,
+          // specSnapshot included so the wizard can publish any iteration
+          // without a follow-up fetch. ~30KB per iteration is fine on
+          // the 2s polling interval.
+          specSnapshot: true,
           startedAt: true, completedAt: true,
         },
       },
