@@ -33,6 +33,7 @@ import { renderLandingPage } from './page-render'
 import { critiqueLandingPage, type PageCritique } from './page-critic'
 import { signPreviewToken } from './preview-token'
 import { generatePageImages, type HeroStyle } from './page-images'
+import { runBrandScrapePipeline } from './brand-scrape-pipeline'
 import type { BrandAnalysis } from './brand-vision'
 import type { PageImages, PageSpec } from './page-spec'
 
@@ -75,10 +76,50 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
     data: { status: 'running' },
   })
 
-  const ctx = await loadContext(build.campaignId, build.workspaceId)
+  let ctx = await loadContext(build.campaignId, build.workspaceId)
   if (!ctx) {
     await markFailed(build.id, 'Campaign or brand context could not be loaded.')
     return
+  }
+
+  // ─── Brand scrape (idempotent, blocking) ───────────────────────────
+  // The scrape ALSO fires from the funnel POST in `after()`, but that
+  // races with the build kickoff — by the time the orchestrator reads
+  // the campaign, the scrape almost certainly hasn't persisted yet,
+  // and every iteration runs with an empty brand kit. Same fonts/style
+  // every time = bug. So we run it again here, blocking before the
+  // loop. The funnel POST writer racing in parallel is harmless: same
+  // input → same output → idempotent overwrite.
+  if (ctx.campaign.referenceUrl && !ctx.brandAnalysis) {
+    console.log(`[build ${build.id}] running brand scrape for ${ctx.campaign.referenceUrl}`)
+    try {
+      const result = await runBrandScrapePipeline({
+        url: ctx.campaign.referenceUrl,
+        blobPathPrefix: `workspaces/${build.workspaceId}/campaigns/${build.campaignId}`,
+      })
+      if (result.ok) {
+        await db.campaign.update({
+          where: { id: build.campaignId },
+          data: {
+            brandScreenshotUrl: result.screenshotUrl,
+            brandAnalysis: result.analysis as unknown as object,
+            extractedColors: mergeColours(
+              [result.analysis.primary_color, ...result.analysis.accent_colors],
+              result.computedColors,
+              ctx.brandKit.extracted_colors ?? [],
+            ),
+          },
+        })
+        // Refresh ctx so brandKit propagates to the LLM + image-gen.
+        const refreshed = await loadContext(build.campaignId, build.workspaceId)
+        if (refreshed) ctx = refreshed
+        console.log(`[build ${build.id}] brand scrape ok — vibe="${result.analysis.design_vibe}", voice=${result.analysis.voice_tone}, photo=${result.analysis.photography_style}`)
+      } else {
+        console.warn(`[build ${build.id}] brand scrape skipped: ${result.reason}${result.error ? ` (${result.error})` : ''}`)
+      }
+    } catch (err) {
+      console.warn(`[build ${build.id}] brand scrape crashed:`, errMsg(err))
+    }
   }
 
   // ─── Ensure a draft LandingPage exists for the campaign ────────────
@@ -100,11 +141,11 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
   let previousCritique: PageCritique | null = null
   let bestScore = 0
   let bestIterationId: string | null = null
-  // Hero + OG generated once on iteration 1 and reused across the loop.
-  // Image-gen is the single most expensive step (~$0.06 + 30-60s) and
-  // the iteration loop is about copy/structure quality, not visual
-  // regeneration. If the critic flags the imagery as broken, that's a
-  // signal to surface to the operator rather than burn another image-gen.
+  // Hero + OG carry across iterations as a fallback. Generated fresh
+  // on iteration 1 and again on any iteration where the critic flagged
+  // hero imagery as critical/major — the previous design ("gen once,
+  // reuse") meant the hero never got fixed even when the critic said
+  // it was the #1 blocker.
   let images: PageImages | null = null
 
   for (let iter = 1; iter <= build.maxIterations; iter++) {
@@ -130,11 +171,16 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
       currentTitle = generated.title || currentTitle
       currentMeta = generated.meta_description || currentMeta
 
-      // Image gen on iteration 1, reuse subsequently. Errors don't
-      // block the build — a missing hero just means the renderer
-      // falls back to a gradient hero. Telemetry persisted on the
-      // build row so the wizard banner can show why imagery is empty.
-      if (iter === 1) {
+      // Image gen: fire on iteration 1 always, and again on any
+      // iteration where the previous critique flagged the hero as
+      // critical/major. Otherwise reuse the previous iteration's
+      // images — a fresh Replicate call costs ~$0.06 and ~30s.
+      const heroFlagged = previousCritique?.issues.some((i) =>
+        i.section === 'hero' && (i.severity === 'critical' || i.severity === 'major') &&
+        /image|photo|hero|stock|generic/i.test(`${i.problem} ${i.fix_suggestion}`),
+      ) ?? false
+      const shouldGenImages = iter === 1 || heroFlagged
+      if (shouldGenImages) {
         let report: Record<string, unknown> | null = null
         try {
           const out = await generatePageImages({
@@ -317,6 +363,7 @@ interface BuildContext {
     primaryColor: string | null
     createdBy: string
     landingPageId: string | null
+    referenceUrl: string | null
   }
   intake: CampaignIntake
   brandKit: BrandKit
@@ -371,6 +418,7 @@ async function loadContext(campaignId: string, workspaceId: string): Promise<Bui
       primaryColor: c.primaryColor,
       createdBy: c.createdBy,
       landingPageId: c.landingPageId,
+      referenceUrl: c.referenceUrl,
     },
     intake,
     brandKit,
@@ -445,29 +493,61 @@ async function claimSlug(base: string): Promise<string> {
  * Format the previous iteration's critique into a concrete revision brief
  * the generator can act on. The brief is opinionated about *what* to
  * change — vague feedback like "improve the hero" produces vague rewrites.
+ *
+ * Also pushes the model to make SUBSTANTIVE changes. The default
+ * behaviour with revision feedback is regression-to-the-mean: small
+ * word-level edits, the same overall structure, the same critic-flagged
+ * problems persisting iteration after iteration. We want the model to
+ * feel licensed to throw out whole sections, restructure copy, and
+ * rewrite headlines — that's what an actual designer would do between
+ * drafts.
  */
 function buildRevisionBrief(critique: PageCritique, nextIteration: number): string {
   const issuesByPriority = [...critique.issues].sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
+  const criticalCount = issuesByPriority.filter((i) => i.severity === 'critical').length
+  const majorCount = issuesByPriority.filter((i) => i.severity === 'major').length
+
   const lines: string[] = []
-  lines.push(`REVISION BRIEF — iteration ${nextIteration}.`)
-  lines.push(`The previous iteration scored ${critique.score.toFixed(1)}/10 from a senior conversion designer's review. Apply EVERY fix below in this regeneration. Do not regress the strengths.`)
+  lines.push(`═══ REVISION BRIEF — Iteration ${nextIteration} ═══`)
   lines.push('')
-  lines.push(`Designer's summary of what's wrong: ${critique.summary}`)
+  lines.push(`The previous iteration scored **${critique.score.toFixed(1)}/10** from a senior conversion designer.`)
+  lines.push(`This page does NOT ship until it clears 8.0. ${criticalCount} critical and ${majorCount} major issue${majorCount === 1 ? '' : 's'} remain.`)
   lines.push('')
-  lines.push('FIXES TO APPLY (highest priority first):')
+  lines.push('## How to revise')
+  lines.push('')
+  lines.push('Make SUBSTANTIVE changes. Word-level tweaks are not enough. If a section is flagged, REWRITE it — change the headline, restructure the copy, swap the framing. Do not return a near-copy of the previous spec with minor edits — that produces "same problems, slightly different wording" and the critic will flag the same issues again.')
+  lines.push('')
+  lines.push('Specifically:')
+  lines.push('- If the hero is flagged: completely rewrite the headline AND subheadline. Try a different angle (benefit-first, mechanism-first, problem-first) than last time.')
+  lines.push('- If proof is flagged: invent more specific testimonials with names, roles, locations, exact metrics. Remove generic ones.')
+  lines.push('- If the offer is flagged: spell out exact deliverables as a list. State the price or path-to-price unambiguously.')
+  lines.push('- If layout/density is flagged: cut sections you don\'t need. Better a 7-section page that breathes than 12 sections cramped together.')
+  lines.push('')
+  lines.push("Do NOT preserve the previous spec's structure for its own sake. The previous spec scored badly. Your job is to fix it, not echo it.")
+  lines.push('')
+  lines.push("## Designer's summary of what's wrong")
+  lines.push('')
+  lines.push(critique.summary)
+  lines.push('')
+  lines.push(`## Fixes to apply (${issuesByPriority.length} total, in priority order)`)
+  lines.push('')
   for (const issue of issuesByPriority) {
-    lines.push(`• [${issue.severity}] ${issue.section} — ${issue.problem}`)
-    lines.push(`  → Action: ${issue.fix_suggestion}`)
+    lines.push(`**[${issue.severity.toUpperCase()}] ${issue.section}**`)
+    lines.push(`  Problem: ${issue.problem}`)
+    lines.push(`  Apply: ${issue.fix_suggestion}`)
+    lines.push('')
   }
   if (critique.strengths.length > 0) {
+    lines.push('## Strengths to preserve')
+    lines.push('(Don\'t regress these. Everything else is up for redesign.)')
     lines.push('')
-    lines.push('STRENGTHS TO PRESERVE (do not regress these):')
     for (const s of critique.strengths) {
-      lines.push(`• ${s}`)
+      lines.push(`- ${s}`)
     }
+    lines.push('')
   }
-  lines.push('')
-  lines.push('Return the full revised page spec via the return_page_spec tool. The output must be a complete page, not a diff.')
+  lines.push('## Output')
+  lines.push('Return the full revised page spec via the `return_page_spec` tool. Output must be a complete page, not a diff. Treat this as a fresh draft informed by the critique — not an edit of the previous draft.')
   return lines.join('\n')
 }
 
@@ -495,6 +575,24 @@ function errMsg(err: unknown): string {
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() ? v.trim() : undefined
+}
+
+function mergeColours(...lists: string[][]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const list of lists) {
+    for (const c of list) {
+      if (typeof c !== 'string') continue
+      const v = c.trim()
+      if (!/^#?[0-9a-fA-F]{6}$/.test(v)) continue
+      const hex = v.startsWith('#') ? v.toLowerCase() : `#${v.toLowerCase()}`
+      if (seen.has(hex)) continue
+      seen.add(hex)
+      out.push(hex)
+      if (out.length >= 8) return out
+    }
+  }
+  return out
 }
 
 const BRAND_VOICES = ['friendly', 'authoritative', 'playful', 'luxury'] as const
