@@ -180,8 +180,20 @@ function buildHeroPrompt(args: {
         `architectural feel. NOT a photo.`
       break
   }
+  // Anti-cliché block. Without this the model regresses to "people
+  // around a laptop in a modern office" for almost any B2B intake —
+  // the most generic stock-photo-ass output imaginable. Critics
+  // consistently flag it as the #1 issue. Naming the cliché in the
+  // prompt is the only thing that reliably defeats it.
+  const banned = `\n\nABSOLUTELY DO NOT GENERATE: ` +
+    `groups of people gathered around a laptop · meeting rooms · ` +
+    `handshakes · finger-pointing at screens · diverse-team-of-three smiling · ` +
+    `women holding takeaway coffee in offices · "discussing strategy" tableaux · ` +
+    `whiteboard scenes · open-plan office bokeh. ` +
+    `These are stock-photo clichés — the operator has seen them a thousand times. ` +
+    `Find a SPECIFIC concrete visual for this exact offer instead.`
   return `${stylePrefix}\n\n` +
     `Subject context: ${context}. The image should evoke the dream outcome: "${dreamOutcome}". ` +
     `Brand colour ${primaryColour} should appear naturally in the scene (clothing, props, environment) — not as a colour overlay. ` +
-    `Negative space on one side for headline overlay; do NOT generate any text, logos, or watermarks.${styleSuffix}${brandContextText}`
+    `Negative space on one side for headline overlay; do NOT generate any text, logos, or watermarks.${banned}${styleSuffix}${brandContextText}`
 }
