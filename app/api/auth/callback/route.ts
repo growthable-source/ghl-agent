@@ -69,7 +69,14 @@ export async function GET(req: NextRequest) {
     const stateWorkspaceId = searchParams.get('state')
     let workspaceId: string | null = null
 
-    // Upsert the GHL Location record with token data
+    // Upsert the GHL Location record with token data.
+    //
+    // crmProvider is force-set to 'ghl' on (re)install so a previous
+    // disconnect — which flips crmProvider to 'native' — doesn't leave
+    // the row stuck after the user reconnects. Without this, the
+    // integrations page's ghlConnected check (which requires
+    // crmProvider === 'ghl') still reports "not connected" even though
+    // OAuth completed and tokens are valid.
     const locationData = {
       companyId: tokenData.companyId ?? storeKey,
       userId: tokenData.userId ?? '',
@@ -79,6 +86,7 @@ export async function GET(req: NextRequest) {
       refreshToken: tokenData.refresh_token,
       refreshTokenId: tokenData.refreshTokenId ?? '',
       expiresAt: new Date(Date.now() + (tokenData.expires_in ?? 86400) * 1000),
+      crmProvider: 'ghl',
       workspaceId: stateWorkspaceId || undefined,
     }
 
@@ -88,7 +96,37 @@ export async function GET(req: NextRequest) {
       update: locationData,
     })
 
+    // ── Cascade workspace binding to agents ─────────────────────────────
+    // When a GHL Location moves between workspaces (re-install on a new
+    // workspace), the Location row's workspaceId is rebound by the
+    // upsert above, but agents previously created against this Location
+    // stay tagged to the old workspace. Without this cascade, those
+    // orphaned agents are still returned by findMatchingAgent (which
+    // queries by locationId) and can fire on inbounds for the new
+    // workspace — the "ghost agent" bug. Re-aligning Agent.workspaceId
+    // to the Location's CURRENT workspaceId here prevents that.
+    //
+    // Run AFTER the workspace is finalised below so we always cascade
+    // to the right id; pulled into a helper to keep both code paths
+    // honest.
+    async function cascadeAgentsToWorkspace(targetWorkspaceId: string) {
+      try {
+        const cascade = await db.agent.updateMany({
+          where: { locationId: storeKey, NOT: { workspaceId: targetWorkspaceId } },
+          data: { workspaceId: targetWorkspaceId },
+        })
+        if (cascade.count > 0) {
+          console.log(`[OAuth] Re-bound ${cascade.count} agent(s) on location ${storeKey} to workspace ${targetWorkspaceId}`)
+        }
+      } catch (err: any) {
+        // Non-fatal — install succeeds even if the cascade fails. Logged so
+        // operators can investigate without breaking the user's reconnect.
+        console.warn(`[OAuth] Agent cascade failed for location ${storeKey}: ${err?.message}`)
+      }
+    }
+
     if (stateWorkspaceId) {
+      await cascadeAgentsToWorkspace(stateWorkspaceId)
       // Came from the integrations connect flow — go back to integrations
       return NextResponse.redirect(
         new URL(`/dashboard/${stateWorkspaceId}/integrations?success=crm_connected`, req.url)
@@ -115,6 +153,8 @@ export async function GET(req: NextRequest) {
       })
       workspaceId = workspace.id
     }
+
+    await cascadeAgentsToWorkspace(workspaceId)
 
     // New installs go to onboarding, reinstalls go to dashboard
     const agentCount = await db.agent.count({ where: { workspaceId } })

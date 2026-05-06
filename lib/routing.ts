@@ -17,10 +17,38 @@ export async function findMatchingAgent(
   messageBody: string,
   channel?: string
 ): Promise<AgentWithDetails | null> {
+  // Resolve the Location's CURRENT workspaceId. Routing must be scoped
+  // to it, otherwise agents that were tagged to a previous workspace
+  // (before a reinstall rebound the Location) still fire — the
+  // "ghost agent" bug. The OAuth callback now cascades Agent.workspaceId
+  // on rebind, but this filter is belt-and-braces against any historic
+  // drift or future write paths that miss the cascade.
+  const location = await db.location.findUnique({
+    where: { id: locationId },
+    select: { workspaceId: true },
+  })
+
+  // Build the agent where-clause. We always pin to the Location's
+  // workspaceId — including null. An agent's workspaceId must match
+  // the Location's workspaceId for the agent to be eligible.
+  const agentWhere = {
+    locationId,
+    isActive: true,
+    workspaceId: location?.workspaceId ?? null,
+  } as const
+
+  // Deterministic ordering. Without orderBy, Prisma's default is the
+  // database's storage order which isn't guaranteed stable, so when
+  // two agents on a Location both have rules that match an inbound,
+  // the winner was random. createdAt-asc means the oldest agent wins
+  // ties — predictable and easy to reason about.
+  const agentOrder = { createdAt: 'asc' as const }
+
   let agents: any[]
   try {
     agents = await db.agent.findMany({
-      where: { locationId, isActive: true },
+      where: agentWhere,
+      orderBy: agentOrder,
       include: {
         routingRules: { orderBy: { priority: 'asc' } },
         stopConditions: true,
@@ -34,7 +62,8 @@ export async function findMatchingAgent(
     if (err.message?.includes('channelDeployments') || err.code === 'P2021') {
       console.warn(`[Routing] ChannelDeployment table may not exist yet, querying without it`)
       agents = await db.agent.findMany({
-        where: { locationId, isActive: true },
+        where: agentWhere,
+        orderBy: agentOrder,
         include: {
           routingRules: { orderBy: { priority: 'asc' } },
           knowledgeEntries: true,
