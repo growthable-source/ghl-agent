@@ -9,9 +9,8 @@
 
 import { db } from './db'
 import { runAgent, type AgentAttachment } from './ai-agent'
+import { buildBasePrompt } from './agent/build-base-prompt'
 import { findMatchingAgent } from './routing'
-import { buildKnowledgeBlock } from './rag'
-import { buildObjectivesBlockForAgent } from './agent-objectives'
 import {
   getOrCreateConversationState,
   checkStopConditions,
@@ -81,28 +80,12 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
 
   await broadcast(convo.id, { type: 'agent_typing', isTyping: true })
 
-  let fullPrompt = agent.systemPrompt
-  fullPrompt += await buildObjectivesBlockForAgent(agent.id, content)
-  if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
-  fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, content)
-
-  if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
-    fullPrompt += `\n\n## Calendar Configuration
-Calendar ID for booking: ${agent.calendarId}
-Contact ID for this conversation: visitor:${convo.visitorId}
-
-Note: This conversation is happening on a website chat widget. When booking, use the visitor's email (ask for it if not provided — it's required for the calendar invite).`
-  }
-
-  // Quick-reply convention — tell the agent how to offer choice chips.
-  // The widget renderer strips the marker and exposes the options as
-  // clickable buttons.
-  fullPrompt += `\n\n## Quick replies (web widget only)
-When you want to offer the visitor 2–4 quick choices to click, end your
-message with: <quickReplies>Option A|Option B|Option C</quickReplies>
-The system strips the marker and renders each pipe-separated value as a
-button. Use sparingly — for clear branching ("Yes / Not yet", "Pricing /
-Booking / Other"). Don't use it for free-text answers.`
+  const fullPrompt = await buildBasePrompt(agent, {
+    channel: 'widget',
+    incomingMessage: content,
+    visitorContactId: `visitor:${convo.visitorId}`,
+    includeObjectives: true,
+  })
 
   // Build recent history. Image / file messages flow through as
   // attachmentKind so runAgent can rebuild multimodal turns.

@@ -28,7 +28,7 @@
 
 import { db } from './db'
 import { runAgent, type AgentResponse } from './ai-agent'
-import { buildKnowledgeBlock } from './rag'
+import { buildBasePrompt } from './agent/build-base-prompt'
 import { findMatchingAgent } from './routing'
 import { getOrCreateConversationState, incrementMessageCount } from './conversation-state'
 import { saveMessages, getMessageHistory } from './conversation-memory'
@@ -131,10 +131,11 @@ export async function runChannelInbound(params: ChannelInboundParams): Promise<C
     createdAt: m.createdAt.toISOString(),
   }))
 
-  let systemPrompt = agent.systemPrompt
-  if ((agent as any).instructions) systemPrompt += `\n\n## Additional Instructions\n${(agent as any).instructions}`
-  systemPrompt += buildKnowledgeBlock((agent as any).knowledgeEntries, inboundMessage)
-  if (channelInfoBlock) systemPrompt += `\n\n${channelInfoBlock}`
+  const systemPrompt = await buildBasePrompt(agent as any, {
+    channel: 'native',
+    incomingMessage: inboundMessage,
+    channelInfoBlock,
+  })
 
   const result = await runAgent({
     agentId: agent.id,
