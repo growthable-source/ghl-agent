@@ -391,7 +391,7 @@ export default function NewFunnelWizard() {
       const r = await fetch(`/api/workspaces/${workspaceId}/funnels/${forCampaignId}/build`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ hero_style: heroStyle }),
       })
       if (!r.ok && r.status !== 409) {
         throw new Error((await r.json().catch(() => ({}))).error ?? 'Could not start build')

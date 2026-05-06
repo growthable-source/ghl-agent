@@ -206,7 +206,11 @@ export default function CampaignDetailPage() {
       const r = await fetch(`/api/workspaces/${workspaceId}/funnels/${campaignId}/build`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        // Rebuild defaults to AI photo — the more expensive but more
+        // visually polished path. The operator chose at funnel creation;
+        // a rebuild reusing that choice would need persistence we
+        // haven't added yet, so default to the better option.
+        body: JSON.stringify({ hero_style: 'ai_photo' }),
       })
       if (!r.ok && r.status !== 409) {
         throw new Error((await r.json().catch(() => ({}))).error ?? 'Could not start build')

@@ -39,6 +39,10 @@ interface BuildBody {
   max_iterations?: number
   /** Override the default 8.0 score threshold. Range: 5-10. */
   score_threshold?: number
+  /** Hero strategy. 'ai_photo' (default) burns ~$0.06 on Replicate
+   *  Flux for a hero photo. 'gradient' skips it; renderer uses a
+   *  brand-colour gradient hero. */
+  hero_style?: 'ai_photo' | 'gradient'
 }
 
 export async function POST(
@@ -63,6 +67,7 @@ export async function POST(
 
   const maxIterations = clampInt(body.max_iterations, 1, 8, DEFAULT_MAX_ITERATIONS)
   const scoreThreshold = clampNum(body.score_threshold, 5, 10, DEFAULT_SCORE_THRESHOLD)
+  const heroStyle: 'ai_photo' | 'gradient' = body.hero_style === 'gradient' ? 'gradient' : 'ai_photo'
 
   // Refuse if a build is already running for this campaign — concurrent
   // builds would race on the LandingPage spec.
@@ -95,7 +100,7 @@ export async function POST(
   // would only happen on a defect — log it and let it surface.
   after(async () => {
     try {
-      await runBuild({ buildId: build.id, origin: baseUrl })
+      await runBuild({ buildId: build.id, origin: baseUrl, heroStyle })
     } catch (err) {
       console.error(`[build ${build.id}] orchestrator crashed:`, err)
       await db.landingPageBuild.update({

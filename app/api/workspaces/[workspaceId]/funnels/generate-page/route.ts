@@ -24,8 +24,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { requireWorkspaceRole } from '@/lib/require-workspace-role'
 import { generateVslPage, type BrandKit, type CampaignIntake, type PageTemplate } from '@/lib/vsl-generator'
-import { generateLandingImage, getImageProviderStatus } from '@/lib/image-gen-orchestrator'
-import type { PageImages, PageSpec } from '@/lib/page-spec'
+import { generatePageImages, getImageProviderStatus } from '@/lib/page-images'
 
 // Tool-call generation with thinking can take 30–60s on cold cache.
 // Keep well under the route handler default cap.
@@ -124,7 +123,7 @@ export async function POST(
     errors: [],
   }
   try {
-    const out = await generatePageImagesDetailed({
+    const out = await generatePageImages({
       intake: body.intake,
       spec: result.spec,
       brandKit: body.brand_kit,
@@ -168,178 +167,3 @@ export async function POST(
   return NextResponse.json({ ...result, imageGen })
 }
 
-interface ImageGenReport {
-  images: PageImages
-  attempted: number
-  succeeded: number
-  errors: string[]
-  provider?: string
-}
-
-/**
- * Generate landing-page imagery according to the operator's chosen
- * strategy. 'gradient' hero skips the AI hero call entirely — the
- * renderer produces a Stripe-style gradient + typography hero that
- * usually outperforms generic AI photography. 'ai_photo' generates
- * a hero via the orchestrator (Replicate → Gemini fallback).
- *
- * OG image always generates when a provider is configured, regardless
- * of hero strategy — social-link previews are a different bar.
- */
-async function generatePageImagesDetailed(args: {
-  intake: CampaignIntake
-  spec: PageSpec
-  brandKit?: BrandKit
-  heroStyle: 'gradient' | 'ai_photo'
-  keyPrefix: string
-}): Promise<ImageGenReport> {
-  const { intake, spec, brandKit, heroStyle, keyPrefix } = args
-  const primaryColour = spec.style?.primary_color ?? '#0A84FF'
-
-  const context = [
-    intake.business_name,
-    intake.offer,
-    intake.industry ? `Industry: ${intake.industry}` : '',
-    intake.audience ? `Audience: ${intake.audience}` : '',
-  ].filter(Boolean).join('. ')
-
-  // Brand-kit context fed into every prompt so generated imagery looks
-  // like the same brand as the operator's site, not stock photography.
-  const brandContext: string[] = []
-  if (brandKit?.brand_guide_text) {
-    brandContext.push(`Brand guide notes: ${brandKit.brand_guide_text.slice(0, 600)}`)
-  }
-  if (brandKit?.analysis) {
-    const a = brandKit.analysis
-    const visionBits: string[] = []
-    if (a.design_vibe) visionBits.push(`Design vibe: ${a.design_vibe}`)
-    if (a.photography_style && a.photography_style !== 'unknown') {
-      visionBits.push(`Photography style: ${a.photography_style} — match this exact style, don't substitute generic stock photography`)
-    }
-    if (a.visual_motifs && a.visual_motifs.length > 0) {
-      visionBits.push(`Visual motifs to incorporate: ${a.visual_motifs.join(', ')}`)
-    }
-    if (a.industry_guess) visionBits.push(`Industry: ${a.industry_guess}`)
-    if (visionBits.length > 0) {
-      brandContext.push(`Brand identity (extracted from the operator's existing site):\n${visionBits.join('\n')}`)
-    }
-  }
-  if (brandKit?.extracted_colors && brandKit.extracted_colors.length > 0) {
-    brandContext.push(`Brand palette to harmonise with: ${brandKit.extracted_colors.join(', ')}`)
-  }
-  const brandContextText = brandContext.length > 0 ? `\n\n${brandContext.join('\n')}` : ''
-
-  // Reference images: screenshot is the richer signal for design vibe,
-  // logo is best for colour/mark consistency. Replicate accepts ONE
-  // reference (we use the screenshot when available, logo otherwise);
-  // Gemini accepts multiple. SVGs are filtered server-side in
-  // image-gen-gemini — Replicate generally accepts whatever URL we give it.
-  const heroRef = brandKit?.screenshot_url ?? brandKit?.logo_url ?? null
-  const geminiRefs: string[] = []
-  if (brandKit?.screenshot_url) geminiRefs.push(brandKit.screenshot_url)
-  if (brandKit?.logo_url) geminiRefs.push(brandKit.logo_url)
-
-  // Photography-style aware hero prompt. When the brand analysis says
-  // 'illustrated' we ask for an illustration, not a photo, etc.
-  const photoStyle = brandKit?.analysis?.photography_style
-  const heroPrompt = buildHeroPrompt({ context, dreamOutcome: intake.dream_outcome, primaryColour, brandContextText, photoStyle })
-
-  const ogPrompt =
-    `Open Graph social preview image for a landing page. ` +
-    `Business: ${intake.business_name}. Offer: ${intake.offer}. ` +
-    `Bold, simple composition. Strong focal point centred. ` +
-    `Use brand colour ${primaryColour} as a primary accent. ` +
-    `Looks great as a thumbnail in LinkedIn, Slack, Twitter previews. No text overlays.${brandContextText}`
-
-  // Run hero (if requested) + OG in parallel.
-  const heroPromise = heroStyle === 'ai_photo'
-    ? generateLandingImage({
-        prompt: heroPrompt,
-        aspect: 'wide',
-        keyPrefix: `${keyPrefix}/hero`,
-        referenceImageUrl: heroRef,
-        geminiReferenceImages: geminiRefs.length > 0 ? geminiRefs : undefined,
-      }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
-    : Promise.resolve({ ok: true as const, url: undefined, provider: undefined })
-
-  const ogPromise = generateLandingImage({
-    prompt: ogPrompt,
-    aspect: 'og',
-    keyPrefix: `${keyPrefix}/og`,
-    referenceImageUrl: heroRef,
-    geminiReferenceImages: geminiRefs.length > 0 ? geminiRefs : undefined,
-  }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
-
-  const [hero, og] = await Promise.all([heroPromise, ogPromise])
-
-  const images: PageImages = {
-    ...(hero.ok && hero.url ? { hero_url: hero.url } : {}),
-    ...(og.ok && og.url ? { og_url: og.url } : {}),
-  }
-  const errors: string[] = []
-  if (heroStyle === 'ai_photo' && !hero.ok && 'error' in hero && hero.error) {
-    errors.push(`hero: ${hero.error}`)
-  }
-  if (!og.ok && 'error' in og && og.error) {
-    errors.push(`og: ${og.error}`)
-  }
-  const attempted = (heroStyle === 'ai_photo' ? 1 : 0) + 1
-  const succeeded = (heroStyle === 'ai_photo' && hero.ok && hero.url ? 1 : 0) + (og.ok && og.url ? 1 : 0)
-  // Surface whichever provider actually ran (Replicate or Gemini).
-  const provider =
-    (hero.ok && 'provider' in hero ? hero.provider : undefined) ??
-    (og.ok && 'provider' in og ? og.provider : undefined)
-  return { images, attempted, succeeded, errors, provider }
-}
-
-/** Style-aware hero prompt. The brand analysis's photography_style
- *  picks the right idiom — asking for "editorial photography" on a
- *  brand that uses illustration is a guaranteed off-brand result. */
-function buildHeroPrompt(args: {
-  context: string
-  dreamOutcome: string
-  primaryColour: string
-  brandContextText: string
-  photoStyle?: string
-}): string {
-  const { context, dreamOutcome, primaryColour, brandContextText, photoStyle } = args
-  // Default = editorial photo (the sensible fallback for service /
-  // consumer / B2B). Overridden by the brand analysis when present.
-  let stylePrefix = `Editorial-quality photograph, magazine cover-grade. Real people, real environments, ` +
-    `natural lighting, shallow depth of field. NOT stock photography — no fake smiles, no posed corporate scenes.`
-  let styleSuffix = ''
-  switch (photoStyle) {
-    case 'illustrated':
-      stylePrefix = `Custom flat illustration, hand-drawn feel, modern editorial style (think New York Times opinion piece illustration). ` +
-        `Clean line work, generous use of brand colour ${primaryColour} for accents. NOT a photo.`
-      styleSuffix = ` Single composition, no text, no UI mockups.`
-      break
-    case 'product_shot':
-      stylePrefix = `Clean product photography on a minimal background. Studio lighting, sharp focus, ` +
-        `careful colour grading. Hero product front-and-centre.`
-      break
-    case 'abstract':
-      stylePrefix = `Abstract geometric composition. Bold shapes, generous use of brand colour ${primaryColour}, ` +
-        `subtle gradients, depth via layering. NOT a photo of people.`
-      break
-    case 'editorial_photo':
-      // Default already covers this — make it explicit.
-      stylePrefix = `Editorial photography, story-driven, real moment captured. Natural light, real people doing real things. Magazine-grade.`
-      break
-    case 'stock_photo':
-      // Operator's existing site uses stock — match it but raise the bar.
-      stylePrefix = `Lifestyle photography in the style of contemporary brand campaigns (Apple, Airbnb, Patagonia). ` +
-        `Real-feeling people in real environments, ${primaryColour} accent tones in the scene.`
-      break
-    case 'none':
-      // Brand analysis said "no imagery" — but the operator opted in.
-      // Default to abstract so we don't violate the no-photo brand.
-      stylePrefix = `Abstract editorial composition. Bold shapes, brand colour ${primaryColour}, ` +
-        `architectural feel. NOT a photo.`
-      break
-  }
-  return `${stylePrefix}\n\n` +
-    `Subject context: ${context}. The image should evoke the dream outcome: "${dreamOutcome}". ` +
-    `Brand colour ${primaryColour} should appear naturally in the scene (clothing, props, environment) — not as a colour overlay. ` +
-    `Negative space on one side for headline overlay; do NOT generate any text, logos, or watermarks.${styleSuffix}${brandContextText}`
-}

@@ -32,8 +32,9 @@ import { generateVslPage, type BrandKit, type CampaignIntake, type PageTemplate 
 import { renderLandingPage } from './page-render'
 import { critiqueLandingPage, type PageCritique } from './page-critic'
 import { signPreviewToken } from './preview-token'
+import { generatePageImages, type HeroStyle } from './page-images'
 import type { BrandAnalysis } from './brand-vision'
-import type { PageSpec } from './page-spec'
+import type { PageImages, PageSpec } from './page-spec'
 
 interface RunBuildArgs {
   buildId: string
@@ -42,6 +43,11 @@ interface RunBuildArgs {
    *  caller; passed in explicitly because Vercel runtimes don't have a
    *  reliable "self" URL otherwise. */
   origin: string
+  /** Hero strategy for THIS build. 'ai_photo' generates a Replicate
+   *  Flux hero; 'gradient' skips it (renderer uses a brand-colour
+   *  gradient). OG image generates either way when an image provider
+   *  is configured. The wizard sets this from the brand step. */
+  heroStyle: HeroStyle
 }
 
 /**
@@ -94,6 +100,12 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
   let previousCritique: PageCritique | null = null
   let bestScore = 0
   let bestIterationId: string | null = null
+  // Hero + OG generated once on iteration 1 and reused across the loop.
+  // Image-gen is the single most expensive step (~$0.06 + 30-60s) and
+  // the iteration loop is about copy/structure quality, not visual
+  // regeneration. If the critic flags the imagery as broken, that's a
+  // signal to surface to the operator rather than burn another image-gen.
+  let images: PageImages | null = null
 
   for (let iter = 1; iter <= build.maxIterations; iter++) {
     const iteration = await db.buildIteration.create({
@@ -117,6 +129,33 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
       currentSpec = generated.spec
       currentTitle = generated.title || currentTitle
       currentMeta = generated.meta_description || currentMeta
+
+      // Image gen on iteration 1, reuse subsequently. Errors don't
+      // block the build — a missing hero just means the renderer
+      // falls back to a gradient hero.
+      if (iter === 1) {
+        try {
+          const out = await generatePageImages({
+            intake: ctx.intake,
+            spec: currentSpec,
+            brandKit: ctx.brandKit,
+            heroStyle: args.heroStyle,
+            keyPrefix: `landing/builds/${build.id}`,
+          })
+          if (out.images.hero_url || out.images.og_url) {
+            images = out.images
+          }
+          if (out.errors.length > 0) {
+            console.warn(`[build ${build.id}] image gen errors:`, out.errors)
+          }
+        } catch (err) {
+          console.warn(`[build ${build.id}] image gen crashed:`, errMsg(err))
+        }
+      }
+      // Merge generated images into the spec the renderer reads. The
+      // hero + OG live on spec.images; bake them in BEFORE saving so
+      // every iteration's published draft includes them.
+      if (images) currentSpec.images = { ...(currentSpec.images ?? {}), ...images }
 
       await db.landingPage.update({
         where: { id: landingPage.id },
