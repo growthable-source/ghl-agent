@@ -536,6 +536,12 @@ export async function generateVslPage(input: {
   template?: PageTemplate
   primary_color?: string
   brand_kit?: BrandKit
+  /** Optional revision brief — when set, the generator is told to
+   *  regenerate the page applying this concrete feedback. Used by the
+   *  build-orchestrator's iterate loop: previous critique's issues +
+   *  strengths get formatted into a brief that lands in the user
+   *  message. Empty string is treated as "no revision". */
+  revision_brief?: string | null
 }): Promise<GeneratedPage> {
   if (!input.intake?.business_name || !input.intake?.offer || !input.intake?.dream_outcome) {
     throw new Error('intake.business_name, offer, and dream_outcome are required')
@@ -573,6 +579,9 @@ export async function generateVslPage(input: {
         content: [
           { type: 'text', text: userPrompt(input.intake, template) },
           ...(input.brand_kit ? [{ type: 'text' as const, text: brandKitPrompt(input.brand_kit) }] : []),
+          ...(input.revision_brief && input.revision_brief.trim()
+            ? [{ type: 'text' as const, text: input.revision_brief.trim() }]
+            : []),
         ],
       },
     ],

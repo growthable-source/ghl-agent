@@ -24,8 +24,12 @@ import {
   type PageSection,
 } from '@/lib/page-spec'
 import { buildPageBackgroundStyle, buildPageThemeStyle } from '@/lib/brand-theme'
+import { verifyPreviewToken } from '@/lib/preview-token'
 
-type Params = { params: Promise<{ slug: string }> }
+type Params = {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ preview?: string }>
+}
 
 // LandingPage has NO campaignId column — the FK lives on Campaign.landingPageId
 // (which is @unique, so the reverse relation is one-to-one). To get the
@@ -42,14 +46,20 @@ const PAGE_SELECT = {
   published: true,
 } as const
 
-export async function generateMetadata({ params }: Params): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Params): Promise<Metadata> {
   const { slug } = await params
+  const { preview } = await searchParams
   // No catch — let DB errors surface. Was masking actual problems as 404s.
   const page = await db.landingPage.findUnique({
     where: { slug },
-    select: { title: true, metaDescription: true, ogImageUrl: true, published: true, spec: true },
+    select: { id: true, title: true, metaDescription: true, ogImageUrl: true, published: true, spec: true },
   })
-  if (!page || !page.published) return { title: 'Not found' }
+  if (!page) return { title: 'Not found' }
+  // Bypass the published gate when a valid preview token for this page
+  // is presented — the build orchestrator signs one before each render
+  // pass so Browserbase can screenshot unpublished drafts.
+  const isPreview = !!preview && verifyPreviewToken(preview, page.id)
+  if (!page.published && !isPreview) return { title: 'Not found' }
   // Prefer the operator-uploaded OG image; fall back to the AI-generated
   // `spec.images.og_url` if no manual override was set.
   const spec = parsePageSpec(page.spec)
@@ -65,8 +75,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   }
 }
 
-export default async function PublicLandingPage({ params }: Params) {
+export default async function PublicLandingPage({ params, searchParams }: Params) {
   const { slug } = await params
+  const { preview } = await searchParams
 
   // No catch — let DB errors propagate to the Next.js error handler so
   // they show up in Vercel runtime logs instead of being swallowed as
@@ -75,9 +86,14 @@ export default async function PublicLandingPage({ params }: Params) {
     where: { slug },
     select: PAGE_SELECT,
   })
-  console.log(`[PublicLandingPage] slug=${slug} found=${!!page} published=${page?.published ?? 'n/a'}`)
+  console.log(`[PublicLandingPage] slug=${slug} found=${!!page} published=${page?.published ?? 'n/a'} preview=${!!preview}`)
 
-  if (!page || !page.published) notFound()
+  if (!page) notFound()
+  // Bypass the published gate when a valid preview token is presented.
+  // Tokens are bound to the page id and HMAC-signed with the build
+  // orchestrator's secret, so they can't be forged or reused for other pages.
+  const isPreview = !!preview && verifyPreviewToken(preview, page.id)
+  if (!page.published && !isPreview) notFound()
 
   // Owning campaign — Campaign.landingPageId is @unique so this is a
   // single-row lookup. Only used so the form can attribute submissions

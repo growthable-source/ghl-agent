@@ -2290,6 +2290,15 @@ model Campaign {
   brandGuideText  String?  @db.Text
   referenceUrl    String?
   extractedColors String[] @default([])
+  // ─── Brand vision pipeline output ───
+  // Persisted from the implicit brand scrape that runs on funnel-create
+  // when referenceUrl is set. screenshotUrl is a Vercel Blob URL that
+  // Gemini/Replicate use as a visual reference; brandAnalysis is the
+  // structured Sonnet vision output (palette, typography, voice tone,
+  // photography style, design vibe). Both feed the build-orchestrator
+  // critique prompt so it knows what "on-brand" means for this funnel.
+  brandScreenshotUrl String?
+  brandAnalysis      Json?
 
   // ─── Budget + flight ───
   // Planning fields only — actual ad spend is tracked by the ad-launcher
@@ -2326,10 +2335,106 @@ model Campaign {
   conversionEvents ConversionEvent[]
   pixelConfig      PixelConfig?
   adCampaignDrafts AdCampaignDraft[]
+  builds           LandingPageBuild[] @relation("CampaignBuilds")
 
   @@index([workspaceId, status])
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([locationId])
+}
+
+// ─── LandingPageBuild ──────────────────────────────────────────────────
+// One row per Manus-style build attempt for a Campaign. The orchestrator
+// renders the page in a real browser, has Sonnet 4.6 critique it, and
+// regenerates with the critique appended — looping until the score
+// clears the threshold or maxIterations runs out. Each loop step is a
+// BuildIteration row so the operator can scrub through "what the AI
+// fixed and why" in the wizard timeline.
+model LandingPageBuild {
+  id          String    @id @default(cuid())
+  workspaceId String
+  campaignId  String
+  campaign    Campaign  @relation("CampaignBuilds", fields: [campaignId], references: [id], onDelete: Cascade)
+
+  // Lifecycle:
+  //   queued    — row created, orchestrator hasn't picked it up yet
+  //   running   — orchestrator is mid-loop
+  //   passed    — final iteration cleared the score threshold
+  //   capped    — hit maxIterations without clearing threshold (still ships
+  //               the best iteration; not a failure, just a soft cap)
+  //   failed    — unrecoverable error (Browserbase, Anthropic, DB, etc.)
+  status String @default("queued")
+
+  // Knobs for this build. Defaults set at orchestrator entry; persisted
+  // so we can audit/replay later without inferring from code.
+  maxIterations  Int   @default(5)
+  scoreThreshold Float @default(8.0)
+
+  // Highest score reached across iterations. Null until first critique
+  // completes. Used by the wizard's progress indicator.
+  bestScore  Float?
+  bestIterationId String?
+
+  // Free-form error string for failed builds. Truncated to 1KB at write.
+  error      String? @db.Text
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  iterations BuildIteration[] @relation("BuildIterations")
+
+  @@index([campaignId, startedAt(sort: Desc)])
+  @@index([workspaceId, status])
+}
+
+// ─── BuildIteration ────────────────────────────────────────────────────
+// One row per loop step in a LandingPageBuild. Stores the screenshot of
+// the rendered page, the structured critique, the score, and a snapshot
+// of the page spec at this iteration so the wizard can show diffs and
+// the operator can roll back to any prior iteration.
+model BuildIteration {
+  id      String           @id @default(cuid())
+  buildId String
+  build   LandingPageBuild @relation("BuildIterations", fields: [buildId], references: [id], onDelete: Cascade)
+
+  // 1-indexed iteration number within the build. Render → critique →
+  // patch is one iteration; the patch becomes the input for iteration+1.
+  iteration Int
+
+  // Lifecycle within the iteration:
+  //   rendering  — Browserbase session in flight
+  //   critiquing — vision pass in flight
+  //   patching   — regenerating spec with critique appended
+  //   complete   — all three steps done, score recorded
+  //   failed     — an error in any step (orchestrator may still continue
+  //                with previous iteration's spec)
+  status String @default("rendering")
+
+  // Vercel Blob URL of the screenshot taken by Browserbase. Null while
+  // status='rendering'. First-fold only (1440x900) — same convention as
+  // brand-render's reference shots.
+  screenshotUrl String?
+
+  // Structured critique JSON from Sonnet 4.6. Shape:
+  //   { score: 0..10, pass: bool, summary: string,
+  //     issues: [{ section: string, severity: "minor"|"major"|"critical",
+  //                fix_suggestion: string }],
+  //     strengths: string[] }
+  critique Json?
+  score    Float?
+
+  // Snapshot of LandingPage.spec AFTER this iteration's patch landed.
+  // The orchestrator writes this last; if patching fails it stays null
+  // and the next iteration uses the previous iteration's spec.
+  specSnapshot Json?
+
+  // Per-step error string for partial failures.
+  error String? @db.Text
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@unique([buildId, iteration])
+  @@index([buildId, iteration])
 }
 
 // ─── LandingPage (VSL / lead-gen / webinar / book-call / application) ──
