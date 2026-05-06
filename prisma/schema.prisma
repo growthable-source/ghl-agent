@@ -2377,6 +2377,15 @@ model LandingPageBuild {
   // Free-form error string for failed builds. Truncated to 1KB at write.
   error      String? @db.Text
 
+  // Image-gen telemetry from iteration 1. Shape:
+  //   { enabled: bool, attempted: number, succeeded: number,
+  //     provider?: 'replicate'|'gemini', errors: string[],
+  //     heroStyle: 'ai_photo'|'gradient', heroUrl?: string, ogUrl?: string }
+  // Surfaced as a banner above the timeline so the operator can see
+  // exactly why a hero photo didn't appear (Replicate auth, quota,
+  // model 404, safety block, etc.) instead of silent fallback.
+  imageGenReport Json?
+
   startedAt   DateTime  @default(now())
   completedAt DateTime?
 

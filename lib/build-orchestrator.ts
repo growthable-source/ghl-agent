@@ -132,8 +132,10 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
 
       // Image gen on iteration 1, reuse subsequently. Errors don't
       // block the build — a missing hero just means the renderer
-      // falls back to a gradient hero.
+      // falls back to a gradient hero. Telemetry persisted on the
+      // build row so the wizard banner can show why imagery is empty.
       if (iter === 1) {
+        let report: Record<string, unknown> | null = null
         try {
           const out = await generatePageImages({
             intake: ctx.intake,
@@ -145,11 +147,37 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
           if (out.images.hero_url || out.images.og_url) {
             images = out.images
           }
+          report = {
+            enabled: out.enabled,
+            attempted: out.attempted,
+            succeeded: out.succeeded,
+            provider: out.provider ?? null,
+            errors: out.errors,
+            heroStyle: args.heroStyle,
+            heroUrl: out.images.hero_url ?? null,
+            ogUrl: out.images.og_url ?? null,
+          }
           if (out.errors.length > 0) {
             console.warn(`[build ${build.id}] image gen errors:`, out.errors)
           }
         } catch (err) {
+          report = {
+            enabled: true,
+            attempted: 0,
+            succeeded: 0,
+            provider: null,
+            errors: [`unhandled: ${errMsg(err)}`],
+            heroStyle: args.heroStyle,
+            heroUrl: null,
+            ogUrl: null,
+          }
           console.warn(`[build ${build.id}] image gen crashed:`, errMsg(err))
+        }
+        if (report) {
+          await db.landingPageBuild.update({
+            where: { id: build.id },
+            data: { imageGenReport: report as unknown as object },
+          }).catch(() => {})
         }
       }
       // Merge generated images into the spec the renderer reads. The

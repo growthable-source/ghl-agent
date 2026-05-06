@@ -143,6 +143,7 @@ export async function GET(
     select: {
       id: true, status: true, maxIterations: true, scoreThreshold: true,
       bestScore: true, bestIterationId: true, error: true,
+      imageGenReport: true,
       startedAt: true, completedAt: true,
       iterations: {
         orderBy: { iteration: 'asc' },
