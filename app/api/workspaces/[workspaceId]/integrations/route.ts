@@ -99,3 +99,60 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 }
+
+/**
+ * Disconnect the GHL/HubSpot CRM connection for this workspace.
+ *
+ * Blanks OAuth tokens on the workspace's real Location rows (not
+ * `native:` or `placeholder:` rows) and flips crmProvider to 'native'
+ * so the integrations page reflects the disconnect (the ghlConnected
+ * check on GET requires crmProvider === 'ghl' AND a non-empty
+ * accessToken). MessageLogs, Agents, RoutingRules, and ChannelDeployments
+ * are left intact — reconnecting later resumes cleanly because the
+ * OAuth callback re-fills tokens on the same Location row (keyed by GHL
+ * locationId) and resets crmProvider back to 'ghl'.
+ *
+ * Inbound webhooks for a disconnected location no-op safely: the
+ * webhook handler at app/api/webhooks/events/route.ts:137-141 calls
+ * getTokens(locationId), gets back null because the tokens are blank,
+ * logs "No tokens for location ..." and breaks before any agent runs.
+ */
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const { workspaceId } = await params
+  const access = await requireWorkspaceAccess(workspaceId)
+  if (access instanceof NextResponse) return access
+
+  const realLocations = await db.location.findMany({
+    where: {
+      workspaceId,
+      NOT: [
+        { id: { startsWith: 'native:' } },
+        { id: { startsWith: 'placeholder:' } },
+      ],
+    },
+    select: { id: true },
+  })
+
+  if (realLocations.length === 0) {
+    return NextResponse.json(
+      { error: 'No CRM connection to disconnect on this workspace' },
+      { status: 404 },
+    )
+  }
+
+  await db.location.updateMany({
+    where: { id: { in: realLocations.map(l => l.id) } },
+    data: {
+      accessToken: '',
+      refreshToken: '',
+      refreshTokenId: '',
+      crmProvider: 'native',
+    },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    disconnected: realLocations.length,
+    locationIds: realLocations.map(l => l.id),
+  })
+}

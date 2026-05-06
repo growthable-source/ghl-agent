@@ -70,6 +70,36 @@ export default function IntegrationsPage() {
   const [switchingCrm, setSwitchingCrm] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // GHL disconnect — separate banner from Meta's so they don't clobber
+  // each other if both happen in the same session.
+  const [disconnectingGhl, setDisconnectingGhl] = useState(false)
+  const [ghlBanner, setGhlBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+
+  async function disconnectGhl() {
+    const confirmed = window.confirm(
+      'Disconnect HighLevel from this workspace?\n\nYour agents will pause until you reconnect — incoming SMS, email, FB and IG messages will not get a reply. Reconnecting later restores them automatically; agents and history are not deleted.',
+    )
+    if (!confirmed) return
+    setDisconnectingGhl(true)
+    setGhlBanner(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/integrations`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      // Optimistic local update — the GET would say the same thing on
+      // next refresh, but updating now keeps the page responsive.
+      setGhlConnected(false)
+      setCrmProvider('native')
+      setGhlBanner({ kind: 'success', text: 'HighLevel disconnected. You can reconnect anytime to resume.' })
+    } catch (err: any) {
+      setGhlBanner({ kind: 'error', text: `Disconnect failed: ${err.message}` })
+    } finally {
+      setDisconnectingGhl(false)
+    }
+  }
+
   // Twilio form
   const [showTwilioForm, setShowTwilioForm] = useState(false)
   const [twilioForm, setTwilioForm] = useState({ accountSid: '', authToken: '', phoneNumber: '' })
@@ -595,8 +625,23 @@ export default function IntegrationsPage() {
               >
                 {ghlConnected ? 'Reconnect' : 'Connect'}
               </a>
+              {ghlConnected && (
+                <button
+                  type="button"
+                  onClick={disconnectGhl}
+                  disabled={disconnectingGhl}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-rose-900/60 text-rose-300 hover:border-rose-700 hover:text-rose-200 transition-colors disabled:opacity-50"
+                >
+                  {disconnectingGhl ? 'Disconnecting…' : 'Disconnect'}
+                </button>
+              )}
             </div>
           </div>
+          {ghlBanner && (
+            <p className={`text-xs mt-3 ${ghlBanner.kind === 'success' ? 'text-emerald-500/80' : 'text-rose-400'}`}>
+              {ghlBanner.text}
+            </p>
+          )}
           {ghlConnected && crmProvider === 'ghl' && hubspotIntegrations.length > 0 && (
             <p className="text-xs text-emerald-500/70 mt-3">
               LeadConnector is your primary CRM — agents use it for contacts, deals, and messaging.
