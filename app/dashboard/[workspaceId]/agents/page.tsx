@@ -641,18 +641,25 @@ export default function AgentsPage() {
                   {/* Confirm-delete footer (kept outside the menu so it's
                       clearly a two-step action) */}
                   {deleteConfirm === agent.id && (
-                    <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2">
-                      <p className="text-xs text-red-300">Delete this agent and all its data?</p>
+                    <div
+                      className="mt-2 flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                      style={{ background: 'var(--accent-red-bg)', borderColor: 'var(--accent-red)' }}
+                    >
+                      <p className="text-xs font-medium" style={{ color: 'var(--accent-red)' }}>
+                        Delete this agent and all its data?
+                      </p>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => deleteAgent(agent.id)}
-                          className="text-xs font-medium py-1.5 px-3 rounded bg-red-500/30 text-red-300 hover:bg-red-500/40 transition-colors"
+                          className="text-xs font-semibold py-1.5 px-3 rounded transition-opacity hover:opacity-90"
+                          style={{ background: 'var(--accent-red)', color: '#ffffff' }}
                         >
                           Confirm delete
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(null)}
-                          className="text-xs font-medium py-1.5 px-2 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+                          className="text-xs font-medium py-1.5 px-2 rounded transition-colors"
+                          style={{ color: 'var(--text-secondary)' }}
                         >
                           Cancel
                         </button>
