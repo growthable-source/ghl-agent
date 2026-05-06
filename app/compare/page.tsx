@@ -5,7 +5,7 @@ import { COMPARISONS } from '@/lib/compare-data'
 
 export const metadata: Metadata = {
   title: 'Voxility vs. alternatives — honest comparisons',
-  description: 'Transparent comparisons between Voxility and other AI agent options for GoHighLevel and HubSpot. What each tool wins on, what it can\u2019t do, and when to pick which.',
+  description: 'Transparent comparisons between Voxility and other AI agent options for sales and marketing teams. What each tool wins on, what it can\u2019t do, and when to pick which.',
   alternates: { canonical: '/compare' },
 }
 
@@ -42,7 +42,7 @@ export default function CompareIndex() {
           </nav>
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">Voxility vs. alternatives</h1>
           <p className="text-lg max-w-2xl" style={{ color: '#94a3b8' }}>
-            Honest comparisons between Voxility and other AI agent options for GoHighLevel and HubSpot — including scenarios where the other tool is genuinely the right pick.
+            Honest comparisons between Voxility and other AI agent options for sales and marketing teams — including scenarios where the other tool is genuinely the right pick.
           </p>
         </header>
 

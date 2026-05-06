@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     default: 'Blog',
     template: '%s | Voxility Blog',
   },
-  description: 'Guides, comparisons, and product updates from the team building the self-improving AI agent platform for GoHighLevel and HubSpot.',
+  description: 'Guides, comparisons, and product updates from the team building the self-improving AI agent platform for sales and marketing teams.',
   alternates: { canonical: '/blog' },
 }
 

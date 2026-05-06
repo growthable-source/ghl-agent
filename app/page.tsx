@@ -23,7 +23,7 @@ const ORG_SCHEMA = {
   url: SITE_URL,
   logo: `${SITE_URL}/logo-color.svg`,
   description:
-    'Conversational AI agents for GoHighLevel and HubSpot. Self-improving agents that answer calls, respond to texts, qualify leads, and book appointments.',
+    'Conversational AI agents for sales and marketing teams. Self-improving agents that answer calls, respond to texts, qualify leads, and book appointments — natively connected to your existing CRM.',
   sameAs: [
     'https://voxility.canny.io',
   ],
@@ -36,7 +36,7 @@ const SOFTWARE_SCHEMA = {
   applicationCategory: 'BusinessApplication',
   operatingSystem: 'Web',
   description:
-    'Conversational AI platform that plugs into GoHighLevel and HubSpot. AI agents answer inbound calls, respond to SMS/email/chat, qualify leads, book appointments, and get measurably better over time from every conversation they have.',
+    'Conversational AI platform built for sales and marketing teams. AI agents answer inbound calls, respond to SMS/email/chat, qualify leads, book appointments, and get measurably better over time from every conversation they have. Connects to LeadConnector, HubSpot, and the rest of your existing stack.',
   offers: {
     '@type': 'Offer',
     price: '0',
@@ -47,7 +47,7 @@ const SOFTWARE_SCHEMA = {
   featureList: [
     'Voice AI for inbound and outbound calls',
     'SMS, email, WhatsApp, Instagram, Facebook, Google Business, and live chat',
-    'Native GoHighLevel and HubSpot CRM integration',
+    'Native LeadConnector and HubSpot CRM integration',
     'Real-time appointment booking',
     'Simulation Swarm testing against 7 customer personas',
     'Auto-applied prompt improvements from every conversation',
@@ -83,7 +83,7 @@ const FAQ_SCHEMA = {
       name: 'What CRMs does Voxility work with?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'GoHighLevel (via the marketplace) and HubSpot. We sync contacts, pipelines, calendars, and conversations. The agent reads and writes CRM data natively — no Zapier glue required.',
+        text: 'LeadConnector (via the marketplace) and HubSpot today, with more on the way. We sync contacts, pipelines, calendars, and conversations. The agent reads and writes CRM data natively — no Zapier glue required.',
       },
     },
     {
@@ -238,8 +238,13 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function LandingPage() {
+  // data-theme="midnight" pins this subtree to the dark CSS-variable
+  // values (--gradient-card, --text-primary, etc.) so .vox-card and
+  // friends render correctly regardless of the global theme. Without
+  // this the landing page's white text rendered onto cream cards from
+  // the soft-light :root defaults — invisible.
   return (
-    <div className="min-h-screen overflow-hidden" style={{ background: '#05080f', color: '#f8fafc' }}>
+    <div data-theme="midnight" className="min-h-screen overflow-hidden" style={{ background: '#05080f', color: '#f8fafc' }}>
 
       {/* ═══ Sticky Nav ═══ */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(5,8,15,0.92)', borderColor: 'rgba(18,26,43,0.8)' }}>
@@ -268,12 +273,12 @@ export default function LandingPage() {
 
         <div className="relative z-10 max-w-[1280px] mx-auto px-6 grid md:grid-cols-2 gap-12 items-center">
           <div className="max-w-xl">
-            <span className="section-label inline-block mb-6">Conversational AI for GoHighLevel &amp; HubSpot</span>
+            <span className="section-label inline-block mb-6">Built for sales &amp; marketing teams</span>
             <h1 className="font-extrabold tracking-tight leading-[1.05] mb-6" style={{ fontSize: 'clamp(2.25rem, 5.5vw, 4rem)' }}>
-              AI agents that <span className="text-gradient">get better</span> every day.
+              Every lead, answered. Every demo, <span className="text-gradient">booked</span>.
             </h1>
-            <p className="mb-10 leading-[1.65]" style={{ color: '#94a3b8', fontSize: '1.0625rem' }}>
-              Voxility is the self-improving AI agent platform for GoHighLevel and HubSpot. Your agents answer calls, respond to texts, qualify leads, and book appointments — then learn from every single conversation. Every mistake becomes a prompt improvement. Every improvement applies automatically. Your agent on day 90 is measurably smarter than your agent on day 1.
+            <p className="mb-10 leading-[1.65]" style={{ color: '#94a3b8', fontSize: '1.125rem' }}>
+              Your team shouldn&apos;t be answering the same questions at 11pm. Voxility runs AI agents that handle inbound calls, texts, and chats end-to-end — qualifying every lead, booking demos mid-conversation, and getting measurably smarter from every interaction. Plugs into your existing tools in one click. Live in five minutes.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-4">
               <Link href="/login?mode=signup" className="btn-primary">
@@ -285,7 +290,7 @@ export default function LandingPage() {
               </a>
             </div>
             <p className="mt-6 text-xs" style={{ color: '#64748b' }}>
-              Plugs into GoHighLevel or HubSpot · Live in under 5 minutes · Free while in beta
+              One-click install · Live in under 5 minutes · Free while in beta
             </p>
           </div>
 
@@ -296,7 +301,7 @@ export default function LandingPage() {
           <div className="relative aspect-square w-full max-w-[520px] mx-auto md:ml-auto">
             <Image
               src="/landing/hero-network.png"
-              alt="Voxility — conversational AI agent platform for GoHighLevel and HubSpot"
+              alt="Voxility — conversational AI agent platform for sales and marketing teams"
               fill
               priority
               sizes="(max-width: 768px) 90vw, 520px"
@@ -561,12 +566,12 @@ export default function LandingPage() {
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><CrmIcon /></div>
-              <h3 className="text-lg font-semibold mb-2">GoHighLevel &amp; HubSpot native</h3>
+              <h3 className="text-lg font-semibold mb-2">Plugs into your existing stack</h3>
               <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
-                Install the Voxility AI add-on from the GoHighLevel marketplace or connect HubSpot in one click. Agents read and write CRM data natively — tag contacts, update custom fields, move pipeline stages, enroll in workflows, log every interaction. No Zapier glue.
+                Install from the LeadConnector marketplace or connect HubSpot in one click. Agents read and write your CRM natively — tag contacts, update custom fields, move pipeline stages, enroll in workflows, log every interaction. No Zapier glue, no engineering ticket.
               </p>
               <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />GoHighLevel marketplace install</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />LeadConnector marketplace install</li>
                 <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Native HubSpot integration</li>
                 <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Full audit trail</li>
               </ul>
@@ -725,7 +730,7 @@ export default function LandingPage() {
             />
             <FAQItem
               q="What CRMs does Voxility work with?"
-              a="GoHighLevel (via the marketplace) and HubSpot. We sync contacts, pipelines, calendars, and conversations. The agent reads and writes CRM data natively — no Zapier glue required."
+              a="LeadConnector (via the marketplace) and HubSpot today, with more on the way. We sync contacts, pipelines, calendars, and conversations. The agent reads and writes CRM data natively — no Zapier glue required."
             />
             <FAQItem
               q="How realistic do the voice calls sound?"

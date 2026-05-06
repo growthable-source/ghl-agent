@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import {
-  GoHighLevelIcon, VapiIcon, TwilioIcon, HubSpotIcon,
+  LeadConnectorIcon, VapiIcon, TwilioIcon, HubSpotIcon,
   CalendlyIcon, CalcomIcon, StripeIcon, FacebookIcon, InstagramIcon,
 } from '@/components/icons/brand-icons'
 
@@ -523,7 +523,7 @@ export default function IntegrationsPage() {
           <p className="text-xs text-zinc-500 mb-3">Choose which CRM your agents use for contacts, deals, messaging, and calendar.</p>
           <div className="grid grid-cols-2 gap-2">
             {([
-              { value: 'ghl', label: 'LeadConnector', icon: GoHighLevelIcon, color: '' },
+              { value: 'ghl', label: 'LeadConnector', icon: LeadConnectorIcon, color: '' },
               { value: 'hubspot', label: 'HubSpot', icon: HubSpotIcon, color: 'text-[#FF7A59]' },
             ] as const).map(opt => (
               <button
@@ -609,7 +609,7 @@ export default function IntegrationsPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><GoHighLevelIcon className="w-8 h-8" /></div>
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><LeadConnectorIcon className="w-8 h-8" /></div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">LeadConnector</p>
                 <p className="text-xs text-zinc-500">CRM, pipelines, SMS, email, calendars</p>

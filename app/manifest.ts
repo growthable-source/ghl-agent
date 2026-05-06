@@ -2,10 +2,10 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Voxility — AI Agents for GoHighLevel & HubSpot',
+    name: 'Voxility — AI Agents for Sales & Marketing Teams',
     short_name: 'Voxility',
     description:
-      'Self-improving conversational AI agents for GoHighLevel and HubSpot. Answer calls, respond to texts, qualify leads, and book appointments — with an agent that gets better every day.',
+      'Self-improving conversational AI agents for sales and marketing teams. Answer calls, respond to texts, qualify leads, and book appointments — with an agent that gets better every day.',
     start_url: '/dashboard',
     display: 'standalone',
     background_color: '#05080f',

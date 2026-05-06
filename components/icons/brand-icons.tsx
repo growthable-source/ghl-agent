@@ -79,14 +79,40 @@ export function CalcomIcon({ className }: { className?: string }) {
   )
 }
 
-export function GoHighLevelIcon({ className }: { className?: string }) {
+/**
+ * LeadConnector — the orange isometric-cube mark used by the LeadConnector
+ * marketplace. Approximated as inline SVG; swap in a public/ asset when
+ * pixel-perfect fidelity matters.
+ *
+ * The shape: top face (parallelogram), left face, right face with a
+ * tall L-notch carved out of the bottom-right that reveals the cube's
+ * inner walls in a darker tone. The colors track the LeadConnector
+ * brand orange (#FA4D2E with lighter / darker face shading).
+ */
+export function LeadConnectorIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none">
-      <rect width="24" height="24" rx="5" fill="#FF6B35"/>
-      <path d="M7 12.5l3.5 3.5L17 8" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Top face */}
+      <path d="M12 2 L21 6.5 L12 11 L3 6.5 Z" fill="#FA4D2E" />
+      {/* Left front face */}
+      <path d="M3 6.5 L12 11 L12 22 L3 17.5 Z" fill="#E84425" />
+      {/* Right front face — full panel, will be partially overlaid by the L cutout */}
+      <path d="M21 6.5 L21 17.5 L12 22 L12 11 Z" fill="#FB7050" />
+      {/* L-notch: reveals the cube's interior wall (darker tone) */}
+      <path d="M14.5 14 L18.5 12 L18.5 18.25 L14.5 20.25 Z" fill="#5A5C66" />
+      {/* Inner orange tongue — the small detail on the back wall of the notch */}
+      <path d="M15.5 16 L17.5 15 L17.5 17.25 L15.5 18.25 Z" fill="#FA4D2E" />
     </svg>
   )
 }
+
+/**
+ * Backwards-compat alias. Older imports referenced the icon as
+ * GoHighLevelIcon; the brand we surface to users is LeadConnector
+ * (the marketplace-facing name), so the new name is canonical and the
+ * old one re-exports the same component until callers are migrated.
+ */
+export const GoHighLevelIcon = LeadConnectorIcon
 
 export function VapiIcon({ className }: { className?: string }) {
   return (

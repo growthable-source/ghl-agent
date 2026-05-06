@@ -3,8 +3,8 @@ import type { Metadata } from 'next'
 import { POSTS, type BlogCategory } from '@/lib/blog-posts'
 
 export const metadata: Metadata = {
-  title: 'Blog — AI agents for GoHighLevel & HubSpot',
-  description: 'Guides, comparisons, and product updates from the team building Voxility. How to add AI to GoHighLevel, comparisons vs Synthflow / HubSpot AI, and deep dives on conversational AI for sales and service.',
+  title: 'Blog — AI agents for sales & marketing teams',
+  description: 'Guides, comparisons, and product updates from the team building Voxility. How to add AI to your CRM, comparisons vs other agent platforms, and deep dives on conversational AI for sales and service.',
   alternates: { canonical: '/blog' },
 }
 
@@ -33,7 +33,7 @@ export default function BlogIndex() {
         </nav>
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-3">Voxility blog</h1>
         <p className="text-lg max-w-2xl" style={{ color: '#94a3b8' }}>
-          Guides, comparisons, and product updates from the team building self-improving AI agents for GoHighLevel and HubSpot.
+          Guides, comparisons, and product updates from the team building self-improving AI agents for sales and marketing teams.
         </p>
       </header>
 
