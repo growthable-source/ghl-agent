@@ -331,6 +331,59 @@ export default function AgentsPage() {
           </div>
         )}
 
+        {/* ─── Misconfigured-agents banner ─────────────────────────────── */}
+        {/* Surface every active agent that won't actually receive inbounds
+            (no routing rule and/or no channel deployment). The per-card
+            "Not deployed · fix" pill is easy to miss at a glance — this
+            banner names every offending agent with a direct link to its
+            routing tab. Hidden when nothing is misconfigured so the
+            surface stays clean during the happy path. */}
+        {(() => {
+          const misconfigured = agents.filter(a => getListeningState(a).state === 'misconfigured')
+          if (misconfigured.length === 0) return null
+          return (
+            <div
+              className="mb-6 p-4 rounded-xl border"
+              style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+            >
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: 'var(--accent-amber)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium" style={{ color: 'var(--accent-amber)' }}>
+                    {misconfigured.length === 1
+                      ? '1 agent will not receive inbound messages'
+                      : `${misconfigured.length} agents will not receive inbound messages`}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    Active agents without a routing rule or channel deployment are silently skipped on every inbound. Add at least one routing rule and one channel deployment to start listening.
+                  </p>
+                  <ul className="mt-3 space-y-1">
+                    {misconfigured.map(a => {
+                      const status = getListeningState(a)
+                      return (
+                        <li key={a.id} className="text-xs flex items-center gap-2">
+                          <span style={{ color: 'var(--text-primary)' }}>{a.name}</span>
+                          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{status.reason}</span>
+                          <Link
+                            href={`/dashboard/${workspaceId}/agents/${a.id}/routing`}
+                            className="ml-auto font-medium hover:underline"
+                            style={{ color: 'var(--accent-amber)' }}
+                          >
+                            Fix →
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* ─── Empty State ─────────────────────────────────────────────── */}
         {agents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 px-6 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
