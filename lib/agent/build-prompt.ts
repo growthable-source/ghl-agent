@@ -16,20 +16,38 @@ import { buildPersonaBlock, type PersonaSettings } from '../persona'
 import { renderMergeFields } from '../merge-fields'
 import type { FallbackConfig } from './types'
 
-export function buildSystemPrompt(
-  ctx: AgentContext,
-  customPrompt?: string,
-  persona?: PersonaSettings,
-  qualifyingBlock?: string,
-  fallback?: FallbackConfig,
-  channel?: string,
-  detectionRulesBlock?: string,
-  listeningRulesBlock?: string,
-  contactMemoryBlock?: string,
-  advancedContextBlock?: string,
-  platformGuidelinesBlock?: string,
-  connectedIntegrationsBlock?: string,
-): string {
+export interface SystemPromptOptions {
+  /** Caller-supplied base prompt — typically the output of buildBasePrompt. */
+  customPrompt?: string
+  persona?: PersonaSettings
+  /** Channel name used in the "Channel: X" context line (e.g. SMS / WhatsApp / Live_Chat). */
+  channel?: string
+  fallback?: FallbackConfig
+  /** Pre-built block strings, rendered in this order: qualifying → detection → listening → memory → advanced → persona → platform → integrations. */
+  qualifyingBlock?: string
+  detectionRulesBlock?: string
+  listeningRulesBlock?: string
+  contactMemoryBlock?: string
+  advancedContextBlock?: string
+  platformGuidelinesBlock?: string
+  connectedIntegrationsBlock?: string
+}
+
+export function buildSystemPrompt(ctx: AgentContext, options: SystemPromptOptions = {}): string {
+  const {
+    customPrompt,
+    persona,
+    channel,
+    fallback,
+    qualifyingBlock,
+    detectionRulesBlock,
+    listeningRulesBlock,
+    contactMemoryBlock,
+    advancedContextBlock,
+    platformGuidelinesBlock,
+    connectedIntegrationsBlock,
+  } = options
+
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
   const ch = channel || 'SMS'
   const base = customPrompt || `You are a helpful, professional sales assistant managing conversations.`

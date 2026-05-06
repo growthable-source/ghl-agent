@@ -33,28 +33,23 @@ describe('buildSystemPrompt', () => {
     expect(out).toContain('Channel: SMS')
   })
 
-  it('honors an explicit channel argument', () => {
-    const out = buildSystemPrompt(ctx(), undefined, undefined, undefined, undefined, 'WhatsApp')
+  it('honors an explicit channel option', () => {
+    const out = buildSystemPrompt(ctx(), { channel: 'WhatsApp' })
     expect(out).toContain('Channel: WhatsApp')
   })
 
   it('uses the caller-supplied base prompt when provided', () => {
-    const out = buildSystemPrompt(ctx(), 'You are CustomBot, a friendly concierge.')
+    const out = buildSystemPrompt(ctx(), { customPrompt: 'You are CustomBot, a friendly concierge.' })
     expect(out.startsWith('You are CustomBot, a friendly concierge.')).toBe(true)
   })
 
   it('appends optional context blocks in order: qualifying, detection, listening, memory', () => {
-    const out = buildSystemPrompt(
-      ctx(),
-      undefined,
-      undefined,
-      '\n\n## QUAL_BLOCK',
-      undefined,
-      undefined,
-      '\n\n## DETECT_BLOCK',
-      '\n\n## LISTEN_BLOCK',
-      '\n\n## MEMORY_BLOCK',
-    )
+    const out = buildSystemPrompt(ctx(), {
+      qualifyingBlock: '\n\n## QUAL_BLOCK',
+      detectionRulesBlock: '\n\n## DETECT_BLOCK',
+      listeningRulesBlock: '\n\n## LISTEN_BLOCK',
+      contactMemoryBlock: '\n\n## MEMORY_BLOCK',
+    })
     const idxQual = out.indexOf('## QUAL_BLOCK')
     const idxDetect = out.indexOf('## DETECT_BLOCK')
     const idxListen = out.indexOf('## LISTEN_BLOCK')
@@ -66,20 +61,10 @@ describe('buildSystemPrompt', () => {
   })
 
   it('puts platform guidelines after persona/integrations blocks', () => {
-    const out = buildSystemPrompt(
-      ctx(),
-      undefined,
-      undefined, // no persona
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      '\n\n## PLATFORM_GUIDELINES',
-      '\n\n## INTEGRATIONS',
-    )
+    const out = buildSystemPrompt(ctx(), {
+      platformGuidelinesBlock: '\n\n## PLATFORM_GUIDELINES',
+      connectedIntegrationsBlock: '\n\n## INTEGRATIONS',
+    })
     const idxPlatform = out.indexOf('## PLATFORM_GUIDELINES')
     const idxInteg = out.indexOf('## INTEGRATIONS')
     expect(idxPlatform).toBeGreaterThan(0)
@@ -92,18 +77,20 @@ describe('buildSystemPrompt', () => {
   })
 
   it('renders the transfer-only fallback', () => {
-    const out = buildSystemPrompt(
-      ctx(), undefined, undefined, undefined,
-      { behavior: 'transfer' },
-    )
+    const out = buildSystemPrompt(ctx(), { fallback: { behavior: 'transfer' } })
     expect(out).toContain('transfer the conversation to a human')
   })
 
   it('renders a custom fallback message', () => {
-    const out = buildSystemPrompt(
-      ctx(), undefined, undefined, undefined,
-      { behavior: 'message', message: 'Hold tight, I will check.' },
-    )
+    const out = buildSystemPrompt(ctx(), {
+      fallback: { behavior: 'message', message: 'Hold tight, I will check.' },
+    })
     expect(out).toContain('Hold tight, I will check.')
+  })
+
+  it('treats an empty options object as all-defaults', () => {
+    const out = buildSystemPrompt(ctx(), {})
+    expect(out).toContain('Channel: SMS')
+    expect(out).toContain('Contact: Pat')
   })
 })

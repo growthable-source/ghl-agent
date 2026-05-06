@@ -559,7 +559,22 @@ export async function runAgent(opts: {
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt({ locationId, contactId, contact: loadedContact ?? undefined } as AgentContext, systemPrompt, persona, qualifyingBlock, fallback, channel, detectionRulesBlock, listeningRulesBlock, contactMemoryBlock, advancedContextBlock, platformGuidelinesBlock, connectedIntegrationsBlock) + experimentBlock + dataSourcesBlock + conversationGapBlock,
+      system: buildSystemPrompt(
+        { locationId, contactId, contact: loadedContact ?? undefined } as AgentContext,
+        {
+          customPrompt: systemPrompt,
+          persona,
+          channel,
+          fallback,
+          qualifyingBlock,
+          detectionRulesBlock,
+          listeningRulesBlock,
+          contactMemoryBlock,
+          advancedContextBlock,
+          platformGuidelinesBlock,
+          connectedIntegrationsBlock,
+        },
+      ) + experimentBlock + dataSourcesBlock + conversationGapBlock,
       tools,
       messages: currentMessages,
     }
