@@ -150,7 +150,7 @@ export default async function PublicLandingPage({ params, searchParams }: Params
     fontFamily: spec.style?.font_family,
     background: spec.style?.background,
   })
-  const bgStyle = buildPageBackgroundStyle(spec.style?.background)
+  const bgStyle = buildPageBackgroundStyle(spec.style?.background, spec.images?.background_url)
   const images = spec.images
   const fallbackLogoUrl = campaign?.logoUrl ?? null
 

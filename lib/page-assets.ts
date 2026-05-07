@@ -22,6 +22,10 @@ import type { VisualBrief } from './visual-brief'
 export interface PageAssets {
   /** Full-bleed hero photo URL (Vercel Blob), null if generation failed. */
   hero_url: string | null
+  /** Page-level full-bleed background image URL. Every page gets one
+   *  — applied as a fixed background layer behind the whole page,
+   *  with brand-coherent overlay for text legibility. */
+  background_url: string | null
   /** Open Graph social-preview image URL. */
   og_url: string | null
   /** Per-section illustrations keyed by role: 'problem' | 'mechanism' | 'proof'. */
@@ -56,6 +60,7 @@ export async function generatePageAssets(args: GenerateArgs): Promise<PageAssets
   if (!enabled) {
     return {
       hero_url: null,
+      background_url: null,
       og_url: null,
       illustrations: {},
       report: { enabled: false, attempted: 0, succeeded: 0, provider: null, errors: [], noProvider: true },
@@ -75,6 +80,8 @@ export async function generatePageAssets(args: GenerateArgs): Promise<PageAssets
 
   // Hero
   const heroPrompt = buildHeroPrompt({ brief, primary_color, brandContextText, brand_kit })
+  // Page background — full-bleed atmospheric image. Required.
+  const backgroundPrompt = buildBackgroundPrompt({ brief, primary_color, brandContextText })
   // Illustrations — concept-specific, brand-coherent, NOT photography.
   const illustrationPrompts = brief.illustrations.map((i) => ({
     role: i.role,
@@ -90,6 +97,17 @@ export async function generatePageAssets(args: GenerateArgs): Promise<PageAssets
     keyPrefix: `${key_prefix}/hero`,
     referenceImageUrl: heroRef,
     geminiReferenceImages: heroGeminiRefs.length > 0 ? heroGeminiRefs : undefined,
+  }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e), provider: undefined }))
+
+  // Page background — vertical/portrait so it covers a long landing
+  // page without distortion. Logo-only as reference (we don't want
+  // it to copy the source page).
+  const backgroundPromise = generateLandingImage({
+    prompt: backgroundPrompt,
+    aspect: 'portrait',
+    keyPrefix: `${key_prefix}/background`,
+    referenceImageUrl: logoOnlyRef,
+    geminiReferenceImages: logoOnlyGeminiRefs.length > 0 ? logoOnlyGeminiRefs : undefined,
   }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e), provider: undefined }))
 
   const ogPromise = generateLandingImage({
@@ -111,18 +129,23 @@ export async function generatePageAssets(args: GenerateArgs): Promise<PageAssets
       .catch((e) => ({ role: ip.role, result: { ok: false as const, error: e instanceof Error ? e.message : String(e), provider: undefined } })),
   )
 
-  const [hero, og, ...illustrations] = await Promise.all([heroPromise, ogPromise, ...illustrationPromises])
+  const [hero, background, og, ...illustrations] = await Promise.all([heroPromise, backgroundPromise, ogPromise, ...illustrationPromises])
 
   // Aggregate.
   const errors: string[] = []
   let succeeded = 0
-  const attempted = 2 + illustrationPrompts.length // hero + og + N illustrations
+  const attempted = 3 + illustrationPrompts.length // hero + background + og + N illustrations
   const providersFired = new Set<string>()
 
   const heroUrl = hero.ok && 'url' in hero && hero.url ? hero.url : null
   if (heroUrl) succeeded++
   else if ('error' in hero && hero.error) errors.push(`hero: ${hero.error}`)
   if (hero.ok && 'provider' in hero && hero.provider) providersFired.add(hero.provider)
+
+  const backgroundUrl = background.ok && 'url' in background && background.url ? background.url : null
+  if (backgroundUrl) succeeded++
+  else if ('error' in background && background.error) errors.push(`background: ${background.error}`)
+  if (background.ok && 'provider' in background && background.provider) providersFired.add(background.provider)
 
   const ogUrl = og.ok && 'url' in og && og.url ? og.url : null
   if (ogUrl) succeeded++
@@ -143,6 +166,7 @@ export async function generatePageAssets(args: GenerateArgs): Promise<PageAssets
 
   return {
     hero_url: heroUrl,
+    background_url: backgroundUrl,
     og_url: ogUrl,
     illustrations: illustrationsByRole,
     report: {
@@ -219,6 +243,23 @@ function buildIllustrationPrompt(args: {
   return `${stylePrefix}\n\n` +
     `Subject: ${args.illustration.prompt_seed}\n\n` +
     `Square 1:1 composition. Subject centred. No text, no logos, no watermarks, no UI mockups, no fake browser chrome.${args.brandContextText}`
+}
+
+function buildBackgroundPrompt(args: {
+  brief: VisualBrief
+  primary_color: string
+  brandContextText: string
+}): string {
+  return `Page-level full-bleed background image for a landing page. ` +
+    `Atmospheric, on-brand, designed to sit BEHIND text and section cards — ` +
+    `the renderer will overlay a dark or light wash on top, so the image must ` +
+    `read well at low contrast and have lots of negative space.\n\n` +
+    `Subject: ${args.brief.background_prompt_seed}\n\n` +
+    `Vertical/portrait composition (will be cropped tall). ` +
+    `Use brand colour ${args.primary_color} as a subtle accent in the imagery. ` +
+    `NO text, NO logos, NO watermarks. NO faces, NO recognisable people in focus, ` +
+    `NO sharp UI mockups. NO meeting rooms, NO handshake clichés, NO three-people-around-a-laptop. ` +
+    `The image is the room the page lives in — atmospheric, not literal.${args.brandContextText}`
 }
 
 function buildOgPrompt(args: { intake: CampaignIntake; primary_color: string; brandContextText: string }): string {

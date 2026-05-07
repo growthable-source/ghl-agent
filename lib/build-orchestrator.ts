@@ -201,6 +201,7 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
             `provider=${out.report.provider ?? 'none'} ` +
             `attempted=${out.report.attempted} succeeded=${out.report.succeeded} ` +
             `hero=${out.hero_url ? 'ok' : 'miss'} ` +
+            `bg=${out.background_url ? 'ok' : 'miss'} ` +
             `og=${out.og_url ? 'ok' : 'miss'} ` +
             `illustrations=${Object.keys(out.illustrations).length}`,
           )
@@ -217,6 +218,7 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
                 errors: out.report.errors,
                 heroStyle: args.heroStyle,
                 heroUrl: out.hero_url,
+                backgroundUrl: out.background_url,
                 ogUrl: out.og_url,
                 illustrations: out.illustrations,
               } as unknown as object,
@@ -244,6 +246,7 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
         visual_brief: visualBrief,
         assets: assets ? {
           hero_url: assets.hero_url,
+          background_url: assets.background_url,
           og_url: assets.og_url,
           illustrations: assets.illustrations,
         } : null,
@@ -252,11 +255,11 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
       currentTitle = generated.title || currentTitle
       currentMeta = generated.meta_description || currentMeta
 
-      // Hero layout safety: when an AI photo exists, force the hero
-      // layout to a variant that actually displays it. Claude
-      // sometimes emits 'form-in-hero' or 'gradient' (both ignore
-      // the photo); we override.
-      if (args.heroStyle === 'ai_photo' && currentSpec.images?.hero_url) {
+      // Hero layout safety: every page has a hero photo (mandatory).
+      // Claude sometimes emits 'form-in-hero' or 'gradient' (both
+      // ignore the photo); we override regardless of heroStyle —
+      // the operator's wizard pick is no longer relevant.
+      if (currentSpec.images?.hero_url) {
         const heroIdx = currentSpec.sections.findIndex((s) => s.type === 'hero')
         if (heroIdx >= 0) {
           const hero = currentSpec.sections[heroIdx]

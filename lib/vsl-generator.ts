@@ -539,12 +539,13 @@ function normalizeSection(raw: RawSection): PageSection | null {
  * primary accent) drifts away from the actual imagery.
  */
 function buildAssetContentBlocks(
-  assets: { hero_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null | undefined,
+  assets: { hero_url?: string | null; background_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null | undefined,
 ): Anthropic.ContentBlockParam[] {
   if (!assets) return []
   const blocks: Anthropic.ContentBlockParam[] = []
   const items: { label: string; url: string }[] = []
   if (assets.hero_url) items.push({ label: 'Hero photo', url: assets.hero_url })
+  if (assets.background_url) items.push({ label: 'Full-bleed page background', url: assets.background_url })
   for (const [role, url] of Object.entries(assets.illustrations ?? {})) {
     items.push({ label: `${role} illustration`, url })
   }
@@ -706,9 +707,10 @@ export async function generateVslPage(input: {
    *  defaulting to text-on-white. */
   visual_brief?: import('./visual-brief').VisualBrief | null
   /** Asset URLs from lib/page-assets.ts — concrete URLs for the hero
-   *  photo and per-section illustrations. Wired into spec.images so
-   *  the renderer can consume them. */
-  assets?: { hero_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null
+   *  photo, full-bleed page background, OG, and per-section
+   *  illustrations. Wired into spec.images so the renderer can
+   *  consume them. */
+  assets?: { hero_url?: string | null; background_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null
 }): Promise<GeneratedPage> {
   if (!input.intake?.business_name || !input.intake?.offer || !input.intake?.dream_outcome) {
     throw new Error('intake.business_name, offer, and dream_outcome are required')
@@ -868,6 +870,7 @@ export async function generateVslPage(input: {
       sections,
       images: input.assets ? {
         ...(input.assets.hero_url ? { hero_url: input.assets.hero_url } : {}),
+        ...(input.assets.background_url ? { background_url: input.assets.background_url } : {}),
         ...(input.assets.og_url ? { og_url: input.assets.og_url } : {}),
         ...(input.assets.illustrations ? { illustrations: input.assets.illustrations } : {}),
       } : undefined,

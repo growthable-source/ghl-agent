@@ -60,6 +60,12 @@ export interface VisualBrief {
    *  prompt for the full-bleed hero photo. */
   hero_concept: string
   hero_prompt_seed: string
+  /** Page-level full-bleed background concept. Required — every page
+   *  has one. Examples: a soft out-of-focus environment shot, an
+   *  abstract gradient mesh, a subtle textured material. The
+   *  renderer overlays a dark or light wash for legibility. */
+  background_concept: string
+  background_prompt_seed: string
   /** 1-3 supporting illustrations. Costly (~$0.06 each on Replicate)
    *  but transformative — pages stop looking like text-on-white. */
   illustrations: VisualBriefIllustration[]
@@ -80,14 +86,20 @@ Output a complete visual brief via the visual_brief tool:
 
 3. **hero_prompt_seed** — the literal prompt fragment that goes to Replicate. Should describe the scene + lighting + mood, but NOT include style modifiers (the asset generator adds those). Example: "A pair of weathered hands gripping a worn leather journal at golden-hour, intimate close-up, shallow depth of field, brand-orange accent in the journal binding."
 
-4. **illustrations** — 1-3 supporting illustrations, one each for problem / mechanism / proof. Pick which sections benefit from a custom illustration based on the offer:
+4. **background_concept** + **background_prompt_seed** — every page MUST have a full-bleed background image. This is NOT the hero — it's the canvas behind the whole page (the renderer applies a dark or light overlay on top for legibility). Pick a concept that's atmospheric, on-brand, and READABLE-at-low-contrast: soft out-of-focus environment, abstract gradient mesh, subtle textured material, blurred bokeh of the brand context, etc. AVOID busy compositions, faces, or anything with text — overlays will fight them. The seed should be the literal prompt fragment for Replicate.
+   • Examples that work:
+     - "Out-of-focus shot of a sunlit Brooklyn coffee shop counter, warm bokeh, no people in focus, lots of negative space, atmospheric"
+     - "Abstract liquid gradient mesh in deep teal and midnight, fluid organic shapes, subtle film grain"
+     - "Macro shot of brushed brass texture with soft shadows, monochrome warm, contemplative"
+
+5. **illustrations** — 1-3 supporting illustrations, one each for problem / mechanism / proof. Pick which sections benefit from a custom illustration based on the offer:
    - B2B/SaaS: usually mechanism (process diagram) and problem (before-state)
    - Coaching/services: problem (pain visualisation) and proof (transformation)
    - Physical products: mechanism (how-it-works) and proof (in-use)
    - Skip illustrations on sections that work fine with icons alone (e.g. simple offer with 4 features → just icons)
    Each illustration: role (which section), concept (1-2 sentences, visual + emotional), prompt_seed.
 
-5. **icons** — 6-12 Lucide icon picks. You MUST only pick names from this allowlist:
+6. **icons** — 6-12 Lucide icon picks. You MUST only pick names from this allowlist:
 ${LUCIDE_ALLOWLIST.join(', ')}
 
    Each icon entry has:
@@ -107,11 +119,13 @@ Tone for the whole brief: a senior art director briefing a photo shoot. Specific
 
 const TOOL_SCHEMA = {
   type: 'object' as const,
-  required: ['mood', 'hero_concept', 'hero_prompt_seed', 'illustrations', 'icons'],
+  required: ['mood', 'hero_concept', 'hero_prompt_seed', 'background_concept', 'background_prompt_seed', 'illustrations', 'icons'],
   properties: {
     mood: { type: 'string', maxLength: 400 },
     hero_concept: { type: 'string', maxLength: 400 },
     hero_prompt_seed: { type: 'string', maxLength: 600 },
+    background_concept: { type: 'string', maxLength: 400 },
+    background_prompt_seed: { type: 'string', maxLength: 600 },
     illustrations: {
       type: 'array',
       maxItems: 3,
@@ -254,6 +268,8 @@ function normalise(raw: Record<string, unknown>): VisualBrief {
     mood: typeof raw.mood === 'string' ? raw.mood.trim() : '',
     hero_concept: typeof raw.hero_concept === 'string' ? raw.hero_concept.trim() : '',
     hero_prompt_seed: typeof raw.hero_prompt_seed === 'string' ? raw.hero_prompt_seed.trim() : '',
+    background_concept: typeof raw.background_concept === 'string' ? raw.background_concept.trim() : '',
+    background_prompt_seed: typeof raw.background_prompt_seed === 'string' ? raw.background_prompt_seed.trim() : '',
     illustrations,
     icons,
   }

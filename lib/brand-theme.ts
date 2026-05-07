@@ -121,49 +121,71 @@ export function buildPageThemeStyle(args: {
  */
 export function buildPageBackgroundStyle(
   background: 'white' | 'dark' | 'gradient' | undefined,
+  backgroundUrl?: string | null,
 ): React.CSSProperties {
-  // CSS vars `--page-bg` and `--section-alt-bg` are read by the section
-  // components so they swap their hardcoded `#fafafa` / `#0a0a0a`
-  // shells when the page is dark vs light. Without these, a dark
-  // page would still have light-grey proof + guarantee sections,
-  // breaking visual consistency.
-  switch (background) {
-    case 'dark':
-      return {
-        background: '#0a0a0a',
-        color: '#f5f5f5',
-        ['--page-bg' as string]: '#0a0a0a',
-        ['--page-fg' as string]: '#f5f5f5',
-        ['--section-alt-bg' as string]: '#111317',
-        ['--section-alt-fg' as string]: '#f5f5f5',
-        ['--section-card-bg' as string]: 'rgba(255,255,255,0.04)',
-        ['--section-card-border' as string]: 'rgba(255,255,255,0.08)',
-        ['--section-muted-fg' as string]: 'rgba(255,255,255,0.65)',
-      }
-    case 'gradient':
-      return {
-        background:
-          'radial-gradient(1200px 600px at 10% -10%, var(--brand-soft), transparent 60%), radial-gradient(900px 500px at 110% 10%, var(--brand-soft), transparent 60%), #fafafa',
-        color: '#0a0a0a',
-        ['--page-bg' as string]: '#fafafa',
-        ['--page-fg' as string]: '#0a0a0a',
-        ['--section-alt-bg' as string]: '#f5f5f5',
-        ['--section-alt-fg' as string]: '#0a0a0a',
-        ['--section-card-bg' as string]: '#ffffff',
-        ['--section-card-border' as string]: 'rgba(0,0,0,0.06)',
-        ['--section-muted-fg' as string]: 'rgba(0,0,0,0.65)',
-      }
-    default:
-      return {
-        background: '#ffffff',
-        color: '#0a0a0a',
-        ['--page-bg' as string]: '#ffffff',
-        ['--page-fg' as string]: '#0a0a0a',
-        ['--section-alt-bg' as string]: '#fafafa',
-        ['--section-alt-fg' as string]: '#0a0a0a',
-        ['--section-card-bg' as string]: '#ffffff',
-        ['--section-card-border' as string]: 'rgba(0,0,0,0.06)',
-        ['--section-muted-fg' as string]: 'rgba(0,0,0,0.65)',
-      }
+  // When a page-level background image is present, it sits as a fixed
+  // full-bleed layer behind everything. A semi-transparent overlay in
+  // the page's chosen colour (dark or light) sits on top so section
+  // text stays legible. Sections inherit the same CSS vars below so
+  // their cards/alt strips harmonise with the page colour.
+  const dark = background === 'dark'
+  const isGradient = background === 'gradient'
+  const bgImageLayer = backgroundUrl
+    ? (dark
+      // Strong dark wash on top of the image so dark-page text has contrast.
+      ? `linear-gradient(rgba(8,10,14,0.78), rgba(8,10,14,0.92)), url(${JSON.stringify(backgroundUrl)})`
+      // Lighter wash for white pages so the image acts as a soft texture.
+      : `linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.95)), url(${JSON.stringify(backgroundUrl)})`)
+    : null
+
+  if (dark) {
+    return {
+      background: bgImageLayer ?? '#0a0a0a',
+      backgroundSize: backgroundUrl ? 'cover' : undefined,
+      backgroundPosition: backgroundUrl ? 'center top' : undefined,
+      backgroundAttachment: backgroundUrl ? 'fixed' : undefined,
+      color: '#f5f5f5',
+      ['--page-bg' as string]: '#0a0a0a',
+      ['--page-fg' as string]: '#f5f5f5',
+      ['--section-alt-bg' as string]: backgroundUrl ? 'transparent' : '#111317',
+      ['--section-alt-fg' as string]: '#f5f5f5',
+      ['--section-card-bg' as string]: backgroundUrl ? 'rgba(20,22,28,0.72)' : 'rgba(255,255,255,0.04)',
+      ['--section-card-border' as string]: 'rgba(255,255,255,0.08)',
+      ['--section-muted-fg' as string]: 'rgba(255,255,255,0.65)',
+    }
+  }
+  if (isGradient) {
+    const gradient =
+      'radial-gradient(1200px 600px at 10% -10%, var(--brand-soft), transparent 60%), radial-gradient(900px 500px at 110% 10%, var(--brand-soft), transparent 60%), #fafafa'
+    return {
+      background: backgroundUrl
+        ? `${gradient}, linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.95)), url(${JSON.stringify(backgroundUrl)})`
+        : gradient,
+      backgroundSize: backgroundUrl ? 'auto, auto, cover' : undefined,
+      backgroundPosition: backgroundUrl ? 'center, center, center top' : undefined,
+      backgroundAttachment: backgroundUrl ? 'scroll, scroll, fixed' : undefined,
+      color: '#0a0a0a',
+      ['--page-bg' as string]: '#fafafa',
+      ['--page-fg' as string]: '#0a0a0a',
+      ['--section-alt-bg' as string]: backgroundUrl ? 'transparent' : '#f5f5f5',
+      ['--section-alt-fg' as string]: '#0a0a0a',
+      ['--section-card-bg' as string]: backgroundUrl ? 'rgba(255,255,255,0.85)' : '#ffffff',
+      ['--section-card-border' as string]: 'rgba(0,0,0,0.06)',
+      ['--section-muted-fg' as string]: 'rgba(0,0,0,0.65)',
+    }
+  }
+  return {
+    background: bgImageLayer ?? '#ffffff',
+    backgroundSize: backgroundUrl ? 'cover' : undefined,
+    backgroundPosition: backgroundUrl ? 'center top' : undefined,
+    backgroundAttachment: backgroundUrl ? 'fixed' : undefined,
+    color: '#0a0a0a',
+    ['--page-bg' as string]: '#ffffff',
+    ['--page-fg' as string]: '#0a0a0a',
+    ['--section-alt-bg' as string]: backgroundUrl ? 'transparent' : '#fafafa',
+    ['--section-alt-fg' as string]: '#0a0a0a',
+    ['--section-card-bg' as string]: backgroundUrl ? 'rgba(255,255,255,0.85)' : '#ffffff',
+    ['--section-card-border' as string]: 'rgba(0,0,0,0.06)',
+    ['--section-muted-fg' as string]: 'rgba(0,0,0,0.65)',
   }
 }

@@ -217,6 +217,12 @@ export interface PageStyle {
 export interface PageImages {
   /** Hero feature image. Wide aspect (16:9 or 3:2), photographic. */
   hero_url?: string
+  /** Page-level full-bleed background image. Vertical aspect (3:4
+   *  or taller) — applied as a fixed background layer behind the
+   *  whole page, with a brand-coherent overlay for legibility. Every
+   *  page should have one — pages without a background read as
+   *  template-y and unfinished. */
+  background_url?: string
   /** Wide background image for the offer / CTA strip. */
   offer_bg_url?: string
   /** OG image (1200x630). Used for social link previews. */
