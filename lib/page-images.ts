@@ -89,10 +89,22 @@ export async function generatePageImages(args: {
   }
   const brandContextText = brandContext.length > 0 ? `\n\n${brandContext.join('\n')}` : ''
 
+  // Hero ref: screenshot is the richer signal for design vibe; logo
+  // for colour/mark consistency. Both useful for the hero — model
+  // adapts the operator's visual language into a fresh composition.
   const heroRef = brandKit?.screenshot_url ?? brandKit?.logo_url ?? null
-  const geminiRefs: string[] = []
-  if (brandKit?.screenshot_url) geminiRefs.push(brandKit.screenshot_url)
-  if (brandKit?.logo_url) geminiRefs.push(brandKit.logo_url)
+  const heroGeminiRefs: string[] = []
+  if (brandKit?.screenshot_url) heroGeminiRefs.push(brandKit.screenshot_url)
+  if (brandKit?.logo_url) heroGeminiRefs.push(brandKit.logo_url)
+
+  // OG ref: LOGO ONLY. Without this restriction the model takes the
+  // operator's homepage screenshot too literally and produces an OG
+  // image that's a near-copy of their existing site (same dashboard
+  // mockup, same nav, same brand text). Logo alone keeps brand
+  // identity (mark + colour) without forcing layout duplication.
+  const ogRef = brandKit?.logo_url ?? null
+  const ogGeminiRefs: string[] = []
+  if (brandKit?.logo_url) ogGeminiRefs.push(brandKit.logo_url)
 
   const photoStyle = brandKit?.analysis?.photography_style
   const heroPrompt = buildHeroPrompt({ context, dreamOutcome: intake.dream_outcome, primaryColour, brandContextText, photoStyle })
@@ -102,7 +114,10 @@ export async function generatePageImages(args: {
     `Business: ${intake.business_name}. Offer: ${intake.offer}. ` +
     `Bold, simple composition. Strong focal point centred. ` +
     `Use brand colour ${primaryColour} as a primary accent. ` +
-    `Looks great as a thumbnail in LinkedIn, Slack, Twitter previews. No text overlays.${brandContextText}`
+    `Looks great as a thumbnail in LinkedIn, Slack, Twitter previews. No text overlays. ` +
+    `DO NOT reproduce the operator's existing website — this is a fresh original social card, ` +
+    `not a screenshot of their homepage. No UI mockups, no dashboard screenshots, no nav bars, ` +
+    `no fake browser chrome.${brandContextText}`
 
   const heroPromise = heroStyle === 'ai_photo'
     ? generateLandingImage({
@@ -110,7 +125,7 @@ export async function generatePageImages(args: {
         aspect: 'wide',
         keyPrefix: `${keyPrefix}/hero`,
         referenceImageUrl: heroRef,
-        geminiReferenceImages: geminiRefs.length > 0 ? geminiRefs : undefined,
+        geminiReferenceImages: heroGeminiRefs.length > 0 ? heroGeminiRefs : undefined,
       }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
     : Promise.resolve({ ok: true as const, url: undefined, provider: undefined })
 
@@ -118,8 +133,8 @@ export async function generatePageImages(args: {
     prompt: ogPrompt,
     aspect: 'og',
     keyPrefix: `${keyPrefix}/og`,
-    referenceImageUrl: heroRef,
-    geminiReferenceImages: geminiRefs.length > 0 ? geminiRefs : undefined,
+    referenceImageUrl: ogRef,
+    geminiReferenceImages: ogGeminiRefs.length > 0 ? ogGeminiRefs : undefined,
   }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }))
 
   const [hero, og] = await Promise.all([heroPromise, ogPromise])
