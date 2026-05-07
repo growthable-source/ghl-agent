@@ -93,10 +93,7 @@ HERO HEADLINE — the single most important sentence on the page.
 - Specific outcome > vague benefit. Numbers + timeframes win.
   Bad: "Transform your business"
   Good: "How Brisbane chiros add 12 new patients/month without spending a dollar on ads"
-- ACCENT MARKUP: wrap one short emotional/keyword phrase (1–4 words) in [accent]…[/accent]. The renderer renders it in a script font + brand color on its own visual line — emotional anchor for the headline.
-  Good: "Launch Your [accent]Beauty Brand[/accent] With Confidence"
-  Good: "Brisbane chiros [accent]worth driving for[/accent] — book a 15-min consult"
-  Use accents on lead_gen / consumer / service pages. Skip on technical/B2B SaaS where it reads cheesy.
+- ACCENT MARKUP (use sparingly): you MAY wrap one short keyword phrase (1-4 words) in [accent]…[/accent] to make it pop in the brand colour. The renderer simply colours the wrapped phrase — no script font, no display variant. Default to NO accent markup. Only use it when there's a single phrase that genuinely deserves emphasis. Most headlines work better without any markup. NEVER use it on B2B/SaaS/technical/corporate pages — even the colour treatment reads cheesy there.
 
 HERO LAYOUT — set hero.layout to one of:
   • 'form-in-hero' — best for lead_gen / book_call / application. Form sits on the right of the hero. The standalone 'form' section marker is suppressed.

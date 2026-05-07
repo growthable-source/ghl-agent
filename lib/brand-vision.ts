@@ -35,6 +35,14 @@ export interface BrandAnalysis {
   typography_style: TypographyStyle
   /** Free-form descriptor like "humanist sans, geometric" or "warm serif, classical". */
   typography_descriptor: string
+  /** Actual font-family names detected from the reference site's
+   *  rendered DOM (most-frequent computed-style picks). Loaded
+   *  dynamically into the generated page via Google Fonts so the
+   *  output really uses the brand's typography rather than a
+   *  hardcoded Inter/Fraunces/Jakarta default. Populated by
+   *  lib/brand-scrape-pipeline.ts from lib/brand-render's
+   *  fontFamilies output, NOT by the vision model. */
+  font_families?: string[]
   photography_style: PhotographyStyle
   /** 2-4 word vibe like "warm minimalist", "bold direct-response", "premium luxury". */
   design_vibe: string

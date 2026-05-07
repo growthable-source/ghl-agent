@@ -24,6 +24,7 @@ import {
   type PageSection,
 } from '@/lib/page-spec'
 import { buildPageBackgroundStyle, buildPageThemeStyle } from '@/lib/brand-theme'
+import { brandFontStyleFromAnalysis } from '@/lib/brand-fonts'
 import { verifyPreviewToken } from '@/lib/preview-token'
 
 type Params = {
@@ -100,10 +101,12 @@ export default async function PublicLandingPage({ params, searchParams }: Params
   // back to the right campaign.
   const campaign = await db.campaign.findUnique({
     where: { landingPageId: page.id },
-    // logoUrl flows into the HeaderBlock as a fallback when the AI
-    // didn't bake one onto the section itself. Branded sites with no
-    // header logo look unfinished.
-    select: { id: true, logoUrl: true },
+    // logoUrl flows into the HeaderBlock as a fallback. brandAnalysis
+    // carries the detected font_families from the operator's reference
+    // site — we load those via Google Fonts and apply them as the
+    // page's typography so the output uses the brand's actual fonts
+    // instead of a hardcoded default.
+    select: { id: true, logoUrl: true, brandAnalysis: true },
   })
 
   const spec = parsePageSpec(page.spec)
@@ -151,6 +154,13 @@ export default async function PublicLandingPage({ params, searchParams }: Params
     background: spec.style?.background,
   })
   const bgStyle = buildPageBackgroundStyle(spec.style?.background, spec.images?.background_url)
+  // Brand-detected fonts override the static next/font choice. The
+  // brand-render Browserbase pass captured the operator's actual
+  // computed font-families; we load those via Google Fonts and apply
+  // them as --page-font-display / --page-font-body so the generated
+  // page renders in the brand's REAL typography rather than Inter.
+  const brandAnalysis = (campaign?.brandAnalysis ?? null) as { font_families?: string[] } | null
+  const brandFonts = brandFontStyleFromAnalysis(brandAnalysis?.font_families)
   const images = spec.images
   const fallbackLogoUrl = campaign?.logoUrl ?? null
 
@@ -171,8 +181,15 @@ export default async function PublicLandingPage({ params, searchParams }: Params
   return (
     <main
       className="min-h-screen"
-      style={{ scrollBehavior: 'smooth', ...themeStyle, ...bgStyle }}
+      style={{ scrollBehavior: 'smooth', ...themeStyle, ...bgStyle, ...brandFonts.cssVars }}
     >
+      {/* Dynamic Google Fonts from the operator's reference site.
+          Inline `<link>` is hoisted into <head> by Next.js so the
+          font request fires before the body renders. */}
+      {brandFonts.googleFontsUrl && (
+        // eslint-disable-next-line @next/next/no-page-custom-font
+        <link rel="stylesheet" href={brandFonts.googleFontsUrl} />
+      )}
       {sectionsBeforeForm.map((section, i) => (
         <SectionRenderer
           key={i}

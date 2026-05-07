@@ -89,6 +89,13 @@ export async function runBrandScrapePipeline(args: PipelineArgs): Promise<BrandS
     return { ok: false, reason: 'analysis_failed', error: err instanceof Error ? err.message : 'analysis failed' }
   }
 
+  // Stash the actual font names detected from the rendered DOM. The
+  // renderer loads these via Google Fonts so the generated page uses
+  // the operator's real typography rather than a hardcoded fallback.
+  if (rendered.fontFamilies && rendered.fontFamilies.length > 0) {
+    analysis.font_families = rendered.fontFamilies
+  }
+
   return {
     ok: true,
     finalUrl: rendered.finalUrl,

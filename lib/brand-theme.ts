@@ -130,12 +130,13 @@ export function buildPageBackgroundStyle(
   // their cards/alt strips harmonise with the page colour.
   const dark = background === 'dark'
   const isGradient = background === 'gradient'
+  // Overlay opacity: tuned so the image is visibly present, not a
+  // ghost. ~55% on dark, ~65% on light. Sections that need full text
+  // legibility get their own translucent card backgrounds on top.
   const bgImageLayer = backgroundUrl
     ? (dark
-      // Strong dark wash on top of the image so dark-page text has contrast.
-      ? `linear-gradient(rgba(8,10,14,0.78), rgba(8,10,14,0.92)), url(${JSON.stringify(backgroundUrl)})`
-      // Lighter wash for white pages so the image acts as a soft texture.
-      : `linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.95)), url(${JSON.stringify(backgroundUrl)})`)
+      ? `linear-gradient(rgba(8,10,14,0.55), rgba(8,10,14,0.75)), url(${JSON.stringify(backgroundUrl)})`
+      : `linear-gradient(rgba(255,255,255,0.55), rgba(255,255,255,0.7)), url(${JSON.stringify(backgroundUrl)})`)
     : null
 
   if (dark) {
@@ -159,7 +160,7 @@ export function buildPageBackgroundStyle(
       'radial-gradient(1200px 600px at 10% -10%, var(--brand-soft), transparent 60%), radial-gradient(900px 500px at 110% 10%, var(--brand-soft), transparent 60%), #fafafa'
     return {
       background: backgroundUrl
-        ? `${gradient}, linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.95)), url(${JSON.stringify(backgroundUrl)})`
+        ? `${gradient}, linear-gradient(rgba(255,255,255,0.55), rgba(255,255,255,0.7)), url(${JSON.stringify(backgroundUrl)})`
         : gradient,
       backgroundSize: backgroundUrl ? 'auto, auto, cover' : undefined,
       backgroundPosition: backgroundUrl ? 'center, center, center top' : undefined,

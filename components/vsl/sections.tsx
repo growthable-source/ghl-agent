@@ -60,16 +60,16 @@ const displayFont: CSSProperties = { fontFamily: 'var(--page-font-display, inher
 const scriptFont: CSSProperties = { fontFamily: 'var(--page-font-script, "Brush Script MT", cursive)' }
 
 /**
- * Render a headline with [accent]…[/accent] markup parsed into a
- * brand-colored, script-font phrase on its own visual line. Used by
- * the hero — operators (or the AI) write copy like:
- *   "Launch Your [accent]Beauty Brand[/accent] With Confidence"
- * and the marked phrase pops as the emotional anchor of the headline.
+ * Render a headline with [accent]…[/accent] markup. The marked phrase
+ * is rendered in the BRAND COLOUR (using the same display font as the
+ * rest of the headline) — NOT a cursive script.
  *
- * Pure split-on-marker — no DOM injection, no dangerouslySetInnerHTML,
- * so safe even when the spec is operator-edited. Scales the accent
- * relative to base font-size via 1.05em so it always looks right
- * regardless of the surrounding clamp().
+ * The previous version forced an Allura cursive script on every
+ * accent, regardless of whether the brand actually uses script faces.
+ * Result: every B2B/SaaS hero looked like a cosmetics ad. Now the
+ * accent is just a colour highlight; the brand's own typography
+ * (loaded dynamically from the reference site's font detection)
+ * handles the visual character.
  */
 function renderHeadlineWithAccent(headline: string): ReactNode[] {
   const parts: ReactNode[] = []
@@ -84,22 +84,7 @@ function renderHeadlineWithAccent(headline: string): ReactNode[] {
     parts.push(
       <span
         key={`a${i++}`}
-        className="block"
-        style={{
-          ...scriptFont,
-          color: 'var(--brand, #0A84FF)',
-          fontWeight: 400,
-          fontStyle: 'italic',
-          // Allura/script faces look better slightly oversized vs the
-          // surrounding sans display.
-          fontSize: '1.15em',
-          lineHeight: 1.05,
-          // Pull script up just a touch so it visually nests with the
-          // baseline of the surrounding line rather than feeling stranded.
-          marginTop: '-0.05em',
-          marginBottom: '-0.05em',
-          letterSpacing: '0',
-        }}
+        style={{ color: 'var(--brand, #0A84FF)' }}
       >
         {match[1]}
       </span>,
