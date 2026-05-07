@@ -125,11 +125,21 @@ Other rules:
 - Match brand voice if specified. Default = friendly + authoritative.
 - Never invent specific URLs, phone numbers, addresses, or testimonial names with real identifiers. Use placeholders the operator will replace.
 
-VISUAL ASSETS — when a "VISUAL BRIEF" message is included in the user content, a hero photo, supporting illustrations, and a curated icon palette have ALREADY BEEN GENERATED. You MUST compose the page using these assets:
-  • Set hero.layout to 'image-bg' or 'split-image' (NEVER 'gradient' or 'form-in-hero' when a hero photo exists — those layouts ignore the photo and the operator burned dollars generating it).
-  • Use the icons from the brief on problem.pains, mechanism.steps, and offer.items by passing their kebab-case Lucide name (like 'shield' or 'zap') in each item's icon field. The roles in the brief tell you which icon goes where.
-  • The illustrations land automatically on problem/mechanism/proof — you don't reference URLs, just structure those sections knowing there's a strong visual to support the copy.
-  • Pages without a visual brief (rare) — fall back to text-heavy structure as before.
+VISUAL ASSETS — when image content blocks are included in the user message labelled "GENERATED VISUAL ASSETS", those are the actual hero photo and section illustrations the page WILL display. You MUST:
+
+  1. LOOK at the imagery. Notice dominant colour, mood (dark moody / bright editorial / abstract minimal / etc.), and the accent colour visible in clothing, props, geometry, line work.
+
+  2. PICK style from what you see — not from defaults:
+     • style.background: 'dark' if the imagery is dark/moody/premium-tech; 'white' if bright/airy/editorial; 'gradient' if marketing-y/SaaS with strong colour gradients.
+     • style.primary_color: the hex of the strongest accent colour in the imagery. If the hero shows a teal-illuminated dashboard, primary_color is teal. If the illustration line work pops in red, primary_color is red. The wizard's primary_color hint is a SUGGESTION — override it when the actual imagery says otherwise.
+     • style.font_family: 'serif' for editorial/luxury/wellness brands; 'display' for SaaS/B2B; 'system' otherwise.
+
+  3. Compose USING these assets:
+     • Set hero.layout to 'image-bg' or 'split-image' (NEVER 'gradient' or 'form-in-hero' when a hero photo exists — those layouts ignore the photo).
+     • Use the icons from the visual brief on problem.pains, mechanism.steps, and offer.items by passing their kebab-case Lucide name in each item's icon field.
+     • The illustrations land automatically on problem/mechanism/proof — you don't reference URLs, just structure those sections knowing there's a strong visual to support the copy.
+
+  Pages without visual assets (rare) — fall back to text-heavy structure with a sensible default style.
 
 Always return your output via the return_page_spec tool — never as plain text.`
 
@@ -138,6 +148,31 @@ const TOOL_SCHEMA = {
   properties: {
     title: { type: 'string', description: 'Page <title>, used for SEO and OG. 50–70 chars ideal.' },
     meta_description: { type: 'string', description: 'Meta description for SEO. 140–160 chars.' },
+    style: {
+      type: 'object',
+      description:
+        "Page chrome — picked by LOOKING at the generated hero + illustration assets in the user message. " +
+        "Dark moody hero → background='dark'. Bright editorial → background='white'. " +
+        "primary_color is the hex of the dominant accent visible in the imagery " +
+        "(clothing, props, illustration line work). Don't default to the wizard's pick if the imagery says otherwise.",
+      properties: {
+        primary_color: {
+          type: 'string',
+          description: '6-digit hex like #04B9D4, derived from accents you SEE in the assets.',
+        },
+        background: {
+          type: 'string',
+          enum: ['white', 'dark', 'gradient'],
+          description: "Page background. 'dark' for dark imagery, 'white' for bright/editorial, 'gradient' for premium/marketing-y.",
+        },
+        font_family: {
+          type: 'string',
+          enum: ['system', 'serif', 'display'],
+          description: "Body font. 'serif' for editorial/luxury/wellness; 'display' for SaaS/marketing-y; 'system' otherwise.",
+        },
+      },
+      required: ['primary_color', 'background'],
+    },
     sections: {
       type: 'array',
       description: 'Ordered list of page sections.',
@@ -494,6 +529,50 @@ function normalizeSection(raw: RawSection): PageSection | null {
  * Kept out of the system prompt so the prompt cache stays warm across
  * different brands.
  */
+/**
+ * Returns image content blocks (one per generated asset) plus a
+ * leading text block that introduces them, so the spec generator
+ * SEES the hero photo + illustrations while picking style fields.
+ *
+ * This is the "look at the mood board, then design" step. Without it
+ * Claude is composing blind and the page chrome (background colour,
+ * primary accent) drifts away from the actual imagery.
+ */
+function buildAssetContentBlocks(
+  assets: { hero_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null | undefined,
+): Anthropic.ContentBlockParam[] {
+  if (!assets) return []
+  const blocks: Anthropic.ContentBlockParam[] = []
+  const items: { label: string; url: string }[] = []
+  if (assets.hero_url) items.push({ label: 'Hero photo', url: assets.hero_url })
+  for (const [role, url] of Object.entries(assets.illustrations ?? {})) {
+    items.push({ label: `${role} illustration`, url })
+  }
+  if (items.length === 0) return []
+
+  blocks.push({
+    type: 'text',
+    text:
+      `—— GENERATED VISUAL ASSETS (look at these images and let them drive your style choices) ——\n\n` +
+      `These are the actual hero photo and section illustrations the page will display. Look at them carefully:\n` +
+      `  • What's the dominant colour palette? Dark / light / warm / cool?\n` +
+      `  • Does the imagery feel premium dark, bright editorial, abstract minimal, etc.?\n` +
+      `  • What primary accent colour appears in the imagery (clothing, props, geometry)?\n\n` +
+      `Use this read to pick the page's spec.style.background ('white' | 'dark' | 'gradient') AND ` +
+      `spec.style.primary_color (a 6-digit hex). The page chrome MUST be visually coherent with these images — ` +
+      `a dark moody hero on a bright white page is the worst possible mismatch. ` +
+      `If the hero is dark and rich, choose background='dark'. If the imagery has a strong teal/blue/red/etc. ` +
+      `as its accent, that hex (or a clean version of it) becomes primary_color, regardless of any default the ` +
+      `wizard may have suggested.\n\n` +
+      `Asset list (in order below):`,
+  })
+  for (const item of items) {
+    blocks.push({ type: 'text', text: `— ${item.label}:` })
+    blocks.push({ type: 'image', source: { type: 'url', url: item.url } })
+  }
+  return blocks
+}
+
 function visualBriefPrompt(
   brief: import('./visual-brief').VisualBrief,
   assets: { hero_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null,
@@ -668,6 +747,14 @@ export async function generateVslPage(input: {
           { type: 'text', text: userPrompt(input.intake, template) },
           ...(input.brand_kit ? [{ type: 'text' as const, text: brandKitPrompt(input.brand_kit) }] : []),
           ...(input.visual_brief ? [{ type: 'text' as const, text: visualBriefPrompt(input.visual_brief, input.assets ?? null) }] : []),
+          // Show Claude the actual generated assets so it can pick
+          // spec.style.background + spec.style.primary_color based
+          // on what's in the images, not on regex over a vibe string.
+          // The page chrome should be visually coherent with the
+          // hero/illustrations the operator will see — dark moody
+          // hero → dark page; bright airy hero → light page; teal
+          // accent in illustrations → teal primary_color.
+          ...buildAssetContentBlocks(input.assets),
           ...(input.revision_brief && input.revision_brief.trim()
             ? [{ type: 'text' as const, text: input.revision_brief.trim() }]
             : []),
@@ -751,15 +838,31 @@ export async function generateVslPage(input: {
     }
   }
 
+  // Claude's style output — if it picked something while looking at
+  // the imagery, defer to that. Otherwise fall back to the wizard's
+  // primary_color + a 'white' background.
+  const claudeStyle = (parsed as { style?: { primary_color?: unknown; background?: unknown; font_family?: unknown } }).style ?? {}
+  const claudePrimary = typeof claudeStyle.primary_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(claudeStyle.primary_color)
+    ? claudeStyle.primary_color
+    : null
+  const claudeBg: 'white' | 'dark' | 'gradient' | null =
+    claudeStyle.background === 'dark' || claudeStyle.background === 'gradient' || claudeStyle.background === 'white'
+      ? claudeStyle.background
+      : null
+  const claudeFont: 'system' | 'serif' | 'display' | null =
+    claudeStyle.font_family === 'system' || claudeStyle.font_family === 'serif' || claudeStyle.font_family === 'display'
+      ? claudeStyle.font_family
+      : null
+
   return {
     title: parsed.title ?? `${input.intake.business_name} — ${input.intake.dream_outcome}`,
     meta_description: parsed.meta_description ?? input.intake.offer.slice(0, 160),
     spec: {
       version: 1,
       style: {
-        primary_color: primaryColor,
-        background: 'white',
-        font_family: 'system',
+        primary_color: claudePrimary ?? primaryColor,
+        background: claudeBg ?? 'white',
+        font_family: claudeFont ?? 'system',
         max_width: 'default',
       },
       sections,
