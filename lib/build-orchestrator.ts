@@ -180,6 +180,10 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
         /image|photo|hero|stock|generic/i.test(`${i.problem} ${i.fix_suggestion}`),
       ) ?? false
       const shouldGenImages = iter === 1 || heroFlagged
+      // Track which provider actually fired. Stashed on every
+      // iteration's spec.images so we can verify Replicate vs Gemini
+      // from the DB without needing the imageGenReport column.
+      let imageGenProviderForLog: string | null = null
       if (shouldGenImages) {
         let report: Record<string, unknown> | null = null
         try {
@@ -193,6 +197,7 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
           if (out.images.hero_url || out.images.og_url) {
             images = out.images
           }
+          imageGenProviderForLog = out.provider ?? null
           report = {
             enabled: out.enabled,
             attempted: out.attempted,
@@ -203,9 +208,15 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
             heroUrl: out.images.hero_url ?? null,
             ogUrl: out.images.og_url ?? null,
           }
-          if (out.errors.length > 0) {
-            console.warn(`[build ${build.id}] image gen errors:`, out.errors)
-          }
+          // Always log the outcome so it's grep-able in Vercel runtime
+          // logs — `provider=replicate succeeded=2/2` is unambiguous.
+          console.log(
+            `[build ${build.id}] image-gen iter=${iter} ` +
+            `provider=${out.provider ?? 'none'} ` +
+            `attempted=${out.attempted} succeeded=${out.succeeded} ` +
+            `enabled=${out.enabled} ` +
+            (out.errors.length > 0 ? `errors=${JSON.stringify(out.errors)}` : 'errors=none'),
+          )
         } catch (err) {
           report = {
             enabled: true,
@@ -229,7 +240,16 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
       // Merge generated images into the spec the renderer reads. The
       // hero + OG live on spec.images; bake them in BEFORE saving so
       // every iteration's published draft includes them.
-      if (images) currentSpec.images = { ...(currentSpec.images ?? {}), ...images }
+      // _provider is a diagnostic stash — the renderer ignores
+      // unknown fields, but we can grep the DB to verify Replicate
+      // is firing rather than Gemini fallback.
+      if (images || imageGenProviderForLog) {
+        currentSpec.images = {
+          ...(currentSpec.images ?? {}),
+          ...(images ?? {}),
+          ...(imageGenProviderForLog ? { _provider: imageGenProviderForLog } : {}),
+        } as typeof currentSpec.images
+      }
 
       await db.landingPage.update({
         where: { id: landingPage.id },
