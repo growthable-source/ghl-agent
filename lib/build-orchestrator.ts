@@ -279,6 +279,35 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
         } as typeof currentSpec.images
       }
 
+      // ─── Brand-fidelity style override ──────────────────────────────
+      // The operator's wizard primary_color picker defaults to orange
+      // (#e84425) and most operators don't change it. When the brand
+      // analysis from the reference site says the brand is actually
+      // teal/navy/whatever, the analysis wins — pages should look
+      // like the brand, not like the wizard default. Same for
+      // background: a "dark tech" brand should render dark, not
+      // white-on-white-with-orange.
+      if (ctx.brandAnalysis) {
+        const ba = ctx.brandAnalysis
+        // Primary colour: prefer the analysis pick when available.
+        // The operator can still override by editing in the wizard,
+        // but the brand-extracted colour is the better default.
+        if (ba.primary_color && /^#[0-9a-fA-F]{6}$/.test(ba.primary_color)) {
+          currentSpec.style = { ...currentSpec.style, primary_color: ba.primary_color }
+        }
+        // Background: derive from design_vibe + photography_style.
+        // Dark-tech / dark-luxury / dark-editorial → dark. Otherwise
+        // default white. Gradient is rare; we don't auto-pick it.
+        const vibe = (ba.design_vibe ?? '').toLowerCase()
+        const looksDark = /dark|navy|midnight|noir|deep|charcoal|black/.test(vibe)
+        if (looksDark) {
+          currentSpec.style = { ...currentSpec.style, background: 'dark' }
+        }
+        console.log(
+          `[build ${build.id}] iter=${iter} style override → primary=${currentSpec.style?.primary_color} bg=${currentSpec.style?.background} (analysis vibe="${ba.design_vibe}")`,
+        )
+      }
+
       await db.landingPage.update({
         where: { id: landingPage.id },
         data: {

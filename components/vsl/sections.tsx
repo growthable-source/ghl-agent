@@ -567,8 +567,8 @@ function MechanismBlock({ s }: { s: MechanismSection }) {
             {s.steps.map((step, i) => (
               <div
                 key={i}
-                className="relative rounded-2xl border bg-white p-6 transition-shadow hover:shadow-lg"
-                style={{ borderColor: 'rgba(0,0,0,0.08)' }}
+                className="relative rounded-2xl border p-6 transition-shadow hover:shadow-lg"
+                style={{ background: 'var(--section-card-bg, #ffffff)', borderColor: 'var(--section-card-border, rgba(0,0,0,0.08))' }}
               >
                 {step.icon ? (
                   <div
@@ -612,7 +612,7 @@ function MechanismBlock({ s }: { s: MechanismSection }) {
 
 function ProofBlock({ s }: { s: ProofSection }) {
   return (
-    <section className="px-4 py-20 md:py-28" style={{ background: '#fafafa' }}>
+    <section className="px-4 py-20 md:py-28" style={{ background: 'var(--section-alt-bg, #fafafa)', color: 'var(--section-alt-fg, #0a0a0a)' }}>
       <div className="mx-auto max-w-5xl">
         {s.headline && (
           <h2
@@ -635,8 +635,8 @@ function ProofBlock({ s }: { s: ProofSection }) {
             {s.stats.map((st, i) => (
               <div
                 key={i}
-                className="rounded-2xl border bg-white p-6 text-center"
-                style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                className="rounded-2xl border p-6 text-center"
+                style={{ background: 'var(--section-card-bg, #ffffff)', borderColor: 'var(--section-card-border, rgba(0,0,0,0.06))' }}
               >
                 <div
                   className="font-bold tabular-nums"
@@ -666,8 +666,8 @@ function ProofBlock({ s }: { s: ProofSection }) {
             {s.testimonials.map((t, i) => (
               <figure
                 key={i}
-                className="relative rounded-2xl border bg-white p-7"
-                style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                className="relative rounded-2xl border p-7"
+                style={{ background: 'var(--section-card-bg, #ffffff)', borderColor: 'var(--section-card-border, rgba(0,0,0,0.06))' }}
               >
                 <svg
                   className="absolute right-5 top-5 h-8 w-8"
@@ -747,9 +747,10 @@ function OfferBlock({ s, images }: { s: OfferSection; images?: PageImages }) {
         )}
 
         <div
-          className="mt-8 rounded-3xl border bg-white p-6 md:p-8"
+          className="mt-8 rounded-3xl border p-6 md:p-8"
           style={{
-            borderColor: 'rgba(0,0,0,0.06)',
+            background: 'var(--section-card-bg, #ffffff)',
+            borderColor: 'var(--section-card-border, rgba(0,0,0,0.06))',
             boxShadow: '0 30px 60px -25px rgba(0,0,0,0.12), 0 0 0 1px var(--brand-soft, rgba(10,132,255,0.12)) inset',
           }}
         >
@@ -827,7 +828,7 @@ function OfferBlock({ s, images }: { s: OfferSection; images?: PageImages }) {
 
 function GuaranteeBlock({ s }: { s: GuaranteeSection }) {
   return (
-    <section className="px-4 py-20 md:py-24" style={{ background: '#fafafa' }}>
+    <section className="px-4 py-20 md:py-24" style={{ background: 'var(--section-alt-bg, #fafafa)', color: 'var(--section-alt-fg, #0a0a0a)' }}>
       <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
         <div className="relative mb-6">
           <div
@@ -932,8 +933,8 @@ function FAQBlock({ s }: { s: FAQSection }) {
           {s.items.map((item, i) => (
             <details
               key={i}
-              className="group rounded-2xl border bg-white p-6 transition-shadow open:shadow-md"
-              style={{ borderColor: 'rgba(0,0,0,0.08)' }}
+              className="group rounded-2xl border p-6 transition-shadow open:shadow-md"
+              style={{ background: 'var(--section-card-bg, #ffffff)', borderColor: 'var(--section-card-border, rgba(0,0,0,0.08))' }}
             >
               <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-base font-semibold">
                 <span>{item.question}</span>

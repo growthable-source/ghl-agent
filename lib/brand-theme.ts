@@ -122,16 +122,48 @@ export function buildPageThemeStyle(args: {
 export function buildPageBackgroundStyle(
   background: 'white' | 'dark' | 'gradient' | undefined,
 ): React.CSSProperties {
+  // CSS vars `--page-bg` and `--section-alt-bg` are read by the section
+  // components so they swap their hardcoded `#fafafa` / `#0a0a0a`
+  // shells when the page is dark vs light. Without these, a dark
+  // page would still have light-grey proof + guarantee sections,
+  // breaking visual consistency.
   switch (background) {
     case 'dark':
-      return { background: '#0a0a0a', color: '#f5f5f5' }
+      return {
+        background: '#0a0a0a',
+        color: '#f5f5f5',
+        ['--page-bg' as string]: '#0a0a0a',
+        ['--page-fg' as string]: '#f5f5f5',
+        ['--section-alt-bg' as string]: '#111317',
+        ['--section-alt-fg' as string]: '#f5f5f5',
+        ['--section-card-bg' as string]: 'rgba(255,255,255,0.04)',
+        ['--section-card-border' as string]: 'rgba(255,255,255,0.08)',
+        ['--section-muted-fg' as string]: 'rgba(255,255,255,0.65)',
+      }
     case 'gradient':
       return {
         background:
           'radial-gradient(1200px 600px at 10% -10%, var(--brand-soft), transparent 60%), radial-gradient(900px 500px at 110% 10%, var(--brand-soft), transparent 60%), #fafafa',
         color: '#0a0a0a',
+        ['--page-bg' as string]: '#fafafa',
+        ['--page-fg' as string]: '#0a0a0a',
+        ['--section-alt-bg' as string]: '#f5f5f5',
+        ['--section-alt-fg' as string]: '#0a0a0a',
+        ['--section-card-bg' as string]: '#ffffff',
+        ['--section-card-border' as string]: 'rgba(0,0,0,0.06)',
+        ['--section-muted-fg' as string]: 'rgba(0,0,0,0.65)',
       }
     default:
-      return { background: '#ffffff', color: '#0a0a0a' }
+      return {
+        background: '#ffffff',
+        color: '#0a0a0a',
+        ['--page-bg' as string]: '#ffffff',
+        ['--page-fg' as string]: '#0a0a0a',
+        ['--section-alt-bg' as string]: '#fafafa',
+        ['--section-alt-fg' as string]: '#0a0a0a',
+        ['--section-card-bg' as string]: '#ffffff',
+        ['--section-card-border' as string]: 'rgba(0,0,0,0.06)',
+        ['--section-muted-fg' as string]: 'rgba(0,0,0,0.65)',
+      }
   }
 }
