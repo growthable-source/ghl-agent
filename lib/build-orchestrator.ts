@@ -251,6 +251,27 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
         } as typeof currentSpec.images
       }
 
+      // When the operator picked AI photo and image-gen succeeded,
+      // make sure the hero LAYOUT actually uses the image. Claude
+      // routinely emits `form-in-hero` or `gradient` even when an
+      // image is available — both layouts ignore the hero photo
+      // entirely, so we burn $0.06 on Replicate output that never
+      // renders. Override to `image-bg` (full-bleed photo with
+      // overlay copy) which is the most striking use of the image.
+      if (args.heroStyle === 'ai_photo' && currentSpec.images?.hero_url) {
+        const heroIdx = currentSpec.sections.findIndex((s) => s.type === 'hero')
+        if (heroIdx >= 0) {
+          const hero = currentSpec.sections[heroIdx]
+          if (hero.type === 'hero') {
+            const layout = hero.layout
+            if (!layout || layout === 'form-in-hero' || layout === 'gradient') {
+              currentSpec.sections[heroIdx] = { ...hero, layout: 'image-bg' }
+              console.log(`[build ${build.id}] iter=${iter} forced hero layout image-bg (was ${layout ?? 'unset'})`)
+            }
+          }
+        }
+      }
+
       await db.landingPage.update({
         where: { id: landingPage.id },
         data: {

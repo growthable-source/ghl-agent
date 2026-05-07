@@ -112,7 +112,23 @@ export async function renderLandingPage(rawUrl: string): Promise<PageRenderResul
     const documentHeight = await page.evaluate(() => document.documentElement.scrollHeight)
 
     const firstFold = await page.screenshot({ type: 'png', fullPage: false })
-    const fullPage = await page.screenshot({ type: 'png', fullPage: true })
+    // Anthropic vision API rejects images with any dimension > 8000px.
+    // Long landing pages (hero + problem + mechanism + proof + offer +
+    // guarantee + faq + footer) routinely scroll to 9000-12000px,
+    // which used to land as `400 invalid_request_error: At least one
+    // of the image dimensions exceed max allowed size: 8000 pixels`.
+    // Clip the capture at 7800px to stay safely under the limit. The
+    // critic loses visibility into the bottom of pathologically long
+    // pages, which is fine — those pages are usually broken anyway
+    // and the critic should flag length itself as a problem.
+    const FULL_PAGE_MAX_HEIGHT = 7800
+    const fullPage = await page.screenshot({
+      type: 'png',
+      fullPage: true,
+      clip: documentHeight > FULL_PAGE_MAX_HEIGHT
+        ? { x: 0, y: 0, width: 1440, height: FULL_PAGE_MAX_HEIGHT }
+        : undefined,
+    })
 
     return {
       ok: true,
