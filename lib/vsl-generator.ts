@@ -13,6 +13,11 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import type { PageSection, PageSpec } from '@/lib/page-spec'
+import { pickAllowedIcon } from '@/lib/lucide-allowlist'
+
+function pickAllowedIconOrNull(value: unknown): string | null {
+  return pickAllowedIcon(value)
+}
 
 const client = new Anthropic()
 const MODEL = 'claude-opus-4-7'
@@ -120,6 +125,12 @@ Other rules:
 - Match brand voice if specified. Default = friendly + authoritative.
 - Never invent specific URLs, phone numbers, addresses, or testimonial names with real identifiers. Use placeholders the operator will replace.
 
+VISUAL ASSETS — when a "VISUAL BRIEF" message is included in the user content, a hero photo, supporting illustrations, and a curated icon palette have ALREADY BEEN GENERATED. You MUST compose the page using these assets:
+  • Set hero.layout to 'image-bg' or 'split-image' (NEVER 'gradient' or 'form-in-hero' when a hero photo exists — those layouts ignore the photo and the operator burned dollars generating it).
+  • Use the icons from the brief on problem.pains, mechanism.steps, and offer.items by passing their kebab-case Lucide name (like 'shield' or 'zap') in each item's icon field. The roles in the brief tell you which icon goes where.
+  • The illustrations land automatically on problem/mechanism/proof — you don't reference URLs, just structure those sections knowing there's a strong visual to support the copy.
+  • Pages without a visual brief (rare) — fall back to text-heavy structure as before.
+
 Always return your output via the return_page_spec tool — never as plain text.`
 
 const TOOL_SCHEMA = {
@@ -173,14 +184,28 @@ const TOOL_SCHEMA = {
           trust_badges: { type: 'array', items: { type: 'string' } },
           body: { type: 'string' },
           bullets: { type: 'array', items: { type: 'string' } },
+          pains: {
+            type: 'array',
+            description: "For 'problem': pain-point cards with icons. Each pain has a Lucide icon name (kebab-case, from the allowlist provided in the user message), a short label, and an optional 1-line description. Prefer pains over plain bullets when icons make the pains more visceral.",
+            items: {
+              type: 'object',
+              properties: {
+                icon: { type: 'string', description: 'Lucide kebab-case name from the allowlist.' },
+                label: { type: 'string' },
+                description: { type: 'string' },
+              },
+              required: ['icon', 'label'],
+            },
+          },
           steps: {
             type: 'array',
-            description: 'For mechanism: 3-step framework reveal.',
+            description: 'For mechanism: 3-step framework reveal. Each step picks a Lucide icon from the allowlist as its visual.',
             items: {
               type: 'object',
               properties: {
                 label: { type: 'string' },
                 description: { type: 'string' },
+                icon: { type: 'string', description: 'Lucide kebab-case name from the allowlist.' },
               },
               required: ['label', 'description'],
             },
@@ -208,12 +233,14 @@ const TOOL_SCHEMA = {
           description: { type: 'string' },
           items: {
             type: 'array',
+            description: "For 'offer': stack of deliverables. Each item picks a Lucide icon from the allowlist (drawn in brand colour as the item's visual focal point).",
             items: {
               type: 'object',
               properties: {
                 label: { type: 'string' },
                 description: { type: 'string' },
                 value: { type: 'string' },
+                icon: { type: 'string', description: 'Lucide kebab-case name from the allowlist.' },
               },
               required: ['label'],
             },
@@ -328,6 +355,18 @@ function normalizeSection(raw: RawSection): PageSection | null {
         headline: toStr(r.headline),
         body: toStr(r.body),
         bullets: arrayOrUndefined(r.bullets, 8, (b) => toStr(b, 200) || null),
+        pains: arrayOrUndefined(r.pains, 6, (pn) => {
+          if (!pn || typeof pn !== 'object') return null
+          const p = pn as Record<string, unknown>
+          const icon = pickAllowedIconOrNull(p.icon)
+          const label = toStr(p.label, 80)
+          if (!icon || !label) return null
+          return {
+            icon,
+            label,
+            description: p.description ? toStr(p.description, 200) : undefined,
+          }
+        }),
       }
     case 'mechanism':
       return {
@@ -340,7 +379,8 @@ function normalizeSection(raw: RawSection): PageSection | null {
           const label = toStr(s.label, 80)
           const description = toStr(s.description, 240)
           if (!label) return null
-          return { label, description }
+          const icon = pickAllowedIconOrNull(s.icon)
+          return { label, description, icon: icon ?? undefined }
         }),
       }
     case 'proof':
@@ -378,10 +418,12 @@ function normalizeSection(raw: RawSection): PageSection | null {
           const o = it as Record<string, unknown>
           const label = toStr(o.label)
           if (!label) return null
+          const icon = pickAllowedIconOrNull(o.icon)
           return {
             label,
             description: o.description ? toStr(o.description) : undefined,
             value: o.value ? toStr(o.value) : undefined,
+            icon: icon ?? undefined,
           }
         }) ?? [],
         total_value: r.total_value ? toStr(r.total_value) : undefined,
@@ -452,6 +494,43 @@ function normalizeSection(raw: RawSection): PageSection | null {
  * Kept out of the system prompt so the prompt cache stays warm across
  * different brands.
  */
+function visualBriefPrompt(
+  brief: import('./visual-brief').VisualBrief,
+  assets: { hero_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null,
+): string {
+  const bits: string[] = ['—— VISUAL BRIEF (compose the page USING these visual building blocks — they are already generated and waiting to be referenced) ——']
+
+  bits.push(`Mood: ${brief.mood}`)
+  bits.push(`Hero concept: ${brief.hero_concept}`)
+
+  if (assets?.hero_url) {
+    bits.push(`Hero photo is READY (URL handled by renderer — set hero.layout='image-bg' or 'split-image' so it actually shows up; do NOT pick 'gradient' or 'form-in-hero' since those layouts ignore the photo).`)
+  }
+
+  if (brief.illustrations.length > 0 && assets?.illustrations) {
+    bits.push('')
+    bits.push('Section illustrations available:')
+    for (const ill of brief.illustrations) {
+      const haveAsset = !!assets.illustrations[ill.role]
+      if (!haveAsset) continue
+      bits.push(`  • ${ill.role.toUpperCase()} section — ${ill.concept}`)
+    }
+    bits.push('When emitting the problem/mechanism/proof section that has an illustration available, the renderer will display it automatically — you don\'t need to reference URLs in the spec. Just structure the section text knowing there\'s a strong supporting visual.')
+  }
+
+  if (brief.icons.length > 0) {
+    bits.push('')
+    bits.push('Icon picks (USE these by their `name` in section items — kebab-case Lucide names):')
+    for (const icon of brief.icons) {
+      bits.push(`  • role=${icon.role}: name='${icon.name}' label='${icon.label}'${icon.rationale ? ` — ${icon.rationale}` : ''}`)
+    }
+    bits.push('')
+    bits.push("ICON USAGE — when emitting a problem section, the items become `pains: [{icon, label, description}, ...]` using the pain-* roles above. Mechanism `steps` items each take an `icon` field using the mechanism-step-* roles. Offer `items` each take an `icon` using the offer-item-* roles. ALWAYS use the icons from this brief — they are pre-curated to be on-brand and visually consistent. Do NOT invent new icon names.")
+  }
+
+  return bits.join('\n')
+}
+
 function brandKitPrompt(kit: BrandKit): string {
   const bits: string[] = ['—— BRAND KIT (use these to ground voice, copy, and visual choices) ——']
   if (kit.brand_guide_text && kit.brand_guide_text.trim()) {
@@ -542,6 +621,15 @@ export async function generateVslPage(input: {
    *  strengths get formatted into a brief that lands in the user
    *  message. Empty string is treated as "no revision". */
   revision_brief?: string | null
+  /** Visual brief from lib/visual-brief.ts — tells Claude what
+   *  visual building blocks (icons, illustrations, hero photo) it
+   *  has available so it composes a page USING them rather than
+   *  defaulting to text-on-white. */
+  visual_brief?: import('./visual-brief').VisualBrief | null
+  /** Asset URLs from lib/page-assets.ts — concrete URLs for the hero
+   *  photo and per-section illustrations. Wired into spec.images so
+   *  the renderer can consume them. */
+  assets?: { hero_url?: string | null; og_url?: string | null; illustrations?: Record<string, string> } | null
 }): Promise<GeneratedPage> {
   if (!input.intake?.business_name || !input.intake?.offer || !input.intake?.dream_outcome) {
     throw new Error('intake.business_name, offer, and dream_outcome are required')
@@ -579,6 +667,7 @@ export async function generateVslPage(input: {
         content: [
           { type: 'text', text: userPrompt(input.intake, template) },
           ...(input.brand_kit ? [{ type: 'text' as const, text: brandKitPrompt(input.brand_kit) }] : []),
+          ...(input.visual_brief ? [{ type: 'text' as const, text: visualBriefPrompt(input.visual_brief, input.assets ?? null) }] : []),
           ...(input.revision_brief && input.revision_brief.trim()
             ? [{ type: 'text' as const, text: input.revision_brief.trim() }]
             : []),
@@ -648,6 +737,20 @@ export async function generateVslPage(input: {
     })
   }
 
+  // Bake assets into the spec — illustration URLs land on the matching
+  // problem/mechanism/proof sections, the hero photo + OG go on
+  // spec.images. The renderer reads from spec.images.illustrations
+  // by role; we ALSO write each URL onto the relevant section so
+  // older renderer paths still work.
+  if (input.assets?.illustrations) {
+    for (const section of sections) {
+      const url = input.assets.illustrations[section.type]
+      if (!url) continue
+      if (section.type === 'problem') section.illustration_url = url
+      else if (section.type === 'mechanism') section.illustration_url = url
+    }
+  }
+
   return {
     title: parsed.title ?? `${input.intake.business_name} — ${input.intake.dream_outcome}`,
     meta_description: parsed.meta_description ?? input.intake.offer.slice(0, 160),
@@ -660,6 +763,11 @@ export async function generateVslPage(input: {
         max_width: 'default',
       },
       sections,
+      images: input.assets ? {
+        ...(input.assets.hero_url ? { hero_url: input.assets.hero_url } : {}),
+        ...(input.assets.og_url ? { og_url: input.assets.og_url } : {}),
+        ...(input.assets.illustrations ? { illustrations: input.assets.illustrations } : {}),
+      } : undefined,
     },
   }
 }

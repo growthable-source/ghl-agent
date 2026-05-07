@@ -19,6 +19,7 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react'
+import { LucideIcon } from './LucideIcon'
 import type {
   CTASection,
   FAQSection,
@@ -456,38 +457,72 @@ function SecondaryCta({ cta }: { cta: NonNullable<HeroSection['secondary_cta']> 
 // ─── Problem ─────────────────────────────────────────────────────────────
 
 function ProblemBlock({ s }: { s: ProblemSection }) {
+  const hasPains = !!s.pains && s.pains.length > 0
+  const hasIllustration = !!s.illustration_url
   return (
     <section className="px-4 py-20 md:py-28" style={{ background: '#0a0a0a', color: '#f5f5f5' }}>
-      <div className="mx-auto max-w-3xl">
-        <h2
-          className="font-bold tracking-tight"
-          style={{
-            ...displayFont,
-            fontSize: 'clamp(1.75rem, 2.5vw + 0.75rem, 2.75rem)',
-            lineHeight: 1.1,
-            letterSpacing: '-0.02em',
-          }}
-        >
-          {s.headline}
-        </h2>
-        <p className="mt-5 whitespace-pre-line text-lg leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
-          {s.body}
-        </p>
-        {s.bullets && s.bullets.length > 0 && (
-          <ul className="mt-8 space-y-3">
-            {s.bullets.map((b) => (
-              <li
-                key={b}
-                className="flex items-start gap-3 rounded-xl border p-4 text-base"
-                style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}
-              >
-                <svg className="mt-1 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} style={{ color: '#ef4444' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                <span style={{ color: 'rgba(255,255,255,0.92)' }}>{b}</span>
-              </li>
-            ))}
-          </ul>
+      <div className={`mx-auto ${hasIllustration ? 'max-w-6xl grid gap-12 md:grid-cols-2 md:items-center' : 'max-w-3xl'}`}>
+        <div>
+          <h2
+            className="font-bold tracking-tight"
+            style={{
+              ...displayFont,
+              fontSize: 'clamp(1.75rem, 2.5vw + 0.75rem, 2.75rem)',
+              lineHeight: 1.1,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            {s.headline}
+          </h2>
+          <p className="mt-5 whitespace-pre-line text-lg leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
+            {s.body}
+          </p>
+          {hasPains && (
+            <ul className="mt-8 grid gap-3 sm:grid-cols-2">
+              {s.pains!.map((pain, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-3 rounded-xl border p-4"
+                  style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}
+                >
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}
+                  >
+                    <LucideIcon name={pain.icon} size={20} />
+                  </div>
+                  <div>
+                    <div className="text-base font-semibold" style={{ color: 'rgba(255,255,255,0.95)' }}>{pain.label}</div>
+                    {pain.description && (
+                      <div className="mt-1 text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>{pain.description}</div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!hasPains && s.bullets && s.bullets.length > 0 && (
+            <ul className="mt-8 space-y-3">
+              {s.bullets.map((b) => (
+                <li
+                  key={b}
+                  className="flex items-start gap-3 rounded-xl border p-4 text-base"
+                  style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}
+                >
+                  <svg className="mt-1 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} style={{ color: '#ef4444' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span style={{ color: 'rgba(255,255,255,0.92)' }}>{b}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {hasIllustration && (
+          <div className="overflow-hidden rounded-2xl" style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.08)' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={s.illustration_url} alt="" className="block h-auto w-full" loading="lazy" />
+          </div>
         )}
       </div>
     </section>
@@ -521,6 +556,12 @@ function MechanismBlock({ s }: { s: MechanismSection }) {
           </p>
         </div>
 
+        {s.illustration_url && (
+          <div className="mx-auto mt-10 max-w-3xl overflow-hidden rounded-2xl" style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.08)' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={s.illustration_url} alt="" className="block h-auto w-full" loading="lazy" />
+          </div>
+        )}
         {s.steps && s.steps.length > 0 && (
           <div className={`mt-12 grid gap-5 ${isThreeUp ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
             {s.steps.map((step, i) => (
@@ -529,11 +570,19 @@ function MechanismBlock({ s }: { s: MechanismSection }) {
                 className="relative rounded-2xl border bg-white p-6 transition-shadow hover:shadow-lg"
                 style={{ borderColor: 'rgba(0,0,0,0.08)' }}
               >
-                {step.icon_url ? (
+                {step.icon ? (
+                  <div
+                    className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl"
+                    style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))', color: 'var(--brand, #0A84FF)' }}
+                  >
+                    <LucideIcon name={step.icon} size={26} />
+                  </div>
+                ) : step.icon_url ? (
                   <div
                     className="mb-5 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl"
                     style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))' }}
                   >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={step.icon_url} alt="" className="h-full w-full object-cover" loading="lazy" />
                   </div>
                 ) : (
@@ -707,14 +756,23 @@ function OfferBlock({ s, images }: { s: OfferSection; images?: PageImages }) {
           <ul className="space-y-3">
             {s.items.map((item, i) => (
               <li key={i} className="flex items-start gap-4">
-                <div
-                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-                  style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))' }}
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} style={{ color: 'var(--brand, #0A84FF)' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
+                {item.icon ? (
+                  <div
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))', color: 'var(--brand, #0A84FF)' }}
+                  >
+                    <LucideIcon name={item.icon} size={20} />
+                  </div>
+                ) : (
+                  <div
+                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: 'var(--brand-soft, rgba(10,132,255,0.12))' }}
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3} style={{ color: 'var(--brand, #0A84FF)' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
                 <div className="flex flex-1 items-start justify-between gap-3">
                   <div>
                     <div className="font-semibold" style={{ color: 'rgba(0,0,0,0.9)' }}>{item.label}</div>

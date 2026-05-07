@@ -84,6 +84,15 @@ export interface ProblemSection {
   headline: string
   body: string
   bullets?: string[]
+  /** Optional pain-point cards. Each pain has a Lucide icon name from
+   *  lib/lucide-allowlist; the renderer draws the icon in brand colour
+   *  and uses it as the focal element of the card. When `pains` is
+   *  set, `bullets` is ignored. */
+  pains?: { icon: string; label: string; description?: string }[]
+  /** Replicate-generated illustration URL (Flux 1.1 Pro Ultra) that
+   *  visualises the "before" state. Renderer slots it as a side
+   *  illustration alongside the pain cards. */
+  illustration_url?: string
 }
 
 export interface MechanismSection {
@@ -93,10 +102,16 @@ export interface MechanismSection {
   steps?: {
     label: string
     description: string
-    /** AI-generated icon image URL (Gemini Imagen). Optional — falls
-     *  back to a numbered chip in the renderer when absent. */
+    /** Lucide icon name (from lib/lucide-allowlist) representing this
+     *  step. Renderer draws it in brand colour as the step's visual. */
+    icon?: string
+    /** AI-generated icon image URL — legacy, kept for backward compat
+     *  with old spec data. Prefer `icon` (Lucide name) for new specs. */
     icon_url?: string
   }[]
+  /** Replicate-generated illustration of the mechanism / process —
+   *  visual abstraction of how the offer works. */
+  illustration_url?: string
 }
 
 export interface ProofSection {
@@ -116,7 +131,10 @@ export interface OfferSection {
   type: 'offer'
   headline: string
   description?: string
-  items: { label: string; description?: string; value?: string }[]
+  /** Each item gets a Lucide icon (from lib/lucide-allowlist) drawn
+   *  in brand colour as its visual. Renderer falls back to a check
+   *  mark if `icon` is missing. */
+  items: { label: string; description?: string; value?: string; icon?: string }[]
   total_value?: string
   price?: string
 }
@@ -192,9 +210,10 @@ export interface PageStyle {
   max_width?: 'narrow' | 'default' | 'wide'
 }
 
-/** AI-generated imagery, populated by lib/image-gen-gemini after the
- *  text spec lands. All fields optional — the renderer degrades
- *  gracefully when an image fetch fails or no GEMINI_API_KEY is set. */
+/** AI-generated imagery. Populated by lib/page-assets.ts before the
+ *  text spec lands so Claude can compose the page knowing what
+ *  visual building blocks are available. Renderer degrades gracefully
+ *  when any field is missing. */
 export interface PageImages {
   /** Hero feature image. Wide aspect (16:9 or 3:2), photographic. */
   hero_url?: string
@@ -202,6 +221,10 @@ export interface PageImages {
   offer_bg_url?: string
   /** OG image (1200x630). Used for social link previews. */
   og_url?: string
+  /** Section illustrations — keyed by role ("problem", "mechanism",
+   *  "proof", "offer"). The spec generator picks which sections use
+   *  illustrations vs. icons; these are the URLs it composes from. */
+  illustrations?: Record<string, string>
 }
 
 export interface PageSpec {

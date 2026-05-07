@@ -32,10 +32,12 @@ import { generateVslPage, type BrandKit, type CampaignIntake, type PageTemplate 
 import { renderLandingPage } from './page-render'
 import { critiqueLandingPage, type PageCritique } from './page-critic'
 import { signPreviewToken } from './preview-token'
-import { generatePageImages, type HeroStyle } from './page-images'
+import { type HeroStyle } from './page-images'
 import { runBrandScrapePipeline } from './brand-scrape-pipeline'
+import { generateVisualBrief, type VisualBrief } from './visual-brief'
+import { generatePageAssets, type PageAssets } from './page-assets'
 import type { BrandAnalysis } from './brand-vision'
-import type { PageImages, PageSpec } from './page-spec'
+import type { PageSpec } from './page-spec'
 
 interface RunBuildArgs {
   buildId: string
@@ -141,12 +143,12 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
   let previousCritique: PageCritique | null = null
   let bestScore = 0
   let bestIterationId: string | null = null
-  // Hero + OG carry across iterations as a fallback. Generated fresh
-  // on iteration 1 and again on any iteration where the critic flagged
-  // hero imagery as critical/major — the previous design ("gen once,
-  // reuse") meant the hero never got fixed even when the critic said
-  // it was the #1 blocker.
-  let images: PageImages | null = null
+  // Visual brief + assets carry across iterations. Regenerated when
+  // the critic flags imagery as broken. The brief is the "design
+  // mood board"; assets are the actual hero photo + illustrations
+  // referenced in the brief.
+  let visualBrief: VisualBrief | null = null
+  let assets: PageAssets | null = null
 
   for (let iter = 1; iter <= build.maxIterations; iter++) {
     const iteration = await db.buildIteration.create({
@@ -154,7 +156,80 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
       select: { id: true },
     })
 
-    // ─── (a) Generate or regenerate the spec ─────────────────────────
+    // Visual-fidelity flag: did the previous critique say the imagery
+    // was broken? If so, regenerate brief + assets. Otherwise reuse.
+    const visualFlagged = previousCritique?.issues.some((i) =>
+      (i.severity === 'critical' || i.severity === 'major') &&
+      /image|photo|hero|stock|generic|illustration|icon|visual/i.test(`${i.problem} ${i.fix_suggestion}`),
+    ) ?? false
+
+    // ─── (a-pre) Visual brief — the designer's mood board ────────────
+    if (iter === 1 || visualFlagged) {
+      try {
+        const revisionForBrief = previousCritique && visualFlagged
+          ? buildVisualRevisionBrief(previousCritique)
+          : undefined
+        visualBrief = await generateVisualBrief({
+          intake: ctx.intake,
+          brand_kit: ctx.brandKit,
+          primary_color: ctx.campaign.primaryColor ?? '#0A84FF',
+          revision_brief: revisionForBrief,
+        })
+        console.log(
+          `[build ${build.id}] visual-brief iter=${iter} ` +
+          `mood="${visualBrief.mood.slice(0, 60)}" ` +
+          `illustrations=${visualBrief.illustrations.length} icons=${visualBrief.icons.length}`,
+        )
+      } catch (err) {
+        console.warn(`[build ${build.id}] visual brief failed:`, errMsg(err))
+        // Don't fail the build — fall back to no-brief composition.
+      }
+
+      // ─── (a-assets) Generate hero + illustrations from the brief ──
+      if (visualBrief) {
+        try {
+          const out = await generatePageAssets({
+            brief: visualBrief,
+            intake: ctx.intake,
+            brand_kit: ctx.brandKit,
+            primary_color: ctx.campaign.primaryColor ?? '#0A84FF',
+            key_prefix: `landing/builds/${build.id}`,
+          })
+          assets = out
+          console.log(
+            `[build ${build.id}] assets iter=${iter} ` +
+            `provider=${out.report.provider ?? 'none'} ` +
+            `attempted=${out.report.attempted} succeeded=${out.report.succeeded} ` +
+            `hero=${out.hero_url ? 'ok' : 'miss'} ` +
+            `og=${out.og_url ? 'ok' : 'miss'} ` +
+            `illustrations=${Object.keys(out.illustrations).length}`,
+          )
+          // Persist asset diagnostics on the build row so the wizard
+          // banner shows what happened (provider, errors, urls).
+          await db.landingPageBuild.update({
+            where: { id: build.id },
+            data: {
+              imageGenReport: {
+                enabled: out.report.enabled,
+                attempted: out.report.attempted,
+                succeeded: out.report.succeeded,
+                provider: out.report.provider,
+                errors: out.report.errors,
+                heroStyle: args.heroStyle,
+                heroUrl: out.hero_url,
+                ogUrl: out.og_url,
+                illustrations: out.illustrations,
+              } as unknown as object,
+            },
+          }).catch(() => {})
+        } catch (err) {
+          console.warn(`[build ${build.id}] asset gen crashed:`, errMsg(err))
+          assets = null
+        }
+      }
+    }
+
+    // ─── (b) Generate or regenerate the spec USING the assets ────────
     try {
       const revisionBrief = previousCritique
         ? buildRevisionBrief(previousCritique, iter)
@@ -166,98 +241,21 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
         primary_color: ctx.campaign.primaryColor ?? '#0A84FF',
         brand_kit: ctx.brandKit,
         revision_brief: revisionBrief,
+        visual_brief: visualBrief,
+        assets: assets ? {
+          hero_url: assets.hero_url,
+          og_url: assets.og_url,
+          illustrations: assets.illustrations,
+        } : null,
       })
       currentSpec = generated.spec
       currentTitle = generated.title || currentTitle
       currentMeta = generated.meta_description || currentMeta
 
-      // Image gen: fire on iteration 1 always, and again on any
-      // iteration where the previous critique flagged the hero as
-      // critical/major. Otherwise reuse the previous iteration's
-      // images — a fresh Replicate call costs ~$0.06 and ~30s.
-      const heroFlagged = previousCritique?.issues.some((i) =>
-        i.section === 'hero' && (i.severity === 'critical' || i.severity === 'major') &&
-        /image|photo|hero|stock|generic/i.test(`${i.problem} ${i.fix_suggestion}`),
-      ) ?? false
-      const shouldGenImages = iter === 1 || heroFlagged
-      // Track which provider actually fired. Stashed on every
-      // iteration's spec.images so we can verify Replicate vs Gemini
-      // from the DB without needing the imageGenReport column.
-      let imageGenProviderForLog: string | null = null
-      if (shouldGenImages) {
-        let report: Record<string, unknown> | null = null
-        try {
-          const out = await generatePageImages({
-            intake: ctx.intake,
-            spec: currentSpec,
-            brandKit: ctx.brandKit,
-            heroStyle: args.heroStyle,
-            keyPrefix: `landing/builds/${build.id}`,
-          })
-          if (out.images.hero_url || out.images.og_url) {
-            images = out.images
-          }
-          imageGenProviderForLog = out.provider ?? null
-          report = {
-            enabled: out.enabled,
-            attempted: out.attempted,
-            succeeded: out.succeeded,
-            provider: out.provider ?? null,
-            errors: out.errors,
-            heroStyle: args.heroStyle,
-            heroUrl: out.images.hero_url ?? null,
-            ogUrl: out.images.og_url ?? null,
-          }
-          // Always log the outcome so it's grep-able in Vercel runtime
-          // logs — `provider=replicate succeeded=2/2` is unambiguous.
-          console.log(
-            `[build ${build.id}] image-gen iter=${iter} ` +
-            `provider=${out.provider ?? 'none'} ` +
-            `attempted=${out.attempted} succeeded=${out.succeeded} ` +
-            `enabled=${out.enabled} ` +
-            (out.errors.length > 0 ? `errors=${JSON.stringify(out.errors)}` : 'errors=none'),
-          )
-        } catch (err) {
-          report = {
-            enabled: true,
-            attempted: 0,
-            succeeded: 0,
-            provider: null,
-            errors: [`unhandled: ${errMsg(err)}`],
-            heroStyle: args.heroStyle,
-            heroUrl: null,
-            ogUrl: null,
-          }
-          console.warn(`[build ${build.id}] image gen crashed:`, errMsg(err))
-        }
-        if (report) {
-          await db.landingPageBuild.update({
-            where: { id: build.id },
-            data: { imageGenReport: report as unknown as object },
-          }).catch(() => {})
-        }
-      }
-      // Merge generated images into the spec the renderer reads. The
-      // hero + OG live on spec.images; bake them in BEFORE saving so
-      // every iteration's published draft includes them.
-      // _provider is a diagnostic stash — the renderer ignores
-      // unknown fields, but we can grep the DB to verify Replicate
-      // is firing rather than Gemini fallback.
-      if (images || imageGenProviderForLog) {
-        currentSpec.images = {
-          ...(currentSpec.images ?? {}),
-          ...(images ?? {}),
-          ...(imageGenProviderForLog ? { _provider: imageGenProviderForLog } : {}),
-        } as typeof currentSpec.images
-      }
-
-      // When the operator picked AI photo and image-gen succeeded,
-      // make sure the hero LAYOUT actually uses the image. Claude
-      // routinely emits `form-in-hero` or `gradient` even when an
-      // image is available — both layouts ignore the hero photo
-      // entirely, so we burn $0.06 on Replicate output that never
-      // renders. Override to `image-bg` (full-bleed photo with
-      // overlay copy) which is the most striking use of the image.
+      // Hero layout safety: when an AI photo exists, force the hero
+      // layout to a variant that actually displays it. Claude
+      // sometimes emits 'form-in-hero' or 'gradient' (both ignore
+      // the photo); we override.
       if (args.heroStyle === 'ai_photo' && currentSpec.images?.hero_url) {
         const heroIdx = currentSpec.sections.findIndex((s) => s.type === 'hero')
         if (heroIdx >= 0) {
@@ -272,6 +270,15 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
         }
       }
 
+      // Stash diagnostic provider name on spec.images (renderer
+      // ignores unknown fields).
+      if (currentSpec.images && assets?.report.provider) {
+        currentSpec.images = {
+          ...currentSpec.images,
+          _provider: assets.report.provider,
+        } as typeof currentSpec.images
+      }
+
       await db.landingPage.update({
         where: { id: landingPage.id },
         data: {
@@ -282,8 +289,6 @@ export async function runBuild(args: RunBuildArgs): Promise<void> {
       })
     } catch (err) {
       await markIterationFailed(iteration.id, `generate: ${errMsg(err)}`)
-      // Keep going only if we have a previous spec to render. Iteration
-      // 1 fails terminally; later iterations fall back to previous.
       if (iter === 1) { await markFailed(build.id, `Generation failed on iteration 1: ${errMsg(err)}`); return }
       continue
     }
@@ -594,6 +599,29 @@ function buildRevisionBrief(critique: PageCritique, nextIteration: number): stri
 
 function severityRank(s: 'minor' | 'major' | 'critical'): number {
   return s === 'critical' ? 3 : s === 'major' ? 2 : 1
+}
+
+/**
+ * Distil only the imagery-related issues from the previous critique
+ * for the visual-brief regeneration. The brief generator cares about
+ * "the hero looked generic / the illustration didn't match the brand"
+ * — not about "the headline could be punchier".
+ */
+function buildVisualRevisionBrief(critique: PageCritique): string {
+  const visualIssues = critique.issues.filter((i) =>
+    /image|photo|hero|stock|generic|illustration|icon|visual|composition/i.test(`${i.section} ${i.problem} ${i.fix_suggestion}`),
+  )
+  if (visualIssues.length === 0) return ''
+  const lines: string[] = []
+  lines.push('The previous iteration\'s visual concept was rejected by the design critic. Visual issues to fix in this revision:')
+  lines.push('')
+  for (const i of visualIssues) {
+    lines.push(`• [${i.severity}] ${i.section}: ${i.problem}`)
+    lines.push(`  → ${i.fix_suggestion}`)
+  }
+  lines.push('')
+  lines.push('Do NOT propose a near-copy of the previous brief. Pick a different hero subject, different illustration concepts, different icon palette if the previous picks were the problem.')
+  return lines.join('\n')
 }
 
 async function markFailed(buildId: string, error: string): Promise<void> {
