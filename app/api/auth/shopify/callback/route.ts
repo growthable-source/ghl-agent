@@ -99,6 +99,11 @@ export async function GET(req: NextRequest) {
         client_id: clientId,
         client_secret: clientSecret,
         code,
+        // Shopify defaults to non-expiring offline tokens which their
+        // Admin API now refuses to honour (HTTP 403). Opt into the
+        // expiring-token shape — the response gains `expires_in` +
+        // `refresh_token` and our token store handles the rest.
+        expiring: 1,
       }),
     })
     if (!tokenRes.ok) {
