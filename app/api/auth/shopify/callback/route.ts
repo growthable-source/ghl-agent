@@ -77,7 +77,17 @@ export async function GET(req: NextRequest) {
     return errRedirect('not_configured')
   }
 
-  let tokenJson: { access_token?: string; scope?: string }
+  let tokenJson: {
+    access_token?: string
+    scope?: string
+    // Present only when the app is configured for expiring offline
+    // tokens — which Shopify now requires as of 2026. We persist
+    // these so the token store can refresh before the 24h lifetime
+    // ends. Legacy non-expiring tokens (missing these fields) get
+    // rejected by Shopify's API anyway, so there's no fallback path.
+    expires_in?: number
+    refresh_token?: string
+  }
   try {
     const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
@@ -107,12 +117,24 @@ export async function GET(req: NextRequest) {
     return errRedirect('no_token')
   }
 
+  // Refuse to persist a legacy non-expiring token — Shopify's API will
+  // reject it on first use and the merchant will be stuck in a "looks
+  // connected but doesn't work" state. Surface it now with a specific
+  // error reason so the dashboard banner can guide them to fix the
+  // Dev Dashboard app config (where the token-lifetime mode is set).
+  if (!tokenJson.expires_in || !tokenJson.refresh_token) {
+    console.error('[Shopify OAuth] non-expiring token returned — app is not configured for expiring offline tokens')
+    return errRedirect('non_expiring_token')
+  }
+
   try {
     await saveShopifyTokens({
       shop,
       workspaceId: verified.workspaceId,
       accessToken: tokenJson.access_token,
       scope: tokenJson.scope ?? '',
+      expiresIn: tokenJson.expires_in ?? null,
+      refreshToken: tokenJson.refresh_token ?? null,
     })
   } catch (err) {
     console.error('[Shopify OAuth] token save failed:', err)

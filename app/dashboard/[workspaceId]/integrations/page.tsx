@@ -575,6 +575,7 @@ export default function IntegrationsPage() {
       case 'token_exchange_failed': return 'Shopify rejected the OAuth code. Re-check SHOPIFY_API_KEY and SHOPIFY_API_SECRET in Vercel and redeploy.'
       case 'token_exchange_threw': return 'Network error while contacting Shopify. Try again.'
       case 'no_token': return 'Shopify completed auth but returned no access token. Try again.'
+      case 'non_expiring_token': return 'Your Shopify app is configured for legacy non-expiring tokens, which Shopify\'s API no longer accepts. Switch the app to expiring offline tokens in your Shopify Dev Dashboard, release a new version, then reconnect.'
       case 'save_failed': return 'Auth succeeded but we failed to persist the token. Check server logs and try again.'
       case 'oauth_error': return 'Shopify reported an OAuth error. Try again.'
       default: return `Shopify connection failed (${reason}).`

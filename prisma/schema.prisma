@@ -276,10 +276,17 @@ enum FormalityLevel {
 // uninstall revokes the token server-side; we mark `uninstalledAt`
 // from the `app/uninstalled` webhook so reads can short-circuit.
 model ShopifyShop {
-  id            String    @id
-  workspaceId   String    @unique
-  workspace     Workspace @relation("WorkspaceShopify", fields: [workspaceId], references: [id], onDelete: Cascade)
-  accessToken   String
+  id          String    @id
+  workspaceId String    @unique
+  workspace   Workspace @relation("WorkspaceShopify", fields: [workspaceId], references: [id], onDelete: Cascade)
+  accessToken String
+  // Refresh token + expiresAt are populated only for the new expiring
+  // offline token model (Shopify rolled out 2026; older non-expiring
+  // tokens are now rejected with HTTP 403). Nullable for backward
+  // compat with rows installed before the schema change; those rows
+  // require a fresh OAuth reconnect to become usable again.
+  refreshToken  String?
+  expiresAt     DateTime?
   scope         String
   installedAt   DateTime  @default(now())
   uninstalledAt DateTime?
