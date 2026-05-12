@@ -15,6 +15,7 @@ import NewBadge from '@/components/NewBadge'
 // auto-expires 90 days after the ship date.
 const FEATURE_SHIP_DATES: Record<string, string> = {
   simulations: '2026-04-20',
+  integrations: '2026-05-12', // Shopify connector ships today
 }
 
 export default function DashboardSidebar() {
@@ -311,7 +312,7 @@ function SidebarBody() {
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Workspace</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
-                    {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations')}
+                    {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations', null, FEATURE_SHIP_DATES.integrations)}
                     {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
                     {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}
                     {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}

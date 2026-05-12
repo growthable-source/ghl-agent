@@ -6,6 +6,7 @@ import {
   LeadConnectorIcon, VapiIcon, TwilioIcon, HubSpotIcon,
   CalendlyIcon, CalcomIcon, StripeIcon, FacebookIcon, InstagramIcon,
 } from '@/components/icons/brand-icons'
+import NewBadge from '@/components/NewBadge'
 
 interface Integration {
   id: string
@@ -764,7 +765,9 @@ export default function IntegrationsPage() {
                 aria-label="Shopify"
               >S</div>
               <div>
-                <p className="text-sm font-medium text-zinc-200">Shopify</p>
+                <p className="text-sm font-medium text-zinc-200">
+                  Shopify <NewBadge since="2026-05-12" className="ml-1" />
+                </p>
                 <p className="text-xs text-zinc-500">Inventory, orders, customers — agents stay context- and stock-aware</p>
               </div>
             </div>
