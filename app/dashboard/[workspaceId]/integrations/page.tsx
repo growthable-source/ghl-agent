@@ -73,6 +73,52 @@ export default function IntegrationsPage() {
   // GHL disconnect — separate banner from Meta's so they don't clobber
   // each other if both happen in the same session.
   const [disconnectingGhl, setDisconnectingGhl] = useState(false)
+
+  // Shopify — workspace-scoped (one shop per workspace, MVP). The input
+  // field is needed because Shopify's authorize URL is shop-specific
+  // (`https://{shop}/admin/oauth/authorize`), so we can't render a
+  // static link the way GHL does — we have to ask which store first.
+  const [shopifyConnection, setShopifyConnection] = useState<{ shop: string; scope: string; installedAt: string } | null>(null)
+  const [shopifyBanner, setShopifyBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const [shopDomainInput, setShopDomainInput] = useState('')
+  const [disconnectingShopify, setDisconnectingShopify] = useState(false)
+
+  function connectShopify() {
+    // Normalise: strip protocol/path/whitespace; accept bare "myshop" by
+    // appending .myshopify.com so the user doesn't have to type the
+    // full domain. The install route does its own strict regex check —
+    // this is just UX, not security.
+    let shop = shopDomainInput.trim().toLowerCase()
+    shop = shop.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+    if (shop && !shop.includes('.')) shop = `${shop}.myshopify.com`
+    if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop)) {
+      setShopifyBanner({ kind: 'error', text: 'Enter a valid Shopify domain like "yourstore.myshopify.com"' })
+      return
+    }
+    window.location.href = `/api/auth/shopify/install?shop=${encodeURIComponent(shop)}&workspaceId=${workspaceId}`
+  }
+
+  async function disconnectShopify() {
+    const confirmed = window.confirm(
+      'Disconnect Shopify from this workspace?\n\nAgents will lose inventory awareness, customer history, and order context until you reconnect. Your data on Shopify is untouched — this only pauses our access.',
+    )
+    if (!confirmed) return
+    setDisconnectingShopify(true)
+    setShopifyBanner(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/shopify`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      setShopifyConnection(null)
+      setShopifyBanner({ kind: 'success', text: 'Shopify disconnected. You can reconnect anytime.' })
+    } catch (err: any) {
+      setShopifyBanner({ kind: 'error', text: `Disconnect failed: ${err.message}` })
+    } finally {
+      setDisconnectingShopify(false)
+    }
+  }
   const [ghlBanner, setGhlBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
 
   async function disconnectGhl() {
@@ -136,16 +182,18 @@ export default function IntegrationsPage() {
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/integrations`)
       .then(r => r.json())
-      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm }: {
+      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm, shopify }: {
         integrations: Integration[]
         ghlConnected: boolean
         vapiActive: boolean
         crmProvider: string
+        shopify: { shop: string; scope: string; installedAt: string } | null
       }) => {
         setIntegrations(ints || [])
         setGhlConnected(ghl)
         setVapiActive(vapi)
         setCrmProvider(crm || 'ghl')
+        setShopifyConnection(shopify ?? null)
       })
       .finally(() => setLoading(false))
 
@@ -191,6 +239,41 @@ export default function IntegrationsPage() {
     url.searchParams.delete('detail')
     window.history.replaceState({}, '', url.toString())
   }, [search])
+
+  // Shopify OAuth callback redirect — same shape as Meta. The callback
+  // already sets `shopify=connected&shop=<domain>` on success or
+  // `shopify=error&reason=<reason>` on failure. We re-fetch the
+  // integrations endpoint on success so the connected card replaces
+  // the input form without requiring a refresh.
+  useEffect(() => {
+    const s = search.get('shopify')
+    if (!s) return
+    if (s === 'connected') {
+      const shop = search.get('shop') ?? ''
+      setShopifyBanner({
+        kind: 'success',
+        text: shop
+          ? `Connected to ${shop}. Agents can now see inventory, orders, and customer history.`
+          : 'Shopify connected.',
+      })
+      // Re-pull the connection record so the connected-state card renders.
+      fetch(`/api/workspaces/${workspaceId}/integrations`)
+        .then(r => r.json())
+        .then(({ shopify }: { shopify: { shop: string; scope: string; installedAt: string } | null }) => {
+          setShopifyConnection(shopify ?? null)
+        })
+        .catch(() => { /* banner already shows success — silent on refetch fail */ })
+    } else if (s === 'error') {
+      const reason = search.get('reason') ?? 'unknown'
+      const pretty = humaniseShopifyError(reason)
+      setShopifyBanner({ kind: 'error', text: pretty })
+    }
+    const url = new URL(window.location.href)
+    url.searchParams.delete('shopify')
+    url.searchParams.delete('shop')
+    url.searchParams.delete('reason')
+    window.history.replaceState({}, '', url.toString())
+  }, [search, workspaceId])
 
   // Same pattern for the Meta Ads + Google Ads OAuth callbacks. Each
   // callback redirects with its own marker param so we can distinguish
@@ -480,6 +563,23 @@ export default function IntegrationsPage() {
     }
   }
 
+  function humaniseShopifyError(reason: string): string {
+    switch (reason) {
+      case 'cancelled': return 'You cancelled the Shopify install. Try again when ready.'
+      case 'bad_shop': return 'The shop domain was invalid. Use the format "yourstore.myshopify.com".'
+      case 'bad_state': return 'OAuth state was invalid or expired. Start the connection again from this page.'
+      case 'bad_hmac': return "We couldn't verify the response came from Shopify. Try again — if this keeps happening, check the app's redirect URL in the Shopify Partner dashboard."
+      case 'missing_code': return 'Shopify did not return an authorization code. Try again.'
+      case 'not_configured': return 'Shopify is not configured on this deployment (SHOPIFY_API_KEY / SHOPIFY_API_SECRET missing).'
+      case 'token_exchange_failed': return 'Shopify rejected the OAuth code. Re-check SHOPIFY_API_KEY and SHOPIFY_API_SECRET in Vercel and redeploy.'
+      case 'token_exchange_threw': return 'Network error while contacting Shopify. Try again.'
+      case 'no_token': return 'Shopify completed auth but returned no access token. Try again.'
+      case 'save_failed': return 'Auth succeeded but we failed to persist the token. Check server logs and try again.'
+      case 'oauth_error': return 'Shopify reported an OAuth error. Try again.'
+      default: return `Shopify connection failed (${reason}).`
+    }
+  }
+
   const twilioIntegrations = integrations.filter(i => i.type === 'twilio')
   const metaIntegrations = integrations.filter(i => i.type === 'meta' && i.isActive)
   const inactiveMetaIntegrations = integrations.filter(i => i.type === 'meta' && !i.isActive)
@@ -650,6 +750,69 @@ export default function IntegrationsPage() {
           {ghlConnected && !(crmProvider === 'ghl' && hubspotIntegrations.length > 0) && (
             <p className="text-xs text-zinc-600 mt-3">
               Reconnect to refresh your token or add new permission scopes.
+            </p>
+          )}
+        </div>
+
+        {/* Shopify */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-base font-semibold"
+                style={{ background: '#95BF47', color: '#fff' }}
+                aria-label="Shopify"
+              >S</div>
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Shopify</p>
+                <p className="text-xs text-zinc-500">Inventory, orders, customers — agents stay context- and stock-aware</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {shopifyConnection && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
+              )}
+              {shopifyConnection && (
+                <button
+                  type="button"
+                  onClick={disconnectShopify}
+                  disabled={disconnectingShopify}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-rose-900/60 text-rose-300 hover:border-rose-700 hover:text-rose-200 transition-colors disabled:opacity-50"
+                >
+                  {disconnectingShopify ? 'Disconnecting…' : 'Disconnect'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {shopifyConnection ? (
+            <p className="text-xs text-emerald-500/80 mt-3">
+              Connected to <span className="font-mono">{shopifyConnection.shop}</span>. Agents can now look up inventory, recent orders, and customer history when handling DMs.
+            </p>
+          ) : (
+            <div className="mt-4 flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={shopDomainInput}
+                onChange={e => setShopDomainInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') connectShopify() }}
+                placeholder="yourstore.myshopify.com"
+                className="flex-1 text-xs px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                aria-label="Shopify shop domain"
+              />
+              <button
+                type="button"
+                onClick={connectShopify}
+                className="text-xs px-4 py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+              >
+                Connect
+              </button>
+            </div>
+          )}
+
+          {shopifyBanner && (
+            <p className={`text-xs mt-3 ${shopifyBanner.kind === 'success' ? 'text-emerald-500/80' : 'text-rose-400'}`}>
+              {shopifyBanner.text}
             </p>
           )}
         </div>

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     ? `/dashboard/${verified.workspaceId}/integrations`
     : '/dashboard'
   const errRedirect = (reason: string) =>
-    NextResponse.redirect(new URL(`${errBase}?error=shopify_${reason}`, req.url))
+    NextResponse.redirect(new URL(`${errBase}?shopify=error&reason=${reason}`, req.url))
 
   // Shopify may bounce back with `error=access_denied` if the merchant
   // cancelled. Treat as a normal "back to integrations" exit.
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.redirect(
     new URL(
-      `/dashboard/${verified.workspaceId}/integrations?success=shopify_connected`,
+      `/dashboard/${verified.workspaceId}/integrations?shopify=connected&shop=${encodeURIComponent(shop)}`,
       req.url,
     ),
   )

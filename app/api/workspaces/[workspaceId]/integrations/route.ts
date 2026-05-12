@@ -41,7 +41,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const vapiActive = !!process.env.VAPI_API_KEY
 
-  return NextResponse.json({ integrations, ghlConnected, vapiActive, crmProvider })
+  // Shopify lives on a workspace-scoped table, not Location.
+  // Returns null when no row exists OR when uninstalledAt is set so the
+  // UI can treat "uninstalled" the same as "never connected" — both
+  // states show a Connect button, not Reconnect.
+  const shopifyRow = await db.shopifyShop.findUnique({
+    where: { workspaceId },
+    select: { id: true, scope: true, installedAt: true, uninstalledAt: true },
+  })
+  const shopify = shopifyRow && !shopifyRow.uninstalledAt
+    ? { shop: shopifyRow.id, scope: shopifyRow.scope, installedAt: shopifyRow.installedAt }
+    : null
+
+  return NextResponse.json({ integrations, ghlConnected, vapiActive, crmProvider, shopify })
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
