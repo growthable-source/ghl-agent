@@ -327,6 +327,40 @@ export class ShopifyAdapter {
   }
 
   /**
+   * Inventory webhook payloads identify the affected stock via
+   * `inventory_item_id` (an integer), not the variant GID we store on
+   * interest signals. This resolves item → variant in one hop so the
+   * webhook handler can match signals.
+   */
+  async getVariantByInventoryItemId(inventoryItemId: string | number): Promise<{
+    variantId: string
+    variantTitle: string
+    productTitle: string
+    productHandle: string
+  } | null> {
+    const gid = String(inventoryItemId).startsWith('gid://')
+      ? String(inventoryItemId)
+      : `gid://shopify/InventoryItem/${inventoryItemId}`
+    const data = await this.gql<{
+      inventoryItem: {
+        variant: {
+          id: string
+          title: string
+          product: { title: string; handle: string }
+        } | null
+      } | null
+    }>(INVENTORY_ITEM_TO_VARIANT_QUERY, { id: gid })
+    const v = data.inventoryItem?.variant
+    if (!v) return null
+    return {
+      variantId: v.id,
+      variantTitle: v.title,
+      productTitle: v.product.title,
+      productHandle: v.product.handle,
+    }
+  }
+
+  /**
    * Lookup an order by its merchant-visible name (e.g. "#1042" or
    * "1042"). Includes fulfillment + tracking — the most common reason
    * a customer DMs after purchase.
@@ -701,6 +735,18 @@ const CUSTOMER_SEARCH_QUERY = `
             }
           }
         }
+      }
+    }
+  }
+`
+
+const INVENTORY_ITEM_TO_VARIANT_QUERY = `
+  query InventoryItemToVariant($id: ID!) {
+    inventoryItem(id: $id) {
+      variant {
+        id
+        title
+        product { title handle }
       }
     }
   }

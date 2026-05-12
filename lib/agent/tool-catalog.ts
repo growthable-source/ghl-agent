@@ -628,6 +628,19 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['code', 'type', 'value'],
     },
   },
+  {
+    name: 'record_back_in_stock_interest',
+    description: 'Save the customer\'s interest in an out-of-stock variant. When stock returns, the system DMs them automatically. Call this whenever a customer asks about a product the live store says is OOS — promise the follow-up in your reply, then call this so the promise is actually kept.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        variantId: { type: 'string', description: 'Full Shopify variant GID, e.g. "gid://shopify/ProductVariant/123". From search_shopify_products or check_shopify_inventory.' },
+        productTitle: { type: 'string', description: 'Product title as you\'d describe it to the customer in the follow-up message, e.g. "Essential Everyday Tote".' },
+        variantTitle: { type: 'string', description: 'Optional variant qualifier ("Black / Medium") to disambiguate in the follow-up. Omit when the product has only one variant.' },
+      },
+      required: ['variantId', 'productTitle'],
+    },
+  },
 ]
 
 // Read-only tools are safe to run against the real CRM even in the

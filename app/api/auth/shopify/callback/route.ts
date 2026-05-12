@@ -141,6 +141,18 @@ export async function GET(req: NextRequest) {
       expiresIn: tokenJson.expires_in ?? null,
       refreshToken: tokenJson.refresh_token ?? null,
     })
+
+    // Register webhooks so the shop sends us inventory + uninstall
+    // events. Best-effort — failure here doesn't fail the install
+    // (the merchant is "connected" either way) but back-in-stock
+    // pings won't work until webhooks land. Idempotent on Shopify's
+    // side: duplicates return userErrors we treat as no-op.
+    try {
+      const { registerWebhooks } = await import('@/lib/commerce/shopify/webhooks')
+      await registerWebhooks(shop, tokenJson.access_token)
+    } catch (err) {
+      console.error('[Shopify OAuth] webhook registration threw (non-fatal):', err)
+    }
   } catch (err) {
     console.error('[Shopify OAuth] token save failed:', err)
     return errRedirect('save_failed')

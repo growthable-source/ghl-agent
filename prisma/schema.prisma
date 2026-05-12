@@ -291,6 +291,41 @@ model ShopifyShop {
   installedAt   DateTime  @default(now())
   uninstalledAt DateTime?
   updatedAt     DateTime  @updatedAt
+
+  interestSignals ShopifyInterestSignal[]
+}
+
+// "Notify me when back in stock" interest captured by the agent during
+// a conversation. When Shopify's inventory_levels/update webhook fires
+// for a matching variant going from 0 → positive, we match interest
+// signals and send a proactive DM/widget message back to the customer.
+//
+// Indexed by (shopId, variantId) so the webhook handler does a single
+// lookup per inventory change. `notifiedAt` is set when we send the
+// follow-up so the same signal doesn't fire twice on subsequent
+// inventory wiggles.
+model ShopifyInterestSignal {
+  id             String      @id @default(cuid())
+  shopId         String
+  shop           ShopifyShop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  variantId      String
+  // The channel + conversation we should DM when stock returns. For
+  // MVP we only support widget — Meta/SMS deferred until we wire
+  // outbound to those channels.
+  channel        String // "widget" for now; "meta" | "sms" later
+  // For widget: the WidgetConversation.id. For other channels later:
+  // whatever id their outbound API needs.
+  conversationId String
+  // Display fields captured at the time of interest so we can build a
+  // sensible message without re-fetching from Shopify (which might
+  // have updated the product since).
+  productTitle   String
+  variantTitle   String?
+  createdAt      DateTime    @default(now())
+  notifiedAt     DateTime?
+
+  @@index([shopId, variantId])
+  @@index([shopId, notifiedAt])
 }
 
 model Location {
@@ -332,7 +367,7 @@ model Agent {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  enabledTools String[] @default(["get_contact_details", "send_reply", "send_sms", "send_email", "update_contact_tags", "remove_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note", "get_available_slots", "book_appointment", "cancel_appointment", "reschedule_appointment", "create_appointment_note", "get_calendar_events", "find_contact_by_email_or_phone", "upsert_contact", "create_task", "add_to_workflow", "remove_from_workflow", "cancel_scheduled_message", "list_contact_conversations", "mark_opportunity_won", "mark_opportunity_lost", "upsert_opportunity", "list_pipelines", "search_shopify_products", "check_shopify_inventory", "lookup_shopify_customer", "check_shopify_order_status", "create_shopify_checkout", "create_shopify_discount"])
+  enabledTools String[] @default(["get_contact_details", "send_reply", "send_sms", "send_email", "update_contact_tags", "remove_contact_tags", "get_opportunities", "move_opportunity_stage", "add_contact_note", "get_available_slots", "book_appointment", "cancel_appointment", "reschedule_appointment", "create_appointment_note", "get_calendar_events", "find_contact_by_email_or_phone", "upsert_contact", "create_task", "add_to_workflow", "remove_from_workflow", "cancel_scheduled_message", "list_contact_conversations", "mark_opportunity_won", "mark_opportunity_lost", "upsert_opportunity", "list_pipelines", "search_shopify_products", "check_shopify_inventory", "lookup_shopify_customer", "check_shopify_order_status", "create_shopify_checkout", "create_shopify_discount", "record_back_in_stock_interest"])
   calendarId   String?
 
   // ─── Workflow picker ───

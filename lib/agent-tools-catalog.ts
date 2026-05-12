@@ -215,6 +215,12 @@ export const REFLEXES: ReflexDef[] = [
     description: 'Mint a real Shopify discount code on the fly — for save-the-sale, loyalty, or win-back. Keep discounts sensible (5–15% off, single-use, 24–72h expiry) unless the operator has explicitly authorised more.',
     group: 'commerce',
   },
+  {
+    key: 'record_back_in_stock_interest',
+    label: 'Record back-in-stock interest (Shopify)',
+    description: 'Save the customer\'s interest in an OOS variant. When stock returns, the system DMs them automatically. Use whenever a customer asks about a product that\'s out of stock — promise the follow-up, then call this so it actually happens.',
+    group: 'commerce',
+  },
 ]
 
 export const REFLEX_GROUP_LABEL: Record<ReflexGroup, string> = {

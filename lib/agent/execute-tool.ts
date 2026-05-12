@@ -884,6 +884,49 @@ export async function executeTool(
           return JSON.stringify({ error: err?.message || 'draft order failed' })
         }
       }
+      case 'record_back_in_stock_interest': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
+        const variantId = String((input as any).variantId || '').trim()
+        const productTitle = String((input as any).productTitle || '').trim()
+        const variantTitle = ((input as any).variantTitle as string | undefined) ?? null
+        if (!variantId || !productTitle) {
+          return JSON.stringify({ error: 'variantId and productTitle are required' })
+        }
+
+        // First cut: only delivered on the widget channel. Meta/SMS
+        // outbound has 24h-window / policy constraints we haven't
+        // wired yet, and recording a signal we can't honour would be
+        // dishonest. When the channel isn't supported we return a
+        // hint so the agent can offer a different follow-up.
+        const isWidget = adapter?.locationId?.startsWith('widget:') ?? false
+        const conversationId = isWidget ? (adapter as unknown as { conversationId?: string })?.conversationId : null
+        if (!isWidget || !conversationId) {
+          return JSON.stringify({
+            not_supported_on_channel: true,
+            hint: 'Back-in-stock pings are currently only delivered via the chat widget. Offer to take the customer\'s email for a manual follow-up instead.',
+          })
+        }
+
+        const { getShopifyConnection } = await import('../commerce/shopify/token-store')
+        const conn = await getShopifyConnection(workspaceId)
+        if (!conn) return JSON.stringify({ shopify_not_connected: true })
+
+        const { db } = await import('../db')
+        await db.shopifyInterestSignal.create({
+          data: {
+            shopId: conn.shop,
+            variantId,
+            channel: 'widget',
+            conversationId,
+            productTitle,
+            variantTitle,
+          },
+        })
+        return JSON.stringify({
+          success: true,
+          hint: 'Interest recorded. Tell the customer you\'ll DM them via this chat as soon as it\'s back in stock.',
+        })
+      }
       case 'create_shopify_discount': {
         if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
         const { getCommerceAdapter } = await import('../commerce/factory')
