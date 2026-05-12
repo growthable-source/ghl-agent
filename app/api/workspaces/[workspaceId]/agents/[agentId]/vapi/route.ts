@@ -76,6 +76,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
       testSystemPrompt += `\n\n## When You Don't Know the Answer\nIf asked something you don't know, say you'll find out and get back to them. Do NOT guess or make up information.`
     }
 
+    // Commerce context — agent should know if the workspace has a
+    // Shopify store. Voice can't call Shopify tools mid-call yet (XAI
+    // realtime function-calling is a separate slice), so the block
+    // tells the agent to promise SMS/email follow-up for live data
+    // rather than fabricate.
+    try {
+      const { buildVoiceCommerceBlock } = await import('@/lib/commerce/shopify/voice-prompt')
+      const commerce = await buildVoiceCommerceBlock({ workspaceId })
+      if (commerce) testSystemPrompt += commerce
+    } catch (err: any) {
+      console.warn('[voice test prompt] commerce block failed:', err?.message)
+    }
+
     return NextResponse.json({
       config,
       phoneNumbers,

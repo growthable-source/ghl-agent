@@ -2,6 +2,8 @@ import { buildKnowledgeBlock } from '@/lib/rag'
 import { searchContacts } from '@/lib/crm-client'
 import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { buildPersonaBlock } from '@/lib/persona'
+import { db } from '@/lib/db'
+import { buildVoiceCommerceBlock } from '@/lib/commerce/shopify/voice-prompt'
 
 export const VAPI_TOOLS = [
   {
@@ -81,15 +83,35 @@ export async function buildVoiceSystemPrompt(
 ): Promise<string> {
   let contactContext = ''
   let contactId = ''
+  let callerEmail: string | null = null
   try {
     const contacts = await searchContacts(locationId, callerPhone)
     if (contacts && contacts.length > 0) {
       const c = contacts[0] as any
       contactId = c.id
+      callerEmail = c.email ?? null
       const name = [c.firstName, c.lastName].filter(Boolean).join(' ')
       contactContext = `\n\n## ${direction === 'outbound' ? 'Contact' : 'Caller'} Info\nName: ${name || 'Unknown'}\nPhone: ${callerPhone}\nContact ID: ${c.id}`
       if (c.tags?.length) contactContext += `\nTags: ${c.tags.join(', ')}`
     }
+  } catch {}
+
+  // Resolve workspaceId from the location so we can check for a
+  // connected Shopify store. Failures here are silent — the agent
+  // just doesn't get commerce context, which is the same state as
+  // "no Shopify connected."
+  let workspaceId: string | null = null
+  try {
+    const loc = await db.location.findUnique({ where: { id: locationId }, select: { workspaceId: true } })
+    workspaceId = loc?.workspaceId ?? null
+  } catch {}
+  let commerceBlock = ''
+  try {
+    commerceBlock = await buildVoiceCommerceBlock({
+      workspaceId,
+      callerEmail,
+      callerPhone,
+    })
   } catch {}
 
   const knowledgeBlock = buildKnowledgeBlock(knowledgeEntries)
@@ -148,5 +170,5 @@ You are on a live phone call. Follow these rules strictly:
 - If you can't help, offer to have someone call them back
 ${contactContext}${outboundBlock}
 ${agent.instructions ? `\n## Additional Instructions\n${agent.instructions}` : ''}
-${knowledgeBlock}${calendarBlock}${qualifyingBlock}${personaBlock}${fallbackBlock}${buildToolConditions(voiceTools)}`
+${knowledgeBlock}${calendarBlock}${qualifyingBlock}${personaBlock}${fallbackBlock}${commerceBlock}${buildToolConditions(voiceTools)}`
 }
