@@ -163,6 +163,11 @@ model Workspace {
   adCampaignDrafts AdCampaignDraft[]
   utmTemplates     UtmTemplate[]
 
+  // ─── Voxility commerce layer ───
+  // One Shopify store per workspace (MVP — drop @unique on
+  // ShopifyShop.workspaceId to support multi-store later).
+  shopifyShop ShopifyShop? @relation("WorkspaceShopify")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -255,6 +260,30 @@ enum FormalityLevel {
   CASUAL
   NEUTRAL
   FORMAL
+}
+
+// Shopify store connection — workspace-scoped (one store per workspace
+// for MVP; drop the @unique on workspaceId to allow multi-store).
+//
+// `id` is the canonical *.myshopify.com domain (e.g.
+// "voxility-dev.myshopify.com"), which is what Shopify uses everywhere —
+// admin API host, webhook payload `X-Shopify-Shop-Domain` header, and
+// the OAuth `shop` query param. Storing it as the PK lets webhook
+// handlers (which only know the shop domain, not workspaceId) look up
+// the row in one hop.
+//
+// No refresh token: Shopify offline access tokens don't expire. App
+// uninstall revokes the token server-side; we mark `uninstalledAt`
+// from the `app/uninstalled` webhook so reads can short-circuit.
+model ShopifyShop {
+  id            String    @id
+  workspaceId   String    @unique
+  workspace     Workspace @relation("WorkspaceShopify", fields: [workspaceId], references: [id], onDelete: Cascade)
+  accessToken   String
+  scope         String
+  installedAt   DateTime  @default(now())
+  uninstalledAt DateTime?
+  updatedAt     DateTime  @updatedAt
 }
 
 model Location {

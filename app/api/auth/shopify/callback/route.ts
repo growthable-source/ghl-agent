@@ -1,0 +1,130 @@
+/**
+ * Shopify OAuth — callback
+ *
+ * GET /api/auth/shopify/callback?code=...&hmac=...&shop=...&state=...&timestamp=...
+ *
+ * Verification order matters — do it cheapest-first so a malicious
+ * caller can't probe for which step we got to:
+ *   1. shop is a valid *.myshopify.com domain (cheap, no secrets)
+ *   2. our signed state token is valid (one HMAC, ours)
+ *   3. Shopify's hmac param matches (one HMAC, theirs)
+ *   4. exchange code for token (network round-trip)
+ *
+ * After token exchange we upsert ShopifyShop, then redirect the merchant
+ * back to the integrations page. Webhook registration is a separate
+ * concern handled in slice #3 — keeping this route narrow so the install
+ * loop is debuggable end-to-end before we add side effects.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { verifyOAuthCallbackHmac, verifyState } from '@/lib/commerce/shopify/hmac'
+import { saveShopifyTokens } from '@/lib/commerce/shopify/token-store'
+
+const SHOP_DOMAIN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+
+  // Helper: build an error redirect that lands on the integrations page
+  // *if* we know the workspace, otherwise the dashboard root. We try to
+  // recover workspaceId even on failure so the user lands somewhere
+  // useful instead of staring at a JSON error blob.
+  const verified = verifyState(searchParams.get('state'))
+  const errBase = verified
+    ? `/dashboard/${verified.workspaceId}/integrations`
+    : '/dashboard'
+  const errRedirect = (reason: string) =>
+    NextResponse.redirect(new URL(`${errBase}?error=shopify_${reason}`, req.url))
+
+  // Shopify may bounce back with `error=access_denied` if the merchant
+  // cancelled. Treat as a normal "back to integrations" exit.
+  const oauthErr = searchParams.get('error')
+  if (oauthErr) {
+    console.warn('[Shopify OAuth] merchant declined:', oauthErr)
+    return errRedirect(oauthErr === 'access_denied' ? 'cancelled' : 'oauth_error')
+  }
+
+  const shop = searchParams.get('shop')?.trim().toLowerCase() ?? ''
+  const code = searchParams.get('code')
+
+  // 1. shop shape
+  if (!shop || !SHOP_DOMAIN.test(shop)) {
+    console.warn('[Shopify OAuth] bad shop:', shop)
+    return errRedirect('bad_shop')
+  }
+
+  // 2. our state
+  if (!verified) {
+    console.warn('[Shopify OAuth] state verify failed')
+    return errRedirect('bad_state')
+  }
+
+  // 3. Shopify's hmac over the query string
+  if (!verifyOAuthCallbackHmac(searchParams)) {
+    console.warn('[Shopify OAuth] hmac verify failed for shop:', shop)
+    return errRedirect('bad_hmac')
+  }
+
+  if (!code) {
+    return errRedirect('missing_code')
+  }
+
+  // 4. exchange code -> access_token
+  const clientId = process.env.SHOPIFY_API_KEY
+  const clientSecret = process.env.SHOPIFY_API_SECRET
+  if (!clientId || !clientSecret) {
+    console.error('[Shopify OAuth] SHOPIFY_API_KEY/SECRET not configured')
+    return errRedirect('not_configured')
+  }
+
+  let tokenJson: { access_token?: string; scope?: string }
+  try {
+    const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+      }),
+    })
+    if (!tokenRes.ok) {
+      const body = await tokenRes.text()
+      console.error('[Shopify OAuth] token exchange failed:', tokenRes.status, body.slice(0, 500))
+      return errRedirect('token_exchange_failed')
+    }
+    tokenJson = await tokenRes.json()
+  } catch (err) {
+    console.error('[Shopify OAuth] token exchange threw:', err)
+    return errRedirect('token_exchange_threw')
+  }
+
+  if (!tokenJson.access_token) {
+    console.error('[Shopify OAuth] token exchange returned no access_token:', tokenJson)
+    return errRedirect('no_token')
+  }
+
+  try {
+    await saveShopifyTokens({
+      shop,
+      workspaceId: verified.workspaceId,
+      accessToken: tokenJson.access_token,
+      scope: tokenJson.scope ?? '',
+    })
+  } catch (err) {
+    console.error('[Shopify OAuth] token save failed:', err)
+    return errRedirect('save_failed')
+  }
+
+  console.log(`[Shopify OAuth] connected shop=${shop} workspace=${verified.workspaceId}`)
+
+  return NextResponse.redirect(
+    new URL(
+      `/dashboard/${verified.workspaceId}/integrations?success=shopify_connected`,
+      req.url,
+    ),
+  )
+}
