@@ -38,6 +38,34 @@ export interface ProductHit {
   priceRange: { min: string; max: string; currency: string }
   totalInventory: number
   variants: VariantSummary[]
+  /**
+   * Featured image (Shopify CDN URL). Null when the product has no
+   * images uploaded. The agent uses this for rich card rendering in
+   * channels that support it (widget, eventually Meta Generic Template).
+   */
+  featuredImageUrl: string | null
+  /**
+   * Canonical storefront URL. We construct from the shop's myshopify.com
+   * domain rather than fetching `onlineStoreUrl` per-product — same
+   * destination (Shopify redirects to the merchant's primary domain if
+   * one is configured) and skips an extra GraphQL field per request.
+   */
+  onlineStoreUrl: string
+}
+
+/**
+ * Minimal payload for rendering a rich product card in the widget.
+ * Kept narrow so the JSON we stash in WidgetMessage.content stays small
+ * and the widget renderer doesn't have to know about Shopify's full
+ * product schema.
+ */
+export interface ProductCard {
+  id: string
+  title: string
+  handle: string
+  price: { amount: string; currency: string }
+  imageUrl: string | null
+  url: string
 }
 
 export interface VariantSummary {
@@ -105,7 +133,26 @@ export class ShopifyAdapter {
       PRODUCT_SEARCH_QUERY,
       { query, first: clamp(limit, 1, 25) },
     )
-    return data.products.edges.map(e => mapProduct(e.node))
+    return data.products.edges.map(e => mapProduct(e.node, this.cfg.shop))
+  }
+
+  /**
+   * Fetch the minimal card payload for a single product by GID. Used by
+   * the widget adapter when expanding `<productCard>` markers in agent
+   * replies — re-fetching is cheap and avoids stale data if the agent
+   * is referencing a search result from a while ago.
+   *
+   * Returns null when the product doesn't exist (or is unpublished /
+   * deleted) — caller drops the marker rather than rendering a broken
+   * card.
+   */
+  async getProductCardByGid(productId: string): Promise<ProductCard | null> {
+    const data = await this.gql<{ product: RawProductCard | null }>(
+      PRODUCT_CARD_QUERY,
+      { id: productId },
+    )
+    if (!data.product) return null
+    return mapProductCard(data.product, this.cfg.shop)
   }
 
   /**
@@ -232,7 +279,16 @@ interface RawProduct {
   description: string
   priceRangeV2: { minVariantPrice: RawMoney; maxVariantPrice: RawMoney }
   totalInventory: number | null
+  featuredImage: { url: string } | null
   variants: { edges: { node: RawVariant }[] }
+}
+
+interface RawProductCard {
+  id: string
+  title: string
+  handle: string
+  priceRangeV2: { minVariantPrice: RawMoney }
+  featuredImage: { url: string } | null
 }
 
 interface RawVariant {
@@ -292,7 +348,7 @@ interface RawOrder {
 
 // ─── Mappers (raw → agent-friendly) ─────────────────────────────────
 
-function mapProduct(n: RawProduct): ProductHit {
+function mapProduct(n: RawProduct, shop: string): ProductHit {
   return {
     id: n.id,
     title: n.title,
@@ -308,6 +364,22 @@ function mapProduct(n: RawProduct): ProductHit {
     },
     totalInventory: n.totalInventory ?? 0,
     variants: n.variants.edges.map(e => mapVariantSummary(e.node)),
+    featuredImageUrl: n.featuredImage?.url ?? null,
+    onlineStoreUrl: `https://${shop}/products/${n.handle}`,
+  }
+}
+
+function mapProductCard(n: RawProductCard, shop: string): ProductCard {
+  return {
+    id: n.id,
+    title: n.title,
+    handle: n.handle,
+    price: {
+      amount: n.priceRangeV2.minVariantPrice.amount,
+      currency: n.priceRangeV2.minVariantPrice.currencyCode,
+    },
+    imageUrl: n.featuredImage?.url ?? null,
+    url: `https://${shop}/products/${n.handle}`,
   }
 }
 
@@ -411,6 +483,7 @@ const PRODUCT_SEARCH_QUERY = `
             maxVariantPrice { amount currencyCode }
           }
           totalInventory
+          featuredImage { url }
           variants(first: 10) {
             edges {
               node {
@@ -425,6 +498,20 @@ const PRODUCT_SEARCH_QUERY = `
           }
         }
       }
+    }
+  }
+`
+
+const PRODUCT_CARD_QUERY = `
+  query ProductCard($id: ID!) {
+    product(id: $id) {
+      id
+      title
+      handle
+      priceRangeV2 {
+        minVariantPrice { amount currencyCode }
+      }
+      featuredImage { url }
     }
   }
 `

@@ -1105,6 +1105,22 @@ function VoiceModal({
   )
 }
 
+/**
+ * Format a Shopify money amount + ISO currency for display. Intl
+ * handles symbol placement ($79.00, €79,00, ¥7900) and falls back to a
+ * "CUR 79.00" form for unknown currency codes. Returns null when the
+ * amount can't be parsed — caller hides the line in that case.
+ */
+function formatProductPrice(amount: string, currency: string): string | null {
+  const n = Number(amount)
+  if (!Number.isFinite(n)) return null
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n)
+  } catch {
+    return `${currency} ${amount}`
+  }
+}
+
 function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
   if (msg.role === 'system') {
     return (
@@ -1130,6 +1146,49 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
         </a>
       </div>
     )
+  }
+
+  // Product card — content is JSON { id, title, handle, price:{amount,currency}, imageUrl, url }.
+  // Rendered as a tappable card so the visitor can jump straight to
+  // the Shopify product page from the chat. Falls back to a plain
+  // link if the JSON is malformed (shouldn't happen — we emit it
+  // server-side from a typed adapter — but defensive against
+  // hand-edited DB rows or future schema drift).
+  if (msg.kind === 'product') {
+    let card: { id: string; title: string; price: { amount: string; currency: string }; imageUrl: string | null; url: string } | null = null
+    try { card = JSON.parse(msg.content) } catch {}
+    if (card?.url) {
+      const priceLabel = formatProductPrice(card.price.amount, card.price.currency)
+      return (
+        <div className={`flex ${isVisitor ? 'justify-end' : 'justify-start'}`}>
+          <a
+            href={card.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="max-w-[80%] block rounded-2xl overflow-hidden border border-zinc-700 hover:border-zinc-500 transition-colors bg-zinc-900"
+          >
+            {card.imageUrl && (
+              <div className="w-full bg-zinc-800">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={card.imageUrl} alt={card.title} className="block w-full h-auto max-h-48 object-cover" />
+              </div>
+            )}
+            <div className="px-3 py-2.5 flex flex-col gap-1">
+              <p className="text-sm font-medium text-zinc-100 leading-snug">{card.title}</p>
+              {priceLabel && (
+                <p className="text-sm font-semibold text-zinc-100">{priceLabel}</p>
+              )}
+              <span
+                className="mt-2 inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                style={{ background: accent }}
+              >
+                View product
+              </span>
+            </div>
+          </a>
+        </div>
+      )
+    }
   }
 
   // File attachment — content is JSON { url, name, mime, size }.

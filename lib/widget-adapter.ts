@@ -44,10 +44,25 @@ export class WidgetAdapter implements CrmAdapter {
     // text + a row of button chips. Up to 6 chips, each ≤60 chars.
     const QR_RE = /<quickReplies>([\s\S]*?)<\/quickReplies>/i
     const m = payload.message.match(QR_RE)
-    const cleanMessage = payload.message.replace(QR_RE, '').trim()
+    let cleanMessage = payload.message.replace(QR_RE, '').trim()
     const quickReplies = m
       ? m[1].split('|').map(s => s.trim()).filter(Boolean).slice(0, 6).map(s => s.slice(0, 60))
       : null
+
+    // Pull <productCard>gid</productCard> markers out of the reply (max
+    // 3, taught in commerceBlock). We expand them into separate
+    // kind='product' messages AFTER the text bubble so the widget UI
+    // renders text first, then cards beneath — same flow as image/file
+    // attachments. Channels other than the widget never see this
+    // adapter, so the marker is naturally stripped from SMS/voice/etc.
+    const PC_RE = /<productCard>\s*([^<\s]+)\s*<\/productCard>/gi
+    const productCardIds: string[] = []
+    for (const match of cleanMessage.matchAll(PC_RE)) {
+      const gid = match[1]
+      if (gid && productCardIds.length < 3) productCardIds.push(gid)
+    }
+    cleanMessage = cleanMessage.replace(PC_RE, '').replace(/\s{2,}/g, ' ').trim()
+
     const finalMessage = cleanMessage || payload.message
 
     // Persist the outbound reply (cleaned)
@@ -74,7 +89,66 @@ export class WidgetAdapter implements CrmAdapter {
       ...(quickReplies && quickReplies.length > 0 ? { quickReplies } : {}),
     })
 
+    // Expand product cards AFTER the text bubble. Errors here never
+    // block the main reply — the customer sees the text, the card just
+    // doesn't render. Each card is its own WidgetMessage (kind=product)
+    // with JSON content the widget renderer parses.
+    if (productCardIds.length > 0) {
+      await this.expandProductCards(productCardIds).catch(err => {
+        console.warn('[widget] product card expansion failed:', err?.message)
+      })
+    }
+
     return { messageId: msg.id, conversationId: this.conversationId }
+  }
+
+  /**
+   * Look up workspaceId via the widget row, resolve the commerce
+   * adapter, fetch each product, and emit a kind='product' WidgetMessage
+   * + SSE broadcast per successful lookup. Misses (deleted/unpublished
+   * products) are silently skipped — the agent's text already mentioned
+   * the product by name, so a missing card is degraded but not broken.
+   */
+  private async expandProductCards(productIds: string[]): Promise<void> {
+    // widgetId is stashed in locationId as "widget:<id>"
+    const widgetId = this.locationId.startsWith('widget:')
+      ? this.locationId.slice('widget:'.length)
+      : null
+    if (!widgetId) return
+
+    const widget = await db.chatWidget.findUnique({
+      where: { id: widgetId },
+      select: { workspaceId: true },
+    })
+    if (!widget?.workspaceId) return
+
+    const { getCommerceAdapter } = await import('./commerce/factory')
+    const shop = await getCommerceAdapter(widget.workspaceId)
+    if (!shop) return
+
+    for (const gid of productIds) {
+      try {
+        const card = await shop.getProductCardByGid(gid)
+        if (!card) continue
+        const cardMsg = await db.widgetMessage.create({
+          data: {
+            conversationId: this.conversationId,
+            role: 'agent',
+            content: JSON.stringify(card),
+            kind: 'product',
+          },
+        })
+        await broadcast(this.conversationId, {
+          type: 'agent_message',
+          id: cardMsg.id,
+          content: cardMsg.content,
+          kind: 'product',
+          createdAt: cardMsg.createdAt.toISOString(),
+        })
+      } catch (err: any) {
+        console.warn(`[widget] product card lookup failed for ${gid}: ${err?.message}`)
+      }
+    }
   }
 
   /**
