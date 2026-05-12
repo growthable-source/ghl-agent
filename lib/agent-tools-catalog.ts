@@ -203,6 +203,18 @@ export const REFLEXES: ReflexDef[] = [
     description: 'Look up a Shopify order by order number (e.g. "#1042"). Returns fulfilment status, tracking number + URL, line items, and total. Use whenever a customer asks "where\'s my order?".',
     group: 'commerce',
   },
+  {
+    key: 'create_shopify_checkout',
+    label: 'Create checkout link (Shopify)',
+    description: 'Build a Shopify draft order with chosen variants and return a hosted checkout URL the customer can pay on directly. Use when the customer has decided what they want — confirm the items + quantities first, then call this and send the link.',
+    group: 'commerce',
+  },
+  {
+    key: 'create_shopify_discount',
+    label: 'Create discount code (Shopify)',
+    description: 'Mint a real Shopify discount code on the fly — for save-the-sale, loyalty, or win-back. Keep discounts sensible (5–15% off, single-use, 24–72h expiry) unless the operator has explicitly authorised more.',
+    group: 'commerce',
+  },
 ]
 
 export const REFLEX_GROUP_LABEL: Record<ReflexGroup, string> = {

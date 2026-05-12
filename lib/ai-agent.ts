@@ -41,6 +41,46 @@ export type { AgentAttachment, AgentResponse } from './agent/types'
 
 const client = new Anthropic()
 
+/**
+ * Render a compact "known customer" block to append to the commerce
+ * system prompt. Kept short — the agent has lookup_shopify_customer
+ * for drill-down. Goal here is "the model should never need to ask
+ * who they are if we already know."
+ */
+function renderShopifyCustomerBlock(c: {
+  firstName: string | null
+  lastName: string | null
+  email: string | null
+  phone: string | null
+  numberOfOrders: number
+  lifetimeSpend: { amount: string; currency: string } | null
+  tags: string[]
+  recentOrders: Array<{
+    name: string
+    processedAt: string | null
+    total: { amount: string; currency: string }
+    fulfillmentStatus: string | null
+    lineItems: Array<{ title: string; quantity: number }>
+  }>
+}): string {
+  const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || 'unknown name'
+  const ltv = c.lifetimeSpend ? `${c.lifetimeSpend.amount} ${c.lifetimeSpend.currency}` : 'unknown'
+  const tags = c.tags.length > 0 ? c.tags.join(', ') : 'none'
+
+  const lastOrders = c.recentOrders.slice(0, 3).map(o => {
+    const when = o.processedAt ? new Date(o.processedAt).toISOString().slice(0, 10) : '?'
+    const items = o.lineItems
+      .slice(0, 3)
+      .map(li => `${li.quantity}× ${li.title}`)
+      .join(', ')
+    const more = o.lineItems.length > 3 ? `, +${o.lineItems.length - 3} more` : ''
+    const status = o.fulfillmentStatus || 'unknown status'
+    return `  - ${o.name} (${when}, ${o.total.amount} ${o.total.currency}, ${status}): ${items}${more}`
+  }).join('\n')
+
+  return `\n\n### Known Shopify customer\nName: ${name}\nEmail: ${c.email ?? '—'}\nPhone: ${c.phone ?? '—'}\nLifetime: ${c.numberOfOrders} orders, ${ltv} total\nTags: ${tags}${lastOrders ? `\nRecent orders:\n${lastOrders}` : ''}\n\nUse this naturally — don't recite the data back at the customer. It's context so your replies feel "this brand knows me," not a tool dump.`
+}
+
 export async function runAgent(opts: {
   locationId: string
   agentId?: string
@@ -449,7 +489,31 @@ export async function runAgent(opts: {
       const { getShopifyConnection } = await import('./commerce/shopify/token-store')
       const conn = await getShopifyConnection(workspaceId)
       if (conn) {
-        commerceBlock = `\n\n## Commerce (Shopify) — connected: ${conn.shop}\n\nYou have LIVE access to this Shopify store's catalogue, inventory, customers, and orders. You MUST use the tools below before discussing any product or order detail. NEVER invent product names, prices, sizes, colours, stock levels, SKUs, tracking numbers, or order statuses.\n\nTools available:\n- \`search_shopify_products\` — call this first whenever a customer asks "do you have X?", "how much is Y?", "what sizes/colours?", "what's in stock?". Pass natural-language queries like "wool socks" or "blue hoodie size M".\n- \`check_shopify_inventory\` — after search_shopify_products, call this with a specific variantId for precise stock counts per fulfilment location.\n- \`lookup_shopify_customer\` — call this near the start of every conversation if you have the customer's email or phone, to personalise the reply with their past order history. If it returns found:false, treat them as a new customer — do NOT invent purchase history.\n- \`check_shopify_order_status\` — call this whenever a customer asks "where's my order?" or references an order number. Returns live fulfilment + tracking.\n\nIf a tool returns shopify_not_connected, tell the customer you can't access live store data right now and offer to escalate.\n\n### Rich product cards\nWhen you recommend a SPECIFIC product to the customer, append a marker like this to your send_reply message text — one marker per product, max 3 per reply:\n\n  <productCard>gid://shopify/Product/1234567890</productCard>\n\nThe customer never sees the marker — channels that support rich rendering (the chat widget) replace it with a tappable card showing image, title, price, and a "View Product" button. Channels that don't (SMS, voice) strip it silently. Use the \`id\` field from search_shopify_products verbatim. Only emit a marker for a product you actually intend the customer to look at next — listing 5 products is noise. Pick the best 1-3 and let the card do the showing.`
+        commerceBlock = `\n\n## Commerce (Shopify) — connected: ${conn.shop}\n\nYou have LIVE access to this Shopify store's catalogue, inventory, customers, and orders. You MUST use the tools below before discussing any product or order detail. NEVER invent product names, prices, sizes, colours, stock levels, SKUs, tracking numbers, or order statuses.\n\nTools available:\n- \`search_shopify_products\` — call this first whenever a customer asks "do you have X?", "how much is Y?", "what sizes/colours?", "what's in stock?". Pass natural-language queries like "wool socks" or "blue hoodie size M".\n- \`check_shopify_inventory\` — after search_shopify_products, call this with a specific variantId for precise stock counts per fulfilment location.\n- \`lookup_shopify_customer\` — call this near the start of every conversation if you have the customer's email or phone, to personalise the reply with their past order history. If it returns found:false, treat them as a new customer — do NOT invent purchase history.\n- \`check_shopify_order_status\` — call this whenever a customer asks "where's my order?" or references an order number. Returns live fulfilment + tracking.\n- \`create_shopify_checkout\` — build a draft order with specific variants and get a one-tap checkout URL. Use when the customer is ready to buy: "I'll grab those — here's your checkout link." Always confirm the variants + quantities first.\n- \`create_shopify_discount\` — mint a real Shopify discount code on the fly for save-the-sale / loyalty / win-back. Keep the discount sensible (5-15% off, single-use, 24-72h expiry) unless the operator has explicitly authorised more.\n\nIf a tool returns shopify_not_connected, tell the customer you can't access live store data right now and offer to escalate.\n\n### Rich product cards\nWhen you recommend a SPECIFIC product to the customer, append a marker like this to your send_reply message text — one marker per product, max 3 per reply:\n\n  <productCard>gid://shopify/Product/1234567890</productCard>\n\nThe customer never sees the marker — channels that support rich rendering (the chat widget) replace it with a tappable card showing image, title, price, and a "View Product" button. Channels that don't (SMS, voice) strip it silently. Use the \`id\` field from search_shopify_products verbatim. Only emit a marker for a product you actually intend the customer to look at next — listing 5 products is noise. Pick the best 1-3 and let the card do the showing.`
+
+        // ─── Per-conversation Shopify customer hydration ───
+        // If we already know the contact's email or phone (from GHL /
+        // native CRM / widget pre-chat form / Meta sender mapping), pull
+        // their Shopify profile BEFORE the agent runs and inject it into
+        // the prompt. Differs from the `lookup_shopify_customer` tool —
+        // the tool is reactive ("call this if you need it"), this is
+        // proactive ("always know who you're talking to"). Saves a tool
+        // round-trip per turn for repeat customers, and means even a
+        // simple "hi" reply can reference their last order.
+        const contactEmail = (loadedContact as { email?: string } | null)?.email
+        const contactPhone = (loadedContact as { phone?: string } | null)?.phone
+        if (contactEmail || contactPhone) {
+          try {
+            const { ShopifyAdapter } = await import('./commerce/shopify/adapter')
+            const shopAdapter = new ShopifyAdapter({ shop: conn.shop, accessToken: conn.accessToken })
+            const customer = await shopAdapter.findCustomer({ email: contactEmail, phone: contactPhone })
+            if (customer) {
+              commerceBlock += renderShopifyCustomerBlock(customer)
+            }
+          } catch (err: any) {
+            console.warn('[Agent] Shopify customer hydration failed:', err?.message)
+          }
+        }
       }
     } catch (err: any) {
       console.warn('[Agent] Shopify connection lookup failed:', err.message)

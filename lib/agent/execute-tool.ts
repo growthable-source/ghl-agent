@@ -856,6 +856,73 @@ export async function executeTool(
         }
         return JSON.stringify(order)
       }
+      case 'create_shopify_checkout': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
+        const { getCommerceAdapter } = await import('../commerce/factory')
+        const shop = await getCommerceAdapter(workspaceId)
+        if (!shop) return JSON.stringify({ shopify_not_connected: true })
+        const lineItems = ((input as any).lineItems as Array<{ variantId: string; quantity: number }> | undefined) ?? []
+        if (!Array.isArray(lineItems) || lineItems.length === 0) {
+          return JSON.stringify({ error: 'lineItems is required (array of {variantId, quantity})' })
+        }
+        if (lineItems.length > 10) {
+          return JSON.stringify({ error: 'too many line items (max 10)' })
+        }
+        const customerEmail = ((input as any).customerEmail as string | undefined)?.trim() || null
+        const discountCode = ((input as any).discountCode as string | undefined)?.trim() || null
+        const note = ((input as any).note as string | undefined) ?? null
+        try {
+          const result = await shop.createDraftOrder({ lineItems, customerEmail, discountCode, note })
+          return JSON.stringify({
+            checkoutUrl: result.invoiceUrl,
+            draftOrderId: result.id,
+            total: result.totalPrice,
+            currency: result.currencyCode,
+            hint: 'Include the checkoutUrl in your reply so the customer can pay. Single-use link — once paid, the draft becomes a real order.',
+          })
+        } catch (err: any) {
+          return JSON.stringify({ error: err?.message || 'draft order failed' })
+        }
+      }
+      case 'create_shopify_discount': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
+        const { getCommerceAdapter } = await import('../commerce/factory')
+        const shop = await getCommerceAdapter(workspaceId)
+        if (!shop) return JSON.stringify({ shopify_not_connected: true })
+        const code = String((input as any).code || '').trim().toUpperCase()
+        const type = (input as any).type as 'percentage' | 'fixed_amount'
+        const value = Number((input as any).value)
+        if (!code || !/^[A-Z0-9]{3,20}$/.test(code)) {
+          return JSON.stringify({ error: 'code must be 3-20 alphanumeric chars (will be uppercased)' })
+        }
+        if (type !== 'percentage' && type !== 'fixed_amount') {
+          return JSON.stringify({ error: 'type must be "percentage" or "fixed_amount"' })
+        }
+        if (!Number.isFinite(value) || value <= 0) {
+          return JSON.stringify({ error: 'value must be a positive number' })
+        }
+        // Guardrail: hard-cap at 50% percentage / $200 fixed unless the
+        // operator extends the limit later via agent settings. Stops a
+        // jailbroken prompt from minting a 100%-off code.
+        if (type === 'percentage' && value > 50) {
+          return JSON.stringify({ error: 'percentage discount capped at 50%' })
+        }
+        if (type === 'fixed_amount' && value > 200) {
+          return JSON.stringify({ error: 'fixed-amount discount capped at 200 in the shop currency' })
+        }
+        const usageLimit = Number((input as any).usageLimit) || 1
+        const expiresInHours = Number((input as any).expiresInHours) || 72
+        try {
+          const result = await shop.createDiscountCode({ code, type, value, usageLimit, expiresInHours })
+          return JSON.stringify({
+            code: result.code,
+            expiresAt: result.expiresAt,
+            hint: 'Tell the customer the code in your reply, mention the expiry, and that it\'s single-use unless usageLimit was set higher.',
+          })
+        } catch (err: any) {
+          return JSON.stringify({ error: err?.message || 'discount code creation failed' })
+        }
+      }
 
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })

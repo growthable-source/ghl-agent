@@ -68,6 +68,43 @@ export interface ProductCard {
   url: string
 }
 
+export interface DraftOrderLineItemInput {
+  variantId: string
+  quantity: number
+}
+
+export interface DraftOrderResult {
+  id: string
+  /**
+   * The hosted Shopify checkout URL. Customer pays via Shopify's
+   * standard checkout — no PCI exposure on our side. Single-use; once
+   * paid the draft converts to a real order.
+   */
+  invoiceUrl: string | null
+  totalPrice: string
+  currencyCode: string
+}
+
+export interface DiscountCodeInput {
+  /** Customer-facing code, e.g. "HELLO10". Must be unique on the shop. */
+  code: string
+  /**
+   * Discount kind. 'percentage' uses `value` as a percent (e.g. 10 =
+   * 10% off); 'fixed_amount' as a money amount in the shop's currency.
+   */
+  type: 'percentage' | 'fixed_amount'
+  value: number
+  /** Cap total redemptions. Default 1 — single-use save-the-sale code. */
+  usageLimit?: number
+  /** Hours from now until the code expires. Default 72h. */
+  expiresInHours?: number
+}
+
+export interface DiscountCodeResult {
+  code: string
+  expiresAt: string
+}
+
 export interface VariantSummary {
   id: string
   title: string
@@ -190,6 +227,103 @@ export class ShopifyAdapter {
     )
     const first = data.customers.edges[0]?.node
     return first ? mapCustomer(first) : null
+  }
+
+  /**
+   * Create a Shopify draft order and return its hosted checkout URL.
+   * The customer clicks the URL and lands on Shopify's checkout with
+   * the items pre-loaded — no PCI exposure on our side.
+   *
+   * Caller responsibility: validate variantIds came from a recent
+   * searchProducts call rather than the agent's imagination. The
+   * mutation will reject unknown variants but the error message
+   * isn't agent-friendly.
+   */
+  async createDraftOrder(args: {
+    lineItems: DraftOrderLineItemInput[]
+    customerEmail?: string | null
+    discountCode?: string | null
+    note?: string | null
+  }): Promise<DraftOrderResult> {
+    const input: Record<string, unknown> = {
+      lineItems: args.lineItems.map(li => ({
+        variantId: li.variantId,
+        quantity: Math.max(1, Math.floor(li.quantity)),
+      })),
+    }
+    if (args.customerEmail) input.email = args.customerEmail
+    if (args.note) input.note = args.note
+    if (args.discountCode) {
+      // Apply at the draft-order level. Shopify validates the code is
+      // real + applicable; invalid codes throw via userErrors.
+      input.appliedDiscount = { description: args.discountCode, title: args.discountCode, value: 0, valueType: 'PERCENTAGE' }
+    }
+
+    const data = await this.gql<{
+      draftOrderCreate: {
+        draftOrder: {
+          id: string
+          invoiceUrl: string | null
+          totalPriceSet: { shopMoney: RawMoney }
+        } | null
+        userErrors: { field: string[]; message: string }[]
+      }
+    }>(DRAFT_ORDER_CREATE_MUTATION, { input })
+
+    const errs = data.draftOrderCreate.userErrors
+    if (errs && errs.length > 0) {
+      throw new Error(`shopify draftOrderCreate: ${errs.map(e => e.message).join('; ')}`)
+    }
+    const draft = data.draftOrderCreate.draftOrder
+    if (!draft) throw new Error('shopify draftOrderCreate: no draftOrder returned')
+    return {
+      id: draft.id,
+      invoiceUrl: draft.invoiceUrl,
+      totalPrice: draft.totalPriceSet.shopMoney.amount,
+      currencyCode: draft.totalPriceSet.shopMoney.currencyCode,
+    }
+  }
+
+  /**
+   * Mint a single-use (or capped) discount code on the shop. Used by
+   * the agent for save-the-sale / loyalty / win-back moments.
+   */
+  async createDiscountCode(args: DiscountCodeInput): Promise<DiscountCodeResult> {
+    const expiresInHours = args.expiresInHours ?? 72
+    const usageLimit = args.usageLimit ?? 1
+    const endsAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000)
+
+    // customerGets shape differs by type. For percentage we pass a
+    // fractional value (0.10 = 10%); for fixed_amount we pass a money
+    // amount in the shop's currency (Shopify infers currency).
+    const customerGets =
+      args.type === 'percentage'
+        ? { value: { percentage: args.value / 100 }, items: { all: true } }
+        : { value: { discountAmount: { amount: args.value.toFixed(2), appliesOnEachItem: false } }, items: { all: true } }
+
+    const input = {
+      title: args.code,
+      code: args.code,
+      startsAt: new Date().toISOString(),
+      endsAt: endsAt.toISOString(),
+      customerSelection: { all: true },
+      customerGets,
+      appliesOncePerCustomer: usageLimit === 1,
+      usageLimit,
+    }
+
+    const data = await this.gql<{
+      discountCodeBasicCreate: {
+        codeDiscountNode: { codeDiscount: { codes: { edges: { node: { code: string } }[] } } } | null
+        userErrors: { field: string[]; message: string }[]
+      }
+    }>(DISCOUNT_CODE_CREATE_MUTATION, { basicCodeDiscount: input })
+
+    const errs = data.discountCodeBasicCreate.userErrors
+    if (errs && errs.length > 0) {
+      throw new Error(`shopify discountCodeBasicCreate: ${errs.map(e => e.message).join('; ')}`)
+    }
+    return { code: args.code, expiresAt: endsAt.toISOString() }
   }
 
   /**
@@ -568,6 +702,34 @@ const CUSTOMER_SEARCH_QUERY = `
           }
         }
       }
+    }
+  }
+`
+
+const DRAFT_ORDER_CREATE_MUTATION = `
+  mutation DraftOrderCreate($input: DraftOrderInput!) {
+    draftOrderCreate(input: $input) {
+      draftOrder {
+        id
+        invoiceUrl
+        totalPriceSet { shopMoney { amount currencyCode } }
+      }
+      userErrors { field message }
+    }
+  }
+`
+
+const DISCOUNT_CODE_CREATE_MUTATION = `
+  mutation DiscountCodeCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
+    discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
+      codeDiscountNode {
+        codeDiscount {
+          ... on DiscountCodeBasic {
+            codes(first: 1) { edges { node { code } } }
+          }
+        }
+      }
+      userErrors { field message }
     }
   }
 `

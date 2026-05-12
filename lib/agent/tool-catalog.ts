@@ -588,6 +588,46 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['orderName'],
     },
   },
+  {
+    name: 'create_shopify_checkout',
+    description: 'Build a Shopify draft order and return a hosted checkout URL the customer can pay on directly. Use only after confirming the items + quantities with the customer. Variants must be IDs returned by search_shopify_products — do not pass invented IDs.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        lineItems: {
+          type: 'array',
+          description: 'Items to add to the checkout. 1-10 items.',
+          items: {
+            type: 'object',
+            properties: {
+              variantId: { type: 'string', description: 'Full Shopify variant GID, e.g. "gid://shopify/ProductVariant/123".' },
+              quantity: { type: 'number', description: 'Whole-number quantity, minimum 1.' },
+            },
+            required: ['variantId', 'quantity'],
+          },
+        },
+        customerEmail: { type: 'string', description: 'Optional — pre-fills the checkout email field. Use when you have a confirmed email for the customer.' },
+        discountCode: { type: 'string', description: 'Optional — an existing Shopify discount code to apply. Use the exact code, e.g. "HELLO10".' },
+        note: { type: 'string', description: 'Optional internal note attached to the draft order (visible to the merchant, not the customer).' },
+      },
+      required: ['lineItems'],
+    },
+  },
+  {
+    name: 'create_shopify_discount',
+    description: 'Create a real Shopify discount code. Returns the code (which you can mention in your reply) and the expiry time. Keep discounts sensible — 5-15%% off, single-use, 24-72h expiry unless authorised otherwise. Pick a short memorable code.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        code: { type: 'string', description: 'Code the customer will type at checkout. 4-20 chars, alphanumeric. Examples: "HELLO10", "SAVE15".' },
+        type: { type: 'string', enum: ['percentage', 'fixed_amount'], description: '"percentage" or "fixed_amount".' },
+        value: { type: 'number', description: 'For percentage: the percent (e.g. 10 = 10% off). For fixed_amount: the money amount in the shop currency (e.g. 5 = $5 off).' },
+        usageLimit: { type: 'number', description: 'Cap total redemptions. Default 1 (single-use).' },
+        expiresInHours: { type: 'number', description: 'Hours from now until expiry. Default 72.' },
+      },
+      required: ['code', 'type', 'value'],
+    },
+  },
 ]
 
 // Read-only tools are safe to run against the real CRM even in the
