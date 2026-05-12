@@ -25,12 +25,14 @@ export async function getCrmAdapter(locationId: string): Promise<CrmAdapter> {
   }
 
   let provider = 'ghl'
+  let workspaceIdForNative: string | null = null
   try {
     const location = await db.location.findUnique({
       where: { id: locationId },
-      select: { crmProvider: true },
+      select: { crmProvider: true, workspaceId: true },
     })
     provider = location?.crmProvider ?? 'ghl'
+    workspaceIdForNative = location?.workspaceId ?? null
   } catch {
     // crmProvider column may not exist yet — default to ghl
     provider = 'ghl'
@@ -42,8 +44,25 @@ export async function getCrmAdapter(locationId: string): Promise<CrmAdapter> {
       return new NoCrmAdapter(locationId)
     }
     case 'native': {
+      // The GHL/HubSpot disconnect flow keeps the original Location row
+      // (keyed by the real CRM locationId, e.g. "RgbqCi...") and flips
+      // crmProvider to 'native' rather than creating a new
+      // "native:<workspaceId>" row. NativeAdapter, however, REQUIRES
+      // the "native:" prefix because the workspaceId is the only piece
+      // of state it needs and it parses it out of the id.
+      //
+      // Translate here so a disconnected workspace doesn't permanently
+      // wedge with "NativeAdapter received non-native locationId" on
+      // every adapter call. If we can't recover the workspaceId we let
+      // the adapter throw — that's a structural data problem worth
+      // surfacing loudly rather than papering over.
       const { NativeAdapter } = await import('./native/adapter')
-      return new NativeAdapter(locationId)
+      const nativeId = locationId.startsWith('native:')
+        ? locationId
+        : workspaceIdForNative
+          ? `native:${workspaceIdForNative}`
+          : locationId
+      return new NativeAdapter(nativeId)
     }
     case 'hubspot': {
       const { HubSpotAdapter } = await import('./hubspot/adapter')
