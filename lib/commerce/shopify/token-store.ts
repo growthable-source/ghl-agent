@@ -22,9 +22,10 @@
 import { db } from '@/lib/db'
 
 // Refresh proactively when the token has less than 5 minutes left.
-// Shopify's stated lifetime is 24h so this gives plenty of headroom;
-// the only reason to widen it is if tool calls regularly take longer
-// than 5 minutes, which they don't.
+// Shopify's expiring offline tokens last 1 hour (refresh tokens last
+// 90 days), so 5 minutes leaves ~55 minutes of safe usage between
+// refreshes. Widen only if tool calls regularly take longer than 5
+// minutes, which they don't.
 const EXPIRY_BUFFER_MS = 5 * 60 * 1000
 
 export interface ShopifyTokenSaveInput {
