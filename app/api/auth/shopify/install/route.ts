@@ -62,8 +62,18 @@ export async function GET(req: NextRequest) {
   }
 
   const clientId = process.env.SHOPIFY_API_KEY
-  if (!clientId) {
-    return NextResponse.json({ error: 'Shopify OAuth not configured' }, { status: 500 })
+  const stateSecret = process.env.SHOPIFY_OAUTH_STATE_SECRET
+  if (!clientId || !stateSecret) {
+    // Fail loud with the actual missing var(s) — much cheaper to debug
+    // than a generic 500 from signState() throwing further down.
+    const missing = [
+      !clientId && 'SHOPIFY_API_KEY',
+      !stateSecret && 'SHOPIFY_OAUTH_STATE_SECRET',
+    ].filter(Boolean)
+    return NextResponse.json(
+      { error: `Shopify OAuth not configured (missing ${missing.join(', ')})` },
+      { status: 500 },
+    )
   }
 
   // The redirect URI must match exactly what's registered in the Partner

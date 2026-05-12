@@ -36,12 +36,13 @@ const SECRET = () => {
   return s
 }
 
-// Used to sign our OAuth state token. Reusing PORTAL_SESSION_SECRET
-// keeps the set of long-lived secrets small; it's already present in
-// every environment and is HMAC-grade entropy.
+// Dedicated secret for signing the OAuth state token (CSRF). Matches
+// the META_OAUTH_STATE_SECRET / Google Ads convention — one secret per
+// OAuth integration rather than reusing portal/session secrets, so a
+// future portal-secret rotation doesn't invalidate in-flight installs.
 const STATE_SECRET = () => {
-  const s = process.env.PORTAL_SESSION_SECRET
-  if (!s) throw new Error('PORTAL_SESSION_SECRET not configured')
+  const s = process.env.SHOPIFY_OAUTH_STATE_SECRET
+  if (!s) throw new Error('SHOPIFY_OAUTH_STATE_SECRET not configured')
   return s
 }
 
