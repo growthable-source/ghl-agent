@@ -533,6 +533,61 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       required: ['source'],
     },
   },
+
+  // ─── Shopify (commerce) ──────────────────────────────────────────
+  // All four return JSON payloads with the live store data. The
+  // descriptions push the model HARD toward calling these before
+  // discussing products — hallucinated SKUs/prices are the failure
+  // mode we're trying to kill.
+  {
+    name: 'search_shopify_products',
+    description: 'Search the connected Shopify store catalogue by free text (product name, type, vendor, tag, or SKU substring). Returns up to `limit` matching products with title, handle, description, price range, total inventory, and per-variant stock. ALWAYS call this BEFORE answering any customer question about what the store sells, what something costs, sizes available, or whether something is in stock. Never invent product details.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Free-text search. Examples: "socks", "wool hat", "nike", "tag:summer-sale".' },
+        limit: { type: 'number', description: 'Max products to return (1-25). Defaults to 10.' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'check_shopify_inventory',
+    description: 'Get the live stock level for a single product variant, broken down by fulfilment location. Use this when the customer asks about a specific size/colour combination — pass the variantId returned from search_shopify_products. Do NOT guess stock levels.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        variantId: {
+          type: 'string',
+          description: 'Full Shopify variant GID, e.g. "gid://shopify/ProductVariant/123456". Get this from search_shopify_products.variants[].id.',
+        },
+      },
+      required: ['variantId'],
+    },
+  },
+  {
+    name: 'lookup_shopify_customer',
+    description: 'Find a Shopify customer by email OR phone. Returns lifetime spend, order count, tags, and the 5 most recent orders with status. Use to personalise replies for repeat buyers. Returns null if the customer is not in Shopify — treat that as a new customer and do not fabricate purchase history.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Customer email. Provide this OR phone (or both).' },
+        phone: { type: 'string', description: 'Customer phone in any format Shopify recognises (E.164 preferred). Provide this OR email.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'check_shopify_order_status',
+    description: 'Look up a Shopify order by its order name (e.g. "#1042"). Returns fulfilment status, tracking number + URL, line items, and total. Use whenever a customer asks "where\'s my order?" — never guess a status or tracking number.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        orderName: { type: 'string', description: 'The order name as the customer sees it. Accepts "#1042" or "1042" — the leading # is auto-added.' },
+      },
+      required: ['orderName'],
+    },
+  },
 ]
 
 // Read-only tools are safe to run against the real CRM even in the
@@ -546,6 +601,11 @@ export const SAFE_READ_ONLY_TOOLS = new Set([
   'get_available_slots',
   'get_calendar_events',
   'search_contacts',
+  // Shopify commerce reads — pure GraphQL queries, no mutations.
+  'search_shopify_products',
+  'check_shopify_inventory',
+  'lookup_shopify_customer',
+  'check_shopify_order_status',
 ])
 
 /**

@@ -436,6 +436,26 @@ export async function runAgent(opts: {
     console.warn('[Agent] MCP attachment load failed:', err.message)
   }
 
+  // ─── Commerce (Shopify) context ───
+  // When the workspace has a Shopify store connected, inject a block
+  // telling the agent it has live catalogue + customer + order data
+  // available via the search_shopify_products / check_shopify_inventory /
+  // lookup_shopify_customer / check_shopify_order_status tools, and to
+  // NEVER guess product details. Hallucinated SKUs/prices/stock is the
+  // failure mode this kills. Block is empty (no-op) when not connected.
+  let commerceBlock = ''
+  if (workspaceId) {
+    try {
+      const { getShopifyConnection } = await import('./commerce/shopify/token-store')
+      const conn = await getShopifyConnection(workspaceId)
+      if (conn) {
+        commerceBlock = `\n\n## Commerce (Shopify) — connected: ${conn.shop}\n\nYou have LIVE access to this Shopify store's catalogue, inventory, customers, and orders. You MUST use the tools below before discussing any product or order detail. NEVER invent product names, prices, sizes, colours, stock levels, SKUs, tracking numbers, or order statuses.\n\nTools available:\n- \`search_shopify_products\` — call this first whenever a customer asks "do you have X?", "how much is Y?", "what sizes/colours?", "what's in stock?". Pass natural-language queries like "wool socks" or "blue hoodie size M".\n- \`check_shopify_inventory\` — after search_shopify_products, call this with a specific variantId for precise stock counts per fulfilment location.\n- \`lookup_shopify_customer\` — call this near the start of every conversation if you have the customer's email or phone, to personalise the reply with their past order history. If it returns found:false, treat them as a new customer — do NOT invent purchase history.\n- \`check_shopify_order_status\` — call this whenever a customer asks "where's my order?" or references an order number. Returns live fulfilment + tracking.\n\nIf a tool returns shopify_not_connected, tell the customer you can't access live store data right now and offer to escalate.`
+      }
+    } catch (err: any) {
+      console.warn('[Agent] Shopify connection lookup failed:', err.message)
+    }
+  }
+
   // ─── Conversation gap awareness ───
   // If the last message in this conversation is more than an hour old,
   // tell the agent how long it's been so it can resume gracefully (skip
@@ -573,6 +593,7 @@ export async function runAgent(opts: {
           advancedContextBlock,
           platformGuidelinesBlock,
           connectedIntegrationsBlock,
+          commerceBlock,
         },
       ) + experimentBlock + dataSourcesBlock + conversationGapBlock,
       tools,

@@ -792,6 +792,71 @@ export async function executeTool(
         })
         return result
       }
+
+      // ─── Shopify (commerce) ────────────────────────────────────────
+      // All four lazy-import the adapter factory so the import path is
+      // only paid on tool invocation, not on every cold start. Each
+      // returns a "shopify_not_connected" hint instead of throwing
+      // when the workspace doesn't have a connected shop — that lets
+      // the agent fall back to "I don't have access to live inventory"
+      // gracefully instead of dying mid-conversation.
+      case 'search_shopify_products': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
+        const { getCommerceAdapter } = await import('../commerce/factory')
+        const shop = await getCommerceAdapter(workspaceId)
+        if (!shop) return JSON.stringify({ shopify_not_connected: true, hint: 'No Shopify store is connected for this workspace. Tell the customer you don\'t have live catalogue access and offer to take their question to the team.' })
+        const query = String((input as any).query || '').trim()
+        if (!query) return JSON.stringify({ error: 'query is required' })
+        const limit = Number((input as any).limit) || 10
+        const results = await shop.searchProducts(query, limit)
+        return JSON.stringify({ query, count: results.length, products: results })
+      }
+      case 'check_shopify_inventory': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
+        const { getCommerceAdapter } = await import('../commerce/factory')
+        const shop = await getCommerceAdapter(workspaceId)
+        if (!shop) return JSON.stringify({ shopify_not_connected: true })
+        const variantId = String((input as any).variantId || '').trim()
+        if (!variantId) return JSON.stringify({ error: 'variantId is required (full GID, e.g. gid://shopify/ProductVariant/123)' })
+        const snapshot = await shop.getInventoryForVariant(variantId)
+        if (!snapshot) return JSON.stringify({ found: false, variantId, hint: 'No variant with that ID. Re-run search_shopify_products and pass back a variants[].id verbatim.' })
+        return JSON.stringify(snapshot)
+      }
+      case 'lookup_shopify_customer': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
+        const { getCommerceAdapter } = await import('../commerce/factory')
+        const shop = await getCommerceAdapter(workspaceId)
+        if (!shop) return JSON.stringify({ shopify_not_connected: true })
+        const email = ((input as any).email as string | undefined)?.trim() || null
+        const phone = ((input as any).phone as string | undefined)?.trim() || null
+        if (!email && !phone) return JSON.stringify({ error: 'Provide email or phone (or both).' })
+        const customer = await shop.findCustomer({ email, phone })
+        if (!customer) {
+          return JSON.stringify({
+            found: false,
+            hint: 'No Shopify customer matched. Treat as a new customer — do not invent past purchases or order history.',
+          })
+        }
+        return JSON.stringify(customer)
+      }
+      case 'check_shopify_order_status': {
+        if (!workspaceId) return JSON.stringify({ error: 'No workspace context for Shopify lookup' })
+        const { getCommerceAdapter } = await import('../commerce/factory')
+        const shop = await getCommerceAdapter(workspaceId)
+        if (!shop) return JSON.stringify({ shopify_not_connected: true })
+        const orderName = String((input as any).orderName || '').trim()
+        if (!orderName) return JSON.stringify({ error: 'orderName is required (e.g. "#1042" or "1042")' })
+        const order = await shop.getOrderByName(orderName)
+        if (!order) {
+          return JSON.stringify({
+            found: false,
+            orderName,
+            hint: 'No order with that number. Confirm the customer has the right number — Shopify order names are unique per store.',
+          })
+        }
+        return JSON.stringify(order)
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }

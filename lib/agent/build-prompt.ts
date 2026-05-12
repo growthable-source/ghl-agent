@@ -31,6 +31,14 @@ export interface SystemPromptOptions {
   advancedContextBlock?: string
   platformGuidelinesBlock?: string
   connectedIntegrationsBlock?: string
+  /**
+   * Commerce (Shopify) instructions. Injected when the workspace has a
+   * Shopify store connected — tells the model to NEVER guess product
+   * details, prices, stock, or order status, and to always call the
+   * Shopify tools first. Sits next to the platform-guidelines block
+   * so the LLM treats it as high-authority.
+   */
+  commerceBlock?: string
 }
 
 export function buildSystemPrompt(ctx: AgentContext, options: SystemPromptOptions = {}): string {
@@ -46,6 +54,7 @@ export function buildSystemPrompt(ctx: AgentContext, options: SystemPromptOption
     advancedContextBlock,
     platformGuidelinesBlock,
     connectedIntegrationsBlock,
+    commerceBlock,
   } = options
 
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
@@ -184,6 +193,16 @@ Professional but warm. Match the contact's energy.`
   // so we can just concatenate here without further sanity checks.
   if (platformGuidelinesBlock) {
     prompt += platformGuidelinesBlock
+  }
+
+  // Commerce block — high-authority "never guess product data" rules
+  // when Shopify is connected. Placed alongside platform guidelines so
+  // the LLM treats it as authoritative; placed BEFORE integrations so
+  // the broader integrations block (which may discuss MCP tools) can
+  // still extend the picture without overriding the no-hallucination
+  // rule.
+  if (commerceBlock) {
+    prompt += commerceBlock
   }
 
   if (connectedIntegrationsBlock) {

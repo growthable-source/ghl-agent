@@ -27,7 +27,7 @@
 
 // ─── Reflexes (model-callable tools) ─────────────────────────────────────────
 
-export type ReflexGroup = 'messaging' | 'contacts' | 'pipeline' | 'calendar' | 'memory'
+export type ReflexGroup = 'messaging' | 'contacts' | 'pipeline' | 'calendar' | 'memory' | 'commerce'
 
 export interface ReflexDef {
   key: string
@@ -173,6 +173,36 @@ export const REFLEXES: ReflexDef[] = [
     description: 'Hand the conversation to a teammate when the agent decides it should.',
     group: 'messaging',
   },
+
+  // Commerce (Shopify). Only useful when the workspace has a Shopify
+  // store connected; the dispatcher returns a friendly "no store
+  // connected" message otherwise. The system prompt instructs the
+  // agent to ALWAYS query before discussing products — no hallucinated
+  // SKUs, prices, or stock levels.
+  {
+    key: 'search_shopify_products',
+    label: 'Search products (Shopify)',
+    description: 'Search the Shopify catalogue by free text (name, type, vendor, tag). Returns matching products with prices, total inventory, and per-variant stock. Use this BEFORE answering any question about what the store sells, what something costs, or whether something is in stock.',
+    group: 'commerce',
+  },
+  {
+    key: 'check_shopify_inventory',
+    label: 'Check inventory (Shopify)',
+    description: 'Get the live inventory count for a single product variant (by Shopify variant ID returned from Search products). Breaks down stock per fulfilment location. Use when the customer asks about a specific size/colour/SKU.',
+    group: 'commerce',
+  },
+  {
+    key: 'lookup_shopify_customer',
+    label: 'Look up customer (Shopify)',
+    description: 'Find a Shopify customer by email or phone. Returns lifetime spend, order count, tags, and the 5 most recent orders with fulfilment status. Use to personalise replies for repeat buyers — never invent past purchases the customer didn\'t actually make.',
+    group: 'commerce',
+  },
+  {
+    key: 'check_shopify_order_status',
+    label: 'Check order status (Shopify)',
+    description: 'Look up a Shopify order by order number (e.g. "#1042"). Returns fulfilment status, tracking number + URL, line items, and total. Use whenever a customer asks "where\'s my order?".',
+    group: 'commerce',
+  },
 ]
 
 export const REFLEX_GROUP_LABEL: Record<ReflexGroup, string> = {
@@ -181,10 +211,11 @@ export const REFLEX_GROUP_LABEL: Record<ReflexGroup, string> = {
   pipeline: 'Pipeline',
   calendar: 'Calendar',
   memory: 'Memory',
+  commerce: 'Commerce',
 }
 
 export const REFLEX_GROUP_ORDER: ReflexGroup[] = [
-  'messaging', 'contacts', 'calendar', 'pipeline', 'memory',
+  'messaging', 'contacts', 'calendar', 'pipeline', 'commerce', 'memory',
 ]
 
 // ─── Plays (deterministic actions) ───────────────────────────────────────────
