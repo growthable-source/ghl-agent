@@ -831,6 +831,7 @@ export default function VoicePage() {
           agentName={agentName}
           systemPrompt={testSystemPrompt}
           firstMessage={config.firstMessage}
+          agentId={agentId}
         />
       )}
 

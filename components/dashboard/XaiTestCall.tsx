@@ -26,6 +26,22 @@ interface Props {
   agentName: string
   systemPrompt: string
   firstMessage?: string | null
+  /**
+   * Agent ID — when present, the client-secret endpoint returns the
+   * agent's voice-safe tool list and we wire them into session.update.
+   * Function calls during the conversation are POSTed to
+   * /api/voice/tool-call for server-side execution. Omit for chitchat-
+   * only voice without any tool access.
+   */
+  agentId?: string
+}
+
+/** XAI/OpenAI realtime tool envelope. */
+interface RealtimeTool {
+  type: 'function'
+  name: string
+  description: string
+  parameters: Record<string, unknown>
 }
 
 interface TranscriptLine { role: 'user' | 'assistant'; text: string }
@@ -35,7 +51,7 @@ interface TranscriptLine { role: 'user' | 'assistant'; text: string }
 // quality loss from resampling.
 const SAMPLE_RATE = 24000
 
-export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMessage }: Props) {
+export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMessage, agentId }: Props) {
   const [status, setStatus] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptLine[]>([])
@@ -75,14 +91,20 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
     currentAssistantLineRef.current = null
 
     try {
-      // 1. Mint ephemeral token
+      // 1. Mint ephemeral token + fetch the agent's voice-safe tool list
+      //    in the same round-trip so session.update can include tools
+      //    on the very first send.
       const tokenRes = await fetch('/api/voice/xai/client-secret', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expiresInSeconds: 600 }),
+        body: JSON.stringify({ expiresInSeconds: 600, agentId }),
       })
       if (!tokenRes.ok) throw new Error(`Could not mint XAI token: ${await tokenRes.text()}`)
-      const { value: token, wsUrl } = await tokenRes.json() as { value: string; wsUrl: string }
+      const { value: token, wsUrl, tools } = await tokenRes.json() as {
+        value: string
+        wsUrl: string
+        tools?: RealtimeTool[]
+      }
 
       // 2. Open WebSocket. XAI takes the token via a subprotocol prefixed
       //    `xai-client-secret.` — browsers don't allow custom headers on WS.
@@ -92,18 +114,22 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
       ws.addEventListener('open', () => {
         // 3. Configure the session: voice, system prompt, audio format,
         //    server-side VAD so turn boundaries are handled for us.
-        const sessionUpdate = {
-          type: 'session.update',
-          session: {
-            voice: voiceId,
-            instructions: systemPrompt +
-              '\n\nYou are on a live voice call. Speak naturally. Keep replies to 1–3 sentences.',
-            input_audio_format: 'pcm16',
-            output_audio_format: 'pcm16',
-            turn_detection: { type: 'server_vad' },
-          },
+        // Build the session payload. `tools` only present when the
+        // agent has voice-safe tools enabled — XAI/OpenAI realtime
+        // accepts the empty array but omitting it entirely is cleaner.
+        const session: Record<string, unknown> = {
+          voice: voiceId,
+          instructions: systemPrompt +
+            '\n\nYou are on a live voice call. Speak naturally. Keep replies to 1–3 sentences. When you call a tool, briefly say something like "let me check" so the caller hears a beat instead of silence.',
+          input_audio_format: 'pcm16',
+          output_audio_format: 'pcm16',
+          turn_detection: { type: 'server_vad' },
         }
-        ws.send(JSON.stringify(sessionUpdate))
+        if (tools && tools.length > 0) {
+          session.tools = tools
+          session.tool_choice = 'auto'
+        }
+        ws.send(JSON.stringify({ type: 'session.update', session }))
 
         // Kick off the first assistant turn so the agent speaks first.
         // Without this the agent waits for user audio before responding —
@@ -217,6 +243,26 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
         break
       }
 
+      case 'response.function_call_arguments.done': {
+        // The model finished assembling args for a tool call.
+        // Shape (OpenAI-compatible): { call_id, name, arguments (JSON
+        // string) }. Execute server-side, then send the result back.
+        const callId = msg.call_id as string | undefined
+        const name = msg.name as string | undefined
+        const argsRaw = msg.arguments as string | undefined
+        if (!callId || !name) break
+        let parsed: Record<string, unknown> = {}
+        try { parsed = argsRaw ? JSON.parse(argsRaw) : {} } catch { parsed = {} }
+        // Show the tool call in the transcript so the operator can
+        // watch the agent's hands.
+        setTranscript(prev => [...prev, {
+          role: 'assistant',
+          text: `🔧 ${name}(${Object.keys(parsed).length > 0 ? Object.keys(parsed).join(', ') : ''})`,
+        }])
+        executeToolCall(callId, name, parsed)
+        break
+      }
+
       case 'response.done':
       case 'input_audio_buffer.speech_stopped':
       case 'input_audio_buffer.committed':
@@ -227,6 +273,57 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
         break
       }
     }
+  }
+
+  /**
+   * Execute a tool the model invoked, then send the result back to XAI
+   * and trigger a response continuation. POSTs to our authenticated
+   * /api/voice/tool-call endpoint — the browser never touches Shopify
+   * / CRM directly.
+   *
+   * Errors are stuffed into the function_call_output as a JSON error
+   * shape rather than thrown — the model handles "I couldn't do that"
+   * gracefully but a missing function_call_output stalls the entire
+   * conversation.
+   */
+  async function executeToolCall(callId: string, name: string, args: Record<string, unknown>) {
+    let resultJson = '{"error":"voice_tool_call_failed"}'
+    try {
+      if (!agentId) {
+        resultJson = JSON.stringify({ error: 'no_agent_context' })
+      } else {
+        const res = await fetch('/api/voice/tool-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId, tool: name, args }),
+        })
+        if (res.ok) {
+          const data = await res.json() as { result?: string; error?: string }
+          resultJson = data.result ?? JSON.stringify({ error: data.error || 'no_result' })
+        } else {
+          resultJson = JSON.stringify({ error: `tool_endpoint_${res.status}` })
+        }
+      }
+    } catch (err: any) {
+      resultJson = JSON.stringify({ error: err?.message || 'tool_fetch_failed' })
+    }
+
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+
+    // Send the function output, then ask the model to continue. Two
+    // separate messages because OpenAI/XAI's realtime API expects the
+    // function output to land as a conversation item, then a
+    // response.create to compose the next assistant turn.
+    ws.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'function_call_output',
+        call_id: callId,
+        output: resultJson,
+      },
+    }))
+    ws.send(JSON.stringify({ type: 'response.create' }))
   }
 
   function queueAudioDelta(b64: string) {
