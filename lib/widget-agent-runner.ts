@@ -23,6 +23,37 @@ import { resolveHandoverLink } from './handover-link'
 import { broadcast } from './widget-sse'
 import { WidgetAdapter } from './widget-adapter'
 
+/**
+ * Pure decision: should the AI agent generate a reply on this turn?
+ *
+ * Exported so it can be unit-tested without standing up the whole
+ * runner. The runner calls this immediately after resolving the
+ * conversation state record — if it returns false, broadcast a
+ * `agent_paused` event for transcript visibility and return.
+ *
+ * Reasons to NOT reply:
+ *   - convoStatus is 'handed_off' (operator clicked "Jump in" in the
+ *     inbox, or replied directly via the operator messages endpoint)
+ *   - convoStatus is 'ended' (operator marked resolved)
+ *   - state.state is 'PAUSED' (formal takeover via /api/.../takeover
+ *     or a stop-condition fired)
+ *
+ * Active + null state = treat as eligible (state record gets created
+ * lazily on the agent's first turn).
+ */
+export function shouldAgentReply(
+  convoStatus: string,
+  state: { state: string } | null,
+): { reply: true } | { reply: false; reason: string } {
+  if (convoStatus === 'handed_off' || convoStatus === 'ended') {
+    return { reply: false, reason: convoStatus }
+  }
+  if (state?.state === 'PAUSED') {
+    return { reply: false, reason: 'paused' }
+  }
+  return { reply: true }
+}
+
 export interface RunWidgetAgentParams {
   /**
    * The WidgetConversation row (with widget + visitor included). The
@@ -74,6 +105,36 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     await broadcast(convo.id, {
       type: 'agent_error',
       message: 'No agent is configured to handle this widget. Add a default agent in the widget settings.',
+    })
+    return
+  }
+
+  // ─── Human-takeover gate ────────────────────────────────────────
+  // Two state machines can both put the agent on pause; the bug
+  // operators kept hitting was that the runner only gated on one:
+  //
+  //   1. WidgetConversation.status === 'handed_off' | 'ended'
+  //      Set when an operator clicks "Jump in" in the inbox or hits
+  //      the resolve button. This is the canonical UI-visible state
+  //      that drives the inbox's "Taken over" badge.
+  //
+  //   2. ConversationStateRecord.state === 'PAUSED'
+  //      Set by /api/workspaces/[id]/takeover (formal takeover) and
+  //      by stop-conditions firing. Per-agent-per-contact, separate
+  //      from the widget conversation row.
+  //
+  // Either should silence the AI. We resolve both BEFORE the typing
+  // broadcast so the widget never shows a typing indicator that
+  // never resolves.
+  const widgetLocationId = `widget:${convo.widgetId}`
+  const widgetContactId = `visitor:${convo.visitorId}`
+  const state = await getOrCreateConversationState(agent.id, widgetLocationId, widgetContactId, convo.id).catch(() => null)
+
+  const decision = shouldAgentReply(convo.status, state)
+  if (!decision.reply) {
+    await broadcast(convo.id, {
+      type: 'agent_paused',
+      reason: decision.reason === 'paused' ? (state?.pauseReason || 'paused') : decision.reason,
     })
     return
   }
@@ -148,9 +209,8 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     inner,
   })
 
-  const widgetLocationId = `widget:${convo.widgetId}`
-  const widgetContactId = `visitor:${convo.visitorId}`
-  await getOrCreateConversationState(agent.id, widgetLocationId, widgetContactId, convo.id).catch(() => null)
+  // state + widgetLocationId / widgetContactId already resolved above
+  // for the pause-gate. Just bump the message counter here.
   await incrementMessageCount(agent.id, widgetContactId).catch(() => null)
 
   let result: Awaited<ReturnType<typeof runAgent>> | null = null
