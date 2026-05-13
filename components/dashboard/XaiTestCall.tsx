@@ -105,6 +105,18 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
         wsUrl: string
         tools?: RealtimeTool[]
       }
+      // Diagnostic: if this is 0 the agent's enabledTools doesn't
+      // include any voice-safe tools (most likely cause: the PR A
+      // backfill SQL hasn't been run for existing agents, so Shopify
+      // tools aren't on the agent yet). Surface it.
+      const toolCount = tools?.length ?? 0
+      console.log(`[voice] client-secret returned ${toolCount} tool(s):`, tools?.map(t => t.name) ?? [])
+      if (toolCount === 0) {
+        setTranscript(prev => [...prev, {
+          role: 'assistant',
+          text: '⚠️ No tools enabled for this agent — agent will reply without live data access. Run the PR A backfill SQL or enable Shopify tools in Agent → Tools.',
+        }])
+      }
 
       // 2. Open WebSocket. XAI takes the token via a subprotocol prefixed
       //    `xai-client-secret.` — browsers don't allow custom headers on WS.
@@ -213,7 +225,25 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
 
     switch (msg.type) {
       case 'session.created':
-      case 'session.updated':
+        console.log('[voice] session.created — server confirmed connection')
+        break
+      case 'session.updated': {
+        // Critical diagnostic: log the tool count XAI accepted. If our
+        // session.update had tools but this comes back with none, XAI
+        // is silently dropping them — that's the "rejected the tool
+        // shape" failure mode, and we fall back to the hybrid
+        // STT+Claude+TTS architecture.
+        const acceptedTools = msg.session?.tools as RealtimeTool[] | undefined
+        const n = Array.isArray(acceptedTools) ? acceptedTools.length : 0
+        console.log(`[voice] session.updated — XAI accepted ${n} tool(s):`, acceptedTools?.map((t: RealtimeTool) => t.name) ?? [])
+        if (n === 0) {
+          setTranscript(prev => [...prev, {
+            role: 'assistant',
+            text: '⚠️ XAI accepted the session with 0 tools. Either we sent none, or XAI silently dropped them.',
+          }])
+        }
+        break
+      }
       case 'conversation.created':
       case 'response.created':
       case 'response.output_item.added':
@@ -269,9 +299,20 @@ export default function XaiTestCall({ voiceId, agentName, systemPrompt, firstMes
         break
 
       case 'error': {
-        setErrorMsg(msg.error?.message ?? 'XAI realtime error')
+        const errText = msg.error?.message ?? JSON.stringify(msg.error) ?? 'XAI realtime error'
+        console.error('[voice] error event:', msg.error)
+        setErrorMsg(errText)
+        // Also drop in the transcript so it's visible alongside the
+        // conversation rather than just in a tiny line below.
+        setTranscript(prev => [...prev, { role: 'assistant', text: `❌ ${errText}` }])
         break
       }
+      default:
+        // Surface unrecognised events to the console with a [voice]
+        // prefix so we can spot tool-call-related event names we
+        // haven't wired up yet (XAI's docs are sparse on realtime
+        // function-calling event types).
+        console.log('[voice] unhandled event:', msg.type, msg)
     }
   }
 
