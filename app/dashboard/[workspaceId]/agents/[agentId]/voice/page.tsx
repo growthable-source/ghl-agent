@@ -630,17 +630,38 @@ export default function VoicePage() {
         </div>
 
         {/* ── Voice tuning ── */}
+        {/*
+          Stability / Similarity / Style are 11Labs-specific parameters and
+          only get applied on the Vapi path (which uses 11Labs underneath).
+          XAI's realtime API doesn't accept any tuning parameters today —
+          its session.update only takes voice id + audio format. So we
+          show the sliders disabled with a clear note when the workspace
+          is on XAI, rather than letting users drag them and wonder why
+          nothing changes.
+        */}
         <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice Tuning</p>
-          <SliderField label="Speed" desc="How fast the agent speaks. 1.0 is normal." value={config.speed}
-            onChange={v => setConfig(c => ({ ...c, speed: v }))} min={0.5} max={2.0} step={0.05}
-            format={v => `${v.toFixed(2)}x`} />
-          <SliderField label="Stability" desc="Higher = more consistent, lower = more expressive and varied." value={config.stability}
-            onChange={v => setConfig(c => ({ ...c, stability: v }))} />
-          <SliderField label="Clarity + Similarity" desc="Higher = closer to original voice, slightly more latency." value={config.similarityBoost}
-            onChange={v => setConfig(c => ({ ...c, similarityBoost: v }))} />
-          <SliderField label="Style Exaggeration" desc="Amplifies the voice style. 0 is neutral. Higher values add more character." value={config.style}
-            onChange={v => setConfig(c => ({ ...c, style: v }))} />
+          {config.ttsProvider === 'xai' && (
+            <div
+              className="rounded-lg border px-3 py-2 text-xs"
+              style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
+            >
+              These settings only apply to <strong>11Labs</strong> voices (via Vapi). XAI voices use the model&apos;s default delivery — switch to a Vapi voice in the provider picker above to use these controls.
+            </div>
+          )}
+          <fieldset disabled={config.ttsProvider === 'xai'} className={config.ttsProvider === 'xai' ? 'opacity-50 pointer-events-none' : ''}>
+            <div className="space-y-4">
+              <SliderField label="Speed" desc="How fast the agent speaks. 1.0 is normal." value={config.speed}
+                onChange={v => setConfig(c => ({ ...c, speed: v }))} min={0.5} max={2.0} step={0.05}
+                format={v => `${v.toFixed(2)}x`} />
+              <SliderField label="Stability" desc="Higher = more consistent, lower = more expressive and varied." value={config.stability}
+                onChange={v => setConfig(c => ({ ...c, stability: v }))} />
+              <SliderField label="Clarity + Similarity" desc="Higher = closer to original voice, slightly more latency." value={config.similarityBoost}
+                onChange={v => setConfig(c => ({ ...c, similarityBoost: v }))} />
+              <SliderField label="Style Exaggeration" desc="Amplifies the voice style. 0 is neutral. Higher values add more character." value={config.style}
+                onChange={v => setConfig(c => ({ ...c, style: v }))} />
+            </div>
+          </fieldset>
         </div>
 
         {/* ── Messages ── */}
