@@ -247,16 +247,14 @@ export default function XaiTestCall({ voiceId, agentName, firstMessage, agentId 
   }
 
   /**
-   * Send the user's transcript to /api/voice/agent-turn and consume the
-   * streaming NDJSON response. The server streams events as Claude
-   * generates: tool_call hits, reply_delta text tokens, and audio
-   * chunks (PCM16 24kHz) one sentence at a time. Each audio chunk
-   * lands in the playhead queue immediately, so playback starts
-   * before Claude finishes generating.
+   * Send the user's transcript to /api/voice/agent-turn. The server
+   * runs Claude with the agent's full tool catalogue (Shopify / CRM /
+   * etc.), generates a reply, runs it through XAI batch TTS, and
+   * returns audio bytes. We queue the audio for playback + render
+   * the reply + tool calls in the transcript.
    */
   async function runAgentTurn(userText: string) {
     turnInFlightRef.current = true
-    let replyAccum = ''
     try {
       const res = await fetch('/api/voice/agent-turn', {
         method: 'POST',
@@ -268,41 +266,43 @@ export default function XaiTestCall({ voiceId, agentName, firstMessage, agentId 
           history: historyRef.current,
         }),
       })
-      if (!res.ok || !res.body) {
+      if (!res.ok) {
         const errBody = await res.text().catch(() => '')
         throw new Error(`agent-turn HTTP ${res.status}: ${errBody.slice(0, 200)}`)
       }
+      const { reply, audioBase64, mimeType, toolCalls } = await res.json() as {
+        reply: string
+        audioBase64: string
+        mimeType: string
+        toolCalls: { name: string; ms: number }[]
+      }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        // NDJSON: events are newline-terminated. Parse complete lines,
-        // keep the (possibly partial) trailing fragment for the next
-        // read.
-        let nl: number
-        while ((nl = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, nl).trim()
-          buf = buf.slice(nl + 1)
-          if (!line) continue
-          try {
-            const ev = JSON.parse(line)
-            replyAccum = handleStreamEvent(ev, replyAccum)
-          } catch (err) {
-            console.warn('[voice] bad stream event:', err, line)
-          }
+      // Surface tool calls inline in the transcript so the operator
+      // sees the agent's hands moving (which was the missing signal
+      // last time around).
+      if (Array.isArray(toolCalls)) {
+        for (const tc of toolCalls) {
+          setTranscript(prev => [...prev, {
+            role: 'assistant',
+            text: `🔧 ${tc.name} · ${tc.ms}ms`,
+          }])
         }
       }
-      // Save the full reply (accumulated from reply_delta events) into
-      // history so the next turn has continuity.
+
+      appendAssistant(reply)
+      currentAssistantLineRef.current = null
+
+      // Maintain rolling history for the next turn so Claude sees
+      // continuity. Keep last 20 turns; the server caps internally too.
       historyRef.current = [
         ...historyRef.current,
         { role: 'user' as const, content: userText },
-        { role: 'assistant' as const, content: replyAccum.trim() },
+        { role: 'assistant' as const, content: reply },
       ].slice(-20)
+
+      if (audioBase64 && mimeType) {
+        await queueMp3Reply(audioBase64)
+      }
     } catch (err: any) {
       console.error('[voice] agent turn failed:', err)
       setTranscript(prev => [...prev, { role: 'assistant', text: `❌ ${err?.message ?? 'agent turn failed'}` }])
@@ -312,44 +312,9 @@ export default function XaiTestCall({ voiceId, agentName, firstMessage, agentId 
   }
 
   /**
-   * Handle one NDJSON event from /api/voice/agent-turn or /api/voice/tts.
-   * Returns the new value of replyAccum after processing.
-   */
-  function handleStreamEvent(ev: { type: string; [k: string]: unknown }, replyAccum: string): string {
-    switch (ev.type) {
-      case 'tool_call':
-        setTranscript(prev => [...prev, {
-          role: 'assistant',
-          text: `🔧 ${ev.name as string} · ${ev.ms as number}ms`,
-        }])
-        // Tool calls break up the assistant bubble — start a fresh one
-        // for any text that follows.
-        currentAssistantLineRef.current = null
-        return replyAccum
-      case 'reply_delta':
-        appendAssistant(ev.text as string)
-        return replyAccum + (ev.text as string)
-      case 'audio':
-        queuePcm16Chunk(ev.b64 as string)
-        return replyAccum
-      case 'done':
-        currentAssistantLineRef.current = null
-        return replyAccum
-      case 'error': {
-        const m = ev.message as string
-        setErrorMsg(m)
-        setTranscript(prev => [...prev, { role: 'assistant', text: `❌ ${m}` }])
-        return replyAccum
-      }
-      default:
-        console.log('[voice] unknown stream event:', ev)
-        return replyAccum
-    }
-  }
-
-  /**
-   * Play the configured first message via /api/voice/tts. Same NDJSON
-   * stream contract as agent-turn — reuse the same event handler.
+   * Play the configured first message via /api/voice/tts (skips
+   * Claude — it's just static text). Doesn't update history; the
+   * model doesn't need to see its own greeting as context.
    */
   async function speakAssistantReply(text: string, skipHistory: boolean) {
     try {
@@ -363,51 +328,25 @@ export default function XaiTestCall({ voiceId, agentName, firstMessage, agentId 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voiceId }),
       })
-      if (!res.ok || !res.body) return
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        let nl: number
-        while ((nl = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, nl).trim()
-          buf = buf.slice(nl + 1)
-          if (!line) continue
-          try { handleStreamEvent(JSON.parse(line), '') } catch { /* ignore */ }
-        }
-      }
+      if (!res.ok) return
+      const { audioBase64, mimeType } = await res.json() as { audioBase64: string; mimeType: string }
+      if (audioBase64 && mimeType) await queueMp3Reply(audioBase64)
     } catch (err) {
       console.warn('[voice] greeting TTS failed:', err)
     }
   }
 
   /**
-   * Decode a base64 PCM16 24kHz chunk and queue it into the audio
-   * context. Each chunk plays immediately after the previous one
-   * finishes, so the agent's reply sounds like a continuous voice
-   * even though it's stitched from many TTS calls.
-   *
-   * PCM16 chunks are sample-aligned (every 2 bytes = 1 sample) so they
-   * concatenate cleanly without framing logic — that's why we pick
-   * PCM over MP3 for the streaming path despite the larger payload.
+   * Decode an MP3 reply (base64) into the audio context and queue it
+   * for sequential playback. Uses the same playheadRef approach as
+   * the realtime PCM path so concurrent replies don't overlap.
    */
-  function queuePcm16Chunk(b64: string): void {
+  async function queueMp3Reply(b64: string): Promise<void> {
     const ctx = audioCtxRef.current
     if (!ctx) return
     try {
-      const binary = atob(b64)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-      const pcm16 = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2)
-      const float32 = new Float32Array(pcm16.length)
-      for (let i = 0; i < pcm16.length; i++) {
-        float32[i] = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff)
-      }
-      const buffer = ctx.createBuffer(1, float32.length, SAMPLE_RATE)
-      buffer.getChannelData(0).set(float32)
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+      const buffer = await ctx.decodeAudioData(bytes.buffer.slice(0) as ArrayBuffer)
       const src = ctx.createBufferSource()
       src.buffer = buffer
       src.connect(ctx.destination)
@@ -415,7 +354,7 @@ export default function XaiTestCall({ voiceId, agentName, firstMessage, agentId 
       src.start(startAt)
       playheadRef.current = startAt + buffer.duration
     } catch (err) {
-      console.warn('[voice] PCM16 decode failed:', err)
+      console.warn('[voice] mp3 decode failed:', err)
     }
   }
 
