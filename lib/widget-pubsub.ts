@@ -214,6 +214,53 @@ export type Subscription = {
   close: () => Promise<void>
 }
 
+/**
+ * Diagnostic snapshot of the cross-instance pubsub state. Surfaced via
+ * /api/admin/pubsub-status so operators can verify whether realtime
+ * delivery is healthy or silently degraded to in-memory-only.
+ *
+ * `state === 'unavailable'` means cross-instance fan-out is OFF —
+ * publishes from one Vercel function don't reach subscribers on a
+ * different function. On Vercel serverless that's most messages.
+ * The fix is environment, not code: set POSTGRES_URL_SESSION_POOLER
+ * to the Supabase Session-mode pooler URL.
+ */
+export function getPubsubStatus(): {
+  state: 'unknown' | 'available' | 'unavailable'
+  inMemorySubscriberCount: number
+  failedAtMsAgo: number | null
+  connectionStringHost: string | null
+  hint: string | null
+} {
+  let total = 0
+  for (const set of subscribers.values()) total += set.size
+
+  const cs = directConnectionString()
+  // Surface ONLY the host (not credentials) so the diagnostic is safe
+  // to expose. Parsing manually avoids the URL constructor's quirks
+  // around the user:pass@host:port format.
+  let host: string | null = null
+  try {
+    const m = cs.match(/@([^/?]+)/)
+    host = m?.[1] ?? null
+  } catch {}
+
+  let hint: string | null = null
+  if (pubsubState === 'unavailable') {
+    hint = 'Cross-instance pubsub is OFF. Set POSTGRES_URL_SESSION_POOLER to the Supabase Session-mode pooler URL (Supabase dashboard → Project Settings → Database → Connection pooling → Session, port 5432). Without this, SSE events broadcast on one Vercel function are not delivered to subscribers on a different function — symptoms: widget agent replies stop appearing, inbox doesn\'t show messages live, resolve/jump-in doesn\'t propagate without a refresh.'
+  } else if (pubsubState === 'unknown') {
+    hint = 'No subscribers have connected yet — open any conversation to trigger a connection attempt and re-check.'
+  }
+
+  return {
+    state: pubsubState,
+    inMemorySubscriberCount: total,
+    failedAtMsAgo: pubsubFailedAt ? Date.now() - pubsubFailedAt : null,
+    connectionStringHost: host,
+    hint,
+  }
+}
+
 export async function subscribe(
   conversationId: string,
   handler: Handler,
