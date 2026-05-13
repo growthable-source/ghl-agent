@@ -64,6 +64,28 @@ export class XaiVoiceAdapter implements VoiceAdapter {
   }
 
   async speak(text: string, voiceId: string, opts?: SpeakOpts): Promise<ArrayBuffer> {
+    const res = await this.callTts(text, voiceId, opts)
+    return res.arrayBuffer()
+  }
+
+  /**
+   * Streaming variant. Returns the raw response body as a ReadableStream
+   * of bytes — the caller decides how to chunk and re-frame them.
+   *
+   * Used by the voice agent's hybrid pipeline so audio plays the moment
+   * XAI starts emitting samples, instead of waiting for the full file.
+   * Pair with `codec: 'pcm'` so chunk boundaries are sample-aligned
+   * (MP3 frames are variable-length and need framing logic to split).
+   */
+  async speakStream(text: string, voiceId: string, opts?: SpeakOpts): Promise<ReadableStream<Uint8Array>> {
+    const res = await this.callTts(text, voiceId, opts)
+    if (!res.body) {
+      throw new Error('XAI /v1/tts returned no response body')
+    }
+    return res.body
+  }
+
+  private async callTts(text: string, voiceId: string, opts?: SpeakOpts): Promise<Response> {
     const res = await fetch('https://api.x.ai/v1/tts', {
       method: 'POST',
       headers: {
@@ -87,7 +109,7 @@ export class XaiVoiceAdapter implements VoiceAdapter {
       const body = await res.text().catch(() => '')
       throw new Error(`XAI /v1/tts failed (${res.status}): ${body.slice(0, 200)}`)
     }
-    return res.arrayBuffer()
+    return res
   }
 
   async getRealtimeToken(opts?: { expiresInSeconds?: number }): Promise<RealtimeToken> {
