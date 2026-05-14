@@ -56,6 +56,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (existing) {
     return NextResponse.json({
       conversationId: existing.id,
+      status: existing.status,
       messages: existing.messages.map(m => ({
         id: m.id, role: m.role, content: m.content, kind: m.kind, createdAt: m.createdAt.toISOString(),
       })),
@@ -65,5 +66,5 @@ export async function POST(req: NextRequest, { params }: Params) {
   const conv = await db.widgetConversation.create({
     data: { widgetId, visitorId, agentId: v.widget.defaultAgentId },
   })
-  return NextResponse.json({ conversationId: conv.id, messages: [] }, { headers })
+  return NextResponse.json({ conversationId: conv.id, status: conv.status, messages: [] }, { headers })
 }

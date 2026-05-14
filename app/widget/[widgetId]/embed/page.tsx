@@ -42,6 +42,12 @@ export default function WidgetEmbedPage() {
   const [config, setConfig] = useState<WidgetConfig | null>(null)
   const [visitorId, setVisitorId] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
+  // 'active' = AI driving. 'handed_off' = operator took over (visitor
+  // still types; AI just doesn't reply). 'ended' = operator marked
+  // resolved → we disable input + show closure banner + auto-prompt
+  // CSAT. Defaults to 'active' so a fresh widget without server data
+  // doesn't surface a stale "ended" state on first render.
+  const [conversationStatus, setConversationStatus] = useState<'active' | 'handed_off' | 'ended'>('active')
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -158,6 +164,9 @@ export default function WidgetEmbedPage() {
       .then(data => {
         if (data.error) { setError(data.error); return }
         setConversationId(data.conversationId)
+        if (data.status === 'active' || data.status === 'handed_off' || data.status === 'ended') {
+          setConversationStatus(data.status)
+        }
         // Seed messages with any existing + welcome
         const existing: Msg[] = data.messages || []
         if (existing.length === 0 && config?.welcomeMessage) {
@@ -244,6 +253,26 @@ export default function WidgetEmbedPage() {
         setTyping(!!data.isTyping)
       } else if (data.type === 'agent_error') {
         setMessages(m => [...m, { id: 'err-' + Date.now(), role: 'system', content: data.message || 'Something went wrong.' }])
+      } else if (data.type === 'status_changed') {
+        // Operator changed the conversation status. 'ended' → show
+        // closure banner + auto-prompt CSAT (if not already shown).
+        // 'handed_off' → quiet update (we don't currently show a
+        // visible cue for "operator took over"; visitor experiences
+        // it as the AI going silent and a human typing). 'active'
+        // → resume normal mode (operator resumed AI after takeover).
+        const next = data.status as 'active' | 'handed_off' | 'ended'
+        setConversationStatus(next)
+        if (next === 'ended') {
+          setMessages(m => [...m, {
+            id: 'sys-ended-' + Date.now(),
+            role: 'system',
+            content: 'This chat has been closed by our team. Thanks for reaching out!',
+          }])
+          // Auto-prompt rating if the visitor hasn't already submitted one.
+          // The CSAT modal de-dupes via setCsatStatus and a short
+          // success-then-close timer (line 546).
+          if (csatRating < 1) setCsatOpen(true)
+        }
       }
     }
 
@@ -769,7 +798,50 @@ export default function WidgetEmbedPage() {
             )}
           </div>
 
-          {/* Composer */}
+          {/* Closure banner — shown when operator marked the chat
+              resolved (status='ended'). Replaces the composer so the
+              visitor doesn't try to send into a dead thread. Includes
+              a way to start a new chat. */}
+          {conversationStatus === 'ended' ? (
+            <div className="p-4 border-t border-zinc-800 bg-zinc-900/40">
+              <div className="rounded-lg border px-3 py-3 text-center"
+                style={{ borderColor: 'var(--border, #3f3f46)', background: 'var(--surface, #18181b)' }}>
+                <p className="text-sm font-medium text-zinc-200 mb-1">This chat has ended</p>
+                <p className="text-[11px] text-zinc-500 mb-3">
+                  Thanks for reaching out. Need more help?
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCsatStatus(null)
+                      setCsatOpen(true)
+                    }}
+                    className="text-[11px] font-medium px-3 py-1.5 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                  >
+                    Rate this chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Start a new conversation — clear visitor's old
+                      // conversation reference. The next visitor turn
+                      // will POST /conversations and get a fresh row
+                      // since the previous one is 'ended'.
+                      setConversationId(null)
+                      setConversationStatus('active')
+                      setMessages([])
+                    }}
+                    className="text-[11px] font-medium px-3 py-1.5 rounded text-white transition-opacity hover:opacity-90"
+                    style={{ background: accent }}
+                  >
+                    Start new chat
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+          /* Composer */
           <form onSubmit={sendMessage} className="p-3 border-t border-zinc-800 bg-zinc-900/40">
             {uploadError && (
               <div className="mb-2 p-2 rounded border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
@@ -874,6 +946,7 @@ export default function WidgetEmbedPage() {
             </div>
             <p className="text-[9px] text-zinc-600 text-center mt-2">Powered by Voxility</p>
           </form>
+          )}
         </>
       )}
 
