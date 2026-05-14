@@ -53,6 +53,11 @@ interface Row {
 // IA; it's accessible via the brand picker / search if needed.
 type StatusTab = 'all' | 'unread' | 'needs_human' | 'ai_handled'
 type AssignTab = 'all' | 'mine' | 'unassigned'
+// CSAT filter — 'any' = no filter, 'rated' = any 1-5 rating, '1'..'5'
+// = exact star count, 'unrated' = closed/handed-off chats with no
+// rating recorded. Kept as strings so it round-trips a URL param
+// cleanly if we later want to deep-link.
+type RatingFilter = 'any' | 'rated' | '1' | '2' | '3' | '4' | '5' | 'unrated'
 
 function isUnreadRow(r: { status: string; lastMessage?: { role: string } | null }): boolean {
   return r.lastMessage?.role === 'visitor' && r.status !== 'ended'
@@ -90,6 +95,10 @@ export default function InboxPage() {
   const [notMigrated, setNotMigrated] = useState(false)
   const [tab, setTab] = useState<StatusTab>('all')
   const [assignTab, setAssignTab] = useState<AssignTab>('all')
+  // CSAT rating filter — applied client-side from the csatRating
+  // already on each row. Default 'any' = no filter so the inbox
+  // behaves exactly as before unless the operator explicitly narrows.
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('any')
   const [search, setSearch] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
   const [isAvailable, setIsAvailable] = useState<boolean>(true)
@@ -254,13 +263,19 @@ export default function InboxPage() {
     if (assignTab === 'mine' && meId) f = f.filter(r => r.assignedUserId === meId)
     else if (assignTab === 'unassigned') f = f.filter(r => !r.assignedUserId)
 
+    if (ratingFilter !== 'any') {
+      if (ratingFilter === 'rated') f = f.filter(r => typeof r.csatRating === 'number')
+      else if (ratingFilter === 'unrated') f = f.filter(r => r.csatRating === null || r.csatRating === undefined)
+      else f = f.filter(r => r.csatRating === Number(ratingFilter))
+    }
+
     // When `usingSearch` is true the server already applied brand +
-    // free-text filters. The status / assignment tabs are still
-    // client-side because they're cheap to flip and don't change the
-    // underlying result set semantically — operators expect them to
-    // narrow what's already on screen.
+    // free-text filters. The status / assignment / rating tabs are
+    // still client-side because they're cheap to flip and don't
+    // change the underlying result set semantically — operators
+    // expect them to narrow what's already on screen.
     return f
-  }, [rows, tab, assignTab, meId])
+  }, [rows, tab, assignTab, ratingFilter, meId])
 
   if (loading) return (
     <div className="flex-1 p-8">
@@ -464,6 +479,69 @@ export default function InboxPage() {
                   </>
                 )}
               </div>
+            </div>
+          )
+        })()}
+
+        {/* Rating filter — only renders once a single rated chat
+            exists, so workspaces that haven't started collecting
+            ratings aren't shown an empty UI. Counts compute from the
+            current row set. Click an already-active chip to clear. */}
+        {(() => {
+          const ratedCount = rows.filter(r => typeof r.csatRating === 'number').length
+          if (ratedCount === 0) return null
+          const counts = {
+            rated: ratedCount,
+            unrated: rows.length - ratedCount,
+            '5': rows.filter(r => r.csatRating === 5).length,
+            '4': rows.filter(r => r.csatRating === 4).length,
+            '3': rows.filter(r => r.csatRating === 3).length,
+            '2': rows.filter(r => r.csatRating === 2).length,
+            '1': rows.filter(r => r.csatRating === 1).length,
+          }
+          const chips: Array<{ id: RatingFilter; label: string; count?: number }> = [
+            { id: 'rated', label: 'Rated', count: counts.rated },
+            { id: '5', label: '5★', count: counts['5'] },
+            { id: '4', label: '4★', count: counts['4'] },
+            { id: '3', label: '3★', count: counts['3'] },
+            { id: '2', label: '2★', count: counts['2'] },
+            { id: '1', label: '1★', count: counts['1'] },
+            { id: 'unrated', label: 'Unrated', count: counts.unrated },
+          ]
+          return (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Rating</span>
+              {chips.map(c => {
+                const active = ratingFilter === c.id
+                const isLow = c.id === '1' || c.id === '2'
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setRatingFilter(prev => prev === c.id ? 'any' : c.id)}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors border"
+                    style={
+                      active
+                        ? isLow
+                          ? { background: 'var(--accent-red-bg)', color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }
+                          : { background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)', borderColor: 'var(--accent-amber)' }
+                        : { background: 'var(--surface)', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }
+                    }
+                  >
+                    {c.label}
+                    {typeof c.count === 'number' && (
+                      <span className="ml-1.5" style={{ color: active ? 'inherit' : 'var(--text-muted)' }}>{c.count}</span>
+                    )}
+                  </button>
+                )
+              })}
+              {ratingFilter !== 'any' && (
+                <button
+                  onClick={() => setRatingFilter('any')}
+                  className="text-[11px] text-zinc-400 hover:text-white underline decoration-zinc-700 hover:decoration-white"
+                >
+                  clear
+                </button>
+              )}
             </div>
           )
         })()}

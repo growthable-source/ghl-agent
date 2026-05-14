@@ -48,6 +48,11 @@ export default function WidgetEmbedPage() {
   // CSAT. Defaults to 'active' so a fresh widget without server data
   // doesn't surface a stale "ended" state on first render.
   const [conversationStatus, setConversationStatus] = useState<'active' | 'handed_off' | 'ended'>('active')
+  // Operator who's taken the chat. null = no human assigned yet (AI is
+  // driving). We show a "You're chatting with {name}" banner under the
+  // header whenever this is set, and inject a system message on the
+  // SSE event so the chat history reads naturally.
+  const [assignedHuman, setAssignedHuman] = useState<{ name: string; image: string | null } | null>(null)
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -155,10 +160,15 @@ export default function WidgetEmbedPage() {
   // Step 3: open/resume conversation
   useEffect(() => {
     if (!visitorId || !widgetId) return
+    // Capture WHERE the visitor started this chat. Frozen on the server
+    // at conversation-create time so operators see the original landing
+    // page even after the visitor has navigated elsewhere mid-chat.
+    const initiatedUrl = typeof window !== 'undefined' ? window.location.href : null
+    const initiatedTitle = typeof document !== 'undefined' ? (document.title || null) : null
     fetch(`/api/widget/${widgetId}/conversations?pk=${publicKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitorId }),
+      body: JSON.stringify({ visitorId, initiatedUrl, initiatedTitle }),
     })
       .then(r => r.json())
       .then(data => {
@@ -166,6 +176,14 @@ export default function WidgetEmbedPage() {
         setConversationId(data.conversationId)
         if (data.status === 'active' || data.status === 'handed_off' || data.status === 'ended') {
           setConversationStatus(data.status)
+        }
+        // Restore the "chatting with {name}" banner if a human had
+        // already taken the chat before this page load.
+        if (data.assignedUser && typeof data.assignedUser.name === 'string') {
+          setAssignedHuman({
+            name: data.assignedUser.name,
+            image: typeof data.assignedUser.image === 'string' ? data.assignedUser.image : null,
+          })
         }
         // Seed messages with any existing + welcome
         const existing: Msg[] = data.messages || []
@@ -253,6 +271,36 @@ export default function WidgetEmbedPage() {
         setTyping(!!data.isTyping)
       } else if (data.type === 'agent_error') {
         setMessages(m => [...m, { id: 'err-' + Date.now(), role: 'system', content: data.message || 'Something went wrong.' }])
+      } else if (data.type === 'assignment_changed') {
+        // An operator just picked up (or released) the chat. Server
+        // sends { assignedUserId, assigneeName, reason, at }. We don't
+        // care about the userId (visitors have no notion of internal
+        // user IDs) — we just want the display name + a system message
+        // so the chat history reads "Sam joined the chat".
+        const rawName = typeof data.assigneeName === 'string' ? data.assigneeName.trim() : ''
+        if (data.assignedUserId && rawName) {
+          // First-name only (with safe fallback to the full string when
+          // there's no whitespace). Matches what the POST endpoint does
+          // so the SSE-driven banner and the reload-driven banner show
+          // the same thing.
+          const display = rawName.split(/\s+/)[0]
+          setAssignedHuman(prev => {
+            if (prev && prev.name === display) return prev
+            // Only inject a system message when the name actually
+            // changed — re-broadcasts on reconnect should be silent.
+            setMessages(m => [...m, {
+              id: 'sys-assigned-' + Date.now(),
+              role: 'system',
+              content: `${display} from our team joined the chat.`,
+            }])
+            return { name: display, image: null }
+          })
+        } else if (!data.assignedUserId) {
+          // Unassigned (operator handed it back). Clear the banner;
+          // we don't message the visitor about it — the chat just
+          // returns to the AI / queue without UX noise.
+          setAssignedHuman(null)
+        }
       } else if (data.type === 'status_changed') {
         // Operator changed the conversation status. 'ended' → show
         // closure banner + auto-prompt CSAT (if not already shown).
@@ -710,6 +758,32 @@ export default function WidgetEmbedPage() {
           )}
         </div>
       </div>
+
+      {/* Assignee banner — shown when an operator has taken the chat.
+          Renders right under the header so the visitor knows they're
+          on a live human, not the AI. Disappears if the operator hands
+          it back to the queue. */}
+      {assignedHuman && (
+        <div className="px-4 py-2 border-b border-zinc-800 flex items-center gap-2.5"
+          style={{ background: `linear-gradient(90deg, ${accent}1f, ${accent}0a)` }}>
+          {assignedHuman.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={assignedHuman.image} alt="" className="w-6 h-6 rounded-full object-cover" />
+          ) : (
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold"
+              style={{ background: accent, color: '#fff' }}>
+              {assignedHuman.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <p className="text-[11px] flex-1 min-w-0 truncate">
+            <span className="font-semibold text-zinc-100">{assignedHuman.name}</span>
+            <span className="text-zinc-400"> from the team is here to help</span>
+          </p>
+          <span className="text-[10px] text-emerald-300 font-medium inline-flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> live
+          </span>
+        </div>
+      )}
 
       {networkOffline && (
         <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300 flex items-center justify-between">

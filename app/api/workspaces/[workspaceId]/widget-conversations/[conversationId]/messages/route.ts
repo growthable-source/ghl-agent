@@ -22,7 +22,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     convo = await db.widgetConversation.findFirst({
       where: { id: conversationId, widget: { workspaceId } },
       include: {
-        widget: { select: { id: true, name: true, primaryColor: true } },
+        widget: {
+          select: {
+            id: true, name: true, primaryColor: true,
+            // Brand is shown as a chip in the visitor sidebar; nullable
+            // because not every workspace has brands defined.
+            brand: { select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true } },
+          },
+        },
         visitor: { select: { id: true, name: true, email: true, phone: true, firstSeenAt: true, lastSeenAt: true } },
         messages: { orderBy: { createdAt: 'asc' } },
         assignedUser: { select: { id: true, name: true, email: true, image: true } },

@@ -35,7 +35,17 @@ interface Convo {
   csatSubmittedAt?: string | null
   visitorConversationCount?: number
   csatHistory?: Array<{ rating: number; submittedAt: string | null }>
-  widget: { id: string; name: string; primaryColor: string }
+  // Whitelabel brand the widget is tagged to. Null when the workspace
+  // isn't running multi-brand or the widget hasn't been tagged. Comes
+  // from widget.brand in the API response — we expose it on the top
+  // level so the visitor panel doesn't have to reach into widget.*.
+  brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null } | null
+  widget: { id: string; name: string; primaryColor: string; brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null } | null }
+  // Page the visitor was on when they first opened this chat. Frozen
+  // at create-time. Distinct from the visitor's currentUrl in the
+  // timeline (which keeps moving as they browse).
+  initiatedUrl?: string | null
+  initiatedTitle?: string | null
   visitor: { id: string; name: string | null; email: string | null; phone?: string | null; firstSeenAt: string; lastSeenAt?: string }
   messages: Message[]
   assignedUserId?: string | null
@@ -755,6 +765,52 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
               )}
             </div>
           </div>
+
+          {/* Brand chip — only renders when the widget is tagged. Lets
+              the operator confirm at a glance which client/brand the
+              chat is for without having to scroll back to the inbox row. */}
+          {convo.widget?.brand && (
+            <div className="mt-4 flex items-center gap-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+              {convo.widget.brand.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={convo.widget.brand.logoUrl} alt="" className="w-6 h-6 rounded object-cover flex-shrink-0" />
+              ) : (
+                <span
+                  className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0"
+                  style={{ background: convo.widget.brand.primaryColor || accent }}
+                >
+                  {convo.widget.brand.name.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Brand</p>
+                <p className="text-xs text-zinc-100 truncate">{convo.widget.brand.name}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Where the chat started — captured at create-time. Distinct
+              from "current page" in the timeline section below, which
+              moves as the visitor browses. */}
+          {convo.initiatedUrl && (
+            <div className="mt-3 p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-0.5">Started chat on</p>
+              {convo.initiatedTitle && (
+                <p className="text-xs font-medium text-white truncate" title={convo.initiatedTitle}>
+                  {convo.initiatedTitle}
+                </p>
+              )}
+              <a
+                href={convo.initiatedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-zinc-400 hover:text-white truncate block underline decoration-zinc-700 hover:decoration-white"
+              >
+                {prettyUrl(convo.initiatedUrl)}
+              </a>
+            </div>
+          )}
+
           <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
             <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
               <p className="text-zinc-500">First seen</p>

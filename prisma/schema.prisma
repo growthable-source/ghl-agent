@@ -1490,6 +1490,13 @@ model WidgetConversation {
   // by replying), "round_robin", "first_available". Useful in the inbox
   // and for debugging routing.
   assignmentReason String?
+  // Where on the host site the visitor first opened this chat. Captured
+  // at conversation-create time from the widget's window.location, then
+  // never updated — distinct from WidgetVisitor.currentUrl, which tracks
+  // the visitor as they browse. Operators use this to know "was this
+  // chat started on the pricing page or the docs?".
+  initiatedUrl     String?
+  initiatedTitle   String?
   createdAt        DateTime          @default(now())
   messages         WidgetMessage[]
   voiceCalls       WidgetVoiceCall[]
