@@ -734,14 +734,15 @@ export async function executeTool(
           where: { id: widgetConvId },
           data: { status: 'ended', lastMessageAt: new Date() },
         })
-        // Pause the deterministic state machine so any race-y follow-up
-        // turn doesn't push another reply into the (now closed) thread.
-        if (agentId) {
-          await prisma.conversationStateRecord.updateMany({
-            where: { agentId, state: 'ACTIVE' },
-            data: { state: 'PAUSED', pauseReason: 'Agent ended conversation', pausedAt: new Date() },
-          })
-        }
+        // Setting WidgetConversation.status = 'ended' is sufficient
+        // to gate the agent — runWidgetAgent's shouldAgentReply()
+        // refuses to reply on any 'ended' convo. We deliberately do
+        // NOT touch ConversationStateRecord here. An earlier version
+        // of this tool did `updateMany({ where: { agentId, state:
+        // 'ACTIVE' } })`, which paused EVERY active conversation for
+        // that agent across every visitor — one end_conversation call
+        // silenced the whole agent. Don't ever scope by agentId
+        // alone; that table is per-(agentId, contactId).
         // Broadcast so the widget swaps the composer for the closure
         // banner + auto-opens the CSAT prompt. Same event the operator
         // PATCH endpoint emits — the widget doesn't care who closed it.
