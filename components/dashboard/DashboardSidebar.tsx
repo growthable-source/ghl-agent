@@ -330,6 +330,7 @@ function SidebarBody() {
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Workspace</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
+                    {navLink(`/dashboard/${workspaceId}/settings/members`, 'Members')}
                     {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations', null, FEATURE_SHIP_DATES.integrations)}
                     {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
                     {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}

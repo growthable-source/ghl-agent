@@ -215,14 +215,19 @@ model WorkspaceInvite {
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   email       String
-  role        String    @default("member") // "admin" | "member"
+  role        String    @default("member") // "owner" | "admin" | "member" | "viewer"
   invitedBy   String // userId of inviter
+  // Single-use opaque token the invitee follows to accept. Generated
+  // server-side on create + resend so a leaked invite from an old
+  // expiry can't be reused once we re-issue.
+  token       String    @unique @default(cuid())
   acceptedAt  DateTime?
   expiresAt   DateTime
   createdAt   DateTime  @default(now())
 
   @@unique([workspaceId, email])
   @@index([email])
+  @@index([token])
 }
 
 enum ConversationState {
