@@ -296,12 +296,41 @@ export default function WidgetEditorPage() {
                   </Link>
                 </div>
               </Field>
-              <Field label={isCallType ? 'Voice agent' : 'Default agent'}>
+              <Field
+                label={isCallType ? 'Voice agent' : 'Default agent'}
+                helper={
+                  isCallType
+                    ? 'Which agent answers calls placed through this widget.'
+                    : 'This agent handles every visitor message — no routing rules required. The widget works as a dedicated channel for whichever agent you pick, with no GHL connection needed.'
+                }
+              >
                 <select value={widget.defaultAgentId || ''} onChange={e => update('defaultAgentId', e.target.value || null as any)}
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white">
                   <option value="">— select an agent —</option>
                   {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
+                {!widget.defaultAgentId && !isCallType && (
+                  // Banner: empty default-agent is the #1 silent failure
+                  // mode — widget appears installed, visitors send
+                  // messages, but the AI never replies because there's
+                  // no agent to run. Make it visually impossible to
+                  // miss while configuring the widget.
+                  <div
+                    className="mt-2 rounded-lg border px-3 py-2 text-xs"
+                    style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+                  >
+                    <p className="font-semibold mb-0.5">No agent connected</p>
+                    <p style={{ color: 'var(--text-secondary)' }}>
+                      Visitors can open this widget but nothing will reply. Pick an agent above to deploy.{' '}
+                      {agents.length === 0 && (
+                        <>
+                          You don&apos;t have any agents yet —{' '}
+                          <Link href={`/dashboard/${workspaceId}/agents`} className="underline">create one first</Link>.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                )}
               </Field>
               <Field label="Allowed domains" helper="One per line. Use *.example.com for subdomains. Leave blank to allow all (the hosted page works regardless).">
                 <textarea

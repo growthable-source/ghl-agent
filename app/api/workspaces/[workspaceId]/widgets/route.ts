@@ -132,11 +132,36 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const type = body.type === 'click_to_call' ? 'click_to_call' : 'chat'
+
+  // Auto-pick defaultAgentId when the workspace has exactly one active
+  // agent and the caller didn't specify one. Previously every new
+  // widget shipped with defaultAgentId=null, which meant a fresh
+  // widget on a fresh workspace appeared to work but nothing replied
+  // — visitors saw the widget, sent a message, agent never spoke.
+  // This auto-pick path makes "Create widget" a single-click deploy
+  // for the common no-GHL workflow. If the workspace has 0 or 2+
+  // agents we leave it null (intentional choice to make).
+  let defaultAgentId: string | null = body.defaultAgentId || null
+  if (!defaultAgentId) {
+    try {
+      const activeAgents = await db.agent.findMany({
+        where: { workspaceId, isActive: true },
+        select: { id: true },
+        take: 2,
+      })
+      if (activeAgents.length === 1) {
+        defaultAgentId = activeAgents[0].id
+      }
+    } catch {
+      // Non-fatal — widget creates without an agent. UI will banner.
+    }
+  }
+
   const baseData = {
     workspaceId,
     name,
     publicKey: generatePublicKey(),
-    defaultAgentId: body.defaultAgentId || null,
+    defaultAgentId,
     voiceEnabled: type === 'click_to_call',
   }
 
