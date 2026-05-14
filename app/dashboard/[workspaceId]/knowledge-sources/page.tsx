@@ -14,8 +14,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useParams } from 'next/navigation'
 
-interface Workspace { id: string; name: string }
 interface Domain {
   id: string
   name: string
@@ -74,8 +74,13 @@ interface SourceTypeCard {
 type Tab = 'sources' | 'taxonomy' | 'history'
 
 export default function KnowledgePipelinePage() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  // workspaceId is already in the URL since this page lives under
+  // /dashboard/[workspaceId]/knowledge-sources — no need to fetch the
+  // workspace list or render a switcher. The sidebar already scopes
+  // the user to one workspace at a time.
+  const params = useParams()
+  const workspaceId = params.workspaceId as string
+
   const [domains, setDomains] = useState<Domain[]>([])
   const [domainId, setDomainId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('sources')
@@ -95,16 +100,13 @@ export default function KnowledgePipelinePage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/workspaces').then(r => r.json()).catch(() => ({})),
-      fetch('/api/admin/domain-templates').then(r => r.json()).catch(() => ({})),
-    ]).then(([wsData, tplData]) => {
-      const list: Workspace[] = (wsData.workspaces ?? []).map((w: any) => ({ id: w.id, name: w.name }))
-      setWorkspaces(list)
-      if (list.length) setWorkspaceId(list[0].id)
-      setTemplates(tplData.domainTemplates ?? [])
-      setSourceTypeCards(tplData.sourceTypeCards ?? [])
-    })
+    fetch('/api/admin/domain-templates')
+      .then(r => r.json())
+      .then(tplData => {
+        setTemplates(tplData.domainTemplates ?? [])
+        setSourceTypeCards(tplData.sourceTypeCards ?? [])
+      })
+      .catch(() => {})
   }, [])
 
   const loadDomains = useCallback(async () => {
@@ -192,16 +194,9 @@ export default function KnowledgePipelinePage() {
               Connect your help center, docs, or PDFs. Your AI reads them automatically.
             </p>
           </div>
-          {workspaces.length > 1 && (
-            <select
-              value={workspaceId ?? ''}
-              onChange={e => { setWorkspaceId(e.target.value); setDomainId(null) }}
-              className="text-sm rounded-lg px-3 py-2"
-              style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
-            >
-              {workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          )}
+          {/* Workspace switcher removed — page is scoped to the
+              workspace in the URL. The sidebar handles workspace
+              navigation. */}
         </div>
 
         {domains.length === 0 ? (
@@ -275,7 +270,7 @@ export default function KnowledgePipelinePage() {
         )}
       </div>
 
-      {createDomainOpen && workspaceId && (
+      {createDomainOpen && (
         <CreateDomainModal
           templates={templates}
           workspaceId={workspaceId}

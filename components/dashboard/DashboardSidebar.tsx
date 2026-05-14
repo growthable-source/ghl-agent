@@ -311,6 +311,7 @@ function SidebarBody() {
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Library</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
+                    {navLink(`/dashboard/${workspaceId}/knowledge-sources`, '↳ Sources & ingestion')}
                     {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                     {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
                     {navLink(`/dashboard/${workspaceId}/settings/brand-groups`, '↳ Priority groups')}
