@@ -37,9 +37,19 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
   if (!visitor) return NextResponse.json({ error: 'Visitor not found' }, { status: 404, headers })
 
-  // Reuse the most recent active conversation if any
+  // Reuse the most recent conversation that hasn't been explicitly
+  // ended. Both 'active' (AI is driving) and 'handed_off' (an operator
+  // jumped in) are valid threads the visitor should resume on refresh —
+  // we used to filter on status='active' only, which meant the moment
+  // an operator clicked "Jump in" in the inbox the widget lost its
+  // reference on the next page reload and silently spun up a fresh
+  // empty thread. The operator's reply still landed on the original
+  // (handed_off) row, so visitors saw nothing until full reset.
+  //
+  // 'ended' stays excluded — that's the operator marking resolved /
+  // closing the thread, where a fresh thread on refresh IS the intent.
   const existing = await db.widgetConversation.findFirst({
-    where: { widgetId, visitorId, status: 'active' },
+    where: { widgetId, visitorId, status: { in: ['active', 'handed_off'] } },
     orderBy: { lastMessageAt: 'desc' },
     include: { messages: { orderBy: { createdAt: 'asc' }, take: 50 } },
   })
