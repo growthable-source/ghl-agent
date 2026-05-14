@@ -313,6 +313,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
                     {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                     {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
+                    {navLink(`/dashboard/${workspaceId}/settings/brand-groups`, '↳ Priority groups')}
                     {/* Widgets promoted to a primary nav item — see the
                         navItemPrimary block at the top. The Library entry
                         used to live here and was buried two levels deep

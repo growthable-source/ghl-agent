@@ -132,6 +132,7 @@ model Workspace {
   knowledgeEntries     KnowledgeEntry[]      @relation("WorkspaceKnowledge")
   knowledgeCollections KnowledgeCollection[] @relation("WorkspaceKnowledgeCollections")
   brands               Brand[]               @relation("WorkspaceBrands")
+  brandGroups          BrandGroup[]          @relation("WorkspaceBrandGroups")
   portals              Portal[]              @relation("WorkspacePortals")
 
   // ─── Native (built-in) CRM ───
@@ -1362,6 +1363,33 @@ model WidgetFolder {
 // Nullable on the things it tags — a workspace that doesn't run a
 // whitelabel agency has no brands and the inbox just shows everything
 // without a brand filter.
+// Named priority bucket for one or more brands. Operators sort brands
+// into groups + give each group a priority number; widgets tagged to
+// higher-priority brands jump the inbox queue when humans are needed.
+// "All else equally" is the natural fall-through for brands that
+// aren't in any group — the inbox treats them as the lowest tier.
+model BrandGroup {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation("WorkspaceBrandGroups", fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // Lower number = higher priority. 0 = top of queue. Two groups can
+  // share the same priority; same-priority groups break ties by chat
+  // recency, never by name or id. The pre-defined "Standard" bucket
+  // is conventionally priority 100 so operators have headroom to
+  // promote anything above it without renumbering.
+  priority    Int      @default(100)
+  // Optional accent (#rrggbb) for the inbox chip + brand list pill.
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  brands      Brand[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, priority])
+}
+
 model Brand {
   id           String                @id @default(cuid())
   workspaceId  String
@@ -1376,6 +1404,12 @@ model Brand {
   // for human operators to reply to, but no AI agent runs. Useful for
   // agencies that prefer human-only support for specific clients.
   aiEnabled    Boolean               @default(true)
+  // Priority bucket the brand belongs to. Null = no group, treated as
+  // the lowest-priority bucket by the inbox sort. SetNull on group
+  // delete so brands survive group deletion (they just become
+  // ungrouped + drop in priority).
+  brandGroupId String?
+  brandGroup   BrandGroup? @relation(fields: [brandGroupId], references: [id], onDelete: SetNull)
   // Visual identity for the operator inbox: a chip with a colored dot
   // + the brand logo on each conversation row makes routing obvious.
   logoUrl      String?
@@ -1388,6 +1422,7 @@ model Brand {
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
+  @@index([brandGroupId])
 }
 
 model ChatWidget {

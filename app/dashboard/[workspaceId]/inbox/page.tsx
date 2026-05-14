@@ -21,6 +21,13 @@ interface Brand {
   primaryColor?: string | null
 }
 
+interface BrandGroup {
+  id: string
+  name: string
+  priority: number
+  color: string | null
+}
+
 interface Row {
   id: string
   // 'widget' = website chat, 'meta' = Facebook Messenger or Instagram DM.
@@ -30,6 +37,7 @@ interface Row {
   channel?: 'widget' | 'messenger' | 'instagram'
   widget: { id: string; name: string; primaryColor?: string }
   brand: Brand | null
+  brandGroup?: BrandGroup | null
   visitor: { id: string; name: string | null; email: string | null; cookieId: string; avatarUrl?: string | null }
   status: string
   messageCount: number
@@ -891,6 +899,22 @@ export default function InboxPage() {
                             <span className="w-1.5 h-1.5 rounded-full" style={{ background: r.brand.primaryColor || '#fa4d2e' }} />
                           )}
                           {r.brand.name}
+                        </span>
+                      )}
+                      {/* Priority group chip — only renders when the
+                          brand belongs to a named group AND it's not
+                          the lowest tier. Colour falls back to amber
+                          for visual urgency on un-coloured groups. */}
+                      {r.brandGroup && r.brandGroup.priority < 100 && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-semibold"
+                          style={{
+                            background: `${r.brandGroup.color || '#f59e0b'}22`,
+                            color: r.brandGroup.color || '#f59e0b',
+                          }}
+                          title={`Priority group: ${r.brandGroup.name} (priority ${r.brandGroup.priority})`}
+                        >
+                          ★ {r.brandGroup.name}
                         </span>
                       )}
                       <span

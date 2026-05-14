@@ -93,6 +93,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (typeof body.aiEnabled === 'boolean') {
     data.aiEnabled = body.aiEnabled
   }
+  // brandGroupId: explicit null detaches, string assigns, undefined
+  // leaves untouched. Cross-workspace assignments are blocked — we
+  // verify the target group lives in this workspace before saving.
+  if (body.brandGroupId === null) {
+    data.brandGroupId = null
+  } else if (typeof body.brandGroupId === 'string' && body.brandGroupId.length > 0) {
+    const target = await (db as any).brandGroup.findFirst({
+      where: { id: body.brandGroupId, workspaceId },
+      select: { id: true },
+    }).catch(() => null)
+    if (!target) {
+      return NextResponse.json({ error: 'brandGroupId does not match a group in this workspace.' }, { status: 400 })
+    }
+    data.brandGroupId = body.brandGroupId
+  }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }

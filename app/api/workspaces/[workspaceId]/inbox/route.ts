@@ -38,9 +38,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
     fetchMetaRows(workspaceId),
   ])
 
-  // Recency-sorted union. Cap at 200 — the inbox doesn't paginate
-  // today and a longer list bogs down the client filter.
+  // Sort: priority first (lower group.priority = higher rank), then
+  // recency. Conversations from un-grouped brands fall through to a
+  // sentinel (9999) so they sit below every named group. Meta channels
+  // don't have brands; treat them as ungrouped.
+  const UNGROUPED = 9999
   const combined = [...widgets, ...metas].sort((a, b) => {
+    const ap = (a as any).brandGroup?.priority ?? UNGROUPED
+    const bp = (b as any).brandGroup?.priority ?? UNGROUPED
+    if (ap !== bp) return ap - bp
     return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
   }).slice(0, 200)
 
@@ -52,7 +58,14 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
     widget: {
       select: {
         id: true, name: true, primaryColor: true,
-        brand: { select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true } },
+        brand: {
+          select: {
+            id: true, name: true, slug: true, logoUrl: true, primaryColor: true,
+            // Optional priority group — surfaced on the conversation
+            // so the operator can see the chip + the sort prioritises.
+            brandGroup: { select: { id: true, name: true, priority: true, color: true } },
+          },
+        },
       },
     },
     visitor: { select: { id: true, name: true, email: true, cookieId: true } },
@@ -105,6 +118,12 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
       slug: c.widget.brand.slug,
       logoUrl: c.widget.brand.logoUrl,
       primaryColor: c.widget.brand.primaryColor,
+    } : null,
+    brandGroup: c.widget?.brand?.brandGroup ? {
+      id: c.widget.brand.brandGroup.id,
+      name: c.widget.brand.brandGroup.name,
+      priority: c.widget.brand.brandGroup.priority,
+      color: c.widget.brand.brandGroup.color,
     } : null,
     visitor: c.visitor,
     agentId: c.agentId,

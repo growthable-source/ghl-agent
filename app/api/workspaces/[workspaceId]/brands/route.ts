@@ -51,6 +51,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       // doesn't exist on the returned object — keeps existing brands
       // behaving exactly as they did before this feature shipped.
       aiEnabled: b.aiEnabled !== false,
+      brandGroupId: b.brandGroupId ?? null,
       widgetCount: b._count.widgets,
       collectionCount: b._count.collections,
       createdAt: b.createdAt.toISOString(),
