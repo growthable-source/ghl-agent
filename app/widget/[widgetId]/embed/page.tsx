@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { buildBrandPalette } from '@/lib/brand-theme'
+import { playNotificationSound } from '@/lib/notification-sound'
 
 interface WidgetConfig {
   id: string
@@ -212,6 +213,11 @@ export default function WidgetEmbedPage() {
       if (data.type === 'agent_message') {
         setMessages(m => {
           if (m.some(x => x.id === data.id)) return m
+          // Notification ping. SSE only delivers NEW events (history
+          // comes via the POST /conversations response), so we don't
+          // need to filter out replayed messages — the throttle in
+          // playNotificationSound handles bursty backfills on reconnect.
+          playNotificationSound('widget')
           return [...m, {
             id: data.id, role: 'agent', content: data.content, createdAt: data.createdAt,
             kind: data.kind,

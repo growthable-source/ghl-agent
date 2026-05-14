@@ -13,6 +13,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { buildBrandPalette } from '@/lib/brand-theme'
+import { playNotificationSound } from '@/lib/notification-sound'
 
 interface Message {
   id: string
@@ -184,6 +185,11 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
         }) } : c)
         setAgentTyping({ active: false, fromHuman: false })
       } else if (data.type === 'visitor_message') {
+        // Operator audio cue — only the visitor side fires here.
+        // Operator-sent messages come back as `agent_message` events
+        // (role=agent fromHuman=true); those don't ping because the
+        // operator already knows what they just sent.
+        playNotificationSound('inbox')
         setConvo(c => c ? { ...c, messages: appendOrReplace(c.messages, {
           id: data.id, role: 'visitor', content: data.content, kind: data.kind || 'text',
           createdAt: data.createdAt,

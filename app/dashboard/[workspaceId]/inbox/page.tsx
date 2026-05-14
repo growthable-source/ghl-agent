@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
+import { isNotificationSoundMuted, setNotificationSoundMuted, playNotificationSound } from '@/lib/notification-sound'
 
 interface AssignedUser {
   id: string
@@ -102,6 +103,48 @@ export default function InboxPage() {
   // Selected conversation for the right-pane detail. URL-synced via
   // ?conversation=<id> so deep-links and back-button navigation work.
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('conversation'))
+
+  // Per-conversation "last opened by this operator" timestamps, used
+  // to drive the unread (bold) treatment. Persisted in localStorage
+  // so reload / closing the browser doesn't clear unread state. Map
+  // shape: conversationId → ms epoch of last open. Missing = never
+  // opened.
+  //
+  // We replicate to React state because localStorage changes don't
+  // trigger re-render on their own; this state is the render source
+  // of truth and localStorage is the persistence shadow.
+  const [readAtMap, setReadAtMap] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const out: Record<string, number> = {}
+      const prefix = `inbox-opened-${workspaceId}-`
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (!k || !k.startsWith(prefix)) continue
+        const v = localStorage.getItem(k)
+        if (!v) continue
+        out[k.slice(prefix.length)] = parseInt(v, 10) || 0
+      }
+      setReadAtMap(out)
+    } catch { /* localStorage disabled — every row stays unread, mild ergonomics hit */ }
+  }, [workspaceId])
+
+  function markConversationOpened(conversationId: string) {
+    const now = Date.now()
+    setReadAtMap(prev => ({ ...prev, [conversationId]: now }))
+    try { localStorage.setItem(`inbox-opened-${workspaceId}-${conversationId}`, String(now)) } catch {}
+  }
+
+  // Mark-as-read whenever a conversation becomes selected — this fires
+  // for both the embedded row-click path AND the deep-link / URL-param
+  // path. Without this effect, deep-linking to /inbox?conversation=X
+  // would leave the row's unread bold treatment in place until the
+  // operator manually clicked it.
+  useEffect(() => {
+    if (selectedId) markConversationOpened(selectedId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, workspaceId])
 
   // Two fetch modes:
   //   1) No query, no brand filter → cheap list endpoint, polled every 8s.
@@ -253,6 +296,7 @@ export default function InboxPage() {
             )}
           </h1>
           <div className="flex items-center gap-2">
+            <SoundToggle />
             <button
               type="button"
               onClick={togglePresence}
@@ -591,15 +635,28 @@ export default function InboxPage() {
               const lastKind = r.lastMessage?.kind
               const isMine = meId && r.assignedUserId === meId
               const isSelected = selectedId === r.id
-              // "Unread" treatment: latest message is from the visitor
-              // and the conversation hasn't been ended. The bolden +
-              // dot signal that an operator hasn't replied/closed yet.
-              const isUnread = r.lastMessage?.role === 'visitor' && r.status !== 'ended'
+              // "Unread" treatment: any message arrived after the
+              // operator last opened the conversation. Persisted via
+              // readAtMap (localStorage-backed). Conversations ended
+              // never count as unread because there's nothing to do.
+              //
+              // We compare the LAST message timestamp against the
+              // last-opened timestamp, regardless of who sent it —
+              // this is operator-centric ("have I seen the latest
+              // state of this thread?"), which is what the user is
+              // asking for. Without this, replying via the inbox
+              // would clear the bold prematurely (because the latest
+              // message becomes the operator's reply) and incoming
+              // visitor replies arriving while elsewhere on the
+              // dashboard wouldn't re-bold the row.
+              const lastReadAt = readAtMap[r.id] ?? 0
+              const lastMessageMs = new Date(r.lastMessageAt).getTime()
+              const isUnread = r.status !== 'ended' && lastMessageMs > lastReadAt
               return (
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => setSelectedId(r.id)}
+                  onClick={() => { setSelectedId(r.id); markConversationOpened(r.id) }}
                   className={`w-full text-left flex items-start gap-3 p-4 transition-colors border-l-2 ${
                     isSelected ? '' : 'hover:bg-zinc-900/60'
                   }`}
@@ -647,7 +704,23 @@ export default function InboxPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{visitorLabel}</p>
+                      {/* Unread dot — small accent disc next to the
+                          name when the operator hasn't opened the
+                          conversation since the latest message. Same
+                          UX pattern Gmail / Slack / Intercom use. */}
+                      {isUnread && (
+                        <span
+                          aria-label="Unread"
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ background: 'var(--accent-primary)' }}
+                        />
+                      )}
+                      <p
+                        className={`text-sm truncate ${isUnread ? 'font-bold' : 'font-semibold'}`}
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {visitorLabel}
+                      </p>
                       {r.brand && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-medium"
@@ -890,6 +963,49 @@ function Highlight({ text, term }: { text: string; term: string }) {
           : <span key={idx}>{p.text}</span>,
       )}
     </>
+  )
+}
+
+/**
+ * Sound on/off toggle for the inbox notification ping. Persists to
+ * localStorage via lib/notification-sound so operators don't lose
+ * their preference on reload. Clicking it also fires a short test
+ * ping when un-muting — confirms audio works AND unlocks the
+ * AudioContext (browser autoplay policy: audio can only start
+ * after a user gesture, so this click is the canonical unlock).
+ */
+function SoundToggle() {
+  const [muted, setMuted] = useState(false)
+  useEffect(() => { setMuted(isNotificationSoundMuted('inbox')) }, [])
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const next = !muted
+        setNotificationSoundMuted('inbox', next)
+        setMuted(next)
+        // Test ping on unmute so the operator hears it work + the
+        // browser's audio context gets the gesture it needs.
+        if (!next) playNotificationSound('inbox')
+      }}
+      className="group flex items-center justify-center text-[11px] font-medium w-7 h-7 rounded-full border transition-colors border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white"
+      title={muted ? 'Notification sound is muted — click to enable' : 'Notification sound on — click to mute'}
+      aria-label={muted ? 'Unmute notification sound' : 'Mute notification sound'}
+    >
+      {muted ? (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <line x1="23" y1="9" x2="17" y2="15" />
+          <line x1="17" y1="9" x2="23" y2="15" />
+        </svg>
+      ) : (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        </svg>
+      )}
+    </button>
   )
 }
 
