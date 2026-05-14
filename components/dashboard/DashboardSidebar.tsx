@@ -289,6 +289,7 @@ function SidebarBody() {
                     </div>
                     {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
                     {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
+                    {navLink(`/dashboard/${workspaceId}/csat`, 'CSAT')}
                     {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
                     {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
 
