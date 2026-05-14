@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import TrialBanner from '@/components/dashboard/TrialBanner'
 import PauseBanner from '@/components/dashboard/PauseBanner'
 import ConnectionHealthBanner from '@/components/dashboard/ConnectionHealthBanner'
+import HandoffAlertBanner from '@/components/dashboard/HandoffAlertBanner'
 import MobileNav from '@/components/dashboard/MobileNav'
 
 /**
@@ -72,6 +73,11 @@ export default async function WorkspaceLayout({
     <>
       <TrialBanner workspaceId={workspaceId} />
       <PauseBanner />
+      {/* Loud, persistent alert when one or more agents have paused
+          and need a human. Renders nothing when everything is calm.
+          Pings the inbox notification sound the moment a NEW pause
+          appears so operators on another tab/page actually hear it. */}
+      <HandoffAlertBanner />
       <ConnectionHealthBanner workspaceId={workspaceId} />
       <div className="pb-16 md:pb-0">{children}</div>
       <MobileNav />
