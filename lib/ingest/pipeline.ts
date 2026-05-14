@@ -40,6 +40,14 @@ export interface IngestResult {
   chunksSuperseded: number
 }
 
+export interface IngestOptions {
+  /** Pre-created IngestionRun id. When provided the pipeline updates
+   *  that row instead of creating a new one — used by the async POST
+   *  /run handler so the client has something to poll from the moment
+   *  the request returns. */
+  runId?: string
+}
+
 interface ErrorEntry {
   url: string
   stage: 'discover' | 'fetch' | 'normalize' | 'chunk' | 'classify' | 'embed' | 'write'
@@ -47,7 +55,7 @@ interface ErrorEntry {
   ts: string
 }
 
-export async function ingestSource(sourceId: string): Promise<IngestResult> {
+export async function ingestSource(sourceId: string, opts: IngestOptions = {}): Promise<IngestResult> {
   const source = await (db as any).knowledgeSource.findUnique({
     where: { id: sourceId },
     include: { domain: { include: { workspace: { select: { id: true } } } } },
@@ -69,11 +77,13 @@ export async function ingestSource(sourceId: string): Promise<IngestResult> {
     : 1
   const defaultIntentTags: string[] = source.domain.defaultIntentTags ?? []
 
-  // Start the run record up front so a hard crash still leaves a
-  // breadcrumb the operator can see.
-  const run = await (db as any).ingestionRun.create({
-    data: { sourceId, status: 'running' },
-  })
+  // Use the caller-supplied run row if present; otherwise create one.
+  // The async POST /run handler creates it so the client can poll
+  // from the moment the response returns.
+  const run = opts.runId
+    ? await (db as any).ingestionRun.findUnique({ where: { id: opts.runId } })
+    : await (db as any).ingestionRun.create({ data: { sourceId, status: 'running' } })
+  if (!run) throw new Error(`IngestionRun ${opts.runId} not found`)
 
   const ctx: AdapterContext = {
     source: {
@@ -96,6 +106,13 @@ export async function ingestSource(sourceId: string): Promise<IngestResult> {
       errors.push({ url: source.urlOrIdentifier, stage: 'discover', message: err?.message ?? 'unknown', ts: new Date().toISOString() })
       return [] as Awaited<ReturnType<SourceAdapter['discover']>>
     })
+
+    // Tell the client how many pages we found so it can render a
+    // progress bar with the right total.
+    await (db as any).ingestionRun.update({
+      where: { id: run.id },
+      data: { pagesAttempted: discovered.length },
+    }).catch(() => {})
 
     for (const item of discovered) {
       pagesAttempted++
@@ -122,6 +139,19 @@ export async function ingestSource(sourceId: string): Promise<IngestResult> {
         const message = (err && typeof err === 'object' && 'message' in err) ? err.message : String(err)
         errors.push({ url: item.identifier, stage, message, ts: new Date().toISOString() })
       }
+
+      // Incremental progress write per page so the polling UI moves
+      // visibly. Fire-and-forget — a transient DB blip mustn't kill
+      // the run.
+      ;(db as any).ingestionRun.update({
+        where: { id: run.id },
+        data: {
+          pagesSucceeded,
+          chunksCreated,
+          chunksSuperseded,
+          errorLog: errors as any,
+        },
+      }).catch(() => {})
     }
   } catch (err: any) {
     errors.push({ url: source.urlOrIdentifier, stage: 'discover', message: err?.message ?? 'pipeline failed', ts: new Date().toISOString() })

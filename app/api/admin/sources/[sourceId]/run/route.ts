@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { ingestSource } from '@/lib/ingest/pipeline'
@@ -8,14 +8,12 @@ type Params = { params: Promise<{ sourceId: string }> }
 /**
  * POST /api/admin/sources/:sourceId/run
  *
- * Triggers an ingest immediately. Useful for: smoke-testing a new
- * source, re-running after the operator fixed a Firecrawl rate-limit
- * issue, or pulling in fresh content ahead of the cron's interval.
+ * Kicks off an ingest asynchronously. Creates the IngestionRun row
+ * and returns its id IMMEDIATELY so the UI can poll for progress.
+ * The pipeline runs post-response via after(), up to maxDuration.
  *
- * Synchronous response — returns the IngestionRun summary. Caller
- * is expected to be the admin UI; if ingest takes >60s on a big
- * source the operator sees the spinner. v2 swaps to "kick off + poll
- * the runs endpoint" once a single run runs long.
+ * Why async: synchronous was up to 5 min of blank spinner. Visitors
+ * thought the page had hung.
  */
 export const maxDuration = 300
 
@@ -36,10 +34,44 @@ export async function POST(_req: NextRequest, { params }: Params) {
   })
   if (!member) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
-  try {
-    const result = await ingestSource(sourceId)
-    return NextResponse.json(result)
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? 'ingest_failed' }, { status: 500 })
+  // Don't start a second concurrent run on the same source — return
+  // the in-flight one's id so the UI re-attaches to its progress.
+  const existing = await (db as any).ingestionRun.findFirst({
+    where: { sourceId, status: 'running' },
+    select: { id: true },
+  })
+  if (existing) {
+    return NextResponse.json({ runId: existing.id, alreadyRunning: true })
   }
+
+  const run = await (db as any).ingestionRun.create({
+    data: { sourceId, status: 'running' },
+    select: { id: true },
+  })
+
+  after(async () => {
+    try {
+      await ingestSource(sourceId, { runId: run.id })
+    } catch (err: any) {
+      // If the pipeline blew up before writing its own failure, mark
+      // the run failed here so polling can stop.
+      try {
+        await (db as any).ingestionRun.update({
+          where: { id: run.id },
+          data: {
+            status: 'failed',
+            completedAt: new Date(),
+            errorLog: [{
+              url: '(pipeline)',
+              stage: 'discover',
+              message: err?.message ?? 'pipeline crashed',
+              ts: new Date().toISOString(),
+            }],
+          },
+        })
+      } catch { /* nothing more we can do */ }
+    }
+  })
+
+  return NextResponse.json({ runId: run.id })
 }
