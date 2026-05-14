@@ -680,12 +680,30 @@ export default function InboxPage() {
                           live
                         </span>
                       )}
-                      {r.status === 'handed_off' && (
+                      {r.status === 'handed_off' && !r.assignedUserId && (
+                        // Handed off but no one's picked it up yet — red to
+                        // surface urgency. "Needs human" is clearer than the
+                        // old "needs you" (which felt personally addressed
+                        // to whoever was viewing, regardless of assignment).
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
                           style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+                          title="The AI handed this conversation off but no one has taken it yet. Click to reply as a human."
                         >
-                          needs you
+                          needs human
+                        </span>
+                      )}
+                      {r.status === 'handed_off' && r.assignedUserId && (
+                        // Someone's on it — neutral tone, name visible so
+                        // the viewer knows who. Avoids the alarmist
+                        // "needs you" when in fact another teammate is
+                        // already handling.
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                          style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+                          title={`Handed off and currently being handled by ${r.assignedUser?.name || 'a teammate'}.`}
+                        >
+                          {r.assignedUser?.name ? `with ${r.assignedUser.name}` : 'taken over'}
                         </span>
                       )}
                       {r.status === 'ended' && (
