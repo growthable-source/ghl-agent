@@ -85,9 +85,6 @@ export const pdfAdapter: SourceAdapter = {
     // actually ingests — the rest of the pipeline keeps building.
     let extractText: (data: Uint8Array | ArrayBuffer) => Promise<{ totalPages: number; text: string[] }>
     try {
-      // @ts-expect-error — unpdf is an optional runtime dep, declared in
-      // package.json but only required at PDF-ingest time. We tolerate
-      // it missing in dev / CI without hard-failing the rest of build.
       const unpdf = await import('unpdf')
       extractText = unpdf.extractText
     } catch {
