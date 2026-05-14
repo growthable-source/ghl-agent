@@ -134,6 +134,7 @@ model Workspace {
   brands               Brand[]               @relation("WorkspaceBrands")
   brandGroups          BrandGroup[]          @relation("WorkspaceBrandGroups")
   portals              Portal[]              @relation("WorkspacePortals")
+  knowledgeDomains     KnowledgeDomain[]     @relation("WorkspaceKnowledgeDomains")
 
   // ─── Native (built-in) CRM ───
   // Populated only for workspaces using crmProvider='native' on their
@@ -580,6 +581,187 @@ model KnowledgeEntry {
   @@index([collectionId, status])
   @@index([workspaceId])
   @@index([agentId])
+}
+
+// ─── Phase 2 Knowledge Pipeline ────────────────────────────────────────────
+// A KnowledgeDomain sits ABOVE brands. Each workspace can have one or many
+// domains (e.g. "Product Support", "Legal", "Coaching"). Retrieval is
+// shared WITHIN a domain — brands belong to a domain and benefit from the
+// same pool of chunks. Cross-domain retrieval never happens.
+//
+// The legacy KnowledgeCollection model above remains for backward
+// compatibility (text knowledge stuffed into prompts). The chunk-based
+// pipeline below is the new path: vector-indexed retrieval against
+// crawled / uploaded sources.
+model KnowledgeDomain {
+  id                  String   @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace @relation("WorkspaceKnowledgeDomains", fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                String
+  description         String?
+  // Default intent tags injected when the LLM classifier finds nothing
+  // in the per-domain taxonomy. Lets a workspace pre-seed sensible
+  // labels ("how_to", "pricing", "troubleshooting"...) without manually
+  // creating every taxonomy row up front.
+  defaultIntentTags   String[] @default([])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  taxonomies          Taxonomy[]
+  sources             KnowledgeSource[]
+  chunks              KnowledgeChunk[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+// Per-domain controlled vocabulary. The LLM classifier picks keys
+// exclusively from this list during ingest; unmatched content goes
+// to the `_other` bucket so a human can review and either add a new
+// row or merge into an existing one via aliases.
+//
+// `taxonomyVersion` bumps when ANY row in the domain's taxonomy
+// changes; every chunk records the version it was classified under,
+// so a domain rev triggers a re-classification pass on chunks where
+// chunk.taxonomyVersion < currentVersion.
+model Taxonomy {
+  id                String  @id @default(cuid())
+  knowledgeDomainId String
+  domain            KnowledgeDomain @relation(fields: [knowledgeDomainId], references: [id], onDelete: Cascade)
+  // URL-safe stable identifier (e.g. "workflows", "calendars"). The
+  // LLM returns these, not the human label.
+  key               String
+  label             String
+  aliases           String[] @default([])
+  // Optional hierarchy. "workflows" might have parent "automation".
+  // Surfaced in retrieval as a fallback ("no exact workflow match,
+  // try automation chunks").
+  parentKey         String?
+  taxonomyVersion   Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([knowledgeDomainId, key])
+  @@index([knowledgeDomainId, parentKey])
+}
+
+// A crawlable / fetchable source the ingest pipeline pulls from.
+// `sourceType` discriminates which SourceAdapter runs at ingest time —
+// new source types (Notion, RSS, Zendesk, etc.) drop in as new adapter
+// files with no pipeline changes.
+model KnowledgeSource {
+  id                String   @id @default(cuid())
+  knowledgeDomainId String
+  domain            KnowledgeDomain @relation(fields: [knowledgeDomainId], references: [id], onDelete: Cascade)
+  sourceType        String   // 'docs' | 'pdf' | 'youtube' | 'rss' | 'community' | 'manual'
+  // URL for docs/rss/youtube; opaque identifier for hosted PDFs etc.
+  urlOrIdentifier   String
+  // Adapter-specific config. For docs: { recrawlIntervalDays, includeSubpaths[], excludePatterns[] }.
+  // For pdf: { storageKey, originalFilename }. Free-shape per adapter.
+  crawlConfig       Json     @default("{}")
+  isActive          Boolean  @default(true)
+  lastCrawledAt     DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  runs              IngestionRun[]
+  chunks            KnowledgeChunk[]
+
+  @@index([knowledgeDomainId, isActive])
+  @@index([lastCrawledAt])
+}
+
+// One execution of the pipeline against one source. Every run is
+// logged so a partial failure leaves a paper trail — the runs viewer
+// surfaces error_log JSON to operators for debugging.
+model IngestionRun {
+  id              String   @id @default(cuid())
+  sourceId        String
+  source          KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  status          String   @default("running") // 'running' | 'success' | 'partial' | 'failed'
+  pagesAttempted  Int      @default(0)
+  pagesSucceeded  Int      @default(0)
+  chunksCreated   Int      @default(0)
+  chunksSuperseded Int     @default(0)
+  // Per-page failures collected into a JSON array. Shape:
+  // [{ url, stage: 'fetch'|'normalize'|'chunk'|'classify'|'embed'|'write', message, ts }]
+  errorLog        Json     @default("[]")
+
+  @@index([sourceId, startedAt(sort: Desc)])
+}
+
+// The core retrieval unit. One row per chunk, embedded into pgvector
+// for similarity search. `superseded_at` is the soft-delete signal:
+// retrieval filters on `WHERE supersededAt IS NULL`, but old rows
+// stay around so we can trace how content evolved.
+//
+// We define the embedding column via raw SQL in the migration since
+// Prisma doesn't natively expose pgvector — the column exists in
+// the DB but is omitted from this model definition.
+model KnowledgeChunk {
+  id                String   @id @default(cuid())
+  knowledgeDomainId String
+  domain            KnowledgeDomain @relation(fields: [knowledgeDomainId], references: [id], onDelete: Cascade)
+  sourceId          String
+  source            KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  // Optional brand origin — recorded faithfully, IGNORED at retrieval
+  // time at launch (single shared pool within a domain). Flips to
+  // scoped retrieval when the eval triggers a switch.
+  brandIdOrigin     String?
+  visibility        String   @default("domain") // 'domain' | 'workspace' | 'brand' | 'agent'
+
+  content           String   @db.Text
+  contentHash       String   // sha256 over normalized content — dedup + change detection
+  sourceUrl         String
+  // 'docs' | 'pdf' | 'youtube' | 'rss' | 'community' | 'conversation' | 'manual'
+  sourceType        String
+  // Identifier scoped within sourceType (e.g. YouTube video id, blog slug,
+  // PDF storage key). Combined with sourceType to find sibling chunks.
+  sourceIdentifier  String?
+  chunkIndex        Int      // position within source
+  totalChunks       Int      // for context-window reassembly
+
+  // Per-adapter metadata blob — page_title, breadcrumb_path[],
+  // section_heading, section_anchor, page_last_updated for docs;
+  // page_number for PDFs; timestamp for YouTube. Schema is loose by
+  // design — adapters own the shape; retrieval treats it as opaque.
+  sourceMetadata    Json     @default("{}")
+
+  // Embedding model identifier (e.g. "voyage-3"). Selective re-embed
+  // works by filtering this column when a model swap lands.
+  embeddingModel    String
+
+  // Semantic
+  primaryTopic      String?
+  taxonomyTags      String[] @default([])
+  intentTags        String[] @default([])
+  taxonomyVersion   Int      @default(1)
+
+  // Quality
+  confidenceTier    String   @default("provisional") // 'canonical' | 'provisional' | 'draft'
+  qualityScore      Float    @default(0.5)
+
+  // Lifecycle
+  createdAt         DateTime @default(now())
+  indexedAt         DateTime @default(now())
+  lastVerifiedAt    DateTime @default(now())
+  lastUsedAt        DateTime?
+  useCount          Int      @default(0)
+
+  // Versioning chain
+  supersedesId      String?
+  supersedes        KnowledgeChunk? @relation("ChunkSupersession", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy      KnowledgeChunk[] @relation("ChunkSupersession")
+  supersededAt      DateTime?
+  supersessionReason String?
+  contentVersion    Int      @default(1)
+
+  @@unique([sourceUrl, chunkIndex, contentVersion])
+  @@index([knowledgeDomainId, supersededAt])
+  @@index([sourceId, supersededAt])
+  @@index([contentHash])
+  @@index([taxonomyVersion])
+  @@index([embeddingModel])
 }
 
 // ─── Recurring crawl schedule ──────────────────────────────────────────────
