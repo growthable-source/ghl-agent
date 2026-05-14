@@ -25,7 +25,7 @@ const STEPS: { key: Step; label: string }[] = [
 interface AgentTemplate {
   id: string
   initiation: 'outbound' | 'inbound'
-  role: 'sales' | 'support' | 'assistant' | 'live_chat'
+  role: 'sales' | 'support' | 'assistant'
   name: string
   tagline: string
   icon: string
@@ -140,26 +140,6 @@ You are warm, conversational, and efficient.`,
 - If something is outside your scope, let them know and offer to connect them with someone who can help`,
     enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'get_available_slots', 'book_appointment', 'get_calendar_events', 'add_contact_note', 'transfer_to_human'],
   },
-  {
-    id: 'inbound-live-chat',
-    initiation: 'inbound',
-    role: 'live_chat',
-    name: 'Live Chat Concierge',
-    tagline: 'Tuned for the on-site widget — short replies, fast handoff, closes the chat when done',
-    icon: '💬',
-    systemPrompt: `You are the live-chat concierge for this business. Visitors are talking to you from the chat widget on the company website — replies should feel like a quick human exchange, not an email.
-
-Keep replies short (1-2 sentences). Be warm and concrete. Use plain text — no markdown headings or bullet lists; the widget renders them awkwardly. If you need multiple pieces of info, ask ONE question at a time and wait for the answer.`,
-    instructions: `- Greet briefly and ask how you can help
-- Use your knowledge base, products, and CRM tools to answer their question
-- For returning customers with an order question, look them up before answering
-- If they need a real person (asked for one, hostile, or you're stuck after one honest attempt), call transfer_to_human with a clear reason
-- Before they leave, if you don't already have their email, ask: "What's the best email to reach you on if I need to follow up?" Save it with add_contact_note
-- When the visitor signals they're done (thanks, goodbye, "that's all"), send one brief reply and THEN call end_conversation with a one-sentence summary
-- Never invent product details, prices, or stock — use Shopify tools if available, otherwise say you'll check
-- Never end the chat mid-question or while they might still need help`,
-    enabledTools: ['get_contact_details', 'send_reply', 'find_contact_by_email_or_phone', 'add_contact_note', 'update_contact_memory', 'transfer_to_human', 'end_conversation', 'schedule_followup'],
-  },
 ]
 
 // Static descriptor — `connected` state is resolved per-workspace at
@@ -193,7 +173,7 @@ const CHANNEL_OPTIONS = [
 ]
 
 const INITIATION_LABELS: Record<string, string> = { outbound: 'Outbound', inbound: 'Inbound' }
-const ROLE_LABELS: Record<string, string> = { sales: 'Sales', support: 'Support', assistant: 'Assistant', live_chat: 'Live Chat' }
+const ROLE_LABELS: Record<string, string> = { sales: 'Sales', support: 'Support', assistant: 'Assistant' }
 
 export default function NewAgentWizard() {
   const router = useRouter()
@@ -291,13 +271,6 @@ export default function NewAgentWizard() {
     if (!nameManuallyEdited) setName(t.name + ' Agent')
     setSystemPrompt(t.systemPrompt)
     setInstructions(t.instructions)
-    // Live Chat is channel-specific — preselect Live_Chat so the
-    // operator doesn't have to remember to flip it on the Channels
-    // step (and so SMS isn't left ticked by default for a chat-only
-    // agent). The user can still change channels manually.
-    if (t.role === 'live_chat') {
-      setSelectedChannels(['Live_Chat'])
-    }
   }
 
   function toggleChannel(key: string) {
