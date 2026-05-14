@@ -12,6 +12,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import { buildBrandPalette } from '@/lib/brand-theme'
 
 interface Message {
   id: string
@@ -858,6 +859,11 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
     )
   }
   const isVisitor = msg.role === 'visitor'
+  // Pick a legible foreground for the agent bubble based on the
+  // workspace's brand colour. Hardcoded `text-white` was unreadable on
+  // dark/near-black brand colours; brandFg flips to black on light
+  // backgrounds and stays white on dark ones, per WCAG luminance.
+  const agentFg = buildBrandPalette(accent).brandFg
 
   if (msg.kind === 'image') {
     return (
@@ -887,9 +893,9 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
             className={`max-w-[70%] flex items-center gap-2 px-3 py-2 rounded-2xl text-sm border ${
               isVisitor
                 ? 'rounded-tl-sm bg-zinc-800 border-zinc-700 text-zinc-100'
-                : 'rounded-tr-sm border-white/20 text-white'
+                : 'rounded-tr-sm border-white/20'
             }`}
-            style={!isVisitor ? { background: accent } : undefined}
+            style={!isVisitor ? { background: accent, color: agentFg } : undefined}
           >
             <span className="text-base leading-none">📎</span>
             <span className="truncate">{meta.name}</span>
@@ -904,9 +910,9 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
       <div className="max-w-[70%]">
         <div
           className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${
-            isVisitor ? 'rounded-tl-sm bg-zinc-800 text-zinc-100' : 'rounded-tr-sm text-white'
+            isVisitor ? 'rounded-tl-sm bg-zinc-800 text-zinc-100' : 'rounded-tr-sm'
           }`}
-          style={!isVisitor ? { background: accent } : undefined}
+          style={!isVisitor ? { background: accent, color: agentFg } : undefined}
         >
           {msg.content}
         </div>

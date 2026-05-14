@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
+import { buildBrandPalette } from '@/lib/brand-theme'
 
 interface WidgetConfig {
   id: string
@@ -1130,6 +1131,11 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
     )
   }
   const isVisitor = msg.role === 'visitor'
+  // Legible foreground for the visitor bubble (which takes the workspace's
+  // brand colour as its background). Hardcoding text-white was unreadable
+  // on dark/near-black brand colours; brandFg flips to black on light
+  // accents and stays white on dark, per WCAG luminance.
+  const visitorFg = buildBrandPalette(accent).brandFg
 
   // Image attachment — content is the URL, render inline.
   if (msg.kind === 'image') {
@@ -1179,8 +1185,8 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
                 <p className="text-sm font-semibold text-zinc-100">{priceLabel}</p>
               )}
               <span
-                className="mt-2 inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-                style={{ background: accent }}
+                className="mt-2 inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={{ background: accent, color: visitorFg }}
               >
                 View product
               </span>
@@ -1204,10 +1210,10 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
             rel="noopener noreferrer"
             className={`max-w-[80%] flex items-center gap-2 px-3 py-2 rounded-2xl text-sm border ${
               isVisitor
-                ? 'rounded-tr-sm border-white/20 text-white'
+                ? 'rounded-tr-sm border-white/20'
                 : 'rounded-tl-sm border-zinc-700 bg-zinc-800 text-zinc-100'
             }`}
-            style={isVisitor ? { background: accent } : undefined}
+            style={isVisitor ? { background: accent, color: visitorFg } : undefined}
           >
             <span className="text-base leading-none">📎</span>
             <span className="truncate">{meta.name}</span>
@@ -1221,9 +1227,9 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
     <div className={`flex ${isVisitor ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
-          isVisitor ? 'rounded-tr-sm text-white' : 'rounded-tl-sm bg-zinc-800 text-zinc-100'
+          isVisitor ? 'rounded-tr-sm' : 'rounded-tl-sm bg-zinc-800 text-zinc-100'
         }`}
-        style={isVisitor ? { background: accent } : undefined}
+        style={isVisitor ? { background: accent, color: visitorFg } : undefined}
       >
         {msg.content}
       </div>
