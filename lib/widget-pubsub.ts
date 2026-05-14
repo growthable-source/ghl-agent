@@ -196,7 +196,13 @@ export async function publish(conversationId: string, message: unknown): Promise
     return
   }
   try {
-    await db.$executeRawUnsafe(`NOTIFY ${CHANNEL}, $1`, payload)
+    // NOTIFY is a Postgres command statement and does NOT accept
+    // $-placeholder parameters — that's why a naive
+    // `NOTIFY chan, $1` raises "syntax error at or near $1" through
+    // Prisma's raw exec. Use the pg_notify() function instead, which
+    // IS parameterizable, identical wire semantics on the receiver
+    // side (LISTEN clients see the same NotificationResponse).
+    await db.$executeRaw`SELECT pg_notify(${CHANNEL}, ${payload})`
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // NOTIFY through the Prisma pool can fail independently of LISTEN —
