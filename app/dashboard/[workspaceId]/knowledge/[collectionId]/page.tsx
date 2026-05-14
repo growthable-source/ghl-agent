@@ -79,6 +79,15 @@ export default function CollectionEditorPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('items')
   const [addItem, setAddItem] = useState<AddItem>(null)
+  // Inline edit state. When non-null, the matching entry row swaps its
+  // display for an edit form (title + content). Only one entry can be
+  // in edit mode at a time — simpler than tracking a Set, and matches
+  // the way operators actually use this page.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [editBusy, setEditBusy] = useState(false)
+  const [editErr, setEditErr] = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
     const [cRes, aRes] = await Promise.all([
@@ -98,6 +107,46 @@ export default function CollectionEditorPage() {
     if (!confirm('Delete this item from the collection?')) return
     await fetch(`/api/workspaces/${workspaceId}/knowledge/collections/${collectionId}/entries/${entryId}`, { method: 'DELETE' })
     fetchAll()
+  }
+
+  function startEdit(e: { id: string; title: string; content: string }) {
+    setEditingId(e.id)
+    setEditTitle(e.title)
+    setEditContent(e.content)
+    setEditErr(null)
+  }
+  function cancelEdit() {
+    setEditingId(null)
+    setEditTitle('')
+    setEditContent('')
+    setEditErr(null)
+  }
+  async function saveEdit(entryId: string) {
+    if (!editTitle.trim() || !editContent.trim()) {
+      setEditErr('Title and content can\'t be empty.')
+      return
+    }
+    setEditBusy(true)
+    setEditErr(null)
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/knowledge/collections/${collectionId}/entries/${entryId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: editTitle.trim(), content: editContent }),
+        },
+      )
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setEditErr(d.error || 'Save failed')
+        return
+      }
+      cancelEdit()
+      await fetchAll()
+    } finally {
+      setEditBusy(false)
+    }
   }
 
   async function deleteCollection() {
@@ -225,26 +274,80 @@ export default function CollectionEditorPage() {
               <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
                 {collection.entries.map((e, idx) => (
                   <div key={e.id} className="p-4 transition-colors" style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
-                    <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{e.title}</h3>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>{sourceLabel(e.source)}</span>
-                          {e.status !== 'ready' && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>{e.status}</span>
-                          )}
+                    {editingId === e.id ? (
+                      // ── Inline edit mode ───────────────────────────
+                      <div className="space-y-2">
+                        <input
+                          value={editTitle}
+                          onChange={ev => setEditTitle(ev.target.value)}
+                          placeholder="Title"
+                          className="w-full rounded-lg px-3 py-2 text-sm"
+                          style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+                        />
+                        <textarea
+                          value={editContent}
+                          onChange={ev => setEditContent(ev.target.value)}
+                          placeholder="Content"
+                          rows={6}
+                          className="w-full rounded-lg px-3 py-2 text-sm resize-y"
+                          style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+                        />
+                        {editErr && (
+                          <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{editErr}</p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => saveEdit(e.id)}
+                            disabled={editBusy}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                            style={!editBusy
+                              ? { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
+                              : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }}
+                          >
+                            {editBusy ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            disabled={editBusy}
+                            className="px-3 py-1.5 rounded-lg text-xs hover:opacity-80 transition-colors"
+                            style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                          >
+                            Cancel
+                          </button>
                         </div>
-                        <p className="text-xs line-clamp-2 whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{e.content}</p>
-                        <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>~{e.tokenEstimate} tokens · added {relTime(e.createdAt)}</p>
                       </div>
-                      <button
-                        onClick={() => deleteEntry(e.id)}
-                        className="text-[11px] px-2.5 py-1 rounded-lg hover:opacity-80 transition-colors flex-shrink-0"
-                        style={{ border: '1px solid var(--border)', color: 'var(--accent-red)' }}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    ) : (
+                      // ── Display mode ───────────────────────────────
+                      <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{e.title}</h3>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>{sourceLabel(e.source)}</span>
+                            {e.status !== 'ready' && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>{e.status}</span>
+                            )}
+                          </div>
+                          <p className="text-xs line-clamp-2 whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{e.content}</p>
+                          <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>~{e.tokenEstimate} tokens · added {relTime(e.createdAt)}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => startEdit(e)}
+                            className="text-[11px] px-2.5 py-1 rounded-lg hover:opacity-80 transition-colors"
+                            style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteEntry(e.id)}
+                            className="text-[11px] px-2.5 py-1 rounded-lg hover:opacity-80 transition-colors"
+                            style={{ border: '1px solid var(--border)', color: 'var(--accent-red)' }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
