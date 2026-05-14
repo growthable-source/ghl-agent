@@ -218,6 +218,13 @@ function SidebarBody() {
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>,
                 )}
+                {navItemPrimary(
+                  `/dashboard/${workspaceId}/widgets`,
+                  'Widgets',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                  </svg>,
+                )}
 
                 {/* Everything else, demoted out of primary nav and
                     grouped into mental hubs that mirror the agent
@@ -298,7 +305,10 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
                     {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                     {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
-                    {navLink(`/dashboard/${workspaceId}/widgets`, 'Widgets')}
+                    {/* Widgets promoted to a primary nav item — see the
+                        navItemPrimary block at the top. The Library entry
+                        used to live here and was buried two levels deep
+                        (More → Library → Widgets). */}
 
                     {/* ── Tools — try it before it ships ── */}
                     <div className="pt-3 pb-1 px-3">
