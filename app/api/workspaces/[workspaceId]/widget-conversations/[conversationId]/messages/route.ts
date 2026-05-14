@@ -97,6 +97,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     where: { id: conversationId },
     data: { status: next },
   })
+
+  // When the operator resumes the AI (status flips from handed_off
+  // back to active), ALSO resume any paused ConversationStateRecord
+  // for this conversation. The formal takeover endpoint pauses
+  // ConversationStateRecord with state='PAUSED'; without unpausing
+  // here, the widget-agent-runner's shouldAgentReply check would
+  // still see PAUSED and refuse to reply even though the operator
+  // explicitly clicked "Resume AI."
+  if (next === 'active') {
+    try {
+      await db.conversationStateRecord.updateMany({
+        where: { conversationId, state: 'PAUSED', pauseReason: 'human_takeover' },
+        data: { state: 'ACTIVE', pauseReason: null, resumedAt: new Date() },
+      })
+    } catch (err: any) {
+      console.warn('[widget] resume on status=active failed:', err?.message)
+    }
+  }
+
   await broadcast(conversationId, { type: 'status_changed', status: next })
 
   // Status hit "handed_off" — auto-route per the widget's config so an

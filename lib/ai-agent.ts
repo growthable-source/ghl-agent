@@ -25,6 +25,7 @@ import { loadPlatformGuidelinesBlock } from './platform-learning'
 import type { AgentContext, Message } from '@/types'
 
 import { AGENT_TOOLS, constrainWorkflowTool } from './agent/tool-catalog'
+import { REQUIRED_TOOL_KEYS } from './agent-tools-catalog'
 import { executeTool } from './agent/execute-tool'
 import { buildSystemPrompt } from './agent/build-prompt'
 import type {
@@ -554,6 +555,14 @@ export async function runAgent(opts: {
   const normalizedTools = enabledTools
     ? [...new Set([
         ...enabledTools,
+        // Always include the required tools (send_reply,
+        // transfer_to_human). If an old agent's enabledTools array
+        // doesn't include send_reply (it predates the field becoming
+        // required), Claude ends up with no reply tool and falls
+        // back to emitting raw `<invoke name="send_reply">` XML in
+        // the chat content. Force-including required keys closes
+        // that hole.
+        ...REQUIRED_TOOL_KEYS,
         ...(enabledTools.includes('send_sms') ? ['send_reply'] : []),
         ...(enabledTools.includes('get_available_slots') ? ['book_appointment'] : []),
         ...(enabledTools.includes('book_appointment')

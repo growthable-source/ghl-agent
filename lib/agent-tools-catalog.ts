@@ -42,6 +42,16 @@ export interface ReflexDef {
   required?: boolean
 }
 
+// Tool keys flagged `required: true` in REFLEXES below — exported as a
+// memoised set so the agent runtime can force-include them in every
+// agent's tools array regardless of the operator's enabledTools.
+// Without this, an old agent missing 'send_reply' (because the field
+// existed before send_reply was required) ends up with no reply tool
+// and Claude falls back to emitting `<invoke name="send_reply">` XML
+// as plain chat text. That's the failure mode QA caught with
+// "Shopify tool puts HTML in the chat."
+export const REQUIRED_TOOL_KEYS = ['send_reply', 'transfer_to_human'] as const
+
 export const REFLEXES: ReflexDef[] = [
   // Messaging — how the agent talks
   {

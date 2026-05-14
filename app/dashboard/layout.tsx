@@ -25,9 +25,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
       <DashboardSidebar />
-      <main className="flex-1 overflow-y-auto flex flex-col min-h-0">
+      {/* main itself doesn't scroll — the children wrapper does. This
+          flip is what lets full-viewport pages like the inbox use
+          `h-full` and have their composer stick to the bottom. With
+          the old `main { overflow-y-auto }`, h-full on the inbox
+          resolved against an unbounded scrolling parent and the page
+          grew past the viewport (operators had to scroll to find the
+          reply box). Content-only pages still scroll fine — the
+          overflow now lives one level in, on the children wrapper. */}
+      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <Breadcrumbs />
-        <div className="flex-1">
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           {children}
         </div>
       </main>

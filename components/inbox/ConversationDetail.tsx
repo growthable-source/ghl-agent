@@ -547,6 +547,24 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
               )}
             </div>
 
+            {/* Resume AI: only visible when the operator has taken
+                over (status=handed_off). Flips status back to 'active'
+                so the agent runner stops gating on the takeover and
+                the AI handles the next inbound message. Without this
+                button operators were stuck — once they jumped in there
+                was no way to hand back to the AI short of marking the
+                conversation ended (which wipes the thread). */}
+            {isHandedOff && (
+              <button
+                onClick={() => setStatus('active')}
+                disabled={statusBusy}
+                className="text-[11px] font-medium px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40"
+                style={{ borderColor: 'var(--accent-emerald)', color: 'var(--accent-emerald)' }}
+                title="Hand control back to the AI agent. Next visitor message will be handled by the AI again."
+              >
+                ↺ Resume AI
+              </button>
+            )}
             {!isEnded && (
               <button
                 onClick={() => setStatus('ended')}
