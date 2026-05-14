@@ -697,7 +697,12 @@ export default function WidgetEmbedPage() {
   const accent = config.primaryColor
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100">
+    // h-screen, not min-h-screen — we need a constrained parent so the
+    // messages-section's `flex-1 overflow-y-auto` actually scrolls
+    // INTERNALLY. With min-h-screen the page grew with the transcript
+    // and the entire page scrolled, taking the header + "you're chatting
+    // with X · live" banner off-screen the moment you scrolled up.
+    <div className="h-screen flex flex-col bg-zinc-950 text-zinc-100">
       {/* Header */}
       <div className="px-4 py-3 flex items-center gap-3 border-b border-zinc-800" style={{ background: `linear-gradient(135deg, ${accent}25, ${accent}10)` }}>
         {config.logoUrl ? (
