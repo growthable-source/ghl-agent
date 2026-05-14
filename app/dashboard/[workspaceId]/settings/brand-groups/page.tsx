@@ -54,6 +54,7 @@ export default function BrandGroupsPage() {
   const [editingColor, setEditingColor] = useState<string | null>(null)
   const [editingPriority, setEditingPriority] = useState(100)
   const [busy, setBusy] = useState(false)
+  const [addSearch, setAddSearch] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -142,16 +143,35 @@ export default function BrandGroupsPage() {
     } finally { setBusy(false) }
   }
 
-  async function toggleBrand(brand: Brand) {
-    if (!selected) return
-    const isInThisGroup = brand.brandGroupId === selected.id
-    const nextGroupId = isInThisGroup ? null : selected.id
+  async function moveBrandIntoSelected(brand: Brand) {
+    if (!selected || brand.brandGroupId === selected.id) return
+    // Confirm reassignment when brand currently lives in another
+    // group — operators occasionally click the wrong row and a
+    // silent move is hard to undo without checking the old group.
+    if (brand.brandGroupId) {
+      const fromName = groups.find(g => g.id === brand.brandGroupId)?.name ?? 'another group'
+      if (!confirm(`Move "${brand.name}" from "${fromName}" to "${selected.name}"?`)) return
+    }
     setBusy(true)
     try {
       await fetch(`/api/workspaces/${workspaceId}/brands/${brand.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandGroupId: nextGroupId }),
+        body: JSON.stringify({ brandGroupId: selected.id }),
+      })
+      await load()
+      setAddSearch('')
+    } finally { setBusy(false) }
+  }
+
+  async function removeBrandFromSelected(brand: Brand) {
+    if (!selected) return
+    setBusy(true)
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/brands/${brand.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandGroupId: null }),
       })
       await load()
     } finally { setBusy(false) }
@@ -338,32 +358,102 @@ export default function BrandGroupsPage() {
                   </div>
                 </div>
 
-                <div className="px-4 py-2 border-b text-[10px] uppercase tracking-wider font-semibold"
+                {/* Members of this group */}
+                {(() => {
+                  const members = brands.filter(b => b.brandGroupId === selected.id)
+                  return (
+                    <>
+                      <div className="px-4 py-2 border-b text-[10px] uppercase tracking-wider font-semibold flex items-center justify-between"
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}>
+                        <span>Members · {members.length}</span>
+                      </div>
+                      {members.length === 0 ? (
+                        <p className="p-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                          No brands assigned yet. Use the search below to add some.
+                        </p>
+                      ) : (
+                        members.map(b => (
+                          <div
+                            key={b.id}
+                            className="flex items-center gap-3 p-3 border-t"
+                            style={{ borderColor: 'var(--border)' }}
+                          >
+                            {b.logoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={b.logoUrl} alt="" className="w-6 h-6 rounded object-cover" />
+                            ) : (
+                              <span
+                                className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-semibold text-white"
+                                style={{ background: b.primaryColor || '#fa4d2e' }}
+                              >
+                                {b.name.charAt(0).toUpperCase()}
+                              </span>
+                            )}
+                            <p className="text-sm flex-1 truncate" style={{ color: 'var(--text-primary)' }}>{b.name}</p>
+                            <button
+                              onClick={() => removeBrandFromSelected(b)}
+                              disabled={busy}
+                              className="text-[11px] text-zinc-400 hover:text-red-400 disabled:opacity-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </>
+                  )
+                })()}
+
+                {/* Add-brand search. Search-driven so 100+ brand workspaces
+                    don't get a wall of checkboxes; brands are typeahead-able
+                    by name or slug, results capped at 8. Each result row
+                    shows the brand's CURRENT group so an operator knows
+                    they're about to MOVE it rather than co-locate. */}
+                <div className="px-4 py-2 border-t border-b text-[10px] uppercase tracking-wider font-semibold"
                   style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}>
-                  Brands in this group
+                  Add brand
                 </div>
-                {brands.length === 0 ? (
-                  <p className="p-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    No brands in this workspace yet. Create brands first.
-                  </p>
-                ) : (
-                  brands.map(b => {
-                    const inThis = b.brandGroupId === selected.id
-                    const inOther = !inThis && !!b.brandGroupId
-                    const otherGroup = inOther ? groups.find(g => g.id === b.brandGroupId) : null
+                <div className="p-3 border-b" style={{ borderColor: 'var(--border)' }}>
+                  <input
+                    type="text"
+                    value={addSearch}
+                    onChange={e => setAddSearch(e.target.value)}
+                    placeholder="Search by name or slug…"
+                    className="w-full text-sm rounded px-2.5 py-1.5"
+                    style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+                  />
+                </div>
+                {(() => {
+                  const q = addSearch.trim().toLowerCase()
+                  const candidates = brands.filter(b => b.brandGroupId !== selected.id)
+                  // Empty search: show first 8 ungrouped brands (cheap
+                  // "what could I add" hint without a wall of text).
+                  const filtered = q
+                    ? candidates.filter(b =>
+                        b.name.toLowerCase().includes(q)
+                        || b.slug.toLowerCase().includes(q),
+                      )
+                    : candidates.filter(b => !b.brandGroupId)
+                  if (filtered.length === 0) {
                     return (
-                      <label
+                      <p className="p-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                        {q
+                          ? 'No brands match. Note: a brand can only live in one group at a time.'
+                          : 'No ungrouped brands left. Type a name to search across all brands — adding from another group will MOVE it.'}
+                      </p>
+                    )
+                  }
+                  return filtered.slice(0, 8).map(b => {
+                    const currentGroup = b.brandGroupId ? groups.find(g => g.id === b.brandGroupId) : null
+                    return (
+                      <button
                         key={b.id}
-                        className="flex items-center gap-3 p-3 border-t cursor-pointer hover:bg-zinc-900/40 transition-colors"
+                        type="button"
+                        onClick={() => moveBrandIntoSelected(b)}
+                        disabled={busy}
+                        className="w-full flex items-center gap-3 p-3 border-t text-left hover:bg-zinc-900/40 transition-colors disabled:opacity-50"
                         style={{ borderColor: 'var(--border)' }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={inThis}
-                          disabled={busy}
-                          onChange={() => toggleBrand(b)}
-                          className="w-4 h-4"
-                        />
                         {b.logoUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={b.logoUrl} alt="" className="w-6 h-6 rounded object-cover" />
@@ -375,16 +465,23 @@ export default function BrandGroupsPage() {
                             {b.name.charAt(0).toUpperCase()}
                           </span>
                         )}
-                        <p className="text-sm flex-1 truncate" style={{ color: 'var(--text-primary)' }}>{b.name}</p>
-                        {inOther && otherGroup && (
-                          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                            currently in <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>{otherGroup.name}</span>
-                          </span>
-                        )}
-                      </label>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{b.name}</p>
+                          {currentGroup ? (
+                            <p className="text-[10px]" style={{ color: 'var(--accent-amber)' }}>
+                              Will move from <span className="font-medium">{currentGroup.name}</span>
+                            </p>
+                          ) : (
+                            <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Ungrouped</p>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-semibold" style={{ color: 'var(--accent-primary)' }}>
+                          + Add
+                        </span>
+                      </button>
                     )
                   })
-                )}
+                })()}
               </div>
             )}
           </div>

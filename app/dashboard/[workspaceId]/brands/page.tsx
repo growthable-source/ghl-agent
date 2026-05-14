@@ -12,10 +12,18 @@ interface Brand {
   logoUrl: string | null
   primaryColor: string | null
   aiEnabled: boolean
+  brandGroupId: string | null
   widgetCount: number
   collectionCount: number
   createdAt: string
   updatedAt: string
+}
+
+interface BrandGroup {
+  id: string
+  name: string
+  priority: number
+  color: string | null
 }
 
 const PRESET_COLORS = ['#fa4d2e', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#64748b']
@@ -25,16 +33,20 @@ export default function BrandsPage() {
   const workspaceId = params.workspaceId as string
 
   const [brands, setBrands] = useState<Brand[]>([])
+  const [groups, setGroups] = useState<BrandGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [notMigrated, setNotMigrated] = useState(false)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; brand?: Brand } | null>(null)
 
   const fetchAll = useCallback(async () => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/brands`)
-    const data = await res.json()
-    setBrands(data.brands || [])
-    setNotMigrated(!!data.notMigrated)
+    const [bRes, gRes] = await Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/brands`).then(r => r.json()),
+      fetch(`/api/workspaces/${workspaceId}/brand-groups`).then(r => r.json()).catch(() => ({ groups: [] })),
+    ])
+    setBrands(bRes.brands || [])
+    setGroups(gRes.groups || [])
+    setNotMigrated(!!bRes.notMigrated)
     setLoading(false)
   }, [workspaceId])
 
@@ -218,6 +230,7 @@ export default function BrandsPage() {
           workspaceId={workspaceId}
           mode={editor.mode}
           brand={editor.brand}
+          groups={groups}
           onClose={() => setEditor(null)}
           onSaved={() => { setEditor(null); fetchAll() }}
         />
@@ -227,11 +240,12 @@ export default function BrandsPage() {
 }
 
 function BrandEditorModal({
-  workspaceId, mode, brand, onClose, onSaved,
+  workspaceId, mode, brand, groups, onClose, onSaved,
 }: {
   workspaceId: string
   mode: 'create' | 'edit'
   brand?: Brand
+  groups: BrandGroup[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -241,6 +255,7 @@ function BrandEditorModal({
   const [logoUrl, setLogoUrl] = useState(brand?.logoUrl ?? '')
   const [color, setColor] = useState(brand?.primaryColor ?? PRESET_COLORS[0])
   const [aiEnabled, setAiEnabled] = useState(brand?.aiEnabled !== false)
+  const [brandGroupId, setBrandGroupId] = useState<string | null>(brand?.brandGroupId ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [slugTouched, setSlugTouched] = useState(false)
@@ -374,6 +389,7 @@ function BrandEditorModal({
         logoUrl: persistableLogoUrl,
         primaryColor: color,
         aiEnabled,
+        brandGroupId,
       }
       const url = mode === 'create'
         ? `/api/workspaces/${workspaceId}/brands`
@@ -585,6 +601,34 @@ function BrandEditorModal({
                 />
               ))}
             </div>
+          </div>
+
+          {/* Priority group — exactly one or none. The DB enforces
+              single-membership via Brand.brandGroupId; the selector
+              just exposes it. "None" detaches the brand to the
+              lowest-priority tier on inbox sort. */}
+          <div>
+            <label className="text-xs font-medium block mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              Priority group
+            </label>
+            <select
+              value={brandGroupId ?? ''}
+              onChange={e => setBrandGroupId(e.target.value || null)}
+              className="w-full rounded px-3 py-2 text-sm"
+              style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+            >
+              <option value="">No group (lowest priority)</option>
+              {groups.map(g => (
+                <option key={g.id} value={g.id}>
+                  {g.name} · priority {g.priority}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              {groups.length === 0
+                ? 'No groups yet. Create one in Settings → Brand priority groups.'
+                : 'A brand can only live in one group at a time. Changing groups here moves it.'}
+            </p>
           </div>
 
           {/* AI mode — flip to human-only support for an entire brand.
