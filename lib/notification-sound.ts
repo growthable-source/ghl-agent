@@ -22,21 +22,72 @@ const THROTTLE_MS = 600
 
 let ctx: AudioContext | null = null
 let lastPlayedAtByScope = new Map<string, number>()
+let gestureRegistered = false
 
-function getOrCreateAudioContext(): AudioContext | null {
+type AudioContextCtor = typeof AudioContext
+
+function rawCreate(): AudioContext | null {
   if (typeof window === 'undefined') return null
-  if (ctx && ctx.state !== 'closed') return ctx
   try {
-    // Safari uses webkitAudioContext on older versions.
-    type AudioContextCtor = typeof AudioContext
     const Ctor = (window.AudioContext ||
       (window as Window & { webkitAudioContext?: AudioContextCtor }).webkitAudioContext) as AudioContextCtor | undefined
     if (!Ctor) return null
-    ctx = new Ctor()
-    return ctx
+    return new Ctor()
   } catch {
     return null
   }
+}
+
+/**
+ * Browser autoplay policy: an AudioContext created BEFORE the first
+ * user gesture is born suspended and never resumes — even calling
+ * resume() later from outside a gesture handler doesn't help. Symptom:
+ * the very first agent reply / visitor message plays silently because
+ * the context was created at module-load time, before the user has
+ * clicked anything.
+ *
+ * The reliable fix: register one-shot gesture listeners at module
+ * load. The FIRST click/keydown/touchstart anywhere on the page
+ * creates the AudioContext inside that gesture's call stack, where
+ * resume() is permitted. After that, subsequent play() calls work.
+ *
+ * Idempotent — installs listeners once per page load, then auto-cleans.
+ */
+function ensureGestureListeners(): void {
+  if (gestureRegistered || typeof window === 'undefined') return
+  gestureRegistered = true
+
+  const unlock = () => {
+    if (!ctx || ctx.state === 'closed') ctx = rawCreate()
+    if (ctx && ctx.state === 'suspended') {
+      // resume() needs to be called inside the gesture handler's
+      // call stack — that's exactly where we are right now.
+      ctx.resume().catch(() => { /* ignore */ })
+    }
+    window.removeEventListener('pointerdown', unlock)
+    window.removeEventListener('keydown', unlock)
+    window.removeEventListener('touchstart', unlock)
+  }
+
+  window.addEventListener('pointerdown', unlock, { once: true })
+  window.addEventListener('keydown', unlock, { once: true })
+  window.addEventListener('touchstart', unlock, { once: true, passive: true })
+}
+
+function getOrCreateAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null
+  ensureGestureListeners()
+  if (ctx && ctx.state !== 'closed') return ctx
+  ctx = rawCreate()
+  return ctx
+}
+
+// Register gesture listeners on module import so the AudioContext is
+// ready to resume the moment the user clicks/types/taps anywhere —
+// not lazily on the first playNotificationSound call (which might
+// happen AFTER the gesture already fired and was missed).
+if (typeof window !== 'undefined') {
+  ensureGestureListeners()
 }
 
 export function isNotificationSoundMuted(scope: 'widget' | 'inbox'): boolean {

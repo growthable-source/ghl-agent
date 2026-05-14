@@ -131,9 +131,27 @@ export async function POST(req: NextRequest, { params }: Params) {
       await runWidgetAgent({ convo, content })
     } catch (err: any) {
       console.error('[widget] agent run failed:', err)
+      // Map common account-level failures to specific operator-facing
+      // messages so we don't bury a recoverable problem (low Anthropic
+      // credits, rate limits) behind a generic "try again." The
+      // visitor still sees a graceful "having trouble" — the
+      // specifics route to the operator-side system message.
+      const raw = (err?.message ?? '') as string
+      let message = 'Agent failed to respond. Please try again.'
+      if (/credit balance is too low/i.test(raw)) {
+        message = 'Agent paused: the workspace\'s Anthropic credit balance is empty. Top up at console.anthropic.com/settings/billing and the agent will resume on the next inbound.'
+      } else if (/rate.?limit|429/i.test(raw)) {
+        message = 'Agent paused: hitting Anthropic rate limits. The next inbound will retry — if this keeps happening, request a higher rate-limit tier in console.anthropic.com.'
+      } else if (/invalid.?api.?key|authentication/i.test(raw)) {
+        message = 'Agent paused: the ANTHROPIC_API_KEY env var is missing or invalid on this deployment.'
+      } else if (raw) {
+        // Surface the underlying message verbatim when we don't have a
+        // tailored mapping — easier to debug than the generic.
+        message = `Agent failed to respond: ${raw.slice(0, 240)}`
+      }
       await broadcast(conversationId, {
         type: 'agent_error',
-        message: 'Agent failed to respond. Please try again.',
+        message,
       }).catch(() => {})
     }
   })
