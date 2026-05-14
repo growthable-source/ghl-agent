@@ -716,6 +716,43 @@ export async function executeTool(
         })
         return JSON.stringify({ success: true, scheduledAt: scheduledAt.toISOString(), message: input.message })
       }
+      case 'end_conversation': {
+        // Widget-only — close the WidgetConversation tied to the active
+        // adapter. The adapter stashes the conversation id at
+        // `crm.conversationId` (see lib/widget-adapter.ts). On any other
+        // channel the adapter doesn't carry that field, so we surface a
+        // friendly error rather than silently failing.
+        const widgetConvId = (crm as any)?.conversationId as string | undefined
+        if (!widgetConvId || !(crm as any)?.broadcastSystem) {
+          return JSON.stringify({
+            error: 'end_conversation only works in the live-chat widget — no-op on this channel.',
+          })
+        }
+        const summary = String((input as any).summary || '').slice(0, 500)
+        const { db: prisma } = await import('../db')
+        await prisma.widgetConversation.update({
+          where: { id: widgetConvId },
+          data: { status: 'ended', lastMessageAt: new Date() },
+        })
+        // Pause the deterministic state machine so any race-y follow-up
+        // turn doesn't push another reply into the (now closed) thread.
+        if (agentId) {
+          await prisma.conversationStateRecord.updateMany({
+            where: { agentId, state: 'ACTIVE' },
+            data: { state: 'PAUSED', pauseReason: 'Agent ended conversation', pausedAt: new Date() },
+          })
+        }
+        // Broadcast so the widget swaps the composer for the closure
+        // banner + auto-opens the CSAT prompt. Same event the operator
+        // PATCH endpoint emits — the widget doesn't care who closed it.
+        try {
+          const { broadcast } = await import('../widget-sse')
+          await broadcast(widgetConvId, { type: 'status_changed', status: 'ended' })
+        } catch (err: any) {
+          console.warn('[end_conversation] broadcast failed:', err?.message)
+        }
+        return JSON.stringify({ success: true, summary, note: 'Conversation closed. Visitor will see closure banner and rating prompt.' })
+      }
       case 'transfer_to_human': {
         // Log LOUDLY so operators can see in Vercel that the agent
         // reached for transfer + the reason it gave. Paired with the

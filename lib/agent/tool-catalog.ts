@@ -470,6 +470,28 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'end_conversation',
+    description: 'Close out a live-chat conversation. Use this when the visitor has gotten what they came for and the thread is naturally done — they said "thanks, that\'s all", confirmed an order was found, accepted a follow-up via email, etc. Closing the chat:\n' +
+      '  - Stops you from replying further on this thread\n' +
+      '  - Triggers the visitor\'s "rate this chat" prompt in the widget\n' +
+      '  - Marks the conversation resolved in the operator inbox\n\n' +
+      'Do NOT call this:\n' +
+      '  - Mid-conversation when the visitor might still need help\n' +
+      '  - Right after handing off to a human (transfer_to_human already pauses you; the human decides when it\'s really done)\n' +
+      '  - On a non-widget channel (SMS, email, voice) — this tool is widget-only and will return an error elsewhere\n\n' +
+      'Send your final reply with send_reply FIRST (a goodbye, recap, or thank-you), THEN call end_conversation.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        summary: {
+          type: 'string',
+          description: 'One-sentence summary of how the chat resolved. Visible to the operator in the inbox. Examples: "Customer found order #1042, no action needed.", "Visitor opted in for our newsletter and left."',
+        },
+      },
+      required: ['summary'],
+    },
+  },
+  {
     name: 'transfer_to_human',
     description: 'Escalate the conversation to a human agent. The conversation is PAUSED when you call this — the agent stops replying until an operator manually resumes it. Use SPARINGLY, only when:\n' +
       '  (a) the contact explicitly asks to speak to a human / manager / real person, OR\n' +

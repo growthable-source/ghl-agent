@@ -183,6 +183,12 @@ export const REFLEXES: ReflexDef[] = [
     description: 'Hand the conversation to a teammate when the agent decides it should.',
     group: 'messaging',
   },
+  {
+    key: 'end_conversation',
+    label: 'Close live chat',
+    description: 'Mark a widget conversation resolved when the visitor is done — triggers the rating prompt and removes the thread from active queues. Widget-only.',
+    group: 'messaging',
+  },
 
   // Commerce (Shopify). Only useful when the workspace has a Shopify
   // store connected; the dispatcher returns a friendly "no store
