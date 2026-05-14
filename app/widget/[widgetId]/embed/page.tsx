@@ -78,6 +78,12 @@ export default function WidgetEmbedPage() {
   const [dictating, setDictating] = useState(false)
   const dictationRef = useRef<any>(null)
 
+  // Surfaced after the visitor identifies if their email matches an
+  // existing visitor with a live chat — we sent them a magic link to
+  // resume that thread on this device. We still let them chat in the
+  // new thread in case they don't want to wait on email.
+  const [recoveryEmailed, setRecoveryEmailed] = useState(false)
+
   // CSAT
   const [csatOpen, setCsatOpen] = useState(false)
   const [csatRating, setCsatRating] = useState(0)
@@ -151,21 +157,70 @@ export default function WidgetEmbedPage() {
       .catch(e => setError(e.message))
   }, [widgetId, publicKey])
 
-  // Step 2: create/load visitor after config loads (if we don't need forced identity)
+  // Step 2: create/load visitor after config loads (if we don't need forced identity).
+  //
+  // Branch: if the URL carries ?recover=<token>, that's a magic link
+  // back from a previous device. POST /recover swaps the original
+  // WidgetVisitor's cookieId to OUR cookieId so this device picks up
+  // the existing conversation + operator assignment. We strip the
+  // query param after success so a refresh doesn't try to recover
+  // again with the now-used token.
   useEffect(() => {
     if (!config || !widgetId || needsIdentity) return
     const cookieId = getCookieId()
     if (!cookieId) return
-    fetch(`/api/widget/${widgetId}/visitor?pk=${publicKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cookieId, email: email || undefined, name: name || undefined }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) setError(data.error)
-        else setVisitorId(data.visitorId)
+
+    const recoverToken = searchParams.get('recover')
+    if (recoverToken) {
+      ;(async () => {
+        try {
+          const res = await fetch(`/api/widget/${widgetId}/recover?pk=${publicKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: recoverToken, newCookieId: cookieId }),
+          })
+          const data = await res.json()
+          if (res.ok && data.visitorId) {
+            setVisitorId(data.visitorId)
+            // Strip ?recover from the URL so a refresh doesn't replay
+            // a used token (returns 410). We replace, not push, so the
+            // back button doesn't bounce them back here.
+            try {
+              const u = new URL(window.location.href)
+              u.searchParams.delete('recover')
+              window.history.replaceState(null, '', u.pathname + u.search + u.hash)
+            } catch {}
+            return
+          }
+          // Token expired / used / invalid → fall through to the
+          // normal identify so the visitor still has a working chat
+          // (just under a fresh thread).
+          console.warn('[widget] recovery failed:', data.error)
+        } catch (err: any) {
+          console.warn('[widget] recovery call failed:', err?.message)
+        }
+        // Fallthrough to the regular identify path
+        identifyFresh()
+      })()
+      return
+    }
+
+    identifyFresh()
+
+    function identifyFresh() {
+      fetch(`/api/widget/${widgetId}/visitor?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookieId, email: email || undefined, name: name || undefined }),
       })
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) setError(data.error)
+          else setVisitorId(data.visitorId)
+          if (data.recoveryEmailed) setRecoveryEmailed(true)
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, widgetId, publicKey, needsIdentity])
 
   // Step 3: open/resume conversation
@@ -457,8 +512,11 @@ export default function WidgetEmbedPage() {
         body: JSON.stringify({ cookieId, email, name }),
       })
       const data = await res.json()
-      if (data.visitorId) { setVisitorId(data.visitorId); setNeedsIdentity(false) }
-      else setError(data.error || 'Failed to start chat')
+      if (data.visitorId) {
+        setVisitorId(data.visitorId)
+        setNeedsIdentity(false)
+        if (data.recoveryEmailed) setRecoveryEmailed(true)
+      } else setError(data.error || 'Failed to start chat')
     } finally { setSending(false) }
   }
 
@@ -806,6 +864,22 @@ export default function WidgetEmbedPage() {
           <span className="text-[10px] text-emerald-300 font-medium inline-flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> live
           </span>
+        </div>
+      )}
+
+      {/* Cross-device recovery prompt — we detected an existing chat
+          tied to this email under a different cookie + sent a magic
+          link. The visitor can keep chatting here OR click the link
+          to pick up the old thread. */}
+      {recoveryEmailed && (
+        <div className="px-4 py-2 border-b text-[11px] flex items-center justify-between"
+          style={{ background: 'rgba(245,158,11,0.10)', borderColor: 'rgba(245,158,11,0.30)', color: 'var(--accent-amber, #f59e0b)' }}>
+          <span>We sent you a link to resume your previous chat. Check your email to pick up where you left off.</span>
+          <button
+            onClick={() => setRecoveryEmailed(false)}
+            className="font-semibold ml-3 hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >Got it</button>
         </div>
       )}
 

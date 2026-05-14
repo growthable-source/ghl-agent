@@ -35,12 +35,33 @@ export async function GET(req: NextRequest) {
     select: { id: true },
     take: MAX_PER_RUN,
   })
-  if (stale.length === 0) {
-    return NextResponse.json({ deleted: 0 })
+  let invitesDeleted = 0
+  if (stale.length > 0) {
+    const ids = stale.map(i => i.id)
+    const res = await db.workspaceInvite.deleteMany({ where: { id: { in: ids } } })
+    invitesDeleted = res.count
   }
-  const ids = stale.map(i => i.id)
-  const { count } = await db.workspaceInvite.deleteMany({
-    where: { id: { in: ids } },
+
+  // Also sweep used/expired visitor recovery tokens — they're
+  // single-use 30-min magic links, so anything older than the
+  // grace window is safe to delete. Best-effort: missing table
+  // (pre-migration) silently skips.
+  let recoveryDeleted = 0
+  try {
+    const old = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000)
+    const res = await (db as any).visitorRecoveryToken.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: old } },
+          { usedAt: { not: null, lt: old } },
+        ],
+      },
+    })
+    recoveryDeleted = res.count
+  } catch { /* table missing — skip */ }
+
+  return NextResponse.json({
+    invitesDeleted,
+    recoveryDeleted,
   })
-  return NextResponse.json({ deleted: count })
 }

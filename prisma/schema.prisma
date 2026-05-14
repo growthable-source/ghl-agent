@@ -1460,6 +1460,28 @@ model ChatWidget {
   @@index([brandId])
 }
 
+// Single-use magic link for cross-device chat recovery. Issued when a
+// visitor identifies with an email that already exists for this widget
+// under a different cookieId AND that prior visitor has a live
+// conversation. The visitor clicks the link, the recover endpoint
+// re-points the original WidgetVisitor row at the new cookieId, and
+// the conversation resumes — no separate verification factor needed
+// because email ownership is proved by clicking a link delivered there.
+model VisitorRecoveryToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  visitorId String
+  visitor   WidgetVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  widgetId  String
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([visitorId])
+  @@index([expiresAt])
+}
+
 model WidgetVisitor {
   id            String               @id @default(cuid())
   widgetId      String
@@ -1481,9 +1503,11 @@ model WidgetVisitor {
   currentTitle  String?
   conversations WidgetConversation[]
   events        WidgetVisitorEvent[]
+  recoveryTokens VisitorRecoveryToken[]
 
   @@unique([widgetId, cookieId])
   @@index([widgetId, lastSeenAt])
+  @@index([widgetId, email])
 }
 
 // Visitor activity stream — page views, identifies, custom events
