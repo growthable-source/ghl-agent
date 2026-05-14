@@ -267,14 +267,21 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
                     {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
 
-                    {/* ── Queue — things needing a human ── */}
+                    {/* ── Queue — things needing a human ──
+                        Unified "Queue" page is the new top-of-list
+                        entry; the four legacy buckets are kept as
+                        filter shortcuts beneath. We'll collapse those
+                        away in a future pass once operators have
+                        actually adopted the unified view; until then,
+                        no breaking-change to anyone's muscle memory. */}
                     <div className="pt-3 pb-1 px-3">
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Queue</p>
                     </div>
-                    {navLink(`/dashboard/${workspaceId}/needs-attention`, 'Needs Attention', counts.needsAttention)}
-                    {navLink(`/dashboard/${workspaceId}/approvals`, 'Approvals', counts.approvalsPending)}
-                    {navLink(`/dashboard/${workspaceId}/next-actions`, 'Next Actions')}
-                    {navLink(`/dashboard/${workspaceId}/corrections`, 'Corrections')}
+                    {navLink(`/dashboard/${workspaceId}/queue`, 'Queue', counts.needsAttention)}
+                    {navLink(`/dashboard/${workspaceId}/needs-attention`, '↳ Needs Attention', counts.needsAttention)}
+                    {navLink(`/dashboard/${workspaceId}/approvals`, '↳ Approvals', counts.approvalsPending)}
+                    {navLink(`/dashboard/${workspaceId}/next-actions`, '↳ Next Actions')}
+                    {navLink(`/dashboard/${workspaceId}/corrections`, '↳ Corrections')}
 
                     {/* ── Insights — analytics ── */}
                     <div className="pt-3 pb-1 px-3">
