@@ -112,6 +112,17 @@ export default function WidgetEmbedPage() {
   // networks, suspended laptops), we'll force a reconnect ourselves.
   const lastSeenAtRef = useRef<number>(Date.now())
 
+  // Stop dictation on unmount. Without this the SpeechRecognition
+  // instance keeps the browser's mic indicator on after the widget
+  // page unloads — the visitor sees a "this site is using your
+  // microphone" pill in the URL bar with nothing they can do about it.
+  useEffect(() => {
+    return () => {
+      try { dictationRef.current?.stop() } catch {}
+      dictationRef.current = null
+    }
+  }, [])
+
   // Generate/restore stable cookieId
   function getCookieId(): string {
     if (typeof window === 'undefined') return ''
@@ -455,6 +466,14 @@ export default function WidgetEmbedPage() {
     e.preventDefault()
     const content = input.trim()
     if (!content || !conversationId || sending) return
+    // Stop dictation the moment the visitor sends. Otherwise the
+    // SpeechRecognition instance — started with continuous:true — keeps
+    // listening with the mic indicator on, even though the input is now
+    // empty. Reported as "the mic doesn't turn off."
+    if (dictating) {
+      try { dictationRef.current?.stop() } catch {}
+      setDictating(false)
+    }
     setSending(true)
     const optimisticId = 'opt-' + Date.now()
     setMessages(m => [...m, { id: optimisticId, role: 'visitor', content }])

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notifications'
 import { resolveHandoverLink } from '@/lib/handover-link'
+import { sendQuietCheckIn } from '@/lib/widget-check-in'
 
 /**
  * GET /api/cron/stale-conversations
@@ -47,55 +48,62 @@ export async function GET(req: NextRequest) {
   })
 
   let paged = 0
+  let checkedIn = 0
   for (const convo of candidates) {
-    // Only fire when the LAST message is from the visitor — if the agent
-    // replied last, quietness means they're waiting on the visitor which
-    // isn't an attention-worthy signal.
     const last = await db.widgetMessage.findFirst({
       where: { conversationId: convo.id },
       orderBy: { createdAt: 'desc' },
       select: { role: true, content: true },
     })
-    if (!last || last.role !== 'visitor') {
-      // Still stamp to avoid re-checking every tick. Cleared when visitor replies.
-      await db.widgetConversation.update({
-        where: { id: convo.id }, data: { staleNotifiedAt: new Date() },
-      }).catch(() => {})
-      continue
-    }
 
-    try {
-      const link = resolveHandoverLink({
-        workspaceId: convo.widget.workspaceId,
-        locationId: `widget:${convo.widgetId}`,
-        conversationId: convo.id,
-        channel: 'Live_Chat',
-      })
-      const preview = (last.content || '').length > 120
-        ? last.content.slice(0, 117) + '…'
-        : last.content
-      // Wording note: this cron only fires when the *visitor* sent the
-      // last message (see the role check above). So the agent is the one
-      // that hasn't replied — be explicit about that, otherwise the
-      // operator reads it as if the visitor went silent.
-      await notify({
-        workspaceId: convo.widget.workspaceId,
-        event: 'conversation.stale',
-        title: `Agent on ${convo.widget.name || 'your widget'} hasn't replied in ${STALE_MINUTES}+ minutes`,
-        body: `Visitor is waiting. Last message: "${preview}"`,
-        link,
-        severity: 'warning',
-      })
-      paged++
-    } catch (err: any) {
-      console.warn('[stale-cron] notify failed for', convo.id, err?.message)
+    // Branch A — visitor sent last, agent hasn't replied. Notify the
+    // operator so they can step in. Same behaviour as before.
+    if (last && last.role === 'visitor') {
+      try {
+        const link = resolveHandoverLink({
+          workspaceId: convo.widget.workspaceId,
+          locationId: `widget:${convo.widgetId}`,
+          conversationId: convo.id,
+          channel: 'Live_Chat',
+        })
+        const preview = (last.content || '').length > 120
+          ? last.content.slice(0, 117) + '…'
+          : last.content
+        await notify({
+          workspaceId: convo.widget.workspaceId,
+          event: 'conversation.stale',
+          title: `Agent on ${convo.widget.name || 'your widget'} hasn't replied in ${STALE_MINUTES}+ minutes`,
+          body: `Visitor is waiting. Last message: "${preview}"`,
+          link,
+          severity: 'warning',
+        })
+        paged++
+      } catch (err: any) {
+        console.warn('[stale-cron] notify failed for', convo.id, err?.message)
+      }
+    }
+    // Branch B — agent sent last, visitor went quiet. Send a brief
+    // in-voice "still there?" check-in so visitors don't silently
+    // abandon. Helper runs Claude Haiku, persists the message, and
+    // broadcasts via SSE. No-op if the agent already nudged.
+    else if (last && last.role === 'agent') {
+      try {
+        const result = await sendQuietCheckIn(convo.id)
+        if (result.sent) checkedIn++
+      } catch (err: any) {
+        console.warn('[stale-cron] check-in failed for', convo.id, err?.message)
+      }
     }
 
     // Always stamp — success or failure — so we don't re-attempt forever.
+    // Cleared the moment the visitor sends another message (see
+    // app/api/widget/[widgetId]/conversations/[conversationId]/messages
+    // POST), so a re-engaged thread that goes quiet AGAIN can fire a
+    // second check-in later.
     await db.widgetConversation.update({
       where: { id: convo.id }, data: { staleNotifiedAt: new Date() },
     }).catch(() => {})
   }
 
-  return NextResponse.json({ scanned: candidates.length, paged })
+  return NextResponse.json({ scanned: candidates.length, paged, checkedIn })
 }
