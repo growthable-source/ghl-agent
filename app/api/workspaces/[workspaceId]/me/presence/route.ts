@@ -50,16 +50,39 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'isAvailable (boolean) required' }, { status: 400 })
   }
 
+  let memberId: string | null = null
   try {
-    await db.workspaceMember.update({
+    const updated = await db.workspaceMember.update({
       where: { userId_workspaceId: { userId, workspaceId } },
       data: { isAvailable: body.isAvailable, availabilityChangedAt: new Date() },
+      select: { id: true },
     })
+    memberId = updated.id
   } catch (err: any) {
     if (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')) {
       return NextResponse.json({ error: 'Migration pending — run prisma/migrations/20260429120000_widget_routing_assignment/migration.sql' }, { status: 503 })
     }
     throw err
   }
+
+  // Append to the presence event log so the agent activity view can
+  // reconstruct online/away intervals. Best-effort — a logging blip
+  // must not break the toggle. Wrapped in catch for the missing-table
+  // case (migration not run yet).
+  if (memberId) {
+    try {
+      await (db as any).memberPresenceEvent.create({
+        data: {
+          memberId,
+          workspaceId,
+          state: body.isAvailable ? 'available' : 'away',
+          source: 'self',
+        },
+      })
+    } catch (err: any) {
+      console.warn('[presence] event log failed:', err?.message)
+    }
+  }
+
   return NextResponse.json({ ok: true, isAvailable: body.isAvailable })
 }

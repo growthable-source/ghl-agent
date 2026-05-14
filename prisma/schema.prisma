@@ -205,9 +205,33 @@ model WorkspaceMember {
   isAvailable           Boolean   @default(true)
   availabilityChangedAt DateTime?
   createdAt             DateTime  @default(now())
+  presenceEvents        MemberPresenceEvent[]
 
   @@unique([userId, workspaceId])
   @@index([workspaceId, isAvailable])
+}
+
+// Audit trail of when a member toggled their availability. Powers the
+// "agent activity" view so an owner can see when each operator was
+// online vs away over the last few days, which makes coverage planning
+// and post-incident review easy.
+model MemberPresenceEvent {
+  id          String          @id @default(cuid())
+  memberId    String
+  member      WorkspaceMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  workspaceId String
+  // 'available' | 'away' — present-tense state the member transitioned
+  // INTO. Read as a strict alternation: every consecutive pair forms
+  // an active-from / away-from interval.
+  state       String
+  // What flipped it. 'self' = the member toggled in the inbox header.
+  // 'system' = future hooks (auto-away after N min idle, signed-out,
+  // login from new tab). Left open so we can extend without migrating.
+  source      String          @default("self")
+  createdAt   DateTime        @default(now())
+
+  @@index([memberId, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 model WorkspaceInvite {
@@ -1347,6 +1371,11 @@ model Brand {
   // brand-scoped inbox URL. Lowercase letters/numbers/dashes.
   slug         String
   description  String?
+  // When false, widget conversations tagged to this brand skip the AI
+  // agent entirely — visitor messages still come through to the inbox
+  // for human operators to reply to, but no AI agent runs. Useful for
+  // agencies that prefer human-only support for specific clients.
+  aiEnabled    Boolean               @default(true)
   // Visual identity for the operator inbox: a chip with a colored dot
   // + the brand logo on each conversation row makes routing obvious.
   logoUrl      String?
@@ -1512,6 +1541,12 @@ model WidgetConversation {
   // chat started on the pricing page or the docs?".
   initiatedUrl     String?
   initiatedTitle   String?
+  // Cached Haiku-generated summary of the conversation. Computed on
+  // demand (Generate button in the inbox) so we don't run Haiku on
+  // every chat. Cleared by clients on stale + regenerated when the
+  // conversation has grown materially since aiSummaryAt.
+  aiSummary        String?           @db.Text
+  aiSummaryAt      DateTime?
   createdAt        DateTime          @default(now())
   messages         WidgetMessage[]
   voiceCalls       WidgetVoiceCall[]

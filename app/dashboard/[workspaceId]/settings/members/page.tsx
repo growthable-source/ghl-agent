@@ -29,6 +29,20 @@ interface Member {
   user: { id: string; name: string | null; email: string | null; image: string | null }
 }
 
+interface PresenceEvent {
+  state: string
+  source: string
+  at: string
+}
+
+interface ActivityMember {
+  id: string
+  user: { id: string; name: string | null; email: string | null; image: string | null }
+  isAvailable: boolean
+  availabilityChangedAt: string | null
+  events: PresenceEvent[]
+}
+
 interface Invite {
   id: string
   email: string
@@ -49,6 +63,10 @@ export default function MembersPage() {
   const [myRole, setMyRole] = useState<WorkspaceRole | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
+
+  // Presence activity log — loaded on demand from /members/activity.
+  const [activity, setActivity] = useState<ActivityMember[] | null>(null)
+  const [activityOpen, setActivityOpen] = useState(false)
 
   // Invite form
   const [emailsInput, setEmailsInput] = useState('')
@@ -76,6 +94,18 @@ export default function MembersPage() {
   }, [workspaceId])
 
   useEffect(() => { load() }, [load])
+
+  async function loadActivity() {
+    if (activity) { setActivityOpen(o => !o); return }
+    setActivityOpen(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/members/activity?days=7`)
+      const data = await res.json()
+      setActivity(data?.members || [])
+    } catch {
+      setActivity([])
+    }
+  }
 
   const canManage = myRole === 'owner' || myRole === 'admin'
   const canAssignAdmin = myRole === 'owner'
@@ -246,10 +276,55 @@ export default function MembersPage() {
           className="rounded-xl border overflow-hidden mb-8"
           style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
         >
-          <div className="px-4 py-3 border-b text-[10px] uppercase tracking-wider font-semibold"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}>
-            {members.length} member{members.length === 1 ? '' : 's'}
+          <div className="px-4 py-3 border-b flex items-center justify-between"
+            style={{ borderColor: 'var(--border)' }}>
+            <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+              {members.length} member{members.length === 1 ? '' : 's'}
+            </span>
+            <button
+              onClick={loadActivity}
+              className="text-[10px] font-semibold text-orange-400 hover:text-orange-300"
+            >
+              {activityOpen ? 'Hide activity' : 'Activity (7d)'}
+            </button>
           </div>
+          {activityOpen && activity && (
+            <div className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}>
+              <div className="px-4 py-3">
+                <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                  Online / away events — last 7 days
+                </p>
+                {activity.length === 0 || activity.every(a => a.events.length === 0) ? (
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    No presence history yet — events show up after operators toggle Available / Away in the inbox header.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {activity.map(a => (
+                      <div key={a.id}>
+                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+                          {a.user.name || a.user.email}
+                        </p>
+                        <div className="space-y-0.5">
+                          {a.events.length === 0 ? (
+                            <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>No toggles this week.</p>
+                          ) : a.events.slice(0, 12).map((e, idx) => (
+                            <p key={idx} className="text-[11px] flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                              <span className={`inline-block w-1.5 h-1.5 rounded-full ${e.state === 'available' ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
+                              <span style={{ color: e.state === 'available' ? 'var(--accent-emerald)' : 'var(--text-tertiary)' }}>
+                                {e.state === 'available' ? 'Online' : 'Away'}
+                              </span>
+                              <span className="ml-auto text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{timeAgo(e.at)}</span>
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {members.map(m => {
             const isMe = m.user.id === meId
             const canRemove = canManage && !isMe && outrankClient(myRole, m.role)

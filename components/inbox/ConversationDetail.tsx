@@ -823,6 +823,29 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           </div>
         </div>
 
+        {/* Haiku-generated quick summary. Cached on the conversation;
+            "Refresh" forces a regenerate. Operators scanning a busy
+            inbox can get the gist without reading the full transcript. */}
+        <AISummarySection workspaceId={workspaceId} conversationId={conversationId} />
+
+        {/* Export menu — download THIS single conversation in the
+            operator's chosen format. Bulk export lives on the inbox
+            page header. */}
+        <div className="p-5 border-b border-zinc-800">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-2">Export</p>
+          <div className="flex gap-2">
+            {(['md', 'csv', 'json'] as const).map(fmt => (
+              <a
+                key={fmt}
+                href={`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/export?format=${fmt}`}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white transition-colors"
+              >
+                .{fmt}
+              </a>
+            ))}
+          </div>
+        </div>
+
         {/* Where they are now + activity stream — pulled from the
             visitor-events API. Renders nothing for visitors who
             haven't fired any events yet. */}
@@ -1047,6 +1070,74 @@ interface VisitorTimelineData {
     messageCount: number
     widget: { id: string; name: string }
   }>
+}
+
+function AISummarySection({ workspaceId, conversationId }: { workspaceId: string; conversationId: string }) {
+  const [summary, setSummary] = useState<string | null>(null)
+  const [summaryAt, setSummaryAt] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/summary`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        if (d.summary) setSummary(d.summary)
+        if (d.summaryAt) setSummaryAt(d.summaryAt)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [workspaceId, conversationId])
+
+  async function generate(force: boolean) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || 'Failed to summarise')
+      setSummary(d.summary || null)
+      setSummaryAt(d.summaryAt || null)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to summarise')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="p-5 border-b border-zinc-800">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">AI summary</p>
+        <button
+          onClick={() => generate(!!summary)}
+          disabled={busy}
+          className="text-[10px] font-semibold text-orange-400 hover:text-orange-300 disabled:opacity-50"
+        >
+          {busy ? 'Working…' : summary ? 'Refresh' : 'Generate'}
+        </button>
+      </div>
+      {summary ? (
+        <>
+          <p className="text-xs text-zinc-200 whitespace-pre-wrap leading-relaxed">{summary}</p>
+          {summaryAt && (
+            <p className="text-[10px] text-zinc-600 mt-2">Updated {relTime(summaryAt)}</p>
+          )}
+        </>
+      ) : (
+        <p className="text-[11px] text-zinc-500">
+          Click Generate to get a Haiku-powered overview of what this chat is about.
+        </p>
+      )}
+      {error && <p className="text-[11px] text-red-400 mt-2">{error}</p>}
+    </div>
+  )
 }
 
 function VisitorTimelineSection({ workspaceId, conversationId }: { workspaceId: string; conversationId: string }) {

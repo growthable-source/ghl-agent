@@ -87,6 +87,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.primaryColor !== undefined) {
     data.primaryColor = typeof body.primaryColor === 'string' && body.primaryColor.trim() ? body.primaryColor.trim() : null
   }
+  // aiEnabled is a boolean toggle for human-only mode. Explicit boolean
+  // check so other falsy values (null, "", undefined) don't accidentally
+  // disable the agent for an entire brand.
+  if (typeof body.aiEnabled === 'boolean') {
+    data.aiEnabled = body.aiEnabled
+  }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }

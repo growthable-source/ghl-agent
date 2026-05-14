@@ -99,6 +99,11 @@ export default function InboxPage() {
   // already on each row. Default 'any' = no filter so the inbox
   // behaves exactly as before unless the operator explicitly narrows.
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('any')
+  // Filter to a specific assigned operator. `null` = no assignee filter
+  // (mirrors 'all'). The drop-down is populated from /members so we can
+  // show name + avatar in each option.
+  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null)
+  const [members, setMembers] = useState<Array<{ id: string; user: { id: string; name: string | null; email: string | null; image: string | null } }>>([])
   const [search, setSearch] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
   const [isAvailable, setIsAvailable] = useState<boolean>(true)
@@ -189,17 +194,20 @@ export default function InboxPage() {
   useEffect(() => {
     ;(async () => {
       try {
-        const [meRes, presenceRes, brandsRes] = await Promise.all([
+        const [meRes, presenceRes, brandsRes, membersRes] = await Promise.all([
           fetch('/api/me'),
           fetch(`/api/workspaces/${workspaceId}/me/presence`),
           fetch(`/api/workspaces/${workspaceId}/brands`),
+          fetch(`/api/workspaces/${workspaceId}/members`),
         ])
         const me = await meRes.json()
         const p = await presenceRes.json()
         const b = await brandsRes.json()
+        const mem = await membersRes.json()
         if (me?.user?.id) setMeId(me.user.id)
         if (typeof p?.isAvailable === 'boolean') setIsAvailable(p.isAvailable)
         if (Array.isArray(b?.brands)) setBrands(b.brands)
+        if (Array.isArray(mem?.members)) setMembers(mem.members)
       } catch { /* fail-open: keep defaults */ }
     })()
   }, [workspaceId])
@@ -269,13 +277,17 @@ export default function InboxPage() {
       else f = f.filter(r => r.csatRating === Number(ratingFilter))
     }
 
+    if (assigneeFilter) {
+      f = f.filter(r => r.assignedUserId === assigneeFilter)
+    }
+
     // When `usingSearch` is true the server already applied brand +
     // free-text filters. The status / assignment / rating tabs are
     // still client-side because they're cheap to flip and don't
     // change the underlying result set semantically — operators
     // expect them to narrow what's already on screen.
     return f
-  }, [rows, tab, assignTab, ratingFilter, meId])
+  }, [rows, tab, assignTab, ratingFilter, assigneeFilter, meId])
 
   if (loading) return (
     <div className="flex-1 p-8">
@@ -482,6 +494,70 @@ export default function InboxPage() {
             </div>
           )
         })()}
+
+        {/* Assignee filter — list of workspace members. Only renders
+            when there's more than one member; on a single-operator
+            workspace this control is just noise. */}
+        {members.length > 1 && (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Operator</span>
+            <select
+              value={assigneeFilter ?? ''}
+              onChange={e => setAssigneeFilter(e.target.value || null)}
+              className="text-xs rounded-full px-3 py-1.5 border"
+              style={{
+                background: assigneeFilter ? 'var(--surface-tertiary)' : 'var(--surface)',
+                color: 'var(--text-primary)',
+                borderColor: 'var(--border)',
+              }}
+            >
+              <option value="">All operators</option>
+              {members.map(m => (
+                <option key={m.user.id} value={m.user.id}>
+                  {m.user.name || m.user.email || 'Unknown'}
+                </option>
+              ))}
+            </select>
+            {assigneeFilter && (
+              <button
+                onClick={() => setAssigneeFilter(null)}
+                className="text-[11px] text-zinc-400 hover:text-white underline decoration-zinc-700 hover:decoration-white"
+              >
+                clear
+              </button>
+            )}
+            <a
+              href={(() => {
+                const u = new URL(`/api/workspaces/${workspaceId}/widget-conversations/export`, window.location.origin)
+                u.searchParams.set('format', 'csv')
+                if (brandSlug !== 'all') u.searchParams.set('brand', brandSlug)
+                if (assigneeFilter) u.searchParams.set('assignee', assigneeFilter)
+                if (tab === 'needs_human') u.searchParams.set('status', 'handed_off')
+                return u.pathname + u.search
+              })()}
+              className="ml-auto text-[11px] font-semibold px-2.5 py-1 rounded border hover:bg-zinc-900 transition-colors"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              title="Download the current filter as a CSV"
+            >
+              Export CSV
+            </a>
+            <a
+              href={(() => {
+                const u = new URL(`/api/workspaces/${workspaceId}/widget-conversations/export`, window.location.origin)
+                u.searchParams.set('format', 'md')
+                if (brandSlug !== 'all') u.searchParams.set('brand', brandSlug)
+                if (assigneeFilter) u.searchParams.set('assignee', assigneeFilter)
+                if (tab === 'needs_human') u.searchParams.set('status', 'handed_off')
+                return u.pathname + u.search
+              })()}
+              className="text-[11px] font-semibold px-2.5 py-1 rounded border hover:bg-zinc-900 transition-colors"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              title="Download the current filter as Markdown"
+            >
+              .md
+            </a>
+          </div>
+        )}
 
         {/* Rating filter — only renders once a single rated chat
             exists, so workspaces that haven't started collecting

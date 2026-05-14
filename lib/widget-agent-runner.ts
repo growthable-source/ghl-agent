@@ -71,6 +71,31 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
   const { convo, content } = params
   const widget = convo.widget
 
+  // Per-brand AI on/off gate. Some agencies prefer human-only support
+  // for specific clients; turning aiEnabled=false on the brand makes
+  // the widget operate as a pure inbox — visitor messages still come
+  // through to operators, but no AI reply ever fires.
+  //
+  // Wrapped in try so missing-column (pre-migration) falls through to
+  // the previous behaviour (AI enabled) instead of breaking widgets.
+  try {
+    if (widget.brandId) {
+      const brand = await (db as any).brand.findUnique({
+        where: { id: widget.brandId },
+        select: { aiEnabled: true },
+      })
+      if (brand && brand.aiEnabled === false) {
+        // No "agent_paused" broadcast — there's no agent here to pause.
+        // The inbox still picks up the visitor message normally.
+        return
+      }
+    }
+  } catch (err: any) {
+    if (err?.code !== 'P2022' && !/column .* does not exist/i.test(err?.message ?? '')) {
+      throw err
+    }
+  }
+
   // Resolve the agent: defaultAgentId on the widget, else findMatchingAgent.
   let agent: any = null
   if (widget.defaultAgentId) {

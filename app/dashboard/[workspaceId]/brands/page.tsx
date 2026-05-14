@@ -11,6 +11,7 @@ interface Brand {
   description: string | null
   logoUrl: string | null
   primaryColor: string | null
+  aiEnabled: boolean
   widgetCount: number
   collectionCount: number
   createdAt: string
@@ -153,6 +154,26 @@ export default function BrandsPage() {
                     <span className="px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
                       {b.collectionCount} collection{b.collectionCount === 1 ? '' : 's'}
                     </span>
+                    {/* AI mode chip — quick visual cue from the list
+                        view whether this brand's widgets actually run
+                        an agent. Edit modal flips the underlying
+                        aiEnabled flag. */}
+                    {b.aiEnabled === false ? (
+                      <span
+                        className="px-1.5 py-0.5 rounded font-semibold"
+                        style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--accent-amber)' }}
+                        title="Widgets on this brand skip the AI agent — human operators only."
+                      >
+                        Human-only
+                      </span>
+                    ) : (
+                      <span
+                        className="px-1.5 py-0.5 rounded"
+                        style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+                      >
+                        AI on
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
                     <button
@@ -219,6 +240,7 @@ function BrandEditorModal({
   const [description, setDescription] = useState(brand?.description ?? '')
   const [logoUrl, setLogoUrl] = useState(brand?.logoUrl ?? '')
   const [color, setColor] = useState(brand?.primaryColor ?? PRESET_COLORS[0])
+  const [aiEnabled, setAiEnabled] = useState(brand?.aiEnabled !== false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [slugTouched, setSlugTouched] = useState(false)
@@ -351,6 +373,7 @@ function BrandEditorModal({
         description: description.trim() || null,
         logoUrl: persistableLogoUrl,
         primaryColor: color,
+        aiEnabled,
       }
       const url = mode === 'create'
         ? `/api/workspaces/${workspaceId}/brands`
@@ -563,6 +586,32 @@ function BrandEditorModal({
               ))}
             </div>
           </div>
+
+          {/* AI mode — flip to human-only support for an entire brand.
+              Useful for agencies whose clients prefer no AI on their
+              widgets. Toggle affects every widget tagged to this
+              brand without per-widget configuration. */}
+          <div className="rounded-lg p-3 flex items-start gap-3" style={{ border: '1px solid var(--border)', background: 'var(--surface-secondary)' }}>
+            <div className="flex-1">
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>AI agent enabled</p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                When off, widgets tagged to this brand skip the AI entirely. Visitor messages still come through to the inbox — operators reply by hand.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAiEnabled(v => !v)}
+              className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors mt-1"
+              style={{ background: aiEnabled ? 'var(--accent-emerald)' : 'var(--toggle-off-bg, #3f3f46)' }}
+              aria-pressed={aiEnabled}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full shadow transition ${aiEnabled ? 'translate-x-4' : 'translate-x-0'}`}
+                style={{ background: '#fff' }}
+              />
+            </button>
+          </div>
+
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
         <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>

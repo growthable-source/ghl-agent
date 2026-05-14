@@ -47,6 +47,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       description: b.description,
       logoUrl: b.logoUrl,
       primaryColor: b.primaryColor,
+      // Defaults to true for pre-migration rows where the column
+      // doesn't exist on the returned object — keeps existing brands
+      // behaving exactly as they did before this feature shipped.
+      aiEnabled: b.aiEnabled !== false,
       widgetCount: b._count.widgets,
       collectionCount: b._count.collections,
       createdAt: b.createdAt.toISOString(),
