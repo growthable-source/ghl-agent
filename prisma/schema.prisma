@@ -394,6 +394,16 @@ model Agent {
   typingDelayMaxMs   Int            @default(3000)
   languages          String[]       @default(["en"])
 
+  // ─── Quiet check-in ───
+  // When the agent's last message has been sitting unanswered for the
+  // stale threshold (~3 min) on a widget conversation, the cron sends
+  // ONE brief, in-voice "still around?" nudge. Default on for new
+  // agents — most operators want this behaviour and it's bounded by
+  // the staleNotifiedAt latch + "already nudged" keyword guard. Set
+  // false for agents where check-ins would feel pushy (high-volume
+  // support, broadcast follow-ups).
+  enableQuietCheckIn Boolean @default(true)
+
   // ─── Working Hours & Quiet Periods ───
   workingHoursEnabled Boolean  @default(false)
   workingHoursStart   Int      @default(0) // hour 0-23 (contact-local)

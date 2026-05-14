@@ -16,6 +16,7 @@ interface PersonaData {
   typingDelayMinMs: number
   typingDelayMaxMs: number
   languages: string[]
+  enableQuietCheckIn: boolean
 }
 
 const LANGUAGES = [
@@ -49,6 +50,7 @@ export default function PersonaPage() {
           typingDelayMaxMs: agent.typingDelayMaxMs ?? 3000,
           neverSayList: agent.neverSayList ?? [],
           languages: agent.languages ?? ['en'],
+          enableQuietCheckIn: agent.enableQuietCheckIn ?? true,
         })
       })
       .finally(() => setLoading(false))
@@ -71,6 +73,7 @@ export default function PersonaPage() {
           typingDelayMaxMs: d.typingDelayMaxMs,
           neverSayList: d.neverSayList,
           languages: d.languages,
+          enableQuietCheckIn: d.enableQuietCheckIn,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'Save failed')
@@ -202,6 +205,24 @@ export default function PersonaPage() {
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.simulateTypos ? 'translate-x-4' : 'translate-x-0'}`}
+                  style={{ background: '#fff' }}
+                />
+              </button>
+            </label>
+
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Auto check-in when visitor goes quiet</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>After ~3 minutes of silence on a live chat, send one brief in-voice nudge so the visitor doesn&apos;t abandon the conversation.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => set({ enableQuietCheckIn: !draft.enableQuietCheckIn })}
+                className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+                style={{ background: draft.enableQuietCheckIn ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full shadow transition ${draft.enableQuietCheckIn ? 'translate-x-4' : 'translate-x-0'}`}
                   style={{ background: '#fff' }}
                 />
               </button>

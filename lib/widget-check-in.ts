@@ -52,6 +52,30 @@ export async function sendQuietCheckIn(conversationId: string): Promise<{ sent: 
   if (!convo) return { sent: false, reason: 'not_found' }
   if (convo.status !== 'active') return { sent: false, reason: `status_${convo.status}` }
 
+  // Per-agent opt-out. Defaults to true at the column level so the
+  // migration doesn't change behaviour, but operators can flip it off
+  // in the agent settings page when check-ins don't fit their flow.
+  // Wrapped in try/catch so the cron keeps working on databases that
+  // haven't run the migration yet — degrades to "always on" rather
+  // than failing the whole pass.
+  if (convo.agentId) {
+    try {
+      const agent = await db.agent.findUnique({
+        where: { id: convo.agentId },
+        select: { enableQuietCheckIn: true } as any,
+      }) as any
+      if (agent && agent.enableQuietCheckIn === false) {
+        return { sent: false, reason: 'disabled_on_agent' }
+      }
+    } catch (err: any) {
+      if (err?.code !== 'P2022' && !/column .* does not exist/i.test(err?.message ?? '')) {
+        // Re-throw anything other than missing-column — that's a real bug.
+        throw err
+      }
+      // Column not migrated yet — fall through, treat as enabled.
+    }
+  }
+
   // Load the last few turns to ground the model in tone + context.
   // 8 is enough to read the rapport without burning tokens; the model
   // isn't reasoning here, just matching voice.
