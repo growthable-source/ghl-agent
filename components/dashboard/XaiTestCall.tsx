@@ -266,43 +266,69 @@ export default function XaiTestCall({ voiceId, agentName, firstMessage, agentId 
           history: historyRef.current,
         }),
       })
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => '')
+      if (!res.ok || !res.body) {
+        const errBody = res.body ? await res.text().catch(() => '') : ''
         throw new Error(`agent-turn HTTP ${res.status}: ${errBody.slice(0, 200)}`)
       }
-      const { reply, audioBase64, mimeType, toolCalls } = await res.json() as {
-        reply: string
-        audioBase64: string
-        mimeType: string
-        toolCalls: { name: string; ms: number }[]
-      }
 
-      // Surface tool calls inline in the transcript so the operator
-      // sees the agent's hands moving (which was the missing signal
-      // last time around).
-      if (Array.isArray(toolCalls)) {
-        for (const tc of toolCalls) {
-          setTranscript(prev => [...prev, {
-            role: 'assistant',
-            text: `🔧 ${tc.name} · ${tc.ms}ms`,
-          }])
+      // Stream NDJSON. Each line is a complete event:
+      //   filler  → intermediate "let me check" audio, play immediately
+      //   tool    → metadata for the transcript ("🔧 name · 1240ms")
+      //   final   → the closing reply audio + text
+      //   error   → server-side failure; surface in transcript
+      //
+      // We accumulate bytes, split on newlines, and process complete
+      // lines as they arrive. Critical that we await queueMp3Reply
+      // INSIDE the loop so audio plays sequentially in the order the
+      // server emitted it.
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let finalReply = ''
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // Process every complete line; keep the last (possibly
+        // partial) line in the buffer for the next read.
+        let nl = buffer.indexOf('\n')
+        while (nl !== -1) {
+          const line = buffer.slice(0, nl).trim()
+          buffer = buffer.slice(nl + 1)
+          nl = buffer.indexOf('\n')
+          if (!line) continue
+          let evt: any
+          try { evt = JSON.parse(line) } catch { continue }
+
+          if (evt.type === 'filler') {
+            // Play the "let me check" audio NOW — the tool may still
+            // be running. This is the dead-air fix.
+            appendAssistant(evt.text)
+            if (evt.audioBase64) await queueMp3Reply(evt.audioBase64)
+          } else if (evt.type === 'tool') {
+            setTranscript(prev => [...prev, {
+              role: 'assistant',
+              text: `🔧 ${evt.name} · ${evt.ms}ms`,
+            }])
+          } else if (evt.type === 'final') {
+            finalReply = evt.reply || ''
+            if (finalReply) appendAssistant(finalReply)
+            currentAssistantLineRef.current = null
+            if (evt.audioBase64) await queueMp3Reply(evt.audioBase64)
+          } else if (evt.type === 'error') {
+            setTranscript(prev => [...prev, { role: 'assistant', text: `❌ ${evt.message || 'agent turn failed'}` }])
+          }
         }
       }
-
-      appendAssistant(reply)
-      currentAssistantLineRef.current = null
 
       // Maintain rolling history for the next turn so Claude sees
       // continuity. Keep last 20 turns; the server caps internally too.
       historyRef.current = [
         ...historyRef.current,
         { role: 'user' as const, content: userText },
-        { role: 'assistant' as const, content: reply },
+        { role: 'assistant' as const, content: finalReply },
       ].slice(-20)
-
-      if (audioBase64 && mimeType) {
-        await queueMp3Reply(audioBase64)
-      }
     } catch (err: any) {
       console.error('[voice] agent turn failed:', err)
       setTranscript(prev => [...prev, { role: 'assistant', text: `❌ ${err?.message ?? 'agent turn failed'}` }])

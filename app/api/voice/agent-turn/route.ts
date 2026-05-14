@@ -101,98 +101,168 @@ export async function POST(req: NextRequest) {
     if (commerce) systemPrompt += commerce
   } catch {}
 
-  systemPrompt += `\n\n## VOICE CALL INSTRUCTIONS\nYou are on a live voice call. Speak naturally and conversationally — no markdown, no lists, no URLs. Keep replies short (1-3 sentences) unless the caller asks for detail. Before calling a tool, say a single short beat aloud ("let me check that for you") so the caller hears something, then call the tool. Spell out codes letter-by-letter ("H, E, L, L, O") rather than reading them as words.`
+  systemPrompt += `\n\n## VOICE CALL INSTRUCTIONS
+You are on a live voice call. Speak naturally and conversationally — no markdown, no lists, no URLs. Keep replies short (1-3 sentences) unless the caller asks for detail. Spell out codes letter-by-letter ("H, E, L, L, O") rather than reading them as words.
 
-  // ─── Tool loop ───────────────────────────────────────────────────
-  // Conversation: history + new user turn. Claude messages are
-  // {role, content}; tool results require a specific content-block
-  // shape so we use the structured form throughout.
+## CRITICAL — AVOID DEAD AIR ON TOOL CALLS
+Tool calls (looking up inventory, contacts, calendars, order status, etc.) can take 1-3 seconds. The caller WILL hear silence if you don't speak first.
+
+ALWAYS emit a short, natural FILLER SENTENCE in the SAME turn as a tool_use. The filler should:
+  - Be ONE short sentence (max 8 words), in your voice
+  - Acknowledge what you're doing without robotic phrasing
+  - Vary so it doesn't sound canned ("One sec, checking that", "Let me pull that up", "Quick look at your order", "Hold on, finding that for you")
+  - NOT say "let me check the database" or similar internal-system language
+
+Examples of CORRECT turns:
+  text: "Sure, one moment — pulling up our running shoes."
+  tool_use: search_shopify_products({...})
+
+  text: "Let me check what we have left in your size."
+  tool_use: check_shopify_inventory({...})
+
+NEVER call a tool with NO text. Silence on tool calls is the #1 reason voice agents feel broken.`
+
+  // ─── Tool loop ─ streamed NDJSON ─────────────────────────────────
+  // Stream chunks back to the browser so the visitor hears the filler
+  // sentence the moment Claude returns it, while we run the tool in
+  // parallel. Without this, audio only plays AFTER the entire loop
+  // finishes — which is the "dead air during inventory lookup"
+  // complaint that started this work.
+  //
+  // Event shapes (one JSON per line):
+  //   {"type":"filler","text":"...","audioBase64":"...","mimeType":"audio/mpeg"}
+  //   {"type":"tool","name":"search_shopify_products","ms":1240}
+  //   {"type":"final","reply":"...","audioBase64":"...","mimeType":"audio/mpeg","toolCalls":[...]}
+  //   {"type":"error","message":"..."}
   const messages: Anthropic.MessageParam[] = [
     ...history.map(h => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),
     { role: 'user', content: transcript },
   ]
 
-  const toolCalls: Array<{ name: string; ms: number }> = []
-  let crm: Awaited<ReturnType<typeof getCrmAdapter>> | null = null
-  try { crm = await getCrmAdapter(agent.locationId) } catch { /* ignore — adapter resolved fresh per tool below */ }
-
-  let finalText = ''
-  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 600,
-      system: systemPrompt,
-      tools: tools.length > 0 ? tools : undefined,
-      messages,
-    })
-
-    // Pull text + tool_use blocks out of the assistant turn.
-    const toolUses: Anthropic.ToolUseBlock[] = []
-    let textOut = ''
-    for (const block of response.content) {
-      if (block.type === 'text') textOut += block.text
-      else if (block.type === 'tool_use') toolUses.push(block)
-    }
-
-    if (toolUses.length === 0) {
-      // Pure text reply — we're done.
-      finalText = textOut.trim()
-      break
-    }
-
-    // Persist the assistant turn (text + tool_use blocks) so Claude
-    // can see its own tool calls in the next iteration.
-    messages.push({ role: 'assistant', content: response.content })
-
-    // Execute every tool_use block, append tool_result.
-    const toolResults: Anthropic.ToolResultBlockParam[] = []
-    for (const tu of toolUses) {
-      const start = Date.now()
-      let result = '{}'
-      try {
-        result = await executeTool(
-          tu.name,
-          tu.input as Record<string, unknown>,
-          agent.locationId,
-          /* sandbox */ false,
-          agent.id,
-          /* channel */ 'Voice',
-          /* conversationProviderId */ undefined,
-          crm ?? undefined,
-          /* deferredSend */ undefined,
-          /* fieldOverwriteMap */ undefined,
-          /* handoverCapture */ undefined,
-          agent.workspaceId,
-        )
-      } catch (err: any) {
-        result = JSON.stringify({ error: err?.message || 'tool_dispatch_failed' })
-      }
-      toolCalls.push({ name: tu.name, ms: Date.now() - start })
-      toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
-    }
-    messages.push({ role: 'user', content: toolResults })
-  }
-
-  if (!finalText) {
-    finalText = "Sorry, I'm having trouble with that right now. Let me come back to you on it."
-  }
-
-  // ─── Generate TTS audio via XAI batch ────────────────────────────
-  // The browser will base64-decode and play this. Keeping MP3 for
-  // payload size; the realtime PCM path needs PCM16, but for a
-  // batch reply MP3 is fine and a tenth the size.
   const tts = new XaiVoiceAdapter()
-  let audioBase64 = ''
-  let mimeType = 'audio/mpeg'
-  try {
-    const audioBuf = await tts.speak!(finalText, voiceId, { codec: 'mp3' })
-    audioBase64 = Buffer.from(audioBuf).toString('base64')
-  } catch (err: any) {
-    console.error('[voice agent-turn] TTS failed:', err?.message)
-    // Fail soft — return the text without audio so the client can
-    // still display it (and we don't 500 the whole turn).
-    mimeType = ''
-  }
+  const encoder = new TextEncoder()
 
-  return NextResponse.json({ reply: finalText, audioBase64, mimeType, toolCalls })
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown) => {
+        try { controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n')) } catch {}
+      }
+      const speakChunk = async (text: string): Promise<{ audioBase64: string; mimeType: string }> => {
+        try {
+          const buf = await tts.speak!(text, voiceId, { codec: 'mp3' })
+          return { audioBase64: Buffer.from(buf).toString('base64'), mimeType: 'audio/mpeg' }
+        } catch (err: any) {
+          console.error('[voice agent-turn] TTS failed:', err?.message)
+          return { audioBase64: '', mimeType: '' }
+        }
+      }
+
+      const toolCalls: Array<{ name: string; ms: number }> = []
+      let crm: Awaited<ReturnType<typeof getCrmAdapter>> | null = null
+      try { crm = await getCrmAdapter(agent.locationId) } catch { /* ignore — adapter resolved fresh per tool */ }
+
+      let finalText = ''
+      try {
+        for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+          const response = await client.messages.create({
+            model: MODEL,
+            max_tokens: 600,
+            system: systemPrompt,
+            tools: tools.length > 0 ? tools : undefined,
+            messages,
+          })
+
+          const toolUses: Anthropic.ToolUseBlock[] = []
+          let textOut = ''
+          for (const block of response.content) {
+            if (block.type === 'text') textOut += block.text
+            else if (block.type === 'tool_use') toolUses.push(block)
+          }
+
+          if (toolUses.length === 0) {
+            // Pure text reply — final.
+            finalText = textOut.trim()
+            break
+          }
+
+          // We have tool_use(s) in this turn. Persist the assistant
+          // message so Claude sees its own calls in the next loop.
+          messages.push({ role: 'assistant', content: response.content })
+
+          // Race the filler TTS against the tool execution so the
+          // browser starts playing audio while the tool runs. Whichever
+          // finishes first streams first; the tool result is appended
+          // when both are done.
+          const fillerText = textOut.trim()
+          const fillerPromise: Promise<{ audioBase64: string; mimeType: string } | null> = fillerText
+            ? speakChunk(fillerText)
+            : Promise.resolve(null)
+
+          const toolResults: Anthropic.ToolResultBlockParam[] = []
+          const toolPromises = toolUses.map(async (tu) => {
+            const start = Date.now()
+            let result = '{}'
+            try {
+              result = await executeTool(
+                tu.name,
+                tu.input as Record<string, unknown>,
+                agent.locationId,
+                false,
+                agent.id,
+                'Voice',
+                undefined,
+                crm ?? undefined,
+                undefined,
+                undefined,
+                undefined,
+                agent.workspaceId,
+              )
+            } catch (err: any) {
+              result = JSON.stringify({ error: err?.message || 'tool_dispatch_failed' })
+            }
+            const elapsed = Date.now() - start
+            toolCalls.push({ name: tu.name, ms: elapsed })
+            send({ type: 'tool', name: tu.name, ms: elapsed })
+            toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
+          })
+
+          // As soon as the filler audio is ready, ship it — even if
+          // the tools are still running. That's the whole point: the
+          // visitor hears "let me check" while the lookup happens.
+          const filler = await fillerPromise
+          if (filler && filler.audioBase64) {
+            send({ type: 'filler', text: fillerText, audioBase64: filler.audioBase64, mimeType: filler.mimeType })
+          }
+          // Now wait for the tools to finish before the next Claude call.
+          await Promise.all(toolPromises)
+          messages.push({ role: 'user', content: toolResults })
+        }
+
+        if (!finalText) {
+          finalText = "Sorry, I'm having trouble with that right now. Let me come back to you on it."
+        }
+        const finalAudio = await speakChunk(finalText)
+        send({
+          type: 'final',
+          reply: finalText,
+          audioBase64: finalAudio.audioBase64,
+          mimeType: finalAudio.mimeType,
+          toolCalls,
+        })
+      } catch (err: any) {
+        console.error('[voice agent-turn] stream failed:', err)
+        send({ type: 'error', message: err?.message || 'agent_turn_failed' })
+      } finally {
+        try { controller.close() } catch {}
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 }
