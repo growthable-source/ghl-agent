@@ -21,9 +21,11 @@ import { sendQuietCheckIn } from '@/lib/widget-check-in'
  */
 
 // Tunable — a thread is "stale" if no one has said anything for this long.
-// 10 minutes keeps the signal strong without pinging people over normal
-// conversational pauses.
-const STALE_MINUTES = 10
+// 3 minutes: short enough to catch live-chat visitors who got distracted
+// before they close the tab, long enough that we don't nudge during a
+// natural typing pause. The cron schedule (vercel.json) runs every
+// minute so the effective response window is 3–4 minutes.
+const STALE_MINUTES = 3
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')

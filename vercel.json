@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/stale-conversations",
-      "schedule": "*/5 * * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/prune-audit-log",
