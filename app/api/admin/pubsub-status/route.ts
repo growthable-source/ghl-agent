@@ -18,7 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getPubsubStatus } from '@/lib/widget-pubsub'
+import { getPubsubStatus, subscribe } from '@/lib/widget-pubsub'
 
 export async function GET(req: NextRequest) {
   const expected = process.env.CRON_SECRET
@@ -30,5 +30,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  return NextResponse.json(getPubsubStatus())
+  // Actively probe the pubsub connection rather than passively reporting
+  // state. Serverless functions are isolated per-instance — checking
+  // state on a function that's never subscribed reports 'unknown'
+  // forever, even if pubsub works fine on the function holding actual
+  // SSE subscribers. Briefly subscribe + close so we exercise the
+  // tryGetSharedClient() path on THIS function and get a real answer.
+  const probe = await subscribe('__pubsub_status_probe__', () => {})
+  // Small grace window — connect attempt is async and runs in the
+  // background of subscribe(). Wait ~500ms for it to land.
+  await new Promise(r => setTimeout(r, 500))
+  const status = getPubsubStatus()
+  await probe.close()
+
+  return NextResponse.json(status)
 }
