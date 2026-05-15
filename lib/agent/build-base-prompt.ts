@@ -35,6 +35,10 @@ export interface AgentForPrompt {
    *  the new block is skipped and the agent falls back to the legacy
    *  knowledgeEntries path only. */
   workspaceId?: string | null
+  /** Per-agent knowledge scope. Empty array / undefined = retrieve
+   *  from every domain in the workspace (legacy default). Populated
+   *  = only those domain ids. */
+  knowledgeDomainIds?: string[] | null
 }
 
 export type PromptChannel = 'widget' | 'native'
@@ -121,7 +125,12 @@ export async function buildBasePrompt(
   // call per agent turn; failures fall through to [].
   if (agent.workspaceId && incomingMessage && incomingMessage.trim().length >= 3) {
     try {
-      const retrieved = await retrieveChunks(agent.workspaceId, incomingMessage, { limit: 6 })
+      const retrieved = await retrieveChunks(agent.workspaceId, incomingMessage, {
+        limit: 6,
+        // Restrict to the agent's chosen knowledge domains. Empty
+        // array = no filter (workspace-wide, backward-compatible).
+        knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
+      })
       prompt += buildRetrievedKnowledgeBlock(retrieved)
     } catch (err: any) {
       console.warn('[buildBasePrompt] retrieval failed:', err?.message)

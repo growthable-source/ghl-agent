@@ -52,6 +52,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.typingDelayMaxMs !== undefined && { typingDelayMaxMs: body.typingDelayMaxMs }),
       ...(body.languages !== undefined && { languages: body.languages }),
       ...(body.enableQuietCheckIn !== undefined && { enableQuietCheckIn: body.enableQuietCheckIn }),
+      ...(Array.isArray(body.knowledgeDomainIds) && {
+        knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
+      }),
       ...(body.qualifyingStyle !== undefined && { qualifyingStyle: body.qualifyingStyle }),
       ...(body.fallbackBehavior !== undefined && { fallbackBehavior: body.fallbackBehavior }),
       ...(body.fallbackMessage !== undefined && { fallbackMessage: body.fallbackMessage }),

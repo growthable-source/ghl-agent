@@ -426,6 +426,14 @@ model Agent {
   typingDelayMaxMs   Int            @default(3000)
   languages          String[]       @default(["en"])
 
+  // ─── Knowledge scope (Phase 2 retrieval) ───
+  // Which KnowledgeDomain ids this agent retrieves from. Empty array =
+  // EVERY domain in the workspace (default — backward compatible with
+  // pre-scoping agents). Populated = restrict retrieval to only those
+  // domains. Lets operators run e.g. one agent on "Product Support"
+  // and another on "Legal Docs" within the same workspace.
+  knowledgeDomainIds String[]       @default([])
+
   // ─── Quiet check-in ───
   // When the agent's last message has been sitting unanswered for the
   // stale threshold (~3 min) on a widget conversation, the cron sends

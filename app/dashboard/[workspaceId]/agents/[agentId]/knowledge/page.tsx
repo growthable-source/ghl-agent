@@ -15,6 +15,13 @@ interface CollectionLite {
   isAttached?: boolean
 }
 
+interface KnowledgeDomainLite {
+  id: string
+  name: string
+  description: string | null
+  chunkCount: number
+}
+
 /**
  * The per-agent knowledge page is now a *connection picker*. Knowledge
  * itself lives in workspace-level Collections; agents pick which
@@ -37,14 +44,33 @@ export default function AgentKnowledgePage() {
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [notMigrated, setNotMigrated] = useState(false)
 
+  // Phase 2 knowledge-domain scope. Operators pick which crawled/
+  // indexed sources this agent reads from. Empty array = all
+  // domains in the workspace (backward-compatible default).
+  const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
+  const [domainPick, setDomainPick] = useState<string[]>([])
+  const [domainOriginal, setDomainOriginal] = useState<string[]>([])
+  const [domainSavedAt, setDomainSavedAt] = useState<number | null>(null)
+  const [domainSaving, setDomainSaving] = useState(false)
+
   const load = useCallback(async () => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/collections`)
-    const data = await res.json()
-    setAvailable(data.available || [])
-    const attachedIds = (data.attached || []).map((c: any) => c.id)
+    const [colRes, domRes, agentRes] = await Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/collections`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/admin/knowledge-domains?workspaceId=${workspaceId}`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`).then(r => r.json()).catch(() => ({})),
+    ])
+
+    setAvailable(colRes.available || [])
+    const attachedIds = (colRes.attached || []).map((c: any) => c.id)
     setPicked(attachedIds)
     setOriginal(attachedIds)
-    setNotMigrated(!!data.notMigrated)
+    setNotMigrated(!!colRes.notMigrated)
+
+    setDomains(domRes.domains || [])
+    const agentDomains: string[] = agentRes.agent?.knowledgeDomainIds ?? []
+    setDomainPick(agentDomains)
+    setDomainOriginal(agentDomains)
+
     setLoading(false)
   }, [workspaceId, agentId])
 
@@ -53,6 +79,32 @@ export default function AgentKnowledgePage() {
   function toggle(id: string) {
     setPicked(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
+
+  function toggleDomain(id: string) {
+    setDomainPick(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  async function saveDomainScope(allDomains: boolean) {
+    setDomainSaving(true)
+    try {
+      // "all domains" sends an empty array (= no filter, backward
+      // compatible). Otherwise sends the explicit list.
+      const ids = allDomains ? [] : domainPick
+      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ knowledgeDomainIds: ids }),
+      })
+      setDomainOriginal(ids)
+      setDomainPick(ids)
+      setDomainSavedAt(Date.now())
+      setTimeout(() => setDomainSavedAt(null), 2000)
+    } finally { setDomainSaving(false) }
+  }
+
+  const domainDirty = domainPick.length !== domainOriginal.length
+    || domainPick.some(id => !domainOriginal.includes(id))
+  const usingAllDomains = domainOriginal.length === 0
 
   async function save() {
     setSaving(true)
@@ -91,6 +143,98 @@ export default function AgentKnowledgePage() {
           </p>
         </div>
       </div>
+
+      {/* Phase 2 knowledge-domain scope — pick which indexed knowledge
+          collections this agent reads from. */}
+      {domains.length > 0 && (
+        <div
+          className="rounded-xl p-5"
+          style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+        >
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Indexed knowledge collections
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                Pick which crawled / uploaded collections this agent uses to answer questions. By default it reads from all of them.
+              </p>
+            </div>
+            {usingAllDomains && (
+              <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded"
+                style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
+                Reading all
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {domains.map(d => {
+              const checked = usingAllDomains || domainPick.includes(d.id)
+              const effectivelyAll = usingAllDomains
+              return (
+                <label
+                  key={d.id}
+                  className="flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors"
+                  style={
+                    checked && !effectivelyAll
+                      ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                      : { border: '1px solid var(--border)', background: 'var(--surface-secondary)' }
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      if (effectivelyAll) {
+                        // Operator wants to narrow — seed pick with all
+                        // current domains minus the one they just clicked.
+                        setDomainPick(domains.filter(x => x.id !== d.id).map(x => x.id))
+                      } else {
+                        toggleDomain(d.id)
+                      }
+                    }}
+                    className="mt-0.5 accent-orange-500"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{d.name}</p>
+                    {d.description && (
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        {d.description}
+                      </p>
+                    )}
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                      {d.chunkCount} indexed entries
+                    </p>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center justify-between mt-3">
+            <button
+              onClick={() => saveDomainScope(true)}
+              disabled={domainSaving || usingAllDomains}
+              className="text-[11px] disabled:opacity-50"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Reset to all
+            </button>
+            <div className="flex items-center gap-2">
+              {domainSavedAt && <span className="text-xs" style={{ color: 'var(--accent-emerald)' }}>✓ Saved</span>}
+              <button
+                onClick={() => saveDomainScope(false)}
+                disabled={domainSaving || !domainDirty}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+              >
+                {domainSaving ? 'Saving…' : 'Save scope'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {notMigrated && (
         <div

@@ -142,9 +142,9 @@ export default function RetrievalEvalPage() {
       <div className="max-w-5xl mx-auto p-8">
         <div className="mb-6 flex items-end justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Retrieval evals</h1>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Test your AI&apos;s knowledge</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-              Curate test queries, run them against your knowledge base, label what comes back. Make weight changes data-driven.
+              Type a few questions your customers ask. We&apos;ll show what your AI finds. Mark each result good or bad, and we&apos;ll tell you how it&apos;s doing.
             </p>
           </div>
         </div>
@@ -185,14 +185,14 @@ export default function RetrievalEvalPage() {
 
                   {/* Queries + run-now */}
                   <div className="mt-6 flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Queries · {setDetail?.queries.length ?? 0}</h2>
+                    <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Test questions · {setDetail?.queries.length ?? 0}</h2>
                     <button
                       onClick={runEval}
                       disabled={busy || (setDetail?.queries.length ?? 0) === 0}
                       className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
                       style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
                     >
-                      {busy ? 'Starting…' : 'Run eval'}
+                      {busy ? 'Starting…' : 'Run the test'}
                     </button>
                   </div>
                   <QueriesList
@@ -202,10 +202,10 @@ export default function RetrievalEvalPage() {
                     onChange={async () => { await loadSetDetail(); await loadSets() }}
                   />
 
-                  {/* Recent runs */}
+                  {/* Past tests */}
                   {setDetail && setDetail.runs.length > 0 && (
                     <div className="mt-6">
-                      <h2 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Recent runs</h2>
+                      <h2 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Past tests</h2>
                       <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
                         {setDetail.runs.map(r => (
                           <button
@@ -219,7 +219,7 @@ export default function RetrievalEvalPage() {
                               {timeAgo(r.startedAt)}
                             </span>
                             <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-                              net@K {r.summary?.netAtK ?? '—'} · cov {r.summary?.coverageAtK ?? '—'}
+                              Score {r.summary?.netAtK !== null && r.summary?.netAtK !== undefined ? `${Math.round(Math.max(0, r.summary.netAtK) * 100)}%` : '—'}
                             </span>
                           </button>
                         ))}
@@ -265,16 +265,16 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-2xl border p-8 text-center" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
       <div className="text-4xl mb-3">🎯</div>
-      <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Measure your retrieval before you tune it</h2>
+      <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>How well does your AI know its stuff?</h2>
       <p className="text-sm max-w-md mx-auto mb-6" style={{ color: 'var(--text-secondary)' }}>
-        Add ~20 test queries with expected answers. Run them, label what comes back as helpful or harmful. Get a net@K score you can move with confidence.
+        Write a few real questions your customers ask. Press <strong>Test</strong>. We&apos;ll show you what your AI would find — you mark each result good or bad. Run it again any time to spot regressions.
       </p>
       <button
         onClick={onCreate}
         className="text-sm font-semibold px-6 py-2.5 rounded-lg"
         style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
       >
-        Create your first eval set
+        Start
       </button>
     </div>
   )
@@ -287,7 +287,7 @@ function SummaryCard({ set, onWatchRun }: { set: EvalSet; onWatchRun: (id: strin
     return (
       <div className="rounded-xl border p-5" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
         <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-          No runs yet. Add some queries and hit &quot;Run eval&quot; below.
+          No runs yet. Add some questions and hit &quot;Run the test&quot; below.
         </p>
       </div>
     )
@@ -315,9 +315,9 @@ function SummaryCard({ set, onWatchRun }: { set: EvalSet; onWatchRun: (id: strin
         </button>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Stat label="net@K" value={netAtK !== null && netAtK !== undefined ? netAtK.toFixed(3) : '—'} />
-        <Stat label="coverage@K" value={coverageAtK !== null && coverageAtK !== undefined ? coverageAtK.toFixed(3) : '—'} />
-        <Stat label="labelled" value={`${labelled} / ${total}`} />
+        <Stat label="Score" value={netAtK !== null && netAtK !== undefined ? `${Math.round(Math.max(0, netAtK) * 100)}%` : '—'} />
+        <Stat label="On target" value={coverageAtK !== null && coverageAtK !== undefined ? `${Math.round(coverageAtK * 100)}%` : '—'} />
+        <Stat label="Reviewed" value={`${labelled} / ${total}`} />
       </div>
       {/* Per-brand breakdown */}
       {summary.perBrand && Object.keys(summary.perBrand).length > 1 && (
@@ -327,7 +327,7 @@ function SummaryCard({ set, onWatchRun }: { set: EvalSet; onWatchRun: (id: strin
             {Object.entries(summary.perBrand).map(([key, val]: [string, any]) => (
               <div key={key} className="text-[11px] flex justify-between" style={{ color: 'var(--text-secondary)' }}>
                 <span>{key === '_workspace' ? '(workspace-wide)' : key}</span>
-                <span>net {val.netAtK ?? '—'} · cov {val.coverageAtK ?? '—'} · {val.labelled}/{val.total}</span>
+                <span>score {val.netAtK !== null ? `${Math.round(Math.max(0, val.netAtK) * 100)}%` : '—'} · {val.labelled}/{val.total} reviewed</span>
               </div>
             ))}
           </div>
@@ -570,12 +570,12 @@ function RunPane({ runId, onClose }: { runId: string; onClose: () => void }) {
               {/* Roll-up summary */}
               <div className="rounded-lg border p-4 mb-5" style={{ background: 'var(--surface-secondary)', borderColor: 'var(--border)' }}>
                 <div className="grid grid-cols-3 gap-3 mb-2">
-                  <Stat label="net@K" value={run.summary?.netAtK !== null && run.summary?.netAtK !== undefined ? run.summary.netAtK.toFixed(3) : '—'} />
-                  <Stat label="coverage@K" value={run.summary?.coverageAtK !== null && run.summary?.coverageAtK !== undefined ? run.summary.coverageAtK.toFixed(3) : '—'} />
-                  <Stat label="labelled" value={`${run.summary?.labelledQueries ?? 0} / ${run.summary?.totalQueries ?? 0}`} />
+                  <Stat label="Score" value={run.summary?.netAtK !== null && run.summary?.netAtK !== undefined ? `${Math.round(Math.max(0, run.summary.netAtK) * 100)}%` : '—'} />
+                  <Stat label="On target" value={run.summary?.coverageAtK !== null && run.summary?.coverageAtK !== undefined ? `${Math.round(run.summary.coverageAtK * 100)}%` : '—'} />
+                  <Stat label="Reviewed" value={`${run.summary?.labelledQueries ?? 0} / ${run.summary?.totalQueries ?? 0}`} />
                 </div>
                 <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                  Scores update as you label. <strong>Helpful</strong> chunks are new info your AI needs. <strong>Neutral</strong> = correct but redundant. <strong>Harmful</strong> = wrong or off-topic.
+                  For each result below, tap <strong>👍 Good</strong> if it would help answer the question, <strong>➖ Okay</strong> if it&apos;s correct but unhelpful, <strong>👎 Wrong</strong> if it&apos;s off-topic or misleading. Your score updates as you go.
                 </p>
               </div>
 
@@ -636,25 +636,29 @@ function ResultBlock({ result, onLabel }: {
                   {chunk.content}
                 </p>
                 <div className="flex items-center gap-1.5 mt-2">
-                  {(['helpful', 'neutral', 'harmful'] as const).map(opt => {
-                    const isActive = lbl === opt
+                  {([
+                    { id: 'helpful',  emoji: '👍', text: 'Good' },
+                    { id: 'neutral',  emoji: '➖', text: 'Okay' },
+                    { id: 'harmful',  emoji: '👎', text: 'Wrong' },
+                  ] as const).map(opt => {
+                    const isActive = lbl === opt.id
                     return (
                       <button
-                        key={opt}
-                        onClick={() => onLabel(result.id, chunk.chunkId, isActive ? null : opt)}
-                        className="text-[10px] font-semibold px-2 py-1 rounded transition-colors"
+                        key={opt.id}
+                        onClick={() => onLabel(result.id, chunk.chunkId, isActive ? null : opt.id as any)}
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded transition-colors"
                         style={isActive
                           ? {
-                              background: opt === 'helpful' ? 'var(--accent-emerald-bg)'
-                                        : opt === 'harmful' ? 'var(--accent-red-bg)'
+                              background: opt.id === 'helpful' ? 'var(--accent-emerald-bg)'
+                                        : opt.id === 'harmful' ? 'var(--accent-red-bg)'
                                         : 'var(--surface-tertiary)',
-                              color: opt === 'helpful' ? 'var(--accent-emerald)'
-                                   : opt === 'harmful' ? 'var(--accent-red)'
+                              color: opt.id === 'helpful' ? 'var(--accent-emerald)'
+                                   : opt.id === 'harmful' ? 'var(--accent-red)'
                                    : 'var(--text-secondary)',
                             }
                           : { color: 'var(--text-tertiary)' }}
                       >
-                        {opt}
+                        {opt.emoji} {opt.text}
                       </button>
                     )
                   })}

@@ -39,10 +39,15 @@ interface RetrieveOptions {
   /** Top-K to return. Default 6 — fits comfortably in the prompt
    *  budget without overwhelming Claude's attention. */
   limit?: number
-  /** Optional knowledge_domain_id filter. Use when an agent is
-   *  explicitly bound to one domain (future feature — at launch
-   *  every workspace queries all its domains). */
+  /** Optional single-domain filter. Mostly used by the
+   *  "Try a question" debug panel; agent retrieval uses
+   *  knowledgeDomainIds below. */
   knowledgeDomainId?: string
+  /** Per-agent scope. When non-empty, retrieval is restricted to
+   *  these knowledge_domain_ids. Empty / undefined = workspace-wide
+   *  (default — backward compatible with agents that haven't picked
+   *  scopes yet). */
+  knowledgeDomainIds?: string[]
   /** Minimum similarity threshold. Default 0.4 — chunks below this
    *  are usually noise. Tighten when retrieval starts pulling
    *  unrelated content; loosen when sparse domains miss real hits. */
@@ -83,9 +88,15 @@ export async function retrieveChunks(
   const literal = `[${queryEmbedding.join(',')}]`
 
   try {
-    const domainFilter = opts.knowledgeDomainId
-      ? db.$queryRaw`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`
-      : db.$queryRaw``
+    // Domain filter: single id OR a per-agent list. The list takes
+    // precedence when both happen to be passed. Empty list = no filter
+    // (workspace-wide), which is the backward-compatible default.
+    let domainFilter = db.$queryRaw``
+    if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
+      domainFilter = db.$queryRaw`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
+    } else if (opts.knowledgeDomainId) {
+      domainFilter = db.$queryRaw`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`
+    }
 
     const rows = await db.$queryRaw<Array<{
       id: string

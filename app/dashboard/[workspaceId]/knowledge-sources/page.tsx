@@ -327,7 +327,12 @@ export default function KnowledgePipelinePage() {
                   />
                 )}
                 {tab === 'taxonomy' && (
-                  <TaxonomyTab taxonomies={taxonomies} unmatched={unmatched} />
+                  <TaxonomyTab
+                    taxonomies={taxonomies}
+                    unmatched={unmatched}
+                    domainId={domainId!}
+                    onChange={loadTaxonomy}
+                  />
                 )}
                 {tab === 'history' && (
                   <HistoryTab runs={runs} />
@@ -1008,17 +1013,97 @@ function SourcesTab({ sources, runs, onAdd, onRun, onWatchRun }: {
   )
 }
 
-function TaxonomyTab({ taxonomies, unmatched }: { taxonomies: Taxonomy[]; unmatched: UnmatchedChunk[] }) {
+function TaxonomyTab({ taxonomies, unmatched, domainId, onChange }: {
+  taxonomies: Taxonomy[]
+  unmatched: UnmatchedChunk[]
+  domainId: string
+  onChange: () => Promise<void>
+}) {
+  const [addingTopic, setAddingTopic] = useState(false)
+  const [topicLabel, setTopicLabel] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function createTopic() {
+    if (!topicLabel.trim()) return
+    setBusy(true)
+    try {
+      const key = topicLabel.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 60)
+      const res = await fetch('/api/admin/taxonomies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ knowledgeDomainId: domainId, key, label: topicLabel.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? 'Failed'); return }
+      setTopicLabel('')
+      setAddingTopic(false)
+      await onChange()
+    } finally { setBusy(false) }
+  }
+
+  async function assignToChunk(chunkId: string, taxonomyKey: string) {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/chunks/${chunkId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taxonomyTags: [taxonomyKey] }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error ?? 'Failed to assign topic')
+        return
+      }
+      await onChange()
+    } finally { setBusy(false) }
+  }
+
   return (
     <>
-      <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Topics</h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Topics</h2>
+        <button
+          onClick={() => setAddingTopic(true)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+          style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+        >
+          + New topic
+        </button>
+      </div>
       <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-        Every piece of content gets tagged with a topic so retrieval stays sharp. These were seeded from your template.
+        Every piece of content gets tagged with a topic so retrieval stays sharp. These were seeded from your template — add more when the &ldquo;Needs a topic&rdquo; list below shows a pattern.
       </p>
+
+      {addingTopic && (
+        <div className="rounded-lg border p-3 mb-3 flex items-center gap-2"
+          style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}>
+          <input
+            value={topicLabel}
+            onChange={e => setTopicLabel(e.target.value)}
+            placeholder="Topic name (e.g. Refund Policy)"
+            className="flex-1 rounded px-2 py-1.5 text-sm"
+            style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+            autoFocus
+            onKeyDown={e => { if (e.key === 'Enter') createTopic() }}
+          />
+          <button
+            onClick={createTopic}
+            disabled={busy || !topicLabel.trim()}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+          >Save</button>
+          <button
+            onClick={() => { setAddingTopic(false); setTopicLabel('') }}
+            className="text-xs px-2 py-1.5"
+            style={{ color: 'var(--text-tertiary)' }}
+          >Cancel</button>
+        </div>
+      )}
+
       <div className="rounded-xl border overflow-hidden mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
         {taxonomies.length === 0 ? (
           <p className="p-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            No topics yet. Pick a template when creating a collection to get a starter set.
+            No topics yet. Pick a template when creating a collection to get a starter set, or add one above.
           </p>
         ) : taxonomies.map(t => (
           <div key={t.id} className="p-3 border-t first:border-t-0 flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
@@ -1035,18 +1120,40 @@ function TaxonomyTab({ taxonomies, unmatched }: { taxonomies: Taxonomy[]; unmatc
 
       {unmatched.length > 0 && (
         <>
-          <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Needs a topic</h2>
+          <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Needs a topic · {unmatched.length}</h2>
           <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-            We couldn&apos;t fit these into your existing topics. Add new ones if you see a pattern.
+            Pick a topic for each — or create a new one above if you see a pattern across several entries.
+            {taxonomies.length === 0 && ' Add some topics first using the button at the top.'}
           </p>
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            {unmatched.slice(0, 20).map(c => (
+            {unmatched.slice(0, 30).map(c => (
               <div key={c.id} className="p-3 border-t first:border-t-0" style={{ borderColor: 'var(--border)' }}>
-                <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{c.primaryTopic || '(no topic)'}</p>
+                <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>{c.primaryTopic || '(no topic)'}</p>
                 <p className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>{c.sourceUrl}</p>
-                <p className="text-xs mt-1 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
-                  {c.content.slice(0, 200)}
+                <p className="text-xs mt-1 mb-2 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+                  {c.content.slice(0, 240)}
                 </p>
+                {taxonomies.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] uppercase tracking-wider font-semibold"
+                      style={{ color: 'var(--text-tertiary)' }}>Assign topic:</label>
+                    <select
+                      defaultValue=""
+                      onChange={e => {
+                        const val = e.target.value
+                        if (val) assignToChunk(c.id, val)
+                      }}
+                      disabled={busy}
+                      className="text-xs rounded px-2 py-1"
+                      style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+                    >
+                      <option value="">Pick one…</option>
+                      {taxonomies.map(t => (
+                        <option key={t.id} value={t.key}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             ))}
           </div>

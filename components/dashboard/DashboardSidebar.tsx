@@ -288,7 +288,7 @@ function SidebarBody() {
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Insights</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
-                    {navLink(`/dashboard/${workspaceId}/insights/retrieval`, '↳ Retrieval evals')}
+                    {navLink(`/dashboard/${workspaceId}/insights/retrieval`, '↳ Test your AI')}
                     {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
                     {navLink(`/dashboard/${workspaceId}/csat`, 'CSAT')}
                     {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
