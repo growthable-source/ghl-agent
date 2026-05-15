@@ -98,6 +98,7 @@ export default function KnowledgePipelinePage() {
   const [createDomainOpen, setCreateDomainOpen] = useState(false)
   const [addSourceOpen, setAddSourceOpen] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [diagnosticOpen, setDiagnosticOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/admin/domain-templates')
@@ -194,9 +195,14 @@ export default function KnowledgePipelinePage() {
               Connect your help center, docs, or PDFs. Your AI reads them automatically.
             </p>
           </div>
-          {/* Workspace switcher removed — page is scoped to the
-              workspace in the URL. The sidebar handles workspace
-              navigation. */}
+          <button
+            onClick={() => setDiagnosticOpen(true)}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg border hover:bg-zinc-900 transition-colors"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            title="Check that Voyage, Firecrawl, and Anthropic are all reachable"
+          >
+            Check connections
+          </button>
         </div>
 
         {domains.length === 0 ? (
@@ -304,7 +310,99 @@ export default function KnowledgePipelinePage() {
           }}
         />
       )}
+      {diagnosticOpen && (
+        <DiagnosticModal onClose={() => setDiagnosticOpen(false)} />
+      )}
     </div>
+  )
+}
+
+// ─── Diagnostic modal ────────────────────────────────────────────────────
+
+interface DiagnosticCheck {
+  service: string
+  name: string
+  status: 'ok' | 'missing_key' | 'invalid_key' | 'unreachable' | 'rate_limited' | 'other'
+  detail: string
+  fix: string | null
+}
+
+function DiagnosticModal({ onClose }: { onClose: () => void }) {
+  const [loading, setLoading] = useState(true)
+  const [checks, setChecks] = useState<DiagnosticCheck[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const run = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/ingest-diagnostic')
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Diagnostic failed.')
+        return
+      }
+      setChecks(data.checks ?? [])
+    } catch (err: any) {
+      setError(err?.message ?? 'Network error.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { run() }, [run])
+
+  return (
+    <Modal title="Connection check" onClose={onClose} maxW="max-w-lg">
+      {loading ? (
+        <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Probing services…</p>
+      ) : error ? (
+        <p className="text-sm text-red-400">{error}</p>
+      ) : (
+        <>
+          <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
+            We checked every service the knowledge pipeline talks to. Anything red below is your problem.
+          </p>
+          <div className="space-y-2">
+            {checks.map(c => (
+              <div key={c.service} className="rounded-lg border p-3"
+                style={{
+                  borderColor: c.status === 'ok' ? 'var(--accent-emerald)' : 'var(--accent-red)',
+                  background: c.status === 'ok' ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
+                }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base">{c.status === 'ok' ? '✅' : '❌'}</span>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{c.name}</p>
+                </div>
+                <p className="text-xs ml-7" style={{ color: 'var(--text-secondary)' }}>{c.detail}</p>
+                {c.fix && (
+                  <p className="text-[11px] ml-7 mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>Fix: </span>
+                    {c.fix}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={run}
+              className="text-xs px-3 py-1.5"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Re-check
+            </button>
+            <button
+              onClick={onClose}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+            >
+              Close
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   )
 }
 
@@ -646,11 +744,17 @@ function RunProgressModal({ runId, onClose }: { runId: string; onClose: () => vo
               <summary className="cursor-pointer">
                 {run.errorLog.length} page{run.errorLog.length === 1 ? '' : 's'} couldn&apos;t be read
               </summary>
-              <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+              <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
                 {run.errorLog.map((e, i) => (
                   <div key={i} className="text-[10px]">
                     <p className="font-mono break-all" style={{ color: 'var(--text-tertiary)' }}>{e.url}</p>
                     <p style={{ color: 'var(--accent-red)' }}>{humanError(e.stage, e.message)}</p>
+                    {/* Raw error for when the friendly version isn't
+                        enough — operators escalating to support need
+                        the literal string, not the mapped one. */}
+                    <p className="font-mono text-[9px] mt-0.5 opacity-60 break-all" style={{ color: 'var(--text-muted)' }}>
+                      {e.stage}: {e.message.slice(0, 240)}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -832,9 +936,14 @@ function HistoryTab({ runs }: { runs: Run[] }) {
           {r.errorLog.length > 0 && (
             <div className="p-3" style={{ background: 'var(--surface-secondary)' }}>
               {r.errorLog.map((e, i) => (
-                <p key={i} className="text-[11px] mb-1" style={{ color: 'var(--text-tertiary)' }}>
-                  <span style={{ color: 'var(--accent-red)' }}>{humanError(e.stage, e.message)}</span> on {e.url}
-                </p>
+                <div key={i} className="mb-2">
+                  <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                    <span style={{ color: 'var(--accent-red)' }}>{humanError(e.stage, e.message)}</span> on {e.url}
+                  </p>
+                  <p className="font-mono text-[10px] mt-0.5 opacity-60 break-all" style={{ color: 'var(--text-muted)' }}>
+                    {e.stage}: {e.message.slice(0, 240)}
+                  </p>
+                </div>
               ))}
             </div>
           )}
