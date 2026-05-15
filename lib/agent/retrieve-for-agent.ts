@@ -22,7 +22,7 @@
  * Retrieval augments the prompt; it must never break a chat reply.
  */
 
-import { retrieveChunks, buildRetrievedKnowledgeBlock, type RetrievedChunk } from '../ingest/retrieve'
+import { retrieveChunks, buildRetrievedKnowledgeBlock, debugRetrieveChunks, type RetrievedChunk, type RetrievalDebug } from '../ingest/retrieve'
 
 interface AgentForRetrieval {
   id?: string
@@ -84,4 +84,26 @@ export function summariseRetrievedChunks(chunks: RetrievedChunk[]): KnowledgeUse
     similarity: c.similarity,
     taxonomyTags: c.taxonomyTags,
   }))
+}
+
+/**
+ * Playground-only diagnostic. Returns the full RetrievalDebug shape
+ * so the operator can see WHY a query did/didn't match — chunk counts,
+ * top similarity, scope, and a categorical reason code the UI maps
+ * to a clear sentence.
+ */
+export async function debugRetrieveForAgent(
+  agent: AgentForRetrieval,
+  message: string,
+): Promise<RetrievalDebug | null> {
+  if (!agent?.workspaceId) return null
+  try {
+    return await debugRetrieveChunks(agent.workspaceId, message, {
+      limit: 6,
+      knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
+    })
+  } catch (err: any) {
+    console.warn('[debugRetrieveForAgent] failed:', err?.message)
+    return null
+  }
 }
