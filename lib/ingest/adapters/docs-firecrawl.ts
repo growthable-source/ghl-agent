@@ -27,8 +27,18 @@ import type { SourceAdapter, DiscoveredItem, RawContent, NormalizedContent, Adap
 
 const FIRECRAWL_BASE = 'https://api.firecrawl.dev/v1'
 
-const DEFAULT_MAX_PAGES = 50
-const HARD_MAX_PAGES = 200
+// Indexer caps. Default is set high enough that a typical help
+// center fits without operator config — "read my whole site" is
+// what operators actually mean. Hard cap exists as a safety net
+// against a misconfigured root pulling tens of thousands of pages
+// from an unrelated CDN root.
+//
+// Cost at the 2000-page ceiling (rough):
+//   ~$1 Firecrawl (Hobby tier)
+//   ~$0.30 Voyage embeddings
+//   ~$12 Haiku classification
+const DEFAULT_MAX_PAGES = 2000
+const HARD_MAX_PAGES = 2000
 
 interface DocsCrawlConfig {
   recrawlIntervalDays?: number
