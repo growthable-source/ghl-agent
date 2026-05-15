@@ -20,13 +20,14 @@ export async function GET() {
     probeVoyage(),
     probeFirecrawl(),
     probeAnthropic(),
+    probeDeepgram(),
   ])
 
   return NextResponse.json({ checks: results })
 }
 
 interface Check {
-  service: 'voyage' | 'firecrawl' | 'anthropic'
+  service: 'voyage' | 'firecrawl' | 'anthropic' | 'deepgram'
   name: string
   status: 'ok' | 'missing_key' | 'invalid_key' | 'unreachable' | 'rate_limited' | 'other'
   detail: string
@@ -132,5 +133,40 @@ async function probeAnthropic(): Promise<Check> {
   return {
     service: 'anthropic', name: 'Anthropic (Claude — classification)',
     status: 'ok', detail: 'Key is set (not probed to avoid spend).', fix: null,
+  }
+}
+
+async function probeDeepgram(): Promise<Check> {
+  const key = process.env.DEEPGRAM_API_KEY
+  if (!key) {
+    return {
+      service: 'deepgram', name: 'Deepgram (YouTube audio transcription)',
+      status: 'missing_key',
+      detail: 'DEEPGRAM_API_KEY env var not set.',
+      fix: 'Optional — only needed for YouTube videos without captions. Sign up at console.deepgram.com (200 USD free credit), then add DEEPGRAM_API_KEY to Vercel env.',
+    }
+  }
+  try {
+    // Cheapest valid probe: GET /v1/projects returns the list (and 401
+    // on a bad key). Costs nothing.
+    const res = await fetch('https://api.deepgram.com/v1/projects', {
+      headers: { 'Authorization': `Token ${key}` },
+    })
+    if (res.status === 401 || res.status === 403) {
+      return { service: 'deepgram', name: 'Deepgram (YouTube audio transcription)', status: 'invalid_key',
+        detail: `Deepgram rejected the key (HTTP ${res.status}).`,
+        fix: 'Generate a fresh key at console.deepgram.com → API Keys.' }
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { service: 'deepgram', name: 'Deepgram (YouTube audio transcription)', status: 'other',
+        detail: `HTTP ${res.status}: ${text.slice(0, 200)}`,
+        fix: 'Likely transient. Check status.deepgram.com.' }
+    }
+    return { service: 'deepgram', name: 'Deepgram (YouTube audio transcription)', status: 'ok', detail: 'Working.', fix: null }
+  } catch (err: any) {
+    return { service: 'deepgram', name: 'Deepgram (YouTube audio transcription)', status: 'unreachable',
+      detail: err?.message ?? 'fetch failed',
+      fix: 'Network issue between Vercel and Deepgram. Usually transient.' }
   }
 }

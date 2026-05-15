@@ -9,26 +9,32 @@
  *     - https://youtube.com/@handle               → resolve handle → channel ID → RSS
  *     - playlists: not supported in v1 (would need YouTube Data API key)
  *
- *   fetch() pulls the transcript via the `youtube-transcript` npm
- *   package — scrapes YouTube's web frontend transcript endpoint.
- *   No API key required; works for any video with public captions.
+ *   fetch() — two paths, captions-first:
+ *     1. Try `youtube-transcript` (free, fast, often human-edited).
+ *     2. If captions are disabled or missing, fall through to Deepgram
+ *        ASR over the audio URL we get from ytdl-core (~$0.0043/min).
  *
- * Limitations:
- *   - Videos without captions return empty markdown and fail
- *     normalize() → the run logs the page as failed
- *   - Live streams without retroactive captions don't work
- *   - Auto-captions (vs human captions) are noisier — quality varies
+ *   The fallback is opt-out — `crawlConfig.forceCaptions: true` skips
+ *   ASR entirely (useful when the operator deliberately doesn't want
+ *   to spend Deepgram credit on a noisy / non-English channel).
  *
  * crawl_config:
- *   { recrawlIntervalDays: 7, language?: 'en' }  // language=undefined
- *   uses video's default; specify to force a target language
+ *   {
+ *     recrawlIntervalDays: 7,
+ *     language?: 'en',          // hints both captions and Deepgram
+ *     forceCaptions?: boolean,  // disable Deepgram fallback
+ *     preferAsr?: boolean,      // skip captions, go straight to Deepgram
+ *   }
  */
 
 import type { SourceAdapter, DiscoveredItem, RawContent, NormalizedContent, AdapterContext } from './types'
+import { transcribeYouTubeWithDeepgram } from '../youtube-asr'
 
 interface YoutubeCrawlConfig {
   recrawlIntervalDays?: number
-  language?: string  // ISO 639-1
+  language?: string         // ISO 639-1
+  forceCaptions?: boolean   // never call Deepgram, even if captions fail
+  preferAsr?: boolean       // call Deepgram first; captions only as fallback
 }
 
 interface RawYoutube {
@@ -37,6 +43,7 @@ interface RawYoutube {
   channelName: string | null
   publishedAt: string | null
   transcriptText: string | null
+  transcriptSource: 'captions' | 'asr' | null
 }
 
 interface TranscriptEntry { text: string; duration: number; offset: number; lang?: string }
@@ -68,38 +75,75 @@ export const youtubeAdapter: SourceAdapter = {
 
   async fetch(ctx: AdapterContext, item: DiscoveredItem): Promise<RawContent> {
     const cfg = ctx.source.crawlConfig as YoutubeCrawlConfig
-    let YoutubeTranscript: any
-    try {
-      // Optional dep — falls through with a clear error if not installed.
-      const mod = await import('youtube-transcript')
-      YoutubeTranscript = mod.YoutubeTranscript
-    } catch {
-      throw new Error('youtube adapter: `youtube-transcript` package not installed. Run `npm install youtube-transcript`.')
+
+    // Decide order. Default: captions first, ASR fallback. If the
+    // operator set preferAsr, swap. If forceCaptions, ASR is disabled.
+    const tryCaptionsFirst = !cfg.preferAsr
+    const allowAsr = !cfg.forceCaptions
+
+    let transcriptText: string | null = null
+    let transcriptSource: 'captions' | 'asr' | null = null
+    const failures: string[] = []
+
+    const tryCaptions = async (): Promise<string | null> => {
+      let YoutubeTranscript: any
+      try {
+        const mod = await import('youtube-transcript')
+        YoutubeTranscript = mod.YoutubeTranscript
+      } catch {
+        throw new Error('youtube-transcript package not installed')
+      }
+      try {
+        const transcript = await YoutubeTranscript.fetchTranscript(
+          item.identifier,
+          cfg.language ? { lang: cfg.language } : undefined,
+        ) as TranscriptEntry[]
+        if (!transcript || transcript.length === 0) return null
+        return transcript.map(e => e.text).join(' ').replace(/\s+/g, ' ').trim()
+      } catch (err: any) {
+        const msg = err?.message ?? ''
+        if (/transcript.*disabled|disabled on this video|no transcripts|could not find/i.test(msg)) {
+          return null   // signal "no captions" — let the caller fall through
+        }
+        throw err       // genuine error, surface to operator
+      }
     }
 
-    // IMPORTANT: this adapter reads YouTube's *existing captions* (manual
-    // or auto-generated). It does NOT perform audio-to-text. When the
-    // uploader has disabled captions we have nothing to index — real ASR
-    // would require pulling the audio out and sending it to Deepgram /
-    // AssemblyAI / Whisper, which means an extra service + cost. Left
-    // as a follow-up; the error message below tells the operator what's
-    // going on so they know it's not a transient bug.
-    let transcript: TranscriptEntry[]
-    try {
-      transcript = await YoutubeTranscript.fetchTranscript(item.identifier, cfg.language ? { lang: cfg.language } : undefined)
-    } catch (err: any) {
-      const msg = err?.message ?? ''
-      if (/transcript.*disabled|disabled on this video/i.test(msg)) {
-        throw new Error(`This video has captions turned off, so there's nothing to read. Today we rely on YouTube captions; full audio transcription is on the roadmap.`)
-      }
-      if (/no transcripts|could not find/i.test(msg)) {
-        throw new Error(`No captions are available for this video (private, region-restricted, or never captioned). We need captions to read a YouTube source today.`)
-      }
-      throw new Error(`Couldn't fetch the YouTube transcript: ${msg}`)
+    const tryAsr = async (): Promise<string | null> => {
+      const result = await transcribeYouTubeWithDeepgram(item.identifier, { language: cfg.language })
+      return result.transcript
     }
 
-    if (!transcript || transcript.length === 0) {
-      throw new Error(`No captions came back for this video. It may be private, region-restricted, or have captions disabled. Full audio transcription is on the roadmap.`)
+    const attempts = tryCaptionsFirst ? ['captions', 'asr'] : ['asr', 'captions']
+    for (const attempt of attempts) {
+      if (attempt === 'asr' && !allowAsr) continue
+      try {
+        const text = attempt === 'captions' ? await tryCaptions() : await tryAsr()
+        if (text && text.length > 0) {
+          transcriptText = text
+          transcriptSource = attempt as 'captions' | 'asr'
+          break
+        }
+        failures.push(`${attempt}: empty`)
+      } catch (err: any) {
+        failures.push(`${attempt}: ${err?.message ?? 'unknown'}`)
+      }
+    }
+
+    if (!transcriptText) {
+      // Both paths failed (or ASR was disabled and captions failed).
+      // Give the operator a single sentence explaining the actual reason.
+      const hadCaptionFailure = failures.find(f => f.startsWith('captions:'))
+      const hadAsrFailure = failures.find(f => f.startsWith('asr:'))
+      if (!allowAsr && hadCaptionFailure) {
+        throw new Error(`No captions for this video and audio transcription is disabled on this source. Turn off "forceCaptions" in the source config to enable Deepgram fallback.`)
+      }
+      if (hadAsrFailure) {
+        // Strip the "asr: " prefix — the underlying error is already
+        // human-readable (see youtube-asr.ts).
+        throw new Error(hadAsrFailure.replace(/^asr:\s*/, ''))
+      }
+      throw new Error(`Couldn't read this video. Details: ${failures.join('; ')}`)
     }
 
     // Best-effort title / channel name from oEmbed — no API key needed.
@@ -114,11 +158,9 @@ export const youtubeAdapter: SourceAdapter = {
       }
     } catch { /* oEmbed is optional context */ }
 
-    const transcriptText = transcript.map(e => e.text).join(' ').replace(/\s+/g, ' ').trim()
-
     return {
       identifier: item.identifier,
-      raw: { videoId: item.identifier, title, channelName, publishedAt: null, transcriptText } satisfies RawYoutube,
+      raw: { videoId: item.identifier, title, channelName, publishedAt: null, transcriptText, transcriptSource } satisfies RawYoutube,
       fetchedAt: new Date(),
     }
   },
@@ -146,6 +188,9 @@ export const youtubeAdapter: SourceAdapter = {
         page_last_updated: payload.publishedAt,
         video_id: payload.videoId,
         channel_name: payload.channelName,
+        // 'captions' | 'asr' — useful when comparing retrieval quality
+        // across sources later (ASR is noisier than human captions).
+        transcript_source: payload.transcriptSource,
       },
     }
   },
