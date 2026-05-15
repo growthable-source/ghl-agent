@@ -111,6 +111,25 @@ export async function GET(req: NextRequest, { params }: Params) {
     const agentNameById = new Map(agents.map(a => [a.id, a.name]))
     const widgetById = new Map(widgets.map(w => [w.id, w]))
 
+    // Human operator lookup — pull every User assignedUserId mentioned
+    // in the rated conversations so we can render a per-human rollup
+    // alongside the per-AI-agent one. The two answer different questions:
+    //   - By AI agent: which agent config is producing happy chats?
+    //   - By human operator: which teammate is keeping ratings high
+    //     on the chats they took over?
+    // A conversation can appear in BOTH (AI → human handoff) because
+    // the rating reflects the overall experience and both touched it.
+    const operatorIds = Array.from(
+      new Set(ratedConvos.map(c => c.assignedUserId).filter((id): id is string => !!id))
+    )
+    const operators = operatorIds.length
+      ? await db.user.findMany({
+          where: { id: { in: operatorIds } },
+          select: { id: true, name: true, email: true, image: true },
+        })
+      : []
+    const operatorById = new Map(operators.map(u => [u.id, u]))
+
     const totalRated = ratedConvos.length
     const sumRatings = ratedConvos.reduce((acc, c) => acc + (c.csatRating ?? 0), 0)
     const avg = totalRated > 0 ? sumRatings / totalRated : 0
@@ -140,6 +159,45 @@ export async function GET(req: NextRequest, { params }: Params) {
       }
     }
     const byAgent = Array.from(byAgentMap.values()).sort((a, b) => b.count - a.count)
+
+    // Per-human-operator rollup. Same structure as byAgent but keyed
+    // off assignedUserId. Conversations that were never assigned to a
+    // human are silently dropped from this rollup (they wouldn't have
+    // a userId to bucket under anyway). avgResponseSeconds is the gap
+    // between conversation start and the operator's first assignment
+    // — null if assignedAt is missing.
+    type OperatorRow = {
+      userId: string
+      name: string
+      email: string | null
+      image: string | null
+      count: number
+      sum: number
+      avg: number
+    }
+    const byOperatorMap = new Map<string, OperatorRow>()
+    for (const c of ratedConvos) {
+      if (!c.assignedUserId) continue
+      const op = operatorById.get(c.assignedUserId)
+      if (!op) continue
+      const existing = byOperatorMap.get(c.assignedUserId)
+      if (existing) {
+        existing.count += 1
+        existing.sum += c.csatRating ?? 0
+        existing.avg = existing.sum / existing.count
+      } else {
+        byOperatorMap.set(c.assignedUserId, {
+          userId: c.assignedUserId,
+          name: op.name || op.email || 'Teammate',
+          email: op.email ?? null,
+          image: op.image ?? null,
+          count: 1,
+          sum: c.csatRating ?? 0,
+          avg: c.csatRating ?? 0,
+        })
+      }
+    }
+    const byOperator = Array.from(byOperatorMap.values()).sort((a, b) => b.count - a.count)
 
     // Per-brand rollup. Widgets without a brand bucket under "(no brand)".
     type BrandRow = { brandId: string | null; name: string; color: string | null; count: number; sum: number; avg: number }
@@ -189,6 +247,75 @@ export async function GET(req: NextRequest, { params }: Params) {
       byHandlerHuman = avgFor(ratedConvos.filter(c => c.assignedAt))
     }
 
+    // Period-over-period trend — compare against the same window
+     // shifted back by `days`. Lets us say "+0.12 vs last 30d" or
+     // "−0.4 vs last 30d" so admins can see whether things are
+     // getting better or worse. Single aggregate query — fast.
+    const priorSince = new Date(since.getTime() - days * 86_400_000)
+    const priorRated = await db.widgetConversation.aggregate({
+      where: {
+        widgetId: { in: widgetIds },
+        csatRating: { not: null, ...(ratingFilter ? { equals: ratingFilter } : {}) },
+        csatSubmittedAt: { gte: priorSince, lt: since },
+        ...handlerWhere,
+      },
+      _avg: { csatRating: true },
+      _count: { csatRating: true },
+    })
+    const priorClosedTotal = await db.widgetConversation.count({
+      where: {
+        widgetId: { in: widgetIds },
+        status: 'ended',
+        lastMessageAt: { gte: priorSince, lt: since },
+        ...handlerWhere,
+      },
+    })
+    const priorAvg = priorRated._avg.csatRating ?? null
+    const priorCount = priorRated._count.csatRating ?? 0
+    const priorResponseRate = priorClosedTotal > 0 ? priorCount / priorClosedTotal : 0
+    const trend = {
+      priorAvg: priorAvg !== null ? Number(priorAvg.toFixed(2)) : null,
+      priorCount,
+      priorResponseRate: Number(priorResponseRate.toFixed(3)),
+      deltaAvg: priorAvg !== null ? Number((avg - priorAvg).toFixed(2)) : null,
+      deltaCount: totalRated - priorCount,
+      deltaResponseRate: closedTotal > 0
+        ? Number(((closedTotal > 0 ? totalRated / closedTotal : 0) - priorResponseRate).toFixed(3))
+        : 0,
+    }
+
+    // Comment highlights — what to actually READ. Lowest-rated chats
+    // with a comment go to "Needs review"; highest-rated with a
+    // comment go to "Bright spots". Both capped at 5. These are far
+    // more actionable than the full recent list because they're
+    // signal-rich (comment present) and sorted by urgency.
+    const withComments = ratedConvos.filter(c => c.csatComment && c.csatComment.trim().length > 0)
+    const lowestRated = [...withComments]
+      .filter(c => (c.csatRating ?? 5) <= 3)
+      .sort((a, b) => (a.csatRating ?? 0) - (b.csatRating ?? 0))
+      .slice(0, 5)
+    const highestRated = [...withComments]
+      .filter(c => (c.csatRating ?? 0) >= 4)
+      .sort((a, b) => (b.csatRating ?? 0) - (a.csatRating ?? 0))
+      .slice(0, 5)
+    const summariseComment = (c: typeof ratedConvos[number]) => {
+      const widget = widgetById.get(c.widgetId)
+      return {
+        conversationId: c.id,
+        widgetName: widget?.name || 'Widget',
+        brandName: widget?.brand?.name ?? null,
+        agentName: c.agentId ? (agentNameById.get(c.agentId) || 'Agent') : null,
+        operatorName: c.assignedUserId
+          ? (operatorById.get(c.assignedUserId)?.name || operatorById.get(c.assignedUserId)?.email || 'Operator')
+          : null,
+        handler: c.assignedAt ? 'human' as const : 'ai' as const,
+        rating: c.csatRating ?? 0,
+        comment: c.csatComment ?? '',
+        submittedAt: c.csatSubmittedAt?.toISOString() ?? null,
+        visitorLabel: c.visitor?.name || c.visitor?.email || 'Anonymous visitor',
+      }
+    }
+
     const recent = ratedConvos.slice(0, 30).map(c => {
       const widget = widgetById.get(c.widgetId)
       return {
@@ -225,8 +352,14 @@ export async function GET(req: NextRequest, { params }: Params) {
       averageRating: Number(avg.toFixed(2)),
       distribution,
       byAgent,
+      byOperator,
       byBrand,
       byHandler: { ai: byHandlerAi, human: byHandlerHuman },
+      trend,
+      commentHighlights: {
+        needsReview: lowestRated.map(summariseComment),
+        brightSpots: highestRated.map(summariseComment),
+      },
       allBrands,
       recent,
     })
@@ -259,8 +392,11 @@ function empty(days = 30) {
     averageRating: 0,
     distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     byAgent: [],
+    byOperator: [],
     byBrand: [],
     byHandler: { ai: { count: 0, avg: 0 }, human: { count: 0, avg: 0 } },
+    trend: { priorAvg: null, priorCount: 0, priorResponseRate: 0, deltaAvg: null, deltaCount: 0, deltaResponseRate: 0 },
+    commentHighlights: { needsReview: [], brightSpots: [] },
     allBrands: [],
     recent: [],
   }

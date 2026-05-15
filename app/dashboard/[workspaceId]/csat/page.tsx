@@ -22,6 +22,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
+interface CommentHighlight {
+  conversationId: string
+  widgetName: string
+  brandName: string | null
+  agentName: string | null
+  operatorName: string | null
+  handler: 'ai' | 'human'
+  rating: number
+  comment: string
+  submittedAt: string | null
+  visitorLabel: string
+}
+
 interface CsatResponse {
   days: number
   filters: { brandId: string | null; rating: number | null; handler: 'ai' | 'human' | null }
@@ -31,8 +44,21 @@ interface CsatResponse {
   averageRating: number
   distribution: Record<'1' | '2' | '3' | '4' | '5', number>
   byAgent: Array<{ agentId: string | null; name: string; count: number; avg: number }>
+  byOperator: Array<{ userId: string; name: string; email: string | null; image: string | null; count: number; avg: number }>
   byBrand: Array<{ brandId: string | null; name: string; color: string | null; count: number; avg: number }>
   byHandler: { ai: { count: number; avg: number }; human: { count: number; avg: number } }
+  trend: {
+    priorAvg: number | null
+    priorCount: number
+    priorResponseRate: number
+    deltaAvg: number | null
+    deltaCount: number
+    deltaResponseRate: number
+  }
+  commentHighlights: {
+    needsReview: Array<CommentHighlight>
+    brightSpots: Array<CommentHighlight>
+  }
   allBrands: Array<{ id: string; name: string; primaryColor: string | null }>
   recent: Array<{
     conversationId: string
@@ -200,16 +226,19 @@ export default function CsatPage() {
                 label="Average rating"
                 value={`${data.averageRating.toFixed(2)} / 5`}
                 hint={'⭐'.repeat(Math.round(data.averageRating))}
+                delta={data.trend.deltaAvg !== null ? { value: data.trend.deltaAvg, suffix: '', goodIfPositive: true, priorLabel: `vs ${data.trend.priorAvg?.toFixed(2) ?? '—'} prior ${data.days}d` } : null}
               />
               <Scorecard
                 label="Ratings collected"
                 value={String(data.totalRated)}
                 hint={`out of ${data.closedTotal} closed chat${data.closedTotal === 1 ? '' : 's'}`}
+                delta={{ value: data.trend.deltaCount, suffix: '', goodIfPositive: true, priorLabel: `vs ${data.trend.priorCount} prior ${data.days}d`, format: 'integer' }}
               />
               <Scorecard
                 label="Response rate"
                 value={`${Math.round(data.responseRate * 100)}%`}
                 hint="of closed chats rated"
+                delta={{ value: Math.round(data.trend.deltaResponseRate * 100), suffix: 'pp', goodIfPositive: true, priorLabel: `vs ${Math.round(data.trend.priorResponseRate * 100)}% prior ${data.days}d`, format: 'integer' }}
               />
             </div>
 
@@ -320,13 +349,19 @@ export default function CsatPage() {
               </div>
             )}
 
-            {/* Per-agent breakdown — same shape as before */}
+            {/* By AI agent */}
             {data.byAgent.length > 0 && (
               <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>By agent</h2>
+                <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+                  By AI agent <span className="text-[10px] uppercase tracking-wider font-normal" style={{ color: 'var(--text-tertiary)' }}>· purple = AI</span>
+                </h2>
+                <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                  Rating spread across each AI agent config. A chat that handed off to a human is still counted here — the rating reflects the whole experience.
+                </p>
                 <div className="space-y-2">
                   {data.byAgent.map(a => (
                     <div key={a.agentId ?? '∅'} className="flex items-center gap-3 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-purple-400" />
                       {a.agentId ? (
                         <Link
                           href={`/dashboard/${workspaceId}/agents/${a.agentId}`}
@@ -347,6 +382,79 @@ export default function CsatPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* By human operator — same shape but keyed off assignedUserId */}
+            {data.byOperator.length > 0 && (
+              <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+                <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+                  By human operator <span className="text-[10px] uppercase tracking-wider font-normal" style={{ color: 'var(--text-tertiary)' }}>· blue = human</span>
+                </h2>
+                <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                  Ratings on chats your teammates were assigned to. A chat appears under both AI and human if it handed off.
+                </p>
+                <div className="space-y-2">
+                  {data.byOperator.map(o => (
+                    <div key={o.userId} className="flex items-center gap-3 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                      {o.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={o.image} alt="" className="w-6 h-6 rounded-full shrink-0" />
+                      ) : (
+                        <span className="w-6 h-6 rounded-full shrink-0 bg-blue-500/20 text-blue-300 text-[10px] font-semibold flex items-center justify-center">
+                          {(o.name || o.email || '?').charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{o.name}</p>
+                        {o.email && o.email !== o.name && (
+                          <p className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>{o.email}</p>
+                        )}
+                      </div>
+                      <span className="text-xs tabular-nums" style={{ color: 'var(--text-tertiary)' }}>
+                        {o.count} rating{o.count === 1 ? '' : 's'}
+                      </span>
+                      <span className="text-sm font-medium tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                        {o.avg.toFixed(2)} <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>/ 5</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Comment highlights — actionable signal pulled out of the
+                long recent list. Shows the worst-rated chats with a
+                comment (review these), and the best-rated with a
+                comment (celebrate / pull quotes). */}
+            {(data.commentHighlights.needsReview.length > 0 || data.commentHighlights.brightSpots.length > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {data.commentHighlights.needsReview.length > 0 && (
+                  <div className="rounded-xl border p-5" style={{ borderColor: 'var(--accent-red)', background: 'var(--surface)' }}>
+                    <h2 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: 'var(--accent-red)' }}>
+                      ⚠️ Needs review
+                    </h2>
+                    <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>Lowest-rated chats with feedback.</p>
+                    <div className="space-y-3">
+                      {data.commentHighlights.needsReview.map(h => (
+                        <CommentRow key={h.conversationId} workspaceId={workspaceId} highlight={h} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {data.commentHighlights.brightSpots.length > 0 && (
+                  <div className="rounded-xl border p-5" style={{ borderColor: 'var(--accent-green, #22c55e)', background: 'var(--surface)' }}>
+                    <h2 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: 'var(--accent-green, #22c55e)' }}>
+                      ✨ Bright spots
+                    </h2>
+                    <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>Top-rated chats with feedback. Pull-quotes live here.</p>
+                    <div className="space-y-3">
+                      {data.commentHighlights.brightSpots.map(h => (
+                        <CommentRow key={h.conversationId} workspaceId={workspaceId} highlight={h} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -414,13 +522,73 @@ export default function CsatPage() {
   )
 }
 
-function Scorecard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+interface Delta {
+  value: number
+  suffix: string
+  goodIfPositive: boolean
+  priorLabel: string
+  format?: 'integer' | 'decimal'
+}
+
+function Scorecard({ label, value, hint, delta }: { label: string; value: string; hint?: string; delta?: Delta | null }) {
+  const showDelta = delta && delta.value !== 0
+  const isGood = delta && ((delta.value > 0) === delta.goodIfPositive)
+  const fmt = delta?.format === 'integer'
+    ? `${delta.value > 0 ? '+' : ''}${delta.value}`
+    : `${delta && delta.value > 0 ? '+' : ''}${delta?.value.toFixed(2) ?? ''}`
   return (
     <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
       <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-      <p className="text-2xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>{value}</p>
+      <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+        <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
+        {showDelta && (
+          <span
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+            title={delta!.priorLabel}
+            style={{
+              background: isGood ? 'var(--accent-green-bg, rgba(34,197,94,0.15))' : 'var(--accent-red-bg)',
+              color: isGood ? 'var(--accent-green, #22c55e)' : 'var(--accent-red)',
+            }}
+          >
+            {fmt}{delta!.suffix}
+          </span>
+        )}
+      </div>
       {hint && <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{hint}</p>}
+      {delta && (
+        <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{delta.priorLabel}</p>
+      )}
     </div>
+  )
+}
+
+function CommentRow({ workspaceId, highlight }: { workspaceId: string; highlight: CommentHighlight }) {
+  const bg = highlight.rating >= 4 ? 'var(--accent-green-bg, rgba(34,197,94,0.15))' : highlight.rating === 3 ? 'var(--accent-amber-bg)' : 'var(--accent-red-bg)'
+  const fg = highlight.rating >= 4 ? 'var(--accent-green, #22c55e)' : highlight.rating === 3 ? 'var(--accent-amber)' : 'var(--accent-red)'
+  return (
+    <Link
+      href={`/dashboard/${workspaceId}/inbox?conversation=${highlight.conversationId}`}
+      className="block p-3 rounded-lg hover:opacity-80 transition-opacity"
+      style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+    >
+      <div className="flex items-start gap-2">
+        <span className="text-xs font-semibold tabular-nums shrink-0 px-2 py-0.5 rounded"
+          style={{ background: bg, color: fg }}>
+          {highlight.rating}★
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm italic line-clamp-3" style={{ color: 'var(--text-primary)' }}>
+            &ldquo;{highlight.comment}&rdquo;
+          </p>
+          <div className="flex items-center gap-2 flex-wrap text-[10px] mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
+            <span>{highlight.visitorLabel}</span>
+            {highlight.brandName && (<><span>·</span><span>{highlight.brandName}</span></>)}
+            {highlight.operatorName && (<><span>·</span><span className="text-blue-300">{highlight.operatorName}</span></>)}
+            {!highlight.operatorName && highlight.agentName && (<><span>·</span><span className="text-purple-300">{highlight.agentName}</span></>)}
+          </div>
+        </div>
+      </div>
+    </Link>
   )
 }
 

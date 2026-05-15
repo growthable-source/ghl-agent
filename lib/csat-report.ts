@@ -12,6 +12,19 @@
  * works for browser print since print styles inherit normally.
  */
 
+interface CommentHighlight {
+  conversationId: string
+  widgetName: string
+  brandName: string | null
+  agentName: string | null
+  operatorName: string | null
+  handler: 'ai' | 'human'
+  rating: number
+  comment: string
+  submittedAt: string | null
+  visitorLabel: string
+}
+
 interface CsatData {
   days: number
   filters: { brandId: string | null; rating: number | null; handler: 'ai' | 'human' | null }
@@ -21,8 +34,21 @@ interface CsatData {
   averageRating: number
   distribution: Record<'1' | '2' | '3' | '4' | '5', number>
   byAgent: Array<{ agentId: string | null; name: string; count: number; avg: number }>
+  byOperator?: Array<{ userId: string; name: string; email: string | null; count: number; avg: number }>
   byBrand: Array<{ brandId: string | null; name: string; color: string | null; count: number; avg: number }>
   byHandler: { ai: { count: number; avg: number }; human: { count: number; avg: number } }
+  trend?: {
+    priorAvg: number | null
+    priorCount: number
+    priorResponseRate: number
+    deltaAvg: number | null
+    deltaCount: number
+    deltaResponseRate: number
+  }
+  commentHighlights?: {
+    needsReview: CommentHighlight[]
+    brightSpots: CommentHighlight[]
+  }
   allBrands: Array<{ id: string; name: string; primaryColor: string | null }>
   recent: Array<{
     conversationId: string
@@ -148,10 +174,56 @@ export function renderCsatReportHtml(data: CsatData, opts: RenderOpts): string {
     </tr>`
 
   const agentsSection = data.byAgent.length > 0 ? `
-    <h2 style="font-size:14px;font-weight:600;color:#111827;margin:24px 0 8px;">By agent</h2>
+    <h2 style="font-size:14px;font-weight:600;color:#111827;margin:24px 0 8px;">By AI agent</h2>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
       ${data.byAgent.map(agentRow).join('')}
     </table>` : ''
+
+  const operatorRow = (o: NonNullable<CsatData['byOperator']>[number]) => `
+    <tr>
+      <td style="padding:8px 4px;border-top:1px solid #e5e7eb;font-size:13px;color:#111827;">
+        ${escapeHtml(o.name)}${o.email && o.email !== o.name ? ` <span style="color:#9ca3af;font-size:11px;">${escapeHtml(o.email)}</span>` : ''}
+      </td>
+      <td style="padding:8px 4px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:right;font-variant-numeric:tabular-nums;">${o.count}</td>
+      <td style="padding:8px 4px;border-top:1px solid #e5e7eb;font-size:13px;color:#111827;text-align:right;font-variant-numeric:tabular-nums;width:80px;"><strong>${o.avg.toFixed(2)}</strong> / 5</td>
+    </tr>`
+
+  const operatorsSection = data.byOperator && data.byOperator.length > 0 ? `
+    <h2 style="font-size:14px;font-weight:600;color:#111827;margin:24px 0 8px;">By human operator</h2>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+      ${data.byOperator.map(operatorRow).join('')}
+    </table>` : ''
+
+  const highlightRow = (h: CommentHighlight) => {
+    const bg = h.rating >= 4 ? '#d1fae5' : h.rating === 3 ? '#fef3c7' : '#fee2e2'
+    const fg = h.rating >= 4 ? '#065f46' : h.rating === 3 ? '#92400e' : '#991b1b'
+    return `
+      <tr>
+        <td style="padding:10px 8px;border-top:1px solid #e5e7eb;vertical-align:top;">
+          <span style="display:inline-block;font-weight:600;font-size:12px;padding:2px 8px;border-radius:4px;background:${bg};color:${fg};">${h.rating}★</span>
+        </td>
+        <td style="padding:10px 4px;border-top:1px solid #e5e7eb;font-size:13px;color:#111827;vertical-align:top;">
+          <div style="font-style:italic;color:#374151;line-height:1.4;">“${escapeHtml(h.comment)}”</div>
+          <div style="margin-top:4px;font-size:11px;color:#6b7280;">
+            ${escapeHtml(h.visitorLabel)}${h.brandName ? ` · ${escapeHtml(h.brandName)}` : ''}${h.operatorName ? ` · ${escapeHtml(h.operatorName)}` : h.agentName ? ` · ${escapeHtml(h.agentName)}` : ''}
+          </div>
+        </td>
+      </tr>`
+  }
+
+  const highlightsSection = data.commentHighlights && (data.commentHighlights.needsReview.length > 0 || data.commentHighlights.brightSpots.length > 0) ? `
+    <h2 style="font-size:14px;font-weight:600;color:#111827;margin:24px 0 8px;">Comment highlights</h2>
+    ${data.commentHighlights.needsReview.length > 0 ? `
+      <p style="font-size:12px;color:#991b1b;margin:8px 0 4px;font-weight:600;">⚠ Needs review — lowest-rated chats with feedback</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #fee2e2;overflow:hidden;margin-bottom:12px;">
+        ${data.commentHighlights.needsReview.map(highlightRow).join('')}
+      </table>` : ''}
+    ${data.commentHighlights.brightSpots.length > 0 ? `
+      <p style="font-size:12px;color:#065f46;margin:8px 0 4px;font-weight:600;">✨ Bright spots — top-rated chats with feedback</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #d1fae5;overflow:hidden;">
+        ${data.commentHighlights.brightSpots.map(highlightRow).join('')}
+      </table>` : ''}
+  ` : ''
 
   const recentRow = (r: typeof data.recent[number]) => {
     const bg = r.rating >= 4 ? '#d1fae5' : r.rating === 3 ? '#fef3c7' : '#fee2e2'
@@ -193,9 +265,21 @@ export function renderCsatReportHtml(data: CsatData, opts: RenderOpts): string {
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="8" style="margin:0 0 16px;">
       <tr>
-        ${scorecard('Average rating', `${data.averageRating.toFixed(2)} / 5`, '⭐'.repeat(Math.round(data.averageRating)))}
-        ${scorecard('Ratings collected', String(data.totalRated), `of ${data.closedTotal} closed chats`)}
-        ${scorecard('Response rate', `${Math.round(data.responseRate * 100)}%`, 'of closed chats rated')}
+        ${scorecard(
+          'Average rating',
+          `${data.averageRating.toFixed(2)} / 5`,
+          `${'⭐'.repeat(Math.round(data.averageRating))}${data.trend?.deltaAvg ? ` · ${data.trend.deltaAvg > 0 ? '+' : ''}${data.trend.deltaAvg.toFixed(2)} vs prior ${data.days}d` : ''}`,
+        )}
+        ${scorecard(
+          'Ratings collected',
+          String(data.totalRated),
+          `of ${data.closedTotal} closed chats${data.trend ? ` · ${data.trend.deltaCount >= 0 ? '+' : ''}${data.trend.deltaCount} vs prior` : ''}`,
+        )}
+        ${scorecard(
+          'Response rate',
+          `${Math.round(data.responseRate * 100)}%`,
+          `of closed chats rated${data.trend ? ` · ${data.trend.deltaResponseRate >= 0 ? '+' : ''}${Math.round(data.trend.deltaResponseRate * 100)}pp vs prior` : ''}`,
+        )}
       </tr>
     </table>
 
@@ -208,6 +292,8 @@ export function renderCsatReportHtml(data: CsatData, opts: RenderOpts): string {
 
     ${brandsSection}
     ${agentsSection}
+    ${operatorsSection}
+    ${highlightsSection}
     ${recentSection}
   `}
 
