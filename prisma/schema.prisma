@@ -135,6 +135,7 @@ model Workspace {
   brandGroups          BrandGroup[]          @relation("WorkspaceBrandGroups")
   portals              Portal[]              @relation("WorkspacePortals")
   knowledgeDomains     KnowledgeDomain[]     @relation("WorkspaceKnowledgeDomains")
+  retrievalEvalSets    RetrievalEvalSet[]    @relation("WorkspaceRetrievalEvalSets")
 
   // ─── Native (built-in) CRM ───
   // Populated only for workspaces using crmProvider='native' on their
@@ -609,6 +610,7 @@ model KnowledgeDomain {
   taxonomies          Taxonomy[]
   sources             KnowledgeSource[]
   chunks              KnowledgeChunk[]
+  evalSets            RetrievalEvalSet[] @relation("DomainEvalSets")
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
@@ -762,6 +764,117 @@ model KnowledgeChunk {
   @@index([contentHash])
   @@index([taxonomyVersion])
   @@index([embeddingModel])
+  evalChunks KnowledgeChunkEvalRef[]
+}
+
+// ─── Phase 2 retrieval eval harness ──────────────────────────────────────
+// Operators curate a small set of "if a visitor asked X, the agent
+// should retrieve Y" pairs. The harness runs retrieval against the
+// current pgvector + config, captures the top-K chunks per query as
+// a frozen snapshot, then accepts per-chunk labels (helpful/neutral/
+// harmful) and computes net@K + coverage@K. The architecture from the
+// design pass: pairwise comparison on the same set, single yardstick,
+// rubric versioned so weight changes have an audit trail.
+model RetrievalEvalSet {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace @relation("WorkspaceRetrievalEvalSets", fields: [workspaceId], references: [id], onDelete: Cascade)
+  knowledgeDomainId String?
+  domain            KnowledgeDomain? @relation("DomainEvalSets", fields: [knowledgeDomainId], references: [id], onDelete: SetNull)
+  name              String
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  queries           RetrievalEvalQuery[]
+  runs              RetrievalEvalRun[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model RetrievalEvalQuery {
+  id             String   @id @default(cuid())
+  evalSetId      String
+  evalSet        RetrievalEvalSet @relation(fields: [evalSetId], references: [id], onDelete: Cascade)
+  query          String   @db.Text
+  // Operator's annotation of what a good answer references. Used as
+  // the rubric anchor during labeling — labelers compare chunks
+  // against this rather than each other.
+  expectedAnswer String   @db.Text
+  // Brand scope for the brand-pinned slice. Null = workspace-wide
+  // query; non-null = scoped to one brand's content for per-brand
+  // net@K computation.
+  brandId        String?
+  brand          Brand?   @relation("BrandEvalQueries", fields: [brandId], references: [id], onDelete: SetNull)
+  intentTags     String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  results        RetrievalEvalResult[]
+
+  @@index([evalSetId])
+  @@index([brandId])
+}
+
+model RetrievalEvalRun {
+  id            String   @id @default(cuid())
+  evalSetId     String
+  evalSet       RetrievalEvalSet @relation(fields: [evalSetId], references: [id], onDelete: Cascade)
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  status        String   @default("running") // 'running' | 'success' | 'failed'
+  // Frozen snapshot of the retrieval config this run used:
+  // { limit, minSimilarity, embeddingModel, retrievalVersion }
+  config        Json
+  // Hash of the rubric document at run time. When the rubric changes,
+  // every prior eval is comparing against a different yardstick —
+  // re-run baselines on rubric bump.
+  rubricVersion String?
+  // Roll-up of label scores. Populated as labels are added/changed.
+  // Shape: { netAt5, coverageAt5, helpful, neutral, harmful, perBrand: {...} }
+  summary       Json     @default("{}")
+  results       RetrievalEvalResult[]
+
+  @@index([evalSetId, startedAt(sort: Desc)])
+}
+
+model RetrievalEvalResult {
+  id              String   @id @default(cuid())
+  runId           String
+  run             RetrievalEvalRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  queryId         String
+  query           RetrievalEvalQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  // Top-K chunks at run time. Frozen — re-running retrieval against
+  // a tuned config creates a NEW run with new results, never mutates
+  // historical rows. Shape:
+  // [{ chunkId, content (truncated 600 chars), sourceUrl, similarity, primaryTopic }]
+  retrievedChunks Json
+  // Labels keyed by chunkId. Shape:
+  //   { [chunkId]: { label: 'helpful'|'neutral'|'harmful', reason?, labeledBy, labeledAt } }
+  labels          Json     @default("{}")
+  // Computed scores once labels exist. Re-computed on every label change.
+  netAtK          Float?
+  coverageAtK     Float?
+  chunkRefs       KnowledgeChunkEvalRef[]
+
+  @@unique([runId, queryId])
+  @@index([runId])
+}
+
+// Soft reference between an eval result and the underlying chunks
+// so we can pull live chunk data (sourceUrl, current similarity,
+// etc.) without storing it twice. The snapshot in retrievedChunks
+// is what gets labeled; this join is for "where did this chunk
+// come from now" lookups.
+model KnowledgeChunkEvalRef {
+  id       String @id @default(cuid())
+  resultId String
+  result   RetrievalEvalResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  chunkId  String
+  chunk    KnowledgeChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  rank     Int
+
+  @@unique([resultId, chunkId])
+  @@index([chunkId])
 }
 
 // ─── Recurring crawl schedule ──────────────────────────────────────────────
@@ -1601,6 +1714,7 @@ model Brand {
   widgets      ChatWidget[]
   collections  KnowledgeCollection[]
   portalAccess PortalUserBrand[]     @relation("BrandPortalAccess")
+  evalQueries  RetrievalEvalQuery[]  @relation("BrandEvalQueries")
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
