@@ -13,7 +13,7 @@
  * No prompt() calls. No raw slugs. No DB jargon in error messages.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 interface Domain {
@@ -97,7 +97,28 @@ export default function KnowledgePipelinePage() {
 
   const [createDomainOpen, setCreateDomainOpen] = useState(false)
   const [addSourceOpen, setAddSourceOpen] = useState(false)
+  // The modal is shown when an active run is selected. The operator can
+  // dismiss the modal at any time — the ingest keeps running on the
+  // server and a floating pill at the bottom of the page lets them
+  // re-open it. Three pieces of state:
+  //
+  //   activeRunId        — currently-displayed run (modal open)
+  //   backgroundRunId    — run still polling after the operator closed
+  //                        the modal; the floating pill watches this
+  //   completedRun       — short-lived "ingest finished" toast payload
+  //
+  // Splitting "open in modal" from "polling in background" is what
+  // lets the operator navigate elsewhere while ingestion continues.
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [backgroundRunId, setBackgroundRunId] = useState<string | null>(null)
+  const [backgroundRun, setBackgroundRun] = useState<{
+    id: string
+    status: 'running' | 'success' | 'partial' | 'failed'
+    pagesAttempted: number
+    pagesSucceeded: number
+    chunksCreated: number
+  } | null>(null)
+  const [completedToast, setCompletedToast] = useState<{ message: string; tone: 'success' | 'warning' | 'error' } | null>(null)
   const [diagnosticOpen, setDiagnosticOpen] = useState(false)
 
   useEffect(() => {
@@ -158,6 +179,47 @@ export default function KnowledgePipelinePage() {
     if (tab === 'taxonomy') loadTaxonomy()
     if (tab === 'history') loadRuns()
   }, [tab, domainId, loadSources, loadRuns, loadTaxonomy])
+
+  // Page-level polling for the in-flight run. Drives the floating
+  // pill at the bottom of the page when the operator has dismissed
+  // the progress modal but ingestion is still running on the server.
+  // Stops on completion + shows a "Done" toast.
+  useEffect(() => {
+    if (!backgroundRunId) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/admin/ingestion-runs/${backgroundRunId}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+        setBackgroundRun(data)
+        if (data.status === 'running') {
+          timer = setTimeout(tick, 3000)
+          return
+        }
+        // Completed — celebrate, refresh lists, drop the pill.
+        const message =
+          data.status === 'success' ? `Done — added ${data.chunksCreated} new ${data.chunksCreated === 1 ? 'entry' : 'entries'}.` :
+          data.status === 'partial' ? `Finished with errors — ${data.pagesSucceeded} of ${data.pagesAttempted} pages read.` :
+          'Ingestion failed.'
+        const tone = data.status === 'success' ? 'success' as const
+          : data.status === 'failed' ? 'error' as const
+          : 'warning' as const
+        setCompletedToast({ message, tone })
+        await Promise.all([loadSources(), loadRuns(), loadDomains()])
+        setBackgroundRunId(null)
+        setBackgroundRun(null)
+        // Auto-dismiss the toast after 6 seconds.
+        setTimeout(() => setCompletedToast(null), 6000)
+      } catch {
+        timer = setTimeout(tick, 4000)
+      }
+    }
+    tick()
+    return () => { cancelled = true; if (timer) clearTimeout(timer) }
+  }, [backgroundRunId, loadSources, loadRuns, loadDomains])
 
   async function startIngest(sourceId: string) {
     const res = await fetch(`/api/admin/sources/${sourceId}/run`, { method: 'POST' })
@@ -304,14 +366,76 @@ export default function KnowledgePipelinePage() {
       {activeRunId && (
         <RunProgressModal
           runId={activeRunId}
-          onClose={async () => {
+          onClose={async (run) => {
+            // If the run is still going, hand it off to the
+            // page-level background poll — operator gets a floating
+            // pill at the bottom they can click to re-open the modal.
+            // If it finished, just refresh the lists.
+            if (run && run.status === 'running') {
+              setBackgroundRunId(run.id)
+            } else {
+              await Promise.all([loadSources(), loadRuns(), loadDomains()])
+            }
             setActiveRunId(null)
-            await Promise.all([loadSources(), loadRuns(), loadDomains()])
           }}
         />
       )}
       {diagnosticOpen && (
         <DiagnosticModal onClose={() => setDiagnosticOpen(false)} />
+      )}
+
+      {/* Background-ingest pill — appears bottom-right while a run
+          continues after the operator dismissed the modal. Click
+          re-opens the modal so they can watch progress / errors. */}
+      {backgroundRunId && backgroundRun && backgroundRun.status === 'running' && (
+        <button
+          onClick={() => {
+            setActiveRunId(backgroundRunId)
+            setBackgroundRunId(null)
+          }}
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-xl border transition-colors hover:opacity-90"
+          style={{
+            background: 'var(--surface)',
+            borderColor: 'var(--accent-amber, #f59e0b)',
+            color: 'var(--text-primary)',
+          }}
+          aria-label="Open ingest progress"
+        >
+          <span className="relative inline-flex w-2 h-2">
+            <span className="absolute inset-0 rounded-full animate-ping" style={{ background: 'var(--accent-amber, #f59e0b)' }} />
+            <span className="relative inline-block w-2 h-2 rounded-full" style={{ background: 'var(--accent-amber, #f59e0b)' }} />
+          </span>
+          <span className="text-xs font-semibold">
+            Reading{backgroundRun.pagesAttempted > 0 ? ` · ${backgroundRun.pagesSucceeded}/${backgroundRun.pagesAttempted}` : '…'}
+          </span>
+          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+            View
+          </span>
+        </button>
+      )}
+
+      {/* Completion toast — short-lived banner when an in-background
+          run finishes. Auto-dismisses after 6s; click to dismiss
+          early. Position above the pill area so they don't stack. */}
+      {completedToast && (
+        <button
+          onClick={() => setCompletedToast(null)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-xl border transition-colors text-left"
+          style={{
+            background: 'var(--surface)',
+            borderColor: completedToast.tone === 'success' ? 'var(--accent-emerald, #22c55e)'
+                       : completedToast.tone === 'warning' ? 'var(--accent-amber, #f59e0b)'
+                       : 'var(--accent-red, #ef4444)',
+          }}
+        >
+          <span className="text-base">
+            {completedToast.tone === 'success' ? '✓' : completedToast.tone === 'warning' ? '⚠' : '✗'}
+          </span>
+          <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+            {completedToast.message}
+          </span>
+          <span className="text-[10px] ml-2" style={{ color: 'var(--text-tertiary)' }}>×</span>
+        </button>
       )}
     </div>
   )
@@ -677,9 +801,15 @@ function AddSourceModal({ sourceTypeCards, knowledgeDomainId, onClose, onCreated
 
 // ─── Run progress modal ─────────────────────────────────────────────────
 
-function RunProgressModal({ runId, onClose }: { runId: string; onClose: () => void }) {
+function RunProgressModal({ runId, onClose }: { runId: string; onClose: (run: Run | null) => void }) {
   const [run, setRun] = useState<Run | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Capture the latest run object in a ref so onClose handlers (which
+  // close over the initial value otherwise) can pass it up to the
+  // parent — the parent decides whether to start background polling
+  // based on status='running' vs terminal.
+  const runRef = useRef<Run | null>(null)
+  runRef.current = run
 
   useEffect(() => {
     let cancelled = false
@@ -709,8 +839,13 @@ function RunProgressModal({ runId, onClose }: { runId: string; onClose: () => vo
     ? Math.min(100, Math.round((run.pagesSucceeded / run.pagesAttempted) * 100))
     : isRunning ? 5 : 100
 
+  // Wrapper that passes the latest run state up to the parent. The
+  // parent uses status === 'running' to know whether to hand off to
+  // background polling vs just refresh the lists and move on.
+  const handleClose = () => onClose(runRef.current)
+
   return (
-    <Modal title="Reading your content" onClose={onClose} maxW="max-w-lg" dismissable={!isRunning}>
+    <Modal title="Reading your content" onClose={handleClose} maxW="max-w-lg" dismissable>
       {!run ? (
         <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Starting up…</p>
       ) : (
@@ -761,17 +896,26 @@ function RunProgressModal({ runId, onClose }: { runId: string; onClose: () => vo
             </details>
           )}
           {error && <p className="text-xs text-amber-400 mt-2">{error}</p>}
-          {!isRunning && (
-            <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex justify-end gap-2">
+            {isRunning ? (
               <button
-                onClick={onClose}
+                onClick={handleClose}
+                className="text-sm font-medium px-4 py-2 rounded-lg border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+                title="Close this window — ingestion keeps running in the background. A pill at the bottom-right lets you re-open."
+              >
+                Continue in background
+              </button>
+            ) : (
+              <button
+                onClick={handleClose}
                 className="text-sm font-semibold px-4 py-2 rounded-lg"
                 style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
               >
                 Done
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </Modal>
