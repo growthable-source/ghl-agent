@@ -1805,6 +1805,15 @@ model WidgetMessage {
   role           String
   content        String             @db.Text
   kind           String             @default("text")
+  // Detected language (ISO 639-1) of the message content. Null until
+  // the async detector lands. Populated by lib/widget-translation.ts
+  // shortly after the message is persisted.
+  language       String?
+  // English translation when language != 'en'. Null when the message
+  // is already English or when detection failed. Operators see this
+  // rendered below the original in the inbox so they can read what
+  // the agent said in Spanish / French / Portuguese / etc.
+  translationEn  String?            @db.Text
   createdAt      DateTime           @default(now())
 
   @@index([conversationId, createdAt(sort: Asc)])

@@ -5,6 +5,7 @@ import { broadcast } from '@/lib/widget-sse'
 import { notify } from '@/lib/notifications'
 import { resolveHandoverLink } from '@/lib/handover-link'
 import { runWidgetAgent } from '@/lib/widget-agent-runner'
+import { translateMessageInBackground } from '@/lib/widget-translation'
 
 export const maxDuration = 300
 
@@ -119,6 +120,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     id: visitorMsg.id,
     content,
     createdAt: visitorMsg.createdAt.toISOString(),
+  })
+
+  // Detect language + translate to English in the background. The
+  // visitor doesn't see translation; the operator inbox does, via
+  // the translation_update SSE event the helper broadcasts when it
+  // lands.
+  after(async () => {
+    await translateMessageInBackground(visitorMsg.id)
   })
 
   // Run the agent AFTER the response is sent. Wrapping in `after()` is

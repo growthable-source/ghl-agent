@@ -23,6 +23,12 @@ interface Message {
   createdAt: string
   fromHuman?: boolean
   quickReplies?: string[]
+  /** Detected ISO 639-1 language code. Null on legacy messages. */
+  language?: string | null
+  /** English translation for messages where language != 'en'. Rendered
+   *  below the original in a muted style so monolingual operators can
+   *  follow non-English chats. */
+  translationEn?: string | null
 }
 
 interface Convo {
@@ -65,6 +71,21 @@ const EMOJI_GRID = ['👍', '🙏', '😀', '😅', '🎉', '💯', '🔥', '✅
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// ISO 639-1 → human-readable label for the translation badge.
+// Covers the languages the detector accepts; falls back to the raw
+// code for anything else.
+const LANG_LABEL: Record<string, string> = {
+  es: 'ES', fr: 'FR', de: 'DE', it: 'IT', pt: 'PT', nl: 'NL', sv: 'SV',
+  no: 'NO', da: 'DA', fi: 'FI', pl: 'PL', ru: 'RU', uk: 'UK', tr: 'TR',
+  ar: 'AR', he: 'HE', fa: 'FA', hi: 'HI', bn: 'BN', ja: 'JA', ko: 'KO',
+  zh: 'ZH', vi: 'VI', th: 'TH', id: 'ID', ms: 'MS', tl: 'TL', el: 'EL',
+  cs: 'CS', hu: 'HU', ro: 'RO', bg: 'BG', hr: 'HR', sr: 'SR', sk: 'SK',
+  sl: 'SL', et: 'ET', lv: 'LV', lt: 'LT',
+}
+function languageLabel(code: string): string {
+  return LANG_LABEL[code] ?? code.toUpperCase()
 }
 function relTime(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -236,6 +257,21 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           id: 'err-' + Date.now(), role: 'system', content: data.message || 'Agent error', kind: 'text',
           createdAt: new Date().toISOString(),
         }] } : c)
+      } else if (data.type === 'translation_update') {
+        // Background translator finished — patch the message in place
+        // so the operator sees the English version slide in under
+        // the original. id matches the WidgetMessage row.
+        setConvo(c => {
+          if (!c) return c
+          return {
+            ...c,
+            messages: c.messages.map(m =>
+              m.id === data.id
+                ? { ...m, language: data.language, translationEn: data.translationEn }
+                : m,
+            ),
+          }
+        })
       }
     }
 
@@ -1008,6 +1044,12 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
     }
   }
 
+  // Non-English message: render the English translation underneath
+  // in a smaller, muted bubble so operators can read what the AI
+  // said in Spanish/French/Portuguese/etc. The translation is also
+  // marked with the source language for context.
+  const showTranslation = msg.language && msg.language !== 'en' && !!msg.translationEn
+
   return (
     <div className={`flex ${isVisitor ? 'justify-start' : 'justify-end'}`}>
       <div className="max-w-[70%]">
@@ -1019,6 +1061,20 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
         >
           {msg.content}
         </div>
+        {showTranslation && (
+          <div className={`mt-1.5 ${isVisitor ? 'pl-3' : 'pr-3'}`}>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-[9px] uppercase font-semibold tracking-wider px-1 py-0.5 rounded"
+                style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}>
+                {languageLabel(msg.language!)} → EN
+              </span>
+            </div>
+            <p className="text-[12px] italic leading-snug whitespace-pre-wrap"
+              style={{ color: 'var(--text-tertiary)' }}>
+              {msg.translationEn}
+            </p>
+          </div>
+        )}
         <div className={`flex items-center gap-1.5 mt-1 ${isVisitor ? 'justify-start' : 'justify-end'}`}>
           {!isVisitor && msg.fromHuman !== undefined && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${

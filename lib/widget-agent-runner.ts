@@ -166,12 +166,26 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
 
   await broadcast(convo.id, { type: 'agent_typing', isTyping: true })
 
-  const fullPrompt = await buildBasePrompt(agent, {
+  const baseSystemPrompt = await buildBasePrompt(agent, {
     channel: 'widget',
     incomingMessage: content,
     visitorContactId: `visitor:${convo.visitorId}`,
     includeObjectives: true,
   })
+
+  // Multilingual directive — ALWAYS reply in the visitor's language.
+  // Claude's native multilingual ability handles detection and
+  // generation; we just need to tell it to. The operator's English
+  // translation is handled separately (lib/widget-translation.ts
+  // post-processes each persisted message).
+  const fullPrompt = baseSystemPrompt + `
+
+## LANGUAGE
+Detect the language of the visitor's most recent message and respond in THAT language. If they wrote in Spanish, reply in Spanish. French → French. Portuguese → Portuguese. Japanese → Japanese. Match the visitor's language for every turn, even if your knowledge base or system prompt is in English. Use the same level of formality their language suggests (tú vs usted, tu vs vous, etc.).
+
+If the visitor switches languages mid-conversation, switch with them.
+
+Never apologise for the language or mention translation — just speak naturally in their language. Names, brand terms, and product codes stay as written.`
 
   // Build recent history. Image / file messages flow through as
   // attachmentKind so runAgent can rebuild multimodal turns.

@@ -89,6 +89,16 @@ export class WidgetAdapter implements CrmAdapter {
       ...(quickReplies && quickReplies.length > 0 ? { quickReplies } : {}),
     })
 
+    // Detect-and-translate AFTER the broadcast so the visitor sees
+    // the original reply without waiting on Haiku. Awaited so the
+    // call actually completes on serverless — a floating promise
+    // could be killed when the agent loop returns. Adds ~1s to the
+    // agent's next tool call; the visitor's reply path is unaffected.
+    try {
+      const { translateMessageInBackground } = await import('./widget-translation')
+      await translateMessageInBackground(msg.id)
+    } catch { /* logged inside helper */ }
+
     // Expand product cards AFTER the text bubble. Errors here never
     // block the main reply — the customer sees the text, the card just
     // doesn't render. Each card is its own WidgetMessage (kind=product)
