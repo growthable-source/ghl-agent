@@ -17,6 +17,7 @@
 
 import { buildKnowledgeBlock } from '../rag'
 import { buildObjectivesBlockForAgent } from '../agent-objectives'
+import { retrieveChunks, buildRetrievedKnowledgeBlock } from '../ingest/retrieve'
 
 /**
  * Minimal shape required of the agent record. Anything broader is fine —
@@ -30,6 +31,10 @@ export interface AgentForPrompt {
   knowledgeEntries?: any[] | null
   calendarId?: string | null
   enabledTools?: string[] | null
+  /** Required for Phase 2 retrieval (pgvector chunks). When absent
+   *  the new block is skipped and the agent falls back to the legacy
+   *  knowledgeEntries path only. */
+  workspaceId?: string | null
 }
 
 export type PromptChannel = 'widget' | 'native'
@@ -107,6 +112,21 @@ export async function buildBasePrompt(
   }
 
   prompt += buildKnowledgeBlock((agent.knowledgeEntries ?? []) as any, incomingMessage)
+
+  // Phase 2 retrieval — pgvector-backed chunk search over the
+  // workspace's KnowledgeSources. Runs in parallel with the legacy
+  // KnowledgeEntry path; both blocks coexist in the prompt. Skips
+  // when workspaceId or incomingMessage are absent, or when the
+  // workspace simply has no chunks indexed yet. ~500ms Voyage embed
+  // call per agent turn; failures fall through to [].
+  if (agent.workspaceId && incomingMessage && incomingMessage.trim().length >= 3) {
+    try {
+      const retrieved = await retrieveChunks(agent.workspaceId, incomingMessage, { limit: 6 })
+      prompt += buildRetrievedKnowledgeBlock(retrieved)
+    } catch (err: any) {
+      console.warn('[buildBasePrompt] retrieval failed:', err?.message)
+    }
+  }
 
   // Calendar configuration. Widget gets a slightly more detailed block
   // with the visitor's email-collection note because visitors often
