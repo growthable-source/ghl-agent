@@ -196,6 +196,14 @@ function SidebarBody() {
                   </svg>,
                 )}
                 {navItemPrimary(
+                  `/dashboard/${workspaceId}/playground`,
+                  'Playground',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    <path d="M10 9l4 3-4 3z" fill="currentColor" stroke="none" />
+                  </svg>,
+                )}
+                {navItemPrimary(
                   `/dashboard/${workspaceId}/funnels`,
                   'Funnels',
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
@@ -321,11 +329,13 @@ function SidebarBody() {
                         used to live here and was buried two levels deep
                         (More → Library → Widgets). */}
 
-                    {/* ── Tools — try it before it ships ── */}
+                    {/* ── Tools — try it before it ships ──
+                        Playground was promoted to primary nav (next to
+                        Agent) so it's findable. Simulations stays here
+                        until it has the muscle to deserve top-level. */}
                     <div className="pt-3 pb-1 px-3">
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Tools</p>
                     </div>
-                    {navLink(`/dashboard/${workspaceId}/playground`, 'Playground')}
                     {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations', null, FEATURE_SHIP_DATES.simulations)}
 
                     {/* ── Workspace — admin & plumbing ── */}
