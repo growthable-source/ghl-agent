@@ -71,10 +71,27 @@ export async function POST(req: NextRequest, { params }: Params) {
     include: { sentByUser: { select: { id: true, name: true, email: true, image: true } } },
   })
 
-  // Bump the ticket's activity bookkeeping.
+  // Bump the ticket's activity bookkeeping. Inbound messages on a
+  // closed/resolved ticket trigger auto-reopen when the workspace
+  // setting allows — mirrors the Resend Inbound webhook behaviour so
+  // operators who manually log an inbound note see the same flow.
   const data: Record<string, unknown> = { lastActivityAt: now }
   if (direction === 'outbound') data.lastOutboundAt = now
-  if (direction === 'inbound')  data.lastInboundAt = now
+  if (direction === 'inbound') {
+    data.lastInboundAt = now
+    const wasTerminal = ticket.status === 'closed' || ticket.status === 'resolved'
+    if (wasTerminal) {
+      const settings = await (db as any).ticketingSettings.findUnique({
+        where: { workspaceId },
+        select: { autoReopenOnReply: true },
+      }).catch(() => null)
+      if (settings?.autoReopenOnReply ?? true) {
+        data.status = 'open'
+        data.reopenedAt = now
+        data.closedAt = null
+      }
+    }
+  }
   await db.ticket.update({ where: { id: ticket.id }, data })
 
   return NextResponse.json({ message, emailSent: !!emailMeta.sentAt, emailError })

@@ -186,6 +186,16 @@ export default function TicketingSettingsPage() {
               style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
             />
           </Section>
+
+          <Section title="Inbound email (Resend)" description="Resend Inbound posts parsed emails to this webhook. Replies are matched to existing tickets via subject prefix [#N] or the email's In-Reply-To header; unmatched inbound creates a new ticket.">
+            <p className="text-[11px] mb-2" style={{ color: 'var(--text-tertiary)' }}>Webhook URL to add in Resend → Inbound → Endpoints:</p>
+            <code className="block text-xs p-3 rounded font-mono break-all" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              {typeof window !== 'undefined' ? window.location.origin : ''}/api/inbound/resend
+            </code>
+            <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>
+              Required env var: <code className="font-mono px-1 rounded" style={{ background: 'var(--surface-secondary)' }}>RESEND_WEBHOOK_SECRET</code> — copy it from Resend&apos;s webhook detail page (Svix signing secret). Auto-reopen-on-reply fires from this webhook when a customer replies to a closed ticket.
+            </p>
+          </Section>
         </div>
 
         {error && <p className="mt-4 text-xs" style={{ color: 'var(--accent-red)' }}>{error}</p>}

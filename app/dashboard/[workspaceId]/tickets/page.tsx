@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import KanbanBoard, { type KanbanTicket } from '@/components/tickets/KanbanBoard'
 
 interface Ticket {
   id: string
@@ -141,7 +142,11 @@ export default function TicketsPage() {
             ) : view === 'grid' ? (
               <GridView tickets={data?.tickets ?? []} workspaceId={workspaceId} />
             ) : (
-              <KanbanView tickets={data?.tickets ?? []} workspaceId={workspaceId} onChange={load} />
+              <KanbanBoard
+                workspaceId={workspaceId}
+                tickets={(data?.tickets ?? []) as KanbanTicket[]}
+                onChanged={load}
+              />
             )}
           </>
         )}
@@ -204,72 +209,6 @@ function GridView({ tickets, workspaceId }: { tickets: Ticket[]; workspaceId: st
           </div>
         </Link>
       ))}
-    </div>
-  )
-}
-
-function KanbanView({ tickets, workspaceId, onChange }: { tickets: Ticket[]; workspaceId: string; onChange: () => void }) {
-  const grouped: Record<Ticket['status'], Ticket[]> = { open: [], pending: [], on_hold: [], resolved: [], closed: [] }
-  for (const t of tickets) grouped[t.status]?.push(t)
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
-      {KANBAN_COLUMNS.map(col => (
-        <div key={col.key} className="rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold" style={{ color: col.tone }}>{col.label}</span>
-            <span className="text-[10px] tabular-nums" style={{ color: 'var(--text-tertiary)' }}>{grouped[col.key].length}</span>
-          </div>
-          <div className="space-y-2">
-            {grouped[col.key].map(t => (
-              <KanbanCard key={t.id} ticket={t} workspaceId={workspaceId} onChange={onChange} />
-            ))}
-            {grouped[col.key].length === 0 && (
-              <p className="text-[10px] text-center py-4" style={{ color: 'var(--text-tertiary)' }}>—</p>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function KanbanCard({ ticket, workspaceId, onChange }: { ticket: Ticket; workspaceId: string; onChange: () => void }) {
-  async function changeStatus(next: Ticket['status']) {
-    if (next === ticket.status) return
-    await fetch(`/api/workspaces/${workspaceId}/tickets/${ticket.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: next }),
-    })
-    onChange()
-  }
-  return (
-    <div className="rounded-lg p-3" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-      <div className="flex items-start gap-2 mb-1">
-        <span className="text-[10px] font-mono shrink-0" style={{ color: 'var(--text-tertiary)' }}>#{ticket.ticketNumber}</span>
-        {ticket.priority !== 'normal' && <PriorityPill priority={ticket.priority} />}
-      </div>
-      <Link
-        href={`/dashboard/${workspaceId}/tickets/${ticket.id}`}
-        className="text-xs font-medium block hover:underline line-clamp-2 mb-2"
-        style={{ color: 'var(--text-primary)' }}
-      >
-        {ticket.subject}
-      </Link>
-      <p className="text-[10px] truncate mb-2" style={{ color: 'var(--text-tertiary)' }}>
-        {ticket.contactName || ticket.contactEmail}
-      </p>
-      <div className="flex items-center justify-between gap-2">
-        <select
-          value={ticket.status}
-          onChange={e => changeStatus(e.target.value as Ticket['status'])}
-          className="text-[10px] rounded px-1 py-0.5"
-          style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
-        >
-          {KANBAN_COLUMNS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-        </select>
-        <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{timeAgo(ticket.lastActivityAt)}</span>
-      </div>
     </div>
   )
 }
