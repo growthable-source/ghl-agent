@@ -930,6 +930,13 @@ function stageMessage(r: Run): string {
 }
 
 function humanError(stage: string, message: string): string {
+  // Missing / invalid API keys — most common first-run failure mode.
+  // Distinguished BEFORE the generic Voyage / Firecrawl branches
+  // below so the operator sees the actual root cause.
+  if (/VOYAGE_API_KEY/i.test(message))     return 'Embedding service isn\'t configured — VOYAGE_API_KEY is missing from environment settings.'
+  if (/FIRECRAWL_API_KEY/i.test(message))  return 'Crawler isn\'t configured — FIRECRAWL_API_KEY is missing from environment settings.'
+  if (/Voyage 401|Voyage 403/i.test(message)) return 'Embedding service rejected our key — VOYAGE_API_KEY looks invalid or expired.'
+  if (/Firecrawl 401|Firecrawl 403/i.test(message)) return 'Crawler rejected our key — FIRECRAWL_API_KEY looks invalid or expired.'
   if (/rate.?limit|429/i.test(message)) return 'Rate limit — we\'ll retry on the next scheduled read.'
   if (/timeout/i.test(message))         return 'The source took too long to respond.'
   if (/firecrawl/i.test(message))       return 'Couldn\'t fetch the page. The site may block crawlers.'
