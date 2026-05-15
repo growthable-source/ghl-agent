@@ -232,6 +232,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         systemPrompt: body.systemPrompt,
         instructions: body.instructions ?? null,
         ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
+        ...(Array.isArray(body.knowledgeDomainIds) && {
+          knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
+        }),
         agentType,
         businessContext,
       },

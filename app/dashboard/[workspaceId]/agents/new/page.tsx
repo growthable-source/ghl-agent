@@ -12,13 +12,14 @@ import { BUSINESS_CONTEXT_EXAMPLES } from '@/lib/business-context-examples'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 import PlanLimitNotice, { isPlanLimitError, type PlanLimitData } from '@/components/PlanLimitNotice'
 
-type Step = 'template' | 'crm' | 'calendar' | 'channels' | 'build'
+type Step = 'template' | 'crm' | 'calendar' | 'channels' | 'knowledge' | 'build'
 
 const STEPS: { key: Step; label: string }[] = [
   { key: 'template', label: 'Type' },
   { key: 'crm', label: 'CRM' },
   { key: 'calendar', label: 'Calendar' },
   { key: 'channels', label: 'Channels' },
+  { key: 'knowledge', label: 'Knowledge' },
   { key: 'build', label: 'Build' },
 ]
 
@@ -210,6 +211,19 @@ export default function NewAgentWizard() {
   const [selectedCalendar, setSelectedCalendar] = useState<string>('none')
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['SMS'])
 
+  // Knowledge step — which indexed collections the new agent reads
+  // from. null = "all" (workspace-wide, backward-compatible default).
+  // A string[] = explicit pick. Loaded from the workspace's
+  // knowledge-domains endpoint when the wizard mounts.
+  const [knowledgeDomains, setKnowledgeDomains] = useState<Array<{ id: string; name: string; description: string | null; chunkCount: number }>>([])
+  const [knowledgePick, setKnowledgePick] = useState<string[] | null>(null)
+  useEffect(() => {
+    fetch(`/api/admin/knowledge-domains?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => setKnowledgeDomains(d.domains ?? []))
+      .catch(() => {})
+  }, [workspaceId])
+
   // Real provider state. ghlConnected drives the LeadConnector card's
   // Connect button; nativeProvisioned tells us whether the workspace's
   // current CRM is native (so we can show "Active ✓" up front).
@@ -325,6 +339,13 @@ export default function NewAgentWizard() {
           agentType,
           ...(agentType === 'ADVANCED' && businessContext.trim() && { businessContext }),
           ...(selectedTemplate && { enabledTools: selectedTemplate.enabledTools }),
+          // Knowledge scope. Null/undefined = read from every domain
+          // in the workspace (backward-compatible). An explicit
+          // array narrows. Empty array would mean "none" which
+          // we never want from the wizard.
+          ...(knowledgePick !== null && knowledgePick.length > 0 && {
+            knowledgeDomainIds: knowledgePick,
+          }),
         }),
       })
       const data = await res.json()
@@ -632,6 +653,99 @@ export default function NewAgentWizard() {
                 <span className="text-zinc-400 font-medium">Voice calls</span> are configured separately after creation, from the Voice tab.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Step: Knowledge */}
+        {step === 'knowledge' && (
+          <div>
+            <h1 className="text-2xl font-semibold mb-2">Pick what this agent knows</h1>
+            <p className="text-sm text-zinc-400 mb-6">
+              These are the indexed collections your AI reads from when answering. By default a new agent reads from <strong>all</strong> of them — narrow only if you need this agent to ignore certain content.
+            </p>
+
+            {knowledgeDomains.length === 0 ? (
+              <div className="rounded-2xl border p-8 text-center" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                <div className="text-3xl mb-2">📚</div>
+                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
+                  No knowledge collections yet
+                </p>
+                <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>
+                  Your agent will work without one, but it&apos;ll only know what you put in its system prompt. Add a collection any time from <strong>Knowledge → Sources &amp; ingestion</strong>.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="mb-3 flex items-center gap-3">
+                  <button
+                    onClick={() => setKnowledgePick(null)}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                    style={knowledgePick === null
+                      ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)', borderColor: 'var(--accent-emerald)' }
+                      : { background: 'var(--surface)', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }}
+                  >
+                    Use all ({knowledgeDomains.length})
+                  </button>
+                  <button
+                    onClick={() => setKnowledgePick([])}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                    style={knowledgePick !== null
+                      ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)', borderColor: 'var(--accent-primary)' }
+                      : { background: 'var(--surface)', color: 'var(--text-tertiary)', borderColor: 'var(--border)' }}
+                  >
+                    Pick specific ones…
+                  </button>
+                </div>
+
+                {knowledgePick !== null && (
+                  <div className="space-y-2">
+                    {knowledgeDomains.map(d => {
+                      const checked = knowledgePick.includes(d.id)
+                      return (
+                        <label
+                          key={d.id}
+                          className="flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors"
+                          style={checked
+                            ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                            : { border: '1px solid var(--border)', background: 'var(--surface)' }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setKnowledgePick(prev =>
+                              prev === null ? [d.id]
+                              : prev.includes(d.id) ? prev.filter(x => x !== d.id)
+                              : [...prev, d.id]
+                            )}
+                            className="mt-1 accent-orange-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{d.name}</p>
+                            {d.description && (
+                              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{d.description}</p>
+                            )}
+                            <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                              {d.chunkCount} indexed entries
+                            </p>
+                          </div>
+                        </label>
+                      )
+                    })}
+                    {knowledgePick.length === 0 && (
+                      <p className="text-[11px] mt-2" style={{ color: 'var(--accent-amber)' }}>
+                        Tick at least one — or click &ldquo;Use all&rdquo; above. We&apos;ll default to all if you continue with none selected.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                  <p className="text-xs text-zinc-500">
+                    You can change this any time from the agent&apos;s <span className="text-zinc-400 font-medium">Knowledge</span> tab.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         )}
 
