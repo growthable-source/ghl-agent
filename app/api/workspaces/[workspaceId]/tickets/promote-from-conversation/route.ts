@@ -42,6 +42,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       visitor: true,
       messages: { orderBy: { createdAt: 'asc' } },
       ticket: { select: { id: true, ticketNumber: true } },
+      // Pull the widget's brand so the new Ticket can denormalise it
+      // — reports + filter chips query by brand directly without
+      // walking ticket → conversation → widget → brand each time.
+      widget: { select: { brandId: true } },
     },
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
@@ -86,6 +90,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         workspaceId,
         ticketNumber,
         conversationId,
+        brandId: convo.widget.brandId ?? null,
         contactEmail: email,
         contactName: convo.visitor.name,
         contactPhone: convo.visitor.phone,

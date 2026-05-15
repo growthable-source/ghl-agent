@@ -25,12 +25,17 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const status = await getTicketingStatus(workspaceId)
   if (!status.active) {
-    return NextResponse.json({ tickets: [], inactive: true, reason: status.reason })
+    return NextResponse.json({ tickets: [], inactive: true, reason: status.reason, allBrands: [], members: [] })
   }
 
   const url = new URL(req.url)
   const statusFilter = url.searchParams.get('status')
   const assigneeFilter = url.searchParams.get('assignee')
+  const brandFilter = url.searchParams.get('brandId')
+  const priorityFilter = url.searchParams.get('priority')
+  const fromParam = url.searchParams.get('from')
+  const toParam = url.searchParams.get('to')
+  const daysParam = url.searchParams.get('days')
 
   const where: Prisma.TicketWhereInput = { workspaceId }
   if (statusFilter && VALID_STATUSES.has(statusFilter)) {
@@ -47,10 +52,41 @@ export async function GET(req: NextRequest, { params }: Params) {
   } else if (assigneeFilter && /^[a-z0-9_-]+$/i.test(assigneeFilter)) {
     where.assignedUserId = assigneeFilter
   }
+  if (brandFilter === 'no_brand') {
+    where.brandId = null
+  } else if (brandFilter && /^[a-z0-9_-]+$/i.test(brandFilter)) {
+    where.brandId = brandFilter
+  }
+  if (priorityFilter && VALID_PRIORITIES.has(priorityFilter)) {
+    where.priority = priorityFilter
+  }
+  // Date window — created-in. Same two-mode shape as CSAT
+  // (?days=N OR ?from=YYYY-MM-DD&to=YYYY-MM-DD), explicit takes
+  // precedence.
+  if (fromParam && toParam && !Number.isNaN(Date.parse(fromParam)) && !Number.isNaN(Date.parse(toParam))) {
+    const from = new Date(fromParam)
+    const to = new Date(toParam)
+    to.setHours(23, 59, 59, 999)
+    where.createdAt = { gte: from, lte: to }
+  } else if (daysParam) {
+    const days = Math.max(1, Math.min(365, Number(daysParam) || 30))
+    where.createdAt = { gte: new Date(Date.now() - days * 86_400_000) }
+  }
+
+  // Sort param — defaults to "in-flight first, then newest activity"
+  // which matches what an operator opening the page wants. Other
+  // sorts are useful for reporting drilldowns from the reports page.
+  const sortParam = url.searchParams.get('sort')
+  const orderBy: Prisma.TicketOrderByWithRelationInput[] =
+    sortParam === 'priority' ? [{ priority: 'desc' }, { lastActivityAt: 'desc' }]
+    : sortParam === 'created' ? [{ createdAt: 'desc' }]
+    : sortParam === 'oldest'  ? [{ createdAt: 'asc' }]
+    : sortParam === 'closed'  ? [{ closedAt: 'desc' }]
+    : [{ status: 'asc' }, { lastActivityAt: 'desc' }]
 
   const tickets = await db.ticket.findMany({
     where,
-    orderBy: [{ status: 'asc' }, { lastActivityAt: 'desc' }],
+    orderBy,
     take: 500,
     select: {
       id: true,
@@ -62,6 +98,8 @@ export async function GET(req: NextRequest, { params }: Params) {
       contactName: true,
       assignedUserId: true,
       assignedUser: { select: { id: true, name: true, email: true, image: true } },
+      brandId: true,
+      brand: { select: { id: true, name: true, primaryColor: true } },
       lastActivityAt: true,
       lastInboundAt: true,
       lastOutboundAt: true,
@@ -71,7 +109,25 @@ export async function GET(req: NextRequest, { params }: Params) {
     },
   }).catch(() => [])
 
+  // Brand list + member list for the filter dropdowns. Cheap — both
+  // small per-workspace. Returned alongside the tickets so the page
+  // doesn't need extra round-trips on load.
+  const [allBrands, members] = await Promise.all([
+    db.brand.findMany({
+      where: { workspaceId },
+      select: { id: true, name: true, primaryColor: true },
+      orderBy: { name: 'asc' },
+    }).catch(() => []),
+    db.workspaceMember.findMany({
+      where: { workspaceId },
+      select: { user: { select: { id: true, name: true, email: true, image: true } } },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => []),
+  ])
+
   return NextResponse.json({
+    allBrands,
+    members: members.map(m => m.user),
     tickets: tickets.map(t => ({
       ...t,
       lastActivityAt: t.lastActivityAt.toISOString(),

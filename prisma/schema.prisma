@@ -1727,6 +1727,7 @@ model Brand {
   collections  KnowledgeCollection[]
   portalAccess PortalUserBrand[]     @relation("BrandPortalAccess")
   evalQueries  RetrievalEvalQuery[]  @relation("BrandEvalQueries")
+  tickets      Ticket[]              @relation("TicketBrand")
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -3490,6 +3491,14 @@ model Ticket {
   conversationId String?            @unique
   conversation   WidgetConversation? @relation("ConversationTicket", fields: [conversationId], references: [id], onDelete: SetNull)
 
+  // Denormalised brand for reporting + filtering. Stamped at promote
+  // time from conversation.widget.brandId. Kept in sync via the same
+  // path that writes the ticket — we deliberately don't follow the
+  // conversation chain at query time because the chain can become
+  // SetNull-orphaned and reporting needs to survive that.
+  brandId String?
+  brand   Brand?  @relation("TicketBrand", fields: [brandId], references: [id], onDelete: SetNull)
+
   // Required contact details. The promote-from-conversation flow
   // refuses without an email, so we can safely assume it's set.
   contactEmail String
@@ -3529,6 +3538,7 @@ model Ticket {
   @@index([workspaceId, status, lastActivityAt])
   @@index([workspaceId, assignedUserId, status])
   @@index([workspaceId, contactEmail])
+  @@index([workspaceId, brandId, status])
 }
 
 model TicketMessage {

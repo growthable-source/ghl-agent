@@ -336,6 +336,7 @@ function SidebarBody() {
                         {navLink(`/dashboard/${workspaceId}/suppressions`, 'Suppressions')}
                         {navLink(`/dashboard/${workspaceId}/custom-fields`, 'Custom fields')}
                         {ticketingActive && navLink(`/dashboard/${workspaceId}/tickets`, 'Tickets')}
+                        {ticketingActive && navLink(`/dashboard/${workspaceId}/tickets/reports`, '↳ Reports')}
                       </>
                     )}
 
