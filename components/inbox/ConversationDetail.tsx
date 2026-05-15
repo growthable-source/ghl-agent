@@ -825,27 +825,13 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
             </div>
           )}
 
-          {/* Where the chat started — captured at create-time. Distinct
-              from "current page" in the timeline section below, which
-              moves as the visitor browses. */}
-          {convo.initiatedUrl && (
-            <div className="mt-3 p-2 rounded-lg bg-zinc-900 border border-zinc-800">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-0.5">Started chat on</p>
-              {convo.initiatedTitle && (
-                <p className="text-xs font-medium text-white truncate" title={convo.initiatedTitle}>
-                  {convo.initiatedTitle}
-                </p>
-              )}
-              <a
-                href={convo.initiatedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-zinc-400 hover:text-white truncate block underline decoration-zinc-700 hover:decoration-white"
-              >
-                {prettyUrl(convo.initiatedUrl)}
-              </a>
-            </div>
-          )}
+          {/* "Started chat on" intentionally removed from this header
+              block — it duplicated the first page_view event in the
+              timeline below and operators kept reading it as "the URL
+              where the widget is embedded" rather than "where the
+              visitor was when they opened the chat." The page-path
+              section in VisitorTimelineSection now leads with
+              "Currently on" and lists the visit history. */}
 
           <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
             <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
@@ -1216,36 +1202,39 @@ function VisitorTimelineSection({ workspaceId, conversationId }: { workspaceId: 
   const currentUrl = data.visitor.currentUrl
   const currentTitle = data.visitor.currentTitle
   const events = data.events
-  // Build a unified timeline: page_view + identify events plus a
-  // synthetic "chat started" event for each conversation. Sorted
-  // newest-first.
-  const timeline: Array<{ id: string; ts: number; node: any }> = []
-  for (const e of events) {
-    timeline.push({
-      id: 'e_' + e.id,
-      ts: new Date(e.createdAt).getTime(),
-      node: <TimelineEvent key={'e_' + e.id} event={e} />,
-    })
-  }
-  for (const c of data.conversations) {
-    timeline.push({
-      id: 'c_' + c.id,
-      ts: new Date(c.createdAt).getTime(),
-      node: <TimelineConversation key={'c_' + c.id} convo={c} active={c.id === conversationId} />,
-    })
-  }
-  timeline.sort((a, b) => b.ts - a.ts)
 
-  if (!currentUrl && timeline.length === 0) return null
+  // Extract just the page_view events as the visitor's "path through
+  // the site." Server sends newest-first; reverse to chronological
+  // so the path reads top-down like a breadcrumb. Dedupe consecutive
+  // same-URL hits (refreshes don't count as new pages).
+  const pagePathChrono: Array<{ id: string; url: string; title: string | null; at: string }> = []
+  const pageViewsOldestFirst = [...events.filter(e => e.kind === 'page_view')].reverse()
+  for (const e of pageViewsOldestFirst) {
+    const url = (e.data?.url as string) || ''
+    const title = (e.data?.title as string) || null
+    if (!url) continue
+    if (pagePathChrono.length > 0 && pagePathChrono[pagePathChrono.length - 1].url === url) continue
+    pagePathChrono.push({ id: e.id, url, title, at: e.createdAt })
+  }
+  const totalPageViews = events.filter(e => e.kind === 'page_view').length
+
+  // Other (non-page_view) events still go in the "Other activity"
+  // strip below so identify / custom events aren't lost.
+  const otherEvents = events.filter(e => e.kind !== 'page_view')
+
+  if (!currentUrl && pagePathChrono.length === 0 && otherEvents.length === 0 && data.conversations.length <= 1) return null
 
   return (
     <div className="p-5 border-b border-zinc-800">
       <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-3">Visitor activity</p>
 
+      {/* "Currently on" — most recent page_view URL. THIS is the
+          page the visitor is actually viewing, not where the widget
+          is embedded (that confusion is what operators kept hitting). */}
       {currentUrl && (
-        <div className="mb-4 p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-          <p className="text-[10px] text-zinc-500 mb-1">Currently on</p>
-          {currentTitle && <p className="text-xs font-medium text-white truncate">{currentTitle}</p>}
+        <div className="mb-4 p-3 rounded-lg bg-zinc-900 border border-orange-500/30">
+          <p className="text-[10px] text-orange-400 uppercase tracking-wider font-semibold mb-1">Currently on</p>
+          {currentTitle && <p className="text-xs font-medium text-white truncate" title={currentTitle}>{currentTitle}</p>}
           <a
             href={currentUrl}
             target="_blank"
@@ -1257,15 +1246,75 @@ function VisitorTimelineSection({ workspaceId, conversationId }: { workspaceId: 
         </div>
       )}
 
-      {timeline.length === 0 ? (
-        <p className="text-[11px] text-zinc-500 italic">No activity recorded yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {timeline.slice(0, 30).map(t => t.node)}
-          {timeline.length > 30 && (
-            <p className="text-[10px] text-zinc-600 italic">+ {timeline.length - 30} more events</p>
-          )}
+      {/* Visit path — numbered chronological list of distinct pages
+          the visitor has been on, with timestamps. This is the "path
+          history" operators have been asking for. */}
+      {pagePathChrono.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[10px] text-zinc-500 mb-2 flex items-center gap-2">
+            <span className="uppercase tracking-wider font-semibold">Pages visited</span>
+            <span className="text-zinc-600 font-normal">
+              {pagePathChrono.length} unique
+              {totalPageViews > pagePathChrono.length && (
+                <> · {totalPageViews} total views</>
+              )}
+            </span>
+          </p>
+          <div className="space-y-1.5">
+            {pagePathChrono.slice(-12).map((p, i, arr) => {
+              const isLast = i === arr.length - 1
+              const stepNumber = pagePathChrono.length - arr.length + i + 1
+              return (
+                <div key={p.id} className="flex items-start gap-2 text-[11px]">
+                  <span
+                    className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${
+                      isLast ? 'bg-orange-500/20 text-orange-300' : 'bg-zinc-800 text-zinc-500'
+                    }`}
+                  >
+                    {stepNumber}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {p.title && <p className="text-zinc-200 truncate" title={p.title}>{p.title}</p>}
+                    <a
+                      href={p.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-zinc-500 hover:text-zinc-300 truncate block"
+                      title={p.url}
+                    >
+                      {prettyUrl(p.url)}
+                    </a>
+                    <p className="text-[10px] text-zinc-600">{relTime(p.at)}</p>
+                  </div>
+                </div>
+              )
+            })}
+            {pagePathChrono.length > 12 && (
+              <p className="text-[10px] text-zinc-600 italic pl-7">+ {pagePathChrono.length - 12} earlier pages</p>
+            )}
+          </div>
         </div>
+      )}
+
+      {/* Other activity — identify events, conversation starts, etc. */}
+      {(otherEvents.length > 0 || data.conversations.length > 1) && (
+        <>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold mb-2">Other activity</p>
+          <div className="space-y-2">
+            {otherEvents.slice(0, 10).map(e => (
+              <TimelineEvent key={'e_' + e.id} event={e} />
+            ))}
+            {data.conversations.map(c => (
+              <TimelineConversation key={'c_' + c.id} convo={c} active={c.id === conversationId} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {pagePathChrono.length === 0 && otherEvents.length === 0 && !currentUrl && (
+        <p className="text-[11px] text-zinc-500 italic">
+          No page-view events recorded yet. Make sure widget.js is loaded on the page — page-tracking fires automatically.
+        </p>
       )}
     </div>
   )

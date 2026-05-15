@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useCallback, Fragment, type ReactNode } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
@@ -294,8 +294,29 @@ export default function InboxPage() {
     // still client-side because they're cheap to flip and don't
     // change the underlying result set semantically — operators
     // expect them to narrow what's already on screen.
+
+    // Two-tier sort: active chats first (anything not 'ended'),
+    // then ended chats at the bottom. Within each tier we keep the
+    // server's lastMessageAt desc order. Renderer drops a "Closed"
+    // divider between the two groups.
+    const statusRank = (s: string) => (s === 'ended' ? 1 : 0)
+    f = [...f].sort((a, b) => {
+      const sa = statusRank(a.status), sb = statusRank(b.status)
+      if (sa !== sb) return sa - sb
+      return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+    })
     return f
   }, [rows, tab, assignTab, ratingFilter, assigneeFilter, meId])
+
+  // Index of the first 'ended' row in the sorted list — used to drop
+  // a "Closed" divider before it. -1 if there are no ended chats or
+  // every chat is ended.
+  const firstClosedIdx = useMemo(() => {
+    if (filtered.length === 0) return -1
+    const idx = filtered.findIndex(r => r.status === 'ended')
+    if (idx === 0) return -1   // every row is ended; no divider needed at the top
+    return idx
+  }, [filtered])
 
   if (loading) return (
     <div className="flex-1 p-8">
@@ -789,11 +810,23 @@ export default function InboxPage() {
             className="rounded-xl border overflow-hidden divide-y divide-zinc-800"
             style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
           >
-            {filtered.map(r => {
+            {filtered.map((r, idx) => {
               const visitorLabel = r.visitor.name || r.visitor.email || `Visitor ${r.visitor.cookieId.slice(-6)}`
               const initial = initialOf(r.visitor.name, r.visitor.email, 'V')
               const accent = r.widget.primaryColor || '#fa4d2e'
               const hot = isHot(r.lastMessageAt) && r.status !== 'ended'
+              const isEnded = r.status === 'ended'
+              const closedDivider = idx === firstClosedIdx ? (
+                <div
+                  key={`divider-closed`}
+                  className="px-4 py-2 flex items-center gap-2 text-[10px] uppercase tracking-wider font-semibold"
+                  style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}
+                >
+                  <span className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                  <span>Closed · {filtered.length - firstClosedIdx}</span>
+                  <span className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                </div>
+              ) : null
               const lastKind = r.lastMessage?.kind
               const isMine = meId && r.assignedUserId === meId
               const isSelected = selectedId === r.id
@@ -815,13 +848,14 @@ export default function InboxPage() {
               const lastMessageMs = new Date(r.lastMessageAt).getTime()
               const isUnread = r.status !== 'ended' && lastMessageMs > lastReadAt
               return (
+                <Fragment key={r.id}>
+                  {closedDivider}
                 <button
-                  key={r.id}
                   type="button"
                   onClick={() => { setSelectedId(r.id); markConversationOpened(r.id) }}
                   className={`w-full text-left flex items-start gap-3 p-4 transition-colors border-l-2 ${
                     isSelected ? '' : 'hover:bg-zinc-900/60'
-                  }`}
+                  } ${isEnded && !isSelected ? 'opacity-60' : ''}`}
                   style={
                     isSelected
                       ? { background: 'var(--surface-secondary)', borderLeftColor: 'var(--accent-primary)' }
@@ -1047,6 +1081,7 @@ export default function InboxPage() {
                     </div>
                   </div>
                 </button>
+                </Fragment>
               )
             })}
           </div>
