@@ -21,14 +21,18 @@ import crypto from 'crypto'
 import { db } from '@/lib/db'
 import { docsFirecrawlAdapter } from './adapters/docs-firecrawl'
 import { pdfAdapter } from './adapters/pdf'
+import { youtubeAdapter } from './adapters/youtube'
+import { rssAdapter } from './adapters/rss'
 import type { SourceAdapter, AdapterContext, NormalizedContent } from './adapters/types'
 import { chunkMarkdown } from './chunker'
 import { classifyChunk, type TaxonomyRow } from './classify'
 import { embedTexts, EMBEDDING_MODEL } from './embed'
 
 const ADAPTERS: Record<string, SourceAdapter> = {
-  docs: docsFirecrawlAdapter,
-  pdf:  pdfAdapter,
+  docs:    docsFirecrawlAdapter,
+  pdf:     pdfAdapter,
+  youtube: youtubeAdapter,
+  rss:     rssAdapter,
 }
 
 export interface IngestResult {
