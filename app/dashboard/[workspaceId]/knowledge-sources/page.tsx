@@ -36,6 +36,7 @@ interface Source {
   lastCrawledAt: string | null
   liveChunks: number
   runCount: number
+  crawlConfig: { recrawlIntervalDays?: number; [k: string]: unknown }
 }
 interface Run {
   id: string
@@ -324,6 +325,7 @@ export default function KnowledgePipelinePage() {
                     onAdd={() => setAddSourceOpen(true)}
                     onRun={startIngest}
                     onWatchRun={setActiveRunId}
+                    onChanged={loadSources}
                   />
                 )}
                 {tab === 'taxonomy' && (
@@ -929,12 +931,13 @@ function RunProgressModal({ runId, onClose }: { runId: string; onClose: (run: Ru
 
 // ─── Tabs ───────────────────────────────────────────────────────────────
 
-function SourcesTab({ sources, runs, onAdd, onRun, onWatchRun }: {
+function SourcesTab({ sources, runs, onAdd, onRun, onWatchRun, onChanged }: {
   sources: Source[]
   runs: Run[]
   onAdd: () => void
   onRun: (id: string) => void
   onWatchRun: (id: string) => void
+  onChanged: () => Promise<void>
 }) {
   const runningForSource = useMemo(() => {
     const m = new Map<string, Run>()
@@ -979,38 +982,123 @@ function SourcesTab({ sources, runs, onAdd, onRun, onWatchRun }: {
         {sources.map(s => {
           const running = runningForSource.get(s.id)
           return (
-            <div key={s.id} className="p-4 border-t first:border-t-0 flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
-              <span className="text-xl flex-shrink-0">{sourceIcon(s.sourceType)}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{s.urlOrIdentifier}</p>
-                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-                  {s.liveChunks} entries indexed · {s.lastCrawledAt ? `updated ${timeAgo(s.lastCrawledAt)}` : 'never read'}
-                </p>
-              </div>
-              {running ? (
-                <button
-                  onClick={() => onWatchRun(running.id)}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"
-                  style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-amber)' }} />
-                  Reading…
-                </button>
-              ) : (
-                <button
-                  onClick={() => onRun(s.id)}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-                >
-                  Read now
-                </button>
-              )}
-            </div>
+            <SourceRow
+              key={s.id}
+              source={s}
+              running={running ?? null}
+              onRun={onRun}
+              onWatchRun={onWatchRun}
+              onChanged={onChanged}
+            />
           )
         })}
       </div>
+      <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
+        Re-reads run automatically each night for any source that&apos;s past its cadence. &ldquo;Read now&rdquo; jumps the queue.
+      </p>
     </>
   )
+}
+
+function SourceRow({ source, running, onRun, onWatchRun, onChanged }: {
+  source: Source
+  running: Run | null
+  onRun: (id: string) => void
+  onWatchRun: (id: string) => void
+  onChanged: () => Promise<void>
+}) {
+  const currentCadence = Number(source.crawlConfig?.recrawlIntervalDays) || 7
+  const [busy, setBusy] = useState(false)
+  // Optimistic local copy of cadence — updates the dropdown instantly,
+  // then reconciles when the parent reloads sources.
+  const [localCadence, setLocalCadence] = useState(currentCadence)
+
+  async function updateCadence(days: number) {
+    setBusy(true)
+    setLocalCadence(days)
+    try {
+      const res = await fetch(`/api/admin/sources/${source.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recrawlIntervalDays: days }),
+      })
+      if (!res.ok) {
+        setLocalCadence(currentCadence)
+        const data = await res.json().catch(() => ({}))
+        alert(data.error ?? 'Failed to update re-read frequency.')
+        return
+      }
+      await onChanged()
+    } finally { setBusy(false) }
+  }
+
+  // "When will this re-read next?" shown alongside the cadence so
+  // operators don't have to do the math.
+  const nextDueLabel = source.lastCrawledAt
+    ? (() => {
+        const nextMs = new Date(source.lastCrawledAt!).getTime() + localCadence * 24 * 60 * 60 * 1000
+        const diff = nextMs - Date.now()
+        if (diff <= 0) return 'queued for next sweep'
+        const days = Math.ceil(diff / (24 * 60 * 60 * 1000))
+        return `next in ~${days} day${days === 1 ? '' : 's'}`
+      })()
+    : 'will run on next sweep'
+
+  return (
+    <div className="p-4 border-t first:border-t-0 flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
+      <span className="text-xl flex-shrink-0">{sourceIcon(source.sourceType)}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{source.urlOrIdentifier}</p>
+        <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+          {source.liveChunks} {source.liveChunks === 1 ? 'entry' : 'entries'} indexed · {source.lastCrawledAt ? `last read ${timeAgo(source.lastCrawledAt)}` : 'awaiting first read'}
+        </p>
+        <p className="text-[10px] mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-tertiary)' }}>
+          <span>Re-read every</span>
+          <select
+            value={localCadence}
+            disabled={busy}
+            onChange={e => updateCadence(Number(e.target.value))}
+            className="text-[10px] rounded px-1.5 py-0.5"
+            style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+          >
+            <option value={1}>1 day</option>
+            <option value={3}>3 days</option>
+            <option value={7}>7 days</option>
+            <option value={14}>14 days</option>
+            <option value={30}>30 days</option>
+            <option value={90}>90 days</option>
+          </select>
+          <span>· {nextDueLabel}</span>
+        </p>
+      </div>
+      {running ? (
+        <button
+          onClick={() => onWatchRun(running.id)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+          style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-amber)' }} />
+          Reading…
+        </button>
+      ) : (
+        <button
+          onClick={() => onRun(source.id)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+          style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+        >
+          Read now
+        </button>
+      )}
+    </div>
+  )
+}
+
+interface TopicSuggestion {
+  key: string
+  label: string
+  description: string
+  coversChunkIds: string[]
+  sampleChunks: Array<{ id: string; primaryTopic: string | null; preview: string }>
 }
 
 function TaxonomyTab({ taxonomies, unmatched, domainId, onChange }: {
@@ -1022,6 +1110,14 @@ function TaxonomyTab({ taxonomies, unmatched, domainId, onChange }: {
   const [addingTopic, setAddingTopic] = useState(false)
   const [topicLabel, setTopicLabel] = useState('')
   const [busy, setBusy] = useState(false)
+  // Multi-select state. When `selected` is non-empty, the per-row
+  // assign dropdown is replaced by a sticky action bar that lets the
+  // operator pick one topic for everything ticked.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkKey, setBulkKey] = useState<string>('')
+  // Suggestion flow. Three states: idle, loading, list ready.
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestions, setSuggestions] = useState<TopicSuggestion[] | null>(null)
 
   async function createTopic() {
     if (!topicLabel.trim()) return
@@ -1057,6 +1153,85 @@ function TaxonomyTab({ taxonomies, unmatched, domainId, onChange }: {
       await onChange()
     } finally { setBusy(false) }
   }
+
+  async function bulkAssign() {
+    if (selected.size === 0 || !bulkKey) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/admin/chunks/bulk-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chunkIds: Array.from(selected), taxonomyKey: bulkKey }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error ?? 'Bulk assign failed'); return }
+      setSelected(new Set())
+      setBulkKey('')
+      await onChange()
+    } finally { setBusy(false) }
+  }
+
+  async function runSuggest() {
+    setSuggesting(true)
+    setSuggestions(null)
+    try {
+      const res = await fetch('/api/admin/taxonomies/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ knowledgeDomainId: domainId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error ?? 'Suggestion failed')
+        return
+      }
+      setSuggestions(data.suggestions ?? [])
+    } finally { setSuggesting(false) }
+  }
+
+  // Accept a suggestion: creates the taxonomy row, then bulk-assigns
+  // every covered chunk to the new key. The operator sees the topic
+  // appear in the list + the orphan count drop in one click.
+  async function acceptSuggestion(s: TopicSuggestion) {
+    setBusy(true)
+    try {
+      const createRes = await fetch('/api/admin/taxonomies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ knowledgeDomainId: domainId, key: s.key, label: s.label }),
+      })
+      const createData = await createRes.json()
+      if (!createRes.ok && createRes.status !== 409) {
+        alert(createData.error ?? 'Failed to create topic')
+        return
+      }
+      // 409 means a topic with this key already exists — still apply.
+      const bulkRes = await fetch('/api/admin/chunks/bulk-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chunkIds: s.coversChunkIds, taxonomyKey: s.key }),
+      })
+      if (!bulkRes.ok) {
+        const data = await bulkRes.json().catch(() => ({}))
+        alert(data.error ?? 'Topic created but bulk-tag failed')
+        return
+      }
+      setSuggestions(prev => (prev ?? []).filter(p => p.key !== s.key))
+      await onChange()
+    } finally { setBusy(false) }
+  }
+
+  const toggleSelected = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  const selectAllVisible = () => {
+    setSelected(new Set(unmatched.slice(0, 30).map(c => c.id)))
+  }
+  const clearSelection = () => setSelected(new Set())
 
   return (
     <>
@@ -1120,43 +1295,157 @@ function TaxonomyTab({ taxonomies, unmatched, domainId, onChange }: {
 
       {unmatched.length > 0 && (
         <>
-          <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Needs a topic · {unmatched.length}</h2>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Needs a topic · {unmatched.length}</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={runSuggest}
+                disabled={suggesting || busy}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)', border: '1px solid var(--accent-emerald)' }}
+              >
+                {suggesting ? 'Thinking…' : '✨ Suggest topics'}
+              </button>
+              {selected.size === 0
+                ? <button onClick={selectAllVisible} className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Select all visible</button>
+                : <button onClick={clearSelection} className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Clear ({selected.size})</button>
+              }
+            </div>
+          </div>
           <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-            Pick a topic for each — or create a new one above if you see a pattern across several entries.
+            These entries didn&apos;t match any topic. Click <strong>Suggest topics</strong> to have the AI propose new topics that would cover several at once — or tick a few and bulk-assign manually.
             {taxonomies.length === 0 && ' Add some topics first using the button at the top.'}
           </p>
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            {unmatched.slice(0, 30).map(c => (
-              <div key={c.id} className="p-3 border-t first:border-t-0" style={{ borderColor: 'var(--border)' }}>
-                <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>{c.primaryTopic || '(no topic)'}</p>
-                <p className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>{c.sourceUrl}</p>
-                <p className="text-xs mt-1 mb-2 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
-                  {c.content.slice(0, 240)}
-                </p>
-                {taxonomies.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] uppercase tracking-wider font-semibold"
-                      style={{ color: 'var(--text-tertiary)' }}>Assign topic:</label>
-                    <select
-                      defaultValue=""
-                      onChange={e => {
-                        const val = e.target.value
-                        if (val) assignToChunk(c.id, val)
-                      }}
-                      disabled={busy}
-                      className="text-xs rounded px-2 py-1"
-                      style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
-                    >
-                      <option value="">Pick one…</option>
-                      {taxonomies.map(t => (
-                        <option key={t.id} value={t.key}>{t.label}</option>
-                      ))}
-                    </select>
+
+          {suggestions && suggestions.length > 0 && (
+            <div className="mb-4 space-y-2">
+              {suggestions.map(s => (
+                <div key={s.key} className="rounded-lg p-3" style={{ background: 'var(--accent-emerald-bg)', border: '1px solid var(--accent-emerald)' }}>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        ✨ {s.label} <span className="text-[10px] font-normal" style={{ color: 'var(--text-tertiary)' }}>({s.key})</span>
+                      </p>
+                      {s.description && (
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>{s.description}</p>
+                      )}
+                      <p className="text-[10px] mt-1" style={{ color: 'var(--accent-emerald)' }}>
+                        Would cover {s.coversChunkIds.length} {s.coversChunkIds.length === 1 ? 'entry' : 'entries'}
+                      </p>
+                      {s.sampleChunks.length > 0 && (
+                        <ul className="mt-2 space-y-0.5">
+                          {s.sampleChunks.map(sc => (
+                            <li key={sc.id} className="text-[10px] line-clamp-1" style={{ color: 'var(--text-tertiary)' }}>
+                              · {sc.primaryTopic ? `${sc.primaryTopic} — ` : ''}{sc.preview}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => acceptSuggestion(s)}
+                        disabled={busy}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        style={{ background: 'var(--accent-emerald)', color: 'white' }}
+                      >
+                        Accept &amp; tag
+                      </button>
+                      <button
+                        onClick={() => setSuggestions(prev => (prev ?? []).filter(p => p.key !== s.key))}
+                        className="text-[11px]"
+                        style={{ color: 'var(--text-tertiary)' }}
+                      >
+                        Skip
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {suggestions && suggestions.length === 0 && (
+            <div className="mb-4 rounded-lg p-3 text-xs" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>
+              No clean suggestions came back — the unplaced entries are too varied to group. Try assigning a few manually first, then re-run.
+            </div>
+          )}
+
+          {selected.size > 0 && taxonomies.length > 0 && (
+            <div className="sticky top-2 z-10 mb-3 rounded-lg p-3 flex items-center gap-3 shadow-lg"
+              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}>
+              <span className="text-xs font-semibold">{selected.size} selected</span>
+              <select
+                value={bulkKey}
+                onChange={e => setBulkKey(e.target.value)}
+                disabled={busy}
+                className="text-xs rounded px-2 py-1 flex-1 max-w-[240px]"
+                style={{ background: 'white', color: 'black' }}
+              >
+                <option value="">Pick a topic…</option>
+                {taxonomies.map(t => (
+                  <option key={t.id} value={t.key}>{t.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={bulkAssign}
+                disabled={busy || !bulkKey}
+                className="text-xs font-semibold px-3 py-1 rounded disabled:opacity-50"
+                style={{ background: 'white', color: 'var(--accent-primary)' }}
+              >
+                Assign to all
+              </button>
+              <button onClick={clearSelection} className="text-[11px] underline">Cancel</button>
+            </div>
+          )}
+
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            {unmatched.slice(0, 30).map(c => {
+              const checked = selected.has(c.id)
+              return (
+                <div key={c.id} className="p-3 border-t first:border-t-0 flex gap-3" style={{ borderColor: 'var(--border)', background: checked ? 'var(--accent-primary-bg)' : undefined }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleSelected(c.id)}
+                    className="mt-1 accent-orange-500 flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>{c.primaryTopic || '(no topic)'}</p>
+                    <p className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>{c.sourceUrl}</p>
+                    <p className="text-xs mt-1 mb-2 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+                      {c.content.slice(0, 240)}
+                    </p>
+                    {taxonomies.length > 0 && selected.size === 0 && (
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] uppercase tracking-wider font-semibold"
+                          style={{ color: 'var(--text-tertiary)' }}>Assign topic:</label>
+                        <select
+                          defaultValue=""
+                          onChange={e => {
+                            const val = e.target.value
+                            if (val) assignToChunk(c.id, val)
+                          }}
+                          disabled={busy}
+                          className="text-xs rounded px-2 py-1"
+                          style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+                        >
+                          <option value="">Pick one…</option>
+                          {taxonomies.map(t => (
+                            <option key={t.id} value={t.key}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
+          {unmatched.length > 30 && (
+            <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>
+              Showing the 30 most recent. Use <strong>Suggest topics</strong> to clear them in bulk — it considers up to 60 at a time.
+            </p>
+          )}
         </>
       )}
     </>

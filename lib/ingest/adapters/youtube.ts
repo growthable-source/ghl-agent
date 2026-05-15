@@ -77,15 +77,29 @@ export const youtubeAdapter: SourceAdapter = {
       throw new Error('youtube adapter: `youtube-transcript` package not installed. Run `npm install youtube-transcript`.')
     }
 
+    // IMPORTANT: this adapter reads YouTube's *existing captions* (manual
+    // or auto-generated). It does NOT perform audio-to-text. When the
+    // uploader has disabled captions we have nothing to index — real ASR
+    // would require pulling the audio out and sending it to Deepgram /
+    // AssemblyAI / Whisper, which means an extra service + cost. Left
+    // as a follow-up; the error message below tells the operator what's
+    // going on so they know it's not a transient bug.
     let transcript: TranscriptEntry[]
     try {
       transcript = await YoutubeTranscript.fetchTranscript(item.identifier, cfg.language ? { lang: cfg.language } : undefined)
     } catch (err: any) {
-      throw new Error(`youtube adapter: transcript fetch failed for ${item.identifier}: ${err?.message ?? 'unknown'}`)
+      const msg = err?.message ?? ''
+      if (/transcript.*disabled|disabled on this video/i.test(msg)) {
+        throw new Error(`This video has captions turned off, so there's nothing to read. Today we rely on YouTube captions; full audio transcription is on the roadmap.`)
+      }
+      if (/no transcripts|could not find/i.test(msg)) {
+        throw new Error(`No captions are available for this video (private, region-restricted, or never captioned). We need captions to read a YouTube source today.`)
+      }
+      throw new Error(`Couldn't fetch the YouTube transcript: ${msg}`)
     }
 
     if (!transcript || transcript.length === 0) {
-      throw new Error(`youtube adapter: no transcript available for ${item.identifier} (private video, no captions, or region-restricted)`)
+      throw new Error(`No captions came back for this video. It may be private, region-restricted, or have captions disabled. Full audio transcription is on the roadmap.`)
     }
 
     // Best-effort title / channel name from oEmbed — no API key needed.
