@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useBannerDismissal } from '@/lib/use-banner-dismissal'
+import BannerDismissMenu from './BannerDismissMenu'
 
 /**
  * Subtle CRM-connection health nudge.
@@ -23,7 +25,11 @@ type Status = 'healthy' | 'needs_attention' | 'refreshing' | 'not_connected'
 
 export default function ConnectionHealthBanner({ workspaceId }: Props) {
   const [data, setData] = useState<{ status: Status; message: string | null } | null>(null)
-  const [dismissed, setDismissed] = useState(false)
+  // Persistent dismissal — survives refresh. Operators can snooze the
+  // nudge for 1d / 1w or kill it forever. If the underlying status
+  // ever flips back to healthy and then re-degrades, the banner will
+  // reappear regardless of dismissal because we re-check on each load.
+  const { hidden, snooze, dismissForever } = useBannerDismissal('connection-health')
 
   useEffect(() => {
     let cancelled = false
@@ -47,7 +53,7 @@ export default function ConnectionHealthBanner({ workspaceId }: Props) {
     }
   }, [workspaceId])
 
-  if (!data || data.status !== 'needs_attention' || dismissed) return null
+  if (!data || data.status !== 'needs_attention' || hidden) return null
 
   // Theme-token-driven colours — raw amber-950/300/200 weren't in
   // globals.css's light-mode override map, so the banner rendered as
@@ -68,15 +74,11 @@ export default function ConnectionHealthBanner({ workspaceId }: Props) {
         >
           Reconnect
         </Link>
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          aria-label="Dismiss"
-          className="text-sm leading-none px-1 transition-opacity hover:opacity-100"
-          style={{ color: 'var(--accent-amber)', opacity: 0.7 }}
-        >
-          ×
-        </button>
+        <BannerDismissMenu
+          accentColor="var(--accent-amber)"
+          onSnooze={snooze}
+          onDismissForever={dismissForever}
+        />
       </div>
     </div>
   )

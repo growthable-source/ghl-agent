@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useBannerDismissal } from '@/lib/use-banner-dismissal'
+import BannerDismissMenu from './BannerDismissMenu'
 
 interface Props {
   workspaceId: string
@@ -13,6 +15,12 @@ export default function TrialBanner({ workspaceId }: Props) {
     trialEndsAt: string | null
     trialExpired: boolean
   } | null>(null)
+
+  // Snooze only applies to the "days remaining" reminder. The expired
+  // state below is action-required and cannot be dismissed — letting
+  // an operator hide "trial expired" forever would just mean their
+  // agents silently stay paywalled with no visible reason.
+  const { hidden, snooze, dismissForever } = useBannerDismissal('trial-active')
 
   useEffect(() => {
     fetch(`/api/billing/usage?workspaceId=${workspaceId}`)
@@ -51,21 +59,30 @@ export default function TrialBanner({ workspaceId }: Props) {
     )
   }
 
+  if (hidden) return null
+
   return (
     <div
-      className="px-4 py-2 flex items-center justify-between border-b"
+      className="px-4 py-2 flex items-center justify-between gap-3 border-b"
       style={{ background: 'var(--accent-amber-bg)', borderColor: 'var(--accent-amber)' }}
     >
       <p className="text-xs font-medium" style={{ color: 'var(--accent-amber)' }}>
         Free trial — {daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining
       </p>
-      <Link
-        href={`/dashboard/${workspaceId}/settings/billing`}
-        className="text-xs font-semibold px-3 py-1 rounded-md transition-opacity hover:opacity-90"
-        style={{ background: 'var(--accent-amber)', color: 'var(--btn-primary-text)' }}
-      >
-        Choose Plan
-      </Link>
+      <div className="flex items-center gap-2 shrink-0">
+        <Link
+          href={`/dashboard/${workspaceId}/settings/billing`}
+          className="text-xs font-semibold px-3 py-1 rounded-md transition-opacity hover:opacity-90"
+          style={{ background: 'var(--accent-amber)', color: 'var(--btn-primary-text)' }}
+        >
+          Choose Plan
+        </Link>
+        <BannerDismissMenu
+          accentColor="var(--accent-amber)"
+          onSnooze={snooze}
+          onDismissForever={dismissForever}
+        />
+      </div>
     </div>
   )
 }
