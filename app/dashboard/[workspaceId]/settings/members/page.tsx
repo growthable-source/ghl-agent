@@ -26,6 +26,7 @@ interface Member {
   role: WorkspaceRole
   createdAt: string
   isAvailable?: boolean
+  availabilityChangedAt?: string | null
   user: { id: string; name: string | null; email: string | null; image: string | null }
 }
 
@@ -64,9 +65,13 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
 
-  // Presence activity log — loaded on demand from /members/activity.
+  // Presence activity log — auto-loaded for admins/owners since it's
+  // the primary "who's been online" oversight view. Range toggles
+  // between 7 days (the default) and 30 days. Open by default so the
+  // log is always visible rather than buried behind a button click.
   const [activity, setActivity] = useState<ActivityMember[] | null>(null)
-  const [activityOpen, setActivityOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(true)
+  const [activityDays, setActivityDays] = useState<7 | 30>(7)
 
   // Invite form
   const [emailsInput, setEmailsInput] = useState('')
@@ -95,17 +100,20 @@ export default function MembersPage() {
 
   useEffect(() => { load() }, [load])
 
-  async function loadActivity() {
-    if (activity) { setActivityOpen(o => !o); return }
-    setActivityOpen(true)
+  // Fetch + cache activity for the chosen window. Re-runs when the
+  // range toggles. Independent of the open/closed UI state so toggling
+  // visibility doesn't refetch.
+  const fetchActivity = useCallback(async (days: 7 | 30) => {
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/members/activity?days=7`)
+      const res = await fetch(`/api/workspaces/${workspaceId}/members/activity?days=${days}`)
       const data = await res.json()
       setActivity(data?.members || [])
     } catch {
       setActivity([])
     }
-  }
+  }, [workspaceId])
+
+  useEffect(() => { fetchActivity(activityDays) }, [fetchActivity, activityDays])
 
   const canManage = myRole === 'owner' || myRole === 'admin'
   const canAssignAdmin = myRole === 'owner'
@@ -241,6 +249,7 @@ export default function MembersPage() {
               >
                 {canAssignAdmin && <option value="admin">Admin</option>}
                 <option value="member">Member</option>
+                <option value="agent">Support Agent (inbox only)</option>
                 <option value="viewer">Viewer</option>
               </select>
               <button
@@ -281,18 +290,37 @@ export default function MembersPage() {
             <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
               {members.length} member{members.length === 1 ? '' : 's'}
             </span>
-            <button
-              onClick={loadActivity}
-              className="text-[10px] font-semibold text-orange-400 hover:text-orange-300"
-            >
-              {activityOpen ? 'Hide activity' : 'Activity (7d)'}
-            </button>
+            <div className="flex items-center gap-2">
+              {activityOpen && (
+                <div className="flex items-center gap-1 text-[10px]">
+                  <span style={{ color: 'var(--text-tertiary)' }}>Range</span>
+                  {([7, 30] as const).map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setActivityDays(d)}
+                      className="font-semibold px-2 py-0.5 rounded transition-colors"
+                      style={activityDays === d
+                        ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                        : { color: 'var(--text-tertiary)' }}
+                    >
+                      {d}d
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={() => setActivityOpen(o => !o)}
+                className="text-[10px] font-semibold text-orange-400 hover:text-orange-300"
+              >
+                {activityOpen ? 'Hide activity' : 'Show activity'}
+              </button>
+            </div>
           </div>
           {activityOpen && activity && (
             <div className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}>
               <div className="px-4 py-3">
                 <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                  Online / away events — last 7 days
+                  Online / away events — last {activityDays} days
                 </p>
                 {activity.length === 0 || activity.every(a => a.events.length === 0) ? (
                   <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
@@ -308,15 +336,31 @@ export default function MembersPage() {
                         <div className="space-y-0.5">
                           {a.events.length === 0 ? (
                             <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>No toggles this week.</p>
-                          ) : a.events.slice(0, 12).map((e, idx) => (
+                          ) : a.events.slice(0, 50).map((e, idx) => (
                             <p key={idx} className="text-[11px] flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                               <span className={`inline-block w-1.5 h-1.5 rounded-full ${e.state === 'available' ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
                               <span style={{ color: e.state === 'available' ? 'var(--accent-emerald)' : 'var(--text-tertiary)' }}>
                                 {e.state === 'available' ? 'Online' : 'Away'}
                               </span>
-                              <span className="ml-auto text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{timeAgo(e.at)}</span>
+                              {e.source && e.source !== 'self' && (
+                                <span className="text-[9px] px-1 rounded uppercase" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>
+                                  {e.source}
+                                </span>
+                              )}
+                              <span
+                                className="ml-auto text-[10px] cursor-help"
+                                style={{ color: 'var(--text-tertiary)' }}
+                                title={absoluteTime(e.at)}
+                              >
+                                {timeAgo(e.at)}
+                              </span>
                             </p>
                           ))}
+                          {a.events.length > 50 && (
+                            <p className="text-[10px] italic" style={{ color: 'var(--text-tertiary)' }}>
+                              + {a.events.length - 50} more — extend the window above to see further back
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -345,7 +389,12 @@ export default function MembersPage() {
                   </p>
                   <p className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>{m.user.email}</p>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded ${m.isAvailable ? 'bg-emerald-500/10 text-emerald-300' : 'bg-zinc-800 text-zinc-500'}`}>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded cursor-help ${m.isAvailable ? 'bg-emerald-500/10 text-emerald-300' : 'bg-zinc-800 text-zinc-500'}`}
+                  title={m.availabilityChangedAt
+                    ? `${m.isAvailable ? 'Available' : 'Away'} since ${absoluteTime(m.availabilityChangedAt)}`
+                    : 'Status not set'}
+                >
                   {m.isAvailable ? 'Available' : 'Away'}
                 </span>
                 {canChange ? (
@@ -358,6 +407,7 @@ export default function MembersPage() {
                   >
                     {canAssignAdmin && <option value="admin">{ROLE_LABEL.admin}</option>}
                     <option value="member">{ROLE_LABEL.member}</option>
+                    <option value="agent">{ROLE_LABEL.agent}</option>
                     <option value="viewer">{ROLE_LABEL.viewer}</option>
                   </select>
                 ) : (
@@ -456,10 +506,30 @@ function timeAgo(iso: string): string {
   return sign > 0 ? `in ${d}d` : `${d}d ago`
 }
 
+/**
+ * Full, browser-local datetime with timezone abbreviation. Goes into
+ * the `title` attribute on any "5m ago" style timestamp so operators
+ * can hover to see exactly when an event happened. The user's browser
+ * locale + timezone determines the format — we deliberately don't
+ * force ISO or UTC because operators read times in their own zone.
+ */
+function absoluteTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'short',
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', second: '2-digit',
+      timeZoneName: 'short',
+    })
+  } catch {
+    return iso
+  }
+}
+
 function outrankClient(actor: WorkspaceRole | null, target: WorkspaceRole): boolean {
   // Mirror lib/permissions.outranks for client-side gating only —
   // the server is the authoritative gate.
-  const rank: Record<WorkspaceRole, number> = { owner: 4, admin: 3, member: 2, viewer: 1 }
+  const rank: Record<WorkspaceRole, number> = { owner: 4, admin: 3, member: 2, viewer: 1, agent: 1 }
   if (!actor) return false
   return rank[actor] > rank[target]
 }

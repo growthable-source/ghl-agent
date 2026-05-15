@@ -44,6 +44,11 @@ function SidebarBody() {
   const [isNative, setIsNative] = useState(false)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  // Caller's role in the active workspace — drives the inbox-only
+  // collapse for support-agent role. Null until loaded; sidebar
+  // renders the full nav until we know otherwise so admins don't
+  // see a flicker of an empty sidebar.
+  const [myRole, setMyRole] = useState<string | null>(null)
   // Manual disclosure for the "More" section. We previously used
   // <details>/<summary> but Safari drops the click handler when
   // <summary> is styled with display:flex, which made the button
@@ -72,7 +77,7 @@ function SidebarBody() {
   const workspaceId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
 
   useEffect(() => {
-    if (!workspaceId) { setWorkspaceInfo(null); setIsNative(false); return }
+    if (!workspaceId) { setWorkspaceInfo(null); setIsNative(false); setMyRole(null); return }
     fetch('/api/workspaces')
       .then(r => r.json())
       .then(data => {
@@ -84,10 +89,15 @@ function SidebarBody() {
             logoUrl: ws.logoUrl ?? null,
           })
           setIsNative(Array.isArray(ws.locations) && ws.locations.some((l: any) => l.crmProvider === 'native'))
+          // ws.role is the caller's role in this workspace (the
+          // /api/workspaces endpoint already joins WorkspaceMember).
+          if (typeof ws.role === 'string') setMyRole(ws.role)
         }
       })
       .catch(() => {})
   }, [workspaceId])
+
+  const isInboxOnly = myRole === 'agent'
 
   // Don't show location nav for these sub-pages
   const isOnboarding = pathname.includes('/onboarding')
@@ -167,7 +177,11 @@ function SidebarBody() {
             </div>
             {!isOnboarding && (
               <>
-                {/* Primary objects — the four things users actually do here */}
+                {/* Primary objects — the four things users actually do here.
+                    Inbox is the one nav item every role gets; everything
+                    after is hidden when the caller is a support-agent
+                    role (inbox-only). The `isInboxOnly` guard wraps
+                    everything below Inbox. */}
                 {navItemPrimary(
                   `/dashboard/${workspaceId}/inbox`,
                   'Inbox',
@@ -177,6 +191,7 @@ function SidebarBody() {
                   </svg>,
                   counts.inboxUnread,
                 )}
+                {!isInboxOnly && (<>
                 {navItemPrimary(
                   `/dashboard/${workspaceId}/contacts`,
                   'Contacts',
@@ -353,6 +368,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
                   </div>
                 </div>
+                </>)}
               </>
             )}
           </>

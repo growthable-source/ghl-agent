@@ -7,6 +7,10 @@
  * happens in one place.
  *
  * Roles (in increasing privilege order):
+ *   - agent    inbox-only support rep — reply to conversations, reassign,
+ *              toggle Available/Away. NO access to agents, knowledge,
+ *              settings, members. Use this for human support staff who
+ *              should only see the Inbox.
  *   - viewer   read-only — see inbox, contacts, conversations, but no
  *              replies, no agent edits, no settings
  *   - member   the operator default — handle conversations, edit
@@ -21,13 +25,17 @@
  * owner). At least one owner must always exist per workspace.
  */
 
-export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer'
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer' | 'agent'
 
 export const ROLE_RANK: Record<WorkspaceRole, number> = {
   owner: 4,
   admin: 3,
   member: 2,
   viewer: 1,
+  // Same rank as viewer — admins outrank both, neither outranks anyone.
+  // The capability difference (agent CAN reply, viewer CANNOT) lives in
+  // the MATRIX below, not in rank.
+  agent: 1,
 }
 
 export const ROLE_LABEL: Record<WorkspaceRole, string> = {
@@ -35,6 +43,7 @@ export const ROLE_LABEL: Record<WorkspaceRole, string> = {
   admin: 'Admin',
   member: 'Member',
   viewer: 'Viewer',
+  agent: 'Support Agent',
 }
 
 export const ROLE_DESCRIPTION: Record<WorkspaceRole, string> = {
@@ -42,6 +51,7 @@ export const ROLE_DESCRIPTION: Record<WorkspaceRole, string> = {
   admin: 'Manage members, edit workspace settings, and everything members can do.',
   member: 'Handle conversations, edit agents and knowledge, run the day-to-day.',
   viewer: 'Read-only access. See conversations and contacts but cannot reply or change anything.',
+  agent: 'Inbox only — reply to and reassign conversations, toggle Available/Away. Cannot see settings, agents, knowledge, or other workspace areas.',
 }
 
 /**
@@ -88,22 +98,39 @@ const MATRIX: Record<WorkspaceRole, Set<Permission>> = {
     'agents.run',
     'conversations.view',
   ]),
+  // Support agent — inbox-only role for human reps. Can reply, take
+  // over, mark resolved (queue.act covers transfer/release), and view
+  // conversations. Deliberately excluded from agents.edit, knowledge.edit,
+  // members.*, workspace.* — they should never see settings or
+  // configure anything.
+  agent: new Set<Permission>([
+    'conversations.view', 'conversations.reply', 'queue.act',
+  ]),
 }
 
 export function isValidRole(value: unknown): value is WorkspaceRole {
-  return value === 'owner' || value === 'admin' || value === 'member' || value === 'viewer'
+  return value === 'owner' || value === 'admin' || value === 'member' || value === 'viewer' || value === 'agent'
 }
 
 /**
  * The roles a current actor with `role` is allowed to assign to
- * someone else. An admin can mint members and viewers but not other
- * admins or owners. Owners can mint anyone except an owner (transfer
- * is its own flow).
+ * someone else. An admin can mint members, viewers, and support
+ * agents but not other admins or owners. Owners can mint anyone
+ * except an owner (transfer is its own flow).
  */
 export function assignableRoles(role: WorkspaceRole): WorkspaceRole[] {
-  if (role === 'owner') return ['admin', 'member', 'viewer']
-  if (role === 'admin') return ['member', 'viewer']
+  if (role === 'owner') return ['admin', 'member', 'viewer', 'agent']
+  if (role === 'admin') return ['member', 'viewer', 'agent']
   return []
+}
+
+/**
+ * "Inbox only" roles — used by the navigation gate to collapse the
+ * sidebar to just the Inbox link. Server-side endpoints still use the
+ * MATRIX above; this helper exists purely for UI navigation hiding.
+ */
+export function isInboxOnlyRole(role: string | undefined | null): boolean {
+  return role === 'agent'
 }
 
 export function can(role: string | undefined | null, perm: Permission): boolean {
