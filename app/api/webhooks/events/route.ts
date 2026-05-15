@@ -16,6 +16,7 @@ import { processContactTrigger } from '@/lib/triggers'
 import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
 import { buildKnowledgeBlock } from '@/lib/rag'
+import { retrieveAndFormatForAgent } from '@/lib/agent/retrieve-for-agent'
 import { getOrCreateConversationState, checkStopConditions, executeStopConditionActions, pauseConversation, incrementMessageCount } from '@/lib/conversation-state'
 import { saveMessages, getMessageHistory, getMemorySummaryWithMeta, updateContactMemorySummary, getLastOfferedSlots } from '@/lib/conversation-memory'
 import { getUnansweredQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
@@ -295,6 +296,15 @@ export async function POST(req: NextRequest) {
         fullPrompt += await buildObjectivesBlockForAgent(agent.id, inboundMessage)
         if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
         fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, inboundMessage)
+        // Phase 2 retrieval — pgvector chunk search over ingested sources.
+        // Webhook-driven replies were skipping this entirely; agents
+        // could ingest 500 pages but answer GHL inbound messages from
+        // memory alone.
+        const { block: phase2Block } = await retrieveAndFormatForAgent(
+          { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds },
+          inboundMessage,
+        )
+        fullPrompt += phase2Block
 
         // Inject calendar ID if booking tools are enabled and a calendar is configured
         if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {

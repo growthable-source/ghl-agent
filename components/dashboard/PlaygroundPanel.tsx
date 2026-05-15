@@ -7,11 +7,21 @@ interface Agent { id: string; name: string }
 
 interface ToolCall { tool: string; input: Record<string, unknown>; output: string; durationMs: number }
 
+interface KnowledgeUsedItem {
+  sourceUrl: string
+  sourceType: string
+  title: string
+  preview: string
+  similarity: number
+  taxonomyTags: string[]
+}
+
 interface Message {
   role: 'user' | 'agent'
   content: string
   toolTrace?: ToolCall[]
   tokensUsed?: number
+  knowledgeUsed?: KnowledgeUsedItem[]
 }
 
 export default function PlaygroundPanel({
@@ -67,6 +77,7 @@ export default function PlaygroundPanel({
         content: data.reply ?? '(no reply sent)',
         toolTrace: data.toolCallTrace ?? [],
         tokensUsed: data.tokensUsed,
+        knowledgeUsed: data.knowledgeUsed ?? [],
       }])
     } catch (err: any) {
       setError(err.message)
@@ -126,6 +137,49 @@ export default function PlaygroundPanel({
                       </div>
                     </details>
                   ))}
+                </div>
+              )}
+              {msg.role === 'agent' && msg.knowledgeUsed !== undefined && (
+                <div className="self-start max-w-md w-full">
+                  {msg.knowledgeUsed.length > 0 ? (
+                    <details className="border border-emerald-900/60 bg-emerald-950/30 rounded-lg overflow-hidden">
+                      <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none">
+                        <span className="text-emerald-400">📚</span>
+                        <span className="text-xs text-emerald-300 font-medium">
+                          Read {msg.knowledgeUsed.length} {msg.knowledgeUsed.length === 1 ? 'passage' : 'passages'} from your knowledge
+                        </span>
+                        <span className="text-[10px] text-emerald-600 ml-auto">click to expand</span>
+                      </summary>
+                      <div className="border-t border-emerald-900/60">
+                        {msg.knowledgeUsed.map((k, j) => (
+                          <div key={j} className="px-3 py-2 border-t border-emerald-900/40 first:border-t-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-emerald-200">{k.title}</span>
+                              <span className="text-[10px] text-emerald-600 ml-auto">
+                                {Math.round(k.similarity * 100)}% match
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 line-clamp-2 mb-1">{k.preview}</p>
+                            <a
+                              href={k.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[10px] text-emerald-500 hover:text-emerald-400 truncate block"
+                            >
+                              {k.sourceUrl}
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ) : (
+                    <div className="border border-amber-900/50 bg-amber-950/20 rounded-lg px-3 py-2">
+                      <p className="text-xs text-amber-300 font-medium">⚠️ No knowledge matched this question.</p>
+                      <p className="text-[10px] text-amber-500/80 mt-0.5">
+                        The agent answered without any ingested content. Check that you have a knowledge collection and that this agent is scoped to it on its Knowledge tab.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               {/* Thumbs feedback on each agent reply. Captures the full

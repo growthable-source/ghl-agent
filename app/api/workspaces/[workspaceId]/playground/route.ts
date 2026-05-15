@@ -5,6 +5,7 @@ import { buildKnowledgeBlock } from '@/lib/rag'
 import { runAgent } from '@/lib/ai-agent'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'
+import { retrieveAndFormatForAgent, summariseRetrievedChunks } from '@/lib/agent/retrieve-for-agent'
 
 // Playground waits for the full agent reply before responding (single
 // turn but with tool loops). 120s covers worst case.
@@ -43,6 +44,18 @@ export async function POST(
   if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
   fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, message)
 
+  // Phase 2 — pgvector retrieval over ingested KnowledgeSource chunks.
+  // The block lands in the system prompt the same as it does for real
+  // SMS/widget traffic. We also pass the raw chunks back to the UI so
+  // operators can see *exactly* which passages the agent saw — that
+  // was the missing link between "I crawled 500 pages" and the
+  // playground reply being wrong.
+  const phase2 = await retrieveAndFormatForAgent(
+    { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds },
+    message,
+  )
+  fullPrompt += phase2.block
+
   if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
     fullPrompt += `\n\n## Calendar Configuration
 Calendar ID for booking: ${agent.calendarId}
@@ -80,6 +93,9 @@ CANCEL/RESCHEDULE:
       actionsPerformed: result.actionsPerformed,
       tokensUsed: result.tokensUsed,
       toolCallTrace: result.toolCallTrace,
+      // What the retrieval pulled — empty array if nothing matched,
+      // which tells the operator *why* the agent couldn't answer.
+      knowledgeUsed: summariseRetrievedChunks(phase2.chunks),
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

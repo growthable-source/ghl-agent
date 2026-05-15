@@ -17,7 +17,7 @@
 
 import { buildKnowledgeBlock } from '../rag'
 import { buildObjectivesBlockForAgent } from '../agent-objectives'
-import { retrieveChunks, buildRetrievedKnowledgeBlock } from '../ingest/retrieve'
+import { retrieveAndFormatForAgent } from './retrieve-for-agent'
 
 /**
  * Minimal shape required of the agent record. Anything broader is fine —
@@ -117,24 +117,15 @@ export async function buildBasePrompt(
 
   prompt += buildKnowledgeBlock((agent.knowledgeEntries ?? []) as any, incomingMessage)
 
-  // Phase 2 retrieval — pgvector-backed chunk search over the
-  // workspace's KnowledgeSources. Runs in parallel with the legacy
-  // KnowledgeEntry path; both blocks coexist in the prompt. Skips
-  // when workspaceId or incomingMessage are absent, or when the
-  // workspace simply has no chunks indexed yet. ~500ms Voyage embed
-  // call per agent turn; failures fall through to [].
-  if (agent.workspaceId && incomingMessage && incomingMessage.trim().length >= 3) {
-    try {
-      const retrieved = await retrieveChunks(agent.workspaceId, incomingMessage, {
-        limit: 6,
-        // Restrict to the agent's chosen knowledge domains. Empty
-        // array = no filter (workspace-wide, backward-compatible).
-        knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
-      })
-      prompt += buildRetrievedKnowledgeBlock(retrieved)
-    } catch (err: any) {
-      console.warn('[buildBasePrompt] retrieval failed:', err?.message)
-    }
+  // Phase 2 retrieval — pgvector chunk search over the workspace's
+  // KnowledgeSources. Helper is shared with the playground, Twilio
+  // SMS, and webhook paths so every runtime gets the same block.
+  if (agent.workspaceId) {
+    const { block } = await retrieveAndFormatForAgent(
+      { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds },
+      incomingMessage,
+    )
+    prompt += block
   }
 
   // Calendar configuration. Widget gets a slightly more detailed block
