@@ -49,6 +49,10 @@ function SidebarBody() {
   // renders the full nav until we know otherwise so admins don't
   // see a flicker of an empty sidebar.
   const [myRole, setMyRole] = useState<string | null>(null)
+  // Ticketing visibility — both the plan flag AND the workspace
+  // toggle must be on. Single fetch per workspace switch, fails
+  // silently to "hide it" so a 5xx never breaks the sidebar.
+  const [ticketingActive, setTicketingActive] = useState(false)
   // Manual disclosure for the "More" section. We previously used
   // <details>/<summary> but Safari drops the click handler when
   // <summary> is styled with display:flex, which made the button
@@ -77,7 +81,11 @@ function SidebarBody() {
   const workspaceId = rawSegment && !STATIC_ROUTES.includes(rawSegment) ? rawSegment : null
 
   useEffect(() => {
-    if (!workspaceId) { setWorkspaceInfo(null); setIsNative(false); setMyRole(null); return }
+    if (!workspaceId) { setWorkspaceInfo(null); setIsNative(false); setMyRole(null); setTicketingActive(false); return }
+    fetch(`/api/workspaces/${workspaceId}/settings/ticketing`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setTicketingActive(!!d?.status?.active))
+      .catch(() => {})
     fetch('/api/workspaces')
       .then(r => r.json())
       .then(data => {
@@ -327,6 +335,7 @@ function SidebarBody() {
                         {navLink(`/dashboard/${workspaceId}/imports`, 'Imports')}
                         {navLink(`/dashboard/${workspaceId}/suppressions`, 'Suppressions')}
                         {navLink(`/dashboard/${workspaceId}/custom-fields`, 'Custom fields')}
+                        {ticketingActive && navLink(`/dashboard/${workspaceId}/tickets`, 'Tickets')}
                       </>
                     )}
 
@@ -366,6 +375,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/audit-log`, 'Audit Log')}
                     {navLink(`/dashboard/${workspaceId}/consent`, 'Consent')}
                     {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
+                    {navLink(`/dashboard/${workspaceId}/settings/ticketing`, 'Ticketing')}
                   </div>
                 </div>
                 </>)}

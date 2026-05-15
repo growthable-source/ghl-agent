@@ -25,6 +25,8 @@ model User {
   workspaces                WorkspaceMember[]
   assignedConversations     WidgetConversation[] @relation("ConversationAssignee")
   assignedMetaConversations MetaConversation[]   @relation("MetaConversationAssignee")
+  assignedTickets           Ticket[]             @relation("TicketAssignee")
+  authoredTicketMessages    TicketMessage[]      @relation("TicketMessageAuthor")
   sentMetaMessages          MetaMessage[]        @relation("MetaMessageAuthor")
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
@@ -136,6 +138,8 @@ model Workspace {
   portals              Portal[]              @relation("WorkspacePortals")
   knowledgeDomains     KnowledgeDomain[]     @relation("WorkspaceKnowledgeDomains")
   retrievalEvalSets    RetrievalEvalSet[]    @relation("WorkspaceRetrievalEvalSets")
+  tickets              Ticket[]              @relation("WorkspaceTickets")
+  ticketingSettings    TicketingSettings?
 
   // ─── Native (built-in) CRM ───
   // Populated only for workspaces using crmProvider='native' on their
@@ -1913,6 +1917,10 @@ model WidgetConversation {
   createdAt        DateTime          @default(now())
   messages         WidgetMessage[]
   voiceCalls       WidgetVoiceCall[]
+  // Conversation promoted into a ticket (1:0..1). Back-relation for
+  // Ticket.conversation. SetNull on the Ticket side means the ticket
+  // survives if the source convo is hard-deleted.
+  ticket           Ticket?           @relation("ConversationTicket")
 
   @@index([widgetId, lastMessageAt(sort: Desc)])
   @@index([visitorId])
@@ -3451,4 +3459,142 @@ model UtmTemplate {
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TICKETING — email-driven case management for native-CRM workspaces.
+//
+// Tickets are promoted from widget conversations when an operator wants
+// to follow up over email instead of keeping the chat thread open
+// (visitor closed the tab, needs longer turnaround, etc). A ticket has
+// a status workflow, assignment, priority, an email-based message
+// thread, and auto-close/reopen behaviour driven by TicketingSettings.
+//
+// Feature-gated: scale plan + workspace has TicketingSettings.enabled.
+// ─────────────────────────────────────────────────────────────────────────
+
+model Ticket {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation("WorkspaceTickets", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Per-workspace sequential number for display (#1042). Generated at
+  // create time via a SELECT MAX(...)+1 inside the same txn — cheap
+  // for hundreds-per-day volume; if it ever becomes a hotspot we
+  // migrate to a workspace-scoped sequence.
+  ticketNumber Int
+
+  // Optional link back to the widget conversation that became this
+  // ticket. Null = ticket created from scratch (manual entry, future
+  // inbound-email flow).
+  conversationId String?            @unique
+  conversation   WidgetConversation? @relation("ConversationTicket", fields: [conversationId], references: [id], onDelete: SetNull)
+
+  // Required contact details. The promote-from-conversation flow
+  // refuses without an email, so we can safely assume it's set.
+  contactEmail String
+  contactName  String?
+  contactPhone String?
+  // Native-CRM contact link when the email matched an existing
+  // NativeContact during promotion.
+  crmContactId String?
+
+  subject  String  @db.VarChar(255)
+  priority String  @default("normal") // 'low' | 'normal' | 'high' | 'urgent'
+  status   String  @default("open")   // 'open' | 'pending' | 'on_hold' | 'resolved' | 'closed'
+
+  // Assignment — same pattern as WidgetConversation. assignedUserId
+  // points at User.id; assignedAt powers SLA + reporting.
+  assignedUserId String?
+  assignedUser   User?    @relation("TicketAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt     DateTime?
+
+  // Activity bookkeeping for auto-close + reopen + sort.
+  // - lastActivityAt: any change (message, status, assignment) bumps this.
+  // - lastInboundAt:  last reply FROM the customer. Auto-close uses this.
+  // - lastOutboundAt: last reply FROM the team.
+  // - closedAt/reopenedAt: terminal-state timestamps for reporting.
+  lastActivityAt DateTime  @default(now())
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  closedAt       DateTime?
+  reopenedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages TicketMessage[]
+
+  @@unique([workspaceId, ticketNumber])
+  @@index([workspaceId, status, lastActivityAt])
+  @@index([workspaceId, assignedUserId, status])
+  @@index([workspaceId, contactEmail])
+}
+
+model TicketMessage {
+  id        String @id @default(cuid())
+  ticketId  String
+  ticket    Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // 'inbound'       = from the customer (email reply parsed by the
+  //                   inbound webhook, or pulled from the source chat
+  //                   when the ticket was promoted)
+  // 'outbound'      = team reply, sent via Resend
+  // 'internal_note' = team-only note, never emailed out
+  direction String
+
+  fromEmail String?
+  fromName  String?
+
+  // Plain-text body is canonical; bodyHtml is optional for richer
+  // outbound emails or when the inbound parser captured HTML too.
+  body     String  @db.Text
+  bodyHtml String? @db.Text
+
+  // RFC 5322 Message-ID + In-Reply-To, used to thread inbound replies
+  // back onto the right ticket. Optional today; populated by the
+  // inbound-email webhook when wired up.
+  messageId String?
+  inReplyTo String?
+
+  // Outbound provenance — who sent it from the dashboard, when Resend
+  // confirmed acceptance.
+  sentByUserId String?
+  sentByUser   User?    @relation("TicketMessageAuthor", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  sentAt       DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([messageId])
+}
+
+model TicketingSettings {
+  workspaceId String   @id
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Master toggle. Plan gate is separate — both must be on for the
+  // ticketing UI to render and for the cron to act.
+  enabled Boolean @default(false)
+
+  // Auto-close idle tickets after N days without an inbound reply.
+  // 0 disables auto-close. Default 7d matches Zendesk/Help Scout.
+  autoCloseAfterDays Int @default(7)
+
+  // When a NEW inbound message lands on a closed/resolved ticket,
+  // bump it back to 'open' so it isn't lost. Off lets teams hold a
+  // "permanently closed" stance for spam follow-ups etc.
+  autoReopenOnReply Boolean @default(true)
+
+  // Outbound email identity. fromEmail must be a verified Resend
+  // sender on the workspace's domain — we don't validate here, the
+  // send call surfaces the Resend error if it isn't.
+  fromEmail String?
+  fromName  String?
+
+  // Appended to every outbound reply. Operators paste their team's
+  // standard sign-off / hours / disclaimer.
+  signature String? @db.Text
+
+  updatedAt DateTime @updatedAt
 }

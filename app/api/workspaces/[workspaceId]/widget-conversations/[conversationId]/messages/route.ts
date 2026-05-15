@@ -67,11 +67,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
       }))
   } catch { /* ignore */ }
 
+  // Probe for a linked ticket so the inbox can show "🎫 Ticket #N"
+  // without a second client round-trip. Pre-migration workspaces don't
+  // have the Ticket table — silently degrade to null.
+  let ticket: { id: string; ticketNumber: number; status: string } | null = null
+  try {
+    ticket = await (db as any).ticket.findUnique({
+      where: { conversationId },
+      select: { id: true, ticketNumber: true, status: true },
+    })
+  } catch { /* table missing */ }
+
   return NextResponse.json({
     conversation: {
       ...convo,
       visitorConversationCount,
       csatHistory,
+      ticket,
     },
   })
 }

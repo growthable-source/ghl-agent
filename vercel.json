@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/recrawl",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/tickets-auto-close",
+      "schedule": "30 4 * * *"
     }
   ]
 }

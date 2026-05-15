@@ -133,6 +133,41 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const INITIAL_MESSAGE_WINDOW = 7
   const [messageWindow, setMessageWindow] = useState<number>(INITIAL_MESSAGE_WINDOW)
 
+  // Ticketing — populated by a small probe on mount when ticketing is
+  // active. Shows either a "View ticket #N" pill or a "Promote to
+  // ticket" button next to the assignee dropdown. Stays hidden when
+  // ticketing isn't active for the workspace.
+  const [ticketingActive, setTicketingActive] = useState<boolean>(false)
+  const [linkedTicket, setLinkedTicket] = useState<{ id: string; ticketNumber: number } | null>(null)
+  const [promoting, setPromoting] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/workspaces/${workspaceId}/settings/ticketing`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setTicketingActive(!!d?.status?.active) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [workspaceId])
+
+  async function promoteToTicket() {
+    if (!convo) return
+    if (!convo.visitor.email) {
+      alert('This visitor has no email. Tickets need an email address to follow up over.')
+      return
+    }
+    setPromoting(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tickets/promote-from-conversation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error || 'Promote failed.'); return }
+      setLinkedTicket({ id: data.ticket.id, ticketNumber: data.ticket.ticketNumber })
+    } finally { setPromoting(false) }
+  }
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -142,7 +177,16 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const fetchConvo = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/messages`)
     const data = await res.json()
-    if (data.conversation) setConvo(data.conversation)
+    if (data.conversation) {
+      setConvo(data.conversation)
+      // Seed the ticket pill from the convo payload — saves an extra
+      // round-trip and matches what the user sees server-side.
+      if (data.conversation.ticket) {
+        setLinkedTicket({ id: data.conversation.ticket.id, ticketNumber: data.conversation.ticket.ticketNumber })
+      } else {
+        setLinkedTicket(null)
+      }
+    }
     setLoading(false)
   }, [workspaceId, conversationId])
 
@@ -492,6 +536,33 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Ticketing pill — "View ticket #N" when linked, "Promote
+                to ticket" otherwise. Only renders when ticketing is
+                active on the workspace (plan + toggle). */}
+            {ticketingActive && (linkedTicket ? (
+              <Link
+                href={`/dashboard/${workspaceId}/tickets/${linkedTicket.id}`}
+                className="text-[10px] font-medium px-2 py-1 rounded-full bg-orange-500/15 text-orange-300 hover:bg-orange-500/25 transition-colors"
+              >
+                🎫 Ticket #{linkedTicket.ticketNumber}
+              </Link>
+            ) : convo.visitor.email ? (
+              <button
+                onClick={promoteToTicket}
+                disabled={promoting}
+                className="text-[10px] font-medium px-2 py-1 rounded-full border border-dashed border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-50"
+                title="Promote this chat to an email-based ticket"
+              >
+                {promoting ? '…' : '🎫 Promote to ticket'}
+              </button>
+            ) : (
+              <span
+                className="text-[10px] px-2 py-1 rounded-full border border-dashed border-zinc-800 text-zinc-600"
+                title="The visitor needs an email before this can become a ticket."
+              >
+                🎫 needs email
+              </span>
+            ))}
             <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${
               isHandedOff ? 'bg-orange-500/10 text-orange-400'
               : isEnded ? 'bg-zinc-800 text-zinc-500'

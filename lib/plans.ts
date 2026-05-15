@@ -26,6 +26,11 @@ export interface PlanFeatures {
   followUpSequences: boolean
   triggers: boolean
   customPersona: boolean
+  /** Email-driven ticketing system (promote chats to tickets,
+   *  kanban + grid views, AI-drafted replies, auto-close). Scale-only.
+   *  Workspace must also set TicketingSettings.enabled to actually
+   *  see the UI — the plan flag only governs whether they CAN. */
+  ticketing: boolean
   extraAgentPrice: number     // USD per additional agent per month
   messageOveragePrice: number // USD per message above limit
   voiceOveragePrice: number   // USD per minute above limit
@@ -108,6 +113,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     followUpSequences: true,
     triggers: true,
     customPersona: true,
+    ticketing: false,
     extraAgentPrice: 0,
     messageOveragePrice: 0,
     voiceOveragePrice: 0,
@@ -132,6 +138,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     followUpSequences: true,
     triggers: true,
     customPersona: true,
+    ticketing: false,
     extraAgentPrice: 0,
     messageOveragePrice: 0,
     voiceOveragePrice: 0,
@@ -156,6 +163,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     followUpSequences: true,
     triggers: true,
     customPersona: false,
+    ticketing: false,
     extraAgentPrice: 49,
     messageOveragePrice: 0.04,
     voiceOveragePrice: 0,
@@ -180,6 +188,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     followUpSequences: true,
     triggers: true,
     customPersona: true,
+    ticketing: false,
     extraAgentPrice: 39,
     messageOveragePrice: 0.04,
     voiceOveragePrice: 0.18,
@@ -204,6 +213,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     followUpSequences: true,
     triggers: true,
     customPersona: true,
+    ticketing: true,
     extraAgentPrice: 29,
     messageOveragePrice: 0.04,
     voiceOveragePrice: 0.18,
