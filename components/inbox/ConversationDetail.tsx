@@ -130,6 +130,12 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const [assigning, setAssigning] = useState(false)
   const [members, setMembers] = useState<Member[]>([])
   const [meId, setMeId] = useState<string | null>(null)
+  // How many of the trailing messages to render. Long threads (50+)
+  // pushed the composer below the fold and made the page feel
+  // overwhelming, so we render the last N and let the operator
+  // "Load older" in batches. Each click roughly doubles the window.
+  const INITIAL_MESSAGE_WINDOW = 7
+  const [messageWindow, setMessageWindow] = useState<number>(INITIAL_MESSAGE_WINDOW)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
@@ -145,6 +151,13 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   }, [workspaceId, conversationId])
 
   useEffect(() => { fetchConvo() }, [fetchConvo])
+
+  // Reset the trailing-message window whenever the operator switches
+  // to a different conversation. Without this, a long thread would
+  // stay expanded forever once "Load older" had been clicked.
+  useEffect(() => {
+    setMessageWindow(INITIAL_MESSAGE_WINDOW)
+  }, [conversationId])
 
   // Workspace members for the assignee dropdown + current user id so we
   // can highlight "you" and offer Claim. One-shot — assigning rarely
@@ -642,16 +655,43 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           </div>
         )}
 
-        {/* Messages */}
+        {/* Messages — long threads collapsed to the trailing window.
+            "Load older" reveals the earlier ones in batches. The hidden
+            indexes still map to the same MessageBubble + lastAgentIdx
+            indices so quick replies and other index-dependent behaviour
+            keeps working. */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-3">
-          {convo.messages.map((m, idx) => (
-            <MessageBubble
-              key={m.id}
-              msg={m}
-              accent={accent}
-              showQuickReplies={idx === lastAgentIdx && !!m.quickReplies?.length}
-            />
-          ))}
+          {(() => {
+            const total = convo.messages.length
+            const visibleStart = Math.max(0, total - messageWindow)
+            const hiddenCount = visibleStart
+            return (
+              <>
+                {hiddenCount > 0 && (
+                  <div className="flex justify-center">
+                    <button
+                      onClick={() => setMessageWindow(w => Math.min(total, w + 20))}
+                      className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors hover:bg-zinc-900/40"
+                      style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}
+                    >
+                      ↑ Load older messages ({hiddenCount})
+                    </button>
+                  </div>
+                )}
+                {convo.messages.slice(visibleStart).map((m, idxInWindow) => {
+                  const absoluteIdx = visibleStart + idxInWindow
+                  return (
+                    <MessageBubble
+                      key={m.id}
+                      msg={m}
+                      accent={accent}
+                      showQuickReplies={absoluteIdx === lastAgentIdx && !!m.quickReplies?.length}
+                    />
+                  )
+                })}
+              </>
+            )
+          })()}
           {visitorTyping && (
             <div className="flex justify-start">
               <div className="bg-zinc-800 px-3 py-2 rounded-2xl rounded-tl-sm text-xs text-zinc-400 inline-flex items-center gap-1.5">

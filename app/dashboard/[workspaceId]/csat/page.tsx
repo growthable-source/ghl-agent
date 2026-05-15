@@ -80,10 +80,37 @@ interface CsatResponse {
 
 const WINDOWS = [7, 30, 90] as const
 
+/**
+ * Today's date in YYYY-MM-DD form, browser-local. Used to seed the
+ * "to" calendar input — we don't want it to default to UTC midnight
+ * when the operator's already past midnight local.
+ */
+function todayISO(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+function daysAgoISO(days: number): string {
+  const d = new Date(Date.now() - days * 86_400_000)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export default function CsatPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
+  // Date window state. mode='preset' uses one of the trailing-days
+  // buckets (7/30/90); mode='custom' uses explicit from/to dates.
+  // Two-mode state lets the operator flip back to a preset without
+  // losing the custom range entirely.
+  const [mode, setMode] = useState<'preset' | 'custom'>('preset')
   const [days, setDays] = useState<7 | 30 | 90>(30)
+  const [customFrom, setCustomFrom] = useState<string>(daysAgoISO(30))
+  const [customTo, setCustomTo] = useState<string>(todayISO())
   const [brandId, setBrandId] = useState<string | null>(null)
   const [rating, setRating] = useState<number | null>(null)
   const [handler, setHandler] = useState<'ai' | 'human' | null>(null)
@@ -92,12 +119,18 @@ export default function CsatPage() {
   const [emailModalOpen, setEmailModalOpen] = useState(false)
 
   const queryString = useMemo(() => {
-    const q = new URLSearchParams({ days: String(days) })
+    const q = new URLSearchParams()
+    if (mode === 'custom') {
+      q.set('from', customFrom)
+      q.set('to', customTo)
+    } else {
+      q.set('days', String(days))
+    }
     if (brandId) q.set('brandId', brandId)
     if (rating) q.set('rating', String(rating))
     if (handler) q.set('handler', handler)
     return q.toString()
-  }, [days, brandId, rating, handler])
+  }, [mode, days, customFrom, customTo, brandId, rating, handler])
 
   useEffect(() => {
     let cancelled = false
@@ -149,10 +182,10 @@ export default function CsatPage() {
               {WINDOWS.map(w => (
                 <button
                   key={w}
-                  onClick={() => setDays(w)}
+                  onClick={() => { setMode('preset'); setDays(w) }}
                   className="text-xs font-medium px-3 py-1 rounded-md transition-colors"
                   style={
-                    days === w
+                    mode === 'preset' && days === w
                       ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
                       : { color: 'var(--text-tertiary)' }
                   }
@@ -160,7 +193,41 @@ export default function CsatPage() {
                   {w}d
                 </button>
               ))}
+              <button
+                onClick={() => setMode(mode === 'custom' ? 'preset' : 'custom')}
+                className="text-xs font-medium px-3 py-1 rounded-md transition-colors"
+                style={
+                  mode === 'custom'
+                    ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                    : { color: 'var(--text-tertiary)' }
+                }
+                title="Custom date range"
+              >
+                📅 Custom
+              </button>
             </div>
+            {mode === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customFrom}
+                  max={customTo}
+                  onChange={e => setCustomFrom(e.target.value)}
+                  className="text-xs rounded-lg px-2 py-1.5"
+                  style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+                />
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>→</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  min={customFrom}
+                  max={todayISO()}
+                  onChange={e => setCustomTo(e.target.value)}
+                  className="text-xs rounded-lg px-2 py-1.5"
+                  style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+                />
+              </div>
+            )}
           </div>
         </div>
 

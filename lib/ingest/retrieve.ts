@@ -259,7 +259,11 @@ export interface RetrievalDebug {
     | 'embeddings_failed'    // chunks exist but all embeddings are null
     | 'query_too_short'      // not enough signal to embed
     | 'embed_failed'         // Voyage call broke
-    | 'query_failed'         // pgvector query threw
+    | 'pgvector_missing'     // CREATE EXTENSION vector not run
+    | 'query_failed'         // pgvector query threw something else
+  /** When reason involves a thrown error, the raw error message
+   *  (truncated). Helps the operator paste it into a bug report. */
+  errorDetail: string | null
 }
 
 export async function debugRetrieveChunks(
@@ -313,6 +317,7 @@ export async function debugRetrieveChunks(
     thresholdForRuntime,
     scopedDomainNames,
     domainsInWorkspace,
+    errorDetail: null,
   }
 
   if (chunksInWorkspace === 0) {
@@ -323,6 +328,31 @@ export async function debugRetrieveChunks(
   }
   if (!trimmed || trimmed.length < 3) {
     return { ...baseEmpty, reason: 'query_too_short' }
+  }
+
+  // pgvector extension probe. The actual vector query later needs the
+  // `vector` type + `<=>` operator + `::vector` cast — all provided by
+  // the `vector` extension. If it's missing every retrieval fails and
+  // the only fix is `CREATE EXTENSION vector;` in Supabase. We probe
+  // first so the diagnostic can say that specifically instead of
+  // dumping a generic "query failed."
+  try {
+    const probe = await db.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') as exists
+    `
+    if (!probe[0]?.exists) {
+      return {
+        ...baseEmpty,
+        reason: 'pgvector_missing',
+        errorDetail: 'pg_extension has no row for vector — extension not installed in this database.',
+      }
+    }
+  } catch (err: any) {
+    return {
+      ...baseEmpty,
+      reason: 'pgvector_missing',
+      errorDetail: err?.message?.slice(0, 300) ?? 'pg_extension probe failed',
+    }
   }
 
   // Embed the query.
@@ -407,10 +437,27 @@ export async function debugRetrieveChunks(
       thresholdForRuntime,
       scopedDomainNames,
       domainsInWorkspace,
+      errorDetail: null,
       reason,
     }
   } catch (err: any) {
     console.warn('[debugRetrieve] pgvector query failed:', err?.message)
-    return { ...baseEmpty, reason: 'query_failed' }
+    // Look for the most common pgvector failure modes and route to a
+    // more specific reason where we can. Otherwise generic query_failed
+    // with the raw message so the operator at least knows what
+    // happened.
+    const raw = String(err?.message ?? '')
+    if (/extension.*vector|operator.*<=>|type "vector"/i.test(raw)) {
+      return {
+        ...baseEmpty,
+        reason: 'pgvector_missing',
+        errorDetail: raw.slice(0, 300),
+      }
+    }
+    return {
+      ...baseEmpty,
+      reason: 'query_failed',
+      errorDetail: raw.slice(0, 300) || null,
+    }
   }
 }

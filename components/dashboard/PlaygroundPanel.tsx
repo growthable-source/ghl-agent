@@ -42,7 +42,9 @@ interface RetrievalDebug {
     | 'embeddings_failed'
     | 'query_too_short'
     | 'embed_failed'
+    | 'pgvector_missing'
     | 'query_failed'
+  errorDetail: string | null
 }
 
 interface Message {
@@ -299,6 +301,11 @@ function RetrievalDiagnostic({ debug }: { debug: RetrievalDebug }) {
             <span className="text-zinc-400">{topPct}% (cutoff {thresholdPct}%)</span>
           </DiagRow>
         )}
+        {debug.errorDetail && (
+          <DiagRow label="Error detail">
+            <code className="text-[10px] break-all" style={{ color: 'var(--accent-red)' }}>{debug.errorDetail}</code>
+          </DiagRow>
+        )}
       </div>
 
       {usedChunks.length > 0 && (
@@ -341,8 +348,10 @@ function summaryLine(d: RetrievalDebug, topPct: number | null, thresholdPct: num
       return `Question too short to search`
     case 'embed_failed':
       return `Couldn't embed your question (Voyage API issue)`
+    case 'pgvector_missing':
+      return `pgvector extension isn't enabled on this database`
     case 'query_failed':
-      return `Database query failed — check pgvector is enabled`
+      return `Database query failed — see details`
   }
 }
 
@@ -362,8 +371,10 @@ function reasonExplanation(d: RetrievalDebug): string {
       return 'Question needs to be at least 3 characters to retrieve.'
     case 'embed_failed':
       return 'The query embed call failed — usually a Voyage API key or rate-limit issue. Check the diagnostic on the Knowledge page.'
+    case 'pgvector_missing':
+      return 'The `vector` Postgres extension isn\'t installed on this database. Fix: open Supabase → Database → Extensions → enable "vector" (or run `CREATE EXTENSION vector;` in the SQL editor as a superuser). Then re-ingest any source that was attempted before the fix.'
     case 'query_failed':
-      return 'pgvector returned an error. Most likely the extension isn\'t installed or the migration hasn\'t run.'
+      return 'The pgvector query threw. Check the error detail below — common causes: embedding dimension mismatch (different model used at some point), corrupted vector column, or an unrelated Postgres-level error.'
   }
 }
 

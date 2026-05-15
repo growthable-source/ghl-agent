@@ -32,8 +32,29 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (access instanceof NextResponse) return access
 
   const url = new URL(req.url)
-  const days = Math.max(1, Math.min(180, Number(url.searchParams.get('days')) || 30))
-  const since = new Date(Date.now() - days * 86_400_000)
+  // Date window. Two ways to specify:
+  //   ?days=30                              → trailing N days from now
+  //   ?from=2026-04-01&to=2026-05-15        → explicit [from, to) range
+  // `from` / `to` take precedence when both present. We still report
+  // `days` in the response so the dashboard tab knows what's active.
+  const fromParam = url.searchParams.get('from')
+  const toParam = url.searchParams.get('to')
+  let since: Date
+  let until: Date
+  let days: number
+  if (fromParam && toParam && !Number.isNaN(Date.parse(fromParam)) && !Number.isNaN(Date.parse(toParam))) {
+    since = new Date(fromParam)
+    until = new Date(toParam)
+    // Include the entire `to` day rather than stopping at 00:00 — the
+    // calendar UI sends a date, not a datetime, so 2026-05-15 means
+    // "through end of May 15."
+    until.setHours(23, 59, 59, 999)
+    days = Math.max(1, Math.ceil((until.getTime() - since.getTime()) / 86_400_000))
+  } else {
+    days = Math.max(1, Math.min(365, Number(url.searchParams.get('days')) || 30))
+    since = new Date(Date.now() - days * 86_400_000)
+    until = new Date()
+  }
   const brandIdFilter = url.searchParams.get('brandId') || null
   const ratingFilterRaw = url.searchParams.get('rating')
   const ratingFilter = ratingFilterRaw && /^[1-5]$/.test(ratingFilterRaw) ? Number(ratingFilterRaw) : null
@@ -70,7 +91,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       where: {
         widgetId: { in: widgetIds },
         csatRating: { not: null, ...(ratingFilter ? { equals: ratingFilter } : {}) },
-        csatSubmittedAt: { gte: since },
+        csatSubmittedAt: { gte: since, lte: until },
         ...handlerWhere,
       },
       select: {
@@ -94,7 +115,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       where: {
         widgetId: { in: widgetIds },
         status: 'ended',
-        lastMessageAt: { gte: since },
+        lastMessageAt: { gte: since, lte: until },
         ...handlerWhere,
       },
     })
@@ -236,10 +257,12 @@ export async function GET(req: NextRequest, { params }: Params) {
         where: {
           widgetId: { in: widgetIds },
           csatRating: { not: null, ...(ratingFilter ? { equals: ratingFilter } : {}) },
-          csatSubmittedAt: { gte: since },
+          csatSubmittedAt: { gte: since, lte: until },
         },
         select: { csatRating: true, assignedAt: true },
       })
+      // (used downstream — keeps both AI + human sides populated even
+      // when the handler filter is active)
       byHandlerAi = avgFor(allInWindow.filter(c => !c.assignedAt))
       byHandlerHuman = avgFor(allInWindow.filter(c => c.assignedAt))
     } else {
@@ -345,6 +368,8 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({
       days,
+      from: since.toISOString(),
+      to: until.toISOString(),
       filters: { brandId: brandIdFilter, rating: ratingFilter, handler: handlerFilter },
       totalRated,
       closedTotal,
