@@ -12,56 +12,10 @@
  * works for browser print since print styles inherit normally.
  */
 
-interface CommentHighlight {
-  conversationId: string
-  widgetName: string
-  brandName: string | null
-  agentName: string | null
-  operatorName: string | null
-  handler: 'ai' | 'human'
-  rating: number
-  comment: string
-  submittedAt: string | null
-  visitorLabel: string
-}
+import type { CsatResponse, CsatCommentHighlight } from './csat-types'
 
-interface CsatData {
-  days: number
-  filters: { brandId: string | null; rating: number | null; handler: 'ai' | 'human' | null }
-  totalRated: number
-  closedTotal: number
-  responseRate: number
-  averageRating: number
-  distribution: Record<'1' | '2' | '3' | '4' | '5', number>
-  byAgent: Array<{ agentId: string | null; name: string; count: number; avg: number }>
-  byOperator?: Array<{ userId: string; name: string; email: string | null; count: number; avg: number }>
-  byBrand: Array<{ brandId: string | null; name: string; color: string | null; count: number; avg: number }>
-  byHandler: { ai: { count: number; avg: number }; human: { count: number; avg: number } }
-  trend?: {
-    priorAvg: number | null
-    priorCount: number
-    priorResponseRate: number
-    deltaAvg: number | null
-    deltaCount: number
-    deltaResponseRate: number
-  }
-  commentHighlights?: {
-    needsReview: CommentHighlight[]
-    brightSpots: CommentHighlight[]
-  }
-  allBrands: Array<{ id: string; name: string; primaryColor: string | null }>
-  recent: Array<{
-    conversationId: string
-    widgetName: string
-    brandName: string | null
-    agentName: string | null
-    handler: 'ai' | 'human'
-    rating: number
-    comment: string | null
-    submittedAt: string | null
-    visitorLabel: string
-  }>
-}
+type CsatData = CsatResponse
+type CommentHighlight = CsatCommentHighlight
 
 interface RenderOpts {
   workspaceName: string

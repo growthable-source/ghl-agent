@@ -112,8 +112,8 @@ export default function PlaygroundPanel({
         knowledgeUsed: data.knowledgeUsed ?? [],
         retrievalDebug: data.retrievalDebug ?? null,
       }])
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     }
     setLoading(false)
   }

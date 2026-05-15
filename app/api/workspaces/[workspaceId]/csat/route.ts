@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { isMissingColumn } from '@/lib/migration-error'
@@ -81,10 +82,11 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     // Handler filter folds into the conversation where clause —
     // assignedAt is the canonical "a human was ever on this" signal.
-    const handlerWhere = handlerFilter === 'human'
-      ? { assignedAt: { not: null } as any }
-      : handlerFilter === 'ai'
-      ? { assignedAt: null as any }
+    // Typed as Prisma's WidgetConversationWhereInput fragment so we
+    // can spread it into both findMany and count without `as any`.
+    const handlerWhere: Prisma.WidgetConversationWhereInput =
+      handlerFilter === 'human' ? { assignedAt: { not: null } }
+      : handlerFilter === 'ai'  ? { assignedAt: null }
       : {}
 
     const ratedConvos = await db.widgetConversation.findMany({
@@ -162,86 +164,50 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
 
     // Per-agent rollup.
-    type AgentRow = { agentId: string | null; name: string; count: number; sum: number; avg: number }
-    const byAgentMap = new Map<string, AgentRow>()
-    for (const c of ratedConvos) {
-      const key = c.agentId ?? '∅'
-      const name = c.agentId ? (agentNameById.get(c.agentId) || 'Agent') : '(no agent)'
-      const existing = byAgentMap.get(key)
-      if (existing) {
-        existing.count += 1
-        existing.sum += c.csatRating ?? 0
-        existing.avg = existing.sum / existing.count
-      } else {
-        byAgentMap.set(key, {
-          agentId: c.agentId, name, count: 1,
-          sum: c.csatRating ?? 0, avg: c.csatRating ?? 0,
-        })
-      }
-    }
-    const byAgent = Array.from(byAgentMap.values()).sort((a, b) => b.count - a.count)
+    const byAgent = rollup(
+      ratedConvos,
+      c => c.agentId,
+      c => ({
+        agentId: c.agentId,
+        name: c.agentId ? (agentNameById.get(c.agentId) || 'Agent') : '(no agent)',
+      }),
+      c => c.csatRating ?? 0,
+      { unkeyedBucket: '(no agent)' },
+    )
 
-    // Per-human-operator rollup. Same structure as byAgent but keyed
-    // off assignedUserId. Conversations that were never assigned to a
-    // human are silently dropped from this rollup (they wouldn't have
-    // a userId to bucket under anyway). avgResponseSeconds is the gap
-    // between conversation start and the operator's first assignment
-    // — null if assignedAt is missing.
-    type OperatorRow = {
-      userId: string
-      name: string
-      email: string | null
-      image: string | null
-      count: number
-      sum: number
-      avg: number
-    }
-    const byOperatorMap = new Map<string, OperatorRow>()
-    for (const c of ratedConvos) {
-      if (!c.assignedUserId) continue
-      const op = operatorById.get(c.assignedUserId)
-      if (!op) continue
-      const existing = byOperatorMap.get(c.assignedUserId)
-      if (existing) {
-        existing.count += 1
-        existing.sum += c.csatRating ?? 0
-        existing.avg = existing.sum / existing.count
-      } else {
-        byOperatorMap.set(c.assignedUserId, {
-          userId: c.assignedUserId,
+    // Per-human-operator rollup. Same shape as byAgent but keyed off
+    // assignedUserId. Drops conversations that were never assigned to
+    // a human (no userId to bucket under).
+    const byOperator = rollup(
+      ratedConvos,
+      c => c.assignedUserId,
+      c => {
+        const op = operatorById.get(c.assignedUserId!)!
+        return {
+          userId: c.assignedUserId!,
           name: op.name || op.email || 'Teammate',
           email: op.email ?? null,
           image: op.image ?? null,
-          count: 1,
-          sum: c.csatRating ?? 0,
-          avg: c.csatRating ?? 0,
-        })
-      }
-    }
-    const byOperator = Array.from(byOperatorMap.values()).sort((a, b) => b.count - a.count)
+        }
+      },
+      c => c.csatRating ?? 0,
+      { dropUnkeyed: true },
+    )
 
     // Per-brand rollup. Widgets without a brand bucket under "(no brand)".
-    type BrandRow = { brandId: string | null; name: string; color: string | null; count: number; sum: number; avg: number }
-    const byBrandMap = new Map<string, BrandRow>()
-    for (const c of ratedConvos) {
-      const widget = widgetById.get(c.widgetId)
-      const brand = widget?.brand
-      const key = brand?.id ?? '∅'
-      const existing = byBrandMap.get(key)
-      if (existing) {
-        existing.count += 1
-        existing.sum += c.csatRating ?? 0
-        existing.avg = existing.sum / existing.count
-      } else {
-        byBrandMap.set(key, {
+    const byBrand = rollup(
+      ratedConvos,
+      c => widgetById.get(c.widgetId)?.brand?.id ?? null,
+      c => {
+        const brand = widgetById.get(c.widgetId)?.brand
+        return {
           brandId: brand?.id ?? null,
           name: brand?.name ?? '(no brand)',
           color: brand?.primaryColor ?? null,
-          count: 1, sum: c.csatRating ?? 0, avg: c.csatRating ?? 0,
-        })
-      }
-    }
-    const byBrand = Array.from(byBrandMap.values()).sort((a, b) => b.count - a.count)
+        }
+      },
+      c => c.csatRating ?? 0,
+    )
 
     // AI vs human breakdown — only meaningful when not already filtered
     // by handler (otherwise one side is always zero). When `handler` is
@@ -388,7 +354,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       allBrands,
       recent,
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (isMissingColumn(err)) {
       return NextResponse.json({
         ...empty(days),
@@ -396,8 +362,57 @@ export async function GET(req: NextRequest, { params }: Params) {
         error: "CSAT columns aren't migrated yet. Run prisma/migrations-legacy/manual_widget_csat.sql.",
       })
     }
-    return NextResponse.json({ error: err.message || 'Failed to load CSAT' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : 'Failed to load CSAT'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
+}
+
+/**
+ * Generic single-pass group-by-and-average. Used for byAgent /
+ * byOperator / byBrand rollups — they're all "bucket conversations
+ * by some key, attach a display payload, average the rating."
+ *
+ *   rollup(rows, keyOf, payloadOf, ratingOf)
+ *
+ *   keyOf       - returns the bucket key (string | null). Null/undefined
+ *                 keys go into the unkeyed bucket unless `dropUnkeyed`
+ *                 is set, in which case they're skipped.
+ *   payloadOf   - returns the bucket's display fields (name, ids, etc).
+ *                 Only called once per bucket (first row that maps to it).
+ *   ratingOf    - returns the numeric rating for this row.
+ *   opts.dropUnkeyed   - silently skip rows with null/undefined key
+ *   opts.unkeyedBucket - display name for the null-key bucket (default '∅')
+ *
+ * Returns the bucket list sorted by count desc — the same order the
+ * old hand-rolled rollups used.
+ */
+function rollup<Row, Payload extends Record<string, unknown>>(
+  rows: Row[],
+  keyOf: (row: Row) => string | null | undefined,
+  payloadOf: (row: Row) => Payload,
+  ratingOf: (row: Row) => number,
+  opts: { dropUnkeyed?: boolean; unkeyedBucket?: string } = {},
+): Array<Payload & { count: number; avg: number }> {
+  const buckets = new Map<string, Payload & { count: number; sum: number; avg: number }>()
+  for (const row of rows) {
+    const rawKey = keyOf(row)
+    if (rawKey == null && opts.dropUnkeyed) continue
+    const key = rawKey ?? (opts.unkeyedBucket ?? '∅')
+    const rating = ratingOf(row)
+    const existing = buckets.get(key)
+    if (existing) {
+      existing.count += 1
+      existing.sum += rating
+      existing.avg = existing.sum / existing.count
+    } else {
+      buckets.set(key, { ...payloadOf(row), count: 1, sum: rating, avg: rating })
+    }
+  }
+  // Strip `sum` from the public shape — it was only carried for the
+  // running average. Caller doesn't need it.
+  return Array.from(buckets.values())
+    .map(({ sum: _sum, ...rest }) => rest as Payload & { count: number; avg: number })
+    .sort((a, b) => b.count - a.count)
 }
 
 function avgFor(rows: Array<{ csatRating: number | null }>): { count: number; avg: number } {

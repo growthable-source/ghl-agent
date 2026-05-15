@@ -21,62 +21,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-
-interface CommentHighlight {
-  conversationId: string
-  widgetName: string
-  brandName: string | null
-  agentName: string | null
-  operatorName: string | null
-  handler: 'ai' | 'human'
-  rating: number
-  comment: string
-  submittedAt: string | null
-  visitorLabel: string
-}
-
-interface CsatResponse {
-  days: number
-  filters: { brandId: string | null; rating: number | null; handler: 'ai' | 'human' | null }
-  totalRated: number
-  closedTotal: number
-  responseRate: number
-  averageRating: number
-  distribution: Record<'1' | '2' | '3' | '4' | '5', number>
-  byAgent: Array<{ agentId: string | null; name: string; count: number; avg: number }>
-  byOperator: Array<{ userId: string; name: string; email: string | null; image: string | null; count: number; avg: number }>
-  byBrand: Array<{ brandId: string | null; name: string; color: string | null; count: number; avg: number }>
-  byHandler: { ai: { count: number; avg: number }; human: { count: number; avg: number } }
-  trend: {
-    priorAvg: number | null
-    priorCount: number
-    priorResponseRate: number
-    deltaAvg: number | null
-    deltaCount: number
-    deltaResponseRate: number
-  }
-  commentHighlights: {
-    needsReview: Array<CommentHighlight>
-    brightSpots: Array<CommentHighlight>
-  }
-  allBrands: Array<{ id: string; name: string; primaryColor: string | null }>
-  recent: Array<{
-    conversationId: string
-    widgetId: string
-    widgetName: string
-    brandId: string | null
-    brandName: string | null
-    agentId: string | null
-    agentName: string | null
-    handler: 'ai' | 'human'
-    rating: number
-    comment: string | null
-    submittedAt: string | null
-    visitorLabel: string
-  }>
-  notMigrated?: boolean
-  error?: string
-}
+import type { CsatResponse, CsatCommentHighlight } from '@/lib/csat-types'
+import EmailReportModal from '@/components/csat/EmailReportModal'
 
 const WINDOWS = [7, 30, 90] as const
 
@@ -629,7 +575,7 @@ function Scorecard({ label, value, hint, delta }: { label: string; value: string
   )
 }
 
-function CommentRow({ workspaceId, highlight }: { workspaceId: string; highlight: CommentHighlight }) {
+function CommentRow({ workspaceId, highlight }: { workspaceId: string; highlight: CsatCommentHighlight }) {
   const bg = highlight.rating >= 4 ? 'var(--accent-green-bg, rgba(34,197,94,0.15))' : highlight.rating === 3 ? 'var(--accent-amber-bg)' : 'var(--accent-red-bg)'
   const fg = highlight.rating >= 4 ? 'var(--accent-green, #22c55e)' : highlight.rating === 3 ? 'var(--accent-amber)' : 'var(--accent-red)'
   return (
@@ -703,72 +649,6 @@ function FilterChip({ children, onClear, color }: {
       {children}
       <button onClick={onClear} aria-label="Clear filter" className="opacity-70 hover:opacity-100">×</button>
     </span>
-  )
-}
-
-function EmailReportModal({ workspaceId, queryString, onClose }: {
-  workspaceId: string; queryString: string; onClose: () => void
-}) {
-  const [email, setEmail] = useState('')
-  const [sending, setSending] = useState(false)
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
-
-  async function send() {
-    if (!email.includes('@')) {
-      setResult({ ok: false, message: 'Enter a valid email address.' })
-      return
-    }
-    setSending(true)
-    setResult(null)
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/csat/email?${queryString}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: email }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setResult({ ok: false, message: data.error || 'Failed to send.' })
-      } else {
-        setResult({ ok: true, message: `Sent to ${email}.` })
-      }
-    } finally { setSending(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="rounded-2xl max-w-md w-full p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <h2 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Email this report</h2>
-        <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>
-          Sends the CSAT report (with current filters applied) as a readable HTML email.
-        </p>
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="recipient@example.com"
-          autoFocus
-          className="w-full rounded-lg px-3 py-2 text-sm mb-3"
-          style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
-        />
-        {result && (
-          <p className="text-xs mb-3" style={{ color: result.ok ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>
-            {result.message}
-          </p>
-        )}
-        <div className="flex items-center justify-end gap-2">
-          <button onClick={onClose} className="text-xs px-3 py-2" style={{ color: 'var(--text-tertiary)' }}>Cancel</button>
-          <button
-            onClick={send}
-            disabled={sending || !email}
-            className="text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-50"
-            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-          >
-            {sending ? 'Sending…' : 'Send'}
-          </button>
-        </div>
-      </div>
-    </div>
   )
 }
 

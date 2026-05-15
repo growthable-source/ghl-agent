@@ -52,8 +52,8 @@ export async function retrieveAndFormatForAgent(
       knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
     })
     return { block: buildRetrievedKnowledgeBlock(chunks), chunks }
-  } catch (err: any) {
-    console.warn('[retrieveAndFormatForAgent] failed:', err?.message)
+  } catch (err) {
+    console.warn('[retrieveAndFormatForAgent] failed:', errMsg(err))
     return { block: '', chunks: [] }
   }
 }
@@ -102,8 +102,12 @@ export async function debugRetrieveForAgent(
       limit: 6,
       knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
     })
-  } catch (err: any) {
-    console.warn('[debugRetrieveForAgent] failed:', err?.message)
+  } catch (err) {
+    console.warn('[debugRetrieveForAgent] failed:', errMsg(err))
     return null
   }
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }

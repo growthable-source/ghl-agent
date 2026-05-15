@@ -81,8 +81,8 @@ export async function retrieveChunks(
     const result = await embedTexts([trimmed], { inputType: 'query' })
     if (!result.length || !result[0].embedding) return []
     queryEmbedding = result[0].embedding
-  } catch (err: any) {
-    console.warn('[retrieve] query embed failed:', err?.message)
+  } catch (err) {
+    console.warn('[retrieve] query embed failed:', err instanceof Error ? err.message : String(err))
     return []
   }
 
@@ -109,7 +109,7 @@ export async function retrieveChunks(
       sourceType: string
       primaryTopic: string | null
       taxonomyTags: string[]
-      sourceMetadata: any
+      sourceMetadata: Record<string, unknown> | null
       distance: number | string
     }>>`
       SELECT
@@ -163,13 +163,15 @@ export async function retrieveChunks(
     }
 
     return chunks
-  } catch (err: any) {
+  } catch (err) {
     // Common failures: pgvector extension not installed (P2010 or
     // syntax error on ::vector cast), KnowledgeChunk table missing
     // (pre-migration). Return [] so the agent runs without
     // retrieval rather than breaking the chat.
-    if (err?.code !== 'P2021' && !/relation .* does not exist|operator does not exist/i.test(err?.message ?? '')) {
-      console.warn('[retrieve] pgvector query failed:', err?.message)
+    const msg = err instanceof Error ? err.message : String(err)
+    const code = (err as { code?: string } | null)?.code
+    if (code !== 'P2021' && !/relation .* does not exist|operator does not exist/i.test(msg)) {
+      console.warn('[retrieve] pgvector query failed:', msg)
     }
     return []
   }
@@ -347,11 +349,12 @@ export async function debugRetrieveChunks(
         errorDetail: 'pg_extension has no row for vector — extension not installed in this database.',
       }
     }
-  } catch (err: any) {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
     return {
       ...baseEmpty,
       reason: 'pgvector_missing',
-      errorDetail: err?.message?.slice(0, 300) ?? 'pg_extension probe failed',
+      errorDetail: msg.slice(0, 300) || 'pg_extension probe failed',
     }
   }
 
@@ -394,7 +397,7 @@ export async function debugRetrieveChunks(
       sourceType: string
       primaryTopic: string | null
       taxonomyTags: string[]
-      sourceMetadata: any
+      sourceMetadata: Record<string, unknown> | null
       distance: number | string
     }>>`
       SELECT
@@ -440,13 +443,13 @@ export async function debugRetrieveChunks(
       errorDetail: null,
       reason,
     }
-  } catch (err: any) {
-    console.warn('[debugRetrieve] pgvector query failed:', err?.message)
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err)
+    console.warn('[debugRetrieve] pgvector query failed:', raw)
     // Look for the most common pgvector failure modes and route to a
     // more specific reason where we can. Otherwise generic query_failed
     // with the raw message so the operator at least knows what
     // happened.
-    const raw = String(err?.message ?? '')
     if (/extension.*vector|operator.*<=>|type "vector"/i.test(raw)) {
       return {
         ...baseEmpty,

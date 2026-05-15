@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
+import { resolveVisitorCookieId } from '@/lib/widget-iframe-cookie'
 
 interface WidgetConfig {
   id: string
@@ -31,7 +32,8 @@ interface Msg {
 
 const EMOJI_GRID = ['👍', '🙏', '😀', '😅', '🎉', '💯', '🔥', '✅', '❌', '👀', '❤️', '🤔', '👋', '✨', '⏰', '📅']
 
-const VISITOR_KEY = 'voxility_visitor_id'
+// VISITOR_KEY moved to lib/widget-iframe-cookie.ts (VISITOR_COOKIE_KEY).
+// Kept inline as a no-op so any unrelated diff stays small.
 
 export default function WidgetEmbedPage() {
   const params = useParams()
@@ -129,37 +131,11 @@ export default function WidgetEmbedPage() {
     }
   }, [])
 
-  // Generate/restore stable cookieId.
-  //
-  // Iframe and parent-page widget.js live on different origins, so
-  // their localStorage stores are separate. We need them to agree on
-  // the cookieId so that page_view events fired by widget.js (parent
-  // page context) and conversation rows created by the iframe end up
-  // tied to the SAME WidgetVisitor row. Without this, the visitor
-  // panel shows "0 page views" forever.
-  //
-  // Precedence:
-  //   1. URL param `cid` — set by widget.js when it builds the iframe
-  //      src. Authoritative — parent page is where page_view tracking
-  //      lives, so it owns the cookieId.
-  //   2. iframe localStorage — fallback for visitors who landed on the
-  //      iframe directly (e.g., shareable preview URL) without widget.js.
-  //   3. Fresh random id — last resort.
-  // We mirror whatever we end up with into localStorage so refreshes
-  // of just the iframe (without re-parent-loading) still resolve.
+  // Visitor cookieId comes from the shared resolver — see
+  // lib/widget-iframe-cookie.ts for the full precedence rules
+  // (URL `cid` > iframe localStorage > fresh).
   function getCookieId(): string {
-    if (typeof window === 'undefined') return ''
-    const fromUrl = searchParams.get('cid')
-    if (fromUrl && /^c_[A-Za-z0-9]{6,64}$/.test(fromUrl)) {
-      try { localStorage.setItem(VISITOR_KEY, fromUrl) } catch {}
-      return fromUrl
-    }
-    let id = localStorage.getItem(VISITOR_KEY)
-    if (!id) {
-      id = 'c_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
-      try { localStorage.setItem(VISITOR_KEY, id) } catch {}
-    }
-    return id
+    return resolveVisitorCookieId(searchParams.get('cid'))
   }
 
   // Step 1: load widget config
