@@ -153,7 +153,15 @@
     document.body.appendChild(btn)
     state.launcher = btn
 
-    var wrap = buildIframe(hostUrl + '/widget/' + widgetId + '/embed?pk=' + encodeURIComponent(publicKey), cfg.title || 'Chat', position, false)
+    // Pass the parent-page cookieId into the iframe so chat
+    // conversations + page_view events end up on the same WidgetVisitor
+    // row. Without this, iframe and parent-page localStorage diverge
+    // (different origins), and the visitor panel never sees page
+    // history for a chat.
+    var cid = getCookieId() || ''
+    var embedUrl = hostUrl + '/widget/' + widgetId + '/embed?pk=' + encodeURIComponent(publicKey)
+      + (cid ? '&cid=' + encodeURIComponent(cid) : '')
+    var wrap = buildIframe(embedUrl, cfg.title || 'Chat', position, false)
     document.body.appendChild(wrap)
     state.iframeWrap = wrap
   }
@@ -209,7 +217,13 @@
     }
     state.launcher = btn
 
-    var wrap = buildIframe(hostUrl + '/widget/' + widgetId + '/call?pk=' + encodeURIComponent(publicKey), cfg.buttonLabel || 'Call', position, true)
+    // Same cookieId hand-off as the chat widget — keeps page_view
+    // events fired by the parent on the same visitor row as any
+    // future call-side identify/CRM sync.
+    var ccid = getCookieId() || ''
+    var callUrl = hostUrl + '/widget/' + widgetId + '/call?pk=' + encodeURIComponent(publicKey)
+      + (ccid ? '&cid=' + encodeURIComponent(ccid) : '')
+    var wrap = buildIframe(callUrl, cfg.buttonLabel || 'Call', position, true)
     document.body.appendChild(wrap)
     state.iframeWrap = wrap
   }

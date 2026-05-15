@@ -45,14 +45,35 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'kind must be page_view | identify | custom' }, { status: 400, headers })
   }
 
-  const visitor = await db.widgetVisitor.findUnique({
+  // For page_view events we auto-create the visitor row on first
+  // contact. The widget tracks page activity from the moment widget.js
+  // loads — often well before the visitor opens the chat (which is
+  // when /visitor identify normally fires). Without this branch, every
+  // page_view a visitor generates BEFORE opening the chat is silently
+  // dropped. That's the bug behind "I can see the chat but no page
+  // history on the visitor."
+  //
+  // For non-page_view events we keep the old "no-visitor → skip"
+  // semantics, since identify and custom events should not implicitly
+  // create rows (caller bugs would otherwise pollute the DB).
+  let visitor = await db.widgetVisitor.findUnique({
     where: { widgetId_cookieId: { widgetId, cookieId } },
     select: { id: true },
   })
+  if (!visitor && kind === 'page_view') {
+    const userAgent = req.headers.get('user-agent')?.slice(0, 300) ?? null
+    try {
+      visitor = await db.widgetVisitor.upsert({
+        where: { widgetId_cookieId: { widgetId, cookieId } },
+        create: { widgetId, cookieId, userAgent },
+        update: { lastSeenAt: new Date() },
+        select: { id: true },
+      })
+    } catch (err: any) {
+      console.warn('[visitor-events] auto-create failed:', err?.message)
+    }
+  }
   if (!visitor) {
-    // The widget calls /visitor (identify) before any /events fire, so
-    // this should be rare. Return 200 so the widget doesn't keep
-    // retrying — log and move on.
     return NextResponse.json({ ok: true, skipped: 'no-visitor' }, { headers })
   }
 

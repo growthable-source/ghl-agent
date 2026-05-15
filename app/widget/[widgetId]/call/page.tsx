@@ -30,8 +30,16 @@ export default function CallEmbedPage() {
   const [seconds, setSeconds] = useState(0)
   const vapiRef = useRef<any>(null)
 
+  // Mirror the chat embed cookieId logic — URL `cid` from widget.js
+  // wins so iframe and parent share one visitor identity. See the
+  // long comment in app/widget/[widgetId]/embed/page.tsx for context.
   function getCookieId(): string {
     if (typeof window === 'undefined') return ''
+    const fromUrl = searchParams.get('cid')
+    if (fromUrl && /^c_[A-Za-z0-9]{6,64}$/.test(fromUrl)) {
+      try { localStorage.setItem(VISITOR_KEY, fromUrl) } catch {}
+      return fromUrl
+    }
     let id = localStorage.getItem(VISITOR_KEY)
     if (!id) {
       id = 'c_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
