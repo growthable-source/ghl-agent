@@ -117,13 +117,13 @@ export const SOURCE_TYPE_CARDS: SourceTypeCard[] = [
   {
     sourceType: 'docs',
     name: 'Help Center / Docs Site',
-    description: 'Point at the root URL of your help centre, documentation site, or knowledge base. We crawl it on a schedule and keep your AI in sync.',
+    description: 'Point at the root URL of your help centre, documentation site, or knowledge base. We discover every page reachable from there (up to 50 by default) and keep them in sync.',
     icon: '📚',
     available: true,
     identifierLabel: 'Help Center URL',
     identifierPlaceholder: 'https://help.example.com',
-    identifierHint: 'Paste the homepage of your docs or help center — we discover pages from there.',
-    defaultConfig: { recrawlIntervalDays: 7 },
+    identifierHint: 'Paste the homepage of your docs or help center. We crawl up to 50 pages by default.',
+    defaultConfig: { recrawlIntervalDays: 7, recursive: true, maxPages: 50 },
   },
   {
     sourceType: 'pdf',
