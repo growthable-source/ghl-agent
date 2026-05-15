@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
 import AISummarySection from './AISummarySection'
+import UserInfoSection from './UserInfoSection'
 import VisitorTimelineSection from './VisitorTimelineSection'
 import CrmContextSection from './CrmContextSection'
 import { relTime } from './conversation-helpers'
@@ -56,7 +57,7 @@ interface Convo {
   // timeline (which keeps moving as they browse).
   initiatedUrl?: string | null
   initiatedTitle?: string | null
-  visitor: { id: string; name: string | null; email: string | null; phone?: string | null; firstSeenAt: string; lastSeenAt?: string }
+  visitor: { id: string; name: string | null; email: string | null; phone?: string | null; firstSeenAt: string; lastSeenAt?: string; crmContactId?: string | null }
   messages: Message[]
   assignedUserId?: string | null
   assignedUser?: { id: string; name: string | null; email: string | null; image?: string | null } | null
@@ -951,6 +952,18 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
             </div>
           </div>
         </div>
+
+        {/* Operator-editable name / email / phone for the visitor.
+            Saving creates/updates a NativeContact record for native
+            CRM workspaces; for external-CRM workspaces it just
+            updates the WidgetVisitor and the existing GHL bridge
+            picks up the change on next sync. */}
+        <UserInfoSection
+          workspaceId={workspaceId}
+          conversationId={conversationId}
+          visitor={convo.visitor}
+          onSaved={fetchConvo}
+        />
 
         {/* Haiku-generated quick summary. Cached on the conversation;
             "Refresh" forces a regenerate. Operators scanning a busy

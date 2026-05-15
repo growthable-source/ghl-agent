@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             brand: { select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true } },
           },
         },
-        visitor: { select: { id: true, name: true, email: true, phone: true, firstSeenAt: true, lastSeenAt: true } },
+        visitor: { select: { id: true, name: true, email: true, phone: true, crmContactId: true, firstSeenAt: true, lastSeenAt: true } },
         messages: { orderBy: { createdAt: 'asc' } },
         assignedUser: { select: { id: true, name: true, email: true, image: true } },
         _count: { select: { messages: true } },
