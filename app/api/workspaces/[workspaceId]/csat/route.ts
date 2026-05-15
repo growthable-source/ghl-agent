@@ -6,19 +6,25 @@ import { isMissingColumn } from '@/lib/migration-error'
 type Params = { params: Promise<{ workspaceId: string }> }
 
 /**
- * GET /api/workspaces/:workspaceId/csat?days=30
+ * GET /api/workspaces/:workspaceId/csat
  *
- * Aggregate visitor satisfaction across every widget conversation in
- * the workspace. The widget surfaces a 1–5 star prompt when a chat
- * closes (operator marks resolved, or visitor chooses "Rate this
- * chat") and writes to WidgetConversation.csatRating. This endpoint
- * stitches those scattered ratings into the numbers an operator/owner
- * actually cares about: overall average, recent comments, per-agent
- * breakdown.
+ * Query params:
+ *   days     — 1..180 (default 30) — trailing window
+ *   brandId  — optional, restrict to widgets tagged to this brand
+ *   rating   — optional, restrict to a single star value (1..5)
+ *   handler  — optional, 'ai' | 'human' — drill into AI-only vs
+ *              human-touched conversations
  *
- * Filters everything to the last `days` days (default 30) — older
- * scores tend to mislead because the agent's prompts and tools have
- * usually been tuned since.
+ * The page supports click-to-filter on the bars / brand rows / handler
+ * pill, so the API has to recompute every aggregate (scorecards,
+ * distribution, breakdowns, recent list) under whichever filter is
+ * active. Filtering happens at the SQL `where` level so we don't
+ * over-fetch.
+ *
+ * `handler` classification:
+ *   - 'human' = the conversation has assignedAt set (a human was ever
+ *     assigned to it). The handoff flow sets this on takeover.
+ *   - 'ai'    = no assignment ever happened; AI carried the whole chat.
  */
 export async function GET(req: NextRequest, { params }: Params) {
   const { workspaceId } = await params
@@ -28,26 +34,44 @@ export async function GET(req: NextRequest, { params }: Params) {
   const url = new URL(req.url)
   const days = Math.max(1, Math.min(180, Number(url.searchParams.get('days')) || 30))
   const since = new Date(Date.now() - days * 86_400_000)
+  const brandIdFilter = url.searchParams.get('brandId') || null
+  const ratingFilterRaw = url.searchParams.get('rating')
+  const ratingFilter = ratingFilterRaw && /^[1-5]$/.test(ratingFilterRaw) ? Number(ratingFilterRaw) : null
+  const handlerFilterRaw = url.searchParams.get('handler')
+  const handlerFilter = handlerFilterRaw === 'ai' || handlerFilterRaw === 'human' ? handlerFilterRaw : null
 
   try {
-    // All widgets in this workspace — we filter conversations by
-    // widgetId rather than walking through ChatWidget → conversations
-    // because Prisma's relation count + groupBy on related tables is
-    // finicky and the workspace usually has few widgets.
+    // Widgets — optionally narrowed to one brand. We pull widget.brand
+    // for the per-brand rollup too.
     const widgets = await db.chatWidget.findMany({
-      where: { workspaceId },
-      select: { id: true, name: true },
+      where: {
+        workspaceId,
+        ...(brandIdFilter ? { brandId: brandIdFilter } : {}),
+      },
+      select: {
+        id: true, name: true, brandId: true,
+        brand: { select: { id: true, name: true, primaryColor: true } },
+      },
     })
     const widgetIds = widgets.map(w => w.id)
     if (widgetIds.length === 0) {
-      return NextResponse.json(empty())
+      return NextResponse.json(empty(days))
     }
+
+    // Handler filter folds into the conversation where clause —
+    // assignedAt is the canonical "a human was ever on this" signal.
+    const handlerWhere = handlerFilter === 'human'
+      ? { assignedAt: { not: null } as any }
+      : handlerFilter === 'ai'
+      ? { assignedAt: null as any }
+      : {}
 
     const ratedConvos = await db.widgetConversation.findMany({
       where: {
         widgetId: { in: widgetIds },
-        csatRating: { not: null },
+        csatRating: { not: null, ...(ratingFilter ? { equals: ratingFilter } : {}) },
         csatSubmittedAt: { gte: since },
+        ...handlerWhere,
       },
       select: {
         id: true,
@@ -56,26 +80,25 @@ export async function GET(req: NextRequest, { params }: Params) {
         csatRating: true,
         csatComment: true,
         csatSubmittedAt: true,
+        assignedAt: true,
+        assignedUserId: true,
         visitor: { select: { name: true, email: true } },
       },
       orderBy: { csatSubmittedAt: 'desc' },
       take: 500,
     })
 
-    // We also pull the total *closed* conversations in the window so
-    // operators see a response-rate context line: "37 of 124 closed
-    // chats rated (30%)." Without that anchor, a single 5★ rating
-    // looks like a perfect score.
+    // Anchor: response rate against closed chats. Same filters apply
+    // so the "x of y rated" line reflects the active drill-down.
     const closedTotal = await db.widgetConversation.count({
       where: {
         widgetId: { in: widgetIds },
         status: 'ended',
         lastMessageAt: { gte: since },
+        ...handlerWhere,
       },
     })
 
-    // Agent name lookup — one query for every unique agentId we
-    // encountered, then merged into the response.
     const agentIds = Array.from(
       new Set(ratedConvos.map(c => c.agentId).filter((id): id is string => !!id))
     )
@@ -86,23 +109,19 @@ export async function GET(req: NextRequest, { params }: Params) {
         })
       : []
     const agentNameById = new Map(agents.map(a => [a.id, a.name]))
-    const widgetNameById = new Map(widgets.map(w => [w.id, w.name]))
+    const widgetById = new Map(widgets.map(w => [w.id, w]))
 
     const totalRated = ratedConvos.length
     const sumRatings = ratedConvos.reduce((acc, c) => acc + (c.csatRating ?? 0), 0)
     const avg = totalRated > 0 ? sumRatings / totalRated : 0
 
-    // 1★ → 5★ histogram. The widget enforces 1–5 server-side so we
-    // can safely index without bounds checks.
     const distribution: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
     for (const c of ratedConvos) {
       const r = c.csatRating as 1 | 2 | 3 | 4 | 5
       if (r >= 1 && r <= 5) distribution[r] += 1
     }
 
-    // Per-agent rollup. Unassigned conversations bucket under
-    // "(no agent)" so we don't drop them — usually means a widget
-    // without defaultAgentId (rare but possible).
+    // Per-agent rollup.
     type AgentRow = { agentId: string | null; name: string; count: number; sum: number; avg: number }
     const byAgentMap = new Map<string, AgentRow>()
     for (const c of ratedConvos) {
@@ -115,45 +134,106 @@ export async function GET(req: NextRequest, { params }: Params) {
         existing.avg = existing.sum / existing.count
       } else {
         byAgentMap.set(key, {
-          agentId: c.agentId,
-          name,
-          count: 1,
-          sum: c.csatRating ?? 0,
-          avg: c.csatRating ?? 0,
+          agentId: c.agentId, name, count: 1,
+          sum: c.csatRating ?? 0, avg: c.csatRating ?? 0,
         })
       }
     }
     const byAgent = Array.from(byAgentMap.values()).sort((a, b) => b.count - a.count)
 
-    // Recent 30 — operators want to read comments and click through
-    // to the original conversation. Capped well below `take: 500`
-    // above so payloads stay light.
-    const recent = ratedConvos.slice(0, 30).map(c => ({
-      conversationId: c.id,
-      widgetId: c.widgetId,
-      widgetName: widgetNameById.get(c.widgetId) || 'Widget',
-      agentId: c.agentId,
-      agentName: c.agentId ? (agentNameById.get(c.agentId) || 'Agent') : null,
-      rating: c.csatRating,
-      comment: c.csatComment,
-      submittedAt: c.csatSubmittedAt?.toISOString() ?? null,
-      visitorLabel: c.visitor?.name || c.visitor?.email || 'Anonymous visitor',
-    }))
+    // Per-brand rollup. Widgets without a brand bucket under "(no brand)".
+    type BrandRow = { brandId: string | null; name: string; color: string | null; count: number; sum: number; avg: number }
+    const byBrandMap = new Map<string, BrandRow>()
+    for (const c of ratedConvos) {
+      const widget = widgetById.get(c.widgetId)
+      const brand = widget?.brand
+      const key = brand?.id ?? '∅'
+      const existing = byBrandMap.get(key)
+      if (existing) {
+        existing.count += 1
+        existing.sum += c.csatRating ?? 0
+        existing.avg = existing.sum / existing.count
+      } else {
+        byBrandMap.set(key, {
+          brandId: brand?.id ?? null,
+          name: brand?.name ?? '(no brand)',
+          color: brand?.primaryColor ?? null,
+          count: 1, sum: c.csatRating ?? 0, avg: c.csatRating ?? 0,
+        })
+      }
+    }
+    const byBrand = Array.from(byBrandMap.values()).sort((a, b) => b.count - a.count)
+
+    // AI vs human breakdown — only meaningful when not already filtered
+    // by handler (otherwise one side is always zero). When `handler` is
+    // active we still return both sides computed against the same
+    // window so the comparison stays useful.
+    let byHandlerAi: { count: number; avg: number } = { count: 0, avg: 0 }
+    let byHandlerHuman: { count: number; avg: number } = { count: 0, avg: 0 }
+    if (handlerFilter) {
+      // Re-query the raw counts WITHOUT the handler filter so the
+      // comparison card shows both sides side-by-side. We don't want
+      // the filter to make the comparison panel collapse to "AI: 0".
+      const allInWindow = await db.widgetConversation.findMany({
+        where: {
+          widgetId: { in: widgetIds },
+          csatRating: { not: null, ...(ratingFilter ? { equals: ratingFilter } : {}) },
+          csatSubmittedAt: { gte: since },
+        },
+        select: { csatRating: true, assignedAt: true },
+      })
+      byHandlerAi = avgFor(allInWindow.filter(c => !c.assignedAt))
+      byHandlerHuman = avgFor(allInWindow.filter(c => c.assignedAt))
+    } else {
+      byHandlerAi = avgFor(ratedConvos.filter(c => !c.assignedAt))
+      byHandlerHuman = avgFor(ratedConvos.filter(c => c.assignedAt))
+    }
+
+    const recent = ratedConvos.slice(0, 30).map(c => {
+      const widget = widgetById.get(c.widgetId)
+      return {
+        conversationId: c.id,
+        widgetId: c.widgetId,
+        widgetName: widget?.name || 'Widget',
+        brandId: widget?.brand?.id ?? null,
+        brandName: widget?.brand?.name ?? null,
+        agentId: c.agentId,
+        agentName: c.agentId ? (agentNameById.get(c.agentId) || 'Agent') : null,
+        handler: c.assignedAt ? 'human' as const : 'ai' as const,
+        rating: c.csatRating,
+        comment: c.csatComment,
+        submittedAt: c.csatSubmittedAt?.toISOString() ?? null,
+        visitorLabel: c.visitor?.name || c.visitor?.email || 'Anonymous visitor',
+      }
+    })
+
+    // All brands in the workspace (regardless of whether they have
+    // ratings in this window) so the filter UI can show every brand
+    // option with "0 ratings" rather than dropping unrated brands.
+    const allBrands = await db.brand.findMany({
+      where: { workspaceId },
+      select: { id: true, name: true, primaryColor: true },
+      orderBy: { name: 'asc' },
+    })
 
     return NextResponse.json({
       days,
+      filters: { brandId: brandIdFilter, rating: ratingFilter, handler: handlerFilter },
       totalRated,
       closedTotal,
       responseRate: closedTotal > 0 ? totalRated / closedTotal : 0,
       averageRating: Number(avg.toFixed(2)),
       distribution,
       byAgent,
+      byBrand,
+      byHandler: { ai: byHandlerAi, human: byHandlerHuman },
+      allBrands,
       recent,
     })
   } catch (err: any) {
     if (isMissingColumn(err)) {
       return NextResponse.json({
-        ...empty(),
+        ...empty(days),
         notMigrated: true,
         error: "CSAT columns aren't migrated yet. Run prisma/migrations-legacy/manual_widget_csat.sql.",
       })
@@ -162,15 +242,26 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 }
 
-function empty() {
+function avgFor(rows: Array<{ csatRating: number | null }>): { count: number; avg: number } {
+  const filtered = rows.filter(r => r.csatRating !== null)
+  if (filtered.length === 0) return { count: 0, avg: 0 }
+  const sum = filtered.reduce((acc, r) => acc + (r.csatRating ?? 0), 0)
+  return { count: filtered.length, avg: Number((sum / filtered.length).toFixed(2)) }
+}
+
+function empty(days = 30) {
   return {
-    days: 30,
+    days,
+    filters: { brandId: null, rating: null, handler: null },
     totalRated: 0,
     closedTotal: 0,
     responseRate: 0,
     averageRating: 0,
     distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     byAgent: [],
+    byBrand: [],
+    byHandler: { ai: { count: 0, avg: 0 }, human: { count: 0, avg: 0 } },
+    allBrands: [],
     recent: [],
   }
 }

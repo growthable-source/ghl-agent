@@ -3,36 +3,46 @@
 /**
  * Visitor satisfaction dashboard.
  *
- * Aggregates 1–5 star ratings the visitor submits via the widget when
- * a chat closes. Before this page, ratings lived as a single badge in
- * the inbox row — operators had no way to see "how is my agent doing
- * overall." This page answers that: overall average, response rate,
- * distribution histogram, per-agent breakdown, and the 30 most recent
- * ratings with their comments.
+ * Aggregates 1–5 star ratings from widget conversations. Supports
+ * click-to-filter drill-down on:
+ *   - rating bars (only show 4★ chats)
+ *   - brand rows (only show ratings for one brand)
+ *   - handler pill (AI-only vs human-touched)
+ * Every filter is sent to /api/workspaces/:id/csat as a query param so
+ * scorecards, distribution, and per-X breakdowns all recompute
+ * server-side under the active filter.
  *
- * Filters everything to the trailing N days (7/30/90 toggle). The API
- * caps `days` server-side at 180 so callers can't request the whole
- * history at once.
+ * "Print report" opens /csat/report in a new tab — that page sets
+ * window.print() on load, giving the operator a clean browser
+ * save-as-PDF. "Email report" posts to /csat/email which renders an
+ * HTML version and sends it via Resend.
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
 interface CsatResponse {
   days: number
+  filters: { brandId: string | null; rating: number | null; handler: 'ai' | 'human' | null }
   totalRated: number
   closedTotal: number
   responseRate: number
   averageRating: number
   distribution: Record<'1' | '2' | '3' | '4' | '5', number>
   byAgent: Array<{ agentId: string | null; name: string; count: number; avg: number }>
+  byBrand: Array<{ brandId: string | null; name: string; color: string | null; count: number; avg: number }>
+  byHandler: { ai: { count: number; avg: number }; human: { count: number; avg: number } }
+  allBrands: Array<{ id: string; name: string; primaryColor: string | null }>
   recent: Array<{
     conversationId: string
     widgetId: string
     widgetName: string
+    brandId: string | null
+    brandName: string | null
     agentId: string | null
     agentName: string | null
+    handler: 'ai' | 'human'
     rating: number
     comment: string | null
     submittedAt: string | null
@@ -48,22 +58,39 @@ export default function CsatPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
   const [days, setDays] = useState<7 | 30 | 90>(30)
+  const [brandId, setBrandId] = useState<string | null>(null)
+  const [rating, setRating] = useState<number | null>(null)
+  const [handler, setHandler] = useState<'ai' | 'human' | null>(null)
   const [data, setData] = useState<CsatResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+
+  const queryString = useMemo(() => {
+    const q = new URLSearchParams({ days: String(days) })
+    if (brandId) q.set('brandId', brandId)
+    if (rating) q.set('rating', String(rating))
+    if (handler) q.set('handler', handler)
+    return q.toString()
+  }, [days, brandId, rating, handler])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetch(`/api/workspaces/${workspaceId}/csat?days=${days}`)
+    fetch(`/api/workspaces/${workspaceId}/csat?${queryString}`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setData(d) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [workspaceId, days])
+  }, [workspaceId, queryString])
 
   const maxBar = data
     ? Math.max(1, ...(['1','2','3','4','5'] as const).map(k => data.distribution[k]))
     : 1
+
+  const hasFilter = brandId !== null || rating !== null || handler !== null
+  const clearFilters = useCallback(() => { setBrandId(null); setRating(null); setHandler(null) }, [])
+
+  const printUrl = `/dashboard/${workspaceId}/csat/report?${queryString}`
 
   return (
     <div className="flex-1 p-8 overflow-y-auto">
@@ -72,27 +99,76 @@ export default function CsatPage() {
           <div>
             <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Visitor satisfaction</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-              How visitors rated their widget chats. Pulled live from the
-              "Rate this chat" prompt — newest first.
+              Click any bar, brand, or handler pill to drill in. Reset filters with the chip&nbsp;×.
             </p>
           </div>
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-            {WINDOWS.map(w => (
-              <button
-                key={w}
-                onClick={() => setDays(w)}
-                className="text-xs font-medium px-3 py-1 rounded-md transition-colors"
-                style={
-                  days === w
-                    ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                    : { color: 'var(--text-tertiary)' }
-                }
-              >
-                {w}d
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <a
+              href={printUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold px-3 py-2 rounded-lg border transition-colors"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            >
+              📄 Print / PDF
+            </a>
+            <button
+              onClick={() => setEmailModalOpen(true)}
+              className="text-xs font-semibold px-3 py-2 rounded-lg border transition-colors"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            >
+              📧 Email report
+            </button>
+            <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
+              {WINDOWS.map(w => (
+                <button
+                  key={w}
+                  onClick={() => setDays(w)}
+                  className="text-xs font-medium px-3 py-1 rounded-md transition-colors"
+                  style={
+                    days === w
+                      ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                      : { color: 'var(--text-tertiary)' }
+                  }
+                >
+                  {w}d
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
+        {/* Filter chips — always visible when any filter is on */}
+        {hasFilter && (
+          <div className="mb-4 flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Filtered by</span>
+            {rating !== null && (
+              <FilterChip onClear={() => setRating(null)}>
+                {rating}★ only
+              </FilterChip>
+            )}
+            {brandId !== null && (() => {
+              const brand = data?.allBrands.find(b => b.id === brandId)
+              return (
+                <FilterChip onClear={() => setBrandId(null)} color={brand?.primaryColor ?? undefined}>
+                  {brand?.name || 'Brand'}
+                </FilterChip>
+              )
+            })()}
+            {handler !== null && (
+              <FilterChip onClear={() => setHandler(null)}>
+                {handler === 'ai' ? 'AI-only chats' : 'Human-touched chats'}
+              </FilterChip>
+            )}
+            <button
+              onClick={clearFilters}
+              className="text-[11px] underline ml-1"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
 
         {data?.notMigrated && (
           <div className="p-4 mb-6 rounded-xl" style={{ background: 'var(--accent-amber-bg)', border: '1px solid var(--accent-amber-bg)' }}>
@@ -109,17 +185,16 @@ export default function CsatPage() {
           >
             <div className="text-3xl mb-2">⭐</div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              No ratings yet in the last {days} days
+              {hasFilter ? 'No ratings match these filters' : `No ratings yet in the last ${days} days`}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
-              Ratings appear when visitors tap the stars after a chat ends — either
-              the operator marks the chat resolved, or the visitor chooses
-              "Rate this chat" from the widget's closure banner.
+              {hasFilter
+                ? 'Try clearing one of the filters above.'
+                : 'Ratings appear when visitors tap the stars after a chat ends.'}
             </p>
           </div>
         ) : (
           <>
-            {/* ── Scorecards ───────────────────────────────────────── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               <Scorecard
                 label="Average rating"
@@ -138,24 +213,59 @@ export default function CsatPage() {
               />
             </div>
 
-            {/* ── Distribution histogram ──────────────────────────── */}
-            <div
-              className="rounded-xl border p-5 mb-6"
-              style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-            >
+            {/* AI vs Human comparison */}
+            <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>AI vs human</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <HandlerCard
+                  label="AI only"
+                  helper="No human took over"
+                  count={data.byHandler.ai.count}
+                  avg={data.byHandler.ai.avg}
+                  active={handler === 'ai'}
+                  onClick={() => setHandler(handler === 'ai' ? null : 'ai')}
+                />
+                <HandlerCard
+                  label="Human-touched"
+                  helper="Operator stepped in"
+                  count={data.byHandler.human.count}
+                  avg={data.byHandler.human.avg}
+                  active={handler === 'human'}
+                  onClick={() => setHandler(handler === 'human' ? null : 'human')}
+                />
+              </div>
+              {data.byHandler.ai.count > 0 && data.byHandler.human.count > 0 && (
+                <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
+                  Difference: <strong style={{ color: 'var(--text-secondary)' }}>
+                    {(data.byHandler.human.avg - data.byHandler.ai.avg >= 0 ? '+' : '')}
+                    {(data.byHandler.human.avg - data.byHandler.ai.avg).toFixed(2)}
+                  </strong> for human-touched
+                  ({data.byHandler.human.avg > data.byHandler.ai.avg ? 'humans rate higher' :
+                    data.byHandler.human.avg < data.byHandler.ai.avg ? 'AI rates higher' :
+                    'tied'})
+                </p>
+              )}
+            </div>
+
+            {/* Rating distribution — click to filter */}
+            <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
               <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Rating distribution</h2>
+              <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>Click a row to drill in to just that rating.</p>
               <div className="space-y-2">
                 {(['5','4','3','2','1'] as const).map(k => {
                   const count = data.distribution[k]
                   const pct = (count / maxBar) * 100
                   const isTop = Number(k) >= 4
+                  const active = rating === Number(k)
                   return (
-                    <div key={k} className="flex items-center gap-3">
-                      <div className="w-8 text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>{k}★</div>
-                      <div
-                        className="flex-1 h-5 rounded overflow-hidden"
-                        style={{ background: 'var(--surface-tertiary)' }}
-                      >
+                    <button
+                      key={k}
+                      onClick={() => setRating(active ? null : Number(k))}
+                      className="w-full flex items-center gap-3 px-2 py-1 rounded transition-colors hover:bg-zinc-900/40"
+                      style={active ? { background: 'var(--accent-primary-bg)' } : undefined}
+                    >
+                      <div className="w-8 text-xs tabular-nums text-left" style={{ color: active ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>{k}★</div>
+                      <div className="flex-1 h-5 rounded overflow-hidden" style={{ background: 'var(--surface-tertiary)' }}>
                         <div
                           className="h-full transition-all"
                           style={{
@@ -165,18 +275,54 @@ export default function CsatPage() {
                         />
                       </div>
                       <div className="w-10 text-xs tabular-nums text-right" style={{ color: 'var(--text-tertiary)' }}>{count}</div>
-                    </div>
+                    </button>
                   )
                 })}
               </div>
             </div>
 
-            {/* ── Per-agent breakdown ─────────────────────────────── */}
+            {/* Per-brand — click to filter */}
+            {data.byBrand.length > 0 && (
+              <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+                <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>By brand</h2>
+                <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                  {brandId ? 'Filtered. Click again to clear.' : 'Click any brand to scope the whole dashboard to it.'}
+                </p>
+                <div className="space-y-1">
+                  {data.byBrand.map(b => {
+                    const active = brandId === b.brandId
+                    return (
+                      <button
+                        key={b.brandId ?? '∅'}
+                        onClick={() => b.brandId && setBrandId(active ? null : b.brandId)}
+                        disabled={!b.brandId}
+                        className="w-full flex items-center gap-3 py-2 px-2 rounded transition-colors hover:bg-zinc-900/40 disabled:cursor-default"
+                        style={active ? { background: 'var(--accent-primary-bg)' } : undefined}
+                      >
+                        {b.color ? (
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: b.color }} />
+                        ) : (
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: 'var(--surface-tertiary)' }} />
+                        )}
+                        <span className="text-sm flex-1 truncate text-left" style={{ color: active ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
+                          {b.name}
+                        </span>
+                        <span className="text-xs tabular-nums" style={{ color: 'var(--text-tertiary)' }}>
+                          {b.count} rating{b.count === 1 ? '' : 's'}
+                        </span>
+                        <span className="text-sm font-medium tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                          {b.avg.toFixed(2)} <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>/ 5</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Per-agent breakdown — same shape as before */}
             {data.byAgent.length > 0 && (
-              <div
-                className="rounded-xl border p-5 mb-6"
-                style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-              >
+              <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
                 <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>By agent</h2>
                 <div className="space-y-2">
                   {data.byAgent.map(a => (
@@ -204,11 +350,7 @@ export default function CsatPage() {
               </div>
             )}
 
-            {/* ── Recent ratings ──────────────────────────────────── */}
-            <div
-              className="rounded-xl border overflow-hidden"
-              style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-            >
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
               <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
                 <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Recent ratings</h2>
                 <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
@@ -234,12 +376,17 @@ export default function CsatPage() {
                         <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>{r.visitorLabel}</span>
                         <span>·</span>
                         <span>{r.widgetName}</span>
-                        {r.agentName && (
-                          <>
-                            <span>·</span>
-                            <span>{r.agentName}</span>
-                          </>
-                        )}
+                        {r.brandName && (<>
+                          <span>·</span>
+                          <span>{r.brandName}</span>
+                        </>)}
+                        {r.agentName && (<>
+                          <span>·</span>
+                          <span>{r.agentName}</span>
+                        </>)}
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-semibold ${r.handler === 'human' ? 'bg-blue-500/10 text-blue-300' : 'bg-purple-500/10 text-purple-300'}`}>
+                          {r.handler}
+                        </span>
                         <span className="ml-auto">{r.submittedAt ? timeAgo(r.submittedAt) : ''}</span>
                       </div>
                       {r.comment && (
@@ -255,21 +402,137 @@ export default function CsatPage() {
           </>
         )}
       </div>
+
+      {emailModalOpen && (
+        <EmailReportModal
+          workspaceId={workspaceId}
+          queryString={queryString}
+          onClose={() => setEmailModalOpen(false)}
+        />
+      )}
     </div>
   )
 }
 
 function Scorecard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div
-      className="rounded-xl border p-5"
-      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-    >
-      <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
-        {label}
-      </p>
+    <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
       <p className="text-2xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>{value}</p>
       {hint && <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{hint}</p>}
+    </div>
+  )
+}
+
+function HandlerCard({ label, helper, count, avg, active, onClick }: {
+  label: string; helper: string; count: number; avg: number; active: boolean; onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-lg p-4 text-left transition-all border"
+      style={active
+        ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+        : { borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+    >
+      <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: active ? 'var(--accent-primary)' : 'var(--text-tertiary)' }}>
+        {label}
+      </p>
+      <div className="flex items-baseline gap-2 mt-1">
+        <span className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+          {count > 0 ? avg.toFixed(2) : '—'}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {count} rating{count === 1 ? '' : 's'}
+        </span>
+      </div>
+      <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>{helper}</p>
+    </button>
+  )
+}
+
+function FilterChip({ children, onClear, color }: {
+  children: React.ReactNode
+  onClear: () => void
+  color?: string
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border"
+      style={{
+        borderColor: color || 'var(--accent-primary)',
+        background: color ? `${color}1A` : 'var(--accent-primary-bg)',
+        color: color || 'var(--accent-primary)',
+      }}
+    >
+      {children}
+      <button onClick={onClear} aria-label="Clear filter" className="opacity-70 hover:opacity-100">×</button>
+    </span>
+  )
+}
+
+function EmailReportModal({ workspaceId, queryString, onClose }: {
+  workspaceId: string; queryString: string; onClose: () => void
+}) {
+  const [email, setEmail] = useState('')
+  const [sending, setSending] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  async function send() {
+    if (!email.includes('@')) {
+      setResult({ ok: false, message: 'Enter a valid email address.' })
+      return
+    }
+    setSending(true)
+    setResult(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/csat/email?${queryString}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: email }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setResult({ ok: false, message: data.error || 'Failed to send.' })
+      } else {
+        setResult({ ok: true, message: `Sent to ${email}.` })
+      }
+    } finally { setSending(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <div className="rounded-2xl max-w-md w-full p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <h2 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Email this report</h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>
+          Sends the CSAT report (with current filters applied) as a readable HTML email.
+        </p>
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="recipient@example.com"
+          autoFocus
+          className="w-full rounded-lg px-3 py-2 text-sm mb-3"
+          style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
+        />
+        {result && (
+          <p className="text-xs mb-3" style={{ color: result.ok ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>
+            {result.message}
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          <button onClick={onClose} className="text-xs px-3 py-2" style={{ color: 'var(--text-tertiary)' }}>Cancel</button>
+          <button
+            onClick={send}
+            disabled={sending || !email}
+            className="text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-50"
+            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+          >
+            {sending ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
