@@ -92,62 +92,11 @@ export async function retrieveChunks(
   const literal = `[${queryEmbedding.join(',')}]`
 
   try {
-    // Domain filter: single id OR a per-agent list. The list takes
-    // precedence when both happen to be passed. Empty list = no filter
-    // (workspace-wide), which is the backward-compatible default.
-    let domainFilter = db.$queryRaw``
-    if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
-      domainFilter = db.$queryRaw`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
-    } else if (opts.knowledgeDomainId) {
-      domainFilter = db.$queryRaw`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`
-    }
-
-    const rows = await db.$queryRaw<Array<{
-      id: string
-      content: string
-      sourceUrl: string
-      sourceType: string
-      primaryTopic: string | null
-      taxonomyTags: string[]
-      sourceMetadata: Record<string, unknown> | null
-      distance: number | string
-    }>>`
-      SELECT
-        c.id,
-        c.content,
-        c."sourceUrl",
-        c."sourceType",
-        c."primaryTopic",
-        c."taxonomyTags",
-        c."sourceMetadata",
-        (c.embedding <=> ${literal}::vector) AS distance
-      FROM "KnowledgeChunk" c
-      INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
-      WHERE d."workspaceId" = ${workspaceId}
-        AND c."supersededAt" IS NULL
-        AND c.embedding IS NOT NULL
-        ${domainFilter}
-      ORDER BY c.embedding <=> ${literal}::vector
-      LIMIT ${limit}
-    `
-
-    // Convert cosine distance (0=identical, 2=opposite) to a
-    // similarity score in [0,1]. Filter on minSimilarity to drop
-    // chunks that obviously aren't relevant. Without this floor,
-    // queries on niche topics still pull the 6 least-bad chunks
-    // even when none are useful, which the agent then quotes as
-    // authoritative.
-    const chunks: RetrievedChunk[] = rows
-      .map(r => ({
-        id: r.id,
-        content: r.content,
-        sourceUrl: r.sourceUrl,
-        sourceType: r.sourceType,
-        primaryTopic: r.primaryTopic,
-        taxonomyTags: r.taxonomyTags ?? [],
-        sourceMetadata: (r.sourceMetadata ?? {}) as Record<string, unknown>,
-        similarity: clamp01(1 - Number(r.distance)),
-      }))
+    // Cosine-distance-converted similarity must clear minSimilarity
+    // (default 0.25). Without this floor, queries on niche topics
+    // would still pull the 6 least-bad chunks even when none are
+    // useful, which the agent then quotes as authoritative.
+    const chunks = (await runVectorTopK(workspaceId, literal, buildDomainFilter(opts), limit))
       .filter(c => c.similarity >= minSimilarity)
 
     // Bump usage stats best-effort. Lets us cold-prune chunks
@@ -216,6 +165,79 @@ Rules:
 
 ${formatted}
 `
+}
+
+/**
+ * Build the AND-clause for the domain filter. Tagged-template form so
+ * the caller can splice it into a $queryRaw template — Prisma keeps
+ * parameter binding safe across the splice. Empty filter (workspace-
+ * wide) returns an empty template, which Prisma's template compositor
+ * treats as a no-op.
+ */
+function buildDomainFilter(opts: RetrieveOptions) {
+  if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
+    return db.$queryRaw`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
+  }
+  if (opts.knowledgeDomainId) {
+    return db.$queryRaw`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`
+  }
+  return db.$queryRaw``
+}
+
+/** Row shape returned by every vector top-K query — selected columns
+ *  are identical between retrieveChunks and debugRetrieveChunks. */
+interface VectorRow {
+  id: string
+  content: string
+  sourceUrl: string
+  sourceType: string
+  primaryTopic: string | null
+  taxonomyTags: string[]
+  sourceMetadata: Record<string, unknown> | null
+  distance: number | string
+}
+
+/** Single source of truth for the pgvector top-K query. Shared by
+ *  the runtime retriever and the diagnostic. */
+async function runVectorTopK(
+  workspaceId: string,
+  literal: string,
+  domainFilter: ReturnType<typeof buildDomainFilter>,
+  limit: number,
+): Promise<RetrievedChunk[]> {
+  const rows = await db.$queryRaw<VectorRow[]>`
+    SELECT
+      c.id,
+      c.content,
+      c."sourceUrl",
+      c."sourceType",
+      c."primaryTopic",
+      c."taxonomyTags",
+      c."sourceMetadata",
+      (c.embedding <=> ${literal}::vector) AS distance
+    FROM "KnowledgeChunk" c
+    INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
+    WHERE d."workspaceId" = ${workspaceId}
+      AND c."supersededAt" IS NULL
+      AND c.embedding IS NOT NULL
+      ${domainFilter}
+    ORDER BY c.embedding <=> ${literal}::vector
+    LIMIT ${limit}
+  `
+  return rows.map(rowToChunk)
+}
+
+function rowToChunk(r: VectorRow): RetrievedChunk {
+  return {
+    id: r.id,
+    content: r.content,
+    sourceUrl: r.sourceUrl,
+    sourceType: r.sourceType,
+    primaryTopic: r.primaryTopic,
+    taxonomyTags: r.taxonomyTags ?? [],
+    sourceMetadata: (r.sourceMetadata ?? {}) as Record<string, unknown>,
+    similarity: clamp01(1 - Number(r.distance)),
+  }
 }
 
 function clamp01(n: number): number {
@@ -370,12 +392,11 @@ export async function debugRetrieveChunks(
   const literal = `[${queryEmbedding.join(',')}]`
 
   try {
-    let domainFilter = db.$queryRaw``
-    if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
-      domainFilter = db.$queryRaw`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
-    }
+    const domainFilter = buildDomainFilter(opts)
 
-    // Count what's in *scope* (workspace + domain filter + non-null embeddings).
+    // Count what's in scope (workspace + domain filter + non-null
+    // embeddings). Cheap pre-flight so we can return 'empty_scope'
+    // without paying for the main vector query.
     const scopeCountRows = await db.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*)::bigint as count FROM "KnowledgeChunk" c
       INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
@@ -390,40 +411,9 @@ export async function debugRetrieveChunks(
       return { ...baseEmpty, chunksInScope, reason: 'empty_scope' }
     }
 
-    const rows = await db.$queryRaw<Array<{
-      id: string
-      content: string
-      sourceUrl: string
-      sourceType: string
-      primaryTopic: string | null
-      taxonomyTags: string[]
-      sourceMetadata: Record<string, unknown> | null
-      distance: number | string
-    }>>`
-      SELECT
-        c.id, c.content, c."sourceUrl", c."sourceType",
-        c."primaryTopic", c."taxonomyTags", c."sourceMetadata",
-        (c.embedding <=> ${literal}::vector) AS distance
-      FROM "KnowledgeChunk" c
-      INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
-      WHERE d."workspaceId" = ${workspaceId}
-        AND c."supersededAt" IS NULL
-        AND c.embedding IS NOT NULL
-        ${domainFilter}
-      ORDER BY c.embedding <=> ${literal}::vector
-      LIMIT ${limit}
-    `
-
-    const topChunks: RetrievedChunk[] = rows.map(r => ({
-      id: r.id,
-      content: r.content,
-      sourceUrl: r.sourceUrl,
-      sourceType: r.sourceType,
-      primaryTopic: r.primaryTopic,
-      taxonomyTags: r.taxonomyTags ?? [],
-      sourceMetadata: (r.sourceMetadata ?? {}) as Record<string, unknown>,
-      similarity: clamp01(1 - Number(r.distance)),
-    }))
+    // Same query as retrieveChunks; debug returns top-K regardless of
+    // threshold so the operator can see near-misses.
+    const topChunks = await runVectorTopK(workspaceId, literal, domainFilter, limit)
 
     const topSimilarity = topChunks.length > 0 ? topChunks[0].similarity : null
     const reason: RetrievalDebug['reason'] =
