@@ -80,5 +80,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     update: data,
   })
 
-  return NextResponse.json({ settings })
+  // Return the recomputed access status alongside the settings so the
+  // client doesn't have to re-fetch via load() — that was the cause of
+  // the "page keeps refreshing" symptom (load() flipped loading=true
+  // and unmounted the in-flight form).
+  const status = await getTicketingStatus(workspaceId)
+
+  return NextResponse.json({ settings, status })
 }

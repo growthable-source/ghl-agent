@@ -37,6 +37,10 @@ export default function TicketingSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  // Test-email pre-flight state. Kept locally so the result inlines
+  // under the From email input without polluting the broader form.
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; reason: string; to: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -62,11 +66,32 @@ export default function TicketingSettingsPage() {
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to save.'); return }
       setSettings(data.settings)
+      // The PATCH response now carries the recomputed status, so we
+      // don't have to call load() (which would flip loading=true and
+      // unmount the in-flight form). Keeps the page stable while the
+      // operator is typing.
+      if (data.status) setStatus(data.status)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-      // Refresh status — toggling enabled changes status.active
-      load()
     } finally { setSaving(false) }
+  }
+
+  async function sendTest() {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/settings/ticketing/test-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setTestResult({ ok: false, reason: data.error || 'Failed to send.', to: '' })
+        return
+      }
+      setTestResult({ ok: !!data.ok, reason: data.reason ?? '', to: data.to ?? '' })
+    } finally { setTesting(false) }
   }
 
   if (loading || !settings || !status) {
@@ -171,6 +196,24 @@ export default function TicketingSettingsPage() {
                   className="w-full rounded-lg px-3 py-2 text-sm mt-1"
                   style={{ background: 'var(--input-bg)', color: 'var(--input-text)', border: '1px solid var(--input-border)' }}
                 />
+              </div>
+              <div className="flex items-start gap-3 pt-1">
+                <button
+                  onClick={sendTest}
+                  disabled={testing || !settings.fromEmail}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                  style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+                  title="Sends a tiny test email to your own address using these settings."
+                >
+                  {testing ? 'Sending…' : '✉ Send test email'}
+                </button>
+                {testResult && (
+                  <div className="flex-1 text-[11px]" style={{ color: testResult.ok ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>
+                    {testResult.ok
+                      ? <>✓ Sent to <span className="font-mono">{testResult.to}</span>. Check the inbox.</>
+                      : testResult.reason}
+                  </div>
+                )}
               </div>
             </div>
           </Section>

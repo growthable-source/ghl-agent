@@ -50,6 +50,11 @@ export default function WidgetEmbedPage() {
   // CSAT. Defaults to 'active' so a fresh widget without server data
   // doesn't surface a stale "ended" state on first render.
   const [conversationStatus, setConversationStatus] = useState<'active' | 'handed_off' | 'ended'>('active')
+  // Set when the operator promotes this chat to a ticket. The chat
+  // status flips to 'ended' alongside this, but we use ticketInfo to
+  // swap the generic closure banner for a ticket-specific variant
+  // that tells the visitor where the follow-up will arrive.
+  const [ticketInfo, setTicketInfo] = useState<{ number: number; email: string } | null>(null)
   // Operator who's taken the chat. null = no human assigned yet (AI is
   // driving). We show a "You're chatting with {name}" banner under the
   // header whenever this is set, and inject a system message on the
@@ -364,6 +369,18 @@ export default function WidgetEmbedPage() {
           // we don't message the visitor about it — the chat just
           // returns to the AI / queue without UX noise.
           setAssignedHuman(null)
+        }
+      } else if (data.type === 'ticket_created') {
+        // Operator promoted this chat to a ticket. Stash the ticket
+        // number + contact email so the closure card (about to be
+        // shown when the follow-up status_changed → 'ended' lands)
+        // can read "We've created ticket #N — we'll follow up via
+        // email at <email>" instead of the generic "This chat has
+        // ended."
+        const num = Number((data as { ticketNumber?: number }).ticketNumber)
+        const email = (data as { contactEmail?: string }).contactEmail
+        if (Number.isFinite(num) && email) {
+          setTicketInfo({ number: num, email })
         }
       } else if (data.type === 'status_changed') {
         // Operator changed the conversation status. 'ended' → show
@@ -975,11 +992,24 @@ export default function WidgetEmbedPage() {
           {conversationStatus === 'ended' ? (
             <div className="p-4 border-t border-zinc-800 bg-zinc-900/40">
               <div className="rounded-lg border px-3 py-3 text-center"
-                style={{ borderColor: 'var(--border, #3f3f46)', background: 'var(--surface, #18181b)' }}>
-                <p className="text-sm font-medium text-zinc-200 mb-1">This chat has ended</p>
-                <p className="text-[11px] text-zinc-500 mb-3">
-                  Thanks for reaching out. Need more help?
-                </p>
+                style={{ borderColor: ticketInfo ? accent : 'var(--border, #3f3f46)', background: 'var(--surface, #18181b)' }}>
+                {ticketInfo ? (
+                  <>
+                    <p className="text-sm font-medium text-zinc-200 mb-1">
+                      We&apos;ve created ticket <span className="font-mono">#{ticketInfo.number}</span>
+                    </p>
+                    <p className="text-[11px] text-zinc-400 mb-3">
+                      We&apos;ll follow up via email at <span className="font-mono text-zinc-200">{ticketInfo.email}</span>.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-zinc-200 mb-1">This chat has ended</p>
+                    <p className="text-[11px] text-zinc-500 mb-3">
+                      Thanks for reaching out. Need more help?
+                    </p>
+                  </>
+                )}
                 <div className="flex gap-2 justify-center">
                   <button
                     type="button"

@@ -85,6 +85,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     })
     const ticketNumber = (last?.ticketNumber ?? 0) + 1
 
+    // Auto-assign rule: inherit from the source chat if a human was
+    // already on it; otherwise hand the ticket to the promoter. This
+    // matches the operator's mental model — whoever owns the chat
+    // owns the follow-up, and clicking Promote on an AI-only chat is
+    // an implicit "I'll take this from here."
+    const assignedUserId = convo.assignedUserId ?? access.session.user!.id
+    const assignedAt = convo.assignedAt ?? new Date()
+
     const created = await tx.ticket.create({
       data: {
         workspaceId,
@@ -98,6 +106,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         subject,
         priority: typeof body.priority === 'string' && ['low','normal','high','urgent'].includes(body.priority) ? body.priority : 'normal',
         status: 'open',
+        assignedUserId,
+        assignedAt,
         lastActivityAt: new Date(),
       },
     })
@@ -127,6 +137,35 @@ export async function POST(req: NextRequest, { params }: Params) {
       data: { lastInboundAt: lastInbound, lastOutboundAt: lastOutbound },
     })
   })
+
+  // The chat has officially moved to email. End the conversation so
+  // the visitor's composer disappears, and broadcast a ticket_created
+  // event so the widget can swap the generic closure card for a
+  // ticket-specific one ("We've created ticket #N — we'll follow up
+  // via email at <email>."). Both side-effects are best-effort: a
+  // broadcast / status update failure here doesn't undo the ticket.
+  try {
+    await db.widgetConversation.update({
+      where: { id: conversationId },
+      data: { status: 'ended', lastMessageAt: new Date() },
+    })
+  } catch (err) {
+    console.warn('[promote] failed to end conversation:', err instanceof Error ? err.message : err)
+  }
+  try {
+    const { broadcast } = await import('@/lib/widget-sse')
+    // Custom event first so the widget can stash the ticket info
+    // BEFORE the generic status_changed → ended flips the closure
+    // banner on. Same channel, processed in order by the EventSource.
+    await broadcast(conversationId, {
+      type: 'ticket_created',
+      ticketNumber: ticket.ticketNumber,
+      contactEmail: ticket.contactEmail,
+    })
+    await broadcast(conversationId, { type: 'status_changed', status: 'ended' })
+  } catch (err) {
+    console.warn('[promote] broadcast failed:', err instanceof Error ? err.message : err)
+  }
 
   return NextResponse.json({ ticket }, { status: 201 })
 }

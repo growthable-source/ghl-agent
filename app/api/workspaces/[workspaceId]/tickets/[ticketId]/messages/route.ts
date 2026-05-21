@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { sendTicketingEmail } from '@/lib/ticketing-send'
 
 type Params = { params: Promise<{ workspaceId: string; ticketId: string }> }
 
@@ -44,13 +45,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   let emailError: string | null = null
 
   if (sendEmail) {
-    const send = await sendTicketEmail({
+    const send = await sendTicketingEmail({
       workspaceId,
-      ticketId: ticket.id,
-      ticketNumber: ticket.ticketNumber,
       to: ticket.contactEmail,
       subject: ticket.subject,
-      body: text,
+      text,
+      ticketRef: { id: ticket.id, number: ticket.ticketNumber },
+      includeSignature: true,
     })
     if (!send.ok) {
       emailError = send.reason
@@ -97,60 +98,4 @@ export async function POST(req: NextRequest, { params }: Params) {
   return NextResponse.json({ message, emailSent: !!emailMeta.sentAt, emailError })
 }
 
-/**
- * Deliver an outbound reply via Resend. Returns { ok, messageId,
- * reason } so the caller can persist the Message-ID for future
- * threading and surface failures to the operator.
- *
- * Uses TicketingSettings.fromEmail / fromName when present; otherwise
- * NOTIFICATION_FROM_EMAIL env (same default as digests). Signature
- * appended when the operator has one set.
- */
-async function sendTicketEmail(p: {
-  workspaceId: string
-  ticketId: string
-  ticketNumber: number
-  to: string
-  subject: string
-  body: string
-}): Promise<{ ok: true; messageId: string | null } | { ok: false; reason: string; messageId: null }> {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY not set on this deployment.', messageId: null }
-
-  const settings = await (db as any).ticketingSettings.findUnique({
-    where: { workspaceId: p.workspaceId },
-    select: { fromEmail: true, fromName: true, signature: true },
-  }).catch(() => null)
-
-  const fromAddr = settings?.fromEmail || process.env.NOTIFICATION_FROM_EMAIL_ADDRESS || process.env.NOTIFICATION_FROM_EMAIL
-  const fromName = settings?.fromName || 'Support'
-  if (!fromAddr) return { ok: false, reason: 'No from-email configured for this workspace.', messageId: null }
-  const from = fromAddr.includes('<') ? fromAddr : `${fromName} <${fromAddr}>`
-
-  // Prefix subject with [#1042] so replies thread visually in the
-  // recipient's inbox client even before our inbound-webhook lands.
-  const subjectWithRef = `[#${p.ticketNumber}] ${p.subject}`
-  const bodyWithSig = settings?.signature
-    ? `${p.body}\n\n--\n${settings.signature}`
-    : p.body
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from,
-      to: [p.to],
-      subject: subjectWithRef,
-      text: bodyWithSig,
-      // Carries a stable reply path for the future inbound webhook.
-      headers: { 'X-Voxility-Ticket-Id': p.ticketId },
-    }),
-  })
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '')
-    return { ok: false, reason: `Resend ${res.status}: ${errText.slice(0, 200)}`, messageId: null }
-  }
-  const data = await res.json().catch(() => ({} as { id?: string }))
-  return { ok: true, messageId: data?.id ?? null }
-}
+// sendTicketEmail moved to lib/ticketing-send.ts — see sendTicketingEmail.
