@@ -9,6 +9,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
+  // Read install attribution + primary preference. Wrapped in try/catch
+  // for un-migrated DBs missing manual_workspace_install_source.sql —
+  // a NULL/'native' fallback keeps the integrations page rendering.
+  let installSource: string | null = null
+  let primaryCrmProvider: string = 'native'
+  try {
+    const ws = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { installSource: true, primaryCrmProvider: true },
+    })
+    installSource = ws?.installSource ?? null
+    primaryCrmProvider = ws?.primaryCrmProvider ?? 'native'
+  } catch {
+    // Columns not yet present — fall back to legacy "guess from
+    // locations" behaviour further down.
+  }
+
   // Get all locationIds for this workspace
   const locations = await db.location.findMany({
     where: { workspaceId },
@@ -53,7 +70,35 @@ export async function GET(_req: NextRequest, { params }: Params) {
     ? { shop: shopifyRow.id, scope: shopifyRow.scope, installedAt: shopifyRow.installedAt }
     : null
 
-  return NextResponse.json({ integrations, ghlConnected, vapiActive, crmProvider, shopify })
+  // Which CRM providers actually have a usable Location for this
+  // workspace. The agent-level CRM picker reads this to know which
+  // options to enable vs disable-with-tooltip. 'native' is always
+  // available because every workspace auto-provisions one at creation
+  // (and the page DELETE leaves it intact when GHL is disconnected).
+  const hasGhl = locations.some(l =>
+    !!l.accessToken &&
+    l.crmProvider === 'ghl' &&
+    !l.id.startsWith('native:') &&
+    !l.id.startsWith('placeholder:'),
+  )
+  const hasHubspot = locations.some(l => l.crmProvider === 'hubspot')
+  const hasNative = locations.some(l => l.id.startsWith('native:'))
+  const availableCrms = {
+    native: hasNative,
+    ghl: hasGhl,
+    hubspot: hasHubspot,
+  }
+
+  return NextResponse.json({
+    integrations,
+    ghlConnected,
+    vapiActive,
+    crmProvider,
+    shopify,
+    installSource,
+    primaryCrmProvider,
+    availableCrms,
+  })
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -106,7 +151,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       },
       data: { crmProvider: body.crmProvider },
     })
-    return NextResponse.json({ crmProvider: body.crmProvider })
+    // Keep Workspace.primaryCrmProvider in sync — this is the field that
+    // drives agent-picker defaults and the integrations page's
+    // "Recommended for your setup" ordering. The legacy Location-level
+    // flip above stays for back-compat until callers all read from
+    // primaryCrmProvider.
+    try {
+      await db.workspace.update({
+        where: { id: workspaceId },
+        data: { primaryCrmProvider: body.crmProvider },
+      })
+    } catch (err: any) {
+      console.warn('[Integrations PATCH] primaryCrmProvider sync skipped:', err?.message)
+    }
+    return NextResponse.json({ crmProvider: body.crmProvider, primaryCrmProvider: body.crmProvider })
   }
 
   return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })

@@ -90,6 +90,12 @@ export async function POST(req: NextRequest) {
     slug,
     icon,
     domain,
+    // Direct signup — anyone arriving from a marketplace OAuth lands in
+    // app/api/auth/callback/route.ts, which sets installSource there.
+    // Native is the right default primary CRM because the next step
+    // auto-provisions a native:<wsId> Location below.
+    installSource: 'direct',
+    primaryCrmProvider: 'native',
     members: {
       create: {
         userId: session.user.id,
@@ -109,8 +115,24 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch {
-    // Billing columns may not exist yet — create without them
-    workspace = await db.workspace.create({ data: createData })
+    // Billing columns may not exist yet — retry without them. Strip the
+    // install attribution fields too, since the same un-migrated DB
+    // class is what'd be missing those columns.
+    const { installSource: _i, primaryCrmProvider: _p, ...legacyCreateData } = createData
+    try {
+      workspace = await db.workspace.create({ data: legacyCreateData })
+    } catch {
+      // Last-ditch: maybe billing columns exist but install columns
+      // don't (older migration state). Try again with billing fields
+      // but no install fields.
+      workspace = await db.workspace.create({
+        data: {
+          ...legacyCreateData,
+          plan: 'trial',
+          trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      })
+    }
   }
 
   // Auto-provision the native CRM as the default. Without this, every new

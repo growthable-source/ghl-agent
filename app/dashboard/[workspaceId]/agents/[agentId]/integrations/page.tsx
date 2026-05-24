@@ -1,7 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import NewBadge from '@/components/NewBadge'
+import { LeadConnectorIcon, HubSpotIcon } from '@/components/icons/brand-icons'
 
 interface RegistryEntry {
   slug: string
@@ -42,6 +45,7 @@ interface Attachment {
 }
 
 type Tab = 'connected' | 'logs'
+type CrmProvider = 'native' | 'ghl' | 'hubspot'
 
 export default function AgentIntegrationsPage() {
   const params = useParams()
@@ -56,15 +60,59 @@ export default function AgentIntegrationsPage() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
 
+  // ─── Per-agent CRM picker state ──────────────────────────────────────
+  // currentCrm:    which CRM this agent is bound to (read from
+  //                agent.location.crmProvider, normalised — 'none' rows
+  //                render as 'native' for picker purposes).
+  // availableCrms: which providers the workspace has actually connected.
+  //                Unconnected options render disabled with a link back
+  //                to workspace Integrations.
+  // primaryCrm:    workspace.primaryCrmProvider — surfaces the "Workspace
+  //                default" pill so users understand which option new
+  //                agents inherit.
+  const [currentCrm, setCurrentCrm] = useState<CrmProvider | null>(null)
+  const [availableCrms, setAvailableCrms] = useState<Record<CrmProvider, boolean>>({ native: false, ghl: false, hubspot: false })
+  const [primaryCrm, setPrimaryCrm] = useState<CrmProvider>('native')
+  const [switchingCrm, setSwitchingCrm] = useState<CrmProvider | null>(null)
+  const [crmBanner, setCrmBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+
   const refresh = useCallback(async () => {
     try {
-      const [serversRes, attRes] = await Promise.all([
+      const [serversRes, attRes, agentRes, wsIntRes] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/mcp-servers`).then(r => r.json()),
         fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/mcp-tools`).then(r => r.json()),
+        fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`).then(r => r.json()),
+        fetch(`/api/workspaces/${workspaceId}/integrations`).then(r => r.json()),
       ])
       setServers(serversRes.servers || [])
       setRegistry(serversRes.registry || [])
       setAttachments(attRes.attachments || [])
+
+      // Normalise the agent's current CRM. Location.crmProvider can be
+      // 'none' (placeholder rows for agents created before any CRM was
+      // connected) — those render as 'native' for picker purposes since
+      // 'none' isn't a user-facing choice.
+      const locProvider = agentRes?.agent?.location?.crmProvider as string | undefined
+      const normalised: CrmProvider = locProvider === 'ghl' || locProvider === 'hubspot' || locProvider === 'native'
+        ? locProvider
+        : 'native'
+      setCurrentCrm(normalised)
+
+      // The integrations GET adds availableCrms + primaryCrmProvider on
+      // the new schema. Older deploys (un-migrated DB) won't have these
+      // — fall back to "everything available, primary=native".
+      if (wsIntRes?.availableCrms) {
+        setAvailableCrms({
+          native: !!wsIntRes.availableCrms.native,
+          ghl: !!wsIntRes.availableCrms.ghl,
+          hubspot: !!wsIntRes.availableCrms.hubspot,
+        })
+      }
+      if (wsIntRes?.primaryCrmProvider) {
+        const p = wsIntRes.primaryCrmProvider as string
+        if (p === 'native' || p === 'ghl' || p === 'hubspot') setPrimaryCrm(p)
+      }
+
       if (serversRes.notMigrated || attRes.notMigrated) {
         setPageError('MCP connectors need a database migration — run prisma/migrations-legacy/manual_mcp_connectors.sql in Supabase.')
       } else if (serversRes.error || attRes.error) {
@@ -76,6 +124,30 @@ export default function AgentIntegrationsPage() {
       setPageError(err?.message || 'Could not load integrations')
     } finally { setLoading(false) }
   }, [workspaceId, agentId])
+
+  async function switchAgentCrm(provider: CrmProvider) {
+    if (provider === currentCrm) return
+    setSwitchingCrm(provider)
+    setCrmBanner(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crmProvider: provider }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      setCurrentCrm(provider)
+      const labels: Record<CrmProvider, string> = { native: 'Native CRM', ghl: 'LeadConnector', hubspot: 'HubSpot' }
+      setCrmBanner({ kind: 'success', text: `This agent now uses ${labels[provider]} for contacts, deals, and messaging.` })
+    } catch (err: any) {
+      setCrmBanner({ kind: 'error', text: err.message || 'Could not switch CRM' })
+    } finally {
+      setSwitchingCrm(null)
+    }
+  }
 
   useEffect(() => { refresh() }, [refresh])
 
@@ -108,6 +180,115 @@ export default function AgentIntegrationsPage() {
           {pageError}
         </div>
       )}
+
+      {/* ─── Per-agent CRM picker ─────────────────────────────────────
+          Each agent in a workspace can target a different CRM. The
+          schema's always supported this (Agent.locationId → Location.
+          crmProvider) but until now the UI never surfaced it, so users
+          assumed one CRM per workspace. The cards mirror the visual
+          language of the workspace Integrations page. */}
+      <div
+        className="mb-6 rounded-xl border p-5"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+            CRM <NewBadge since="2026-05-25" className="ml-1" />
+          </p>
+          <Link
+            href={`/dashboard/${workspaceId}/integrations`}
+            className="text-xs hover:underline"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            Manage at workspace →
+          </Link>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
+          Which CRM this agent reads from and writes to. Different agents in the same workspace can target different CRMs.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {([
+            { value: 'native', label: 'Native CRM', sub: 'Built-in contacts + lists', Icon: null as null | typeof LeadConnectorIcon },
+            { value: 'ghl', label: 'LeadConnector', sub: 'GoHighLevel CRM', Icon: LeadConnectorIcon },
+            { value: 'hubspot', label: 'HubSpot', sub: 'HubSpot CRM', Icon: HubSpotIcon },
+          ] as const).map(opt => {
+            const isAvailable = availableCrms[opt.value]
+            const isActive = currentCrm === opt.value
+            const isPrimary = primaryCrm === opt.value
+            const isSwitching = switchingCrm === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => isAvailable && switchAgentCrm(opt.value)}
+                disabled={!isAvailable || isSwitching || isActive}
+                title={!isAvailable ? 'Connect this CRM from workspace Integrations first' : undefined}
+                className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors ${
+                  isAvailable ? 'hover:border-zinc-500' : 'opacity-50 cursor-not-allowed'
+                } disabled:cursor-not-allowed`}
+                style={
+                  isActive
+                    ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
+                    : { borderColor: 'var(--border)', background: 'var(--surface)' }
+                }
+              >
+                <div className="flex items-center gap-2 w-full">
+                  {opt.Icon ? (
+                    <opt.Icon className="w-5 h-5" />
+                  ) : (
+                    <div
+                      className="w-5 h-5 rounded flex items-center justify-center text-xs"
+                      style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
+                    >
+                      📇
+                    </div>
+                  )}
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.label}</span>
+                  {isActive && (
+                    <span
+                      className="ml-auto text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+                    >
+                      Active
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{opt.sub}</span>
+                <div className="flex gap-1 mt-1">
+                  {isPrimary && (
+                    <span
+                      className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}
+                    >
+                      Workspace default
+                    </span>
+                  )}
+                  {!isAvailable && (
+                    <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                      Not connected
+                    </span>
+                  )}
+                  {isSwitching && (
+                    <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                      Switching…
+                    </span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {crmBanner && (
+          <p
+            className={`text-xs mt-3 ${crmBanner.kind === 'success' ? '' : ''}`}
+            style={{ color: crmBanner.kind === 'success' ? 'var(--accent-emerald)' : 'var(--accent-red)' }}
+          >
+            {crmBanner.text}
+          </p>
+        )}
+      </div>
 
       <div className="flex gap-1 mb-6" style={{ borderBottom: '1px solid var(--border)' }}>
         <button

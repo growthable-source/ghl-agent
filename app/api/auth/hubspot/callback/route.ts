@@ -65,5 +65,17 @@ export async function GET(req: NextRequest) {
     },
   })
 
+  // First non-native CRM on this workspace? Promote it to primary so the
+  // integrations page reorders + new agents default to it. Don't clobber
+  // an existing 'ghl' primary — same reasoning as the GHL callback.
+  try {
+    await db.workspace.updateMany({
+      where: { id: workspaceId, primaryCrmProvider: 'native' },
+      data: { primaryCrmProvider: 'hubspot' },
+    })
+  } catch (err: any) {
+    console.warn('[HubSpot OAuth] primaryCrmProvider auto-update skipped:', err?.message)
+  }
+
   return NextResponse.redirect(new URL(`/dashboard/${workspaceId}/integrations`, req.url))
 }

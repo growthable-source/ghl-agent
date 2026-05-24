@@ -68,6 +68,19 @@ export default function IntegrationsPage() {
   const [ghlConnected, setGhlConnected] = useState(false)
   const [vapiActive, setVapiActive] = useState(false)
   const [crmProvider, setCrmProvider] = useState<string>('ghl')
+  // primaryCrmProvider drives the ordering + "Recommended for your setup"
+  // copy on this page. Defaults to 'native' if the schema hasn't been
+  // migrated yet (the GET endpoint falls back to 'native' in that case).
+  // installSource lets us tailor the copy further ("Recommended — you
+  // installed from the GHL marketplace") on a fresh marketplace install.
+  const [primaryCrm, setPrimaryCrm] = useState<string>('native')
+  const [installSource, setInstallSource] = useState<string | null>(null)
+  // Show alternative CRMs (the two that aren't the workspace primary)
+  // only when the user opts in. Default is "primary first, others tucked
+  // behind one click" — that's the marketplace-aware UX: someone who
+  // installed via the GHL marketplace shouldn't see Native + HubSpot
+  // unsolicited.
+  const [showAllCrms, setShowAllCrms] = useState(false)
   const [switchingCrm, setSwitchingCrm] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -183,18 +196,22 @@ export default function IntegrationsPage() {
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/integrations`)
       .then(r => r.json())
-      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm, shopify }: {
+      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm, shopify, primaryCrmProvider, installSource: src }: {
         integrations: Integration[]
         ghlConnected: boolean
         vapiActive: boolean
         crmProvider: string
         shopify: { shop: string; scope: string; installedAt: string } | null
+        primaryCrmProvider?: string
+        installSource?: string | null
       }) => {
         setIntegrations(ints || [])
         setGhlConnected(ghl)
         setVapiActive(vapi)
         setCrmProvider(crm || 'ghl')
         setShopifyConnection(shopify ?? null)
+        if (primaryCrmProvider) setPrimaryCrm(primaryCrmProvider)
+        setInstallSource(src ?? null)
       })
       .finally(() => setLoading(false))
 
@@ -657,10 +674,24 @@ export default function IntegrationsPage() {
 
       <div className="space-y-3">
 
-        {/* Native CRM — the built-in option. Always visible so workspaces
-            without GHL connected can flip to it without curling an
-            endpoint. Provision is idempotent so re-clicking is safe. */}
+        {/* ─── CRM cards ─────────────────────────────────────────────────
+            Primary CRM card always renders; the two alternatives sit
+            behind a "Use a different CRM" toggle (showAllCrms). Drives
+            the "no neutral menu of options" UX for marketplace installs
+            — someone arriving from the GHL marketplace shouldn't see
+            Native + HubSpot unsolicited. */}
+
+        {/* Native CRM — built-in. Shown when primary, or after the user
+            explicitly opens the alternatives panel. */}
+        {(primaryCrm === 'native' || showAllCrms) && (
         <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          {primaryCrm === 'native' && (
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
+              {installSource === 'direct' || installSource === null
+                ? 'Recommended for your setup'
+                : 'Workspace default'}
+            </p>
+          )}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div
@@ -706,9 +737,19 @@ export default function IntegrationsPage() {
             </div>
           )}
         </div>
+        )}
 
-        {/* GHL */}
+        {/* LeadConnector (GHL) — primary when installSource is GHL
+            marketplace or the workspace has connected it explicitly. */}
+        {(primaryCrm === 'ghl' || showAllCrms) && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+          {primaryCrm === 'ghl' && (
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
+              {installSource === 'ghl_marketplace'
+                ? 'Recommended — you installed from the GHL marketplace'
+                : 'Recommended for your setup'}
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><LeadConnectorIcon className="w-8 h-8" /></div>
@@ -755,6 +796,73 @@ export default function IntegrationsPage() {
             </p>
           )}
         </div>
+        )}
+
+        {/* HubSpot — only rendered here when primary or after the user
+            expands "Use a different CRM". Previously lived further down
+            the page; consolidated up here so all CRM choices live in one
+            block at the top of the integrations list. */}
+        {(primaryCrm === 'hubspot' || showAllCrms) && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+          {primaryCrm === 'hubspot' && (
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
+              {installSource === 'hubspot_marketplace'
+                ? 'Recommended — you installed from HubSpot'
+                : 'Recommended for your setup'}
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#FF7A59]"><HubSpotIcon className="w-7 h-7" /></div>
+              <div>
+                <p className="text-sm font-medium text-zinc-200">HubSpot</p>
+                <p className="text-xs text-zinc-500">CRM contacts, deals, timeline events</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {hubspotIntegrations.length > 0 && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
+              )}
+              {hubspotIntegrations.length > 0 && crmProvider !== 'hubspot' && (
+                <button
+                  onClick={() => switchCrmProvider('hubspot')}
+                  disabled={switchingCrm}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-50"
+                >
+                  Use as primary
+                </button>
+              )}
+              <a
+                href={`/api/auth/hubspot?workspaceId=${workspaceId}`}
+                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors"
+              >
+                {hubspotIntegrations.length > 0 ? 'Reconnect' : 'Connect'}
+              </a>
+            </div>
+          </div>
+          {hubspotIntegrations.length > 0 && crmProvider === 'hubspot' && (
+            <p className="text-xs text-emerald-500/70 mt-3">
+              HubSpot is your primary CRM — agents use it for contacts, deals, and messaging.
+            </p>
+          )}
+        </div>
+        )}
+
+        {/* "Use a different CRM" toggle — only shown when there are
+            actually alternatives to reveal (i.e. showAllCrms is false).
+            One click reveals the two non-primary CRM cards. We don't
+            give a way to re-collapse: once the user has seen the
+            alternatives, hiding them again would feel patronising. */}
+        {!showAllCrms && (
+          <button
+            type="button"
+            onClick={() => setShowAllCrms(true)}
+            className="w-full text-xs py-2 rounded-lg border border-dashed transition-colors hover:opacity-80"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}
+          >
+            Use a different CRM →
+          </button>
+        )}
 
         {/* Shopify */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
@@ -1033,44 +1141,6 @@ export default function IntegrationsPage() {
           {!ghlConnected && hubspotIntegrations.length === 0 && metaIntegrations.length === 0 && (
             <p className="text-xs text-zinc-500 mt-3">
               Connect Meta directly to handle Messenger and Instagram DMs without setting up a CRM. Each Page you authorize becomes its own integration; route different Pages to different agents from the routing rules tab.
-            </p>
-          )}
-        </div>
-
-        {/* HubSpot */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#FF7A59]"><HubSpotIcon className="w-7 h-7" /></div>
-              <div>
-                <p className="text-sm font-medium text-zinc-200">HubSpot</p>
-                <p className="text-xs text-zinc-500">CRM contacts, deals, timeline events</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {hubspotIntegrations.length > 0 && (
-                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
-              )}
-              {hubspotIntegrations.length > 0 && crmProvider !== 'hubspot' && (
-                <button
-                  onClick={() => switchCrmProvider('hubspot')}
-                  disabled={switchingCrm}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-50"
-                >
-                  Use as primary
-                </button>
-              )}
-              <a
-                href={`/api/auth/hubspot?workspaceId=${workspaceId}`}
-                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors"
-              >
-                {hubspotIntegrations.length > 0 ? 'Reconnect' : 'Connect'}
-              </a>
-            </div>
-          </div>
-          {hubspotIntegrations.length > 0 && crmProvider === 'hubspot' && (
-            <p className="text-xs text-emerald-500/70 mt-3">
-              HubSpot is your primary CRM — agents use it for contacts, deals, and messaging.
             </p>
           )}
         </div>

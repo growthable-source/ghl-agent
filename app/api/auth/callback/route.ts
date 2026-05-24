@@ -127,7 +127,22 @@ export async function GET(req: NextRequest) {
 
     if (stateWorkspaceId) {
       await cascadeAgentsToWorkspace(stateWorkspaceId)
-      // Came from the integrations connect flow — go back to integrations
+      // Reconnect path. If this workspace was sitting on 'native' as its
+      // primary CRM, flip it to 'ghl' now — connecting your first paid CRM
+      // is the moment the integrations page should reorder around. If the
+      // workspace already has a non-native primary set (e.g. 'hubspot'),
+      // leave it alone; users running HubSpot as primary occasionally
+      // reconnect GHL for one-off syncs and we shouldn't clobber that.
+      try {
+        await db.workspace.updateMany({
+          where: { id: stateWorkspaceId, primaryCrmProvider: 'native' },
+          data: { primaryCrmProvider: 'ghl' },
+        })
+      } catch (err: any) {
+        // primaryCrmProvider column may not exist yet on un-migrated DBs.
+        // Reconnect is more important than the auto-flip — log and move on.
+        console.warn('[OAuth] primaryCrmProvider auto-update skipped:', err?.message)
+      }
       return NextResponse.redirect(
         new URL(`/dashboard/${stateWorkspaceId}/integrations?success=crm_connected`, req.url)
       )
@@ -142,15 +157,35 @@ export async function GET(req: NextRequest) {
     if (existingLocation?.workspaceId) {
       workspaceId = existingLocation.workspaceId
     } else {
-      // Create a new workspace for this GHL install
+      // Marketplace install branch: no stateWorkspaceId, no prior Location
+      // → user arrived from the GHL marketplace listing. Stamp the new
+      // workspace with installSource so the integrations page surfaces
+      // LeadConnector as the recommended option and tucks the others away.
       const slug = `ws-${storeKey.slice(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '')}-${Math.random().toString(36).slice(2, 8)}`
-      const workspace = await db.workspace.create({
-        data: {
-          name: `Workspace`,
-          slug,
-          locations: { connect: { id: storeKey } },
-        },
-      })
+      let workspace
+      try {
+        workspace = await db.workspace.create({
+          data: {
+            name: `Workspace`,
+            slug,
+            installSource: 'ghl_marketplace',
+            primaryCrmProvider: 'ghl',
+            locations: { connect: { id: storeKey } },
+          },
+        })
+      } catch (err: any) {
+        // Fallback for un-migrated DBs missing the new columns. The
+        // install still completes; the workspace just won't have the
+        // marketplace attribution recorded.
+        console.warn('[OAuth] Workspace create without install fields:', err?.message)
+        workspace = await db.workspace.create({
+          data: {
+            name: `Workspace`,
+            slug,
+            locations: { connect: { id: storeKey } },
+          },
+        })
+      }
       workspaceId = workspace.id
     }
 

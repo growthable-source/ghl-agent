@@ -111,6 +111,20 @@ model Workspace {
   stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
 
+  // ─── Install provenance + primary CRM ───
+  // installSource records where this workspace was created from — set
+  // once at signup, never rewritten. Drives onboarding copy, marketplace
+  // attribution, and the integrations page's "Recommended for your setup"
+  // subtitle. Values: 'direct' | 'ghl_marketplace' | 'shopify_app' |
+  // 'hubspot_marketplace'. NULL on legacy workspaces created before this
+  // column existed — the UI treats NULL the same as 'direct'.
+  installSource      String?
+  // primaryCrmProvider drives sort order on the integrations page and the
+  // default for new agents. Mutable: when a workspace on 'native' connects
+  // its first paid CRM, this flips automatically; further CRMs require an
+  // explicit "Use as primary" click (matches the existing HubSpot button).
+  primaryCrmProvider String  @default("native")
+
   // ─── Emergency Pause ───
   isPaused Boolean   @default(false)
   pausedAt DateTime?

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { canCreateAgent, isTrialExpired, getPlanFeatures, recommendPlanForLimit, PLAN_FEATURES } from '@/lib/plans'
 import { isInternalWorkspace } from '@/lib/internal-workspace'
+import { resolveLocationForProvider, type RequestedProvider } from '@/lib/crm/resolve-location'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -150,68 +151,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   }
 
   try {
-    // Resolve the locationId the new agent FKs to. Three cases:
-    //   1. Workspace has a real GHL Location (OAuth installed) → use it
-    //   2. Workspace has a placeholder Location from a previous no-CRM
-    //      agent create → reuse it
-    //   3. No Location at all → create a placeholder. Placeholders exist
-    //      purely as FK targets; they're flagged crmProvider='none' so the
-    //      CRM factory routes them to a no-op adapter.
-    // Previously this fell back to `locationId: workspaceId`, which
-    // violated the Location FK because workspaceId isn't a Location.id —
-    // that's the bug new users hit the first time they tried to create
-    // an agent before connecting GHL.
-    // Respect the wizard's CRM pick. body.crmProvider is one of:
-    //   'native' → bind the agent to the native:<wsId> Location
-    //   'ghl'    → bind to the most-recent GHL install
-    //   undefined or 'none' → fall through to the legacy "most recent
-    //   install wins" path, which preserves existing behaviour for
-    //   callers that don't pass a provider.
-    let location: { id: string } | null = null
-    const requestedProvider: string | undefined = body.crmProvider
-    if (requestedProvider === 'native') {
-      location = await db.location.findFirst({
-        where: { id: `native:${workspaceId}` },
-        select: { id: true },
-      })
-    } else if (requestedProvider === 'ghl') {
-      location = await db.location.findFirst({
-        where: { workspaceId, NOT: { id: { startsWith: 'native:' } } },
-        select: { id: true },
-        orderBy: { installedAt: 'desc' },
-      })
-    }
+    // Resolve the new agent's locationId. body.crmProvider is the
+    // wizard's CRM pick ('native' | 'ghl' | 'hubspot'); when missing we
+    // fall through to the workspace's most-recent install. Lazy
+    // placeholder creation when the workspace has no Location at all is
+    // handled inside the helper so PATCH (strict mode) can share the
+    // lookup without inheriting that behaviour.
+    const requestedProvider = body.crmProvider as RequestedProvider
+    const location = await resolveLocationForProvider({
+      workspaceId,
+      requestedProvider,
+      strict: false,
+    })
     if (!location) {
-      location = await db.location.findFirst({
-        where: { workspaceId },
-        select: { id: true },
-        // Prefer the most-recent install (real GHL location wins over any old placeholder)
-        orderBy: { installedAt: 'desc' },
-      })
-    }
-    if (!location) {
-      const placeholderId = `placeholder:${workspaceId}`
-      location = await db.location.upsert({
-        where: { id: placeholderId },
-        create: {
-          id: placeholderId,
-          workspaceId,
-          // OAuth fields are non-null in the schema but meaningless for a
-          // placeholder — empty strings satisfy the constraint without
-          // claiming any real credentials.
-          companyId: '',
-          userId: '',
-          userType: '',
-          scope: '',
-          accessToken: '',
-          refreshToken: '',
-          refreshTokenId: '',
-          expiresAt: new Date(0),
-          crmProvider: 'none',
-        },
-        update: {},
-        select: { id: true },
-      })
+      // resolveLocationForProvider only returns null in strict mode; this
+      // is defensive in case the helper signature drifts.
+      return NextResponse.json({ error: 'Could not resolve a Location for this agent' }, { status: 500 })
     }
 
     // agentType is 'SIMPLE' by default (schema default). ADVANCED agents

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { isMissingColumn } from '@/lib/migration-error'
+import { resolveLocationForProvider, type RequestedProvider } from '@/lib/crm/resolve-location'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -13,6 +14,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     where: { id: agentId },
     include: {
       routingRules: { orderBy: { priority: 'asc' } },
+      // Expose the Location's crmProvider on the agent payload so the
+      // per-agent CRM picker can show the current selection without a
+      // second round-trip. The id prefix ('native:', 'placeholder:') is
+      // load-bearing for the factory but the UI just needs the provider.
+      location: { select: { id: true, crmProvider: true } },
     },
   })
   if (!agent) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -31,8 +37,44 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
   const body = await req.json()
+
+  // ─── CRM switch ────────────────────────────────────────────────────
+  // body.crmProvider lets the per-agent CRM picker rebind this agent to
+  // a different Location. Strict mode: we refuse to lazily create a
+  // placeholder here, because the user explicitly picked a provider and
+  // a silent fallback to a no-op adapter would surprise them. They need
+  // to go connect the CRM at the workspace level first.
+  let resolvedLocationId: string | null = null
+  if (body.crmProvider !== undefined) {
+    const requestedProvider = body.crmProvider as RequestedProvider
+    const valid: RequestedProvider[] = ['native', 'ghl', 'hubspot']
+    if (!valid.includes(requestedProvider)) {
+      return NextResponse.json(
+        { error: `Invalid crmProvider: ${body.crmProvider}` },
+        { status: 400 },
+      )
+    }
+    const loc = await resolveLocationForProvider({
+      workspaceId,
+      requestedProvider,
+      strict: true,
+    })
+    if (!loc) {
+      return NextResponse.json(
+        {
+          error: `No ${requestedProvider} CRM is connected to this workspace. Connect it from Integrations first.`,
+          code: 'CRM_NOT_CONNECTED',
+          requestedProvider,
+        },
+        { status: 400 },
+      )
+    }
+    resolvedLocationId = loc.id
+  }
+
   const judgeKeys = ['judgeEnabled', 'judgeModel', 'judgeAutoSend', 'judgeAutoBlock', 'judgeInstructions']
   const buildData = (includeJudge: boolean): Record<string, unknown> => ({
+      ...(resolvedLocationId !== null && { locationId: resolvedLocationId }),
       ...(body.name !== undefined && { name: body.name }),
       ...(body.systemPrompt !== undefined && { systemPrompt: body.systemPrompt }),
       ...(body.instructions !== undefined && { instructions: body.instructions }),

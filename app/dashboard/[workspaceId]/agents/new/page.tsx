@@ -235,10 +235,18 @@ export default function NewAgentWizard() {
       .then(d => {
         setGhlConnected(!!d.ghlConnected)
         setCurrentCrm(d.crmProvider ?? null)
-        // If the workspace is already on native, pre-select the native
-        // option even on a returning visit so the Continue button is
-        // immediately enabled.
-        if (d.crmProvider === 'native') setSelectedCrm('native')
+        // Initial selection priority:
+        //   1. workspace.primaryCrmProvider when the matching CRM is
+        //      actually connected (avoids defaulting to 'ghl' before
+        //      OAuth completes on a fresh marketplace install).
+        //   2. Legacy fallback on d.crmProvider when primary isn't set
+        //      (un-migrated DBs).
+        const primary: string | undefined = d.primaryCrmProvider
+        const available = d.availableCrms ?? {}
+        if (primary === 'native' && available.native !== false) setSelectedCrm('native')
+        else if (primary === 'ghl' && (available.ghl || d.ghlConnected)) setSelectedCrm('ghl')
+        else if (primary === 'hubspot' && available.hubspot) setSelectedCrm('hubspot')
+        else if (d.crmProvider === 'native') setSelectedCrm('native')
         else if (d.crmProvider === 'ghl' && d.ghlConnected) setSelectedCrm('ghl')
       })
       .catch(() => setGhlConnected(false))
