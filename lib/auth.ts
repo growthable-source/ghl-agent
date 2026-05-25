@@ -90,6 +90,73 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   callbacks: {
+    /**
+     * Belt-and-suspenders auto-link for OAuth sign-ins.
+     *
+     * `allowDangerousEmailAccountLinking: true` is set per-provider
+     * above and is *supposed* to link an OAuth provider to an existing
+     * User-by-email automatically. It works when NextAuth itself
+     * created the User during a prior sign-in. It does NOT reliably
+     * work when the User was created outside the adapter's flow —
+     * which happens in our iframe handshake at
+     * /api/auth/leadconnector-iframe-handshake, where we mint a User
+     * row directly for someone arriving from the LeadConnector iframe.
+     *
+     * Without this callback, the second time that user tries to sign
+     * in via Google (or GitHub) the OAuth callback throws
+     * `OAuthAccountNotLinked` and the user is locked out of the app.
+     * Here we detect "User exists by email, no matching Account for
+     * this provider" and create the Account row ourselves, then let
+     * NextAuth continue. Idempotent — concurrent sign-ins racing on
+     * the same email hit the Account table's composite unique and the
+     * second one no-ops via the try/catch.
+     */
+    async signIn({ user, account }) {
+      // Email/credentials providers (and the catch-all) skip this.
+      if (!account || account.type !== 'oauth' || !user.email) return true
+
+      const existing = await db.user.findUnique({
+        where: { email: user.email },
+        include: {
+          accounts: {
+            where: { provider: account.provider, providerAccountId: account.providerAccountId },
+            select: { id: true },
+          },
+        },
+      })
+      if (!existing) return true                  // Fresh signup — normal flow creates User + Account.
+      if (existing.accounts.length > 0) return true // Already linked.
+
+      try {
+        await db.account.create({
+          data: {
+            userId: existing.id,
+            type: account.type,
+            provider: account.provider,
+            providerAccountId: account.providerAccountId,
+            refresh_token: account.refresh_token,
+            access_token: account.access_token,
+            expires_at: account.expires_at,
+            token_type: account.token_type,
+            scope: account.scope,
+            id_token: account.id_token,
+            session_state: account.session_state as string | null,
+          },
+        })
+        // Stamp emailVerified if it was somehow null — NextAuth gates
+        // linking on this and the iframe handshake should already set
+        // it, but this is the safe place to enforce it.
+        if (!existing.emailVerified) {
+          await db.user.update({ where: { id: existing.id }, data: { emailVerified: new Date() } })
+        }
+      } catch (err: any) {
+        // Concurrent sign-in or partial link — NextAuth will pick up
+        // the existing Account on its next pass. Don't fail the
+        // sign-in over a race.
+        console.warn('[Auth] Account auto-link race:', err?.message)
+      }
+      return true
+    },
     session({ session, user }) {
       if (session.user) {
         session.user.id = user.id
