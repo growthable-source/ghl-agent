@@ -52,6 +52,10 @@ const ROLES = [
 ]
 
 const STEP_LABELS = ['Workspace', 'Profile', 'Channels', 'Team', 'Get Started']
+// When the user already has a workspace (marketplace OAuth created
+// one before they ever saw a screen), the workspace-naming step is
+// pointless — that step is dropped and the indicator collapses to 4.
+const STEP_LABELS_WORKSPACE_EXISTS = ['Profile', 'Channels', 'Team', 'Get Started']
 
 type CrmChoice = 'ghl' | 'none' | 'other' | null
 
@@ -102,11 +106,31 @@ function randomIcon() {
 interface Props {
   userEmail?: string
   userName?: string
+  // Set when the user already belongs to a workspace by the time
+  // onboarding runs — happens on marketplace installs where the OAuth
+  // callback provisioned a workspace before the modal ever rendered.
+  // We skip the workspace-creation step and use this id instead.
+  existingWorkspaceId?: string
+  // 'ghl_marketplace' | 'shopify_app' | 'hubspot_marketplace' | 'direct' | null
+  // Drives the post-onboarding landing: marketplace installs go
+  // straight to the agent wizard (CRM is implicit, no point asking).
+  existingInstallSource?: string
 }
 
-export default function UserOnboardingModal({ userEmail, userName }: Props) {
+export default function UserOnboardingModal({
+  userEmail,
+  userName,
+  existingWorkspaceId,
+  existingInstallSource,
+}: Props) {
   const router = useRouter()
-  const [step, setStep] = useState(0)
+  // Skip step 0 (workspace name + icon) when we already have a
+  // workspace. Internal `step` still uses the legacy 0-4 numbering so
+  // the existing JSX branches below don't have to be rewritten — we
+  // just start at step 1 and the progress indicator hides the
+  // workspace dot via the alt label array.
+  const skipWorkspaceStep = !!existingWorkspaceId
+  const [step, setStep] = useState(skipWorkspaceStep ? 1 : 0)
   const [saving, setSaving] = useState(false)
   const [showBooking, setShowBooking] = useState(false)
 
@@ -172,25 +196,36 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
   }
 
   async function completeOnboarding() {
-    if (!workspaceName.trim()) return
+    // Workspace name is only validated when we're actually going to
+    // create one — marketplace installs skip step 0 entirely.
+    if (!skipWorkspaceStep && !workspaceName.trim()) return
     setSaving(true)
     try {
-      // 1. Create the workspace
-      const wsRes = await fetch('/api/workspaces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: workspaceName.trim(),
-          icon: workspaceIcon,
-          domain: emailDomain,
-        }),
-      })
-      const wsData = await wsRes.json()
-      if (!wsRes.ok) throw new Error(wsData.error || 'Failed to create workspace')
+      // 1. Resolve the workspace id. If onboarding ran inside a
+      //    marketplace install, the OAuth callback already created a
+      //    workspace and we received its id as a prop — don't create
+      //    another one. Otherwise create one from the form.
+      let workspaceId: string
+      if (existingWorkspaceId) {
+        workspaceId = existingWorkspaceId
+      } else {
+        const wsRes = await fetch('/api/workspaces', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: workspaceName.trim(),
+            icon: workspaceIcon,
+            domain: emailDomain,
+          }),
+        })
+        const wsData = await wsRes.json()
+        if (!wsRes.ok) throw new Error(wsData.error || 'Failed to create workspace')
+        workspaceId = wsData.workspaceId
+      }
 
       // 2. Send invites if any
       if (inviteEmails.length > 0) {
-        await fetch(`/api/workspaces/${wsData.workspaceId}/invites`, {
+        await fetch(`/api/workspaces/${workspaceId}/invites`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ emails: inviteEmails }),
@@ -204,19 +239,30 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
         body: JSON.stringify({ companyName, companySize, role }),
       })
 
-      // 4. Choose the post-onboarding landing based on what the user
-      //    just told us. CRM-first users go straight to integrations
-      //    (their next concrete task is connecting their CRM). No-CRM
-      //    users with channel preferences land on /channels so they
-      //    can wire up Meta OAuth. Everyone else falls back to the
-      //    new-agent wizard, which was the legacy default.
-      const wantsCrm = crmChoice === 'ghl' || crmChoice === 'other'
-      const hasChannelSelection = channels.size > 0
-      const next = wantsCrm
-        ? `/dashboard/${wsData.workspaceId}/integrations`
-        : hasChannelSelection
-          ? `/dashboard/${wsData.workspaceId}/channels`
-          : `/dashboard/${wsData.workspaceId}/agents/new`
+      // 4. Choose the post-onboarding landing.
+      //    - Marketplace installs (LeadConnector / Shopify / HubSpot)
+      //      KNOW the CRM is already connected — the right next step
+      //      is the agent wizard. Don't bounce them through Integrations.
+      //    - Otherwise: CRM-first users go to integrations to connect
+      //      their CRM; no-CRM users with channels land on /channels;
+      //      everyone else gets the agent wizard.
+      const isMarketplaceInstall =
+        existingInstallSource === 'ghl_marketplace' ||
+        existingInstallSource === 'shopify_app' ||
+        existingInstallSource === 'hubspot_marketplace'
+
+      let next: string
+      if (isMarketplaceInstall) {
+        next = `/dashboard/${workspaceId}/agents/new`
+      } else {
+        const wantsCrm = crmChoice === 'ghl' || crmChoice === 'other'
+        const hasChannelSelection = channels.size > 0
+        next = wantsCrm
+          ? `/dashboard/${workspaceId}/integrations`
+          : hasChannelSelection
+            ? `/dashboard/${workspaceId}/channels`
+            : `/dashboard/${workspaceId}/agents/new`
+      }
       router.push(next)
       router.refresh()
     } catch (err) {
@@ -234,36 +280,45 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
           border: '1px solid var(--border, #121a2b)',
         }}
       >
-        {/* ─── Progress indicator ─── */}
+        {/* ─── Progress indicator ───
+            Two label sets: the 5-step default and a 4-step version
+            that drops "Workspace" when the workspace already exists.
+            The internal `step` variable stays on its 1-4 numbering
+            either way — we just translate to a 0-3 visual index when
+            rendering the indicator in the workspace-exists mode. */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          {STEP_LABELS.map((label, i) => (
-            <div key={label} className="flex items-center gap-2">
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors"
-                style={
-                  i < step
-                    ? { background: 'var(--accent-primary, #fa4d2e)', color: '#fff' }
-                    : i === step
-                    ? { background: 'var(--accent-primary-bg, rgba(250,77,46,0.15))', color: 'var(--accent-primary, #fa4d2e)', border: '1.5px solid var(--accent-primary, #fa4d2e)' }
-                    : { background: 'var(--surface-secondary, #0f1524)', color: 'var(--text-muted, #475569)' }
-                }
-              >
-                {i < step ? (
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
-                ) : (
-                  i + 1
+          {(() => {
+            const labels = skipWorkspaceStep ? STEP_LABELS_WORKSPACE_EXISTS : STEP_LABELS
+            const visualStep = skipWorkspaceStep ? step - 1 : step
+            return labels.map((label, i) => (
+              <div key={label} className="flex items-center gap-2">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors"
+                  style={
+                    i < visualStep
+                      ? { background: 'var(--accent-primary, #fa4d2e)', color: '#fff' }
+                      : i === visualStep
+                      ? { background: 'var(--accent-primary-bg, rgba(250,77,46,0.15))', color: 'var(--accent-primary, #fa4d2e)', border: '1.5px solid var(--accent-primary, #fa4d2e)' }
+                      : { background: 'var(--surface-secondary, #0f1524)', color: 'var(--text-muted, #475569)' }
+                  }
+                >
+                  {i < visualStep ? (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                  ) : (
+                    i + 1
+                  )}
+                </div>
+                {i < labels.length - 1 && (
+                  <div
+                    className="w-8 h-px"
+                    style={{ background: i < visualStep ? 'var(--accent-primary, #fa4d2e)' : 'var(--border, #121a2b)' }}
+                  />
                 )}
               </div>
-              {i < STEP_LABELS.length - 1 && (
-                <div
-                  className="w-8 h-px"
-                  style={{ background: i < step ? 'var(--accent-primary, #fa4d2e)' : 'var(--border, #121a2b)' }}
-                />
-              )}
-            </div>
-          ))}
+            ))
+          })()}
         </div>
 
         {/* ═══ Step 0 — Workspace ═══ */}
@@ -441,7 +496,13 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setStep(0)} className="btn-secondary flex-1 justify-center">Back</button>
+              {/* When the workspace step was skipped (marketplace
+                  install), there's nothing to go back TO from the
+                  profile step — render a single-width Continue
+                  instead of the split Back/Continue. */}
+              {!skipWorkspaceStep && (
+                <button onClick={() => setStep(0)} className="btn-secondary flex-1 justify-center">Back</button>
+              )}
               <button onClick={() => setStep(2)} className="btn-primary flex-1 justify-center">Continue</button>
             </div>
           </div>
@@ -502,48 +563,55 @@ export default function UserOnboardingModal({ userEmail, userName }: Props) {
               })}
             </div>
 
-            <div>
-              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Do you already use a CRM?
-              </label>
-              <div className="space-y-1.5">
-                {([
-                  { value: 'none' as const, title: 'No, I just want the inbox', helper: 'Recommended for most small businesses' },
-                  { value: 'ghl' as const,  title: 'Yes — LeadConnector' },
-                  { value: 'other' as const, title: "Yes — something else (we'll ask later)" },
-                ]).map(opt => {
-                  const selected = crmChoice === opt.value
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setCrmChoice(opt.value)}
-                      className="w-full text-left rounded-lg px-3 py-2.5 flex items-start gap-3 transition-colors"
-                      style={
-                        selected
-                          ? { background: 'var(--accent-primary-bg)', border: '1.5px solid var(--accent-primary)' }
-                          : { background: 'var(--surface-secondary)', border: '1px solid var(--border)' }
-                      }
-                    >
-                      <span
-                        className="mt-0.5 w-4 h-4 rounded-full shrink-0 flex items-center justify-center"
+            {/* The CRM question is moot when the user installed from a
+                marketplace — their CRM is already connected via the
+                OAuth callback. Skip the radio group entirely; the
+                completeOnboarding() branch for marketplace installs
+                doesn't read crmChoice anyway. */}
+            {!skipWorkspaceStep && (
+              <div>
+                <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  Do you already use a CRM?
+                </label>
+                <div className="space-y-1.5">
+                  {([
+                    { value: 'none' as const, title: 'No, I just want the inbox', helper: 'Recommended for most small businesses' },
+                    { value: 'ghl' as const,  title: 'Yes — LeadConnector' },
+                    { value: 'other' as const, title: "Yes — something else (we'll ask later)" },
+                  ]).map(opt => {
+                    const selected = crmChoice === opt.value
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setCrmChoice(opt.value)}
+                        className="w-full text-left rounded-lg px-3 py-2.5 flex items-start gap-3 transition-colors"
                         style={
                           selected
-                            ? { border: '4px solid var(--accent-primary)', background: 'var(--background)' }
-                            : { border: '1.5px solid var(--border-secondary)' }
+                            ? { background: 'var(--accent-primary-bg)', border: '1.5px solid var(--accent-primary)' }
+                            : { background: 'var(--surface-secondary)', border: '1px solid var(--border)' }
                         }
-                      />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.title}</p>
-                        {opt.helper && (
-                          <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{opt.helper}</p>
-                        )}
-                      </div>
-                    </button>
-                  )
-                })}
+                      >
+                        <span
+                          className="mt-0.5 w-4 h-4 rounded-full shrink-0 flex items-center justify-center"
+                          style={
+                            selected
+                              ? { border: '4px solid var(--accent-primary)', background: 'var(--background)' }
+                              : { border: '1.5px solid var(--border-secondary)' }
+                          }
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.title}</p>
+                          {opt.helper && (
+                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{opt.helper}</p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex gap-3">
               <button onClick={() => setStep(1)} className="btn-secondary flex-1 justify-center">Back</button>

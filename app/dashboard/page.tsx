@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
@@ -18,11 +19,40 @@ export default async function DashboardPage() {
       workspace: {
         include: {
           _count: { select: { agents: true, locations: true, members: true } },
+          // installSource lets us prefer the marketplace-installed
+          // workspace when redirecting iframe visitors. Try/catch is
+          // not needed here — Prisma generates the column accessor
+          // regardless of whether the DB has been migrated; un-migrated
+          // DBs just return null which is the same as "direct signup"
+          // for our purposes.
         },
       },
     },
     orderBy: { createdAt: 'desc' },
   })
+
+  // ─── Lock-to-one-workspace redirects ────────────────────────────────
+  // A user with a single workspace shouldn't see a one-card picker —
+  // send them straight in. Independently, when this page is loaded
+  // inside a CRM iframe (marketplace install Custom Menu Link), the
+  // workspace picker is the wrong destination regardless of count:
+  // they're locked to whichever Location the CRM is showing. Resolve
+  // by preferring a marketplace-installed workspace, falling back to
+  // the most-recent.
+  const hdrs = await headers()
+  const inIframe = hdrs.get('sec-fetch-dest') === 'iframe'
+
+  if (workspaceMembers.length === 1) {
+    redirect(`/dashboard/${workspaceMembers[0].workspaceId}`)
+  }
+
+  if (inIframe && workspaceMembers.length > 0) {
+    const marketplace = workspaceMembers.find(
+      m => (m.workspace as any).installSource === 'ghl_marketplace',
+    )
+    const target = marketplace?.workspaceId ?? workspaceMembers[0].workspaceId
+    redirect(`/dashboard/${target}`)
+  }
 
   // Determine the *effective* plan for this user — billing is account-
   // level (the user's best plan across all owned workspaces), not

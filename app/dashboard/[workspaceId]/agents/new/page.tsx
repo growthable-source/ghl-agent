@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -229,21 +229,33 @@ export default function NewAgentWizard() {
   // current CRM is native (so we can show "Active ✓" up front).
   const [ghlConnected, setGhlConnected] = useState<boolean | null>(null)
   const [currentCrm, setCurrentCrm] = useState<string | null>(null)
+  // installSource tells us whether this workspace came in via a
+  // marketplace install (LeadConnector / Shopify / HubSpot). When it
+  // did, the CRM step of the wizard is meaningless — their CRM is
+  // already chosen and connected. We drop the step entirely below.
+  const [installSource, setInstallSource] = useState<string | null>(null)
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/integrations`)
       .then(r => r.json())
       .then(d => {
         setGhlConnected(!!d.ghlConnected)
         setCurrentCrm(d.crmProvider ?? null)
+        setInstallSource(d.installSource ?? null)
         // Initial selection priority:
         //   1. workspace.primaryCrmProvider when the matching CRM is
         //      actually connected (avoids defaulting to 'ghl' before
         //      OAuth completes on a fresh marketplace install).
-        //   2. Legacy fallback on d.crmProvider when primary isn't set
-        //      (un-migrated DBs).
+        //   2. Marketplace installs: force 'ghl' if GHL is connected,
+        //      regardless of what primaryCrmProvider reads (covers
+        //      un-migrated DBs where primary returns its 'native'
+        //      default but the workspace actually came from the
+        //      LeadConnector marketplace).
+        //   3. Legacy fallback on d.crmProvider when primary isn't set.
         const primary: string | undefined = d.primaryCrmProvider
         const available = d.availableCrms ?? {}
-        if (primary === 'native' && available.native !== false) setSelectedCrm('native')
+        if (d.installSource === 'ghl_marketplace' && d.ghlConnected) {
+          setSelectedCrm('ghl')
+        } else if (primary === 'native' && available.native !== false) setSelectedCrm('native')
         else if (primary === 'ghl' && (available.ghl || d.ghlConnected)) setSelectedCrm('ghl')
         else if (primary === 'hubspot' && available.hubspot) setSelectedCrm('hubspot')
         else if (d.crmProvider === 'native') setSelectedCrm('native')
@@ -251,6 +263,18 @@ export default function NewAgentWizard() {
       })
       .catch(() => setGhlConnected(false))
   }, [workspaceId])
+
+  // Drop the 'crm' step from the wizard when the CRM choice has been
+  // implicitly made for the user — marketplace installs imply that
+  // CRM. ghlConnected as a gate so that a misconfigured install
+  // (workspace marked as marketplace but no GHL token yet) doesn't
+  // strand the user with no way to pick a CRM.
+  const skipCrmStep =
+    installSource === 'ghl_marketplace' && ghlConnected === true
+  const visibleSteps = useMemo(
+    () => STEPS.filter(s => s.key !== 'crm' || !skipCrmStep),
+    [skipCrmStep],
+  )
 
   // Build step
   const [name, setName] = useState('')
@@ -274,7 +298,17 @@ export default function NewAgentWizard() {
   // "Outbound Assistant Agent").
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
 
-  const currentIdx = STEPS.findIndex(s => s.key === step)
+  const currentIdx = visibleSteps.findIndex(s => s.key === step)
+
+  // If the wizard initialised on the 'crm' step (the legacy default
+  // before this branch loaded) but `skipCrmStep` evaluates true, advance
+  // past it as soon as the install-source data arrives. Otherwise the
+  // user gets stuck with currentIdx=-1 and no Continue button.
+  useEffect(() => {
+    if (skipCrmStep && step === 'crm') {
+      setStep('calendar')
+    }
+  }, [skipCrmStep, step])
 
   async function next() {
     // Leaving the CRM step: persist the selection at the workspace level
@@ -297,12 +331,12 @@ export default function NewAgentWizard() {
       }
     }
     const nextIdx = currentIdx + 1
-    if (nextIdx < STEPS.length) setStep(STEPS[nextIdx].key)
+    if (nextIdx < visibleSteps.length) setStep(visibleSteps[nextIdx].key)
   }
 
   function back() {
     const prevIdx = currentIdx - 1
-    if (prevIdx >= 0) setStep(STEPS[prevIdx].key)
+    if (prevIdx >= 0) setStep(visibleSteps[prevIdx].key)
   }
 
   function selectTemplate(t: AgentTemplate) {
@@ -392,7 +426,7 @@ export default function NewAgentWizard() {
       <div className="max-w-2xl mx-auto">
         {/* Progress bar */}
         <div className="flex items-center gap-1 mb-8">
-          {STEPS.map((s, i) => (
+          {visibleSteps.map((s, i) => (
             <div key={s.key} className="flex items-center flex-1">
               <div className="flex items-center gap-2 flex-1">
                 <div
@@ -414,7 +448,7 @@ export default function NewAgentWizard() {
                   }}
                 >{s.label}</span>
               </div>
-              {i < STEPS.length - 1 && (
+              {i < visibleSteps.length - 1 && (
                 <div
                   className="h-px flex-1 mx-2"
                   style={{

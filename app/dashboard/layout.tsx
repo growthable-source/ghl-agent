@@ -8,18 +8,46 @@ import { EmbeddedProvider } from '@/lib/embedded-context'
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
 
-  // Show onboarding if user hasn't completed it OR has no workspaces
+  // Onboarding modal logic — three signals we care about:
+  //   needsOnboarding         — user hasn't run through the onboarding
+  //                             modal yet, OR has no workspace at all.
+  //   existingWorkspaceId     — if the user ALREADY has a workspace
+  //                             (created by the marketplace OAuth
+  //                             callback before they ever saw a screen),
+  //                             skip the workspace-create step of
+  //                             onboarding and use the existing one.
+  //   existingInstallSource   — drives the post-onboarding redirect:
+  //                             marketplace installs jump straight to
+  //                             /agents/new because the CRM question
+  //                             is moot.
   let needsOnboarding = false
+  let existingWorkspaceId: string | null = null
+  let existingInstallSource: string | null = null
+
   if (session?.user) {
+    // Fetch the oldest workspace this user belongs to — for marketplace
+    // installs this is the one the OAuth callback created. Asking for
+    // it once here is cheaper than rehydrating later inside the modal.
+    const firstMembership = await db.workspaceMember.findFirst({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        workspaceId: true,
+        workspace: { select: { installSource: true } },
+      },
+    }).catch(() => null)
+
+    if (firstMembership) {
+      existingWorkspaceId = firstMembership.workspaceId
+      existingInstallSource = (firstMembership.workspace as any).installSource ?? null
+    }
+
     if (!session.user.onboardingCompletedAt) {
       needsOnboarding = true
-    } else {
-      // Check if user actually has workspaces — they may have completed onboarding
-      // before the workspace refactor, so they need to create one now
-      const memberCount = await db.workspaceMember.count({
-        where: { userId: session.user.id },
-      })
-      if (memberCount === 0) needsOnboarding = true
+    } else if (!existingWorkspaceId) {
+      // Completed onboarding before the workspace refactor — needs to
+      // make a new workspace now.
+      needsOnboarding = true
     }
   }
 
@@ -45,6 +73,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <UserOnboardingModal
           userEmail={session!.user.email ?? undefined}
           userName={session!.user.name ?? undefined}
+          existingWorkspaceId={existingWorkspaceId ?? undefined}
+          existingInstallSource={existingInstallSource ?? undefined}
         />
       )}
     </div>
