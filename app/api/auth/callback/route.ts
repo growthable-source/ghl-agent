@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { saveTokens } from '@/lib/token-store'
 import { db } from '@/lib/db'
+import { fetchInstallSnapshot } from '@/lib/leadconnector-install-fetcher'
 import type { OAuthTokenResponse } from '@/types'
 
 export async function GET(req: NextRequest) {
@@ -64,6 +65,21 @@ export async function GET(req: NextRequest) {
     await saveTokens(storeKey, tokenData)
 
     console.log(`[OAuth] Token saved for ${tokenData.userType}: ${storeKey}`)
+
+    // Pull location + company + user metadata while we have a fresh
+    // access token in hand. Used to (a) name the workspace from the
+    // sub-account name instead of the bare "Workspace" placeholder,
+    // and (b) snapshot the lead in MarketplaceInstall below. Failure
+    // is non-fatal — install completes even if every API returns 403.
+    const snapshot = await fetchInstallSnapshot({
+      accessToken: tokenData.access_token,
+      locationId: tokenData.locationId ?? null,
+      companyId: tokenData.companyId ?? null,
+      userId: tokenData.userId ?? null,
+    }).catch(err => {
+      console.warn('[OAuth] Install snapshot fetch failed:', err?.message)
+      return null
+    })
 
     // Check if a workspaceId was passed via the state param (from connect flow)
     const stateWorkspaceId = searchParams.get('state')
@@ -125,6 +141,47 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Persist the install snapshot. One row per install event (so a
+    // reconnect six months later shows up as a re-engagement signal in
+    // the admin registry), keyed on workspaceId. Schema fields that
+    // came back null stay null — the admin UI handles missing data.
+    async function writeMarketplaceInstall(targetWorkspaceId: string, source: string) {
+      if (!snapshot) return
+      try {
+        await db.marketplaceInstall.create({
+          data: {
+            workspaceId: targetWorkspaceId,
+            source,
+            externalLocationId: tokenData.locationId ?? null,
+            externalCompanyId: tokenData.companyId ?? null,
+            externalUserId: tokenData.userId ?? null,
+            locationName: snapshot.location?.name ?? null,
+            locationEmail: snapshot.location?.email ?? null,
+            locationPhone: snapshot.location?.phone ?? null,
+            locationWebsite: snapshot.location?.website ?? null,
+            locationAddress: snapshot.location?.address ?? null,
+            locationCity: snapshot.location?.city ?? null,
+            locationState: snapshot.location?.state ?? null,
+            locationCountry: snapshot.location?.country ?? null,
+            locationTimezone: snapshot.location?.timezone ?? null,
+            companyName: snapshot.company?.name ?? null,
+            companyEmail: snapshot.company?.email ?? null,
+            companyPhone: snapshot.company?.phone ?? null,
+            companyWebsite: snapshot.company?.website ?? null,
+            userName: snapshot.user?.name ?? null,
+            userEmail: snapshot.user?.email ?? null,
+            userPhone: snapshot.user?.phone ?? null,
+            userRole: snapshot.user?.role ?? null,
+            rawPayload: snapshot.raw as any,
+          },
+        })
+      } catch (err: any) {
+        // Non-fatal — MarketplaceInstall table may not exist yet on
+        // un-migrated DBs. The install itself completes.
+        console.warn('[OAuth] MarketplaceInstall write skipped:', err?.message)
+      }
+    }
+
     if (stateWorkspaceId) {
       await cascadeAgentsToWorkspace(stateWorkspaceId)
       // Reconnect path. If this workspace was sitting on 'native' as its
@@ -143,6 +200,10 @@ export async function GET(req: NextRequest) {
         // Reconnect is more important than the auto-flip — log and move on.
         console.warn('[OAuth] primaryCrmProvider auto-update skipped:', err?.message)
       }
+      // Reconnects still go through the registry — a customer who
+      // disconnects and comes back is a high-signal re-engagement event
+      // that's useful to see in the admin UI alongside first installs.
+      await writeMarketplaceInstall(stateWorkspaceId, 'ghl_marketplace')
       return NextResponse.redirect(
         new URL(`/dashboard/${stateWorkspaceId}/integrations?success=crm_connected`, req.url)
       )
@@ -162,12 +223,33 @@ export async function GET(req: NextRequest) {
       // workspace with installSource so the integrations page surfaces
       // LeadConnector as the recommended option and tucks the others away.
       const slug = `ws-${storeKey.slice(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '')}-${Math.random().toString(36).slice(2, 8)}`
+      // Prefer the sub-account name from GHL ("Acme Cleaning"), fall
+      // back to the agency company name, finally to the bare label.
+      // The user-facing breadcrumb + workspace switcher reads this
+      // name, so making it meaningful from install time forward saves
+      // a manual rename. Domain is harvested from the location/company
+      // website for same-domain invite gating.
+      const workspaceName =
+        snapshot?.location?.name ??
+        snapshot?.company?.name ??
+        'Workspace'
+      const workspaceDomain = (() => {
+        const raw = snapshot?.location?.website ?? snapshot?.company?.website ?? null
+        if (!raw) return null
+        try {
+          return new URL(raw.startsWith('http') ? raw : `https://${raw}`).hostname.replace(/^www\./, '')
+        } catch {
+          return null
+        }
+      })()
+
       let workspace
       try {
         workspace = await db.workspace.create({
           data: {
-            name: `Workspace`,
+            name: workspaceName,
             slug,
+            domain: workspaceDomain,
             installSource: 'ghl_marketplace',
             primaryCrmProvider: 'ghl',
             locations: { connect: { id: storeKey } },
@@ -180,8 +262,9 @@ export async function GET(req: NextRequest) {
         console.warn('[OAuth] Workspace create without install fields:', err?.message)
         workspace = await db.workspace.create({
           data: {
-            name: `Workspace`,
+            name: workspaceName,
             slug,
+            domain: workspaceDomain,
             locations: { connect: { id: storeKey } },
           },
         })
@@ -190,6 +273,7 @@ export async function GET(req: NextRequest) {
     }
 
     await cascadeAgentsToWorkspace(workspaceId)
+    await writeMarketplaceInstall(workspaceId, 'ghl_marketplace')
 
     // New installs go to onboarding, reinstalls go to dashboard
     const agentCount = await db.agent.count({ where: { workspaceId } })

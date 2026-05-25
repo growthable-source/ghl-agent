@@ -29,8 +29,12 @@ export async function GET(req: NextRequest) {
     //   locations/tags.write         → create new tags from the picker
     //   users.readonly               → fetch assigned-user details
     //                                  (powers {{user.*}} merge fields)
+    //   locations.readonly           → fetch the sub-account's name,
+    //                                  address, phone, email, website
+    //                                  at install time (lead snapshot
+    //                                  for the admin install registry)
     // We were missing the /events.* pair — bookings returned 401 silently.
-    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.readonly calendars.write calendars/events.readonly calendars/events.write locations/customFields.readonly locations/customFields.write locations/tags.readonly locations/tags.write users.readonly workflows.readonly',
+    scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.readonly calendars.write calendars/events.readonly calendars/events.write locations.readonly locations/customFields.readonly locations/customFields.write locations/tags.readonly locations/tags.write users.readonly workflows.readonly',
     state: workspaceId,
   })
 

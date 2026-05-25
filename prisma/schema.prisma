@@ -182,6 +182,13 @@ model Workspace {
   metaAdAccounts   MetaAdAccount[]
   googleAdAccounts GoogleAdAccount[]
   adCampaignDrafts AdCampaignDraft[]
+
+  // ─── Marketplace install registry ───
+  // One MarketplaceInstall row per (workspace, install event). For
+  // marketplace OAuth callbacks we snapshot the installing user +
+  // location + company at install time so the admin backend has
+  // a permanent lead record even if the user disconnects later.
+  marketplaceInstalls MarketplaceInstall[]
   utmTemplates     UtmTemplate[]
 
   // ─── Voxility commerce layer ───
@@ -206,6 +213,80 @@ model UsageRecord {
 
   @@index([workspaceId, billingPeriod])
   @@index([workspaceId, type, createdAt])
+}
+
+/// Snapshot of a marketplace install at the moment it happened.
+/// Powers the admin backend's lead-tracking view: "who installed this
+/// week, what agency are they part of, what's their email." Separate
+/// from operational state (Workspace/Location) so the lead record
+/// persists even if the customer later disconnects or the underlying
+/// Location row gets cleaned up.
+///
+/// One row per install event — a reinstall from the same user creates
+/// a new row, so we keep a history. Query by installedAt for "new this
+/// week" reports; query by source for "Shopify vs HighLevel mix".
+model MarketplaceInstall {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Source of the install. Mirrors Workspace.installSource but stored
+  // here too so a `SELECT * FROM MarketplaceInstall` is self-contained.
+  source      String // 'ghl_marketplace' | 'shopify_app' | 'hubspot_marketplace'
+  installedAt DateTime @default(now())
+
+  // Foreign identifiers from the marketplace side. Keeping them as
+  // strings (not FKs) because the Location row gets cleaned up on
+  // disconnect — the snapshot should survive that.
+  externalLocationId String?
+  externalCompanyId  String?
+  externalUserId     String?
+
+  // ─── Location snapshot ─── (GET /locations/{id})
+  locationName     String?
+  locationEmail    String?
+  locationPhone    String?
+  locationWebsite  String?
+  locationAddress  String?
+  locationCity     String?
+  locationState    String?
+  locationCountry  String?
+  locationTimezone String?
+
+  // ─── Company snapshot ─── (GET /companies/{id} — may 403 if our
+  // OAuth grant doesn't include companies.readonly; saved fields stay
+  // NULL in that case)
+  companyName    String?
+  companyEmail   String?
+  companyPhone   String?
+  companyWebsite String?
+
+  // ─── Installing user snapshot ─── (GET /users/{id})
+  userName  String?
+  userEmail String?
+  userPhone String?
+  userRole  String? // 'admin' | 'user' from GHL
+
+  // ─── Admin pipeline ───
+  // contactedAt:  the date our team first reached out (set from the
+  //               admin UI when an SDR works the lead).
+  // syncedToGhlAt: timestamp of the most recent successful push to
+  //               our own GHL CRM (the "Sync to my GHL CRM" button).
+  // notes:        free-text admin notes — kept here rather than on a
+  //               separate audit table because there's only one row
+  //               per install and we don't need versioning.
+  contactedAt   DateTime?
+  syncedToGhlAt DateTime?
+  notes         String?
+
+  // Raw response bodies, kept for forensic + future-proofing. If GHL
+  // adds a field we want to surface, we can backfill from rawPayload
+  // without re-calling the API on every old install.
+  rawPayload Json?
+
+  @@index([workspaceId])
+  @@index([installedAt])
+  @@index([source, installedAt])
 }
 
 model WorkspaceMember {
