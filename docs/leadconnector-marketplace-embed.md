@@ -98,12 +98,18 @@ The trust gate is the SSO handshake, not the parent origin:
 - A malicious parent can iframe us and post a fake `REQUEST_USER_DATA`
   response, but it can't fabricate a payload that decrypts under
   `LEADCONNECTOR_SSO_KEY`. The handshake fails and no session is minted.
-- The session cookie minted by the handshake is `SameSite=None; Secure`
-  so it travels in third-party iframes. **Open follow-up:** split this
-  into a separate `embed-session` cookie distinct from the regular
-  `__Secure-authjs.session-token`, so a passive Voxility session in
-  another tab can't be piggybacked by a malicious parent. Tracked
-  separately — current risk is acceptable while customer count is low.
+- Browser and iframe sessions use **separate cookies**:
+  - `__Secure-authjs.session-token` (`SameSite=Lax`) — set by normal
+    Voxility login flows, doesn't travel in third-party iframes.
+  - `__Secure-voxility-embed-session` (`SameSite=None`) — set by the
+    handshake, travels in any iframe.
+  Middleware promotes the embed cookie onto the regular cookie name
+  on the request side, so downstream `auth()` calls resolve a valid
+  session without code changes anywhere else. Browsers never see the
+  rename — the two cookies stay logically separate, which closes the
+  clickjacking-via-passive-session vector (a malicious site that
+  iframes Voxility can't piggyback on a user's existing browser
+  session because the Lax cookie won't send).
 
 ### Failure modes seen during testing
 

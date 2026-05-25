@@ -19,10 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 import { db } from '@/lib/db'
 import { decryptSsoBlob } from '@/lib/leadconnector-sso'
-
-const SESSION_COOKIE_NAME = process.env.NODE_ENV === 'production'
-  ? '__Secure-authjs.session-token'
-  : 'authjs.session-token'
+import { EMBED_SESSION_COOKIE } from '@/lib/embed-session'
 
 const SESSION_DAYS = 90
 
@@ -142,15 +139,18 @@ export async function POST(req: NextRequest) {
     redirectTo: `/dashboard/${location.workspaceId}/agents?embedded=leadconnector`,
   })
 
-  // SameSite=None + Secure is required for the cookie to travel inside
-  // a cross-origin iframe (the marketplace hosts our app at a different
-  // origin). We deliberately don't override the regular session cookie
-  // config in lib/auth.ts — same cookie name, but written with iframe-
-  // friendly attributes here. Browsers that block third-party cookies
-  // entirely will fall through to re-running the handshake on every
-  // load, which is OK because the handshake is idempotent.
+  // The embed cookie is deliberately a DIFFERENT name from the regular
+  // NextAuth session cookie. Keeping them separate means:
+  //   1. A passive browser session in another tab (SameSite=Lax) won't
+  //      be piggybacked by a malicious site that iframes Voxility — its
+  //      cookie can't travel in a third-party context, ours can.
+  //   2. Signing out of one context doesn't kill the other.
+  // Middleware promotes this value onto the regular cookie name on the
+  // request side so downstream auth() consumers don't need to change.
+  // Browsers that block third-party cookies entirely fall through to
+  // re-running the handshake on every load — fine, it's idempotent.
   res.cookies.set({
-    name: SESSION_COOKIE_NAME,
+    name: EMBED_SESSION_COOKIE,
     value: sessionToken,
     httpOnly: true,
     secure: true,
