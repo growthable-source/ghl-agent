@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { canCreateWorkspace } from '@/lib/plans'
-import { EMBED_SESSION_COOKIE } from '@/lib/embed-session'
 
 /**
  * GET /api/workspaces — list workspaces for the current user
@@ -49,23 +47,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Defense-in-depth: refuse workspace creation when the caller is in
-  // marketplace-embed mode. The UI hides the "create workspace" entry
-  // points in that context, but a direct fetch from the iframe would
-  // otherwise still go through. Marketplace installs are 1-sub-account-
-  // to-1-workspace by design — supplementing the bound workspace from
-  // inside the iframe would create a workspace the user can never
-  // navigate to (iframe lockdown redirects them back).
-  const cookieStore = await cookies()
-  if (cookieStore.get(EMBED_SESSION_COOKIE)) {
-    return NextResponse.json(
-      {
-        error: 'Workspaces installed from a marketplace are locked to their CRM sub-account. To create another workspace, open Voxility in a regular browser tab.',
-        code: 'EMBED_MODE_LOCKED',
-      },
-      { status: 403 },
-    )
-  }
+  // (Earlier rev had a defensive 403 here when the embed cookie was
+  // present, intended to block iframe-side workspace creation. Removed
+  // because the embed cookie is SameSite=None and persists in regular
+  // browser tabs too — locking out anyone who'd ever tested in the
+  // iframe. The visual hiding of the create-workspace entry point
+  // inside the iframe via useEmbedded() is enough.)
 
   const body = await req.json()
   const name = (body.name || '').trim()

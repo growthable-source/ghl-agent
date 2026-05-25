@@ -47,15 +47,12 @@ export function middleware(request: NextRequest) {
       loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname)
       return NextResponse.redirect(loginUrl)
     }
-
-    // Marketplace-embed users can't reach the create-workspace flow.
-    // Bounce them back to /dashboard, which then redirects them to
-    // their bound marketplace workspace. The POST handler at
-    // /api/workspaces enforces the same rule with a 403 in case
-    // someone curls the endpoint directly.
-    if (embed && request.nextUrl.pathname === '/dashboard/new') {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
+    // Note: we DON'T block /dashboard/new on the embed cookie. The
+    // cookie is SameSite=None and travels in regular browser tabs
+    // too, so any user who's ever tested in the iframe would be
+    // permanently locked out of creating new workspaces from a
+    // regular tab. The visual hiding of the create-workspace entry
+    // point inside the iframe (via useEmbedded()) is sufficient.
   }
 
   return NextResponse.next({ request })

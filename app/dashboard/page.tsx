@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { getPlanFeatures } from '@/lib/plans'
-import { EMBED_SESSION_COOKIE, EMBED_WORKSPACE_COOKIE } from '@/lib/embed-session'
+import { EMBED_WORKSPACE_COOKIE } from '@/lib/embed-session'
 import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
 
 export const dynamic = 'force-dynamic'
@@ -31,31 +31,26 @@ export default async function DashboardPage() {
 
   // ─── Lock-to-one-workspace redirects ────────────────────────────────
   // A user with a single workspace shouldn't see a one-card picker —
-  // send them straight in. Independently, when this page is loaded
-  // inside a CRM iframe (marketplace install Custom Menu Link), the
-  // workspace picker is the wrong destination regardless of count:
-  // they're locked to whichever Location the CRM is showing. Resolve
-  // by preferring a marketplace-installed workspace, falling back to
-  // the most-recent.
+  // send them straight in. For iframe-loaded sessions, prefer the
+  // workspace the handshake bound to (via EMBED_WORKSPACE_COOKIE)
+  // so multiple-marketplace-install users land in the right place.
   //
-  // Two iframe signals, OR'd together:
-  //   1. Sec-Fetch-Dest: iframe — set by browsers on the INITIAL iframe
-  //      document load only. Misses any client-side SPA navigation that
-  //      lands the user on /dashboard after the first render.
-  //   2. Presence of __Secure-voxility-embed-session cookie — set by
-  //      the SSO handshake and persists for 90 days. This is the
-  //      durable signal that survives every nav, refresh, and
-  //      back-button. Only set when the user came in via the iframe.
-  // The first check alone was letting the picker leak whenever a user
-  // navigated within the iframe (sidebar logo, breadcrumb, etc).
+  // We DO NOT use the embed cookie alone as an iframe signal. The
+  // cookie is SameSite=None so it travels in regular browser tabs
+  // too — once a user has ever tested in the iframe, the cookie
+  // persists and would otherwise trap them in the bound workspace
+  // even when they open app.voxility.ai in a regular tab. Use only
+  // Sec-Fetch-Dest: iframe (reliable on initial iframe document
+  // loads, the realistic entry point) for the iframe redirect.
+  //
+  // Edge case: if a user navigates to /dashboard root via internal
+  // SPA navigation INSIDE the iframe, Sec-Fetch-Dest is no longer
+  // iframe and the picker would render. The sidebar logo is already
+  // conditional on useEmbedded() to prevent that nav path; if a user
+  // somehow gets there anyway, picker is annoying but not broken.
   const hdrs = await headers()
   const cookieStore = await cookies()
-  const hasEmbedCookie = !!cookieStore.get(EMBED_SESSION_COOKIE)
-  const inIframe = hdrs.get('sec-fetch-dest') === 'iframe' || hasEmbedCookie
-  // The handshake wrote this to bind the iframe session to a specific
-  // workspace. It's the source of truth when picking a redirect target
-  // — multiple marketplace workspaces (one per GHL sub-account) would
-  // otherwise collide and the user could be sent to the wrong one.
+  const inIframe = hdrs.get('sec-fetch-dest') === 'iframe'
   const boundWorkspaceId = cookieStore.get(EMBED_WORKSPACE_COOKIE)?.value
 
   if (workspaceMembers.length === 1) {
@@ -65,9 +60,6 @@ export default async function DashboardPage() {
   if (inIframe && workspaceMembers.length > 0) {
     // Precedence: bound cookie (the workspace the handshake locked
     // this iframe session to) > any marketplace workspace > most-recent.
-    // If the bound cookie points at a workspace the user no longer has
-    // access to (rare — install revoked between handshake and now),
-    // fall through to the marketplace search.
     const bound = boundWorkspaceId
       ? workspaceMembers.find(m => m.workspaceId === boundWorkspaceId)
       : null
