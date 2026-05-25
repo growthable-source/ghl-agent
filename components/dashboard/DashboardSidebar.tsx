@@ -163,11 +163,11 @@ function SidebarBody() {
 
   return (
     <div className="hidden md:flex w-56 shrink-0 border-r border-sidebar-border flex-col h-full bg-sidebar-bg">
-      {/* Logo. When embedded inside GHL the user is locked to one
-          workspace — the "All Workspaces" picker isn't a meaningful
-          destination, so the logo points at the active workspace
-          dashboard instead (or is non-interactive if we don't have a
-          workspaceId in the path yet). */}
+      {/* Logo. When embedded inside the CRM iframe the user is locked
+          to one workspace — the "All Workspaces" picker isn't a
+          meaningful destination, so the logo points at the active
+          workspace dashboard instead (or is non-interactive if we don't
+          have a workspaceId in the path yet). */}
       <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
         <Link
           href={embedded
@@ -479,9 +479,10 @@ function SidebarBody() {
               {userEmail}
             </div>
             {embedded ? (
-              // Inside the GHL iframe, sign-out is owned by GHL (signing
-              // out of Voxility while staying signed into GHL just causes
-              // the next iframe load to re-handshake and sign back in).
+              // Inside the embedded iframe, sign-out is owned by the
+              // host CRM (signing out of Voxility while staying signed
+              // into the CRM just causes the next iframe load to
+              // re-handshake and sign back in).
               // Surface an "Open in new tab" escape hatch instead — gives
               // users a way to reach pages that don't play well inside
               // a third-party iframe (Stripe checkout, OAuth pop-ups).

@@ -1,23 +1,24 @@
 /**
- * GHL Custom-App SSO handshake.
+ * LeadConnector Custom-App SSO handshake.
  *
- * Inside the iframe Voxility runs in when launched from a GHL Custom
- * Menu Link, the client posts a REQUEST_USER_DATA message to its parent.
- * GHL responds with an encrypted blob signed with our app's Shared
- * Secret. The client POSTs that blob here; we decrypt, map it onto our
- * own User / Workspace / Location, mint a NextAuth database session, set
- * the session cookie, and return the destination URL.
+ * Inside the iframe Voxility runs in when launched from a LeadConnector
+ * Custom Menu Link, the client posts a REQUEST_USER_DATA message to its
+ * parent. The marketplace responds with an encrypted blob signed with
+ * our app's Shared Secret. The client POSTs that blob here; we decrypt,
+ * map it onto our own User / Workspace / Location, mint a NextAuth
+ * database session, set the session cookie, and return the destination
+ * URL.
  *
- * The decrypted payload is trustworthy because only Voxility and GHL
- * know the Shared Secret — anyone fabricating a payload without it gets
- * caught at decrypt time. We do still verify the user has membership in
- * the matching workspace before minting the session.
+ * The decrypted payload is trustworthy because only Voxility and the
+ * marketplace know the Shared Secret — anyone fabricating a payload
+ * without it gets caught at decrypt time. We do still verify the user
+ * has membership in the matching workspace before minting the session.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 import { db } from '@/lib/db'
-import { decryptSsoBlob } from '@/lib/ghl-sso'
+import { decryptSsoBlob } from '@/lib/leadconnector-sso'
 
 const SESSION_COOKIE_NAME = process.env.NODE_ENV === 'production'
   ? '__Secure-authjs.session-token'
@@ -26,10 +27,10 @@ const SESSION_COOKIE_NAME = process.env.NODE_ENV === 'production'
 const SESSION_DAYS = 90
 
 export async function POST(req: NextRequest) {
-  const sharedSecret = process.env.GHL_SSO_KEY
+  const sharedSecret = process.env.LEADCONNECTOR_SSO_KEY
   if (!sharedSecret) {
     return NextResponse.json(
-      { error: 'GHL_SSO_KEY is not configured on this deployment.', code: 'SSO_NOT_CONFIGURED' },
+      { error: 'LEADCONNECTOR_SSO_KEY is not configured on this deployment.', code: 'SSO_NOT_CONFIGURED' },
       { status: 503 },
     )
   }
@@ -48,26 +49,26 @@ export async function POST(req: NextRequest) {
   try {
     payload = decryptSsoBlob(body.encryptedData, sharedSecret)
   } catch (err: any) {
-    console.error('[GHL SSO] Decrypt failed:', err?.message)
+    console.error('[LeadConnector SSO] Decrypt failed:', err?.message)
     return NextResponse.json(
-      { error: 'Could not verify the user data from GHL.', code: 'SSO_DECRYPT_FAILED' },
+      { error: 'Could not verify the user data from the marketplace.', code: 'SSO_DECRYPT_FAILED' },
       { status: 400 },
     )
   }
 
-  // Map GHL identity onto Voxility records. Strategy:
+  // Map marketplace identity onto Voxility records. Strategy:
   //   1. Find the Location row whose id matches activeLocation (or any
-  //      Location in the GHL company if activeLocation isn't set — agency
-  //      menu link with no sub-account selected).
+  //      Location in the same companyId if activeLocation isn't set —
+  //      agency menu link with no sub-account selected).
   //   2. The Workspace is whatever owns that Location.
   //   3. The User is matched by email. If the email isn't in our DB we
-  //      provision one (passwordless — they got here via GHL, that's
-  //      their proof of identity).
+  //      provision one (passwordless — they got here via the
+  //      marketplace, that's their proof of identity).
   //   4. WorkspaceMember is upserted so the user actually has access.
   const { activeLocation, companyId, email, userName } = payload
   if (!email) {
     return NextResponse.json(
-      { error: 'GHL did not provide an email in the SSO payload — cannot identify the user.' },
+      { error: 'The marketplace did not provide an email in the SSO payload — cannot identify the user.' },
       { status: 400 },
     )
   }
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
   if (!location || !location.workspaceId) {
     return NextResponse.json(
       {
-        error: 'No Voxility workspace is connected to this GHL location yet. Reinstall the app via the marketplace to provision one.',
+        error: 'No Voxility workspace is connected to this location yet. Reinstall the app via the marketplace to provision one.',
         code: 'NO_LOCATION',
       },
       { status: 404 },
@@ -99,8 +100,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Find or provision the user. We DON'T cross-check the user against
-  // GHL's user table — anyone with a valid encrypted payload is by
-  // definition someone GHL signed off on for this location.
+  // the marketplace's user table — anyone with a valid encrypted
+  // payload is by definition someone the marketplace signed off on for
+  // this location.
   let user = await db.user.findUnique({ where: { email }, select: { id: true } })
   if (!user) {
     user = await db.user.create({
@@ -115,8 +117,8 @@ export async function POST(req: NextRequest) {
 
   // Ensure WorkspaceMember exists. Default role is 'member' — the
   // workspace owner role is set at install time in the OAuth callback.
-  // GHL admins land as 'admin' so they can do destructive things; non-
-  // admin GHL users land as 'member'.
+  // Marketplace admins land as 'admin' so they can do destructive
+  // things; non-admin marketplace users land as 'member'.
   const role = payload.role === 'admin' ? 'admin' : 'member'
   await db.workspaceMember.upsert({
     where: { userId_workspaceId: { userId: user.id, workspaceId: location.workspaceId } },
@@ -137,16 +139,16 @@ export async function POST(req: NextRequest) {
     ok: true,
     workspaceId: location.workspaceId,
     locationId: location.id,
-    redirectTo: `/dashboard/${location.workspaceId}/agents?embedded=ghl`,
+    redirectTo: `/dashboard/${location.workspaceId}/agents?embedded=leadconnector`,
   })
 
   // SameSite=None + Secure is required for the cookie to travel inside
-  // a cross-origin iframe (GHL hosts our app at a different origin).
-  // We deliberately don't override the regular session cookie config in
-  // lib/auth.ts — same cookie name, but written with iframe-friendly
-  // attributes here. Browsers that block third-party cookies entirely
-  // will fall through to re-running the handshake on every load, which
-  // is OK because the handshake is idempotent.
+  // a cross-origin iframe (the marketplace hosts our app at a different
+  // origin). We deliberately don't override the regular session cookie
+  // config in lib/auth.ts — same cookie name, but written with iframe-
+  // friendly attributes here. Browsers that block third-party cookies
+  // entirely will fall through to re-running the handshake on every
+  // load, which is OK because the handshake is idempotent.
   res.cookies.set({
     name: SESSION_COOKIE_NAME,
     value: sessionToken,

@@ -2,8 +2,8 @@
 
 /**
  * Detects whether Voxility is running embedded inside another product
- * (today: a GHL Custom Menu Link iframe) and exposes a React context so
- * any component can adapt its chrome. Two signals:
+ * (today: a LeadConnector Custom Menu Link iframe) and exposes a React
+ * context so any component can adapt its chrome. Two signals:
  *
  *   1. ?embedded=<host> query param on first load. Survives client-side
  *      navigation via sessionStorage so deep-linked subpages stay in
@@ -14,13 +14,13 @@
  *
  * Treat both signals as required for "embedded mode" to engage. The
  * query param is the explicit opt-in, the iframe check is the safety
- * net against someone slapping `?embedded=ghl` on a regular browser URL
- * to break out of the workspace switcher.
+ * net against someone slapping `?embedded=leadconnector` on a regular
+ * browser URL to break out of the workspace switcher.
  */
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
-export type EmbeddedHost = 'ghl' | null
+export type EmbeddedHost = 'leadconnector' | null
 
 interface EmbeddedContextValue {
   embedded: boolean
@@ -43,7 +43,8 @@ export function EmbeddedProvider({ children }: { children: ReactNode }) {
     const params = new URLSearchParams(window.location.search)
     const fromUrl = params.get('embedded')
     const stored = sessionStorage.getItem(STORAGE_KEY)
-    const resolved: EmbeddedHost = fromUrl === 'ghl' || stored === 'ghl' ? 'ghl' : null
+    const resolved: EmbeddedHost =
+      fromUrl === 'leadconnector' || stored === 'leadconnector' ? 'leadconnector' : null
     if (resolved) {
       sessionStorage.setItem(STORAGE_KEY, resolved)
       setHost(resolved)

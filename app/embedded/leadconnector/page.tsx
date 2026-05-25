@@ -1,23 +1,23 @@
 'use client'
 
 /**
- * GHL Custom-App iframe entry point.
+ * LeadConnector Custom-App iframe entry point.
  *
- * The URL registered as a Custom Menu Link in the GHL Marketplace points
- * here. The page mounts inside a GHL iframe, asks the parent frame for
- * the active user's encrypted identity blob, posts it to the handshake
- * endpoint to mint a Voxility session, then redirects into the
- * workspace dashboard in embedded mode.
+ * The URL registered as a Custom Menu Link in the marketplace listing
+ * points here. The page mounts inside an iframe, asks the parent frame
+ * for the active user's encrypted identity blob, posts it to the
+ * handshake endpoint to mint a Voxility session, then redirects into
+ * the workspace dashboard in embedded mode.
  *
  * Failure modes (each with an inline message — the iframe is too narrow
  * for full error pages):
  *
  *   - Parent frame doesn't reply within 5s. Most likely cause: the page
- *     was loaded directly in a browser tab rather than inside a GHL
- *     iframe. Show a manual "Open in GHL" CTA.
+ *     was loaded directly in a browser tab rather than inside a Custom
+ *     Menu Link iframe. Show a manual "Open in new tab" CTA.
  *   - Parent replies but the decrypt fails. Means the Shared Secret on
- *     our end doesn't match GHL's. The handshake response carries the
- *     specific reason so we can surface it.
+ *     our end doesn't match the marketplace's. The handshake response
+ *     carries the specific reason so we can surface it.
  *   - Decrypt succeeds but no Location row matches. Workspace wasn't
  *     installed via the marketplace yet — direct the operator to the
  *     marketplace listing.
@@ -34,7 +34,7 @@ type State =
 
 const PARENT_TIMEOUT_MS = 5000
 
-export default function GhlEmbeddedEntry() {
+export default function LeadConnectorEmbeddedEntry() {
   const router = useRouter()
   const [state, setState] = useState<State>({ kind: 'awaiting-parent' })
 
@@ -49,7 +49,7 @@ export default function GhlEmbeddedEntry() {
       setState({ kind: 'handshaking' })
 
       try {
-        const res = await fetch('/api/auth/ghl-iframe-handshake', {
+        const res = await fetch('/api/auth/leadconnector-iframe-handshake', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // credentials: 'include' is required so the session cookie set
@@ -82,10 +82,10 @@ export default function GhlEmbeddedEntry() {
     }
 
     function onMessage(event: MessageEvent) {
-      // GHL sends the encrypted payload back in response to our
-      // REQUEST_USER_DATA. The shape is intentionally loose because
-      // GHL has versioned this a few times; we accept any of the
-      // known field names.
+      // The parent sends the encrypted payload back in response to our
+      // REQUEST_USER_DATA. The shape is intentionally loose because the
+      // marketplace has versioned this a few times; we accept any of
+      // the known field names.
       const data = event.data
       if (!data || typeof data !== 'object') return
       const encrypted: string | undefined =
@@ -99,10 +99,9 @@ export default function GhlEmbeddedEntry() {
     window.addEventListener('message', onMessage)
 
     // Ask the parent frame for the user payload. The target origin is
-    // '*' because we don't know in advance whether the parent is
-    // gohighlevel.com or a whitelabel domain — the handshake's actual
-    // trust gate is on the *decryption* with our Shared Secret, not on
-    // the postMessage origin.
+    // '*' because we don't know in advance which whitelabel domain the
+    // parent is on — the handshake's actual trust gate is on the
+    // *decryption* with our Shared Secret, not on the postMessage origin.
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({ message: 'REQUEST_USER_DATA' }, '*')
     }
@@ -112,7 +111,7 @@ export default function GhlEmbeddedEntry() {
       resolved = true
       setState({
         kind: 'error',
-        message: 'No response from GHL. Open this app from a Custom Menu Link inside GoHighLevel.',
+        message: 'No response from your CRM. Open this app from a Custom Menu Link inside LeadConnector.',
       })
     }, PARENT_TIMEOUT_MS)
 
@@ -129,7 +128,7 @@ export default function GhlEmbeddedEntry() {
           <>
             <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-zinc-700 border-t-zinc-300 animate-spin" />
             <p className="text-sm" style={{ color: 'var(--text-secondary, #a1a1aa)' }}>
-              Connecting to GoHighLevel…
+              Connecting to your CRM…
             </p>
           </>
         )}
