@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 import { db } from '@/lib/db'
 import { decryptSsoBlob } from '@/lib/leadconnector-sso'
-import { EMBED_SESSION_COOKIE } from '@/lib/embed-session'
+import { EMBED_SESSION_COOKIE, EMBED_WORKSPACE_COOKIE } from '@/lib/embed-session'
 
 const SESSION_DAYS = 90
 
@@ -175,6 +175,23 @@ export async function POST(req: NextRequest) {
   res.cookies.set({
     name: EMBED_SESSION_COOKIE,
     value: sessionToken,
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: SESSION_DAYS * 24 * 60 * 60,
+  })
+
+  // Bind this iframe session to its specific workspace. The /dashboard
+  // root redirect reads this cookie when a user navigates back to the
+  // picker inside the iframe — without it, a user with multiple
+  // marketplace installs (one per GHL sub-account) gets sent to
+  // whichever marketplace workspace appears first in their list,
+  // not the one they're actually viewing from. Re-written on every
+  // handshake, so switching sub-accounts in GHL updates the binding.
+  res.cookies.set({
+    name: EMBED_WORKSPACE_COOKIE,
+    value: location.workspaceId,
     httpOnly: true,
     secure: true,
     sameSite: 'none',

@@ -30,3 +30,21 @@ export const EMBED_SESSION_COOKIE = process.env.NODE_ENV === 'production'
 export const REGULAR_SESSION_COOKIE = process.env.NODE_ENV === 'production'
   ? '__Secure-authjs.session-token'
   : 'authjs.session-token'
+
+/**
+ * Bound-workspace cookie. The SSO handshake writes the workspaceId it
+ * resolved from `payload.activeLocation` into this cookie so subsequent
+ * /dashboard hits know WHICH marketplace workspace this iframe session
+ * is anchored to.
+ *
+ * Without this, a user with multiple marketplace-installed workspaces
+ * (one per GHL sub-account) could be redirected to the wrong one when
+ * they navigate to /dashboard root inside the iframe — the redirect
+ * had no signal beyond "any workspace with installSource=ghl_marketplace".
+ *
+ * Re-asserted on every handshake, so switching sub-accounts in the
+ * parent CRM updates the binding correctly on the next iframe load.
+ */
+export const EMBED_WORKSPACE_COOKIE = process.env.NODE_ENV === 'production'
+  ? '__Secure-voxility-embed-workspace'
+  : 'voxility-embed-workspace'

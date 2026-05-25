@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { getPlanFeatures } from '@/lib/plans'
-import { EMBED_SESSION_COOKIE } from '@/lib/embed-session'
+import { EMBED_SESSION_COOKIE, EMBED_WORKSPACE_COOKIE } from '@/lib/embed-session'
 import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
 
 export const dynamic = 'force-dynamic'
@@ -52,16 +52,30 @@ export default async function DashboardPage() {
   const cookieStore = await cookies()
   const hasEmbedCookie = !!cookieStore.get(EMBED_SESSION_COOKIE)
   const inIframe = hdrs.get('sec-fetch-dest') === 'iframe' || hasEmbedCookie
+  // The handshake wrote this to bind the iframe session to a specific
+  // workspace. It's the source of truth when picking a redirect target
+  // — multiple marketplace workspaces (one per GHL sub-account) would
+  // otherwise collide and the user could be sent to the wrong one.
+  const boundWorkspaceId = cookieStore.get(EMBED_WORKSPACE_COOKIE)?.value
 
   if (workspaceMembers.length === 1) {
     redirect(`/dashboard/${workspaceMembers[0].workspaceId}`)
   }
 
   if (inIframe && workspaceMembers.length > 0) {
-    const marketplace = workspaceMembers.find(
-      m => (m.workspace as any).installSource === 'ghl_marketplace',
-    )
-    const target = marketplace?.workspaceId ?? workspaceMembers[0].workspaceId
+    // Precedence: bound cookie (the workspace the handshake locked
+    // this iframe session to) > any marketplace workspace > most-recent.
+    // If the bound cookie points at a workspace the user no longer has
+    // access to (rare — install revoked between handshake and now),
+    // fall through to the marketplace search.
+    const bound = boundWorkspaceId
+      ? workspaceMembers.find(m => m.workspaceId === boundWorkspaceId)
+      : null
+    const marketplace = !bound
+      ? workspaceMembers.find(m => (m.workspace as any).installSource === 'ghl_marketplace')
+      : null
+    const target =
+      bound?.workspaceId ?? marketplace?.workspaceId ?? workspaceMembers[0].workspaceId
     redirect(`/dashboard/${target}`)
   }
 

@@ -7,6 +7,7 @@ import {
   CalendlyIcon, CalcomIcon, StripeIcon, FacebookIcon, InstagramIcon,
 } from '@/components/icons/brand-icons'
 import NewBadge from '@/components/NewBadge'
+import { useEmbedded } from '@/lib/embedded-context'
 
 interface Integration {
   id: string
@@ -40,6 +41,12 @@ export default function IntegrationsPage() {
   const params = useParams()
   const search = useSearchParams()
   const workspaceId = params.workspaceId as string
+  // When loaded inside the LeadConnector iframe, this page collapses
+  // to the bare minimum of "extras that complement GHL" — channels and
+  // calendars are GHL's responsibility, the CRM is implicit. See the
+  // Phase 5 plan for the rationale: in embed mode, Voxility is an
+  // agent layer on top of GHL, not a standalone product.
+  const { embedded } = useEmbedded()
 
   const [integrations, setIntegrations] = useState<Integration[]>([])
   // Banner state for the Meta OAuth callback redirect. Surface success
@@ -611,7 +618,11 @@ export default function IntegrationsPage() {
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Integrations</h1>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Connect your CRM, telephony, and communication platforms. Agents work across all connected channels.</p>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          {embedded
+            ? 'These extras run on top of LeadConnector. Channels, calendars, and contacts are managed in your CRM.'
+            : 'Connect your CRM, telephony, and communication platforms. Agents work across all connected channels.'}
+        </p>
       </div>
 
       {metaBanner && (
@@ -635,8 +646,10 @@ export default function IntegrationsPage() {
         </div>
       )}
 
-      {/* CRM Provider Selector — only show when both are available */}
-      {ghlConnected && hubspotIntegrations.length > 0 && (
+      {/* CRM Provider Selector — only show when both are available
+          AND we're not embedded inside GHL (in embed mode, the CRM is
+          implicitly LeadConnector and the choice doesn't make sense). */}
+      {!embedded && ghlConnected && hubspotIntegrations.length > 0 && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">
           <p className="text-sm font-medium text-zinc-200 mb-1">Primary CRM</p>
           <p className="text-xs text-zinc-500 mb-3">Choose which CRM your agents use for contacts, deals, messaging, and calendar.</p>
@@ -682,8 +695,9 @@ export default function IntegrationsPage() {
             Native + HubSpot unsolicited. */}
 
         {/* Native CRM — built-in. Shown when primary, or after the user
-            explicitly opens the alternatives panel. */}
-        {(primaryCrm === 'native' || showAllCrms) && (
+            explicitly opens the alternatives panel. Hidden entirely in
+            embed mode (GHL is the CRM, Native is irrelevant). */}
+        {!embedded && (primaryCrm === 'native' || showAllCrms) && (
         <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           {primaryCrm === 'native' && (
             <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
@@ -739,17 +753,22 @@ export default function IntegrationsPage() {
         </div>
         )}
 
-        {/* LeadConnector (GHL) — primary when installSource is GHL
-            marketplace or the workspace has connected it explicitly. */}
-        {(primaryCrm === 'ghl' || showAllCrms) && (
+        {/* LeadConnector (GHL) — always rendered in embed mode (the
+            CRM is implicit and locked); standalone mode keeps the
+            primary/showAll logic. */}
+        {(embedded || primaryCrm === 'ghl' || showAllCrms) && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
-          {primaryCrm === 'ghl' && (
+          {embedded ? (
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
+              Connected via marketplace
+            </p>
+          ) : primaryCrm === 'ghl' ? (
             <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
               {installSource === 'ghl_marketplace'
                 ? 'Recommended — you installed from the GHL marketplace'
                 : 'Recommended for your setup'}
             </p>
-          )}
+          ) : null}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><LeadConnectorIcon className="w-8 h-8" /></div>
@@ -762,13 +781,19 @@ export default function IntegrationsPage() {
               {ghlConnected && (
                 <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
               )}
-              <a
-                href={`/api/auth/crm/connect?workspaceId=${workspaceId}`}
-                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
-              >
-                {ghlConnected ? 'Reconnect' : 'Connect'}
-              </a>
-              {ghlConnected && (
+              {/* Reconnect + Disconnect are hidden in embed mode.
+                  The user can't disconnect from inside the iframe
+                  because the iframe session is bound to this exact
+                  Location — disconnect would lock them out. */}
+              {!embedded && (
+                <a
+                  href={`/api/auth/crm/connect?workspaceId=${workspaceId}`}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+                >
+                  {ghlConnected ? 'Reconnect' : 'Connect'}
+                </a>
+              )}
+              {!embedded && ghlConnected && (
                 <button
                   type="button"
                   onClick={disconnectGhl}
@@ -798,11 +823,10 @@ export default function IntegrationsPage() {
         </div>
         )}
 
-        {/* HubSpot — only rendered here when primary or after the user
-            expands "Use a different CRM". Previously lived further down
-            the page; consolidated up here so all CRM choices live in one
-            block at the top of the integrations list. */}
-        {(primaryCrm === 'hubspot' || showAllCrms) && (
+        {/* HubSpot — hidden entirely in embed mode (the user has GHL,
+            HubSpot isn't a meaningful choice). Otherwise rendered when
+            primary or after the user expands "Use a different CRM". */}
+        {!embedded && (primaryCrm === 'hubspot' || showAllCrms) && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           {primaryCrm === 'hubspot' && (
             <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
@@ -848,12 +872,10 @@ export default function IntegrationsPage() {
         </div>
         )}
 
-        {/* "Use a different CRM" toggle — only shown when there are
-            actually alternatives to reveal (i.e. showAllCrms is false).
-            One click reveals the two non-primary CRM cards. We don't
-            give a way to re-collapse: once the user has seen the
-            alternatives, hiding them again would feel patronising. */}
-        {!showAllCrms && (
+        {/* "Use a different CRM" toggle — hidden in embed mode (the
+            CRM is locked to LeadConnector) and otherwise only shown
+            when there are alternatives to reveal. */}
+        {!embedded && !showAllCrms && (
           <button
             type="button"
             onClick={() => setShowAllCrms(true)}
@@ -969,7 +991,10 @@ export default function IntegrationsPage() {
           )}
         </div>
 
-        {/* Twilio */}
+        {/* Twilio — hidden in embed mode (GHL connects SMS via its
+            own Twilio integration; Voxility-direct Twilio would be
+            duplicative). */}
+        {!embedded && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
@@ -1040,8 +1065,15 @@ export default function IntegrationsPage() {
             </form>
           )}
         </div>
+        )}
 
-        {/* Meta — Facebook Messenger + Instagram DMs (native, no CRM dep) */}
+        {/* Meta — Facebook Messenger + Instagram DMs (native, no CRM dep).
+            Hidden in embed mode: GHL connects Meta Pages + IG Business
+            accounts via its own integration and pipes DMs into its
+            conversation API — Voxility reads them from there. A
+            second direct connection here would create two intake
+            paths for the same message. */}
+        {!embedded && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
@@ -1144,7 +1176,13 @@ export default function IntegrationsPage() {
             </p>
           )}
         </div>
+        )}
 
+        {/* Calendars section — hidden entirely in embed mode (GHL has
+            its own calendars; Calendly and Cal.com integrations would
+            duplicate). */}
+        {!embedded && (
+        <>
         {/* ── Section: Calendars ── */}
         <div className="pt-4 pb-1">
           <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Calendars</p>
@@ -1249,7 +1287,14 @@ export default function IntegrationsPage() {
             </form>
           )}
         </div>
+        </>
+        )}
 
+        {/* Payments section — hidden in embed mode (GHL handles
+            payments natively; Voxility's Stripe integration would
+            duplicate). */}
+        {!embedded && (
+        <>
         {/* ── Section: Payments ── */}
         <div className="pt-4 pb-1">
           <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Payments</p>
@@ -1304,6 +1349,8 @@ export default function IntegrationsPage() {
             </form>
           )}
         </div>
+        </>
+        )}
 
         {/* ── Section: Advertising ── */}
         <div className="pt-4 pb-1">
