@@ -100,17 +100,40 @@ export async function POST(req: NextRequest) {
   // the marketplace's user table — anyone with a valid encrypted
   // payload is by definition someone the marketplace signed off on for
   // this location.
-  let user = await db.user.findUnique({ where: { email }, select: { id: true } })
-  if (!user) {
-    user = await db.user.create({
-      data: {
-        email,
-        name: userName || email.split('@')[0],
-        emailVerified: new Date(),
-      },
-      select: { id: true },
-    })
-  }
+  //
+  // upsert (not findUnique-then-create) for two reasons:
+  //   1. Avoids a TOCTOU race where two concurrent iframe loads each
+  //      see "no user yet" and both try to create, exploding on the
+  //      email unique constraint.
+  //   2. Lets us write emailVerified=now on BOTH branches. The big
+  //      gotcha that locked Ryan out of the app: existing Users that
+  //      pre-date NextAuth's emailVerified handling carried a NULL
+  //      value in that column, which then blocked
+  //      `allowDangerousEmailAccountLinking` from auto-linking a fresh
+  //      Google account on signin. Marketplace SSO is a strong
+  //      identity signal (the encrypted payload only decrypts with our
+  //      Shared Secret), so writing emailVerified=now here is correct
+  //      and repairs any historical NULLs the next time a user passes
+  //      through the iframe.
+  const user = await db.user.upsert({
+    where: { email },
+    create: {
+      email,
+      name: userName || email.split('@')[0],
+      emailVerified: new Date(),
+    },
+    update: {
+      // Idempotent — bumping emailVerified to "most recently verified"
+      // doesn't break anything (NextAuth only cares whether it's
+      // non-null), and it self-heals legacy rows with NULL.
+      emailVerified: new Date(),
+      // Refresh the displayed name from SSO when GHL returns one, but
+      // don't blank it out if they don't (preserve whatever's in the
+      // DB for users who set a name manually).
+      ...(userName ? { name: userName } : {}),
+    },
+    select: { id: true },
+  })
 
   // Ensure WorkspaceMember exists. Default role is 'member' — the
   // workspace owner role is set at install time in the OAuth callback.
