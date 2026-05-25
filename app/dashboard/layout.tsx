@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar'
 import Breadcrumbs from '@/components/dashboard/Breadcrumbs'
 import UserOnboardingModal from '@/components/dashboard/UserOnboardingModal'
+import { EmbeddedProvider } from '@/lib/embedded-context'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -23,6 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
+    <EmbeddedProvider>
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
       <DashboardSidebar />
       {/* main itself doesn't scroll — the children wrapper does. This
@@ -46,5 +48,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
       )}
     </div>
+    </EmbeddedProvider>
   )
 }

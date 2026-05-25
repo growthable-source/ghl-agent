@@ -9,6 +9,7 @@ import { NavCountsProvider, useNavCounts, NavBadge } from './useNavCounts'
 import WorkspaceAvatar from './WorkspaceAvatar'
 import CannyChangelogButton from '@/components/CannyChangelogButton'
 import NewBadge from '@/components/NewBadge'
+import { useEmbedded } from '@/lib/embedded-context'
 
 // Ship dates for the "NEW" badges on recently-added nav items. Add
 // entries here when a new feature links off the sidebar; the badge
@@ -38,6 +39,13 @@ export default function DashboardSidebar() {
 function SidebarBody() {
   const pathname = usePathname()
   const counts = useNavCounts()
+  const { embedded } = useEmbedded()
+  // Recomputed here (the outer component also calculates this for the
+  // counts polling key) so the embedded-mode logo link knows where to
+  // send the user without prop-drilling.
+  const sbMatch = pathname.match(/\/dashboard\/([^\/]+)/)
+  const sbStatic = ['settings', 'new', 'feedback']
+  const activeWorkspaceId = sbMatch && !sbStatic.includes(sbMatch[1]) ? sbMatch[1] : null
   const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string; logoUrl: string | null } | null>(null)
   // True when the active workspace has any Location with crmProvider='native'.
   // Drives the Native CRM nav section (Lists / Imports / Suppressions / Custom fields).
@@ -155,9 +163,18 @@ function SidebarBody() {
 
   return (
     <div className="hidden md:flex w-56 shrink-0 border-r border-sidebar-border flex-col h-full bg-sidebar-bg">
-      {/* Logo */}
+      {/* Logo. When embedded inside GHL the user is locked to one
+          workspace — the "All Workspaces" picker isn't a meaningful
+          destination, so the logo points at the active workspace
+          dashboard instead (or is non-interactive if we don't have a
+          workspaceId in the path yet). */}
       <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
-        <Link href="/dashboard" className="flex items-center gap-2.5">
+        <Link
+          href={embedded
+            ? (activeWorkspaceId ? `/dashboard/${activeWorkspaceId}` : '#')
+            : '/dashboard'}
+          className="flex items-center gap-2.5"
+        >
           <VoxilityLogo variant="mark" height={26} />
           <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Voxility</span>
         </Link>
@@ -461,13 +478,30 @@ function SidebarBody() {
             <div className="px-3 py-1.5 text-[10px] text-zinc-600 truncate" title={userEmail}>
               {userEmail}
             </div>
-            <button
-              type="button"
-              onClick={() => signOut({ callbackUrl: '/login' })}
-              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-red-400 hover:bg-zinc-900 transition-colors"
-            >
-              Sign out
-            </button>
+            {embedded ? (
+              // Inside the GHL iframe, sign-out is owned by GHL (signing
+              // out of Voxility while staying signed into GHL just causes
+              // the next iframe load to re-handshake and sign back in).
+              // Surface an "Open in new tab" escape hatch instead — gives
+              // users a way to reach pages that don't play well inside
+              // a third-party iframe (Stripe checkout, OAuth pop-ups).
+              <a
+                href={activeWorkspaceId ? `/dashboard/${activeWorkspaceId}` : '/dashboard'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
+              >
+                Open in new tab ↗
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-red-400 hover:bg-zinc-900 transition-colors"
+              >
+                Sign out
+              </button>
+            )}
           </div>
         )}
       </div>
