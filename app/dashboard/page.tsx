@@ -1,9 +1,10 @@
 import Link from 'next/link'
-import { headers } from 'next/headers'
+import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { getPlanFeatures } from '@/lib/plans'
+import { EMBED_SESSION_COOKIE } from '@/lib/embed-session'
 import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
 
 export const dynamic = 'force-dynamic'
@@ -12,19 +13,16 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  // Get workspaces this user has access to
+  // Get workspaces this user has access to. We select the full
+  // Locations list (not _count) so the render can dedupe by provider
+  // — see "Truthful CRM pills" below.
   const workspaceMembers = await db.workspaceMember.findMany({
     where: { userId: session.user.id },
     include: {
       workspace: {
         include: {
-          _count: { select: { agents: true, locations: true, members: true } },
-          // installSource lets us prefer the marketplace-installed
-          // workspace when redirecting iframe visitors. Try/catch is
-          // not needed here — Prisma generates the column accessor
-          // regardless of whether the DB has been migrated; un-migrated
-          // DBs just return null which is the same as "direct signup"
-          // for our purposes.
+          _count: { select: { agents: true, members: true } },
+          locations: { select: { id: true, crmProvider: true } },
         },
       },
     },
@@ -39,8 +37,21 @@ export default async function DashboardPage() {
   // they're locked to whichever Location the CRM is showing. Resolve
   // by preferring a marketplace-installed workspace, falling back to
   // the most-recent.
+  //
+  // Two iframe signals, OR'd together:
+  //   1. Sec-Fetch-Dest: iframe — set by browsers on the INITIAL iframe
+  //      document load only. Misses any client-side SPA navigation that
+  //      lands the user on /dashboard after the first render.
+  //   2. Presence of __Secure-voxility-embed-session cookie — set by
+  //      the SSO handshake and persists for 90 days. This is the
+  //      durable signal that survives every nav, refresh, and
+  //      back-button. Only set when the user came in via the iframe.
+  // The first check alone was letting the picker leak whenever a user
+  // navigated within the iframe (sidebar logo, breadcrumb, etc).
   const hdrs = await headers()
-  const inIframe = hdrs.get('sec-fetch-dest') === 'iframe'
+  const cookieStore = await cookies()
+  const hasEmbedCookie = !!cookieStore.get(EMBED_SESSION_COOKIE)
+  const inIframe = hdrs.get('sec-fetch-dest') === 'iframe' || hasEmbedCookie
 
   if (workspaceMembers.length === 1) {
     redirect(`/dashboard/${workspaceMembers[0].workspaceId}`)
@@ -218,10 +229,48 @@ export default async function DashboardPage() {
                     <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{ws._count.members}</p>
                     <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>members</p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{ws._count.locations}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>CRMs</p>
-                  </div>
+                  {/* CRMs cell — show actual provider names instead of
+                      a raw Location count. The old _count.locations
+                      tally inflated workspaces with native auto-provisions
+                      and placeholder FK stubs (e.g. a single-LeadConnector
+                      install reading as "3 CRMs"). Dedupe by provider
+                      and label friendly. */}
+                  {(() => {
+                    const labelFor = (p: string) =>
+                      p === 'ghl' ? 'LeadConnector'
+                      : p === 'hubspot' ? 'HubSpot'
+                      : p === 'native' ? 'Native'
+                      : p
+                    const providers = Array.from(new Set(
+                      (ws as any).locations
+                        .filter((l: { id: string; crmProvider: string }) =>
+                          !l.id.startsWith('placeholder:') && l.crmProvider !== 'none',
+                        )
+                        .map((l: { crmProvider: string }) => labelFor(l.crmProvider)),
+                    )) as string[]
+                    return (
+                      <div className="text-right max-w-[180px]">
+                        {providers.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {providers.map(p => (
+                              <span
+                                key={p}
+                                className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
+                              >
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Not connected</p>
+                        )}
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                          {providers.length === 1 ? 'CRM' : 'CRMs'}
+                        </p>
+                      </div>
+                    )
+                  })()}
                   <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>→</span>
                 </div>
               </Link>
