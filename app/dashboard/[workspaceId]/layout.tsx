@@ -5,6 +5,7 @@ import TrialBanner from '@/components/dashboard/TrialBanner'
 import PauseBanner from '@/components/dashboard/PauseBanner'
 import ConnectionHealthBanner from '@/components/dashboard/ConnectionHealthBanner'
 import HandoffAlertBanner from '@/components/dashboard/HandoffAlertBanner'
+import EmbeddedWorkspaceBanner from '@/components/dashboard/EmbeddedWorkspaceBanner'
 import MobileNav from '@/components/dashboard/MobileNav'
 
 /**
@@ -71,6 +72,10 @@ export default async function WorkspaceLayout({
 
   return (
     <>
+      {/* Renders only when loaded inside a marketplace iframe — labels
+          which CRM sub-account this workspace is bound to so the user
+          doesn't think they've been dropped into someone else's data. */}
+      <EmbeddedWorkspaceBanner workspaceId={workspaceId} />
       <TrialBanner workspaceId={workspaceId} />
       <PauseBanner />
       {/* Loud, persistent alert when one or more agents have paused
