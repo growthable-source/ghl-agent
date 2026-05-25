@@ -218,7 +218,7 @@ to fix.
 
 | You see                                  | What's wrong                                                                  | Where to look                                                          |
 |------------------------------------------|-------------------------------------------------------------------------------|------------------------------------------------------------------------|
-| Iframe blank, "refused to frame" console | `frame-ancestors` doesn't include the customer's whitelabel parent domain     | Add it to `LEADCONNECTOR_PARENT_ORIGINS` in `next.config.ts`, redeploy |
+| Iframe blank, `(blocked:origin)` in DevTools | Old deploy still has the whitelisted-origins CSP from before this fix | Redeploy from `main` — `frame-ancestors` is now `*` because whitelabel domains can't be enumerated. Trust gate is the SSO handshake, not the parent origin. |
 | `SSO_DECRYPT_FAILED` red banner          | Shared Secret mismatch, or trailing `\n` in env value                         | Re-`printf` Step 2, redeploy                                           |
 | `NO_LOCATION` red banner                 | User opened the menu link before completing OAuth install                     | Send them through the marketplace install once, then re-open menu link |
 | "No response from your CRM" (5s timeout) | Page loaded outside an iframe, or parent isn't posting the user data         | Confirm you're inside the actual marketplace iframe, not direct URL    |

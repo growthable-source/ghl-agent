@@ -86,11 +86,30 @@ When a user clicks the Voxility menu link inside their CRM:
    `/dashboard/<workspaceId>/agents?embedded=leadconnector`). The
    middleware sees a valid session cookie and lets the request through.
 
+### Security model
+
+`frame-ancestors` is set to `*` (any parent can embed us). This is
+intentional, not a leak. Every reseller agency runs the CRM on its own
+whitelabel domain (`app.acmeagency.com`, `crm.example.io`, …) — there's
+no enumerable allowlist of valid parents.
+
+The trust gate is the SSO handshake, not the parent origin:
+
+- A malicious parent can iframe us and post a fake `REQUEST_USER_DATA`
+  response, but it can't fabricate a payload that decrypts under
+  `LEADCONNECTOR_SSO_KEY`. The handshake fails and no session is minted.
+- The session cookie minted by the handshake is `SameSite=None; Secure`
+  so it travels in third-party iframes. **Open follow-up:** split this
+  into a separate `embed-session` cookie distinct from the regular
+  `__Secure-authjs.session-token`, so a passive Voxility session in
+  another tab can't be piggybacked by a malicious parent. Tracked
+  separately — current risk is acceptable while customer count is low.
+
 ### Failure modes seen during testing
 
 | Symptom                                             | Cause                                                                                            | Fix                                                                                                                   |
 |-----------------------------------------------------|--------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| Iframe blank, console: refused to frame             | `frame-ancestors` doesn't list the whitelabel domain the customer uses                           | Add the customer's domain to `LEADCONNECTOR_PARENT_ORIGINS` in `next.config.ts` and redeploy.                         |
+| Iframe blank, `(blocked:origin)` in DevTools        | `frame-ancestors` is still on an old deploy that only allowed gohighlevel/leadconnectorhq         | Redeploy from `main` — `next.config.ts` now sets `frame-ancestors *`. Verify with `curl -I` on the embedded URL.      |
 | `SSO_DECRYPT_FAILED`                                | `LEADCONNECTOR_SSO_KEY` doesn't match the Shared Secret, or the env value has a trailing `\n`    | Re-paste using `printf '%s'` and redeploy. Verify by hitting the handshake with a copied payload.                     |
 | `NO_LOCATION`                                       | User clicked the menu link before completing OAuth install                                       | Send them through the marketplace install once; the OAuth callback creates the Location, then re-open the menu link.  |
 | Session cookie not sticking across pages            | Third-party cookies blocked entirely (Safari ITP, hardened Firefox)                              | Each iframe load re-runs the handshake (idempotent). No persistent fix is possible without same-origin hosting.       |
