@@ -199,6 +199,18 @@ export async function findMatchingAgent(
     }
 
     for (const rule of agent.routingRules) {
+      // Per-channel rule scoping. channels[] = empty preserves the
+      // legacy behaviour (rule applies on every channel this agent
+      // listens on via ChannelDeployment). Non-empty restricts the
+      // rule to inbounds whose channel is in the list — this is what
+      // makes "All inbound SMS + only FB with tag X" expressible as
+      // two rules on one agent.
+      const ruleChannels = ((rule as any).channels as string[] | null | undefined) ?? []
+      if (ruleChannels.length > 0 && channel && !ruleChannels.includes(channel)) {
+        console.log(`[Routing] Agent "${agent.name}" rule ${rule.id} scoped to ${ruleChannels.join(',')} — skipping for inbound channel ${channel}`)
+        continue
+      }
+
       // Shapes supported, most specific first:
       //   conditions.groups[]     → OR across groups, AND within each
       //   conditions.clauses[]    → legacy single AND group (implicit)

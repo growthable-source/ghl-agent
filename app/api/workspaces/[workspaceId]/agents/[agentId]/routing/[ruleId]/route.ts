@@ -25,6 +25,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const data: any = {
     ...(body.priority !== undefined && { priority: body.priority }),
+    // Per-channel scope. Empty array (or missing) keeps the rule
+    // global; non-empty restricts to the listed channels. Mirrors the
+    // POST endpoint contract.
+    ...(Array.isArray(body.channels) && {
+      channels: (body.channels as unknown[]).filter((c): c is string => typeof c === 'string'),
+    }),
   }
 
   if (conditions !== undefined) {

@@ -60,6 +60,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const isPureAll = allClauseTypes.length > 0 && allClauseTypes.every(t => t === 'ALL')
   const priority = body.priority ?? ((firstClauseType === 'ALL' && isPureAll) ? 999 : 10)
 
+  // Per-channel rule scope. Accepts an array of channel keys
+  // (SMS, FB, IG, …) — empty / missing = applies to every channel
+  // this agent listens on (the legacy global-rule behaviour).
+  const channels = Array.isArray(body.channels)
+    ? (body.channels as unknown[]).filter((c): c is string => typeof c === 'string')
+    : []
+
   const rule = await db.routingRule.create({
     data: {
       agentId,
@@ -67,6 +74,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       value: conditions ? null : (body.value ?? null),
       conditions: conditions ?? undefined,
       priority,
+      channels,
     },
   })
   return NextResponse.json({ rule }, { status: 201 })

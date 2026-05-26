@@ -42,6 +42,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
         tags: [],
         error: 'Your LeadConnector connection is missing the tags scope. Reconnect from Integrations — if the error persists after reconnecting, the marketplace listing needs the tags scope enabled.',
         code: 'reconnect_required',
+        // Surface the actual granted scope so the user can see whether
+        // the marketplace listing is dropping it (vs us misreading).
+        grantedScopes: tokens.scope ?? '',
       })
     }
     const adapter = new GhlAdapter(locationId)

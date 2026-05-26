@@ -56,6 +56,11 @@ export default function TagCombobox({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [errorCode, setErrorCode] = useState<string | null>(null)
+  // Granted scope string from the tags API when it returns reconnect_required.
+  // Surfaced inside the warning so users / Ryan can see which scopes the
+  // marketplace listing is actually granting vs the one we need
+  // (locations/tags.readonly). Cuts out "check the Vercel logs" diagnostics.
+  const [grantedScopes, setGrantedScopes] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -69,6 +74,7 @@ export default function TagCombobox({
         setTags(data.tags || [])
         if (data.error) setError(data.error)
         if (data.code) setErrorCode(data.code)
+        if (typeof data.grantedScopes === 'string') setGrantedScopes(data.grantedScopes)
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
@@ -176,21 +182,50 @@ export default function TagCombobox({
       )}
 
       {error && (
-        <div className="mt-1.5 rounded border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5">
-          <p className="text-[11px] text-amber-300 leading-snug">
+        // Use design-token colours instead of hardcoded text-amber-300 /
+        // text-amber-200/80 — those work in dark mode but on a light
+        // theme they render near-invisible on the pale amber background.
+        // --accent-amber resolves to high-contrast amber per theme.
+        <div
+          className="mt-1.5 rounded border px-2.5 py-1.5"
+          style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+        >
+          <p className="text-[11px] leading-snug font-medium" style={{ color: 'var(--accent-amber)' }}>
             {error}
           </p>
           {errorCode === 'reconnect_required' && (
-            <p className="text-[11px] text-amber-200/80 mt-1">
-              Open{' '}
-              <a
-                href={`/dashboard/${workspaceId}/integrations`}
-                className="underline hover:text-amber-100"
-              >
-                Integrations
-              </a>{' '}
-              and click Reconnect on LeadConnector. You can still type a tag name by hand in the meantime.
-            </p>
+            <>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--accent-amber)' }}>
+                Open{' '}
+                <a
+                  href={`/dashboard/${workspaceId}/integrations`}
+                  className="underline"
+                  style={{ color: 'var(--accent-amber)' }}
+                >
+                  Integrations
+                </a>{' '}
+                and click Reconnect on LeadConnector. You can still type a tag name by hand in the meantime.
+              </p>
+              {grantedScopes !== null && (
+                <details className="mt-1.5">
+                  <summary
+                    className="text-[10px] cursor-pointer select-none"
+                    style={{ color: 'var(--accent-amber)' }}
+                  >
+                    What scopes are currently granted?
+                  </summary>
+                  <p
+                    className="mt-1 text-[10px] font-mono break-all"
+                    style={{ color: 'var(--text-tertiary)' }}
+                  >
+                    {grantedScopes || '(no scope returned by the marketplace)'}
+                  </p>
+                  <p className="mt-1 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    Required for tag operations: <span className="font-mono">locations/tags.readonly</span>. If it's missing from the list above after a fresh reconnect, the LeadConnector marketplace app listing needs the scope enabled.
+                  </p>
+                </details>
+              )}
+            </>
           )}
         </div>
       )}

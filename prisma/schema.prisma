@@ -1021,6 +1021,13 @@ model RoutingRule {
   // Kept as Json so the shape can evolve without further migrations.
   conditions Json?
 
+  // Per-channel scope. Empty array = legacy behaviour (rule applies on
+  // every channel the agent is listening on via ChannelDeployment).
+  // Non-empty = rule only fires when the inbound channel is in this list.
+  // Enables the "All SMS, but only Facebook with tag X" pattern that
+  // wasn't expressible when rules were globally scoped.
+  channels String[] @default([])
+
   createdAt DateTime @default(now())
 
   @@index([agentId, priority])
