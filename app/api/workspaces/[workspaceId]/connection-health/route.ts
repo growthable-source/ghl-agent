@@ -48,7 +48,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (staleLocations.length > 0) {
     return NextResponse.json({
       status: 'needs_attention',
-      message: 'Your GoHighLevel connection may need a refresh. If agents stop replying, reconnect from Integrations.',
+      message: 'Your LeadConnector connection may need a refresh. If agents stop replying, reconnect from Integrations.',
     })
   }
   if (nearExpiryLocations.length > 0) {

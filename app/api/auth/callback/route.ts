@@ -66,6 +66,30 @@ export async function GET(req: NextRequest) {
 
     console.log(`[OAuth] Token saved for ${tokenData.userType}: ${storeKey}`)
 
+    // Diagnostic: log what scopes LeadConnector actually granted. When
+    // a user reports "tags scope missing" but says they reconnected,
+    // this line in Vercel logs is how we tell whether (a) the marketplace
+    // listing config dropped the scope from the grant, or (b) the
+    // listing's fine and the missing-scope error is from stale state on
+    // an older Location row. Doesn't affect install flow either way.
+    {
+      const granted = Array.isArray(tokenData.scope)
+        ? tokenData.scope.join(' ')
+        : (tokenData.scope ?? '')
+      console.log(`[OAuth] Granted scope for ${storeKey}: ${granted || '(empty)'}`)
+      const importantScopes = [
+        'locations.readonly',
+        'locations/tags.readonly',
+        'locations/tags.write',
+        'locations/customFields.readonly',
+        'users.readonly',
+      ]
+      const missing = importantScopes.filter(s => !granted.includes(s))
+      if (missing.length > 0) {
+        console.warn(`[OAuth] Granted scope is MISSING requested entries for ${storeKey}: ${missing.join(' ')}`)
+      }
+    }
+
     // Pull location + company + user metadata while we have a fresh
     // access token in hand. Used to (a) name the workspace from the
     // sub-account name instead of the bare "Workspace" placeholder,
@@ -81,8 +105,37 @@ export async function GET(req: NextRequest) {
       return null
     })
 
-    // Check if a workspaceId was passed via the state param (from connect flow)
-    const stateWorkspaceId = searchParams.get('state')
+    // Decode the state param. Two contracts:
+    //   1. Legacy: state is a bare workspaceId string. The connect
+    //      route used this shape until we added returnTo support.
+    //   2. New: state is base64url(JSON({ workspaceId, returnTo })).
+    //      Callers (e.g. the agent-creation wizard) opt in by passing
+    //      a returnTo query string to the connect route.
+    // Try JSON first; on parse failure, treat the raw string as the
+    // workspaceId. Marketplace installs (no state at all) fall through
+    // to the no-state branch further down.
+    const rawState = searchParams.get('state')
+    let stateWorkspaceId: string | null = null
+    let stateReturnTo: string | null = null
+    if (rawState) {
+      try {
+        const decoded = JSON.parse(Buffer.from(rawState, 'base64url').toString('utf8'))
+        if (decoded && typeof decoded === 'object' && typeof decoded.workspaceId === 'string') {
+          stateWorkspaceId = decoded.workspaceId
+          if (
+            typeof decoded.returnTo === 'string' &&
+            decoded.returnTo.startsWith('/dashboard/') &&
+            !decoded.returnTo.startsWith('//')
+          ) {
+            stateReturnTo = decoded.returnTo
+          }
+        } else {
+          stateWorkspaceId = rawState
+        }
+      } catch {
+        stateWorkspaceId = rawState
+      }
+    }
     let workspaceId: string | null = null
 
     // Upsert the GHL Location record with token data.
@@ -204,9 +257,13 @@ export async function GET(req: NextRequest) {
       // disconnects and comes back is a high-signal re-engagement event
       // that's useful to see in the admin UI alongside first installs.
       await writeMarketplaceInstall(stateWorkspaceId, 'ghl_marketplace')
-      return NextResponse.redirect(
-        new URL(`/dashboard/${stateWorkspaceId}/integrations?success=crm_connected`, req.url)
-      )
+      // returnTo lets callers (notably the agent-creation wizard)
+      // bring the user back to where they were instead of dumping
+      // them on the workspace integrations page. Already path-validated
+      // when state was decoded — must start with /dashboard/.
+      const reconnectRedirect = stateReturnTo
+        ?? `/dashboard/${stateWorkspaceId}/integrations?success=crm_connected`
+      return NextResponse.redirect(new URL(reconnectRedirect, req.url))
     }
 
     // No workspace context — find existing workspace for this location, or create one

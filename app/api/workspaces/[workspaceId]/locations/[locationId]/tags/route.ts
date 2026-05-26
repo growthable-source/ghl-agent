@@ -26,16 +26,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (!tokens) {
       return NextResponse.json({
         tags: [],
-        error: 'Not connected to GoHighLevel.',
+        error: 'Not connected to your CRM.',
         code: 'not_connected',
       })
     }
-    // Missing scope on the stored token — no point round-tripping to GHL
-    // just to get a 401. Check explicitly so we can return a precise hint.
+    // Missing scope on the stored token — no point round-tripping to the
+    // CRM just to get a 401. Check explicitly so we can return a precise
+    // hint. If the user has reconnected recently and still hits this,
+    // check the marketplace listing config — `locations/tags.readonly`
+    // has to be enabled in the app's allowed scopes for the OAuth grant
+    // to include it. The OAuth callback logs the granted scope set for
+    // exactly this kind of diagnosis (`[OAuth] Granted scope for …`).
     if (!tokens.scope?.includes('locations/tags.readonly')) {
       return NextResponse.json({
         tags: [],
-        error: 'Your GoHighLevel connection is missing the tags scope. Reconnect to fix.',
+        error: 'Your LeadConnector connection is missing the tags scope. Reconnect from Integrations — if the error persists after reconnecting, the marketplace listing needs the tags scope enabled.',
         code: 'reconnect_required',
       })
     }
@@ -52,7 +57,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({
       tags: [],
       error: isAuth
-        ? 'Your GoHighLevel connection needs to be reconnected (tags scope missing or token expired).'
+        ? 'Your LeadConnector connection needs to be reconnected (tags scope missing or token expired).'
         : `Couldn't load tags: ${msg}`,
       code: isAuth ? 'reconnect_required' : 'fetch_failed',
     })

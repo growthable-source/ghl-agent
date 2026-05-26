@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   SmsIcon, WhatsAppIcon, FacebookIcon, InstagramIcon,
@@ -199,9 +199,19 @@ const ROLE_LABELS: Record<string, string> = { sales: 'Sales', support: 'Support'
 export default function NewAgentWizard() {
   const router = useRouter()
   const params = useParams()
+  const search = useSearchParams()
   const workspaceId = params.workspaceId as string
 
-  const [step, setStep] = useState<Step>('template')
+  // Initial step honours ?step=… so the wizard can be deep-linked
+  // (e.g. the OAuth callback returns the user here after they connect
+  // LeadConnector mid-wizard — landing them back on the CRM step
+  // instead of step 1).
+  const stepFromUrl = (() => {
+    const raw = search.get('step')
+    const valid: Step[] = ['template', 'crm', 'calendar', 'channels', 'knowledge', 'build']
+    return (valid as readonly string[]).includes(raw ?? '') ? (raw as Step) : 'template'
+  })()
+  const [step, setStep] = useState<Step>(stepFromUrl)
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null)
   // Default to 'native' — workspace creation auto-provisions native, so
   // every new workspace lands here with the native CRM already active.
@@ -594,10 +604,15 @@ export default function NewAgentWizard() {
                       )}
                     </button>
 
-                    {/* Inline connect CTA when GHL is selected but not connected */}
+                    {/* Inline connect CTA when GHL is selected but not connected.
+                        The returnTo param tells the OAuth callback to bring the
+                        user back to the wizard (and the CRM step specifically)
+                        after the round-trip — otherwise they'd land on the
+                        workspace integrations page and have to restart the
+                        wizard from step 1. */}
                     {isGhl && selectedCrm === 'ghl' && ghlConnected === false && (
                       <a
-                        href={`/api/auth/crm/connect?workspaceId=${workspaceId}`}
+                        href={`/api/auth/crm/connect?workspaceId=${workspaceId}&returnTo=${encodeURIComponent(`/dashboard/${workspaceId}/agents/new?step=crm`)}`}
                         className="mt-2 inline-flex items-center rounded-lg font-medium text-sm px-4 h-9 hover:opacity-90 transition-colors"
                         style={{
                           background: 'var(--btn-primary-bg)',

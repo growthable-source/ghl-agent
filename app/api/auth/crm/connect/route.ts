@@ -8,11 +8,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
   }
 
+  // Optional: callers (e.g. the agent-creation wizard) can pass
+  // returnTo to be sent back to a specific page after OAuth instead
+  // of the default /integrations landing. Whitelist to internal
+  // paths only — never honour an arbitrary URL as a redirect target.
+  const rawReturnTo = searchParams.get('returnTo')
+  const returnTo =
+    rawReturnTo && rawReturnTo.startsWith('/dashboard/') && !rawReturnTo.startsWith('//')
+      ? rawReturnTo
+      : null
+
   const clientId = process.env.OAUTH_CLIENT_ID
   const versionId = process.env.OAUTH_VERSION_ID
   if (!clientId) {
     return NextResponse.json({ error: 'CRM OAuth not configured' }, { status: 500 })
   }
+
+  // state encoding: when returnTo is present, encode {workspaceId,
+  // returnTo} as base64url JSON. Otherwise stay with bare workspaceId
+  // so unrelated flows that don't know about this contract still work.
+  const state = returnTo
+    ? Buffer.from(JSON.stringify({ workspaceId, returnTo }), 'utf8').toString('base64url')
+    : workspaceId
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -35,7 +52,7 @@ export async function GET(req: NextRequest) {
     //                                  for the admin install registry)
     // We were missing the /events.* pair — bookings returned 401 silently.
     scope: 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write opportunities.readonly opportunities.write calendars.readonly calendars.write calendars/events.readonly calendars/events.write locations.readonly locations/customFields.readonly locations/customFields.write locations/tags.readonly locations/tags.write users.readonly workflows.readonly',
-    state: workspaceId,
+    state,
   })
 
   if (versionId) params.set('version_id', versionId)

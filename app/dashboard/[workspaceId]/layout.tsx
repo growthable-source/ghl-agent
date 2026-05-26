@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import TrialBanner from '@/components/dashboard/TrialBanner'
@@ -68,6 +69,28 @@ export default async function WorkspaceLayout({
 
     // Workspace exists but user doesn't have access — send them to dashboard
     redirect('/dashboard')
+  }
+
+  // ─── Empty-workspace auto-launch ─────────────────────────────────────
+  // A workspace with zero agents has no useful dashboard to show. Send
+  // the user straight into the agent-creation wizard so the empty
+  // dashboard isn't a dead end. The redirect ONLY fires on the
+  // workspace root path — any other child page (Integrations, Settings,
+  // /agents/new itself) still renders normally, so the user can navigate
+  // around without being looped.
+  const h = await headers()
+  const path = h.get('x-invoke-path') ?? h.get('x-matched-path') ?? h.get('next-url') ?? ''
+  if (path === `/dashboard/${workspaceId}` || path.endsWith(`/dashboard/${workspaceId}/`)) {
+    try {
+      const agentCount = await db.agent.count({ where: { workspaceId } })
+      if (agentCount === 0) {
+        redirect(`/dashboard/${workspaceId}/agents/new`)
+      }
+    } catch (err: any) {
+      // Don't block the layout from rendering if the count query fails
+      // — the empty-state CTAs on the dashboard are a fine fallback.
+      console.warn('[WorkspaceLayout] agent-count check failed:', err?.message)
+    }
   }
 
   return (

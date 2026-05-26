@@ -210,7 +210,7 @@ export default function AgentIntegrationsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {([
             { value: 'native', label: 'Native CRM', sub: 'Built-in contacts + lists', Icon: null as null | typeof LeadConnectorIcon },
-            { value: 'ghl', label: 'LeadConnector', sub: 'GoHighLevel CRM', Icon: LeadConnectorIcon },
+            { value: 'ghl', label: 'LeadConnector', sub: 'LeadConnector CRM', Icon: LeadConnectorIcon },
             { value: 'hubspot', label: 'HubSpot', sub: 'HubSpot CRM', Icon: HubSpotIcon },
           ] as const).map(opt => {
             const isAvailable = availableCrms[opt.value]
