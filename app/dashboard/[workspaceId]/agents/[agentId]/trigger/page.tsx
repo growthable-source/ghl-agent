@@ -161,11 +161,17 @@ export default function TriggerEditorPage() {
   async function refetchRoutingRules() {
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
+      if (!res.ok) {
+        console.warn('[trigger] refetchRoutingRules non-ok', res.status)
+        return
+      }
       const d = await res.json()
       setAgent(prev => prev ? { ...prev, routingRules: d.agent?.routingRules ?? [] } : prev)
-    } catch {
-      // Soft-fail; the user can refresh manually if the inline state
-      // gets out of sync.
+    } catch (err: any) {
+      // Soft-fail — surface in console so a desync can be investigated.
+      // The inline builder uses id-based useEffect resync now, so a
+      // stale state here doesn't clobber unsaved edits.
+      console.warn('[trigger] refetchRoutingRules failed', err?.message)
     }
   }
 
@@ -248,6 +254,12 @@ export default function TriggerEditorPage() {
     }
   }
 
+  // Surfaces optimistic-update rollbacks. Without this, a toggle or
+  // delete that the server rejected (token expired, plan limit, race)
+  // would silently revert the UI — user clicks Active, briefly sees
+  // it flip, sees it flip back, no idea why.
+  const [triggerError, setTriggerError] = useState<string | null>(null)
+
   async function toggleTrigger(id: string, isActive: boolean) {
     // Optimistic — flip locally first, roll back if the PATCH 4xx's.
     setTriggers(prev => (prev ?? []).map(t => t.id === id ? { ...t, isActive } : t))
@@ -257,9 +269,15 @@ export default function TriggerEditorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive }),
       })
-      if (!res.ok) throw new Error()
-    } catch {
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}))
+        throw new Error(detail.error || `Couldn't update trigger (${res.status})`)
+      }
+      setTriggerError(null)
+    } catch (err: any) {
+      console.error('[trigger] toggle failed', { id, err: err?.message })
       setTriggers(prev => (prev ?? []).map(t => t.id === id ? { ...t, isActive: !isActive } : t))
+      setTriggerError(err?.message ?? 'Could not update trigger — your change was reverted.')
     }
   }
 
@@ -271,9 +289,15 @@ export default function TriggerEditorPage() {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers/${id}`, {
         method: 'DELETE',
       })
-      if (!res.ok) throw new Error()
-    } catch {
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}))
+        throw new Error(detail.error || `Couldn't delete trigger (${res.status})`)
+      }
+      setTriggerError(null)
+    } catch (err: any) {
+      console.error('[trigger] delete failed', { id, err: err?.message })
       setTriggers(prevState)
+      setTriggerError(err?.message ?? 'Could not delete trigger — change reverted.')
     }
   }
 
@@ -350,14 +374,24 @@ export default function TriggerEditorPage() {
         <div className="space-y-2">
           {CHANNELS.map(ch => {
             const isOn = channelDraft?.channels.some(c => c.channel === ch.key && c.isActive) ?? false
-            // Find the routing rule scoped specifically to this channel.
-            // Rules with empty channels[] are global (managed on /routing)
-            // and don't surface here. Multi-channel rules ([SMS, FB]) are
-            // also a /routing concept and not editable inline.
-            const existingRule = (agent!.routingRules.find(r => {
+            // Find the routing rule(s) scoped specifically to this
+            // channel. Rules with empty channels[] are global
+            // (managed on /routing) and don't surface here. Multi-
+            // channel rules ([SMS, FB]) are also a /routing concept
+            // and not editable inline.
+            //
+            // We grab ALL matches (not just the first) so we can warn
+            // when more than one rule is scoped to this channel —
+            // previously the inline builder edited only the first and
+            // the others would silently keep firing, which surfaced
+            // as "I removed the SMS filter but the agent is still
+            // answering messages I excluded."
+            const matchingRules = agent!.routingRules.filter(r => {
               const chs = r.channels ?? []
               return chs.length === 1 && chs[0] === ch.key
-            }) ?? null) as any
+            })
+            const existingRule = (matchingRules[0] ?? null) as any
+            const extraRuleCount = Math.max(0, matchingRules.length - 1)
             return (
               <div
                 key={ch.key}
@@ -385,15 +419,35 @@ export default function TriggerEditorPage() {
                     builder makes that explicit by warning until the
                     user saves either "All inbound" or a filter. */}
                 {isOn && (
-                  <ChannelFilterBuilder
-                    channel={ch.key}
-                    channelLabel={ch.label}
-                    workspaceId={workspaceId}
-                    agentId={agentId}
-                    locationId={agent!.locationId}
-                    existingRule={existingRule}
-                    onChanged={refetchRoutingRules}
-                  />
+                  <>
+                    {extraRuleCount > 0 && (
+                      <div
+                        className="mt-2 rounded-md border px-2.5 py-2 text-[11px]"
+                        style={{
+                          borderColor: 'var(--accent-amber)',
+                          background: 'var(--accent-amber-bg)',
+                          color: 'var(--accent-amber)',
+                        }}
+                      >
+                        <p className="font-medium">
+                          {extraRuleCount} other rule{extraRuleCount === 1 ? '' : 's'} scoped to {ch.label}
+                        </p>
+                        <p className="mt-0.5 opacity-90">
+                          The inline editor below shows only the first. Other rules will still fire on this channel — review or remove them at{' '}
+                          <Link href={`${base}/routing`} className="underline">advanced routing</Link>.
+                        </p>
+                      </div>
+                    )}
+                    <ChannelFilterBuilder
+                      channel={ch.key}
+                      channelLabel={ch.label}
+                      workspaceId={workspaceId}
+                      agentId={agentId}
+                      locationId={agent!.locationId}
+                      existingRule={existingRule}
+                      onChanged={refetchRoutingRules}
+                    />
+                  </>
                 )}
               </div>
             )
@@ -436,6 +490,27 @@ export default function TriggerEditorPage() {
             </button>
           )}
         </header>
+
+        {triggerError && (
+          <div
+            className="mb-3 rounded-md border px-3 py-2 text-xs flex items-start justify-between gap-3"
+            style={{
+              borderColor: 'var(--accent-red)',
+              background: 'var(--accent-red-bg)',
+              color: 'var(--accent-red)',
+            }}
+          >
+            <span>{triggerError}</span>
+            <button
+              type="button"
+              onClick={() => setTriggerError(null)}
+              className="shrink-0 opacity-70 hover:opacity-100"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Existing triggers */}
         {(triggers ?? []).length === 0 && !newEventOpen ? (

@@ -12,23 +12,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { saveTokens } from '@/lib/token-store'
 import { db } from '@/lib/db'
 import { fetchInstallSnapshot } from '@/lib/leadconnector-install-fetcher'
+import { randomBytes } from 'node:crypto'
 import type { OAuthTokenResponse } from '@/types'
 
 export async function GET(req: NextRequest) {
+  // Correlation id printed on every log line in this request and
+  // surfaced on the failure redirect. Lets a customer report
+  // "install failed with id ABC1234" and we can grep Vercel logs.
+  const cid = randomBytes(4).toString('hex')
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   const error = searchParams.get('error')
 
   // Handle OAuth errors
   if (error) {
-    console.error('[OAuth] Error from provider:', error)
+    console.error(`[OAuth ${cid}] Error from provider:`, error)
     return NextResponse.redirect(
-      new URL(`/dashboard?error=${encodeURIComponent(error)}`, req.url)
+      new URL(`/dashboard?error=${encodeURIComponent(error)}&cid=${cid}`, req.url)
     )
   }
 
   if (!code) {
-    return NextResponse.redirect(new URL('/dashboard?error=missing_code', req.url))
+    console.warn(`[OAuth ${cid}] Missing code in callback`)
+    return NextResponse.redirect(new URL(`/dashboard?error=missing_code&cid=${cid}`, req.url))
   }
 
   try {
@@ -338,8 +344,8 @@ export async function GET(req: NextRequest) {
       ? `/dashboard/${workspaceId}/onboarding`
       : `/dashboard/${workspaceId}`
     return NextResponse.redirect(new URL(redirectPath, req.url))
-  } catch (err) {
-    console.error('[OAuth] Unexpected error:', err)
-    return NextResponse.redirect(new URL('/dashboard?error=unexpected', req.url))
+  } catch (err: any) {
+    console.error(`[OAuth ${cid}] Unexpected error:`, err?.message, err?.stack)
+    return NextResponse.redirect(new URL(`/dashboard?error=unexpected&cid=${cid}`, req.url))
   }
 }

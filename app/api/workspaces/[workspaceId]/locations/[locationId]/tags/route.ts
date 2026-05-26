@@ -96,6 +96,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!tag) return NextResponse.json({ error: 'Failed to create tag' }, { status: 500 })
     return NextResponse.json({ tag })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    // Log the raw error server-side (may contain GHL response bodies
+    // with internal ids); return a sanitised message to the client.
+    console.error('[tags POST] createTag failed', { workspaceId, locationId, name: body?.name, err: err?.message })
+    const message = typeof err?.message === 'string' && err.message.length < 200
+      ? err.message
+      : 'Failed to create tag. Try again or check your LeadConnector connection.'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
