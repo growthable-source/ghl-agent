@@ -34,6 +34,7 @@ import {
 } from '@/components/icons/brand-icons'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 import TagCombobox from '@/components/TagCombobox'
+import ChannelFilterBuilder from '@/components/dashboard/ChannelFilterBuilder'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 import SaveBar from '@/components/dashboard/SaveBar'
 
@@ -50,6 +51,12 @@ interface RoutingRule {
   id: string
   ruleType: string
   value: string | null
+  // Per-channel scope. Empty array = legacy global rule (applies on
+  // every channel the agent listens on). Non-empty = scoped to listed
+  // channels. The inline per-channel builder always writes a single-
+  // channel array; multi-channel and global rules are managed via the
+  // standalone /routing page.
+  channels?: string[]
   conditions: { groups?: { clauses: { ruleType: string; values: string[]; negate?: boolean }[] }[]; clauses?: any[] } | null
 }
 
@@ -146,6 +153,21 @@ export default function TriggerEditorPage() {
         .catch(() => setTriggers([])),
     ])
   }, [workspaceId, agentId])
+
+  // Reload routing rules only — called after each per-channel filter
+  // save so the freshly-saved rule's id, conditions, and channels[] are
+  // all reflected back into the AgentDetails state without re-fetching
+  // the whole agent payload.
+  async function refetchRoutingRules() {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
+      const d = await res.json()
+      setAgent(prev => prev ? { ...prev, routingRules: d.agent?.routingRules ?? [] } : prev)
+    } catch {
+      // Soft-fail; the user can refresh manually if the inline state
+      // gets out of sync.
+    }
+  }
 
   // ─── Channels save form ────────────────────────────────────────────────
   // useDirtyForm pattern matches every other agent sub-page: edit-then-save
@@ -328,65 +350,69 @@ export default function TriggerEditorPage() {
         <div className="space-y-2">
           {CHANNELS.map(ch => {
             const isOn = channelDraft?.channels.some(c => c.channel === ch.key && c.isActive) ?? false
+            // Find the routing rule scoped specifically to this channel.
+            // Rules with empty channels[] are global (managed on /routing)
+            // and don't surface here. Multi-channel rules ([SMS, FB]) are
+            // also a /routing concept and not editable inline.
+            const existingRule = (agent!.routingRules.find(r => {
+              const chs = r.channels ?? []
+              return chs.length === 1 && chs[0] === ch.key
+            }) ?? null) as any
             return (
-              <label
+              <div
                 key={ch.key}
-                className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 cursor-pointer hover:bg-zinc-950/40 transition-colors"
+                className="rounded-lg border px-3 py-2.5 transition-colors"
                 style={{ borderColor: 'var(--border)', background: isOn ? 'var(--surface-secondary)' : 'transparent' }}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`shrink-0 ${ch.color}`}>{ch.icon}</div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{ch.label}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{ch.desc}</p>
+                <label className="flex items-center justify-between gap-3 cursor-pointer">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`shrink-0 ${ch.color}`}>{ch.icon}</div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{ch.label}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{ch.desc}</p>
+                    </div>
                   </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={isOn}
-                  onChange={(e) => toggleChannel(ch.key, e.target.checked)}
-                  className="shrink-0 w-4 h-4 accent-orange-500"
-                />
-              </label>
+                  <input
+                    type="checkbox"
+                    checked={isOn}
+                    onChange={(e) => toggleChannel(ch.key, e.target.checked)}
+                    className="shrink-0 w-4 h-4 accent-orange-500"
+                  />
+                </label>
+                {/* Per-channel filter — appears only when channel is on.
+                    A channel without a saved rule scoped to it WILL NOT
+                    fire (routing engine requires ≥1 matching rule). The
+                    builder makes that explicit by warning until the
+                    user saves either "All inbound" or a filter. */}
+                {isOn && (
+                  <ChannelFilterBuilder
+                    channel={ch.key}
+                    channelLabel={ch.label}
+                    workspaceId={workspaceId}
+                    agentId={agentId}
+                    locationId={agent!.locationId}
+                    existingRule={existingRule}
+                    onChanged={refetchRoutingRules}
+                  />
+                )}
+              </div>
             )
           })}
         </div>
-      </section>
-
-      {/* ─── Section 2: Inbound filters ─────────────────────────────── */}
-      <section className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <header className="mb-4 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Inbound filters</h2>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-              When a message arrives on one of the channels above, the agent responds if it matches any of these filters. Empty = inbounds are skipped.
-            </p>
-          </div>
-          <Link
-            href={`${base}/routing`}
-            className="shrink-0 text-xs font-medium px-3 py-1.5 rounded border whitespace-nowrap"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-          >
-            Edit rules →
-          </Link>
-        </header>
-        {agent!.routingRules.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            No rules yet. Click <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>Edit rules</span> to add one — for example, &quot;All inbound&quot; if you want this agent to take every message, or &quot;has tag&quot; if you want it scoped to a specific contact segment.
+        {/* Global / multi-channel rules still live on /routing for
+            power users. The inline editor above covers the 95% case
+            (one rule per channel). */}
+        {agent!.routingRules.some(r => (r.channels ?? []).length !== 1) && (
+          <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
+            This agent also has rules that apply across multiple channels.{' '}
+            <Link
+              href={`${base}/routing`}
+              className="underline"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Manage advanced rules →
+            </Link>
           </p>
-        ) : (
-          <ul className="space-y-1.5">
-            {agent!.routingRules.slice(0, 6).map(r => (
-              <li key={r.id} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                <span style={{ color: 'var(--text-tertiary)' }}>•</span> {summarizeRoutingRule(r)}
-              </li>
-            ))}
-            {agent!.routingRules.length > 6 && (
-              <li className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                +{agent!.routingRules.length - 6} more
-              </li>
-            )}
-          </ul>
         )}
       </section>
 
