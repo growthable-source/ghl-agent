@@ -202,6 +202,21 @@ function SidebarBody() {
             </div>
             {!isOnboarding && (
               <>
+                {/* Dashboard — the workspace overview page (KPI strip,
+                    activity charts, channel + outcome donuts). Lives
+                    at the top of the sidebar as the canonical "where
+                    am I" landing. Hidden for inbox-only support agents
+                    along with everything else below it. */}
+                {!isInboxOnly && navItemPrimary(
+                  `/dashboard/${workspaceId}`,
+                  'Dashboard',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <rect x="3"  y="3"  width="7" height="9" rx="1.5" />
+                    <rect x="14" y="3"  width="7" height="5" rx="1.5" />
+                    <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                    <rect x="3"  y="16" width="7" height="5" rx="1.5" />
+                  </svg>,
+                )}
                 {/* Primary objects — the four things users actually do here.
                     Inbox is the one nav item every role gets; everything
                     after is hidden when the caller is a support-agent
@@ -301,10 +316,9 @@ function SidebarBody() {
                     className="mt-1 space-y-0.5"
                     style={{ display: moreOpen ? undefined : 'none' }}
                   >
-                    {/* Workspace home — overview dashboard. Kept at the
-                        top because it's the canonical "where am I"
-                        landing. */}
-                    {navLink(`/dashboard/${workspaceId}`, 'Overview')}
+                    {/* Workspace home is the top-level "Dashboard"
+                        primary nav entry now. No duplicate Overview
+                        link here. */}
 
                     {/* ── Activity — what the agents are doing ── */}
                     <div className="pt-3 pb-1 px-3">
