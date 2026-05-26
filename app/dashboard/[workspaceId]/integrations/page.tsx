@@ -436,21 +436,35 @@ export default function IntegrationsPage() {
   async function connectTwilio(e: React.FormEvent) {
     e.preventDefault()
     setSavingTwilio(true)
-    const res = await fetch(`/api/workspaces/${workspaceId}/integrations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'twilio',
-        name: `Twilio ${twilioForm.phoneNumber}`,
-        credentials: { accountSid: twilioForm.accountSid, authToken: twilioForm.authToken },
-        config: { phoneNumber: twilioForm.phoneNumber },
-      }),
-    })
-    const { integration } = await res.json()
-    setIntegrations(prev => [...prev, integration])
-    setShowTwilioForm(false)
-    setTwilioForm({ accountSid: '', authToken: '', phoneNumber: '' })
-    setSavingTwilio(false)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/integrations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'twilio',
+          name: `Twilio ${twilioForm.phoneNumber}`,
+          credentials: { accountSid: twilioForm.accountSid, authToken: twilioForm.authToken },
+          config: { phoneNumber: twilioForm.phoneNumber },
+        }),
+      })
+      // Without this guard, a non-2xx response (validation error,
+      // plan limit, server bug) would push an `undefined` integration
+      // into the list and crash on the next .map(i => i.id).
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}))
+        throw new Error(detail.error || `Couldn't save Twilio (${res.status})`)
+      }
+      const { integration } = await res.json()
+      if (!integration) throw new Error('Server returned no integration record.')
+      setIntegrations(prev => [...prev, integration])
+      setShowTwilioForm(false)
+      setTwilioForm({ accountSid: '', authToken: '', phoneNumber: '' })
+    } catch (err: any) {
+      console.error('[integrations] connectTwilio failed', err)
+      alert(err?.message ?? 'Could not save Twilio. Check your credentials and try again.')
+    } finally {
+      setSavingTwilio(false)
+    }
   }
 
   async function connectCalendly(e: React.FormEvent) {

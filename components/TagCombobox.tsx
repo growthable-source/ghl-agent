@@ -99,20 +99,27 @@ export default function TagCombobox({
   async function createNewTag() {
     if (!value.trim()) return
     setCreating(true)
+    setError(null)
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/locations/${locationId}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: value.trim() }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.tag) {
-          setTags(prev => [...prev, data.tag])
-          commit(data.tag.name)
-        }
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.tag) {
+        setTags(prev => [...prev, data.tag])
+        commit(data.tag.name)
+      } else {
+        // Surface the failure — silent "click did nothing" was the
+        // bug Ryan hit when the tags scope was missing on create.
+        setError(data.error || `Could not create tag (${res.status})`)
       }
-    } finally { setCreating(false) }
+    } catch (err: any) {
+      setError(err?.message ?? 'Network error creating tag')
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (

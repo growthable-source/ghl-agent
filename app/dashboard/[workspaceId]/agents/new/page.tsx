@@ -326,18 +326,36 @@ export default function NewAgentWizard() {
     // sidebar's Native CRM section appears, and the runtime adapter
     // factory routes correctly. Idempotent — safe to re-fire.
     if (step === 'crm' && currentCrm !== selectedCrm) {
+      // fetch() only rejects on network error — a non-2xx response
+      // (plan limit, schema mid-migration, server bug) resolves
+      // normally. We have to inspect res.ok or the previous silent-
+      // swallow lets the wizard advance with the CRM unchanged, and
+      // the agent created at the end FKs to the wrong Location.
       try {
         if (selectedCrm === 'native') {
-          await fetch(`/api/workspaces/${workspaceId}/crm/native/provision`, { method: 'POST' })
+          const prov = await fetch(`/api/workspaces/${workspaceId}/crm/native/provision`, { method: 'POST' })
+          if (!prov.ok) {
+            const detail = await prov.json().catch(() => ({}))
+            setError(detail.error || `Failed to provision Native CRM (${prov.status})`)
+            return
+          }
         }
-        await fetch(`/api/workspaces/${workspaceId}/integrations`, {
+        const patch = await fetch(`/api/workspaces/${workspaceId}/integrations`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ crmProvider: selectedCrm }),
         })
+        if (!patch.ok) {
+          const detail = await patch.json().catch(() => ({}))
+          setError(detail.error || `Failed to switch CRM (${patch.status})`)
+          return
+        }
         setCurrentCrm(selectedCrm)
-      } catch (err) {
-        console.warn('[agent-wizard] CRM switch failed:', err)
+        setError('')
+      } catch (err: any) {
+        console.error('[agent-wizard] CRM switch network error:', err)
+        setError(err?.message ?? 'Network error switching CRM. Try again.')
+        return
       }
     }
     const nextIdx = currentIdx + 1
@@ -410,18 +428,34 @@ export default function NewAgentWizard() {
         throw new Error(data.error || `Failed to create agent (${res.status})`)
       }
 
-      // Save channel deployments
+      // Save channel deployments. If this fails (network blip, plan
+      // limit, schema drift) we previously navigated anyway and the
+      // agent landed on the deploy page with zero channels active —
+      // silently broken. Surface a banner but still navigate so the
+      // user can manually enable channels from the deploy page.
+      let channelWarning: string | null = null
       if (selectedChannels.length > 0) {
-        await fetch(`/api/workspaces/${workspaceId}/agents/${data.agent.id}/channels`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channels: selectedChannels.map(ch => ({ channel: ch, isActive: true })),
-          }),
-        })
+        try {
+          const chRes = await fetch(`/api/workspaces/${workspaceId}/agents/${data.agent.id}/channels`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              channels: selectedChannels.map(ch => ({ channel: ch, isActive: true })),
+            }),
+          })
+          if (!chRes.ok) {
+            const detail = await chRes.json().catch(() => ({}))
+            channelWarning = detail.error || `Couldn't enable channels (${chRes.status})`
+            console.error('[agent-wizard] channel deployment failed', { agentId: data.agent.id, status: chRes.status, detail })
+          }
+        } catch (err: any) {
+          channelWarning = err?.message ?? 'Channel deployment network error'
+          console.error('[agent-wizard] channel deployment threw', err)
+        }
       }
 
-      router.push(`/dashboard/${workspaceId}/agents/${data.agent.id}/deploy`)
+      const dest = `/dashboard/${workspaceId}/agents/${data.agent.id}/deploy`
+      router.push(channelWarning ? `${dest}?warning=${encodeURIComponent(channelWarning)}` : dest)
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please try again.')
       setSaving(false)

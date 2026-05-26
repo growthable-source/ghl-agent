@@ -121,14 +121,29 @@ export async function findMatchingAgent(
 
   const getContactData = async () => {
     if (!contact) {
-      try { contact = await getContact(locationId, contactId) } catch { contact = null }
+      try {
+        contact = await getContact(locationId, contactId)
+      } catch (err: any) {
+        // CRITICAL observability — when contact fetch fails (expired
+        // token, GHL outage, rate limit) every TAG/PIPELINE_STAGE
+        // clause silently can't match, the agent "doesn't fire", and
+        // the operator has no breadcrumb. Log it so the inevitable
+        // support ticket can be answered from Vercel logs.
+        console.error('[Routing] contact fetch failed', { locationId, contactId, err: err?.message })
+        contact = null
+      }
     }
     return contact
   }
 
   const getOpportunities = async () => {
     if (!opportunities) {
-      try { opportunities = await getOpportunitiesForContact(locationId, contactId) } catch { opportunities = [] }
+      try {
+        opportunities = await getOpportunitiesForContact(locationId, contactId)
+      } catch (err: any) {
+        console.error('[Routing] opportunities fetch failed', { locationId, contactId, err: err?.message })
+        opportunities = []
+      }
     }
     return opportunities ?? []
   }

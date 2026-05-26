@@ -111,7 +111,11 @@ export async function POST(req: NextRequest) {
     },
   }
 
-  // Try to set billing fields (may fail if migration hasn't run)
+  // Try to set billing fields (may fail if migration hasn't run).
+  // Each catch logs with the Prisma error code so an unrelated failure
+  // (FK violation, unique slug collision) doesn't get reclassified as
+  // "migration pending" silently. We only swallow the column-missing
+  // case (P2022); anything else falls through to a 500.
   let workspace
   try {
     workspace = await db.workspace.create({
@@ -121,24 +125,34 @@ export async function POST(req: NextRequest) {
         trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     })
-  } catch {
-    // Billing columns may not exist yet — retry without them. Strip the
-    // install attribution fields too, since the same un-migrated DB
-    // class is what'd be missing those columns.
+  } catch (err: any) {
+    if (err?.code !== 'P2022' && err?.code !== 'P2021') {
+      console.error('[workspaces] create with full fields failed (non-migration error):', err?.code, err?.message)
+      return NextResponse.json({ error: err?.message ?? 'Failed to create workspace' }, { status: 500 })
+    }
+    console.warn('[workspaces] full create hit migration-pending column:', err?.code, err?.meta?.column)
+    // Strip install attribution + billing fields and retry.
     const { installSource: _i, primaryCrmProvider: _p, ...legacyCreateData } = createData
     try {
       workspace = await db.workspace.create({ data: legacyCreateData })
-    } catch {
-      // Last-ditch: maybe billing columns exist but install columns
-      // don't (older migration state). Try again with billing fields
-      // but no install fields.
-      workspace = await db.workspace.create({
-        data: {
-          ...legacyCreateData,
-          plan: 'trial',
-          trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-      })
+    } catch (err2: any) {
+      if (err2?.code !== 'P2022' && err2?.code !== 'P2021') {
+        console.error('[workspaces] create without install fields failed:', err2?.code, err2?.message)
+        return NextResponse.json({ error: err2?.message ?? 'Failed to create workspace' }, { status: 500 })
+      }
+      console.warn('[workspaces] legacy create still missing column:', err2?.code, err2?.meta?.column)
+      try {
+        workspace = await db.workspace.create({
+          data: {
+            ...legacyCreateData,
+            plan: 'trial',
+            trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        })
+      } catch (err3: any) {
+        console.error('[workspaces] final fallback create failed:', err3?.code, err3?.message)
+        return NextResponse.json({ error: err3?.message ?? 'Failed to create workspace' }, { status: 500 })
+      }
     }
   }
 

@@ -101,14 +101,23 @@ export default function ChannelFilterBuilder({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Re-sync local state when the parent reloads the rule (e.g. after a
-  // sibling channel's save triggers a refetch).
+  // Re-sync local state ONLY when the rule's identity changes (id) —
+  // not when the parent refetches and returns a structurally-equal but
+  // referentially-different conditions object. Without this guard,
+  // saving the SMS filter would refetch the whole agent payload, give
+  // every sibling builder a fresh `existingRule.conditions` reference,
+  // and the effect would fire — wiping any in-progress edits the user
+  // had typed into other channels' filters. The id-only key is safe
+  // because we own all writes through this component; the only time
+  // the rule's content changes mid-edit is when WE just saved it,
+  // which already updates local state on the success path.
   useEffect(() => {
     const next = ruleToClauses(existingRule)
     setMode(next.mode)
     setClauses(next.clauses)
     setSearchText({})
-  }, [existingRule?.id, existingRule?.conditions, existingRule?.ruleType])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional id-only key, see comment
+  }, [existingRule?.id])
 
   function updateClause(i: number, patch: Partial<Clause>) {
     setClauses(prev => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)))

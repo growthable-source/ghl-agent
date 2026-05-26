@@ -2,13 +2,47 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 
-type Params = { params: Promise<{ workspaceId: string; ruleId: string }> }
+// All three IDs from the URL — workspaceId is membership-gated, agentId
+// and ruleId pin the write to the correct tenant lineage so cross-
+// tenant writes (rule belongs to a different workspace's agent) can't
+// slip through just because the caller is a member of SOME workspace.
+type Params = { params: Promise<{ workspaceId: string; agentId: string; ruleId: string }> }
+
+/**
+ * Verifies the rule referenced by `ruleId` belongs to `agentId` AND that
+ * `agentId` belongs to `workspaceId`. Returns the rule on success, a
+ * 404 Response on any tenant mismatch (404 not 403 — we don't want to
+ * confirm the rule's existence to a caller who has no business knowing).
+ */
+async function loadRuleInTenant(workspaceId: string, agentId: string, ruleId: string) {
+  const rule = await db.routingRule.findUnique({
+    where: { id: ruleId },
+    select: {
+      id: true,
+      agentId: true,
+      agent: { select: { workspaceId: true } },
+    },
+  })
+  if (!rule || rule.agentId !== agentId || rule.agent.workspaceId !== workspaceId) {
+    return null
+  }
+  return rule
+}
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const { workspaceId, ruleId } = await params
+  const { workspaceId, agentId, ruleId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
-  const body = await req.json()
+
+  const owned = await loadRuleInTenant(workspaceId, agentId, ruleId)
+  if (!owned) return NextResponse.json({ error: 'Rule not found' }, { status: 404 })
+
+  let body: any
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
   // If the caller sends `conditions`, we write the compound shape and clear
   // the legacy `value`. The required `ruleType` column is kept in sync with
@@ -47,17 +81,31 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (body.value !== undefined) data.value = body.value
   }
 
-  const rule = await db.routingRule.update({
-    where: { id: ruleId },
-    data,
-  })
-  return NextResponse.json({ rule })
+  try {
+    const rule = await db.routingRule.update({
+      where: { id: ruleId },
+      data,
+    })
+    return NextResponse.json({ rule })
+  } catch (err: any) {
+    console.error('[routing] PATCH failed', { workspaceId, agentId, ruleId, err: err?.message })
+    return NextResponse.json({ error: err?.message ?? 'Failed to update rule' }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const { workspaceId, ruleId } = await params
+  const { workspaceId, agentId, ruleId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
-  await db.routingRule.delete({ where: { id: ruleId } })
-  return NextResponse.json({ success: true })
+
+  const owned = await loadRuleInTenant(workspaceId, agentId, ruleId)
+  if (!owned) return NextResponse.json({ error: 'Rule not found' }, { status: 404 })
+
+  try {
+    await db.routingRule.delete({ where: { id: ruleId } })
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    console.error('[routing] DELETE failed', { workspaceId, agentId, ruleId, err: err?.message })
+    return NextResponse.json({ error: err?.message ?? 'Failed to delete rule' }, { status: 500 })
+  }
 }

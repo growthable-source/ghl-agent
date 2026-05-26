@@ -140,11 +140,27 @@ export async function POST(req: NextRequest) {
   // Marketplace admins land as 'admin' so they can do destructive
   // things; non-admin marketplace users land as 'member'.
   const role = payload.role === 'admin' ? 'admin' : 'member'
-  await db.workspaceMember.upsert({
+  // Refresh the role on every handshake — marketplace payload is the
+  // source of truth. The old `update: {}` meant a user demoted in
+  // GHL kept their elevated Voxility access forever (and vice versa,
+  // a promotion never propagated). We do NOT touch 'owner' rows
+  // though — that role is set by direct-signup workspace creation
+  // and shouldn't be clobbered just because the same user also has
+  // a GHL marketplace install routing through SSO.
+  const existingMember = await db.workspaceMember.findUnique({
     where: { userId_workspaceId: { userId: user.id, workspaceId: location.workspaceId } },
-    create: { userId: user.id, workspaceId: location.workspaceId, role },
-    update: {},
+    select: { role: true },
   })
+  if (!existingMember) {
+    await db.workspaceMember.create({
+      data: { userId: user.id, workspaceId: location.workspaceId, role },
+    })
+  } else if (existingMember.role !== 'owner' && existingMember.role !== role) {
+    await db.workspaceMember.update({
+      where: { userId_workspaceId: { userId: user.id, workspaceId: location.workspaceId } },
+      data: { role },
+    })
+  }
 
   // Mint a NextAuth database session by inserting a Session row + setting
   // the session cookie. NextAuth's database adapter resolves the cookie

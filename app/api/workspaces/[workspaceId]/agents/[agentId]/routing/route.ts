@@ -19,7 +19,25 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId, agentId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
-  const body = await req.json()
+
+  // Verify the agent belongs to this workspace before writing a rule
+  // to it. requireWorkspaceAccess gates the workspace itself, but a
+  // member could otherwise POST rules onto an agent in a different
+  // workspace they happen to know the id of.
+  const agentOwned = await db.agent.findUnique({
+    where: { id: agentId },
+    select: { workspaceId: true },
+  })
+  if (!agentOwned || agentOwned.workspaceId !== workspaceId) {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  }
+
+  let body: any
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
   // Three request shapes are accepted:
   //
@@ -67,15 +85,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     ? (body.channels as unknown[]).filter((c): c is string => typeof c === 'string')
     : []
 
-  const rule = await db.routingRule.create({
-    data: {
-      agentId,
-      ruleType: firstClauseType,
-      value: conditions ? null : (body.value ?? null),
-      conditions: conditions ?? undefined,
-      priority,
-      channels,
-    },
-  })
-  return NextResponse.json({ rule }, { status: 201 })
+  try {
+    const rule = await db.routingRule.create({
+      data: {
+        agentId,
+        ruleType: firstClauseType,
+        value: conditions ? null : (body.value ?? null),
+        conditions: conditions ?? undefined,
+        priority,
+        channels,
+      },
+    })
+    return NextResponse.json({ rule }, { status: 201 })
+  } catch (err: any) {
+    console.error('[routing] POST failed', { workspaceId, agentId, err: err?.message, code: err?.code })
+    return NextResponse.json({ error: err?.message ?? 'Failed to create rule' }, { status: 500 })
+  }
 }
