@@ -5,7 +5,8 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid
+  ResponsiveContainer, CartesianGrid,
+  PieChart, Pie, Cell,
 } from 'recharts'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -230,27 +231,37 @@ export default function WorkspaceDashboard() {
         </div>
       </div>
 
-      {/* ─── KPI Cards ─── */}
+      {/* ─── KPI Cards ───
+          Big-number-first layout. Label on top in muted caps, big bold
+          value, delta badge to the right when we have comparison data.
+          Drops the emoji-as-icon pattern — emoji on a light-theme white
+          card looked busy and added no information. */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
         {[
-          { label: 'Messages', value: formatNum(kpi.totalMessages), delta: kpi.messagesDelta, icon: '💬' },
-          { label: 'Success Rate', value: `${kpi.successRate}%`, delta: kpi.successRateDelta, icon: '✅' },
-          { label: 'Active Convos', value: formatNum(kpi.activeConversations), icon: '🔄' },
-          { label: 'Appointments', value: kpi.appointmentsBooked.toString(), icon: '📅' },
-          { label: 'Voice Calls', value: kpi.callCount.toString(), delta: kpi.callsDelta, icon: '📞' },
-          { label: 'Time Saved', value: `${Math.round(kpi.estimatedMinutesSaved / 60)}h`, icon: '⏱️' },
+          { label: 'Messages',      value: formatNum(kpi.totalMessages),                          delta: kpi.messagesDelta },
+          { label: 'Success Rate',  value: `${kpi.successRate}%`,                                 delta: kpi.successRateDelta },
+          { label: 'Active Convos', value: formatNum(kpi.activeConversations) },
+          { label: 'Appointments',  value: kpi.appointmentsBooked.toString() },
+          { label: 'Voice Calls',   value: kpi.callCount.toString(),                              delta: kpi.callsDelta },
+          { label: 'Time Saved',    value: `${Math.round(kpi.estimatedMinutesSaved / 60)}h` },
         ].map(card => (
           <div
             key={card.label}
-            className="rounded-xl px-4 py-3"
+            className="rounded-xl px-4 py-3.5"
             style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
           >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm">{card.icon}</span>
+            <p
+              className="text-[10px] font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              {card.label}
+            </p>
+            <div className="flex items-baseline justify-between gap-2 mt-1">
+              <p className="text-2xl font-bold leading-none tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                {card.value}
+              </p>
               {card.delta !== undefined && <DeltaBadge value={card.delta} />}
             </div>
-            <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{card.value}</p>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{card.label}</p>
           </div>
         ))}
       </div>
@@ -265,43 +276,44 @@ export default function WorkspaceDashboard() {
           <h3 className="text-sm font-medium mb-4" style={{ color: 'var(--text-secondary)' }}>Messages Over Time</h3>
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
+              <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="msgGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#fa4d2e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#fa4d2e" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--accent-primary)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--accent-primary)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                {/* Horizontal-only gridlines. Solid, low-opacity border
+                    token — adapts to theme. No dash-dot. */}
+                <CartesianGrid horizontal vertical={false} stroke="var(--border)" strokeOpacity={0.7} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fill: '#6b7280', fontSize: 11 }}
-                  axisLine={{ stroke: '#1f2937' }}
+                  tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }}
+                  axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fill: '#6b7280', fontSize: 11 }}
+                  tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
-                  width={40}
+                  width={36}
                 />
                 <Tooltip content={<ChartTooltip />} />
                 <Area
                   type="monotone"
                   dataKey="success"
                   name="Successful"
-                  stroke="#fa4d2e"
+                  stroke="var(--accent-primary)"
                   fill="url(#msgGradient)"
-                  strokeWidth={2}
+                  strokeWidth={2.5}
                 />
                 <Area
                   type="monotone"
                   dataKey="errors"
                   name="Errors"
-                  stroke="#ef4444"
+                  stroke="var(--accent-red)"
                   fill="transparent"
                   strokeWidth={1.5}
-                  strokeDasharray="4 4"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -316,24 +328,24 @@ export default function WorkspaceDashboard() {
           <h3 className="text-sm font-medium mb-4" style={{ color: 'var(--text-secondary)' }}>Calls & Appointments</h3>
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+              <BarChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                <CartesianGrid horizontal vertical={false} stroke="var(--border)" strokeOpacity={0.7} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fill: '#6b7280', fontSize: 11 }}
-                  axisLine={{ stroke: '#1f2937' }}
+                  tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }}
+                  axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fill: '#6b7280', fontSize: 11 }}
+                  tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   width={30}
                   allowDecimals={false}
                 />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="calls" name="Voice Calls" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="appointments" name="Appointments" fill="#10b981" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="calls" name="Voice Calls" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="appointments" name="Appointments" fill="var(--accent-emerald)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -492,27 +504,12 @@ export default function WorkspaceDashboard() {
 
       {/* ─── Channel Distribution + Quick Stats ─── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Channels */}
-        <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
-          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Active Channels</h3>
-          {data?.channelBreakdown && data.channelBreakdown.length > 0 ? (
-            <div className="space-y-2">
-              {data.channelBreakdown.map(ch => (
-                <div key={ch.channel} className="flex items-center justify-between">
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{CHANNEL_LABELS[ch.channel] ?? ch.channel}</span>
-                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{ch.agents} agent{ch.agents !== 1 ? 's' : ''}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No channels deployed yet</p>
-          )}
-        </div>
+        {/* Channels — donut. Was a textual list of "X agents per
+            channel" which read like a config dump. Donut shows the
+            same data visually + scales with channel count. */}
+        <ChannelDonut breakdown={data?.channelBreakdown ?? []} />
 
-        {/* Token Usage */}
+        {/* AI Usage — big-number card, unchanged. */}
         <div
           className="rounded-xl p-5"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
@@ -520,72 +517,179 @@ export default function WorkspaceDashboard() {
           <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>AI Usage</h3>
           <div className="space-y-3">
             <div>
-              <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatNum(kpi.totalTokens)}</p>
-              <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>tokens consumed</p>
+              <p className="text-2xl font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatNum(kpi.totalTokens)}</p>
+              <p className="text-[11px] uppercase tracking-wider mt-0.5" style={{ color: 'var(--text-tertiary)' }}>tokens consumed</p>
             </div>
             <div>
-              <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{kpi.activeAgents}</p>
-              <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>active agents</p>
+              <p className="text-lg font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>{kpi.activeAgents}</p>
+              <p className="text-[11px] uppercase tracking-wider mt-0.5" style={{ color: 'var(--text-tertiary)' }}>active agents</p>
             </div>
             <div>
-              <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{kpi.totalCallMinutes} min</p>
-              <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>voice call time</p>
+              <p className="text-lg font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>{kpi.totalCallMinutes} min</p>
+              <p className="text-[11px] uppercase tracking-wider mt-0.5" style={{ color: 'var(--text-tertiary)' }}>voice call time</p>
             </div>
           </div>
         </div>
 
-        {/* Error Summary */}
-        <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
-          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Message Outcomes</h3>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-emerald)' }} />
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Successful</span>
-              </div>
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{formatNum(kpi.totalMessages - kpi.errorMessages - kpi.skippedMessages)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-red)' }} />
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Errors</span>
-              </div>
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{kpi.errorMessages}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ background: 'var(--text-muted)' }} />
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Skipped</span>
-              </div>
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{kpi.skippedMessages}</span>
-            </div>
-
-            {/* Visual bar */}
-            {kpi.totalMessages > 0 && (
-              <div className="h-2 rounded-full overflow-hidden flex mt-2">
-                <div
-                  className="h-full"
-                  style={{
-                    background: 'var(--accent-emerald)',
-                    width: `${((kpi.totalMessages - kpi.errorMessages - kpi.skippedMessages) / kpi.totalMessages) * 100}%`,
-                  }}
-                />
-                <div
-                  className="h-full"
-                  style={{ background: 'var(--accent-red)', width: `${(kpi.errorMessages / kpi.totalMessages) * 100}%` }}
-                />
-                <div
-                  className="h-full"
-                  style={{ background: 'var(--text-muted)', width: `${(kpi.skippedMessages / kpi.totalMessages) * 100}%` }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Message Outcomes — donut. Was three text rows + a thin
+            stacked bar; the donut shows the success/error/skipped
+            ratio at a glance and the success-rate big number anchors
+            the eye in the centre. */}
+        <OutcomesDonut
+          success={Math.max(0, kpi.totalMessages - kpi.errorMessages - kpi.skippedMessages)}
+          errors={kpi.errorMessages}
+          skipped={kpi.skippedMessages}
+          successRate={kpi.successRate}
+        />
       </div>
+    </div>
+  )
+}
+
+// ─── Donut components ──────────────────────────────────────────────────────
+
+// Stable palette for channel slices. Voxility doesn't have a per-channel
+// brand colour system yet, so this is hand-tuned for visual distinction
+// rather than semantic match (only LeadConnector's orange-on-orange would
+// have semantic meaning, and that's covered by the accent token).
+const CHANNEL_PALETTE: Record<string, string> = {
+  SMS:       '#3b82f6',  // blue
+  WhatsApp:  '#22c55e',  // green
+  FB:        '#1877F2',  // facebook blue
+  IG:        '#E4405F',  // instagram pink
+  GMB:       '#9ca3af',  // google grey
+  Live_Chat: '#8b5cf6',  // violet
+  Email:     '#f59e0b',  // amber
+}
+
+function ChannelDonut({ breakdown }: { breakdown: { channel: string; agents: number }[] }) {
+  const total = breakdown.reduce((sum, c) => sum + c.agents, 0)
+  const data = breakdown
+    .filter(c => c.agents > 0)
+    .map(c => ({
+      name: CHANNEL_LABELS[c.channel] ?? c.channel,
+      value: c.agents,
+      colour: CHANNEL_PALETTE[c.channel] ?? '#6b7280',
+    }))
+
+  return (
+    <div
+      className="rounded-xl p-5"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
+      <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Channel mix</h3>
+      {data.length === 0 ? (
+        <div className="flex items-center justify-center h-[180px]">
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No channels deployed yet</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4">
+          <div className="relative w-[140px] h-[140px] shrink-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  dataKey="value"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={42}
+                  outerRadius={62}
+                  paddingAngle={2}
+                  stroke="var(--surface)"
+                  strokeWidth={2}
+                >
+                  {data.map((entry, i) => (
+                    <Cell key={i} fill={entry.colour} />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Centre label — total agent deployments across channels.
+                Absolutely positioned so it sits in the donut hole. */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-xl font-bold leading-none tabular-nums" style={{ color: 'var(--text-primary)' }}>{total}</p>
+              <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>deployments</p>
+            </div>
+          </div>
+          <ul className="flex-1 space-y-1.5 min-w-0">
+            {data.map(d => (
+              <li key={d.name} className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.colour }} />
+                  <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                </div>
+                <span className="tabular-nums shrink-0" style={{ color: 'var(--text-tertiary)' }}>{d.value}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OutcomesDonut({
+  success, errors, skipped, successRate,
+}: { success: number; errors: number; skipped: number; successRate: number }) {
+  const total = success + errors + skipped
+  const data = [
+    { name: 'Successful', value: success, colour: 'var(--accent-emerald)' },
+    { name: 'Errors',     value: errors,  colour: 'var(--accent-red)' },
+    { name: 'Skipped',    value: skipped, colour: 'var(--text-muted)' },
+  ].filter(d => d.value > 0)
+
+  return (
+    <div
+      className="rounded-xl p-5"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
+      <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Message outcomes</h3>
+      {total === 0 ? (
+        <div className="flex items-center justify-center h-[180px]">
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No messages yet</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4">
+          <div className="relative w-[140px] h-[140px] shrink-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  dataKey="value"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={42}
+                  outerRadius={62}
+                  paddingAngle={2}
+                  stroke="var(--surface)"
+                  strokeWidth={2}
+                >
+                  {data.map((entry, i) => (
+                    <Cell key={i} fill={entry.colour} />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-xl font-bold leading-none tabular-nums" style={{ color: 'var(--accent-emerald)' }}>{successRate}%</p>
+              <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>success</p>
+            </div>
+          </div>
+          <ul className="flex-1 space-y-1.5 min-w-0">
+            {data.map(d => (
+              <li key={d.name} className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.colour }} />
+                  <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                </div>
+                <span className="tabular-nums shrink-0" style={{ color: 'var(--text-tertiary)' }}>{formatNum(d.value)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
