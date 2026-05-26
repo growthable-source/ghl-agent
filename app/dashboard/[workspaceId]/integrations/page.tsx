@@ -492,7 +492,12 @@ export default function IntegrationsPage() {
           config: { userUri: verifyData.userUri },
         }),
       })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}))
+        throw new Error(detail.error || `Couldn't save Calendly (${res.status})`)
+      }
       const { integration } = await res.json()
+      if (!integration) throw new Error('Server returned no integration record.')
       setIntegrations(prev => [...prev, integration])
       setShowCalendlyForm(false)
       setCalendlyToken('')
@@ -524,7 +529,12 @@ export default function IntegrationsPage() {
           config: { userId: verifyData.userId },
         }),
       })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}))
+        throw new Error(detail.error || `Couldn't save Cal.com (${res.status})`)
+      }
       const { integration } = await res.json()
+      if (!integration) throw new Error('Server returned no integration record.')
       setIntegrations(prev => [...prev, integration])
       setShowCalcomForm(false)
       setCalcomKey('')
@@ -556,7 +566,12 @@ export default function IntegrationsPage() {
           config: { accountId: verifyData.accountId },
         }),
       })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}))
+        throw new Error(detail.error || `Couldn't save Stripe (${res.status})`)
+      }
       const { integration } = await res.json()
+      if (!integration) throw new Error('Server returned no integration record.')
       setIntegrations(prev => [...prev, integration])
       setShowStripeForm(false)
       setStripeKey('')
