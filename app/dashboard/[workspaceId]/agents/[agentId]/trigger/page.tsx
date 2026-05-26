@@ -1,64 +1,91 @@
 'use client'
 
 /**
- * Trigger Overview — landing page for the Trigger hub.
+ * "When this agent runs" — unified editor.
  *
- * Shows the current state of every system that affects whether and when
- * this agent fires:
+ * One page that answers the only question a user has when configuring an
+ * agent: when does it actually fire? Previously this was split across:
  *
- *   • Channels         — which inboxes the agent listens on
- *   • Routing rules    — which inbounds the agent claims
- *   • Detection rules  — what the agent does when it spots something
- *   • Working hours    — when the agent can proactively reach out
- *   • Proactive        — CRM events that start the conversation
+ *   /deploy   — channel toggles (per-agent ChannelDeployment)
+ *   /routing  — RoutingRule editor (inbound message conditions)
+ *   /triggers — AgentTrigger editor (proactive CRM events)
  *
- * Each card shows a one-glance status with a deep-link to the full editor
- * for that area. The page is read-only — saves still happen on the
- * specialised sub-pages.
+ * Three confusing entry points with overlapping language. This page merges
+ * them into one editor with three sections, top to bottom:
+ *
+ *   1. Channels        (inline toggles — replaces /deploy)
+ *   2. Inbound filters (summary + link to advanced compound builder at
+ *                       /routing — too complex to embed inline)
+ *   3. CRM events      (inline editor for AgentTrigger — replaces
+ *                       /triggers, which now redirects here)
+ *
+ * Status banner at the top reflects the agent's actual listening state so
+ * users immediately know whether their config will fire on the next
+ * inbound. Working hours stay on their own page (different concept — when
+ * the agent is *allowed* to act, not what triggers it).
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { OverviewSection, OverviewRow, EmptyHint, Tag } from '@/components/dashboard/AgentOverview'
+import {
+  SmsIcon, WhatsAppIcon, FacebookIcon, InstagramIcon,
+  GoogleIcon, LiveChatIcon, EmailIcon,
+} from '@/components/icons/brand-icons'
+import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
+import TagCombobox from '@/components/TagCombobox'
+import { useDirtyForm } from '@/lib/use-dirty-form'
+import SaveBar from '@/components/dashboard/SaveBar'
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ChannelDeployment { channel: string; isActive: boolean }
+interface ChannelDeployment {
+  id?: string
+  channel: string
+  isActive: boolean
+  config?: any
+}
 
 interface RoutingRule {
   id: string
   ruleType: string
   value: string | null
-  conditions: { groups?: { clauses: { ruleType: string; values: string[]; negate?: boolean }[] }[] } | null
+  conditions: { groups?: { clauses: { ruleType: string; values: string[]; negate?: boolean }[] }[]; clauses?: any[] } | null
 }
 
-interface ContactTrigger {
+interface AgentTrigger {
   id: string
-  eventType: string
+  eventType: 'ContactCreate' | 'ContactTagUpdate'
   tagFilter: string | null
   channel: string
-  messageMode: string
+  messageMode: 'FIXED' | 'AI_GENERATE'
+  fixedMessage: string | null
+  aiInstructions: string | null
+  delaySeconds: number
   isActive: boolean
 }
 
 interface AgentDetails {
   isActive: boolean
-  workingHoursEnabled: boolean
-  workingHoursStart: number | null
-  workingHoursEnd: number | null
-  workingDays: string[] | null
-  timezone: string | null
   routingRules: RoutingRule[]
+  locationId: string
 }
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-const CHANNEL_LABELS: Record<string, string> = {
-  SMS: 'SMS', WhatsApp: 'WhatsApp', FB: 'Facebook',
-  IG: 'Instagram', GMB: 'Google Business', Live_Chat: 'Live Chat', Email: 'Email',
-}
+const CHANNELS = [
+  { key: 'SMS', label: 'SMS', desc: 'Text messages via LeadConnector', icon: <SmsIcon className="w-5 h-5" />, color: 'text-blue-400' },
+  { key: 'WhatsApp', label: 'WhatsApp', desc: 'WhatsApp Business via LeadConnector', icon: <WhatsAppIcon className="w-5 h-5" />, color: 'text-[#25D366]' },
+  { key: 'FB', label: 'Facebook Messenger', desc: 'Facebook page messages', icon: <FacebookIcon className="w-5 h-5" />, color: 'text-[#1877F2]' },
+  { key: 'IG', label: 'Instagram DMs', desc: 'Instagram direct messages', icon: <InstagramIcon className="w-5 h-5" />, color: 'text-[#E4405F]' },
+  { key: 'GMB', label: 'Google Business', desc: 'Google Business Profile messages', icon: <GoogleIcon className="w-5 h-5" />, color: 'text-white' },
+  { key: 'Live_Chat', label: 'Live Chat', desc: 'Website chat widget', icon: <LiveChatIcon className="w-5 h-5" />, color: 'text-violet-400' },
+  { key: 'Email', label: 'Email', desc: 'Email conversations via LeadConnector', icon: <EmailIcon className="w-5 h-5" />, color: 'text-amber-400' },
+]
 
-const ALL_CHANNELS = ['SMS', 'WhatsApp', 'FB', 'IG', 'GMB', 'Live_Chat', 'Email']
+const CHANNEL_LABELS: Record<string, string> = Object.fromEntries(
+  CHANNELS.map(c => [c.key, c.label]),
+)
 
 const RULE_TYPE_LABEL: Record<string, string> = {
   ALL: 'All inbound',
@@ -67,35 +94,10 @@ const RULE_TYPE_LABEL: Record<string, string> = {
   KEYWORD: 'message contains',
 }
 
-const DAY_LABEL: Record<string, string> = {
-  mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun',
-}
-const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function fmtHour(h: number): string {
-  if (h === 0) return '12am'
-  if (h === 12) return '12pm'
-  if (h === 24) return '12am (next day)'
-  return h < 12 ? `${h}am` : `${h - 12}pm`
-}
-
-function fmtDays(days: string[]): string {
-  if (!days || days.length === 0) return 'No days set'
-  if (days.length === 7) return 'Every day'
-  // Detect Mon–Fri
-  const ordered = [...days].sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
-  const isWeekdays = ordered.length === 5 && ['mon','tue','wed','thu','fri'].every(d => ordered.includes(d))
-  if (isWeekdays) return 'Mon–Fri'
-  return ordered.map(d => DAY_LABEL[d] ?? d).join(', ')
-}
-
 function summarizeRoutingRule(rule: RoutingRule): string {
-  // Prefer the modern groups[] shape; fall back to legacy ruleType/value.
   const groups = rule.conditions?.groups
   if (groups && groups.length > 0) {
-    const groupSummaries = groups.map(g => {
+    const summaries = groups.map(g => {
       const parts = g.clauses.map(c => {
         if (c.ruleType === 'ALL') return 'all inbound'
         const verb = (RULE_TYPE_LABEL[c.ruleType] ?? c.ruleType).toLowerCase()
@@ -105,43 +107,37 @@ function summarizeRoutingRule(rule: RoutingRule): string {
       })
       return parts.join(' AND ')
     })
-    return groupSummaries.join(' OR ')
+    return summaries.join(' OR ')
   }
   if (rule.ruleType === 'ALL') return 'All inbound'
   return `${RULE_TYPE_LABEL[rule.ruleType] ?? rule.ruleType} ${rule.value ?? ''}`.trim()
 }
 
-// ─── Page ───────────────────────────────────────────────────────────────────
+// ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function TriggerOverviewPage() {
+export default function TriggerEditorPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
   const base = `/dashboard/${workspaceId}/agents/${agentId}`
 
-  const [channels, setChannels] = useState<ChannelDeployment[] | null>(null)
+  // Load everything in parallel.
   const [agent, setAgent] = useState<AgentDetails | null>(null)
-  const [triggers, setTriggers] = useState<ContactTrigger[] | null>(null)
+  const [initialChannels, setInitialChannels] = useState<ChannelDeployment[] | null>(null)
+  const [triggers, setTriggers] = useState<AgentTrigger[] | null>(null)
 
   useEffect(() => {
-    // Parallel load — every sub-page reads from independent endpoints.
-    // Detection rules used to surface here too; they moved to Skills →
-    // Playbook so this page focuses on routing-time questions only.
     Promise.all([
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`)
         .then(r => r.json())
-        .then(d => setChannels(d.deployments ?? []))
-        .catch(() => setChannels([])),
+        .then(d => setInitialChannels(d.deployments ?? []))
+        .catch(() => setInitialChannels([])),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
         .then(r => r.json())
         .then(d => setAgent({
           isActive: !!d.agent?.isActive,
-          workingHoursEnabled: !!d.agent?.workingHoursEnabled,
-          workingHoursStart: d.agent?.workingHoursStart ?? null,
-          workingHoursEnd: d.agent?.workingHoursEnd ?? null,
-          workingDays: d.agent?.workingDays ?? null,
-          timezone: d.agent?.timezone ?? null,
           routingRules: d.agent?.routingRules ?? [],
+          locationId: d.agent?.locationId ?? '',
         }))
         .catch(() => setAgent(null)),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers`)
@@ -151,12 +147,121 @@ export default function TriggerOverviewPage() {
     ])
   }, [workspaceId, agentId])
 
-  const loading = channels === null || agent === null || triggers === null
+  // ─── Channels save form ────────────────────────────────────────────────
+  // useDirtyForm pattern matches every other agent sub-page: edit-then-save
+  // via SaveBar instead of toggling each row independently.
+  const initialChannelsState = useMemo(
+    () => ({ channels: initialChannels ?? [] }),
+    [initialChannels],
+  )
+  const { draft: channelDraft, replace: replaceChannelDraft, dirty: channelsDirty, saving: channelsSaving, savedAt: channelsSavedAt, error: channelsError, save: saveChannels } = useDirtyForm<{ channels: ChannelDeployment[] }>({
+    initial: initialChannels === null ? null : initialChannelsState,
+    onSave: async (state: { channels: ChannelDeployment[] }) => {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channels: CHANNELS.map(c => ({
+            channel: c.key,
+            isActive: state.channels.find((x: ChannelDeployment) => x.channel === c.key)?.isActive ?? false,
+          })),
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to save channels')
+      const { deployments } = await res.json()
+      setInitialChannels(deployments)
+    },
+  })
+
+  function toggleChannel(key: string, isActive: boolean) {
+    if (!channelDraft) return
+    const without = channelDraft.channels.filter(c => c.channel !== key)
+    replaceChannelDraft({ channels: [...without, { channel: key, isActive }] })
+  }
+
+  // ─── CRM events (AgentTrigger) inline state ─────────────────────────────
+  // Adds, edits, and deletes go straight to the API per-row (no batched
+  // form) because each row has independent dirty-state.
+  const [newEventOpen, setNewEventOpen] = useState(false)
+  const [newEvent, setNewEvent] = useState<Partial<AgentTrigger>>({
+    eventType: 'ContactTagUpdate',
+    tagFilter: '',
+    channel: 'SMS',
+    messageMode: 'AI_GENERATE',
+    aiInstructions: '',
+    fixedMessage: '',
+    delaySeconds: 0,
+    isActive: true,
+  })
+  const [savingNewEvent, setSavingNewEvent] = useState(false)
+
+  async function createTrigger() {
+    if (savingNewEvent) return
+    if (newEvent.eventType === 'ContactTagUpdate' && !newEvent.tagFilter) return
+    setSavingNewEvent(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEvent),
+      })
+      if (!res.ok) throw new Error('Failed to create trigger')
+      const { trigger } = await res.json()
+      setTriggers(prev => [...(prev ?? []), trigger])
+      setNewEventOpen(false)
+      setNewEvent({
+        eventType: 'ContactTagUpdate',
+        tagFilter: '',
+        channel: 'SMS',
+        messageMode: 'AI_GENERATE',
+        aiInstructions: '',
+        fixedMessage: '',
+        delaySeconds: 0,
+        isActive: true,
+      })
+    } catch (err) {
+      console.error('[trigger] create failed:', err)
+    } finally {
+      setSavingNewEvent(false)
+    }
+  }
+
+  async function toggleTrigger(id: string, isActive: boolean) {
+    // Optimistic — flip locally first, roll back if the PATCH 4xx's.
+    setTriggers(prev => (prev ?? []).map(t => t.id === id ? { ...t, isActive } : t))
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      setTriggers(prev => (prev ?? []).map(t => t.id === id ? { ...t, isActive: !isActive } : t))
+    }
+  }
+
+  async function deleteTrigger(id: string) {
+    if (!confirm('Remove this trigger?')) return
+    const prevState = triggers
+    setTriggers(prev => (prev ?? []).filter(t => t.id !== id))
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/triggers/${id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      setTriggers(prevState)
+    }
+  }
+
+  // ─── Loading & status banner ──────────────────────────────────────────
+  const loading = initialChannels === null || agent === null || triggers === null
   if (loading) {
     return (
       <div className="p-8 max-w-3xl">
         <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div
               key={i}
               className="h-28 rounded-xl animate-pulse"
@@ -168,31 +273,23 @@ export default function TriggerOverviewPage() {
     )
   }
 
-  // ── Derived state ──────────────────────────────────────────────────────
-  const activeChannels = channels!.filter(c => c.isActive)
-  const inactiveChannels = ALL_CHANNELS.filter(k => !activeChannels.some(c => c.channel === k))
-  const routingRules = agent!.routingRules
-  const activeTriggers = triggers!.filter(t => t.isActive)
-
-  // ── Top summary banner ────────────────────────────────────────────────
-  // Reflects whether the agent will actually pick up an inbound right now.
-  // Mirrors the listening pill on the agents list — same logic, same words.
-  const isListening = agent!.isActive && activeChannels.length > 0 && routingRules.length > 0
+  const activeChannelKeys = (channelDraft?.channels ?? []).filter(c => c.isActive).map(c => c.channel)
+  const isListening = agent!.isActive && activeChannelKeys.length > 0 && agent!.routingRules.length > 0
   const banner = !agent!.isActive
     ? { tone: 'idle' as const,
         title: 'Agent is paused',
-        body: 'No inbounds will be answered until you activate the agent (Pause/Activate button at the top of the page).' }
-    : activeChannels.length === 0
+        body: 'No inbounds will be answered until you activate the agent.' }
+    : activeChannelKeys.length === 0
     ? { tone: 'warn' as const,
         title: 'No channels enabled',
         body: 'The agent is active but isn\'t listening on any channel. Enable at least one channel below.' }
-    : routingRules.length === 0
+    : agent!.routingRules.length === 0
     ? { tone: 'warn' as const,
         title: 'No routing rules',
-        body: 'The agent is active and has channels, but no routing rule. Inbounds will be skipped at the webhook pre-filter.' }
+        body: 'The agent is active and has channels, but no routing rule. Inbounds will be skipped. Add a rule in Inbound filters below — "All inbound" if you want it to take everything.' }
     : { tone: 'live' as const,
-        title: `Listening on ${activeChannels.map(c => CHANNEL_LABELS[c.channel] ?? c.channel).join(', ')}`,
-        body: 'When a contact messages on one of these channels and matches your routing rules, this agent will respond.' }
+        title: `Listening on ${activeChannelKeys.map(k => CHANNEL_LABELS[k] ?? k).join(', ')}`,
+        body: 'When a contact messages on one of these channels and matches your inbound filters, this agent will respond. Configured CRM events below will also wake it up.' }
 
   return (
     <div className="p-8 max-w-3xl space-y-5">
@@ -210,11 +307,9 @@ export default function TriggerOverviewPage() {
         <p
           className="text-sm font-semibold mb-0.5"
           style={
-            banner.tone === 'live'
-              ? { color: 'var(--accent-emerald)' }
-              : banner.tone === 'warn'
-              ? { color: 'var(--accent-amber)' }
-              : { color: 'var(--text-secondary)' }
+            banner.tone === 'live' ? { color: 'var(--accent-emerald)' }
+            : banner.tone === 'warn' ? { color: 'var(--accent-amber)' }
+            : { color: 'var(--text-secondary)' }
           }
         >
           {banner.title}
@@ -222,130 +317,298 @@ export default function TriggerOverviewPage() {
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{banner.body}</p>
       </div>
 
-      {/* Channels */}
-      <OverviewSection
-        title="Channels"
-        pill={
-          activeChannels.length > 0
-            ? { tone: 'live', label: `${activeChannels.length} active` }
-            : { tone: 'warn', label: 'None enabled' }
-        }
-        editHref={`${base}/deploy`}
-      >
-        {activeChannels.length === 0 ? (
-          <EmptyHint>No channels enabled — inbounds won't reach this agent.</EmptyHint>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {activeChannels.map(c => (
-              <Tag key={c.channel} tone="accent">{CHANNEL_LABELS[c.channel] ?? c.channel}</Tag>
-            ))}
-          </div>
-        )}
-        {inactiveChannels.length > 0 && (
-          <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
-            Inactive: {inactiveChannels.map(k => CHANNEL_LABELS[k] ?? k).join(', ')}
+      {/* ─── Section 1: Channels ────────────────────────────────────── */}
+      <section className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <header className="mb-4">
+          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Channels</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+            Which inboxes this agent listens on. Turn off a channel to silence the agent on that inbox without disabling the whole agent.
           </p>
-        )}
-      </OverviewSection>
+        </header>
+        <div className="space-y-2">
+          {CHANNELS.map(ch => {
+            const isOn = channelDraft?.channels.some(c => c.channel === ch.key && c.isActive) ?? false
+            return (
+              <label
+                key={ch.key}
+                className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 cursor-pointer hover:bg-zinc-950/40 transition-colors"
+                style={{ borderColor: 'var(--border)', background: isOn ? 'var(--surface-secondary)' : 'transparent' }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`shrink-0 ${ch.color}`}>{ch.icon}</div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{ch.label}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{ch.desc}</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={isOn}
+                  onChange={(e) => toggleChannel(ch.key, e.target.checked)}
+                  className="shrink-0 w-4 h-4 accent-orange-500"
+                />
+              </label>
+            )
+          })}
+        </div>
+      </section>
 
-      {/* Routing rules */}
-      <OverviewSection
-        title="Routing rules"
-        subtitle="Which inbound conversations this agent picks up. The agent only fires when an inbound matches one of these rules."
-        pill={
-          routingRules.length > 0
-            ? { tone: 'live', label: `${routingRules.length} ${routingRules.length === 1 ? 'rule' : 'rules'}` }
-            : { tone: 'warn', label: 'None' }
-        }
-        editHref={`${base}/routing`}
-      >
-        {routingRules.length === 0 ? (
-          <EmptyHint>
-            No routing rules — the webhook pre-filter will drop every inbound. Add at least one rule
-            (e.g. "All inbound" if you want this agent to take everything).
-          </EmptyHint>
+      {/* ─── Section 2: Inbound filters ─────────────────────────────── */}
+      <section className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <header className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Inbound filters</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              When a message arrives on one of the channels above, the agent responds if it matches any of these filters. Empty = inbounds are skipped.
+            </p>
+          </div>
+          <Link
+            href={`${base}/routing`}
+            className="shrink-0 text-xs font-medium px-3 py-1.5 rounded border whitespace-nowrap"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+          >
+            Edit rules →
+          </Link>
+        </header>
+        {agent!.routingRules.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            No rules yet. Click <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>Edit rules</span> to add one — for example, &quot;All inbound&quot; if you want this agent to take every message, or &quot;has tag&quot; if you want it scoped to a specific contact segment.
+          </p>
         ) : (
           <ul className="space-y-1.5">
-            {routingRules.slice(0, 4).map(r => (
+            {agent!.routingRules.slice(0, 6).map(r => (
               <li key={r.id} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 <span style={{ color: 'var(--text-tertiary)' }}>•</span> {summarizeRoutingRule(r)}
               </li>
             ))}
-            {routingRules.length > 4 && (
+            {agent!.routingRules.length > 6 && (
               <li className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                +{routingRules.length - 4} more
+                +{agent!.routingRules.length - 6} more
               </li>
             )}
           </ul>
         )}
-      </OverviewSection>
+      </section>
 
-      {/* Working hours */}
-      <OverviewSection
-        title="Working hours"
-        subtitle="When the agent can proactively send messages (follow-ups, contact-event triggers). Inbound replies always go through immediately."
-        pill={
-          agent!.workingHoursEnabled
-            ? { tone: 'info', label: 'On' }
-            : { tone: 'idle', label: 'Off — sends 24/7' }
-        }
-        editHref={`${base}/working-hours`}
-      >
-        {agent!.workingHoursEnabled ? (
-          <div className="space-y-1.5">
-            <OverviewRow
-              label="Schedule"
-              value={`${fmtHour(agent!.workingHoursStart ?? 9)} – ${fmtHour(agent!.workingHoursEnd ?? 17)}`}
-            />
-            <OverviewRow
-              label="Days"
-              value={fmtDays(agent!.workingDays ?? [])}
-            />
-            <OverviewRow
-              label="Timezone"
-              value={agent!.timezone ?? 'America/New_York'}
-            />
+      {/* ─── Section 3: CRM events ──────────────────────────────────── */}
+      <section className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <header className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>CRM events</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              The agent should also take over when something happens in your CRM. Common pattern: a workflow adds a tag, the agent picks up from there and reviews the conversation.
+            </p>
           </div>
-        ) : (
-          <EmptyHint>Working hours are off — the agent can send proactive messages at any time.</EmptyHint>
-        )}
-      </OverviewSection>
+          {!newEventOpen && (
+            <button
+              type="button"
+              onClick={() => setNewEventOpen(true)}
+              className="shrink-0 text-xs font-medium px-3 py-1.5 rounded whitespace-nowrap"
+              style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' }}
+            >
+              + Add event
+            </button>
+          )}
+        </header>
 
-      {/* Proactive triggers */}
-      <OverviewSection
-        title="Proactive triggers"
-        subtitle="Start a conversation when something happens in your CRM (new contact created, tag added) — the agent sends the first message."
-        pill={
-          activeTriggers.length > 0
-            ? { tone: 'info', label: `${activeTriggers.length} active` }
-            : { tone: 'idle', label: 'None' }
-        }
-        editHref={`${base}/triggers`}
-      >
-        {activeTriggers.length === 0 ? (
-          <EmptyHint>No proactive triggers — this agent only responds to inbound messages.</EmptyHint>
+        {/* Existing triggers */}
+        {(triggers ?? []).length === 0 && !newEventOpen ? (
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            No CRM events yet. This agent only responds to inbound messages. Add an event above to have it take over when, e.g., a contact gets tagged with <span className="font-mono">handoff-to-ai</span>.
+          </p>
         ) : (
-          <ul className="space-y-1.5">
-            {activeTriggers.slice(0, 4).map(t => {
-              const event = t.eventType === 'ContactCreate'
-                ? 'New contact'
-                : `Tag "${t.tagFilter ?? 'any'}" added`
-              const mode = t.messageMode === 'FIXED' ? 'fixed message' : 'AI generated'
+          <ul className="space-y-2">
+            {(triggers ?? []).map(t => {
+              const eventLabel = t.eventType === 'ContactCreate'
+                ? 'New contact created'
+                : `Tag added: ${t.tagFilter || '(any)'}`
+              const modeLabel = t.messageMode === 'FIXED' ? 'sends fixed message' : 'AI generates a message reviewing the conversation'
               return (
-                <li key={t.id} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  <span style={{ color: 'var(--text-tertiary)' }}>•</span> {event}{' '}
-                  <span style={{ color: 'var(--text-tertiary)' }}>→ {CHANNEL_LABELS[t.channel] ?? t.channel}, {mode}</span>
+                <li
+                  key={t.id}
+                  className="rounded-lg border p-3 flex items-start justify-between gap-3"
+                  style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {eventLabel}
+                    </p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                      On {CHANNEL_LABELS[t.channel] ?? t.channel} · {modeLabel}
+                      {t.delaySeconds > 0 ? ` · delay ${t.delaySeconds}s` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={t.isActive}
+                        onChange={(e) => toggleTrigger(t.id, e.target.checked)}
+                        className="w-3.5 h-3.5 accent-orange-500"
+                      />
+                      Active
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => deleteTrigger(t.id)}
+                      className="text-[11px] px-2 py-1 rounded border hover:border-rose-700 hover:text-rose-300 transition-colors"
+                      style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </li>
               )
             })}
-            {activeTriggers.length > 4 && (
-              <li className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                +{activeTriggers.length - 4} more
-              </li>
-            )}
           </ul>
         )}
-      </OverviewSection>
+
+        {/* Add-event panel */}
+        {newEventOpen && (
+          <div className="mt-3 rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }}>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setNewEvent(p => ({ ...p, eventType: 'ContactTagUpdate' }))}
+                className="text-left rounded-lg border px-3 py-2"
+                style={
+                  newEvent.eventType === 'ContactTagUpdate'
+                    ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                    : { borderColor: 'var(--border)', background: 'transparent' }
+                }
+              >
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Tag added</p>
+                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Fires when a specific tag is added to a contact</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewEvent(p => ({ ...p, eventType: 'ContactCreate' }))}
+                className="text-left rounded-lg border px-3 py-2"
+                style={
+                  newEvent.eventType === 'ContactCreate'
+                    ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                    : { borderColor: 'var(--border)', background: 'transparent' }
+                }
+              >
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>New contact</p>
+                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Fires when a contact is created (form, import, API)</p>
+              </button>
+            </div>
+
+            {newEvent.eventType === 'ContactTagUpdate' && (
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Tag</label>
+                <div className="mt-1">
+                  <TagCombobox
+                    workspaceId={workspaceId}
+                    locationId={agent!.locationId}
+                    value={newEvent.tagFilter ?? ''}
+                    onChange={(value: string) => setNewEvent(p => ({ ...p, tagFilter: value }))}
+                    placeholder="Choose or type a tag..."
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Send via channel</label>
+              <select
+                value={newEvent.channel}
+                onChange={(e) => setNewEvent(p => ({ ...p, channel: e.target.value }))}
+                className="mt-1 w-full text-sm px-3 py-2 rounded border"
+                style={{ borderColor: 'var(--border)', background: 'var(--input-bg)', color: 'var(--input-text)' }}
+              >
+                {CHANNELS.map(c => (
+                  <option key={c.key} value={c.key}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setNewEvent(p => ({ ...p, messageMode: 'AI_GENERATE' }))}
+                className="text-left rounded-lg border px-3 py-2"
+                style={
+                  newEvent.messageMode === 'AI_GENERATE'
+                    ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                    : { borderColor: 'var(--border)', background: 'transparent' }
+                }
+              >
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>AI generates</p>
+                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Reviews the conversation, decides what to say</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewEvent(p => ({ ...p, messageMode: 'FIXED' }))}
+                className="text-left rounded-lg border px-3 py-2"
+                style={
+                  newEvent.messageMode === 'FIXED'
+                    ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                    : { borderColor: 'var(--border)', background: 'transparent' }
+                }
+              >
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Fixed message</p>
+                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Send a templated first message verbatim</p>
+              </button>
+            </div>
+
+            {newEvent.messageMode === 'AI_GENERATE' ? (
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>What should the agent say?</label>
+                <MergeFieldTextarea
+                  value={newEvent.aiInstructions ?? ''}
+                  onChange={(e) => setNewEvent(p => ({ ...p, aiInstructions: e.target.value }))}
+                  onValueChange={(v: string) => setNewEvent(p => ({ ...p, aiInstructions: v }))}
+                  placeholder="e.g. Pick up the conversation. Summarise where it left off, then ask if they want to schedule a follow-up call."
+                  rows={3}
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Message text</label>
+                <MergeFieldTextarea
+                  value={newEvent.fixedMessage ?? ''}
+                  onChange={(e) => setNewEvent(p => ({ ...p, fixedMessage: e.target.value }))}
+                  onValueChange={(v: string) => setNewEvent(p => ({ ...p, fixedMessage: v }))}
+                  placeholder="Hi {{contact.first_name}}, just following up..."
+                  rows={3}
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={createTrigger}
+                disabled={savingNewEvent || (newEvent.eventType === 'ContactTagUpdate' && !newEvent.tagFilter)}
+                className="text-xs font-medium px-3 py-1.5 rounded disabled:opacity-50"
+                style={{ background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' }}
+              >
+                {savingNewEvent ? 'Adding...' : 'Add event'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewEventOpen(false)}
+                className="text-xs px-3 py-1.5 rounded border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Sticky save bar for the channels section (matches the rest of the
+          agent sub-pages — SaveBar is the canonical save UI). */}
+      <SaveBar
+        dirty={channelsDirty}
+        saving={channelsSaving}
+        savedAt={channelsSavedAt}
+        error={channelsError}
+        onSave={() => void saveChannels()}
+      />
     </div>
   )
 }

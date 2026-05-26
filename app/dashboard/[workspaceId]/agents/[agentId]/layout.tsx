@@ -59,19 +59,18 @@ const HUBS: Hub[] = [
     ],
   },
   {
-    // Channels, Rules, Routing, Working hours and Contact triggers all
-    // answer "when does this agent fire?" Detection rules used to live
-    // here; they moved to Skills → Playbook because they're the same
-    // shape as Plays (when X, do Y). The /rules URL still resolves —
-    // it just isn't surfaced in nav anymore.
+    // "When does this agent fire?" — collapsed in Phase 7 from five
+    // tabs (Overview/Channels/Routing/Working hours/Proactive) down to
+    // two. The new /trigger page edits channels + CRM events inline
+    // and summarises routing rules; the routing page stays accessible
+    // for the compound condition builder, but isn't a top-level tab.
+    // /deploy and /triggers (plural) redirect to /trigger.
     key: 'trigger',
-    label: 'Trigger',
+    label: 'When to run',
     tabs: [
-      { key: 'overview',      label: 'Overview',         path: '/trigger' },
-      { key: 'deploy',        label: 'Channels',         path: '/deploy' },
-      { key: 'routing',       label: 'Routing',          path: '/routing' },
+      { key: 'overview',      label: 'Triggers',         path: '/trigger' },
+      { key: 'routing',       label: 'Filter rules',     path: '/routing' },
       { key: 'working-hours', label: 'Working hours',    path: '/working-hours' },
-      { key: 'triggers',      label: 'Proactive',        path: '/triggers' },
     ],
   },
   {
