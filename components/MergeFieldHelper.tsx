@@ -40,13 +40,27 @@ export const MergeFieldTextarea = forwardRef<
     else if (forwarded) (forwarded as React.RefObject<HTMLTextAreaElement | null>).current = el
   }
 
+  // Default styling when caller doesn't pass `className`. Without
+  // this the textarea inherits browser defaults (~250px wide), which
+  // is what was making CRM-event editors look squished on /trigger.
+  // Callers can still override by passing their own className.
+  const textareaClass = className ?? 'w-full text-sm px-3 py-2 pr-12 rounded-lg border resize-y min-h-[80px]'
+  const textareaStyle = className
+    ? undefined
+    : {
+        background: 'var(--input-bg)',
+        borderColor: 'var(--input-border)',
+        color: 'var(--input-text)',
+      } as const
+
   return (
     <div className={`relative ${wrapperClassName ?? ''}`}>
       <textarea
         ref={setRef}
         value={value}
         onChange={onChange}
-        className={className}
+        className={textareaClass}
+        style={textareaStyle}
         {...rest}
       />
       <div className="absolute top-1.5 right-1.5">

@@ -49,38 +49,47 @@ export default function SaveBar({
   // Render nothing when there's absolutely nothing to say
   if (!dirty && !saving && !error && !ago) return null
 
+  // Pick design-token colours per state so the bar reads cleanly in
+  // both themes. The previous hardcoded `bg-amber-500/10 text-amber-300`
+  // worked in dark mode but rendered yellow-on-white in light theme —
+  // the "Unsaved changes" bar Ryan flagged as unreadable.
+  const accent =
+    error
+      ? { bg: 'var(--accent-red-bg)',     border: 'var(--accent-red)',     fg: 'var(--accent-red)' }
+      : dirty
+      ? { bg: 'var(--accent-amber-bg)',   border: 'var(--accent-amber)',   fg: 'var(--accent-amber)' }
+      : { bg: 'var(--accent-emerald-bg)', border: 'var(--accent-emerald)', fg: 'var(--accent-emerald)' }
+
   return (
     <div className="sticky bottom-0 left-0 right-0 z-30 mt-6">
       <div
-        className={`mx-auto max-w-3xl rounded-xl border px-4 py-3 flex items-center gap-3 shadow-lg backdrop-blur transition-all ${
-          error
-            ? 'border-red-500/40 bg-red-500/10'
-            : dirty
-            ? 'border-amber-500/40 bg-amber-500/10'
-            : 'border-emerald-500/30 bg-emerald-500/5'
-        }`}
+        className="mx-auto max-w-3xl rounded-xl border px-4 py-3 flex items-center gap-3 shadow-lg backdrop-blur transition-all"
+        style={{ background: accent.bg, borderColor: accent.border }}
       >
         <div className="flex-1 flex items-center gap-2 text-xs">
           {error ? (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-              <span className="text-red-300 font-medium">Couldn&apos;t save:</span>
-              <span className="text-red-300/80">{error}</span>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: accent.fg }} />
+              <span className="font-medium" style={{ color: accent.fg }}>Couldn&apos;t save:</span>
+              <span style={{ color: accent.fg, opacity: 0.85 }}>{error}</span>
             </>
           ) : saving ? (
             <>
-              <span className="w-3 h-3 border-2 border-amber-400/50 border-t-amber-300 rounded-full animate-spin" />
-              <span className="text-amber-300">Saving…</span>
+              <span
+                className="w-3 h-3 border-2 rounded-full animate-spin"
+                style={{ borderColor: accent.fg, opacity: 0.5, borderTopColor: accent.fg, borderTopOpacity: 1 } as any}
+              />
+              <span style={{ color: accent.fg }}>Saving…</span>
             </>
           ) : dirty ? (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-amber-300 font-medium">Unsaved changes</span>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: accent.fg }} />
+              <span className="font-medium" style={{ color: accent.fg }}>Unsaved changes</span>
             </>
           ) : (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-emerald-400 font-medium">Saved {ago}</span>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: accent.fg }} />
+              <span className="font-medium" style={{ color: accent.fg }}>Saved {ago}</span>
             </>
           )}
         </div>
@@ -89,7 +98,8 @@ export default function SaveBar({
           <button
             type="button"
             onClick={onReset}
-            className="text-xs font-medium px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition-colors"
+            className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors hover:opacity-100"
+            style={{ color: 'var(--text-tertiary)' }}
           >
             {discardLabel}
           </button>
