@@ -12,6 +12,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { saveTokens } from '@/lib/token-store'
 import { db } from '@/lib/db'
 import { fetchInstallSnapshot } from '@/lib/leadconnector-install-fetcher'
+import {
+  cascadeAgentsToWorkspace as cascadeAgentsHelper,
+  writeMarketplaceInstall as writeInstallHelper,
+  workspaceSlugFromLocation,
+  workspaceNameFromSnapshot,
+} from '@/lib/oauth-install'
 import { randomBytes } from 'node:crypto'
 import type { OAuthTokenResponse } from '@/types'
 
@@ -181,68 +187,22 @@ export async function GET(req: NextRequest) {
     // workspace — the "ghost agent" bug. Re-aligning Agent.workspaceId
     // to the Location's CURRENT workspaceId here prevents that.
     //
-    // Run AFTER the workspace is finalised below so we always cascade
-    // to the right id; pulled into a helper to keep both code paths
-    // honest.
-    async function cascadeAgentsToWorkspace(targetWorkspaceId: string) {
-      try {
-        const cascade = await db.agent.updateMany({
-          where: { locationId: storeKey, NOT: { workspaceId: targetWorkspaceId } },
-          data: { workspaceId: targetWorkspaceId },
-        })
-        if (cascade.count > 0) {
-          console.log(`[OAuth] Re-bound ${cascade.count} agent(s) on location ${storeKey} to workspace ${targetWorkspaceId}`)
-        }
-      } catch (err: any) {
-        // Non-fatal — install succeeds even if the cascade fails. Logged so
-        // operators can investigate without breaking the user's reconnect.
-        console.warn(`[OAuth] Agent cascade failed for location ${storeKey}: ${err?.message}`)
-      }
-    }
-
-    // Persist the install snapshot. One row per install event (so a
-    // reconnect six months later shows up as a re-engagement signal in
-    // the admin registry), keyed on workspaceId. Schema fields that
-    // came back null stay null — the admin UI handles missing data.
-    async function writeMarketplaceInstall(targetWorkspaceId: string, source: string) {
-      if (!snapshot) return
-      try {
-        await db.marketplaceInstall.create({
-          data: {
-            workspaceId: targetWorkspaceId,
-            source,
-            externalLocationId: tokenData.locationId ?? null,
-            externalCompanyId: tokenData.companyId ?? null,
-            externalUserId: tokenData.userId ?? null,
-            locationName: snapshot.location?.name ?? null,
-            locationEmail: snapshot.location?.email ?? null,
-            locationPhone: snapshot.location?.phone ?? null,
-            locationWebsite: snapshot.location?.website ?? null,
-            locationAddress: snapshot.location?.address ?? null,
-            locationCity: snapshot.location?.city ?? null,
-            locationState: snapshot.location?.state ?? null,
-            locationCountry: snapshot.location?.country ?? null,
-            locationTimezone: snapshot.location?.timezone ?? null,
-            companyName: snapshot.company?.name ?? null,
-            companyEmail: snapshot.company?.email ?? null,
-            companyPhone: snapshot.company?.phone ?? null,
-            companyWebsite: snapshot.company?.website ?? null,
-            userName: snapshot.user?.name ?? null,
-            userEmail: snapshot.user?.email ?? null,
-            userPhone: snapshot.user?.phone ?? null,
-            userRole: snapshot.user?.role ?? null,
-            rawPayload: snapshot.raw as any,
-          },
-        })
-      } catch (err: any) {
-        // Non-fatal — MarketplaceInstall table may not exist yet on
-        // un-migrated DBs. The install itself completes.
-        console.warn('[OAuth] MarketplaceInstall write skipped:', err?.message)
-      }
-    }
+    // Closures over the local install context so both branches below
+    // can fire-and-forget without passing the whole tokenData each time.
+    const cascadeAgents = (targetWorkspaceId: string) =>
+      cascadeAgentsHelper(storeKey, targetWorkspaceId)
+    const writeInstall = (targetWorkspaceId: string, source: string) =>
+      writeInstallHelper({
+        workspaceId: targetWorkspaceId,
+        source,
+        snapshot,
+        externalLocationId: tokenData.locationId ?? null,
+        externalCompanyId: tokenData.companyId ?? null,
+        externalUserId: tokenData.userId ?? null,
+      })
 
     if (stateWorkspaceId) {
-      await cascadeAgentsToWorkspace(stateWorkspaceId)
+      await cascadeAgents(stateWorkspaceId)
       // Reconnect path. If this workspace was sitting on 'native' as its
       // primary CRM, flip it to 'ghl' now — connecting your first paid CRM
       // is the moment the integrations page should reorder around. If the
@@ -262,7 +222,7 @@ export async function GET(req: NextRequest) {
       // Reconnects still go through the registry — a customer who
       // disconnects and comes back is a high-signal re-engagement event
       // that's useful to see in the admin UI alongside first installs.
-      await writeMarketplaceInstall(stateWorkspaceId, 'ghl_marketplace')
+      await writeInstall(stateWorkspaceId, 'ghl_marketplace')
       // returnTo lets callers (notably the agent-creation wizard)
       // bring the user back to where they were instead of dumping
       // them on the workspace integrations page. Already path-validated
@@ -285,26 +245,11 @@ export async function GET(req: NextRequest) {
       // → user arrived from the GHL marketplace listing. Stamp the new
       // workspace with installSource so the integrations page surfaces
       // LeadConnector as the recommended option and tucks the others away.
-      const slug = `ws-${storeKey.slice(0, 12).toLowerCase().replace(/[^a-z0-9]/g, '')}-${Math.random().toString(36).slice(2, 8)}`
-      // Prefer the sub-account name from GHL ("Acme Cleaning"), fall
-      // back to the agency company name, finally to the bare label.
-      // The user-facing breadcrumb + workspace switcher reads this
-      // name, so making it meaningful from install time forward saves
-      // a manual rename. Domain is harvested from the location/company
-      // website for same-domain invite gating.
-      const workspaceName =
-        snapshot?.location?.name ??
-        snapshot?.company?.name ??
-        'Workspace'
-      const workspaceDomain = (() => {
-        const raw = snapshot?.location?.website ?? snapshot?.company?.website ?? null
-        if (!raw) return null
-        try {
-          return new URL(raw.startsWith('http') ? raw : `https://${raw}`).hostname.replace(/^www\./, '')
-        } catch {
-          return null
-        }
-      })()
+      // Slug + display name come from lib/oauth-install helpers so
+      // the heuristics live in one place and can be unit-tested.
+      const slug = workspaceSlugFromLocation(storeKey)
+      const { name: workspaceName, domain: workspaceDomain } =
+        workspaceNameFromSnapshot(snapshot)
 
       let workspace
       try {
@@ -335,8 +280,8 @@ export async function GET(req: NextRequest) {
       workspaceId = workspace.id
     }
 
-    await cascadeAgentsToWorkspace(workspaceId)
-    await writeMarketplaceInstall(workspaceId, 'ghl_marketplace')
+    await cascadeAgents(workspaceId)
+    await writeInstall(workspaceId, 'ghl_marketplace')
 
     // New installs go to onboarding, reinstalls go to dashboard
     const agentCount = await db.agent.count({ where: { workspaceId } })
