@@ -797,6 +797,61 @@ export async function runAgent(opts: {
           agentId, contactId, iteration: i, stopReason: response.stop_reason,
           lastToolsCalled: toolCallTrace.slice(-3).map(t => t.tool),
         })
+        // Surface the silent exit to operators. Two sub-paths:
+        //   (a) A tool errored in this run AND the model bailed without
+        //       sending. The 404-from-calendar pattern Ryan reported
+        //       lives here. Pause the conversation so the agent can't
+        //       compound the issue on the next inbound, and fire
+        //       agent_error with a deep link so whoever's on call gets
+        //       an actionable email.
+        //   (b) No tool errors but still no reply. Less common — model
+        //       hit max_tokens, or returned no content blocks. Notify
+        //       but DON'T pause; let the next inbound retry.
+        // Skip for sandbox runs (no real conversation to pause).
+        if (!isSandbox && agentId && workspaceId) {
+          const failedTools = toolCallTrace.filter(t => {
+            try {
+              const parsed = JSON.parse(t.output)
+              return parsed?.success === false || parsed?.error
+            } catch { return false }
+          })
+          const hadToolError = failedTools.length > 0
+          // Fire-and-forget — don't let notification failure mask the
+          // already-broken run from getting logged above.
+          ;(async () => {
+            try {
+              const { notify } = await import('./notifications')
+              const { resolveHandoverLink } = await import('./handover-link')
+              const link = resolveHandoverLink({
+                workspaceId, locationId, contactId,
+                conversationId: conversationId ?? null,
+                channel: channel ?? null,
+              })
+              const lastFailed = failedTools[failedTools.length - 1]
+              const body = hadToolError && lastFailed
+                ? `${lastFailed.tool} returned an error and the agent stopped without replying. Conversation paused — open it to take over.`
+                : `The agent processed an inbound but produced no reply (stop_reason=${response.stop_reason}). Open the conversation to take over.`
+              await notify({
+                workspaceId,
+                event: 'agent_error',
+                title: 'Agent stopped responding — take over conversation',
+                body,
+                link,
+                severity: 'error',
+              })
+              if (hadToolError) {
+                const { pauseConversation } = await import('./conversation-state')
+                await pauseConversation(
+                  agentId,
+                  contactId,
+                  `tool_error_silent_exit:${lastFailed?.tool ?? 'unknown'}`,
+                )
+              }
+            } catch (err: any) {
+              console.warn('[Agent] silent-exit notify failed:', err?.message)
+            }
+          })()
+        }
       }
       break
     }
@@ -850,6 +905,8 @@ export async function runAgent(opts: {
         fieldOverwriteMap,
         handoverCapture,
         workspaceId,
+        contactId,
+        conversationId,
       )
       toolCallTrace.push({
         tool: toolBlock.name,

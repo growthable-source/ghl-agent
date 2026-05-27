@@ -14,19 +14,123 @@ import { executeSandboxTool } from './sandbox'
 import type { DeferredSendCapture, HandoverCapture } from './types'
 
 /**
- * Surface a calendar-tool failure to operators in real time.
+ * Surface a tool failure to operators in real time.
  *
- * Two channels:
+ * Three channels:
  *   1) If we're running in a widget thread (CrmAdapter is a WidgetAdapter
  *      with `broadcastSystem`), inject a system note inline so the chat
  *      transcript shows the failure reason. Operators reviewing the
  *      conversation see "calendar lookup failed: <reason>" right where
  *      the agent went vague.
- *   2) Always fire an `agent_error` notification with workspaceId so
- *      whoever has email/push opted in for that event gets pinged.
+ *   2) For NON-TRANSIENT failures (404 = resource gone, 403 = scope
+ *      missing, 401 = auth expired), pause the conversation. This:
+ *        a) stops the agent from spinning further turns against a broken
+ *           tool, which is what produced Ryan's "stopped replying
+ *           silently" pattern — the model would keep getting success:false
+ *           and eventually exit with no send_reply,
+ *        b) surfaces the conversation in /needs-attention so the operator
+ *           can take it over from the dashboard,
+ *        c) fires the standard `needs_attention` notification (default
+ *           email + web_push per notification-events.ts), so the operator
+ *           gets the "this conversation has an error, take over" email
+ *           Ryan asked for.
+ *   3) Always also fire an `agent_error` notification with a deep link
+ *      back to the conversation so the email is actionable.
  *
  * Best-effort — never throws. The agent's tool result still goes through
  * with the structured hint regardless.
+ */
+async function reportToolFailure(params: {
+  crm: CrmAdapter | null
+  agentId: string | undefined
+  workspaceId: string | null
+  /** Free-form tool name — used in the title and the system-note body. */
+  tool: string
+  /** Human-friendly category for the email subject. */
+  category: 'calendar_lookup' | 'booking' | 'tool'
+  input: Record<string, unknown>
+  message: string
+  /** Routing context for the deep link + pause-state record. */
+  contactId?: string | null
+  conversationId?: string | null
+  locationId?: string | null
+  channel?: string | null
+}) {
+  const { crm, workspaceId, tool, category, message, contactId, conversationId, locationId, channel } = params
+  // Inline system note in the widget transcript (when applicable).
+  try {
+    const broadcaster = (crm as any)?.broadcastSystem
+    if (typeof broadcaster === 'function') {
+      const human = category === 'calendar_lookup'
+        ? `Couldn't pull calendar slots: ${message}`
+        : category === 'booking'
+          ? `Booking attempt failed: ${message}`
+          : `Tool ${tool} failed: ${message}`
+      await broadcaster.call(crm, `⚠ ${human}`)
+    }
+  } catch {}
+
+  // Non-transient failure classification. These are the failure modes
+  // where retrying / continuing the run is hopeless until a human
+  // intervenes (token reconnect, scope grant, calendar restore, etc.).
+  // Transient errors (500, ETIMEDOUT) keep the soft-hint behaviour so
+  // the model can recover on its own when GHL comes back.
+  const isNonTransient = /\b(404|403|401)\b|not\s*found|forbidden|scope|unauthor/i.test(message)
+
+  // Conversation-pause path. Only viable when we have agentId + contactId
+  // (which we do for inbound runs but not for sandbox / playground).
+  if (isNonTransient && params.agentId && contactId) {
+    try {
+      const { pauseConversation } = await import('../conversation-state')
+      await pauseConversation(
+        params.agentId,
+        contactId,
+        `tool_error:${tool}:${message.replace(/^GHL API error /, '').slice(0, 60)}`,
+      )
+    } catch (err: any) {
+      console.warn('[reportToolFailure] pauseConversation failed:', err?.message)
+    }
+  }
+
+  // Workspace-wide notification with deep link.
+  if (!workspaceId) return
+  try {
+    const { notify } = await import('../notifications')
+    const { resolveHandoverLink } = await import('../handover-link')
+    const link = resolveHandoverLink({
+      workspaceId,
+      locationId: locationId ?? null,
+      contactId: contactId ?? null,
+      conversationId: conversationId ?? null,
+      channel: channel ?? null,
+    })
+    const title = category === 'calendar_lookup'
+      ? 'Calendar lookup failed — take over conversation'
+      : category === 'booking'
+        ? 'Booking attempt failed — take over conversation'
+        : `${tool} failed — take over conversation`
+    const body = [
+      `${tool}: ${message.slice(0, 180)}`,
+      isNonTransient
+        ? 'The conversation has been paused so the agent stops responding. Open it to take over manually.'
+        : null,
+    ].filter(Boolean).join('\n\n')
+    await notify({
+      workspaceId,
+      event: 'agent_error',
+      title,
+      body,
+      link,
+      severity: isNonTransient ? 'error' : 'warning',
+    })
+  } catch (err: any) {
+    console.warn('[reportToolFailure] notify failed:', err?.message)
+  }
+}
+
+/**
+ * Back-compat shim — old call sites pass `tool: 'get_available_slots' |
+ * 'book_appointment'`. Forwards to the generalized helper.
  */
 async function reportCalendarFailure(params: {
   crm: CrmAdapter | null
@@ -35,35 +139,15 @@ async function reportCalendarFailure(params: {
   tool: 'get_available_slots' | 'book_appointment'
   input: Record<string, unknown>
   message: string
+  contactId?: string | null
+  conversationId?: string | null
+  locationId?: string | null
+  channel?: string | null
 }) {
-  const { crm, workspaceId, tool, message } = params
-  // Inline system note in the widget transcript (when applicable).
-  try {
-    const broadcaster = (crm as any)?.broadcastSystem
-    if (typeof broadcaster === 'function') {
-      const human = tool === 'get_available_slots'
-        ? `Couldn't pull calendar slots: ${message}`
-        : `Booking attempt failed: ${message}`
-      await broadcaster.call(crm, `⚠ ${human}`)
-    }
-  } catch {}
-
-  // Workspace-wide notification.
-  if (!workspaceId) return
-  try {
-    const { notify } = await import('../notifications')
-    await notify({
-      workspaceId,
-      event: 'agent_error',
-      title: tool === 'get_available_slots'
-        ? 'Calendar lookup failed'
-        : 'Booking attempt failed',
-      body: `${tool}: ${message.slice(0, 180)}`,
-      severity: 'warning',
-    })
-  } catch (err: any) {
-    console.warn('[reportCalendarFailure] notify failed:', err?.message)
-  }
+  return reportToolFailure({
+    ...params,
+    category: params.tool === 'get_available_slots' ? 'calendar_lookup' : 'booking',
+  })
 }
 
 export async function executeTool(
@@ -89,6 +173,13 @@ export async function executeTool(
   handoverCapture?: HandoverCapture,
   /** Workspace ID — used to scope the live-data tools (lookup_sheet etc). */
   workspaceId?: string | null,
+  /**
+   * Conversation context — used by reportToolFailure to pause the
+   * conversation and build a deep link in the email notification. Passed
+   * in by runAgent on inbound runs; absent for sandbox / playground runs.
+   */
+  contactId?: string,
+  conversationId?: string,
 ): Promise<string> {
   // In sandbox, allow read-only tools to hit the real CRM so the agent
   // sees actual data. Writes (send_reply, book_appointment, update_*,
@@ -299,6 +390,7 @@ export async function executeTool(
             crm, agentId, workspaceId: workspaceId ?? null,
             tool: 'get_available_slots',
             input, message: msg,
+            contactId, conversationId, locationId, channel,
           })
           return JSON.stringify({ success: false, error: msg, hint })
         }
@@ -350,6 +442,8 @@ export async function executeTool(
             crm, agentId, workspaceId: workspaceId ?? null,
             tool: 'book_appointment',
             input, message: msg,
+            contactId: (input.contactId as string | undefined) ?? contactId,
+            conversationId, locationId, channel,
           })
           return JSON.stringify({
             success: false,
@@ -1009,7 +1103,32 @@ export async function executeTool(
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
   } catch (err: any) {
-    console.error(`[Agent] Tool ${toolName} failed:`, err.message)
-    return JSON.stringify({ error: err.message })
+    // Outer catch — any unhandled throw from a tool case lands here.
+    // Previously this silently logged + returned a JSON error string.
+    // That's the pattern Ryan reported: the agent gets an error blob,
+    // the model decides not to retry, exits without sending a reply,
+    // and the operator sees nothing. Route through reportToolFailure
+    // so non-transient errors (404 / 403 / 401 / scope) pause the
+    // conversation and email the operator with a deep link.
+    const msg = err?.message || 'Unknown error'
+    console.error(`[Agent] Tool ${toolName} failed:`, msg)
+    try {
+      await reportToolFailure({
+        crm: adapter ?? null,
+        agentId,
+        workspaceId: workspaceId ?? null,
+        tool: toolName,
+        category: /calendar|slot/i.test(toolName)
+          ? 'calendar_lookup'
+          : /book|appointment/i.test(toolName) ? 'booking' : 'tool',
+        input,
+        message: msg,
+        contactId: contactId ?? (input.contactId as string | undefined) ?? null,
+        conversationId: conversationId ?? null,
+        locationId,
+        channel: channel ?? null,
+      })
+    } catch {}
+    return JSON.stringify({ error: msg })
   }
 }
