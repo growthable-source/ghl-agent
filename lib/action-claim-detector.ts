@@ -262,6 +262,54 @@ export function detectFalseActionClaim(
 }
 
 /**
+ * Contact-facing fallback for the silent-exit branch in runAgent —
+ * when a tool errored and the model bailed without sending. Keeps the
+ * contact from being ghosted: acknowledges their request, signals a
+ * teammate will follow up, never promises anything we can't deliver.
+ *
+ * Keyed by tool name (not ClaimDetection) because this fires for real
+ * tool failures (e.g. calendar 404) rather than hallucinated claims.
+ * Falls through to a generic apology when the tool isn't known.
+ */
+export function fallbackForFailedTool(toolName?: string): string {
+  switch (toolName) {
+    case 'get_available_slots':
+      return "Our calendar system isn't responding right now — let me have a teammate confirm available times with you. What day works best?"
+    case 'book_appointment':
+      return "I'm having trouble locking in that booking on our end. A teammate will reach out shortly to get it confirmed."
+    case 'cancel_appointment':
+      return "I can't reach the calendar right now to cancel that — a teammate will follow up to make sure it's handled. Can you confirm which appointment you mean (date + time)?"
+    case 'reschedule_appointment':
+      return "I can't access the calendar to reschedule right now — a teammate will follow up to get it moved. What day and time works best?"
+    case 'get_calendar_events':
+      return "I'm having trouble pulling up your upcoming appointments — a teammate will check and get back to you shortly."
+    case 'search_contacts':
+    case 'find_contact_by_email_or_phone':
+    case 'get_contact_details':
+      return "Bear with me — let me have a teammate take a look and follow up shortly."
+    case 'update_contact_tags':
+    case 'remove_contact_tags':
+    case 'update_contact_field':
+      return "Got it — I'll make sure that's noted."
+    case 'add_contact_note':
+    case 'create_appointment_note':
+    case 'create_task':
+      return "Noted — a teammate will pick this up and follow up."
+    case 'add_to_workflow':
+    case 'remove_from_workflow':
+      return "Got it — I'll make sure the right next step is set up. A teammate will confirm shortly."
+    case 'get_opportunities':
+    case 'move_opportunity_stage':
+    case 'mark_opportunity_won':
+    case 'mark_opportunity_lost':
+    case 'upsert_opportunity':
+      return "Bear with me — a teammate will follow up with the right next step shortly.";
+    default:
+      return "I hit a snag on our end — a teammate will follow up with you shortly to make sure this gets handled."
+  }
+}
+
+/**
  * A safe fallback reply to send to the contact when we've exhausted retries
  * and the model still refuses to call the required tool. This prevents us
  * from sending the hallucinated claim to the contact.

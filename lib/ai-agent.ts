@@ -20,7 +20,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getCrmAdapter } from './crm/factory'
 import type { CrmAdapter } from './crm/types'
 import { applyTypos, calculateTypingDelay, type PersonaSettings } from './persona'
-import { detectFalseActionClaim, safeFallbackReply } from './action-claim-detector'
+import { detectFalseActionClaim, safeFallbackReply, fallbackForFailedTool } from './action-claim-detector'
 import { loadPlatformGuidelinesBlock } from './platform-learning'
 import type { AgentContext, Message } from '@/types'
 
@@ -797,25 +797,65 @@ export async function runAgent(opts: {
           agentId, contactId, iteration: i, stopReason: response.stop_reason,
           lastToolsCalled: toolCallTrace.slice(-3).map(t => t.tool),
         })
-        // Surface the silent exit to operators. Two sub-paths:
-        //   (a) A tool errored in this run AND the model bailed without
-        //       sending. The 404-from-calendar pattern Ryan reported
-        //       lives here. Pause the conversation so the agent can't
-        //       compound the issue on the next inbound, and fire
-        //       agent_error with a deep link so whoever's on call gets
-        //       an actionable email.
-        //   (b) No tool errors but still no reply. Less common — model
-        //       hit max_tokens, or returned no content blocks. Notify
-        //       but DON'T pause; let the next inbound retry.
-        // Skip for sandbox runs (no real conversation to pause).
+
+        // Identify any tool error this run. The 404-from-calendar
+        // pattern Ryan reported produces a tool result with
+        // success:false; we use that to drive both the graceful
+        // fallback reply (so the contact isn't ghosted) and the
+        // operator notification.
+        const failedTools = toolCallTrace.filter(t => {
+          try {
+            const parsed = JSON.parse(t.output)
+            return parsed?.success === false || parsed?.error
+          } catch { return false }
+        })
+        const lastFailed = failedTools[failedTools.length - 1]
+        const hadToolError = failedTools.length > 0
+
+        // ─── Graceful contact-facing fallback ───────────────────────
+        // The model gave up — but the human on the other end is still
+        // waiting. Send a tool-aware fallback message synchronously
+        // so the contact hears something acknowledging their request
+        // and knows a teammate will follow up. The operator gets
+        // emailed in parallel (below) and takes over from the deep
+        // link. Without this branch, the contact stares at a blank
+        // inbox until the operator manually intervenes — exactly the
+        // "stopped replying silently" behaviour Ryan flagged.
+        if (hadToolError && (crm || deferredSend || isSandbox)) {
+          const fallbackText = fallbackForFailedTool(lastFailed?.tool)
+          try {
+            if (deferredSend) {
+              deferredSend.captured = {
+                channel: channel || 'SMS',
+                contactId,
+                message: fallbackText,
+                conversationProviderId,
+              }
+              smsSent = fallbackText
+              actionsPerformed.push(`send_reply (tool_error_fallback, deferred)`)
+            } else if (crm) {
+              await crm.sendMessage({
+                type: (channel || 'SMS') as import('@/types').MessageChannelType,
+                contactId,
+                conversationProviderId,
+                message: fallbackText,
+              })
+              smsSent = fallbackText
+              actionsPerformed.push(`send_reply (tool_error_fallback, ${channel})`)
+            } else if (isSandbox) {
+              smsSent = fallbackText
+              actionsPerformed.push(`send_reply (tool_error_fallback, sandbox)`)
+            }
+          } catch (err: any) {
+            console.warn('[Agent] tool-error fallback send failed:', err?.message)
+          }
+        }
+
+        // ─── Operator notify + pause future turns ───────────────────
+        // Pause stops the agent from looping on the same broken tool
+        // for the next inbound while the operator investigates.
+        // Sandbox runs skip both — no real conversation to pause.
         if (!isSandbox && agentId && workspaceId) {
-          const failedTools = toolCallTrace.filter(t => {
-            try {
-              const parsed = JSON.parse(t.output)
-              return parsed?.success === false || parsed?.error
-            } catch { return false }
-          })
-          const hadToolError = failedTools.length > 0
           // Fire-and-forget — don't let notification failure mask the
           // already-broken run from getting logged above.
           ;(async () => {
@@ -827,14 +867,15 @@ export async function runAgent(opts: {
                 conversationId: conversationId ?? null,
                 channel: channel ?? null,
               })
-              const lastFailed = failedTools[failedTools.length - 1]
               const body = hadToolError && lastFailed
-                ? `${lastFailed.tool} returned an error and the agent stopped without replying. Conversation paused — open it to take over.`
+                ? `${lastFailed.tool} returned an error. A graceful fallback message was sent to the contact and the conversation is paused — open it to take over and resolve the underlying tool issue.`
                 : `The agent processed an inbound but produced no reply (stop_reason=${response.stop_reason}). Open the conversation to take over.`
               await notify({
                 workspaceId,
                 event: 'agent_error',
-                title: 'Agent stopped responding — take over conversation',
+                title: hadToolError
+                  ? 'Agent fell back to manual handoff — tool failure'
+                  : 'Agent stopped responding — take over conversation',
                 body,
                 link,
                 severity: 'error',
