@@ -56,7 +56,7 @@ async function reportToolFailure(params: {
   locationId?: string | null
   channel?: string | null
 }) {
-  const { crm, workspaceId, tool, category, message, contactId, conversationId, locationId, channel } = params
+  const { crm, workspaceId, tool, category, message, input, contactId, conversationId, locationId, channel } = params
   // Inline system note in the widget transcript (when applicable).
   try {
     const broadcaster = (crm as any)?.broadcastSystem
