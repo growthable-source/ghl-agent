@@ -109,11 +109,40 @@ async function reportToolFailure(params: {
       : category === 'booking'
         ? 'Booking attempt failed — take over conversation'
         : `${tool} failed — take over conversation`
+
+    // Special-case the calendar-404 path so the email tells the operator
+    // exactly what to do. Marketplace scopes are confirmed correct
+    // (calendars.readonly / calendars/events.readonly granted), so a 404
+    // here means the calendarId on the agent's config no longer resolves
+    // — calendar deleted in the CRM, renamed, or the agent was set up
+    // against a different sub-account's calendar list.
+    const is404 = /\b404\b|not\s*found/i.test(message)
+    const isCalendarTool = category === 'calendar_lookup' || category === 'booking'
+    const calendarIdFromInput = typeof input?.calendarId === 'string' ? input.calendarId : null
+    const calendarIdFromMessage = (() => {
+      const m = message.match(/\/calendars\/([^/?\s]+)\//)
+      return m?.[1] ?? null
+    })()
+    const calendarId = calendarIdFromInput ?? calendarIdFromMessage
+    const agentToolsUrl = workspaceId && params.agentId
+      ? `${(process.env.APP_URL || '').replace(/\/$/, '')}/dashboard/${workspaceId}/agents/${params.agentId}/tools`
+      : null
+
+    const remediation = is404 && isCalendarTool
+      ? [
+          calendarId
+            ? `Calendar ${calendarId} doesn't exist in your CRM anymore.`
+            : 'The calendar this agent was configured for no longer exists in your CRM.',
+          'Either restore it in LeadConnector, or pick a different calendar in the agent\'s Tools settings.',
+          agentToolsUrl ? `Update calendar: ${agentToolsUrl}` : null,
+        ].filter(Boolean).join(' ')
+      : isNonTransient
+        ? 'The conversation has been paused so the agent stops responding. Open it to take over manually.'
+        : null
+
     const body = [
       `${tool}: ${message.slice(0, 180)}`,
-      isNonTransient
-        ? 'The conversation has been paused so the agent stops responding. Open it to take over manually.'
-        : null,
+      remediation,
     ].filter(Boolean).join('\n\n')
     await notify({
       workspaceId,
