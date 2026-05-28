@@ -55,6 +55,7 @@ export async function findMatchingAgent(
         followUpSequences: { where: { isActive: true } },
         qualifyingQuestions: true,
         channelDeployments: true,
+        workspace: { select: { brokenReferenceMode: true } },
       },
     })
   } catch (err: any) {
@@ -70,6 +71,7 @@ export async function findMatchingAgent(
           stopConditions: true,
           followUpSequences: { where: { isActive: true } },
           qualifyingQuestions: true,
+          workspace: { select: { brokenReferenceMode: true } },
         },
       })
       // Add empty channelDeployments so backward compat logic works
@@ -211,6 +213,25 @@ export async function findMatchingAgent(
     if (agent.routingRules.length === 0) {
       console.log(`[Routing] Agent "${agent.name}" (${agent.id}) has NO routing rules — skipping. Add at least one rule on the Deploy tab.`)
       continue
+    }
+
+    // ── Reference-health gate: when the workspace is in 'agent_pause' mode
+    // and this agent has any broken references, skip it entirely. Other
+    // modes (tool_disable, warn_only) are handled inside runAgent.
+    const wsMode = (agent.workspace as any)?.brokenReferenceMode ?? 'tool_disable'
+    if (wsMode === 'agent_pause') {
+      try {
+        const brokenCount = await db.agentReferenceHealth.count({
+          where: { agentId: agent.id, status: 'broken' },
+        })
+        if (brokenCount > 0) {
+          console.log(`[routing] skipping agent ${agent.id}: ${brokenCount} broken refs (mode=agent_pause)`)
+          continue
+        }
+      } catch (err: any) {
+        console.warn(`[routing] reference-health check failed for agent ${agent.id}: ${err?.message}`)
+        // Fail open — don't block routing on a transient DB hiccup.
+      }
     }
 
     for (const rule of agent.routingRules) {
