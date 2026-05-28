@@ -194,6 +194,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         businessContext,
       },
     })
+
+    // If the caller picked a preset, apply it server-side AFTER agent
+    // creation. Failure here doesn't block the agent — the agent still
+    // exists with catalog defaults and the user can re-apply via the UI.
+    if (typeof body.presetId === 'string' && body.presetId.length > 0) {
+      try {
+        const { applyPreset } = await import('@/lib/agent/presets')
+        const applied = await applyPreset(agent.id, body.presetId)
+        if (!applied) {
+          console.warn(`[Agents] Unknown presetId "${body.presetId}" — agent created without preset config`)
+        }
+      } catch (err: any) {
+        console.warn(`[Agents] Preset application failed for ${agent.id}: ${err?.message}`)
+      }
+    }
+
     return NextResponse.json({ agent }, { status: 201 })
   } catch (err: any) {
     console.error('[Agents] Failed to create agent:', err.message)
