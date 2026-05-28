@@ -407,6 +407,57 @@ export async function runAgent(opts: {
     console.warn('[Agent] platform guidelines load failed:', err.message)
   }
 
+  // ─── Reference health gating ───────────────────────────────────────
+  // Drop tools that depend on a broken reference (mode = 'tool_disable',
+  // the workspace default), or skip the run entirely (mode = 'agent_pause').
+  // 'warn_only' is a no-op — the runtime fallback shipped 2026-05-28
+  // handles individual tool failures.
+  const toolsToHide = new Set<string>()
+  const brokenLabelsForPrompt: string[] = []
+  if (!isSandbox && agentId) {
+    try {
+      const { db } = await import('./db')
+      const broken = await db.agentReferenceHealth.findMany({
+        where: { agentId, status: 'broken' },
+        select: { resourceType: true, resourceId: true },
+      })
+      if (broken.length > 0 && workspaceId) {
+        const ws = await db.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { brokenReferenceMode: true },
+        })
+        const mode = (ws as any)?.brokenReferenceMode ?? 'tool_disable'
+
+        if (mode === 'agent_pause') {
+          console.log(`[Agent] ${agentId}: skipping run, ${broken.length} broken refs, mode=agent_pause`)
+          return {
+            reply: null,
+            actionsPerformed: [],
+            tokensUsed: 0,
+            toolCallTrace: [],
+            deferredCapture: undefined,
+            skipped: 'broken_references' as const,
+          } as any
+        }
+
+        if (mode === 'tool_disable') {
+          const { VALIDATORS } = await import('@/lib/agent/reference-health/validators')
+          for (const ref of broken) {
+            const v = VALIDATORS[ref.resourceType]
+            if (!v) continue
+            for (const t of v.dependentTools) toolsToHide.add(t)
+            brokenLabelsForPrompt.push(`${v.label} ${ref.resourceId}`)
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Agent] reference health gating failed for ${agentId}:`, err?.message)
+      // Fail-open: don't block the agent run on a transient DB hiccup. The
+      // runtime fallback we shipped 2026-05-28 catches the underlying tool
+      // failure if it actually happens.
+    }
+  }
+
   // ─── Active experiments ───
   // Resolve any running A/B experiments for this agent. Variant resolution
   // (and the prompt block it produces) ALWAYS runs — sandbox sees the
@@ -577,7 +628,8 @@ export async function runAgent(opts: {
         ...(hasListeningRules ? ['update_contact_memory'] : []),
       ])]
     : undefined
-  const filteredTools = normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS
+  const filteredTools = (normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS)
+    .filter(t => !toolsToHide.has(t.name))
 
   // ─── Workflow-picker enforcement ───
   // When the user has pinned specific workflows in the UI, rewrite the tool
@@ -668,7 +720,9 @@ export async function runAgent(opts: {
           connectedIntegrationsBlock,
           commerceBlock,
         },
-      ) + experimentBlock + dataSourcesBlock + conversationGapBlock,
+      ) + experimentBlock + dataSourcesBlock + conversationGapBlock + (brokenLabelsForPrompt.length > 0
+        ? `\n\nIMPORTANT: The following CRM resources are temporarily unavailable due to a configuration issue: ${brokenLabelsForPrompt.join(', ')}. The associated tools (booking, workflow enrolment, etc.) have been removed from your tool list for this conversation. If the contact asks about scheduling, workflow actions, or anything that requires these resources, acknowledge their request and tell them a teammate will follow up shortly. Do not pretend to attempt these actions.`
+        : ''),
       tools,
       messages: currentMessages,
     }
