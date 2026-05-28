@@ -74,3 +74,122 @@ export async function evaluateReferences(opts: {
 
   return results
 }
+
+import { db } from '@/lib/db'
+import { getCrmAdapter } from '@/lib/crm/factory'
+import { collectAgentReferences } from './collect'
+import { VALIDATORS } from './validators'
+
+/**
+ * Full check pass for a single agent. Loads the agent, collects refs,
+ * runs evaluate, upserts rows, fires notifications on transitions.
+ * Returns a summary the caller can use for logs / API responses.
+ *
+ * `throttleMinutes` skips references whose `lastCheckedAt` is younger
+ * than the threshold. Cron passes 30; manual re-check passes 0.
+ */
+export async function runReferenceHealthCheck(
+  agentId: string,
+  opts: { throttleMinutes?: number } = {},
+): Promise<{ healthy: number; broken: number; transient: number; skipped: number }> {
+  const throttleMinutes = opts.throttleMinutes ?? 0
+
+  const agent = await db.agent.findUnique({
+    where: { id: agentId },
+    include: { stopConditions: true, triggers: true },
+  })
+  if (!agent) return { healthy: 0, broken: 0, transient: 0, skipped: 0 }
+
+  const refs = collectAgentReferences(agent as any)
+  if (refs.length === 0) return { healthy: 0, broken: 0, transient: 0, skipped: 0 }
+
+  const existing = await db.agentReferenceHealth.findMany({ where: { agentId } })
+  const previousStatusByKey = new Map<string, string>()
+  const lastCheckedByKey = new Map<string, Date>()
+  for (const e of existing) {
+    const key = `${e.resourceType}:${e.resourceId}:${e.sourceField}`
+    previousStatusByKey.set(key, e.status)
+    lastCheckedByKey.set(key, e.lastCheckedAt)
+  }
+
+  const cutoff = Date.now() - throttleMinutes * 60_000
+  const refsToCheck = throttleMinutes <= 0
+    ? refs
+    : refs.filter(r => {
+        const key = `${r.resourceType}:${r.resourceId}:${r.sourceField}`
+        const lc = lastCheckedByKey.get(key)
+        return !lc || lc.getTime() < cutoff
+      })
+  const skipped = refs.length - refsToCheck.length
+
+  const adapter = await getCrmAdapter(agent.locationId)
+  const results = await evaluateReferences({
+    refs: refsToCheck,
+    validators: VALIDATORS,
+    previousStatusByKey,
+    adapter,
+  })
+
+  let healthy = 0, broken = 0, transient = 0
+  for (const r of results) {
+    const isBrokenTransition = r.transition === 'healthy_to_broken'
+
+    await db.agentReferenceHealth.upsert({
+      where: {
+        agentId_resourceType_resourceId_sourceField: {
+          agentId,
+          resourceType: r.ref.resourceType,
+          resourceId: r.ref.resourceId,
+          sourceField: r.ref.sourceField,
+        },
+      },
+      create: {
+        agentId,
+        resourceType: r.ref.resourceType,
+        resourceId: r.ref.resourceId,
+        sourceField: r.ref.sourceField,
+        status: r.writeStatus,
+        lastCheckedAt: new Date(),
+        lastError: r.lastError,
+        firstBrokenAt: r.writeStatus === 'broken' ? new Date() : null,
+      },
+      update: {
+        status: r.writeStatus,
+        lastCheckedAt: new Date(),
+        lastError: r.lastError,
+        ...(isBrokenTransition ? { firstBrokenAt: new Date() } : {}),
+        ...(r.transition === 'broken_to_healthy' ? { firstBrokenAt: null } : {}),
+      },
+    })
+
+    if (r.transition) {
+      // Background notify — implemented in Task 7. Until then, log.
+      void fireReferenceTransitionNotification({
+        agentId,
+        ref: r.ref,
+        transition: r.transition,
+        lastError: r.lastError,
+        validatorLabel: VALIDATORS[r.ref.resourceType]?.label ?? r.ref.resourceType,
+      }).catch((err: any) => {
+        console.warn(`[ref-health] notify failed for ${agentId}:`, err?.message)
+      })
+    }
+
+    if (r.writeStatus === 'healthy') healthy++
+    else if (r.writeStatus === 'broken') broken++
+    else transient++
+  }
+
+  return { healthy, broken, transient, skipped }
+}
+
+// Implemented in Task 7. Placeholder no-op so this file compiles standalone.
+async function fireReferenceTransitionNotification(opts: {
+  agentId: string
+  ref: AgentReference
+  transition: 'healthy_to_broken' | 'broken_to_healthy'
+  lastError: string | null
+  validatorLabel: string
+}): Promise<void> {
+  console.log(`[ref-health] transition placeholder: ${opts.transition} on agent ${opts.agentId}, ref ${opts.validatorLabel} ${opts.ref.resourceId}`)
+}
