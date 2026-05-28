@@ -45,6 +45,15 @@ export default function WorkspaceSettingsPage() {
   const [savingWs, setSavingWs] = useState(false)
   const [wsSaved, setWsSaved] = useState(false)
 
+  // Broken-reference behaviour — what happens when an agent references a
+  // CRM resource (calendar, workflow) that has been deleted. Default is
+  // 'tool_disable' (drop the broken tool only). 'agent_pause' is the
+  // strict mode that skips the whole agent until fixed. 'warn_only' is
+  // the laissez-faire mode that relies on the runtime fallback.
+  const [brokenReferenceMode, setBrokenReferenceMode] = useState<'tool_disable' | 'agent_pause' | 'warn_only'>('tool_disable')
+  const [savingBrm, setSavingBrm] = useState(false)
+  const [brmSaved, setBrmSaved] = useState(false)
+
   // Members
   const [members, setMembers] = useState<Member[]>([])
 
@@ -71,6 +80,9 @@ export default function WorkspaceSettingsPage() {
         if (ws.logoUrl) {
           setLogoMode(ws.logoUrl.startsWith('http') ? 'url' : 'upload')
           setPendingUrl(ws.logoUrl)
+        }
+        if (ws.brokenReferenceMode === 'tool_disable' || ws.brokenReferenceMode === 'agent_pause' || ws.brokenReferenceMode === 'warn_only') {
+          setBrokenReferenceMode(ws.brokenReferenceMode)
         }
       }
       setMembers(memberData.members || [])
@@ -152,6 +164,23 @@ export default function WorkspaceSettingsPage() {
     setWsLogoUrl(null)
     setPendingUrl('')
     setLogoMode('emoji')
+  }
+
+  async function saveBrokenReferenceMode(mode: 'tool_disable' | 'agent_pause' | 'warn_only') {
+    setBrokenReferenceMode(mode)
+    setSavingBrm(true)
+    setBrmSaved(false)
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/members`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brokenReferenceMode: mode }),
+      })
+      setBrmSaved(true)
+      setTimeout(() => setBrmSaved(false), 2000)
+    } finally {
+      setSavingBrm(false)
+    }
   }
 
   async function sendInvite(e: React.FormEvent) {
@@ -345,6 +374,81 @@ export default function WorkspaceSettingsPage() {
         </div>
         <span className="text-zinc-600 group-hover:text-zinc-400 transition-colors">→</span>
       </Link>
+
+      {/* ─── Broken-reference behaviour ───
+          Workspace-wide policy for what happens when an agent references
+          a CRM resource (calendar, workflow) that no longer exists. The
+          hourly health check flags broken references; this picker decides
+          how aggressive the runtime treatment is. */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-medium text-zinc-200">Broken-reference behaviour</h2>
+          {savingBrm && <span className="text-xs text-zinc-500">Saving…</span>}
+          {brmSaved && !savingBrm && <span className="text-xs text-emerald-400">Saved</span>}
+        </div>
+        <p className="text-xs text-zinc-500 mb-4">
+          When an agent references a calendar, workflow, or other CRM resource
+          that no longer exists, choose what should happen.
+        </p>
+        <div className="space-y-2">
+          {([
+            {
+              value: 'tool_disable',
+              title: 'Disable affected tools only',
+              badge: 'Recommended',
+              desc: 'The agent keeps running but the broken tools are dropped from its tool list.',
+            },
+            {
+              value: 'agent_pause',
+              title: 'Pause the entire agent',
+              badge: null,
+              desc: 'No inbounds match the agent until you fix the reference.',
+            },
+            {
+              value: 'warn_only',
+              title: 'Warn only',
+              badge: null,
+              desc: 'Agent keeps trying; runtime fallback handles individual failures.',
+            },
+          ] as const).map(opt => {
+            const checked = brokenReferenceMode === opt.value
+            return (
+              <label
+                key={opt.value}
+                className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors"
+                style={{
+                  borderColor: checked ? 'var(--accent-primary)' : 'var(--border)',
+                  background: checked ? 'var(--accent-primary-bg, var(--surface-secondary))' : 'var(--surface)',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="brokenReferenceMode"
+                  value={opt.value}
+                  checked={checked}
+                  disabled={savingBrm}
+                  onChange={() => saveBrokenReferenceMode(opt.value)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.title}</span>
+                    {opt.badge && (
+                      <span
+                        className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded"
+                        style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+                      >
+                        {opt.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{opt.desc}</p>
+                </div>
+              </label>
+            )
+          })}
+        </div>
+      </div>
 
       {/* ─── Team Members ─── */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">

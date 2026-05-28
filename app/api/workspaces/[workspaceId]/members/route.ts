@@ -95,6 +95,19 @@ export async function PATCH(
       data.logoUrl = trimmed
     }
   }
+  // brokenReferenceMode — picker on the workspace settings page. Three
+  // accepted values, matched against an allowlist so a bad client can't
+  // store an unknown string and silently switch behaviour. Default in
+  // the schema is 'tool_disable'.
+  if (typeof body.brokenReferenceMode === 'string') {
+    const allowedModes = ['tool_disable', 'agent_pause', 'warn_only']
+    if (!allowedModes.includes(body.brokenReferenceMode)) {
+      return NextResponse.json({
+        error: `brokenReferenceMode must be one of: ${allowedModes.join(', ')}`,
+      }, { status: 400 })
+    }
+    data.brokenReferenceMode = body.brokenReferenceMode
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
