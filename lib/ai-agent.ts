@@ -1053,6 +1053,16 @@ export async function runAgent(opts: {
         workspaceId,
         contactId,
         conversationId,
+        // Conversation history for the enforced-tool gate (Phase B3).
+        // The gate inspects up to 10 most-recent turns to decide whether
+        // the useWhen rule is satisfied. Strip non-text content to keep
+        // the gate prompt small + relevant.
+        (messageHistory ?? [])
+          .filter(m => (m.direction === 'inbound' || m.direction === 'outbound') && typeof m.body === 'string')
+          .map(m => ({
+            role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+            content: m.body,
+          })),
       )
       toolCallTrace.push({
         tool: toolBlock.name,

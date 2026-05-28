@@ -309,6 +309,13 @@ export async function executeTool(
    */
   contactId?: string,
   conversationId?: string,
+  /**
+   * Recent conversation history for the Phase B3 enforced-tool gate.
+   * Passed through from runAgent so the gate has the conversational
+   * context it needs to evaluate the useWhen rule. Absent in legacy
+   * call sites — the gate skips when not provided.
+   */
+  messageHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
 ): Promise<string> {
   // In sandbox, allow read-only tools to hit the real CRM so the agent
   // sees actual data. Writes (send_reply, book_appointment, update_*,
@@ -318,6 +325,58 @@ export async function executeTool(
   }
   // Resolve adapter if not provided (backward compat)
   const crm = adapter ?? (await getCrmAdapter(locationId))
+
+  // ─── Enforced-tool gate (Phase B3) ──────────────────────────────────
+  // For tools flagged enforcement:'enforced' in the catalog, run a Haiku
+  // gate to evaluate the agent's useWhen rule against the conversation
+  // before dispatching. Skips when:
+  //   - sandbox run (gate is for production safety)
+  //   - no agentId (legacy call site)
+  //   - tool isn't flagged enforced in the catalog
+  //   - agent is in autonomous mode
+  //   - resolved useWhen is empty (no rule = nothing to enforce)
+  // Fail-open on any error so a gate failure can't break the agent.
+  if (!sandbox && agentId) {
+    try {
+      const { AGENT_TOOLS: catalog } = await import('./tool-catalog')
+      const catalogEntry = (catalog as any[]).find((t: any) => t.name === toolName)
+      if (catalogEntry?.enforcement === 'enforced') {
+        const { resolveOneToolConfig } = await import('./tool-config')
+        const cfg = await resolveOneToolConfig(agentId, toolName)
+        const { db: dbClient } = await import('@/lib/db')
+        const agentRow = await dbClient.agent.findUnique({
+          where: { id: agentId },
+          select: { toolAutonomyMode: true } as any,
+        })
+        const autonomyMode = (agentRow as any)?.toolAutonomyMode ?? 'guided'
+        const shouldGate = autonomyMode === 'guided' && cfg.useWhen && cfg.useWhen.length > 0
+        if (shouldGate) {
+          const { runToolGate } = await import('./tool-gate')
+          const decision = await runToolGate({
+            agentId,
+            conversationId: conversationId ?? null,
+            contactId: contactId ?? null,
+            toolName,
+            useWhen: cfg.useWhen,
+            toolInput: input,
+            recentMessages: messageHistory ?? [],
+          })
+          if (!decision.allowed) {
+            return JSON.stringify({
+              success: false,
+              blocked: true,
+              reason: decision.reason,
+              hint: 'The current conversation does not satisfy the rule for this tool. Continue gathering what is missing before retrying, or choose a different action that matches the situation.',
+            })
+          }
+        }
+      }
+    } catch (err: any) {
+      // Fail-open — gating failure shouldn't break the runtime.
+      console.warn(`[executeTool] gate dispatch failed for ${toolName}, falling open:`, err?.message)
+    }
+  }
+
   try {
     switch (toolName) {
       case 'get_contact_details': {
