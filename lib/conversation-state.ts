@@ -154,6 +154,36 @@ export async function executeStopConditionActions(params: {
 }): Promise<void> {
   const { matched, locationId, contactId, reason } = params
 
+  // ── Skip workflow side-effects when the referenced workflow is broken
+  // (i.e. flagged by the reference-health system). The pause + tag-needs-
+  // attention still fires; only the workflow enrol/remove is suppressed.
+  // Prevents repeatedly attempting to enrol a contact into a workflow
+  // that no longer exists in the CRM.
+  const brokenWorkflowIds = new Set<string>()
+  try {
+    // Look up the agent owning this stop condition, then its broken
+    // workflow-type reference rows. One round-trip; cheap.
+    const sc = await db.stopCondition.findUnique({
+      where: { id: matched.id },
+      select: { agentId: true },
+    })
+    if (sc?.agentId) {
+      const rows = await db.agentReferenceHealth.findMany({
+        where: {
+          agentId: sc.agentId,
+          resourceType: 'workflow',
+          status: 'broken',
+        },
+        select: { resourceId: true },
+      })
+      for (const row of rows) brokenWorkflowIds.add(row.resourceId)
+    }
+  } catch (err: any) {
+    console.warn(`[StopCond] reference-health lookup failed: ${err?.message}`)
+    // Fail-open — don't block the legitimate side effects on a transient
+    // DB hiccup.
+  }
+
   if (matched.tagNeedsAttention) {
     try {
       const { GhlAdapter } = await import('./crm/ghl/adapter')
@@ -163,7 +193,7 @@ export async function executeStopConditionActions(params: {
     }
   }
 
-  if (matched.enrollWorkflowId) {
+  if (matched.enrollWorkflowId && !brokenWorkflowIds.has(matched.enrollWorkflowId)) {
     try {
       const { GhlAdapter } = await import('./crm/ghl/adapter')
       await new GhlAdapter(locationId).addContactToWorkflow(contactId, matched.enrollWorkflowId)
@@ -171,9 +201,11 @@ export async function executeStopConditionActions(params: {
     } catch (err: any) {
       console.warn(`[StopCond] enrollWorkflow(${matched.enrollWorkflowId}) failed: ${err.message}`)
     }
+  } else if (matched.enrollWorkflowId && brokenWorkflowIds.has(matched.enrollWorkflowId)) {
+    console.warn(`[StopCond] skipping enrol into broken workflow ${matched.enrollWorkflowId} (reference-health flagged)`)
   }
 
-  if (matched.removeWorkflowId) {
+  if (matched.removeWorkflowId && !brokenWorkflowIds.has(matched.removeWorkflowId)) {
     try {
       const { GhlAdapter } = await import('./crm/ghl/adapter')
       await new GhlAdapter(locationId).removeContactFromWorkflow(contactId, matched.removeWorkflowId)
@@ -181,5 +213,7 @@ export async function executeStopConditionActions(params: {
     } catch (err: any) {
       console.warn(`[StopCond] removeWorkflow(${matched.removeWorkflowId}) failed: ${err.message}`)
     }
+  } else if (matched.removeWorkflowId && brokenWorkflowIds.has(matched.removeWorkflowId)) {
+    console.warn(`[StopCond] skipping remove from broken workflow ${matched.removeWorkflowId} (reference-health flagged)`)
   }
 }
