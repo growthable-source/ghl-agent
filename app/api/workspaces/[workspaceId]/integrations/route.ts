@@ -89,6 +89,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
     hubspot: hasHubspot,
   }
 
+  // Aggregate broken-reference count — number of distinct agents in this
+  // workspace that have at least one reference flagged 'broken' by the
+  // hourly health check. Rendered as a "N agents have broken references"
+  // banner at the top of the integrations page so the integrations
+  // surface is the place to spot when a connected CRM has had a calendar
+  // or workflow deleted out from under an agent.
+  let brokenRefAgentCount = 0
+  try {
+    brokenRefAgentCount = await db.agent.count({
+      where: {
+        workspaceId,
+        referenceHealth: { some: { status: 'broken' } },
+      },
+    })
+  } catch {
+    // Pre-migration safety — AgentReferenceHealth may not exist yet on
+    // some envs. Fall back to 0; the UI just skips the banner.
+  }
+
   return NextResponse.json({
     integrations,
     ghlConnected,
@@ -98,6 +117,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     installSource,
     primaryCrmProvider,
     availableCrms,
+    brokenRefAgentCount,
   })
 }
 

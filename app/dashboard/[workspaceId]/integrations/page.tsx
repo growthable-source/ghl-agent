@@ -199,11 +199,18 @@ export default function IntegrationsPage() {
   const [metaAdsBanner, setMetaAdsBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
   const [googleAdsBanner, setGoogleAdsBanner] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
   const [busyAdAccount, setBusyAdAccount] = useState<string | null>(null)
+  // Count of distinct agents in this workspace that have at least one
+  // 'broken' reference (from the hourly health check). Drives the
+  // "N agents have broken references" banner at the top — a one-stop
+  // signal that a connected CRM lost a calendar or workflow an agent
+  // was relying on. Click-through goes to /agents so the operator can
+  // see which agents and drill into their tools page.
+  const [brokenRefAgentCount, setBrokenRefAgentCount] = useState(0)
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/integrations`)
       .then(r => r.json())
-      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm, shopify, primaryCrmProvider, installSource: src }: {
+      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm, shopify, primaryCrmProvider, installSource: src, brokenRefAgentCount: brokenCount }: {
         integrations: Integration[]
         ghlConnected: boolean
         vapiActive: boolean
@@ -211,6 +218,7 @@ export default function IntegrationsPage() {
         shopify: { shop: string; scope: string; installedAt: string } | null
         primaryCrmProvider?: string
         installSource?: string | null
+        brokenRefAgentCount?: number
       }) => {
         setIntegrations(ints || [])
         setGhlConnected(ghl)
@@ -219,6 +227,7 @@ export default function IntegrationsPage() {
         setShopifyConnection(shopify ?? null)
         if (primaryCrmProvider) setPrimaryCrm(primaryCrmProvider)
         setInstallSource(src ?? null)
+        setBrokenRefAgentCount(brokenCount ?? 0)
       })
       .finally(() => setLoading(false))
 
@@ -653,6 +662,28 @@ export default function IntegrationsPage() {
             : 'Connect your CRM, telephony, and communication platforms. Agents work across all connected channels.'}
         </p>
       </div>
+
+      {brokenRefAgentCount > 0 && (
+        <a
+          href={`/dashboard/${workspaceId}/agents`}
+          style={{
+            display: 'block',
+            padding: 12,
+            marginBottom: 16,
+            background: 'var(--accent-red-bg, #fef2f2)',
+            color: 'var(--accent-red, #b91c1c)',
+            border: '1px solid var(--accent-red, #ef4444)',
+            borderRadius: 8,
+            textDecoration: 'none',
+            fontSize: 14,
+          }}
+        >
+          {brokenRefAgentCount === 1
+            ? '1 agent has broken references'
+            : `${brokenRefAgentCount} agents have broken references`}
+          {' →'}
+        </a>
+      )}
 
       {metaBanner && (
         <div
