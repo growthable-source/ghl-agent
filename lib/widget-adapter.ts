@@ -253,6 +253,11 @@ export class WidgetAdapter implements CrmAdapter {
 
   // ─── Calendar — passthrough to real CRM if available ──────────────────
 
+  async getCalendar(calendarId: string): Promise<unknown> {
+    if (!this.inner) throw new Error('No CRM connected — calendar unavailable')
+    return this.inner.getCalendar(calendarId)
+  }
+
   async getFreeSlots(calendarId: string, startDate: string, endDate: string, timezone?: string) {
     if (!this.inner) throw new Error('No CRM connected — calendar unavailable')
     return this.inner.getFreeSlots(calendarId, startDate, endDate, timezone)
