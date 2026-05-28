@@ -9,7 +9,22 @@
 
 import type Anthropic from '@anthropic-ai/sdk'
 
-export const AGENT_TOOLS: Anthropic.Tool[] = [
+/**
+ * One tool the agent can call.
+ *
+ * Extends Anthropic.Tool with two optional catalog-defaults consumed by
+ * the per-tool config layer (`lib/agent/tool-config.ts`):
+ *   - `defaultUseWhen` — the rule shown in the system prompt when the
+ *     operator hasn't overridden it on AgentToolConfig.
+ *   - `defaultOnFailure` — what to do when this tool errors at runtime
+ *     (defaults to 'default' if omitted).
+ */
+export type AgentToolDef = Anthropic.Tool & {
+  defaultUseWhen?: string
+  defaultOnFailure?: 'default' | 'transfer_to_human' | 'canned_message' | 'silent_skip'
+}
+
+export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'get_contact_details',
     description: 'Fetch full contact details including name, email, phone, tags, and source.',
@@ -20,6 +35,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId'],
     },
+    defaultUseWhen: 'Use at the start of a conversation to load what we know about the contact (name, email, custom fields, tags). Skip if you already have this turn\'s context.',
   },
   {
     name: 'send_reply',
@@ -33,6 +49,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'message'],
     },
+    defaultUseWhen: 'Use to deliver your response to the contact. Exactly once per turn — never call twice in the same run.',
   },
   // Backward compat — old agents with send_sms in enabledTools still work
   {
@@ -47,6 +64,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'message'],
     },
+    defaultUseWhen: 'Use only when you specifically need SMS delivery (vs the default send_reply on whatever channel the contact wrote in on).',
   },
   {
     name: 'update_contact_field',
@@ -60,6 +78,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'fieldKey', 'value'],
     },
+    defaultUseWhen: 'Use when the contact shares a structured fact (name, email, phone, custom-field value) we should persist. Skip if a detection rule already captures the same field.',
   },
   {
     name: 'update_contact_memory',
@@ -73,6 +92,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'category', 'content'],
     },
+    defaultUseWhen: 'Use to record long-term context the agent itself should remember next conversation (preferences, prior commitments, things that don\'t fit into structured fields).',
   },
   {
     name: 'update_contact_tags',
@@ -85,6 +105,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'tags'],
     },
+    defaultUseWhen: 'Use when you\'ve learned a new persistent fact about the contact that should be tracked (qualification status, interest area, blocker, segment). Don\'t tag transient sentiments.',
   },
   {
     name: 'get_opportunities',
@@ -96,6 +117,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId'],
     },
+    defaultUseWhen: 'Use when you need to know whether the contact has an open deal, or where they sit in the pipeline.',
   },
   {
     name: 'move_opportunity_stage',
@@ -109,6 +131,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['opportunityId', 'pipelineStageId'],
     },
+    defaultUseWhen: 'Use when the conversation makes a stage change unambiguous (booked → "demo scheduled", paid → "closed-won"). Don\'t guess.',
   },
   {
     name: 'add_contact_note',
@@ -121,6 +144,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'note'],
     },
+    defaultUseWhen: 'Use to log something a human teammate should see when they next open the contact — qualifying context, an objection, a question we couldn\'t answer.',
   },
   {
     name: 'get_available_slots',
@@ -135,6 +159,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['calendarId', 'startDate', 'endDate'],
     },
+    defaultUseWhen: 'Use when the contact has asked about scheduling, availability, or booking, and you have or can infer a sensible date range (default to the next 14 days). Don\'t call this preemptively before the contact has shown booking intent.',
   },
   {
     name: 'book_appointment',
@@ -151,6 +176,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['calendarId', 'contactId', 'startTime'],
     },
+    defaultUseWhen: 'Use ONLY after get_available_slots has returned slots AND the contact has explicitly picked one of those slots. Never book without an explicit pick.',
   },
   {
     name: 'search_contacts',
@@ -162,6 +188,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['query'],
     },
+    defaultUseWhen: 'Use when the contact references another person ("can you also book my husband?") and you need to find that other person\'s record.',
   },
   {
     name: 'find_contact_by_email_or_phone',
@@ -173,6 +200,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         phone: { type: 'string', description: 'Phone in E.164 format (e.g. +14155550100)' },
       },
     },
+    defaultUseWhen: 'Use when the contact mentions a different email or phone than the one we have, and you need to check whether that\'s a separate record we should merge with.',
   },
   {
     name: 'upsert_contact',
@@ -189,6 +217,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
         tags: { type: 'array', items: { type: 'string' } },
       },
     },
+    defaultUseWhen: 'Use only when you\'ve discovered the conversation is actually with a different person than the contact record (e.g. spouse, assistant) and need to create or update a separate record.',
   },
   {
     name: 'remove_contact_tags',
@@ -201,6 +230,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'tags'],
     },
+    defaultUseWhen: 'Use when the contact corrects or contradicts a previously-set tag (e.g. they were tagged "not-ready" but now want to book).',
   },
   {
     name: 'create_task',
@@ -216,6 +246,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'title', 'dueDate'],
     },
+    defaultUseWhen: 'Use when there\'s an explicit human follow-up needed that can\'t be automated — set assignee, dueDate, and clear title.',
   },
   {
     name: 'add_to_workflow',
@@ -229,6 +260,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'workflowId'],
     },
+    defaultUseWhen: 'Use only when the contact has explicitly opted into a follow-up sequence (e.g. nurture, drip campaign) you\'ve been authorised to enrol them in.',
   },
   {
     name: 'remove_from_workflow',
@@ -241,6 +273,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'workflowId'],
     },
+    defaultUseWhen: 'Use when the contact asks to stop receiving follow-ups OR when their state change (e.g. booked, won) makes the current workflow irrelevant.',
   },
   {
     name: 'cancel_scheduled_message',
@@ -252,6 +285,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['messageId'],
     },
+    defaultUseWhen: 'Use when the contact responds to something that would invalidate a queued follow-up (e.g. they answered the question we were going to chase).',
   },
   {
     name: 'list_contact_conversations',
@@ -266,6 +300,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId'],
     },
+    defaultUseWhen: 'Use when you need context from prior conversations with this contact — e.g. the contact references "what we talked about last time".',
   },
   {
     name: 'mark_opportunity_won',
@@ -278,6 +313,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['opportunityId'],
     },
+    defaultUseWhen: 'Use only when the contact has confirmed purchase / commitment AND payment/signature is captured outside this agent.',
   },
   {
     name: 'mark_opportunity_lost',
@@ -290,6 +326,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['opportunityId'],
     },
+    defaultUseWhen: 'Use when the contact has explicitly declined OR when they meet a hard-disqualification criterion (e.g. wrong geography, can\'t afford).',
   },
   {
     name: 'upsert_opportunity',
@@ -306,6 +343,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'pipelineId'],
     },
+    defaultUseWhen: 'Use when the contact mentions a deal/purchase intent we don\'t already have an opportunity record for.',
   },
   {
     name: 'list_pipelines',
@@ -314,6 +352,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {},
     },
+    defaultUseWhen: 'Use rarely — only when you need to pick a pipelineId for upsert_opportunity and don\'t already have one.',
   },
   {
     name: 'create_contact',
@@ -328,6 +367,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['firstName'],
     },
+    defaultUseWhen: 'Use when the conversation is with someone who is NOT yet in the CRM and find_contact_by_email_or_phone has returned null. Prefer upsert_contact when you have both email and phone.',
   },
   {
     name: 'send_email',
@@ -341,6 +381,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'subject', 'body'],
     },
+    defaultUseWhen: 'Use when the contact has asked for something in writing (a quote, a summary, a confirmation) OR when the channel itself is Email.',
   },
   {
     name: 'create_opportunity',
@@ -356,6 +397,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'name', 'pipelineId', 'pipelineStageId'],
     },
+    defaultUseWhen: 'Use when the contact has a clear new deal/intent we should track in pipeline AND no existing opportunity covers it. Prefer upsert_opportunity when in doubt.',
   },
   {
     name: 'update_opportunity_value',
@@ -368,6 +410,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['opportunityId', 'monetaryValue'],
     },
+    defaultUseWhen: 'Use when the deal value changes mid-conversation (the contact upgrades / downgrades / adds line items) and the opportunity already exists.',
   },
   {
     name: 'get_calendar_events',
@@ -379,6 +422,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId'],
     },
+    defaultUseWhen: 'Use when the contact asks about their upcoming appointments OR when you need to find an appointmentId to cancel / reschedule.',
   },
   {
     name: 'create_appointment_note',
@@ -391,6 +435,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['appointmentId', 'body'],
     },
+    defaultUseWhen: 'Use right after book_appointment succeeds, to log conversational context that would help whoever attends the appointment (qualifying answers, the contact\'s specific ask, anything notable).',
   },
   {
     name: 'cancel_appointment',
@@ -403,6 +448,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['appointmentId'],
     },
+    defaultUseWhen: 'Use when the contact has explicitly asked to cancel an appointment AND you have the appointmentId (call get_calendar_events first if needed).',
   },
   {
     name: 'reschedule_appointment',
@@ -416,6 +462,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['appointmentId', 'startTime'],
     },
+    defaultUseWhen: 'Use when the contact has asked to move an existing appointment AND has picked a new slot from get_available_slots.',
   },
   {
     name: 'save_qualifying_answer',
@@ -429,6 +476,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'fieldKey', 'answer'],
     },
+    defaultUseWhen: 'Use whenever the contact answers one of the configured qualifying questions — persist the answer immediately so the next turn can read it.',
   },
   {
     name: 'score_lead',
@@ -442,6 +490,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'score', 'reason'],
     },
+    defaultUseWhen: 'Use after a qualifying exchange (or when you see clear buying signals) to record a 1–100 score. Don\'t score every turn.',
   },
   {
     name: 'detect_sentiment',
@@ -455,6 +504,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'sentiment', 'summary'],
     },
+    defaultUseWhen: 'Use when the contact\'s tone shifts noticeably (clearly frustrated, hostile, or unusually enthusiastic). Don\'t call on every neutral turn.',
   },
   {
     name: 'schedule_followup',
@@ -468,6 +518,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'message', 'delayHours'],
     },
+    defaultUseWhen: 'Use when the contact has gone quiet mid-flow OR after a successful booking when a check-in is warranted. Pick a sensible delay.',
   },
   {
     name: 'end_conversation',
@@ -490,6 +541,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['summary'],
     },
+    defaultUseWhen: 'Use only on widget channels when the visitor has clearly gotten what they came for and the thread is naturally done. Send your final reply FIRST, then call this.',
   },
   {
     name: 'transfer_to_human',
@@ -512,6 +564,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['contactId', 'reason'],
     },
+    defaultUseWhen: 'Use when the contact explicitly asks for a human, when they\'re hostile or frustrated and the conversation isn\'t recoverable, or when the request is genuinely outside your scope. Don\'t use for transient tool failures — those have their own recovery.',
   },
   // ── Live data sources (workspace-curated) ──────────────────────────────
   // The three tools below wrap operator-managed data sources stored in
@@ -530,6 +583,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['source'],
     },
+    defaultUseWhen: 'Use when the contact asks about something the operator-connected sheet covers (inventory, pricing, schedules, etc). Pass a query to narrow the rows when possible.',
   },
   {
     name: 'query_airtable',
@@ -543,6 +597,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['source'],
     },
+    defaultUseWhen: 'Use when the contact asks about something the operator-connected Airtable base covers. Use a formula to scope to the contact\'s specific record when possible.',
   },
   {
     name: 'fetch_data',
@@ -554,6 +609,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['source'],
     },
+    defaultUseWhen: 'Use when the contact\'s question matches a saved REST data source the operator has connected (e.g. an internal status API).',
   },
 
   // ─── Shopify (commerce) ──────────────────────────────────────────
@@ -572,6 +628,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['query'],
     },
+    defaultUseWhen: 'Use when the contact asks about specific products, availability, or to compare options — search before you describe.',
   },
   {
     name: 'check_shopify_inventory',
@@ -586,6 +643,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['variantId'],
     },
+    defaultUseWhen: 'Use right before quoting availability or before create_shopify_checkout to confirm stock.',
   },
   {
     name: 'lookup_shopify_customer',
@@ -598,6 +656,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: [],
     },
+    defaultUseWhen: 'Use at the start of a commerce conversation to load order history + lifetime value.',
   },
   {
     name: 'check_shopify_order_status',
@@ -609,6 +668,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['orderName'],
     },
+    defaultUseWhen: 'Use when the contact asks about an existing order ("where is my package", "did it ship").',
   },
   {
     name: 'create_shopify_checkout',
@@ -634,6 +694,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['lineItems'],
     },
+    defaultUseWhen: 'Use when the contact has agreed to buy specific items AND you have the variantIds + quantities. Inventory should be confirmed first.',
   },
   {
     name: 'create_shopify_discount',
@@ -649,6 +710,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['code', 'type', 'value'],
     },
+    defaultUseWhen: 'Use rarely — only when the contact qualifies for a discount you\'ve been authorised to issue (recover an abandoned cart, win-back). Defaults: short expiry, capped value.',
   },
   {
     name: 'record_back_in_stock_interest',
@@ -662,6 +724,7 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['variantId', 'productTitle'],
     },
+    defaultUseWhen: 'Use when the contact wants something out of stock AND consents to being notified when it returns.',
   },
 ]
 
