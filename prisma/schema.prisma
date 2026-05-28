@@ -629,9 +629,31 @@ model Agent {
   referenceHealth AgentReferenceHealth[]
   toolConfigs     AgentToolConfig[]
   gateDecisions   ToolGateDecision[]
+  nodeLayouts     AgentNodeLayout[]
+
+  /// 'simple' (default — tab IA) | 'advanced' (canvas IA)
+  viewMode String @default("simple")
 
   @@index([locationId, isActive])
   @@index([workspaceId])
+}
+
+/// Per-agent node position overrides for the Visual Workflow Canvas
+/// (Phase Adv-1). Composite nodeKey — e.g. "tool:book_appointment",
+/// "stop:abc123", "channel:SMS", "trigger:def456". One row per
+/// dragged node; nodes never dragged stay at their dagre-computed
+/// position and have no row.
+model AgentNodeLayout {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  nodeKey   String
+  x         Float
+  y         Float
+  updatedAt DateTime @updatedAt
+
+  @@unique([agentId, nodeKey])
+  @@index([agentId])
 }
 
 model AgentReferenceHealth {
