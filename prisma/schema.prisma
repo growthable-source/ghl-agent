@@ -125,6 +125,11 @@ model Workspace {
   // explicit "Use as primary" click (matches the existing HubSpot button).
   primaryCrmProvider String  @default("native")
 
+  /// 'tool_disable' (default) — drop the affected tools and keep the rest running.
+  /// 'agent_pause' — skip the agent entirely when any reference is broken.
+  /// 'warn_only' — runtime ignores broken state; rely on the runtime fallback.
+  brokenReferenceMode String @default("tool_disable")
+
   // ─── Emergency Pause ───
   isPaused Boolean   @default(false)
   pausedAt DateTime?
@@ -607,8 +612,26 @@ model Agent {
   campaignsAsTriggered      Campaign[] @relation("CampaignTriggeredAgent")
   campaignsAsConversational Campaign[] @relation("CampaignConversationalAgent")
 
+  referenceHealth AgentReferenceHealth[]
+
   @@index([locationId, isActive])
   @@index([workspaceId])
+}
+
+model AgentReferenceHealth {
+  id            String    @id @default(cuid())
+  agentId       String
+  agent         Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  resourceType  String // 'calendar' | 'workflow' | (future)
+  resourceId    String
+  sourceField   String
+  status        String // 'healthy' | 'broken' | 'transient_error'
+  lastCheckedAt DateTime
+  lastError     String?
+  firstBrokenAt DateTime?
+
+  @@unique([agentId, resourceType, resourceId, sourceField])
+  @@index([agentId, status])
 }
 
 // Knowledge Collection — the unit operators reason about. A collection
