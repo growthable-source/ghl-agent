@@ -44,6 +44,22 @@ export async function findMatchingAgent(
   // ties — predictable and easy to reason about.
   const agentOrder = { createdAt: 'asc' as const }
 
+  // Try the full query first. Two known-fallback cases:
+  //   1. ChannelDeployment table missing (P2021) — pre-channels-migration DBs
+  //   2. Workspace.brokenReferenceMode column missing (P2022) — Phase A
+  //      SQL not yet applied. Critical: without this fallback, EVERY
+  //      inbound's routing query throws and no agent runs.
+  //
+  // We try the maximal include first; on either fallback we degrade
+  // gracefully and synthesise empty values so downstream logic doesn't
+  // need to special-case migration state.
+  const isUnknownColumnError = (err: any) =>
+    err?.code === 'P2022' ||
+    /column .* does not exist|brokenReferenceMode|toolAutonomyMode|presetId/i.test(err?.message ?? '')
+  const isChannelDeploymentsError = (err: any) =>
+    err?.code === 'P2021' ||
+    /channelDeployments|ChannelDeployment/.test(err?.message ?? '')
+
   let agents: any[]
   try {
     agents = await db.agent.findMany({
@@ -59,8 +75,43 @@ export async function findMatchingAgent(
       },
     })
   } catch (err: any) {
-    // If ChannelDeployment table doesn't exist yet, fall back without it
-    if (err.message?.includes('channelDeployments') || err.code === 'P2021') {
+    if (isUnknownColumnError(err)) {
+      // Phase A SQL not applied yet — query without the workspace include.
+      // agent_pause mode is unreachable until the column exists, which is
+      // the correct degraded behaviour.
+      console.warn(`[Routing] Workspace.brokenReferenceMode column not migrated yet, falling back without it`)
+      try {
+        agents = await db.agent.findMany({
+          where: agentWhere,
+          orderBy: agentOrder,
+          include: {
+            routingRules: { orderBy: { priority: 'asc' } },
+            stopConditions: true,
+            followUpSequences: { where: { isActive: true } },
+            qualifyingQuestions: true,
+            channelDeployments: true,
+          },
+        })
+      } catch (inner: any) {
+        // Maybe channelDeployments ALSO doesn't exist. Strip it too.
+        if (isChannelDeploymentsError(inner)) {
+          console.warn(`[Routing] ChannelDeployment table also missing — falling back to bare agent query`)
+          agents = await db.agent.findMany({
+            where: agentWhere,
+            orderBy: agentOrder,
+            include: {
+              routingRules: { orderBy: { priority: 'asc' } },
+              stopConditions: true,
+              followUpSequences: { where: { isActive: true } },
+              qualifyingQuestions: true,
+            },
+          })
+          agents = agents.map((a: any) => ({ ...a, channelDeployments: [] }))
+        } else {
+          throw inner
+        }
+      }
+    } else if (isChannelDeploymentsError(err)) {
       console.warn(`[Routing] ChannelDeployment table may not exist yet, querying without it`)
       agents = await db.agent.findMany({
         where: agentWhere,
@@ -74,7 +125,6 @@ export async function findMatchingAgent(
           workspace: { select: { brokenReferenceMode: true } },
         },
       })
-      // Add empty channelDeployments so backward compat logic works
       agents = agents.map((a: any) => ({ ...a, channelDeployments: [] }))
     } else {
       throw err

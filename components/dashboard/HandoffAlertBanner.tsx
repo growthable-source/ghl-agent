@@ -178,38 +178,56 @@ export default function HandoffAlertBanner() {
     })
   }
 
+  // Colour tokens. Previously hardcoded text-red-200 / text-red-300/* —
+  // those are Tailwind dark-mode-only values; on light-mode pages with
+  // a red-tinted background the text disappeared (Ryan's screenshot of
+  // the unreadable banner is the reproducer). Switching to design-token
+  // CSS vars makes the banner readable in both themes. Fallbacks are
+  // explicit hexes so the banner still works if a host page hasn't
+  // loaded the theme tokens.
+  const colourText = 'var(--accent-red, #b91c1c)'
+  const colourTextSubtle = 'var(--accent-red-subtle, var(--accent-red, #b91c1c))'
+  const colourBg = 'var(--accent-red-bg, #fef2f2)'
+  const colourBgStrong = 'var(--accent-red, #ef4444)'
+  const colourBgStrongHover = 'var(--accent-red-hover, #dc2626)'
+  const colourBorder = 'var(--accent-red, #ef4444)'
+
   return (
     <div
       className="w-full border-b"
       style={{
-        background: 'linear-gradient(90deg, rgba(239,68,68,0.16), rgba(220,38,38,0.06))',
-        borderColor: 'rgba(239,68,68,0.35)',
+        background: colourBg,
+        borderColor: colourBorder,
+        color: colourText,
       }}
       role="alert"
       aria-live="polite"
     >
       <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center gap-3">
         <span className="relative inline-flex w-2.5 h-2.5 shrink-0">
-          <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
-          <span className="relative w-2.5 h-2.5 rounded-full bg-red-500" />
+          <span className="absolute inset-0 rounded-full animate-ping opacity-75" style={{ background: colourBgStrong }} />
+          <span className="relative w-2.5 h-2.5 rounded-full" style={{ background: colourBgStrong }} />
         </span>
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-red-200">
+          <p className="text-sm font-semibold" style={{ color: colourText }}>
             {visible.length === 1
               ? `${primary.agent?.name || 'An agent'} needs you`
               : `${visible.length} agents need you`}
           </p>
-          <p className="text-xs text-red-300/80 truncate">
+          <p className="text-xs truncate" style={{ color: colourTextSubtle, opacity: 0.85 }}>
             <span className="font-medium">{labelFor(primary)}</span>
             {primary.reason && <> — {primary.reason}</>}
-            <span className="text-red-300/50"> · {timeAgo(primary.at)}</span>
+            <span style={{ opacity: 0.65 }}> · {timeAgo(primary.at)}</span>
           </p>
         </div>
 
         <button
           onClick={() => takeOver(primary)}
-          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors whitespace-nowrap"
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+          style={{ background: colourBgStrong, color: '#fff' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = colourBgStrongHover }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = colourBgStrong }}
         >
           Take over now
         </button>
@@ -217,7 +235,8 @@ export default function HandoffAlertBanner() {
         {extra > 0 && (
           <button
             onClick={() => setExpanded(o => !o)}
-            className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-red-500/40 text-red-200 hover:bg-red-500/10 transition-colors whitespace-nowrap"
+            className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            style={{ border: `1px solid ${colourBorder}`, color: colourText, background: 'transparent' }}
             aria-expanded={expanded}
           >
             {expanded ? 'Hide' : `+${extra} more`}
@@ -226,7 +245,8 @@ export default function HandoffAlertBanner() {
 
         <button
           onClick={() => snooze(primary)}
-          className="text-[11px] text-red-300/70 hover:text-red-200 transition-colors whitespace-nowrap"
+          className="text-[11px] transition-colors whitespace-nowrap"
+          style={{ color: colourTextSubtle, opacity: 0.85 }}
           title="Hide this alert for 10 minutes on this device"
         >
           Snooze
@@ -238,26 +258,32 @@ export default function HandoffAlertBanner() {
           {visible.slice(1).map(item => (
             <div
               key={keyFor(item)}
-              className="flex items-center gap-3 py-2 px-3 rounded-lg bg-red-950/30 border border-red-500/20"
+              className="flex items-center gap-3 py-2 px-3 rounded-lg"
+              style={{
+                background: 'rgba(255,255,255,0.5)',
+                border: `1px solid ${colourBorder}`,
+              }}
             >
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-red-200 truncate">
+                <p className="text-xs font-semibold truncate" style={{ color: colourText }}>
                   {item.agent?.name || 'Agent'} — {labelFor(item)}
                 </p>
                 {item.reason && (
-                  <p className="text-[11px] text-red-300/70 truncate">{item.reason}</p>
+                  <p className="text-[11px] truncate" style={{ color: colourTextSubtle, opacity: 0.85 }}>{item.reason}</p>
                 )}
               </div>
-              <span className="text-[10px] text-red-300/60 whitespace-nowrap">{timeAgo(item.at)}</span>
+              <span className="text-[10px] whitespace-nowrap" style={{ color: colourTextSubtle, opacity: 0.7 }}>{timeAgo(item.at)}</span>
               <button
                 onClick={() => takeOver(item)}
-                className="text-[11px] font-semibold px-2.5 py-1 rounded bg-red-500/90 hover:bg-red-500 text-white whitespace-nowrap"
+                className="text-[11px] font-semibold px-2.5 py-1 rounded whitespace-nowrap"
+                style={{ background: colourBgStrong, color: '#fff' }}
               >
                 Take over
               </button>
               <button
                 onClick={() => snooze(item)}
-                className="text-[10px] text-red-300/60 hover:text-red-200 transition-colors whitespace-nowrap"
+                className="text-[10px] transition-colors whitespace-nowrap"
+                style={{ color: colourTextSubtle, opacity: 0.7 }}
                 title="Hide for 10 minutes"
               >
                 Snooze
