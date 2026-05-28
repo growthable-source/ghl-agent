@@ -18,9 +18,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS "AgentReferenceHealth_agentId_resourceType_res
 CREATE INDEX IF NOT EXISTS "AgentReferenceHealth_agentId_status_idx"
   ON "AgentReferenceHealth"("agentId", "status");
 
-ALTER TABLE "AgentReferenceHealth"
-  ADD CONSTRAINT "AgentReferenceHealth_agentId_fkey"
-  FOREIGN KEY ("agentId") REFERENCES "Agent"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- FK — wrapped in DO block so re-runs in the Supabase SQL editor don't
+-- error on duplicate constraint name (Postgres has no IF NOT EXISTS for
+-- constraints).
+DO $$ BEGIN
+  ALTER TABLE "AgentReferenceHealth"
+    ADD CONSTRAINT "AgentReferenceHealth_agentId_fkey"
+    FOREIGN KEY ("agentId") REFERENCES "Agent"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Workspace.brokenReferenceMode
 ALTER TABLE "Workspace"
