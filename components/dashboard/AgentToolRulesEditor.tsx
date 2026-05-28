@@ -266,29 +266,38 @@ export function AgentToolRulesEditor({
     if (res.ok) await load()
   }
 
-  if (loading) return <div style={{ opacity: 0.6 }}>Loading tool config…</div>
+  if (loading) {
+    return <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading tool config…</p>
+  }
 
   const toolsByName = new Map(tools.map(t => [t.toolName, t]))
   const currentPresetHardcoded = currentPresetId ? presets.find(p => p.id === currentPresetId) ?? null : null
   const currentPresetCustom = currentPresetId ? customPresets.find(p => p.id === currentPresetId) ?? null : null
   const currentPresetLabel = currentPresetHardcoded?.label ?? currentPresetCustom?.name ?? null
 
+  // Visual conventions match the surrounding /tools page (Tailwind + CSS
+  // vars): rounded-xl border for cards, text-sm body / text-xs hints,
+  // space-y-* for vertical rhythm. Previous inline-style pixel sizes
+  // (fontSize 16 headings, 13px tool names, 8px radius) made this
+  // editor stand out against the page's `p-8 max-w-2xl` chrome —
+  // bigger/blockier than the other sections. Now consistent.
   return (
-    <div>
-      {/* Autonomy mode toggle */}
-      <div style={{ padding: 16, border: '1px solid var(--border, #e5e7eb)', borderRadius: 8, marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Mode</h3>
+    <div className="space-y-4">
+      {/* Mode + preset actions */}
+      <div
+        className="rounded-xl border p-4"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Mode</p>
             {currentPresetLabel && (
               <span
+                className="text-[11px] px-2 py-0.5 rounded-full border"
                 style={{
-                  fontSize: 11,
-                  padding: '2px 8px',
-                  borderRadius: 999,
-                  background: 'var(--bg-subtle, #f3f4f6)',
-                  border: '1px solid var(--border, #e5e7eb)',
-                  color: 'var(--fg-muted, #4b5563)',
+                  background: 'var(--surface-secondary)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text-secondary)',
                 }}
               >
                 Currently configured as: <strong>{currentPresetLabel}</strong>
@@ -296,32 +305,26 @@ export function AgentToolRulesEditor({
             )}
             {presetSavedName && (
               <span
+                className="text-[11px] px-2 py-0.5 rounded-full border"
                 style={{
-                  fontSize: 11,
-                  padding: '2px 8px',
-                  borderRadius: 999,
-                  background: 'var(--accent-emerald-bg, #ecfdf5)',
-                  border: '1px solid var(--accent-emerald, #047857)',
-                  color: 'var(--accent-emerald, #047857)',
+                  background: 'var(--accent-emerald-bg)',
+                  borderColor: 'var(--accent-emerald)',
+                  color: 'var(--accent-emerald)',
                 }}
               >
                 Saved as &ldquo;{presetSavedName}&rdquo;
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={openSaveDialog}
+              className="text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors"
               style={{
-                padding: '6px 12px',
-                fontSize: 12,
-                fontWeight: 600,
-                border: '1px solid var(--border, #e5e7eb)',
-                background: 'var(--bg, #fff)',
-                color: 'var(--fg, #111827)',
-                borderRadius: 6,
-                cursor: 'pointer',
+                borderColor: 'var(--border)',
+                background: 'var(--surface)',
+                color: 'var(--text-primary)',
               }}
             >
               Save as preset
@@ -330,15 +333,11 @@ export function AgentToolRulesEditor({
               <button
                 type="button"
                 onClick={openApplyDialog}
+                className="text-xs font-medium px-2.5 py-1.5 rounded-md border transition-colors"
                 style={{
-                  padding: '6px 12px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  border: '1px solid var(--border, #e5e7eb)',
-                  background: 'var(--bg, #fff)',
-                  color: 'var(--fg, #111827)',
-                  borderRadius: 6,
-                  cursor: 'pointer',
+                  borderColor: 'var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-primary)',
                 }}
               >
                 Apply preset
@@ -346,20 +345,37 @@ export function AgentToolRulesEditor({
             )}
           </div>
         </div>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8 }}>
-          <input type="radio" name="autonomyMode" value="guided"
-            checked={autonomyMode === 'guided'} onChange={() => setAutonomyMode('guided')} />
-          <div>
-            <strong>Guided</strong> (recommended) — each tool follows its &ldquo;use when&rdquo; rule.
-          </div>
-        </label>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8 }}>
-          <input type="radio" name="autonomyMode" value="autonomous"
-            checked={autonomyMode === 'autonomous'} onChange={() => setAutonomyMode('autonomous')} />
-          <div>
-            <strong>Autonomous</strong> — the agent decides which tools to call freely. Per-tool rules below are bypassed.
-          </div>
-        </label>
+
+        <div className="space-y-2">
+          <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: 'var(--text-primary)' }}>
+            <input
+              type="radio"
+              name="autonomyMode"
+              value="guided"
+              checked={autonomyMode === 'guided'}
+              onChange={() => setAutonomyMode('guided')}
+              className="mt-0.5"
+            />
+            <span>
+              <strong>Guided</strong>{' '}
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>(recommended)</span>{' '}
+              — each tool follows its &ldquo;use when&rdquo; rule.
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: 'var(--text-primary)' }}>
+            <input
+              type="radio"
+              name="autonomyMode"
+              value="autonomous"
+              checked={autonomyMode === 'autonomous'}
+              onChange={() => setAutonomyMode('autonomous')}
+              className="mt-0.5"
+            />
+            <span>
+              <strong>Autonomous</strong> — the agent decides which tools to call freely. Per-tool rules below are bypassed.
+            </span>
+          </label>
+        </div>
       </div>
 
       {/* Per-category tool sections */}
@@ -371,62 +387,126 @@ export function AgentToolRulesEditor({
 
         const isOpen = openCats[cat.id] ?? true
         return (
-          <div key={cat.id} style={{ marginBottom: 16, border: '1px solid var(--border, #e5e7eb)', borderRadius: 8 }}>
+          <div
+            key={cat.id}
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          >
             <button
               type="button"
               onClick={() => setOpenCats(s => ({ ...s, [cat.id]: !isOpen }))}
-              style={{
-                width: '100%', padding: 12, textAlign: 'left',
-                background: 'var(--bg-subtle, #f9fafb)', border: 'none', borderRadius: 8,
-                fontWeight: 600, fontSize: 14, cursor: 'pointer',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}
+              className="w-full px-4 py-3 flex items-center justify-between text-left transition-colors"
+              style={{ background: 'var(--surface-secondary)' }}
             >
-              <span>{cat.label} <span style={{ opacity: 0.6, fontWeight: 400, fontSize: 12 }}>({catTools.length})</span></span>
-              <span>{isOpen ? '▾' : '▸'}</span>
+              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {cat.label}{' '}
+                <span className="text-xs font-normal" style={{ color: 'var(--text-tertiary)' }}>
+                  ({catTools.length})
+                </span>
+              </span>
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                {isOpen ? '▾' : '▸'}
+              </span>
             </button>
+
             {isOpen && (
-              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div
+                className="p-3 space-y-3"
+                style={{
+                  borderTop: '1px solid var(--border)',
+                  opacity: autonomyMode === 'autonomous' ? 0.55 : 1,
+                }}
+              >
                 {catTools.map(t => (
-                  <div key={t.toolName} style={{ padding: 12, background: 'var(--bg, #fff)', border: '1px solid var(--border, #e5e7eb)', borderRadius: 6, opacity: autonomyMode === 'autonomous' ? 0.55 : 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontFamily: 'monospace', fontSize: 13 }}>
-                        <input type="checkbox" checked={t.enabled}
-                          onChange={e => setTool(t.toolName, { enabled: e.target.checked })} />
-                        {t.toolName}
+                  <div
+                    key={t.toolName}
+                    className="rounded-lg border p-3 space-y-2"
+                    style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={t.enabled}
+                          onChange={e => setTool(t.toolName, { enabled: e.target.checked })}
+                        />
+                        <code className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
+                          {t.toolName}
+                        </code>
                       </label>
-                      <button type="button" onClick={() => resetTool(t.toolName)}
-                        style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--border, #e5e7eb)', borderRadius: 4, background: 'transparent', cursor: 'pointer' }}>
+                      <button
+                        type="button"
+                        onClick={() => resetTool(t.toolName)}
+                        className="text-[11px] px-2 py-0.5 rounded border transition-colors"
+                        style={{
+                          borderColor: 'var(--border)',
+                          background: 'transparent',
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
                         Reset to default
                       </button>
                     </div>
-                    <label style={{ fontSize: 12, opacity: 0.8 }}>Use this tool when:</label>
-                    <textarea
-                      value={t.useWhen}
-                      onChange={e => setTool(t.toolName, { useWhen: e.target.value })}
-                      placeholder="(catalog default applies)"
-                      rows={2}
-                      style={{ width: '100%', padding: 8, fontSize: 13, border: '1px solid var(--border, #e5e7eb)', borderRadius: 4, marginTop: 4, resize: 'vertical' }}
-                    />
-                    <label style={{ fontSize: 12, opacity: 0.8, marginTop: 8, display: 'block' }}>On failure:</label>
-                    <select value={t.onFailure}
-                      onChange={e => setTool(t.toolName, { onFailure: e.target.value as OnFailureMode, onFailureMessage: e.target.value === 'canned_message' ? (t.onFailureMessage ?? '') : null })}
-                      style={{ padding: 6, fontSize: 13, border: '1px solid var(--border, #e5e7eb)', borderRadius: 4, marginTop: 4 }}>
-                      {(['default', 'transfer_to_human', 'canned_message', 'silent_skip'] as OnFailureMode[]).map(m => (
-                        <option key={m} value={m}>{ON_FAILURE_LABELS[m]}</option>
-                      ))}
-                    </select>
+
+                    <div>
+                      <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                        Use this tool when:
+                      </label>
+                      <textarea
+                        value={t.useWhen}
+                        onChange={e => setTool(t.toolName, { useWhen: e.target.value })}
+                        placeholder="(catalog default applies)"
+                        rows={2}
+                        className="w-full text-sm px-2.5 py-1.5 rounded border resize-y"
+                        style={{
+                          borderColor: 'var(--border)',
+                          background: 'var(--surface)',
+                          color: 'var(--text-primary)',
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                        On failure:
+                      </label>
+                      <select
+                        value={t.onFailure}
+                        onChange={e => setTool(t.toolName, {
+                          onFailure: e.target.value as OnFailureMode,
+                          onFailureMessage: e.target.value === 'canned_message' ? (t.onFailureMessage ?? '') : null,
+                        })}
+                        className="w-full text-sm px-2.5 py-1.5 rounded border"
+                        style={{
+                          borderColor: 'var(--border)',
+                          background: 'var(--surface)',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        {(['default', 'transfer_to_human', 'canned_message', 'silent_skip'] as OnFailureMode[]).map(m => (
+                          <option key={m} value={m}>{ON_FAILURE_LABELS[m]}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     {t.onFailure === 'canned_message' && (
-                      <>
-                        <label style={{ fontSize: 12, opacity: 0.8, marginTop: 8, display: 'block' }}>Canned message:</label>
+                      <div>
+                        <label className="text-xs block mb-1" style={{ color: 'var(--text-secondary)' }}>
+                          Canned message:
+                        </label>
                         <textarea
                           value={t.onFailureMessage ?? ''}
                           onChange={e => setTool(t.toolName, { onFailureMessage: e.target.value })}
                           rows={2}
                           placeholder="Message sent to the contact when this tool fails."
-                          style={{ width: '100%', padding: 8, fontSize: 13, border: '1px solid var(--border, #e5e7eb)', borderRadius: 4, marginTop: 4, resize: 'vertical' }}
+                          className="w-full text-sm px-2.5 py-1.5 rounded border resize-y"
+                          style={{
+                            borderColor: 'var(--border)',
+                            background: 'var(--surface)',
+                            color: 'var(--text-primary)',
+                          }}
                         />
-                      </>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -436,11 +516,25 @@ export function AgentToolRulesEditor({
         )
       })}
 
-      {/* Save bar */}
-      <div style={{ position: 'sticky', bottom: 0, padding: 12, background: 'var(--bg, #fff)', borderTop: '1px solid var(--border, #e5e7eb)', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
-        {savedAt && <span style={{ color: 'var(--accent-emerald, #047857)', fontSize: 12 }}>Saved</span>}
-        <button type="button" onClick={saveAll} disabled={saving}
-          style={{ padding: '8px 16px', background: 'var(--button-bg, #111827)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: saving ? 'wait' : 'pointer' }}>
+      {/* Sticky save bar */}
+      <div
+        className="sticky bottom-0 -mx-4 px-4 py-3 flex items-center justify-end gap-3 border-t"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      >
+        {savedAt && (
+          <span className="text-xs" style={{ color: 'var(--accent-emerald)' }}>Saved</span>
+        )}
+        <button
+          type="button"
+          onClick={saveAll}
+          disabled={saving}
+          className="text-sm font-semibold px-4 py-1.5 rounded-md transition-colors"
+          style={{
+            background: 'var(--button-bg, var(--text-primary))',
+            color: 'var(--button-text, var(--surface))',
+            cursor: saving ? 'wait' : 'pointer',
+          }}
+        >
           {saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
