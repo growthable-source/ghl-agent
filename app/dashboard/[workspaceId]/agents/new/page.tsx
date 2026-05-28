@@ -234,7 +234,46 @@ export default function NewAgentWizard() {
   // which fires the workspace-level provider switch on Continue.
   const [selectedCrm, setSelectedCrm] = useState<string>('native')
   const [selectedCalendar, setSelectedCalendar] = useState<string>('none')
+  // The specific calendarId picked from the LeadConnector calendar list.
+  // Without this the new agent is created with calendarProvider='ghl' but
+  // no calendarId, leaving the user to hunt for it on the /tools page
+  // before any booking tool actually works. Empty string = "I picked
+  // LeadConnector but haven't selected a calendar yet".
+  const [selectedCalendarId, setSelectedCalendarId] = useState<string>('')
+  const [ghlCalendars, setGhlCalendars] = useState<Array<{ id: string; name: string }>>([])
+  const [ghlCalendarsLoading, setGhlCalendarsLoading] = useState(false)
+  const [ghlCalendarsError, setGhlCalendarsError] = useState<string | null>(null)
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['SMS'])
+
+  // Auto-load the calendar list whenever the user picks LeadConnector.
+  // Switching back to 'none' clears the picked id so it doesn't get
+  // submitted with a stale calendarId from a prior selection.
+  useEffect(() => {
+    if (selectedCalendar !== 'ghl') {
+      setSelectedCalendarId('')
+      return
+    }
+    setGhlCalendarsLoading(true)
+    setGhlCalendarsError(null)
+    fetch(`/api/workspaces/${workspaceId}/calendars`)
+      .then(async r => {
+        if (!r.ok) {
+          const body = await r.text().catch(() => '')
+          throw new Error(body || `Failed to load calendars (${r.status})`)
+        }
+        return r.json()
+      })
+      .then(d => {
+        const list: Array<{ id: string; name: string }> = (d.calendars ?? [])
+          .map((c: any) => ({ id: c.id, name: c.name ?? c.id }))
+        setGhlCalendars(list)
+        // Auto-pick if there's exactly one calendar — saves a click and
+        // matches the "your agent ships ready to book" goal.
+        if (list.length === 1) setSelectedCalendarId(list[0].id)
+      })
+      .catch(err => setGhlCalendarsError(err?.message ?? 'Failed to load calendars'))
+      .finally(() => setGhlCalendarsLoading(false))
+  }, [selectedCalendar, workspaceId])
 
   // Knowledge step — which indexed collections the new agent reads
   // from. null = "all" (workspace-wide, backward-compatible default).
@@ -424,13 +463,26 @@ export default function NewAgentWizard() {
           agentType,
           ...(agentType === 'ADVANCED' && businessContext.trim() && { businessContext }),
           ...(selectedTemplate && { enabledTools: selectedTemplate.enabledTools }),
-          // B2 preset mapping. Each template carries a defaultPresetId
-          // ('booking' for sales/scheduling templates, 'conversational'
-          // for support/concierge). The backend applies the matching
-          // preset's per-tool deltas (e.g. disable commerce on
-          // conversational, set book_appointment.onFailure=transfer on
-          // booking) on top of the template's broader prompt + tool list.
-          ...(selectedTemplate && { presetId: selectedTemplate.defaultPresetId }),
+          // Calendar wiring at create time: send the picked calendarId
+          // so the agent ships ready-to-book. Without this the agent
+          // would need a manual trip to /tools to wire up the calendar.
+          ...(selectedCalendar === 'ghl' && selectedCalendarId && {
+            calendarId: selectedCalendarId,
+          }),
+          // B2 preset mapping is now driven by the CALENDAR CHOICE, not
+          // the template archetype. The mental model: "Did you wire up a
+          // calendar?" → booking bot. "Skipped calendar?" → conversational.
+          // Template only contributes the persona/prompt + base tool list;
+          // the preset adds the per-tool deltas (commerce off, etc).
+          // Falls back to the template's default if no clear calendar
+          // signal (shouldn't happen in practice — the Calendar step is
+          // mandatory).
+          presetId:
+            selectedCalendar === 'ghl' && selectedCalendarId
+              ? 'booking'
+              : selectedCalendar === 'none'
+                ? 'conversational'
+                : selectedTemplate?.defaultPresetId ?? 'custom',
           // Knowledge scope. Null/undefined = read from every domain
           // in the workspace (backward-compatible). An explicit
           // array narrows. Empty array would mean "none" which
@@ -484,7 +536,24 @@ export default function NewAgentWizard() {
     }
   }
 
-  const canProceed = step !== 'template' || selectedTemplate !== null
+  // Per-step gating. The calendar step blocks Continue when the user
+  // picked LeadConnector but hasn't actually selected a specific
+  // calendar from the list (or while the list is still loading).
+  // Without this gate the agent ships with calendarProvider='ghl' and
+  // calendarId=null, which is exactly the configuration that caused
+  // the silent-failure incident — the agent would try to fetch slots
+  // for an empty calendarId and 404.
+  const canProceed = (() => {
+    if (step === 'template') return selectedTemplate !== null
+    if (step === 'calendar') {
+      if (selectedCalendar === 'ghl') {
+        return selectedCalendarId !== '' && !ghlCalendarsLoading
+      }
+      // 'none' (or anything else) — no calendar required to advance.
+      return true
+    }
+    return true
+  })()
   const canCreate = name.trim() && systemPrompt.trim()
 
   return (
@@ -689,7 +758,10 @@ export default function NewAgentWizard() {
         {step === 'calendar' && (
           <div>
             <h1 className="text-2xl font-semibold mb-2">Connect a calendar</h1>
-            <p className="text-zinc-400 text-sm mb-6">Your agent will check availability and book appointments for leads.</p>
+            <p className="text-zinc-400 text-sm mb-6">
+              Picking a calendar wires the agent up for booking. Choose <em>No Calendar</em>{' '}
+              and the agent will answer questions but won&apos;t schedule.
+            </p>
             <div className="space-y-3">
               {CALENDAR_OPTIONS.map(opt => (
                 <button key={opt.id} type="button" onClick={() => setSelectedCalendar(opt.id)}
@@ -718,6 +790,67 @@ export default function NewAgentWizard() {
                 </button>
               ))}
             </div>
+
+            {/* Sub-picker: actual calendarId selection when LeadConnector chosen. */}
+            {selectedCalendar === 'ghl' && (
+              <div
+                className="mt-4 rounded-xl border p-4"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}
+              >
+                <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
+                  Which calendar should the agent book into?
+                </p>
+                {ghlCalendarsLoading && (
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading your calendars…</p>
+                )}
+                {ghlCalendarsError && (
+                  <p className="text-xs" style={{ color: 'var(--accent-red, #ef4444)' }}>
+                    Couldn&apos;t load calendars: {ghlCalendarsError}
+                  </p>
+                )}
+                {!ghlCalendarsLoading && !ghlCalendarsError && ghlCalendars.length === 0 && (
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    No calendars found in your CRM. Create one in LeadConnector, then come back — or pick <em>No Calendar</em> to ship a conversational-only agent.
+                  </p>
+                )}
+                {!ghlCalendarsLoading && !ghlCalendarsError && ghlCalendars.length > 0 && (
+                  <div className="space-y-2">
+                    {ghlCalendars.map(cal => (
+                      <button
+                        key={cal.id}
+                        type="button"
+                        onClick={() => setSelectedCalendarId(cal.id)}
+                        className="w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors"
+                        style={
+                          selectedCalendarId === cal.id
+                            ? { borderColor: 'var(--accent-primary)', background: 'var(--surface)' }
+                            : { borderColor: 'var(--border)', background: 'transparent' }
+                        }
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{
+                            border: '1px solid var(--border)',
+                            background: selectedCalendarId === cal.id ? 'var(--btn-primary-bg)' : 'transparent',
+                          }}
+                        >
+                          {selectedCalendarId === cal.id && (
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--btn-primary-text)' }} />
+                          )}
+                        </span>
+                        <span className="text-sm flex-1" style={{ color: 'var(--text-primary)' }}>{cal.name}</span>
+                        <code className="text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>{cal.id.slice(-8)}</code>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!ghlCalendarsLoading && selectedCalendarId === '' && ghlCalendars.length > 0 && (
+                  <p className="text-xs mt-3" style={{ color: 'var(--text-tertiary)' }}>
+                    Pick one to continue. The agent will only book into the calendar you select here.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -179,6 +179,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       ? body.businessContext.trim() || null
       : null
 
+    // Calendar wiring at create time. The wizard sends `calendarId` when
+    // the user picked a specific calendar in the LeadConnector calendar
+    // step. Storing it here means the agent ships ready-to-book — no
+    // separate trip through /tools to wire up the calendar later.
+    const calendarId = typeof body.calendarId === 'string' && body.calendarId.length > 0
+      ? body.calendarId
+      : null
+
     const agent = await db.agent.create({
       data: {
         workspaceId,
@@ -190,6 +198,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         ...(Array.isArray(body.knowledgeDomainIds) && {
           knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
         }),
+        ...(calendarId && { calendarId }),
         agentType,
         businessContext,
       },
