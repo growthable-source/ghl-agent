@@ -201,6 +201,11 @@ model Workspace {
   // ShopifyShop.workspaceId to support multi-store later).
   shopifyShop ShopifyShop? @relation("WorkspaceShopify")
 
+  // ─── Workspace-defined agent presets ───
+  // User-saved "Save as preset" templates from the agent tool rules
+  // editor. Coexists with the hardcoded registry at lib/agent/presets.ts.
+  presets WorkspacePreset[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -657,6 +662,35 @@ model AgentToolConfig {
 
   @@unique([agentId, toolName])
   @@index([agentId])
+}
+
+/// Workspace-defined preset. Extends the hardcoded registry at
+/// lib/agent/presets.ts with user-saved templates ("Save as preset"
+/// on the AgentToolRulesEditor). Applied through the same code path
+/// as the hardcoded presets — apply-preset endpoint looks up by id in
+/// both sources via applyPresetWithWorkspaceLookup.
+///
+/// toolDeltas is JSON rather than a child table because the array is
+/// read-as-a-whole on every apply and never queried piecemeal. Shape
+/// matches PresetToolDelta[] in lib/agent/presets.ts.
+model WorkspacePreset {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  /// Stored autonomy mode for this preset (mirrors hardcoded preset shape).
+  autonomyMode String    @default("guided")
+  /// JSON-serialised PresetToolDelta[] — the same shape as the hardcoded
+  /// presets at lib/agent/presets.ts. Stored as JSON column rather than
+  /// a child table because the array is read-as-a-whole on every apply
+  /// and never queried piecemeal.
+  toolDeltas   Json      @default("[]")
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([workspaceId])
 }
 
 /// Audit log for the enforced-tool gate (Phase B3). One row per gate
