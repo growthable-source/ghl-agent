@@ -22,6 +22,16 @@ import type Anthropic from '@anthropic-ai/sdk'
 export type AgentToolDef = Anthropic.Tool & {
   defaultUseWhen?: string
   defaultOnFailure?: 'default' | 'transfer_to_human' | 'canned_message' | 'silent_skip'
+  /**
+   * When 'enforced', a Haiku gate (lib/agent/tool-gate.ts) evaluates the
+   * resolved useWhen rule against the conversation BEFORE the tool can
+   * dispatch. Blocked calls return a structured result to the model rather
+   * than executing. Default 'structured' = prompt-injection only (no gate).
+   *
+   * Reserve 'enforced' for high-stakes tools (money, calendar, external
+   * comms) — the extra LLM call adds ~300ms p50.
+   */
+  enforcement?: 'structured' | 'enforced'
 }
 
 export const AGENT_TOOLS: AgentToolDef[] = [
@@ -177,6 +187,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
       required: ['calendarId', 'contactId', 'startTime'],
     },
     defaultUseWhen: 'Use ONLY after get_available_slots has returned slots AND the contact has explicitly picked one of those slots. Never book without an explicit pick.',
+    enforcement: 'enforced',
   },
   {
     name: 'search_contacts',
@@ -314,6 +325,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
       required: ['opportunityId'],
     },
     defaultUseWhen: 'Use only when the contact has confirmed purchase / commitment AND payment/signature is captured outside this agent.',
+    enforcement: 'enforced',
   },
   {
     name: 'mark_opportunity_lost',
@@ -327,6 +339,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
       required: ['opportunityId'],
     },
     defaultUseWhen: 'Use when the contact has explicitly declined OR when they meet a hard-disqualification criterion (e.g. wrong geography, can\'t afford).',
+    enforcement: 'enforced',
   },
   {
     name: 'upsert_opportunity',
@@ -382,6 +395,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
       required: ['contactId', 'subject', 'body'],
     },
     defaultUseWhen: 'Use when the contact has asked for something in writing (a quote, a summary, a confirmation) OR when the channel itself is Email.',
+    enforcement: 'enforced',
   },
   {
     name: 'create_opportunity',
@@ -695,6 +709,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
       required: ['lineItems'],
     },
     defaultUseWhen: 'Use when the contact has agreed to buy specific items AND you have the variantIds + quantities. Inventory should be confirmed first.',
+    enforcement: 'enforced',
   },
   {
     name: 'create_shopify_discount',
@@ -711,6 +726,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
       required: ['code', 'type', 'value'],
     },
     defaultUseWhen: 'Use rarely — only when the contact qualifies for a discount you\'ve been authorised to issue (recover an abandoned cart, win-back). Defaults: short expiry, capped value.',
+    enforcement: 'enforced',
   },
   {
     name: 'record_back_in_stock_interest',
