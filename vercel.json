@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/tickets-auto-close",
       "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/cron/agent-reference-health",
+      "schedule": "0 * * * *"
     }
   ]
 }
