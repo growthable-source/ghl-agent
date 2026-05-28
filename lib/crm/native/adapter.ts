@@ -259,6 +259,12 @@ export class NativeAdapter implements CrmAdapter {
 
   // ─── Calendar (not on native plan) ──────────────────────────────────
 
+  async getCalendar(_calendarId: string): Promise<unknown> {
+    // Native plan has no calendar concept — reference-health treats this
+    // as "no calendar to validate" rather than a broken reference.
+    throw new Error('getCalendar not supported by this adapter')
+  }
+
   async getFreeSlots(): Promise<Array<{ startTime: string; endTime: string }>> {
     return []
   }

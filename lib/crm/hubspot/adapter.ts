@@ -396,6 +396,13 @@ export class HubSpotAdapter implements CrmAdapter {
   // HubSpot has no free-slots/availability API. Meetings are logged as
   // engagement objects. For full scheduling, integrate Google Calendar/Outlook.
 
+  async getCalendar(_calendarId: string): Promise<unknown> {
+    // HubSpot doesn't expose a calendar-by-id concept the way GHL does.
+    // Reference-health's calendar validator only runs against GHL adapters
+    // in practice — this stub just satisfies the interface.
+    throw new Error('getCalendar not supported by this adapter')
+  }
+
   async getFreeSlots(
     _calendarId: string,
     _startDate: string,

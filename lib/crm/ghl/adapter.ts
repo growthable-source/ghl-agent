@@ -816,6 +816,18 @@ export class GhlAdapter implements CrmAdapter {
 
   // ─── Calendar ────────────────────────────────────────────────────────
 
+  /**
+   * Fetch a single calendar by ID. Used by the reference-health validator
+   * to confirm the calendar still exists in the CRM. Bypasses the in-memory
+   * cache so a freshly-deleted calendar is detected on the next call rather
+   * than the next adapter instance.
+   */
+  async getCalendar(calendarId: string): Promise<unknown> {
+    return this.apiFetch<unknown>(`/calendars/${calendarId}`, {
+      headers: { Version: '2021-04-15' },
+    })
+  }
+
   async getFreeSlots(
     calendarId: string,
     startDate: string,

@@ -78,6 +78,8 @@ export interface CrmAdapter {
   updateOpportunityValue(opportunityId: string, monetaryValue: number): Promise<any>
 
   // ─── Calendar ────────────────────────────────────────────────────────
+  /** Fetch a single calendar by ID. Throws on 404. */
+  getCalendar(calendarId: string): Promise<unknown>
   getFreeSlots(calendarId: string, startDate: string, endDate: string, timezone?: string): Promise<Array<{ startTime: string; endTime: string }>>
   /**
    * Returns the calendar's configured IANA timezone (e.g. "America/New_York")
