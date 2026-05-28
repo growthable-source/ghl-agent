@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
+import { AgentReferenceHealthBanner } from '@/components/dashboard/AgentReferenceHealthBanner'
 
 // ─── IA ──────────────────────────────────────────────────────────────────────
 // Five primary "hubs" that answer the only five questions an operator has
@@ -348,6 +349,9 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
       {/* Page content */}
       <div className="flex-1 overflow-y-auto">
+        <div className="px-8 pt-4">
+          <AgentReferenceHealthBanner workspaceId={workspaceId} agentId={agentId} />
+        </div>
         {children}
       </div>
     </div>
