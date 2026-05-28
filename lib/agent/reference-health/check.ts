@@ -101,15 +101,39 @@ export async function runReferenceHealthCheck(
   if (!agent) return { healthy: 0, broken: 0, transient: 0, skipped: 0 }
 
   const refs = collectAgentReferences(agent as any)
+
+  // Load EXISTING rows up front, regardless of whether the agent
+  // currently has refs, so we can also detect stale rows whose underlying
+  // reference was removed (e.g. operator changed the calendarId or
+  // cleared it). Without this, stale `broken` rows would persist forever
+  // and keep gating dependent tools at runtime even after the operator
+  // pointed the agent at a fresh, healthy reference.
+  const existing = await db.agentReferenceHealth.findMany({ where: { agentId } })
+  const freshKeys = new Set(refs.map(r => `${r.resourceType}:${r.resourceId}:${r.sourceField}`))
+  const staleRowIds = existing
+    .filter(e => !freshKeys.has(`${e.resourceType}:${e.resourceId}:${e.sourceField}`))
+    .map(e => e.id)
+  if (staleRowIds.length > 0) {
+    try {
+      await db.agentReferenceHealth.deleteMany({ where: { id: { in: staleRowIds } } })
+      console.log(`[ref-health] pruned ${staleRowIds.length} stale row(s) for agent ${agentId}`)
+    } catch (err: any) {
+      console.warn(`[ref-health] stale-row prune failed for ${agentId}: ${err?.message}`)
+    }
+  }
+
   if (refs.length === 0) return { healthy: 0, broken: 0, transient: 0, skipped: 0 }
 
-  const existing = await db.agentReferenceHealth.findMany({ where: { agentId } })
   const previousStatusByKey = new Map<string, string>()
   const lastCheckedByKey = new Map<string, Date>()
   for (const e of existing) {
     const key = `${e.resourceType}:${e.resourceId}:${e.sourceField}`
-    previousStatusByKey.set(key, e.status)
-    lastCheckedByKey.set(key, e.lastCheckedAt)
+    // Only feed forward statuses for refs that still exist (already
+    // pruned above otherwise — they shouldn't influence the new run).
+    if (freshKeys.has(key)) {
+      previousStatusByKey.set(key, e.status)
+      lastCheckedByKey.set(key, e.lastCheckedAt)
+    }
   }
 
   const cutoff = Date.now() - throttleMinutes * 60_000

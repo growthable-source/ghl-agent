@@ -52,23 +52,55 @@ export async function POST(_req: NextRequest, { params }: Params) {
     broken: number
     transient: number
     skipped: number
+    /** Populated when this agent's check itself failed; absent on success. */
+    error?: string
   }> = []
 
-  for (const agent of candidates) {
-    try {
-      const result = await runReferenceHealthCheck(agent.id, { throttleMinutes: 0 })
-      processed++
-      totalBroken += result.broken
-      totalHealthy += result.healthy
-      totalTransient += result.transient
-      perAgent.push({ agentId: agent.id, name: agent.name, ...result })
-    } catch (err: any) {
-      errors++
-      console.error(`[reference-health/recheck-all] ${agent.id}: ${err?.message}`)
-      perAgent.push({
-        agentId: agent.id, name: agent.name,
-        healthy: 0, broken: 0, transient: 0, skipped: 0,
-      })
+  // Same chunking + per-agent timeout as the hourly cron. One slow
+  // GHL response no longer stalls the entire workspace sweep.
+  const PER_AGENT_TIMEOUT_MS = 12_000
+  const CHUNK_SIZE = 8
+
+  function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const id = setTimeout(() => reject(new Error(`per-agent timeout after ${ms}ms`)), ms)
+      p.then(v => { clearTimeout(id); resolve(v) }, e => { clearTimeout(id); reject(e) })
+    })
+  }
+
+  for (let i = 0; i < candidates.length; i += CHUNK_SIZE) {
+    const chunk = candidates.slice(i, i + CHUNK_SIZE)
+    const results = await Promise.allSettled(
+      chunk.map(agent =>
+        withTimeout(runReferenceHealthCheck(agent.id, { throttleMinutes: 0 }), PER_AGENT_TIMEOUT_MS)
+          .then(r => ({ agent, ok: true as const, ...r }))
+          .catch(err => ({ agent, ok: false as const, message: err?.message ?? 'unknown' })),
+      ),
+    )
+    for (const r of results) {
+      if (r.status !== 'fulfilled') {
+        errors++
+        continue
+      }
+      const v = r.value
+      if (v.ok) {
+        processed++
+        totalBroken += v.broken
+        totalHealthy += v.healthy
+        totalTransient += v.transient
+        perAgent.push({
+          agentId: v.agent.id, name: v.agent.name,
+          healthy: v.healthy, broken: v.broken, transient: v.transient, skipped: v.skipped,
+        })
+      } else {
+        errors++
+        console.error(`[reference-health/recheck-all] ${v.agent.id}: ${v.message}`)
+        perAgent.push({
+          agentId: v.agent.id, name: v.agent.name,
+          healthy: 0, broken: 0, transient: 0, skipped: 0,
+          error: v.message,
+        })
+      }
     }
   }
 

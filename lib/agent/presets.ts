@@ -173,35 +173,54 @@ export async function applyPresetWithWorkspaceLookup(
 
 /**
  * Shared writer used by both applyPreset (hardcoded) and
- * applyPresetWithWorkspaceLookup (DB-backed). Writes Agent.toolAutonomyMode
- * + Agent.presetId and upserts AgentToolConfig rows for every delta.
+ * applyPresetWithWorkspaceLookup (DB-backed). Writes
+ * Agent.toolAutonomyMode + Agent.presetId, CLEARS any existing
+ * AgentToolConfig rows, then writes the preset's deltas.
+ *
+ * Wrapped in a transaction so either all of "set autonomy + preset
+ * id + tool deltas" lands or nothing does. Previously a mid-loop DB
+ * failure left agents in a half-applied state (new presetId stamped
+ * but only some AgentToolConfig rows updated, which the runtime then
+ * applied as a Frankenstein config).
+ *
+ * The clear-then-rewrite step is the bug fix for "switching from
+ * Conversational → Booking leaves book_appointment disabled because
+ * Booking has no explicit re-enable delta." Now every preset apply
+ * starts from a clean slate (catalog defaults) and only writes rows
+ * that genuinely diverge from catalog.
  */
 async function applyPresetInternal(
   agentId: string,
   preset: AgentPreset,
 ): Promise<AgentPreset> {
-  await db.agent.update({
-    where: { id: agentId },
-    data: {
-      toolAutonomyMode: preset.autonomyMode,
-      presetId: preset.id,
-    } as any,
-  })
-
-  for (const delta of preset.tools) {
-    const data: any = {}
-    if (typeof delta.enabled === 'boolean') data.enabled = delta.enabled
-    if (typeof delta.useWhen === 'string') data.useWhen = delta.useWhen
-    if (delta.onFailure) data.onFailure = delta.onFailure
-    if (delta.onFailureMessage !== undefined) data.onFailureMessage = delta.onFailureMessage
-    if (Object.keys(data).length === 0) continue
-
-    await db.agentToolConfig.upsert({
-      where: { agentId_toolName: { agentId, toolName: delta.toolName } },
-      create: { agentId, toolName: delta.toolName, ...data },
-      update: data,
+  await db.$transaction(async (tx: any) => {
+    await tx.agent.update({
+      where: { id: agentId },
+      data: {
+        toolAutonomyMode: preset.autonomyMode,
+        presetId: preset.id,
+      },
     })
-  }
+
+    // Wipe existing rows — the next loop writes only the deltas the
+    // chosen preset wants. Tools omitted from the preset fall back to
+    // catalog defaults at runtime (resolveAgentToolConfig handles the
+    // "no row" case).
+    await tx.agentToolConfig.deleteMany({ where: { agentId } })
+
+    for (const delta of preset.tools) {
+      const data: any = {}
+      if (typeof delta.enabled === 'boolean') data.enabled = delta.enabled
+      if (typeof delta.useWhen === 'string') data.useWhen = delta.useWhen
+      if (delta.onFailure) data.onFailure = delta.onFailure
+      if (delta.onFailureMessage !== undefined) data.onFailureMessage = delta.onFailureMessage
+      if (Object.keys(data).length === 0) continue
+
+      await tx.agentToolConfig.create({
+        data: { agentId, toolName: delta.toolName, ...data },
+      })
+    }
+  })
 
   return preset
 }

@@ -248,14 +248,22 @@ export default function NewAgentWizard() {
   // Auto-load the calendar list whenever the user picks LeadConnector.
   // Switching back to 'none' clears the picked id so it doesn't get
   // submitted with a stale calendarId from a prior selection.
+  //
+  // AbortController gates the fetch so a "click LeadConnector → click
+  // No Calendar mid-load" sequence doesn't write a stale auto-selected
+  // id after the user already moved on. Without this, the in-flight
+  // promise resolves AFTER the cleanup branch and overwrites
+  // selectedCalendarId — meaning a later click back to LeadConnector
+  // arrives with a calendar already selected the user never confirmed.
   useEffect(() => {
     if (selectedCalendar !== 'ghl') {
       setSelectedCalendarId('')
       return
     }
+    const controller = new AbortController()
     setGhlCalendarsLoading(true)
     setGhlCalendarsError(null)
-    fetch(`/api/workspaces/${workspaceId}/calendars`)
+    fetch(`/api/workspaces/${workspaceId}/calendars`, { signal: controller.signal })
       .then(async r => {
         if (!r.ok) {
           const body = await r.text().catch(() => '')
@@ -264,6 +272,7 @@ export default function NewAgentWizard() {
         return r.json()
       })
       .then(d => {
+        if (controller.signal.aborted) return
         const list: Array<{ id: string; name: string }> = (d.calendars ?? [])
           .map((c: any) => ({ id: c.id, name: c.name ?? c.id }))
         setGhlCalendars(list)
@@ -271,8 +280,14 @@ export default function NewAgentWizard() {
         // matches the "your agent ships ready to book" goal.
         if (list.length === 1) setSelectedCalendarId(list[0].id)
       })
-      .catch(err => setGhlCalendarsError(err?.message ?? 'Failed to load calendars'))
-      .finally(() => setGhlCalendarsLoading(false))
+      .catch(err => {
+        if (controller.signal.aborted || err?.name === 'AbortError') return
+        setGhlCalendarsError(err?.message ?? 'Failed to load calendars')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setGhlCalendarsLoading(false)
+      })
+    return () => controller.abort()
   }, [selectedCalendar, workspaceId])
 
   // Knowledge step — which indexed collections the new agent reads

@@ -113,18 +113,42 @@ export async function findMatchingAgent(
       }
     } else if (isChannelDeploymentsError(err)) {
       console.warn(`[Routing] ChannelDeployment table may not exist yet, querying without it`)
-      agents = await db.agent.findMany({
-        where: agentWhere,
-        orderBy: agentOrder,
-        include: {
-          routingRules: { orderBy: { priority: 'asc' } },
-          knowledgeEntries: true,
-          stopConditions: true,
-          followUpSequences: { where: { isActive: true } },
-          qualifyingQuestions: true,
-          workspace: { select: { brokenReferenceMode: true } },
-        },
-      })
+      try {
+        agents = await db.agent.findMany({
+          where: agentWhere,
+          orderBy: agentOrder,
+          include: {
+            routingRules: { orderBy: { priority: 'asc' } },
+            knowledgeEntries: true,
+            stopConditions: true,
+            followUpSequences: { where: { isActive: true } },
+            qualifyingQuestions: true,
+            workspace: { select: { brokenReferenceMode: true } },
+          },
+        })
+      } catch (inner: any) {
+        // BOTH the channelDeployments table AND the brokenReferenceMode
+        // column missing. Strip the workspace include too — agent_pause
+        // mode is unreachable until the column lands but routing keeps
+        // working in degraded mode, which is the whole point of this
+        // fallback chain.
+        if (isUnknownColumnError(inner)) {
+          console.warn(`[Routing] Workspace.brokenReferenceMode also missing — falling back to bare query`)
+          agents = await db.agent.findMany({
+            where: agentWhere,
+            orderBy: agentOrder,
+            include: {
+              routingRules: { orderBy: { priority: 'asc' } },
+              knowledgeEntries: true,
+              stopConditions: true,
+              followUpSequences: { where: { isActive: true } },
+              qualifyingQuestions: true,
+            },
+          })
+        } else {
+          throw inner
+        }
+      }
       agents = agents.map((a: any) => ({ ...a, channelDeployments: [] }))
     } else {
       throw err

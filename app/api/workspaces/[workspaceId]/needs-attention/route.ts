@@ -33,7 +33,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       locationId: { in: locationIds },
       state: 'PAUSED',
     },
-    include: { agent: { select: { id: true, name: true } } },
+    include: {
+      agent: { select: { id: true, name: true } },
+      location: { select: { crmProvider: true } },
+    },
     orderBy: { updatedAt: 'desc' },
     take: 50,
   })
@@ -45,7 +48,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       status: 'ERROR',
       createdAt: { gte: since },
     },
-    include: { agent: { select: { id: true, name: true } } },
+    include: {
+      agent: { select: { id: true, name: true } },
+      location: { select: { crmProvider: true } },
+    },
     orderBy: { createdAt: 'desc' },
     take: 30,
   })
@@ -59,7 +65,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       createdAt: { gte: since },
       outboundReply: { not: null },
     },
-    include: { agent: { select: { id: true, name: true } } },
+    include: {
+      agent: { select: { id: true, name: true } },
+      location: { select: { crmProvider: true } },
+    },
     orderBy: { createdAt: 'desc' },
     take: 200,
   })
@@ -77,7 +86,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       messageCount: { gte: 10 },
       updatedAt: { gte: since },
     },
-    include: { agent: { select: { id: true, name: true } } },
+    include: {
+      agent: { select: { id: true, name: true } },
+      location: { select: { crmProvider: true } },
+    },
     orderBy: { messageCount: 'desc' },
     take: 20,
   })
@@ -86,12 +98,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const seen = new Set<string>()
   const items: any[] = []
 
-  // Every item carries its `locationId` so the HandoffAlertBanner's
-  // "Take over" button can open the conversation where it actually lives.
-  // Voxility-side inbox handles widget conversations (locationId begins
-  // with `widget:`); for CRM-backed locations the button deep-links into
-  // the CRM's own conversations UI instead of dumping the operator on a
-  // "Conversation not found" page.
+  // Every item carries its `locationId` AND `crmProvider` so the
+  // HandoffAlertBanner's "Take over" button can open the conversation
+  // where it actually lives:
+  //   - widget locationId (starts with 'widget:')  → Voxility inbox
+  //   - native locationId                          → Voxility contacts page
+  //   - ghl                                        → LeadConnector deep link
+  //   - hubspot                                    → HubSpot deep link
+  //   - anything else                              → Voxility contact fallback
+  // Without crmProvider, every non-widget item used to be assumed GHL —
+  // which 404s for native + hubspot installs.
   for (const state of pausedStates) {
     if (seen.has(state.contactId)) continue
     seen.add(state.contactId)
@@ -103,6 +119,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       contactId: state.contactId,
       conversationId: state.conversationId,
       locationId: state.locationId,
+      crmProvider: (state as any).location?.crmProvider ?? null,
       agent: state.agent,
       at: state.pausedAt ?? state.updatedAt,
       messageCount: state.messageCount,
@@ -120,6 +137,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       contactId: err.contactId,
       conversationId: err.conversationId,
       locationId: err.locationId,
+      crmProvider: (err as any).location?.crmProvider ?? null,
       agent: err.agent,
       at: err.createdAt,
       lastMessage: err.inboundMessage?.slice(0, 100),
@@ -137,6 +155,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       contactId: fb.contactId,
       conversationId: fb.conversationId,
       locationId: fb.locationId,
+      crmProvider: (fb as any).location?.crmProvider ?? null,
       agent: fb.agent,
       at: fb.createdAt,
       lastMessage: fb.inboundMessage?.slice(0, 100),
@@ -155,6 +174,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       contactId: st.contactId,
       conversationId: st.conversationId,
       locationId: st.locationId,
+      crmProvider: (st as any).location?.crmProvider ?? null,
       agent: st.agent,
       at: st.updatedAt,
       messageCount: st.messageCount,
