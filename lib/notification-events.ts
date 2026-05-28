@@ -66,6 +66,18 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     description: 'The workspace-wide pause was lifted.',
     defaultUserChannels: [],
   },
+  {
+    id: 'reference_broken',
+    label: 'Agent reference broken',
+    description: 'An agent\'s calendar, workflow, or other CRM resource no longer resolves in the CRM.',
+    defaultUserChannels: ['email', 'web_push'],
+  },
+  {
+    id: 'reference_fixed',
+    label: 'Agent reference recovered',
+    description: 'A previously broken reference is healthy again.',
+    defaultUserChannels: ['web_push'],
+  },
 ]
 
 export const SUPPORTED_USER_CHANNELS = ['email', 'web_push'] as const

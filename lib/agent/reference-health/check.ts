@@ -183,7 +183,6 @@ export async function runReferenceHealthCheck(
   return { healthy, broken, transient, skipped }
 }
 
-// Implemented in Task 7. Placeholder no-op so this file compiles standalone.
 async function fireReferenceTransitionNotification(opts: {
   agentId: string
   ref: AgentReference
@@ -191,5 +190,37 @@ async function fireReferenceTransitionNotification(opts: {
   lastError: string | null
   validatorLabel: string
 }): Promise<void> {
-  console.log(`[ref-health] transition placeholder: ${opts.transition} on agent ${opts.agentId}, ref ${opts.validatorLabel} ${opts.ref.resourceId}`)
+  const agent = await db.agent.findUnique({
+    where: { id: opts.agentId },
+    select: { name: true, workspaceId: true },
+  })
+  if (!agent?.workspaceId) return
+
+  const { notify } = await import('@/lib/notifications')
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '')
+  const link = `${appUrl}/dashboard/${agent.workspaceId}/agents/${opts.agentId}/tools`
+
+  if (opts.transition === 'healthy_to_broken') {
+    await notify({
+      workspaceId: agent.workspaceId,
+      event: 'reference_broken',
+      title: `${opts.validatorLabel} ${opts.ref.resourceId} broken on agent "${agent.name}"`,
+      body: [
+        `Source: ${opts.ref.sourceField}`,
+        opts.lastError ? `Error: ${opts.lastError}` : null,
+        `Affected tools have been auto-disabled. Open the agent to fix the reference or pick a different one.`,
+      ].filter(Boolean).join('\n\n'),
+      link,
+      severity: 'error',
+    })
+  } else {
+    await notify({
+      workspaceId: agent.workspaceId,
+      event: 'reference_fixed',
+      title: `${opts.validatorLabel} ${opts.ref.resourceId} healthy again on agent "${agent.name}"`,
+      body: `Tools have been re-enabled.`,
+      link,
+      severity: 'info',
+    })
+  }
 }
