@@ -458,6 +458,37 @@ export async function runAgent(opts: {
     }
   }
 
+  // ─── Per-tool config resolution (Phase B1) ─────────────────────────
+  // Load merged per-tool config (DB overrides + catalog defaults). Used
+  // for: (a) injecting the "Tool usage rules" section into the prompt,
+  // (b) dispatching onFailure when a tool errors at runtime.
+  let resolvedToolConfigs: Map<string, import('./agent/tool-config').ResolvedToolConfig> = new Map()
+  let agentAutonomyMode: 'guided' | 'autonomous' = 'guided'
+  if (!isSandbox && agentId) {
+    try {
+      const { resolveAgentToolConfig } = await import('./agent/tool-config')
+      resolvedToolConfigs = await resolveAgentToolConfig(agentId)
+      const { db } = await import('./db')
+      const agentRow = await db.agent.findUnique({
+        where: { id: agentId },
+        select: { toolAutonomyMode: true } as any,
+      })
+      const mode = (agentRow as any)?.toolAutonomyMode
+      agentAutonomyMode = mode === 'autonomous' ? 'autonomous' : 'guided'
+    } catch (err: any) {
+      console.warn(`[Agent] tool-config resolution failed for ${agentId}: ${err?.message}`)
+      // Fail-open: empty Map means no overrides, runtime behaves as pre-B1.
+    }
+  }
+
+  // Tools explicitly disabled via AgentToolConfig — drop from the model's
+  // tool list. Composes with Phase A's tool-disable (toolsToHide).
+  if (resolvedToolConfigs.size > 0) {
+    for (const cfg of resolvedToolConfigs.values()) {
+      if (!cfg.enabled) toolsToHide.add(cfg.toolName)
+    }
+  }
+
   // ─── Active experiments ───
   // Resolve any running A/B experiments for this agent. Variant resolution
   // (and the prompt block it produces) ALWAYS runs — sandbox sees the
@@ -631,6 +662,26 @@ export async function runAgent(opts: {
   const filteredTools = (normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS)
     .filter(t => !toolsToHide.has(t.name))
 
+  // ─── Tool usage rules block (Phase B1) ──────────────────────────
+  // Inject per-tool "use when" rules — only in guided mode. The agent
+  // gets one line per ENABLED tool that's still in its tool list (post
+  // Phase A reference-health filter + Phase B1 enabled flag).
+  let toolRulesBlock = ''
+  if (agentAutonomyMode === 'guided' && resolvedToolConfigs.size > 0) {
+    const enabledToolNames = new Set<string>(
+      (Array.isArray(filteredTools) ? filteredTools : []).map((t: any) => t?.name).filter(Boolean),
+    )
+    const rules: string[] = []
+    for (const cfg of resolvedToolConfigs.values()) {
+      if (!enabledToolNames.has(cfg.toolName)) continue
+      if (!cfg.useWhen) continue
+      rules.push(`- ${cfg.toolName}: ${cfg.useWhen}`)
+    }
+    if (rules.length > 0) {
+      toolRulesBlock = `\n\n## Tool usage rules\n\nYou have the following tools available. Use each ONLY when its rule applies. If a contact's message doesn't match any tool's rule, respond conversationally without calling a tool.\n\n${rules.join('\n')}`
+    }
+  }
+
   // ─── Workflow-picker enforcement ───
   // When the user has pinned specific workflows in the UI, rewrite the tool
   // schema so the agent can only pick from that whitelist. If nothing is
@@ -722,7 +773,7 @@ export async function runAgent(opts: {
         },
       ) + experimentBlock + dataSourcesBlock + conversationGapBlock + (brokenLabelsForPrompt.length > 0
         ? `\n\nIMPORTANT: The following CRM resources are temporarily unavailable due to a configuration issue: ${brokenLabelsForPrompt.join(', ')}. The associated tools (booking, workflow enrolment, etc.) have been removed from your tool list for this conversation. If the contact asks about scheduling, workflow actions, or anything that requires these resources, acknowledge their request and tell them a teammate will follow up shortly. Do not pretend to attempt these actions.`
-        : ''),
+        : '') + toolRulesBlock,
       tools,
       messages: currentMessages,
     }

@@ -56,7 +56,104 @@ async function reportToolFailure(params: {
   locationId?: string | null
   channel?: string | null
 }) {
-  const { crm, workspaceId, tool, category, message, input, contactId, conversationId, locationId, channel } = params
+  const { crm, agentId, workspaceId, tool, category, message, input, contactId, conversationId, locationId, channel } = params
+
+  // ─── Per-tool onFailure resolution (Phase B1) ────────────────────
+  // Look up the agent's configured onFailure behaviour for this tool.
+  // Fails open to 'default' so a transient DB error doesn't drop the
+  // existing reporting behaviour shipped pre-B1.
+  type OnFailure = 'default' | 'transfer_to_human' | 'canned_message' | 'silent_skip'
+  let onFailure: OnFailure = 'default'
+  let onFailureMessage: string | null = null
+  if (agentId) {
+    try {
+      const { resolveOneToolConfig } = await import('./tool-config')
+      const cfg = await resolveOneToolConfig(agentId, tool)
+      onFailure = cfg.onFailure as OnFailure
+      onFailureMessage = cfg.onFailureMessage
+    } catch (err: any) {
+      console.warn(`[reportToolFailure] config resolve failed for ${tool}: ${err?.message}`)
+    }
+  }
+
+  // 1) Silent skip — operator opted out of error surfacing for this tool.
+  // Don't pause, don't notify, don't broadcast. The executeTool catch
+  // still returns a structured error string to the model.
+  if (onFailure === 'silent_skip') {
+    return
+  }
+
+  // 2) Transfer to human — skip the normal "agent_error" reporting and
+  // fire the dedicated `human_handover` notify + pause instead. Mirrors
+  // what the transfer_to_human tool would have done if the agent had
+  // called it itself.
+  if (onFailure === 'transfer_to_human') {
+    if (!workspaceId) return
+    try {
+      const { notify } = await import('../notifications')
+      const { resolveHandoverLink } = await import('../handover-link')
+      const link = resolveHandoverLink({
+        workspaceId,
+        locationId: locationId ?? null,
+        contactId: contactId ?? null,
+        conversationId: conversationId ?? null,
+        channel: channel ?? null,
+      })
+      await notify({
+        workspaceId,
+        event: 'human_handover',
+        severity: 'warning',
+        title: `Agent escalated — ${tool} failed`,
+        body: `Per the agent's tool config, ${tool} failures escalate directly to a human. ${message.slice(0, 180)}`,
+        link,
+      })
+      if (agentId && contactId) {
+        const { pauseConversation } = await import('../conversation-state')
+        await pauseConversation(agentId, contactId, `tool_error_transfer:${tool}`)
+      }
+    } catch (err: any) {
+      console.warn('[reportToolFailure transfer_to_human] failed:', err?.message)
+    }
+    return
+  }
+
+  // 3) Canned message — send the configured message verbatim to the
+  // contact, then pause. After this, FALL THROUGH to the default path
+  // so the operator still receives the standard `agent_error` notify.
+  // Defensive: if any prereq (crm / contactId / non-empty message) is
+  // missing, log + fall through to default without sending.
+  if (onFailure === 'canned_message') {
+    const cannedMsg = onFailureMessage?.trim()
+    if (cannedMsg && cannedMsg.length > 0 && crm && contactId) {
+      try {
+        await crm.sendMessage({
+          type: (channel || 'SMS') as any,
+          contactId,
+          message: cannedMsg,
+        })
+      } catch (err: any) {
+        console.warn('[reportToolFailure canned_message] send failed:', err?.message)
+      }
+    } else {
+      console.warn(
+        `[reportToolFailure canned_message] prereqs missing for ${tool} ` +
+        `(crm=${!!crm} contactId=${!!contactId} message=${!!cannedMsg}); ` +
+        `falling through to default reporting.`,
+      )
+    }
+    if (agentId && contactId) {
+      try {
+        const { pauseConversation } = await import('../conversation-state')
+        await pauseConversation(agentId, contactId, `tool_error_canned:${tool}`)
+      } catch (err: any) {
+        console.warn('[reportToolFailure canned_message] pause failed:', err?.message)
+      }
+    }
+    // Fall through — operator still needs to know the tool failed.
+  }
+
+  // 4) Default — existing behaviour: inline widget system note,
+  // non-transient pause, operator `agent_error` notify with deep link.
   // Inline system note in the widget transcript (when applicable).
   try {
     const broadcaster = (crm as any)?.broadcastSystem
@@ -79,11 +176,14 @@ async function reportToolFailure(params: {
 
   // Conversation-pause path. Only viable when we have agentId + contactId
   // (which we do for inbound runs but not for sandbox / playground).
-  if (isNonTransient && params.agentId && contactId) {
+  // Note: in the canned_message fall-through path we already paused above
+  // with a more specific reason — pauseConversation is idempotent-ish but
+  // we still guard to avoid double-pausing on the same turn.
+  if (isNonTransient && agentId && contactId && onFailure !== 'canned_message') {
     try {
       const { pauseConversation } = await import('../conversation-state')
       await pauseConversation(
-        params.agentId,
+        agentId,
         contactId,
         `tool_error:${tool}:${message.replace(/^GHL API error /, '').slice(0, 60)}`,
       )
@@ -124,8 +224,8 @@ async function reportToolFailure(params: {
       return m?.[1] ?? null
     })()
     const calendarId = calendarIdFromInput ?? calendarIdFromMessage
-    const agentToolsUrl = workspaceId && params.agentId
-      ? `${(process.env.APP_URL || '').replace(/\/$/, '')}/dashboard/${workspaceId}/agents/${params.agentId}/tools`
+    const agentToolsUrl = workspaceId && agentId
+      ? `${(process.env.APP_URL || '').replace(/\/$/, '')}/dashboard/${workspaceId}/agents/${agentId}/tools`
       : null
 
     const remediation = is404 && isCalendarTool
