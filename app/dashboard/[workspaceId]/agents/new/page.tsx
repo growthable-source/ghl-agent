@@ -33,6 +33,14 @@ interface AgentTemplate {
   systemPrompt: string
   instructions: string
   enabledTools: string[]
+  /**
+   * Maps to a B2 preset (Conversational Bot / Booking Bot / Custom). Set
+   * server-side at create time via /api/workspaces/[wsId]/agents
+   * `presetId` body field. The preset's per-tool deltas (e.g. disable
+   * commerce, set booking onFailure = transfer) layer on top of the
+   * template's broader enabledTools / persona / prompt config.
+   */
+  defaultPresetId: 'booking' | 'conversational' | 'custom'
 }
 
 const TEMPLATES: AgentTemplate[] = [
@@ -53,6 +61,7 @@ You initiate the conversation, guide it with purpose, and don't wait for the lea
 - If the lead isn't interested, tag them appropriately and close gracefully
 - Never push more than twice on a specific ask`,
     enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
+    defaultPresetId: 'booking',
   },
   {
     id: 'outbound-support',
@@ -70,6 +79,7 @@ You represent the business in a warm, professional way and make customers feel v
 - If they're satisfied, thank them and optionally ask for a referral or review
 - Keep messages short — customers don't expect long follow-up texts`,
     enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'detect_sentiment', 'schedule_followup', 'transfer_to_human'],
+    defaultPresetId: 'conversational',
   },
   {
     id: 'outbound-assistant',
@@ -87,6 +97,7 @@ You are clear, direct, and action-oriented.`,
 - Keep messages brief — one clear action per message
 - Log all outcomes (confirmed, rescheduled, cancelled) to the contact record`,
     enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'get_calendar_events', 'get_available_slots', 'book_appointment', 'add_contact_note', 'schedule_followup'],
+    defaultPresetId: 'booking',
   },
   {
     id: 'inbound-sales',
@@ -105,6 +116,7 @@ You are responsive, knowledgeable, and helpful without being pushy.`,
 - If they're not ready yet, offer to follow up or send useful info
 - Never pressure — let the conversation move at their pace`,
     enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'get_available_slots', 'book_appointment', 'score_lead', 'transfer_to_human'],
+    defaultPresetId: 'booking',
   },
   {
     id: 'inbound-support',
@@ -123,6 +135,7 @@ You are empathetic, patient, and solution-focused.`,
 - Log the issue, outcome, and any tags to the contact record
 - Always close with a confirmation that their issue has been addressed or next steps`,
     enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'update_contact_tags', 'add_contact_note', 'search_contacts', 'detect_sentiment', 'transfer_to_human'],
+    defaultPresetId: 'conversational',
   },
   {
     id: 'inbound-assistant',
@@ -140,6 +153,7 @@ You are warm, conversational, and efficient.`,
 - For questions, give accurate and concise answers
 - If something is outside your scope, let them know and offer to connect them with someone who can help`,
     enabledTools: ['get_contact_details', 'send_reply', 'send_sms', 'get_available_slots', 'book_appointment', 'get_calendar_events', 'add_contact_note', 'transfer_to_human'],
+    defaultPresetId: 'booking',
   },
   {
     id: 'inbound-live-chat',
@@ -160,6 +174,7 @@ Keep replies short (1-2 sentences). Be warm and concrete. Use plain text — no 
 - Never invent product details, prices, or stock — use Shopify tools if available, otherwise say you'll check
 - Never end the chat mid-question or while they might still need help`,
     enabledTools: ['get_contact_details', 'send_reply', 'find_contact_by_email_or_phone', 'add_contact_note', 'update_contact_memory', 'transfer_to_human', 'end_conversation', 'schedule_followup'],
+    defaultPresetId: 'conversational',
   },
 ]
 
@@ -409,6 +424,13 @@ export default function NewAgentWizard() {
           agentType,
           ...(agentType === 'ADVANCED' && businessContext.trim() && { businessContext }),
           ...(selectedTemplate && { enabledTools: selectedTemplate.enabledTools }),
+          // B2 preset mapping. Each template carries a defaultPresetId
+          // ('booking' for sales/scheduling templates, 'conversational'
+          // for support/concierge). The backend applies the matching
+          // preset's per-tool deltas (e.g. disable commerce on
+          // conversational, set book_appointment.onFailure=transfer on
+          // booking) on top of the template's broader prompt + tool list.
+          ...(selectedTemplate && { presetId: selectedTemplate.defaultPresetId }),
           // Knowledge scope. Null/undefined = read from every domain
           // in the workspace (backward-compatible). An explicit
           // array narrows. Empty array would mean "none" which
