@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { AgentReferenceHealthBanner } from '@/components/dashboard/AgentReferenceHealthBanner'
+import NewBadge from '@/components/NewBadge'
 
 // ─── IA ──────────────────────────────────────────────────────────────────────
 // Five primary "hubs" that answer the only five questions an operator has
@@ -52,7 +53,7 @@ const HUBS: Hub[] = [
     label: 'Skills',
     tabs: [
       { key: 'skills',       label: 'Overview',     path: '/skills' },
-      { key: 'tools',        label: 'Reflexes',     path: '/tools' },
+      { key: 'tools',        label: 'Tools',        path: '/tools' },
       { key: 'playbook',     label: 'Playbook',     path: '/playbook' },
       { key: 'integrations', label: 'Integrations', path: '/integrations' },
       { key: 'follow-ups',   label: 'Follow-ups',   path: '/follow-ups' },
@@ -327,6 +328,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
                   }}
                 >
                   {tabLabel(t)}
+                  {t.key === 'tools' && <NewBadge since="2026-05-29" className="ml-1.5" />}
                   {isActive && (
                     <span
                       className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"

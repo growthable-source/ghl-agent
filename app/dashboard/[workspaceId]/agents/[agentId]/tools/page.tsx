@@ -18,6 +18,8 @@ import {
   REFLEX_GROUP_LABEL,
   REFLEX_GROUP_ORDER,
 } from '@/lib/agent-tools-catalog'
+import NewBadge from '@/components/NewBadge'
+import { AgentToolRulesEditor } from '@/components/dashboard/AgentToolRulesEditor'
 
 export default function ReflexesPage() {
   const params = useParams()
@@ -114,6 +116,21 @@ export default function ReflexesPage() {
 
   return (
     <div className="p-8 max-w-2xl space-y-6">
+      {/* Per-tool rules editor — autonomy mode + per-tool useWhen + onFailure.
+          Renders above the legacy Reflex on/off toggles so the new
+          per-tool surface is the first thing operators see. The toggles
+          below still drive the same enabledTools list for backwards
+          compatibility while the surfaces converge. */}
+      <section style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
+          Tool rules <NewBadge since="2026-05-29" className="ml-1" />{' '}
+          <span style={{ fontSize: 12, opacity: 0.6, fontWeight: 400 }}>
+            — when each tool runs and what happens if it fails
+          </span>
+        </h2>
+        <AgentToolRulesEditor workspaceId={workspaceId} agentId={agentId} />
+      </section>
+
       {/* Top explainer — sets up the Reflex vs Playbook split */}
       <div
         className="rounded-xl border p-4"
