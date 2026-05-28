@@ -8,6 +8,7 @@ import {
 } from '@/components/icons/brand-icons'
 import NewBadge from '@/components/NewBadge'
 import { useEmbedded } from '@/lib/embedded-context'
+import { ConnectivityCheckPanel } from '@/components/dashboard/ConnectivityCheckPanel'
 
 interface Integration {
   id: string
@@ -663,27 +664,25 @@ export default function IntegrationsPage() {
         </p>
       </div>
 
-      {brokenRefAgentCount > 0 && (
-        <a
-          href={`/dashboard/${workspaceId}/agents`}
-          style={{
-            display: 'block',
-            padding: 12,
-            marginBottom: 16,
-            background: 'var(--accent-red-bg, #fef2f2)',
-            color: 'var(--accent-red, #b91c1c)',
-            border: '1px solid var(--accent-red, #ef4444)',
-            borderRadius: 8,
-            textDecoration: 'none',
-            fontSize: 14,
-          }}
-        >
-          {brokenRefAgentCount === 1
-            ? '1 agent has broken references'
-            : `${brokenRefAgentCount} agents have broken references`}
-          {' →'}
-        </a>
-      )}
+      <ConnectivityCheckPanel
+        workspaceId={workspaceId}
+        brokenRefAgentCount={brokenRefAgentCount}
+        onRefresh={() => {
+          // After a manual check, the agent-list view will reflect any
+          // newly-broken / newly-fixed refs; surface the same count via
+          // the integrations API to keep this banner in sync.
+          fetch(`/api/workspaces/${workspaceId}/integrations`, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(d => {
+              if (typeof d?.brokenRefAgentCount === 'number') {
+                setBrokenRefAgentCount(d.brokenRefAgentCount)
+              }
+            })
+            .catch(() => {})
+        }}
+      />
+
+
 
       {metaBanner && (
         <div
