@@ -123,7 +123,63 @@ export async function applyPreset(
 ): Promise<AgentPreset | null> {
   const preset = getPreset(presetId)
   if (!preset) return null
+  return applyPresetInternal(agentId, preset)
+}
 
+/**
+ * Same as applyPreset, but also checks the WorkspacePreset table
+ * (workspace-scoped custom presets) when the id isn't in the hardcoded
+ * registry. Lookup order:
+ *   1. Hardcoded AGENT_PRESETS by id (always wins — built-in ids are
+ *      reserved).
+ *   2. WorkspacePreset rows scoped to this workspaceId.
+ *
+ * Used by the apply-preset endpoint so a single id space covers both
+ * sources. Returns the applied preset shape or null if not found.
+ */
+export async function applyPresetWithWorkspaceLookup(
+  agentId: string,
+  workspaceId: string,
+  presetId: string,
+): Promise<AgentPreset | null> {
+  // 1. Hardcoded first.
+  const hardcoded = getPreset(presetId)
+  if (hardcoded) {
+    return applyPresetInternal(agentId, hardcoded)
+  }
+
+  // 2. Workspace preset by id, scoped to this workspace.
+  const row = await db.workspacePreset.findFirst({
+    where: { id: presetId, workspaceId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      autonomyMode: true,
+      toolDeltas: true,
+    },
+  })
+  if (!row) return null
+
+  const preset: AgentPreset = {
+    id: row.id,
+    label: row.name,
+    description: row.description ?? '',
+    autonomyMode: (row.autonomyMode === 'autonomous' ? 'autonomous' : 'guided'),
+    tools: Array.isArray(row.toolDeltas) ? (row.toolDeltas as unknown as PresetToolDelta[]) : [],
+  }
+  return applyPresetInternal(agentId, preset)
+}
+
+/**
+ * Shared writer used by both applyPreset (hardcoded) and
+ * applyPresetWithWorkspaceLookup (DB-backed). Writes Agent.toolAutonomyMode
+ * + Agent.presetId and upserts AgentToolConfig rows for every delta.
+ */
+async function applyPresetInternal(
+  agentId: string,
+  preset: AgentPreset,
+): Promise<AgentPreset> {
   await db.agent.update({
     where: { id: agentId },
     data: {

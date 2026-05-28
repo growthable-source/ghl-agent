@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { applyPreset } from '@/lib/agent/presets'
+import { applyPresetWithWorkspaceLookup } from '@/lib/agent/presets'
 import { resolveAgentToolConfig } from '@/lib/agent/tool-config'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'missing_presetId' }, { status: 400 })
   }
 
-  const preset = await applyPreset(agentId, body.presetId)
+  const preset = await applyPresetWithWorkspaceLookup(agentId, workspaceId, body.presetId)
   if (!preset) {
     return NextResponse.json({ error: 'unknown_preset' }, { status: 400 })
   }
