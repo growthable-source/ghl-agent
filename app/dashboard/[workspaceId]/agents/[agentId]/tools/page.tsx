@@ -29,6 +29,18 @@ export default function ReflexesPage() {
   const [calendarId, setCalendarId] = useState('')
   const [calendars, setCalendars] = useState<Array<{ id: string; name: string }>>([])
   const [loadingCalendars, setLoadingCalendars] = useState(false)
+  // Per-field broken-reference badges. We render an inline warning next
+  // to a configured calendar (or workflow input, when present) when the
+  // hourly health check flagged the resource as gone from the CRM.
+  // Banner at the top of the layout covers the cross-cutting story; this
+  // is the close-to-the-field surface for "this specific input is the
+  // one that's broken".
+  const [referenceHealth, setReferenceHealth] = useState<Array<{
+    resourceType: string
+    resourceId: string
+    status: string
+    lastError: string | null
+  }>>([])
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
@@ -45,6 +57,11 @@ export default function ReflexesPage() {
       .then(({ calendars }) => setCalendars(calendars ?? []))
       .catch(() => {})
       .finally(() => setLoadingCalendars(false))
+
+    fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/reference-health`)
+      .then(r => r.json())
+      .then(d => setReferenceHealth(d.references ?? []))
+      .catch(() => {})
   }, [workspaceId, agentId])
 
   async function toggleReflex(key: string) {
@@ -263,6 +280,33 @@ export default function ReflexesPage() {
                     {calendarId}
                   </p>
                 )}
+                {/* Per-field broken badge — surfaces when the hourly
+                    reference check found the configured calendar is no
+                    longer in the CRM. Filtered on the configured
+                    calendarId so we don't show a stale row from a
+                    previously-saved calendar. */}
+                {(() => {
+                  if (!calendarId) return null
+                  const broken = referenceHealth.find(
+                    r => r.resourceType === 'calendar'
+                      && r.resourceId === calendarId
+                      && r.status === 'broken',
+                  )
+                  if (!broken) return null
+                  return (
+                    <div style={{
+                      marginTop: 8,
+                      padding: '6px 10px',
+                      background: 'var(--accent-red-bg, #fef2f2)',
+                      color: 'var(--accent-red, #b91c1c)',
+                      border: '1px solid var(--accent-red, #ef4444)',
+                      borderRadius: 4,
+                      fontSize: 12,
+                    }}>
+                      ⚠ This calendar no longer exists in your CRM.{broken.lastError ? ` ${broken.lastError}` : ''}
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </div>
