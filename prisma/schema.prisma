@@ -519,6 +519,10 @@ model Agent {
   fallbackBehavior String  @default("message") // "message" | "transfer" | "message_and_transfer"
   fallbackMessage  String? @db.Text
 
+  /// 'guided' (default) — each tool obeys its 'use when' rule.
+  /// 'autonomous' — the agent decides which tools to call freely.
+  toolAutonomyMode String @default("guided")
+
   agentPersonaName   String?
   responseLength     ResponseLength @default(MODERATE)
   formalityLevel     FormalityLevel @default(NEUTRAL)
@@ -613,6 +617,7 @@ model Agent {
   campaignsAsConversational Campaign[] @relation("CampaignConversationalAgent")
 
   referenceHealth AgentReferenceHealth[]
+  toolConfigs     AgentToolConfig[]
 
   @@index([locationId, isActive])
   @@index([workspaceId])
@@ -632,6 +637,20 @@ model AgentReferenceHealth {
 
   @@unique([agentId, resourceType, resourceId, sourceField])
   @@index([agentId, status])
+}
+
+model AgentToolConfig {
+  id               String  @id @default(cuid())
+  agentId          String
+  agent            Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  toolName         String
+  enabled          Boolean @default(true)
+  useWhen          String?
+  onFailure        String  @default("default")
+  onFailureMessage String?
+
+  @@unique([agentId, toolName])
+  @@index([agentId])
 }
 
 // Knowledge Collection — the unit operators reason about. A collection
