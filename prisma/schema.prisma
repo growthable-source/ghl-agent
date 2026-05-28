@@ -523,6 +523,11 @@ model Agent {
   /// 'autonomous' — the agent decides which tools to call freely.
   toolAutonomyMode String @default("guided")
 
+  /// Hard-coded preset id the agent was created/configured with
+  /// ('conversational' | 'booking' | 'custom' | null). Templates only —
+  /// once applied, config is decoupled from the preset definition.
+  presetId String?
+
   agentPersonaName   String?
   responseLength     ResponseLength @default(MODERATE)
   formalityLevel     FormalityLevel @default(NEUTRAL)
@@ -618,6 +623,7 @@ model Agent {
 
   referenceHealth AgentReferenceHealth[]
   toolConfigs     AgentToolConfig[]
+  gateDecisions   ToolGateDecision[]
 
   @@index([locationId, isActive])
   @@index([workspaceId])
@@ -651,6 +657,28 @@ model AgentToolConfig {
 
   @@unique([agentId, toolName])
   @@index([agentId])
+}
+
+/// Audit log for the enforced-tool gate (Phase B3). One row per gate
+/// check on a tool flagged `enforcement: 'enforced'` in the catalog.
+/// `decision` is 'allowed' | 'blocked'. Fail-open paths log themselves
+/// here too with reason 'gate_failure:...' or 'parse_failure:...'.
+model ToolGateDecision {
+  id             String   @id @default(cuid())
+  agentId        String
+  agent          Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  conversationId String?
+  contactId      String?
+  toolName       String
+  decision       String // 'allowed' | 'blocked'
+  reason         String?
+  latencyMs      Int
+  inputTokens    Int?
+  outputTokens   Int?
+  createdAt      DateTime @default(now())
+
+  @@index([agentId, createdAt])
+  @@index([toolName, decision])
 }
 
 // Knowledge Collection — the unit operators reason about. A collection
