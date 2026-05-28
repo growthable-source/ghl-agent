@@ -42,6 +42,15 @@ interface PresetSummary {
   autonomyMode: 'guided' | 'autonomous'
 }
 
+/** Workspace-defined preset row as returned by /custom-presets GET. */
+interface WorkspacePresetSummary {
+  id: string
+  name: string
+  description: string | null
+  autonomyMode: 'guided' | 'autonomous'
+  createdAt: string
+}
+
 export function AgentToolRulesEditor({
   workspaceId,
   agentId,
@@ -56,17 +65,37 @@ export function AgentToolRulesEditor({
   const [tools, setTools] = useState<ResolvedToolConfig[]>([])
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({})
   const [presets, setPresets] = useState<PresetSummary[]>([])
+  const [customPresets, setCustomPresets] = useState<WorkspacePresetSummary[]>([])
   const [currentPresetId, setCurrentPresetId] = useState<string | null>(null)
   const [applyDialogOpen, setApplyDialogOpen] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
+  // Save-as-preset modal state.
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saveDescription, setSaveDescription] = useState('')
+  const [saveIncludeAutonomy, setSaveIncludeAutonomy] = useState(true)
+  const [saveIncludeTools, setSaveIncludeTools] = useState(true)
+  const [savingPreset, setSavingPreset] = useState(false)
+  const [presetSavedName, setPresetSavedName] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  async function loadCustomPresets() {
+    const res = await fetch(`/api/workspaces/${workspaceId}/custom-presets`, { cache: 'no-store' })
+    if (res.ok) {
+      const data = await res.json()
+      setCustomPresets(data.presets ?? [])
+    }
+  }
+
   async function load() {
     setLoading(true)
     try {
-      const [cfgRes, presetsRes] = await Promise.all([
+      const [cfgRes, presetsRes, customRes] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/tool-config`, { cache: 'no-store' }),
         fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/tool-config/presets`, { cache: 'no-store' }),
+        fetch(`/api/workspaces/${workspaceId}/custom-presets`, { cache: 'no-store' }),
       ])
       if (cfgRes.ok) {
         const data = await cfgRes.json()
@@ -77,6 +106,10 @@ export function AgentToolRulesEditor({
         const pdata = await presetsRes.json()
         setPresets(pdata.presets ?? [])
         setCurrentPresetId(pdata.current ?? null)
+      }
+      if (customRes.ok) {
+        const cdata = await customRes.json()
+        setCustomPresets(cdata.presets ?? [])
       }
     } finally {
       setLoading(false)
@@ -111,6 +144,87 @@ export function AgentToolRulesEditor({
       }
     } finally {
       setApplying(false)
+    }
+  }
+
+  function openSaveDialog() {
+    setSaveName('')
+    setSaveDescription('')
+    setSaveIncludeAutonomy(true)
+    setSaveIncludeTools(true)
+    setSaveError(null)
+    setSaveDialogOpen(true)
+  }
+
+  /**
+   * Build the deltas to ship to POST /custom-presets. We only include
+   * rows that diverge from catalog defaults: disabled, custom useWhen,
+   * non-default onFailure, or a canned message set. Catalog-default
+   * rows are omitted so the saved preset doesn't bloat with no-op entries.
+   */
+  function buildToolDeltas() {
+    return tools
+      .filter(t =>
+        t.enabled === false
+        || (t.useWhen != null && t.useWhen !== '')
+        || t.onFailure !== 'default'
+        || t.onFailureMessage != null,
+      )
+      .map(t => ({
+        toolName: t.toolName,
+        enabled: t.enabled,
+        useWhen: t.useWhen || undefined,
+        onFailure: t.onFailure,
+        onFailureMessage: t.onFailureMessage ?? undefined,
+      }))
+  }
+
+  async function saveAsPreset() {
+    const name = saveName.trim()
+    if (name.length === 0) {
+      setSaveError('Name is required.')
+      return
+    }
+    setSavingPreset(true)
+    setSaveError(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/custom-presets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          description: saveDescription.trim() || undefined,
+          autonomyMode: saveIncludeAutonomy ? autonomyMode : 'guided',
+          tools: saveIncludeTools ? buildToolDeltas() : [],
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setSaveError(typeof data?.error === 'string' ? data.error : 'Save failed.')
+        return
+      }
+      setPresetSavedName(name)
+      setSaveDialogOpen(false)
+      setTimeout(() => setPresetSavedName(null), 3000)
+      void loadCustomPresets()
+    } finally {
+      setSavingPreset(false)
+    }
+  }
+
+  async function deleteCustomPreset(presetId: string, name: string) {
+    if (!window.confirm(`Delete the preset "${name}"? This cannot be undone.`)) return
+    const res = await fetch(`/api/workspaces/${workspaceId}/custom-presets/${presetId}`, {
+      method: 'DELETE',
+    })
+    if (res.ok) {
+      setCustomPresets(prev => prev.filter(p => p.id !== presetId))
+      if (selectedPresetId === presetId) {
+        setSelectedPresetId(presets[0]?.id ?? null)
+      }
+      if (currentPresetId === presetId) {
+        setCurrentPresetId(null)
+      }
     }
   }
 
@@ -155,7 +269,9 @@ export function AgentToolRulesEditor({
   if (loading) return <div style={{ opacity: 0.6 }}>Loading tool config…</div>
 
   const toolsByName = new Map(tools.map(t => [t.toolName, t]))
-  const currentPreset = currentPresetId ? presets.find(p => p.id === currentPresetId) ?? null : null
+  const currentPresetHardcoded = currentPresetId ? presets.find(p => p.id === currentPresetId) ?? null : null
+  const currentPresetCustom = currentPresetId ? customPresets.find(p => p.id === currentPresetId) ?? null : null
+  const currentPresetLabel = currentPresetHardcoded?.label ?? currentPresetCustom?.name ?? null
 
   return (
     <div>
@@ -164,7 +280,7 @@ export function AgentToolRulesEditor({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Mode</h3>
-            {currentPreset && (
+            {currentPresetLabel && (
               <span
                 style={{
                   fontSize: 11,
@@ -175,14 +291,28 @@ export function AgentToolRulesEditor({
                   color: 'var(--fg-muted, #4b5563)',
                 }}
               >
-                Currently configured as: <strong>{currentPreset.label}</strong>
+                Currently configured as: <strong>{currentPresetLabel}</strong>
+              </span>
+            )}
+            {presetSavedName && (
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: 'var(--accent-emerald-bg, #ecfdf5)',
+                  border: '1px solid var(--accent-emerald, #047857)',
+                  color: 'var(--accent-emerald, #047857)',
+                }}
+              >
+                Saved as &ldquo;{presetSavedName}&rdquo;
               </span>
             )}
           </div>
-          {presets.length > 0 && (
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
-              onClick={openApplyDialog}
+              onClick={openSaveDialog}
               style={{
                 padding: '6px 12px',
                 fontSize: 12,
@@ -194,9 +324,27 @@ export function AgentToolRulesEditor({
                 cursor: 'pointer',
               }}
             >
-              Apply preset
+              Save as preset
             </button>
-          )}
+            {presets.length > 0 && (
+              <button
+                type="button"
+                onClick={openApplyDialog}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  border: '1px solid var(--border, #e5e7eb)',
+                  background: 'var(--bg, #fff)',
+                  color: 'var(--fg, #111827)',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                Apply preset
+              </button>
+            )}
+          </div>
         </div>
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8 }}>
           <input type="radio" name="autonomyMode" value="guided"
@@ -368,6 +516,71 @@ export function AgentToolRulesEditor({
                 )
               })}
             </div>
+            {customPresets.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 600, margin: 0, marginBottom: 8, color: 'var(--fg-muted, #4b5563)' }}>
+                  Custom presets
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {customPresets.map(p => {
+                    const isSelected = selectedPresetId === p.id
+                    return (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: 'flex',
+                          gap: 10,
+                          alignItems: 'flex-start',
+                          padding: 12,
+                          border: `1px solid ${isSelected ? 'var(--accent, #2563eb)' : 'var(--border, #e5e7eb)'}`,
+                          borderRadius: 6,
+                          background: isSelected ? 'var(--bg-subtle, #f3f4f6)' : 'var(--bg, #fff)',
+                        }}
+                      >
+                        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1, cursor: 'pointer' }}>
+                          <input
+                            type="radio"
+                            name="applyPresetChoice"
+                            value={p.id}
+                            checked={isSelected}
+                            onChange={() => setSelectedPresetId(p.id)}
+                            style={{ marginTop: 3 }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>
+                              {p.name}
+                              {currentPresetId === p.id && (
+                                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 500, opacity: 0.7 }}>(current)</span>
+                              )}
+                            </div>
+                            {p.description && (
+                              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>{p.description}</div>
+                            )}
+                          </div>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => deleteCustomPreset(p.id, p.name)}
+                          aria-label={`Delete preset ${p.name}`}
+                          title="Delete preset"
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid var(--border, #e5e7eb)',
+                            borderRadius: 4,
+                            padding: '2px 8px',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            color: 'var(--accent-danger, #b91c1c)',
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <p style={{ fontSize: 12, color: 'var(--accent-amber, #b45309)', marginTop: 16, marginBottom: 0 }}>
               Applying a preset overwrites the matching tool&rsquo;s config. Tools not listed in the preset are left untouched.
             </p>
@@ -405,6 +618,143 @@ export function AgentToolRulesEditor({
                 }}
               >
                 {applying ? 'Applying…' : 'Apply'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save-as-preset modal */}
+      {saveDialogOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="save-preset-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: 16,
+          }}
+          onClick={() => { if (!savingPreset) setSaveDialogOpen(false) }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg, #fff)',
+              border: '1px solid var(--border, #e5e7eb)',
+              borderRadius: 8,
+              padding: 20,
+              width: '100%',
+              maxWidth: 480,
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+            }}
+          >
+            <h3 id="save-preset-title" style={{ fontSize: 16, fontWeight: 600, margin: 0, marginBottom: 4 }}>Save current config as preset</h3>
+            <p style={{ fontSize: 12, opacity: 0.7, margin: 0, marginBottom: 16 }}>
+              Reuse this configuration on other agents in this workspace.
+            </p>
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              Name
+            </label>
+            <input
+              type="text"
+              value={saveName}
+              onChange={e => setSaveName(e.target.value)}
+              maxLength={80}
+              placeholder="e.g. Booking + opportunity writes"
+              style={{
+                width: '100%', padding: 8, fontSize: 13,
+                border: '1px solid var(--border, #e5e7eb)', borderRadius: 4,
+                marginBottom: 12,
+              }}
+            />
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              Description (optional)
+            </label>
+            <textarea
+              value={saveDescription}
+              onChange={e => setSaveDescription(e.target.value)}
+              rows={3}
+              maxLength={280}
+              placeholder="What this preset is for, when to use it."
+              style={{
+                width: '100%', padding: 8, fontSize: 13,
+                border: '1px solid var(--border, #e5e7eb)', borderRadius: 4,
+                resize: 'vertical', marginBottom: 16,
+              }}
+            />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={saveIncludeAutonomy}
+                  onChange={e => setSaveIncludeAutonomy(e.target.checked)}
+                />
+                Include autonomy mode in this preset ({autonomyMode})
+              </label>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={saveIncludeTools}
+                  onChange={e => setSaveIncludeTools(e.target.checked)}
+                />
+                Include all tool customizations ({buildToolDeltas().length})
+              </label>
+            </div>
+
+            {saveError && (
+              <div style={{
+                fontSize: 12, color: 'var(--accent-danger, #b91c1c)',
+                marginBottom: 12,
+              }}>
+                {saveError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setSaveDialogOpen(false)}
+                disabled={savingPreset}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  border: '1px solid var(--border, #e5e7eb)',
+                  background: 'var(--bg, #fff)',
+                  color: 'var(--fg, #111827)',
+                  borderRadius: 6,
+                  cursor: savingPreset ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveAsPreset}
+                disabled={savingPreset || saveName.trim().length === 0}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  background: 'var(--button-bg, #111827)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: savingPreset ? 'wait' : (saveName.trim().length === 0 ? 'not-allowed' : 'pointer'),
+                  opacity: saveName.trim().length === 0 ? 0.6 : 1,
+                }}
+              >
+                {savingPreset ? 'Saving…' : 'Save preset'}
               </button>
             </div>
           </div>
