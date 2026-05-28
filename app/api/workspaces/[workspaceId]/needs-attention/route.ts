@@ -86,6 +86,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const seen = new Set<string>()
   const items: any[] = []
 
+  // Every item carries its `locationId` so the HandoffAlertBanner's
+  // "Take over" button can open the conversation where it actually lives.
+  // Voxility-side inbox handles widget conversations (locationId begins
+  // with `widget:`); for CRM-backed locations the button deep-links into
+  // the CRM's own conversations UI instead of dumping the operator on a
+  // "Conversation not found" page.
   for (const state of pausedStates) {
     if (seen.has(state.contactId)) continue
     seen.add(state.contactId)
@@ -96,6 +102,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       reason: state.pauseReason || 'Stop condition hit',
       contactId: state.contactId,
       conversationId: state.conversationId,
+      locationId: state.locationId,
       agent: state.agent,
       at: state.pausedAt ?? state.updatedAt,
       messageCount: state.messageCount,
@@ -112,6 +119,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       reason: err.errorMessage?.slice(0, 120) || 'Unknown error',
       contactId: err.contactId,
       conversationId: err.conversationId,
+      locationId: err.locationId,
       agent: err.agent,
       at: err.createdAt,
       lastMessage: err.inboundMessage?.slice(0, 100),
@@ -128,6 +136,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       reason: 'Used fallback language — consider adding a knowledge entry',
       contactId: fb.contactId,
       conversationId: fb.conversationId,
+      locationId: fb.locationId,
       agent: fb.agent,
       at: fb.createdAt,
       lastMessage: fb.inboundMessage?.slice(0, 100),
@@ -145,6 +154,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       reason: `${st.messageCount} turns without resolution`,
       contactId: st.contactId,
       conversationId: st.conversationId,
+      locationId: st.locationId,
       agent: st.agent,
       at: st.updatedAt,
       messageCount: st.messageCount,

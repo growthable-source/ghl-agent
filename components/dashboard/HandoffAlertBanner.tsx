@@ -38,6 +38,15 @@ interface AttentionItem {
   reason?: string
   contactId: string
   conversationId?: string | null
+  /**
+   * Tells us where this conversation actually lives. Voxility-side inbox
+   * exists only for widget conversations (locationId begins with `widget:`).
+   * Everything else is in the CRM (GHL/LeadConnector at the moment) and
+   * the Take Over button should open the CRM's conversations UI directly.
+   * Optional for backward-compat with old API responses that didn't ship
+   * the field.
+   */
+  locationId?: string | null
   agent: { id: string; name: string } | null
   at: string
   messageCount?: number
@@ -159,13 +168,74 @@ export default function HandoffAlertBanner() {
   const primary = visible[0]
   const extra = visible.length - 1
 
-  function takeOver(item: AttentionItem) {
-    if (!workspaceId) return
-    if (item.conversationId) {
-      router.push(`/dashboard/${workspaceId}/inbox?conversation=${item.conversationId}`)
-    } else {
-      router.push(`/dashboard/${workspaceId}/contacts/${item.contactId}`)
+  /**
+   * Tells whether this conversation lives in Voxility's own inbox (only
+   * widget chats do) versus the connected CRM. Widget locations are
+   * stored with a `widget:` prefix; everything else is a CRM-owned
+   * location (LeadConnector, HubSpot, native, etc.) and the conversation
+   * doesn't exist on the Voxility side — opening the Voxility inbox
+   * would land on a "Conversation not found" page.
+   */
+  function isWidgetItem(item: AttentionItem): boolean {
+    return !!item.locationId && item.locationId.startsWith('widget:')
+  }
+
+  /**
+   * Resolve the URL where the operator can actually pick up this
+   * conversation. Mirrors lib/handover-link.ts for the items where we
+   * have the data; falls back to the contact page when we don't have a
+   * conversationId (e.g. an error before the conversation was created).
+   */
+  function takeOverUrl(item: AttentionItem): { url: string; external: boolean } | null {
+    if (!workspaceId) return null
+    // Widget conversation → Voxility inbox (the only place it exists).
+    if (isWidgetItem(item) && item.conversationId) {
+      return {
+        url: `/dashboard/${workspaceId}/inbox?conversation=${item.conversationId}`,
+        external: false,
+      }
     }
+    // CRM-backed conversation. Today every non-widget item lives in GHL.
+    // Deep-link to GHL's own conversations UI so the operator lands on
+    // the actual thread rather than a Voxility page that has nothing
+    // for them.
+    if (item.locationId && !item.locationId.startsWith('widget:') && item.conversationId) {
+      return {
+        url: `https://app.gohighlevel.com/v2/location/${item.locationId}/conversations/conversations/${item.conversationId}`,
+        external: true,
+      }
+    }
+    // Fallbacks: contact page (still useful for tag/note context) →
+    // workspace inbox as a last resort.
+    if (item.locationId && !item.locationId.startsWith('widget:') && item.contactId) {
+      return {
+        url: `https://app.gohighlevel.com/v2/location/${item.locationId}/contacts/detail/${item.contactId}`,
+        external: true,
+      }
+    }
+    if (item.contactId) {
+      return {
+        url: `/dashboard/${workspaceId}/contacts/${item.contactId}`,
+        external: false,
+      }
+    }
+    return null
+  }
+
+  function takeOver(item: AttentionItem) {
+    const link = takeOverUrl(item)
+    if (!link) return
+    if (link.external) {
+      // CRM lives in a separate app, so open in a new tab — the operator
+      // probably wants Voxility still open behind them to clear the alert.
+      window.open(link.url, '_blank', 'noopener')
+    } else {
+      router.push(link.url)
+    }
+  }
+
+  function takeOverLabel(item: AttentionItem): string {
+    return isWidgetItem(item) ? 'Take over' : 'Open in CRM'
   }
 
   function snooze(item: AttentionItem) {
@@ -228,8 +298,10 @@ export default function HandoffAlertBanner() {
           style={{ background: colourBgStrong, color: '#fff' }}
           onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = colourBgStrongHover }}
           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = colourBgStrong }}
+          title={isWidgetItem(primary) ? 'Open the conversation in Voxility' : 'Open the conversation in LeadConnector (new tab)'}
         >
-          Take over now
+          {isWidgetItem(primary) ? 'Take over now' : 'Open in CRM'}
+          {!isWidgetItem(primary) && <span aria-hidden> ↗</span>}
         </button>
 
         {extra > 0 && (
@@ -277,8 +349,9 @@ export default function HandoffAlertBanner() {
                 onClick={() => takeOver(item)}
                 className="text-[11px] font-semibold px-2.5 py-1 rounded whitespace-nowrap"
                 style={{ background: colourBgStrong, color: '#fff' }}
+                title={isWidgetItem(item) ? 'Open the conversation in Voxility' : 'Open the conversation in LeadConnector (new tab)'}
               >
-                Take over
+                {takeOverLabel(item)}{!isWidgetItem(item) && <span aria-hidden> ↗</span>}
               </button>
               <button
                 onClick={() => snooze(item)}
