@@ -17,6 +17,7 @@ import { useEmbedded } from '@/lib/embedded-context'
 const FEATURE_SHIP_DATES: Record<string, string> = {
   simulations: '2026-04-20',
   integrations: '2026-05-12', // Shopify connector ships today
+  toolGate:    '2026-05-30', // Phase B3 enforced-tool gate analytics
 }
 
 export default function DashboardSidebar() {
@@ -352,6 +353,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
                     {navLink(`/dashboard/${workspaceId}/csat`, 'CSAT')}
                     {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
+                    {navLink(`/dashboard/${workspaceId}/tool-gate`, 'Tool gate', null, FEATURE_SHIP_DATES.toolGate)}
                     {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
 
                     {/* ── Native CRM (only when workspace is on the built-in CRM) ── */}
