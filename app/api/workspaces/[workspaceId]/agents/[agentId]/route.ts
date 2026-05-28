@@ -133,19 +133,45 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }),
   })
 
+  // Validate every referenced CRM resource immediately so the UI can show
+  // any broken references inline. Don't block the save — even if a reference
+  // is broken, the user may have changed an unrelated field and we don't want
+  // to lose their work.
+  async function loadReferenceHealth(): Promise<Array<{
+    resourceType: string
+    resourceId: string
+    status: string
+    lastError: string | null
+  }>> {
+    try {
+      const { runReferenceHealthCheck } = await import('@/lib/agent/reference-health/check')
+      await runReferenceHealthCheck(agentId, { throttleMinutes: 0 })
+      return await db.agentReferenceHealth.findMany({
+        where: { agentId },
+        select: { resourceType: true, resourceId: true, status: true, lastError: true },
+      })
+    } catch (err: any) {
+      console.warn(`[agent PATCH] reference health check failed for ${agentId}:`, err?.message)
+      return []
+    }
+  }
+
   // Try once with judge fields. If those columns are missing, retry
   // without them so the rest of the PATCH still goes through and the UI
   // gets clear signal that the AI Judge migration is pending.
   const wantsJudge = judgeKeys.some(k => body[k] !== undefined)
   try {
     const agent = await db.agent.update({ where: { id: agentId }, data: buildData(true) as any })
-    return NextResponse.json({ agent })
+    const referenceHealth = await loadReferenceHealth()
+    return NextResponse.json({ agent, referenceHealth })
   } catch (err: any) {
     if (isMissingColumn(err) && wantsJudge) {
       try {
         const agent = await db.agent.update({ where: { id: agentId }, data: buildData(false) as any })
+        const referenceHealth = await loadReferenceHealth()
         return NextResponse.json({
           agent,
+          referenceHealth,
           warning: 'Judge config skipped — run prisma/migrations-legacy/manual_ai_judge.sql to enable it.',
           code: 'JUDGE_MIGRATION_PENDING',
         })
