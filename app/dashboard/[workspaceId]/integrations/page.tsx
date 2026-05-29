@@ -208,10 +208,37 @@ export default function IntegrationsPage() {
   // see which agents and drill into their tools page.
   const [brokenRefAgentCount, setBrokenRefAgentCount] = useState(0)
 
+  // Per-Location identity for each real CRM install on this workspace.
+  // Surfaces the business name + city/state + timezone + installing user
+  // inside the LeadConnector card so operators can tell which sub-
+  // account a workspace is tied to without leaving the page. See
+  // lib/workspace-crm-connections.ts.
+  interface CrmConnectionDetail {
+    locationId: string
+    provider: string
+    installedAt: string | null
+    tokenExpiresAt: string | null
+    businessName: string | null
+    businessEmail: string | null
+    businessPhone: string | null
+    businessWebsite: string | null
+    businessAddress: string | null
+    businessCity: string | null
+    businessState: string | null
+    businessCountry: string | null
+    businessTimezone: string | null
+    agencyName: string | null
+    agencyWebsite: string | null
+    installedByName: string | null
+    installedByEmail: string | null
+    installedByRole: string | null
+  }
+  const [crmConnections, setCrmConnections] = useState<CrmConnectionDetail[]>([])
+
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/integrations`)
       .then(r => r.json())
-      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm, shopify, primaryCrmProvider, installSource: src, brokenRefAgentCount: brokenCount }: {
+      .then(({ integrations: ints, ghlConnected: ghl, vapiActive: vapi, crmProvider: crm, shopify, primaryCrmProvider, installSource: src, brokenRefAgentCount: brokenCount, crmConnections: conns }: {
         integrations: Integration[]
         ghlConnected: boolean
         vapiActive: boolean
@@ -220,6 +247,7 @@ export default function IntegrationsPage() {
         primaryCrmProvider?: string
         installSource?: string | null
         brokenRefAgentCount?: number
+        crmConnections?: CrmConnectionDetail[]
       }) => {
         setIntegrations(ints || [])
         setGhlConnected(ghl)
@@ -229,6 +257,7 @@ export default function IntegrationsPage() {
         if (primaryCrmProvider) setPrimaryCrm(primaryCrmProvider)
         setInstallSource(src ?? null)
         setBrokenRefAgentCount(brokenCount ?? 0)
+        setCrmConnections(conns ?? [])
       })
       .finally(() => setLoading(false))
 
@@ -878,6 +907,65 @@ export default function IntegrationsPage() {
             <p className="text-xs text-zinc-600 mt-3">
               Reconnect to refresh your token or add new permission scopes.
             </p>
+          )}
+
+          {/* Per-Location identity strip — surfaces the actual business
+              name of the LeadConnector sub-account this workspace is
+              tied to. Falls back to the raw locationId when no snapshot
+              exists (typical on installs that pre-date the install-
+              fetcher; a backfill is fired on this request so the data
+              will be there next reload). One block per Location row
+              because a single workspace can carry multiple Locations
+              after an agency reshuffle. */}
+          {ghlConnected && crmConnections.filter(c => c.provider === 'ghl').length > 0 && (
+            <div className="mt-4 pt-4 border-t border-zinc-800/60 space-y-3">
+              {crmConnections.filter(c => c.provider === 'ghl').map(conn => {
+                const cityState = [conn.businessCity, conn.businessState].filter(Boolean).join(', ')
+                const fullAddress = [conn.businessAddress, cityState, conn.businessCountry].filter(Boolean).join(' · ')
+                return (
+                  <div key={conn.locationId} className="text-xs space-y-1.5">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="font-medium text-zinc-200">
+                        {conn.businessName || 'Unnamed sub-account'}
+                      </span>
+                      {conn.agencyName && (
+                        <span className="text-zinc-500">· {conn.agencyName}</span>
+                      )}
+                    </div>
+                    {fullAddress && (
+                      <p className="text-zinc-500">{fullAddress}</p>
+                    )}
+                    <div className="flex items-center gap-3 flex-wrap text-[11px] text-zinc-600">
+                      {conn.businessTimezone && (
+                        <span title="Sub-account timezone">🕒 {conn.businessTimezone}</span>
+                      )}
+                      {conn.businessPhone && <span>📞 {conn.businessPhone}</span>}
+                      {conn.businessEmail && <span>✉ {conn.businessEmail}</span>}
+                      {conn.businessWebsite && (
+                        <a
+                          href={conn.businessWebsite.startsWith('http') ? conn.businessWebsite : `https://${conn.businessWebsite}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline hover:text-zinc-400"
+                        >
+                          {conn.businessWebsite.replace(/^https?:\/\/(www\.)?/, '')}
+                        </a>
+                      )}
+                    </div>
+                    {conn.installedByName && (
+                      <p className="text-[11px] text-zinc-600">
+                        Installed by {conn.installedByName}
+                        {conn.installedByEmail && <> ({conn.installedByEmail})</>}
+                        {conn.installedByRole && <> · {conn.installedByRole}</>}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-zinc-700 font-mono select-all" title="LeadConnector location ID — handy for support tickets">
+                      {conn.locationId}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
         )}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { listCrmConnections } from '@/lib/workspace-crm-connections'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -108,6 +109,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // some envs. Fall back to 0; the UI just skips the banner.
   }
 
+  // Per-Location identity (business name, city/state, timezone,
+  // installing user). Surfaces "which CRM sub-account is this workspace
+  // connected to" in the LeadConnector card instead of a generic
+  // "Connected" pill. See lib/workspace-crm-connections.ts.
+  let crmConnections: Awaited<ReturnType<typeof listCrmConnections>> = []
+  try {
+    crmConnections = await listCrmConnections(workspaceId)
+  } catch (err: any) {
+    // Non-fatal — page still renders without the identity strip.
+    console.warn('[Integrations] listCrmConnections failed:', err?.message)
+  }
+
   return NextResponse.json({
     integrations,
     ghlConnected,
@@ -118,6 +131,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     primaryCrmProvider,
     availableCrms,
     brokenRefAgentCount,
+    crmConnections,
   })
 }
 
