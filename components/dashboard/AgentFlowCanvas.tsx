@@ -38,6 +38,7 @@ import { StopConditionEditor } from './flow/editors/StopConditionEditor'
 import { CrmTriggerEditor } from './flow/editors/CrmTriggerEditor'
 import { ChannelDeploymentEditor } from './flow/editors/ChannelDeploymentEditor'
 import { WorkingHoursEditor } from './flow/editors/WorkingHoursEditor'
+import { FollowUpEditor } from './flow/editors/FollowUpEditor'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -523,7 +524,17 @@ function renderEditorFor(
         />
       )
     case 'followUp':
-      return <NotImplementedStub label={`Follow-up editor for ${sourceId}`} />
+      return (
+        <FollowUpEditor
+          ref={ctx.editorRef}
+          workspaceId={ctx.workspaceId}
+          agentId={ctx.agentId}
+          followUpId={sourceId}
+          onSaved={ctx.onSaved}
+          onDirtyChange={ctx.onDirtyChange}
+          onSavingChange={ctx.onSavingChange}
+        />
+      )
     default:
       return <NotImplementedStub label={`${node.type}: no editor yet`} />
   }
