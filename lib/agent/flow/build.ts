@@ -48,6 +48,31 @@ const ON_FAILURE_LABELS: Record<string, { key: string; label: string }> = {
   silent_skip: { key: 'failure:silent', label: 'Silent skip' },
 }
 
+/**
+ * Tools whose useWhen/onFailure dispatch ultimately calls into the CRM's
+ * calendar API. If the agent's selected calendar is broken (no longer
+ * exists upstream), these specific tool nodes get the red corner badge —
+ * even if we don't have direct FK rows for them.
+ */
+const CALENDAR_DEPENDENT_TOOLS = new Set<string>([
+  'get_available_slots',
+  'book_appointment',
+  'cancel_appointment',
+  'reschedule_appointment',
+  'get_calendar_events',
+  'create_appointment_note',
+])
+
+/**
+ * Tool names that take a workflow id as their argument. When the
+ * referenced workflow is broken, only THESE tool nodes get the badge —
+ * not every workflow-touching tool in the catalog.
+ */
+const WORKFLOW_TOOLS = new Set<string>([
+  'add_to_workflow',
+  'remove_from_workflow',
+])
+
 function toolLabel(toolName: string): string {
   // human-ish — strip underscores, title-case first word
   const spaced = toolName.replace(/_/g, ' ')
@@ -422,6 +447,72 @@ export async function buildAgentFlow(agentId: string): Promise<FlowResponse> {
         target: key,
         type: 'default',
       })
+    }
+  }
+
+  // ── Validation badges ──────────────────────────────────────────────────
+  // We surface three signals as corner chips on the affected nodes:
+  //   • broken upstream refs (calendar / workflow no longer exists) → red
+  //   • enforced tool with empty useWhen (gate would always block)   → amber
+  //   • routing rule with empty conditions (never matches)           → amber
+  // The renderer picks the most severe badge per node (broken > warning).
+  const nodeById = new Map<string, FlowNode>(nodes.map(n => [n.id, n]))
+  const pushBadge = (nodeId: string, badge: { kind: 'broken' | 'warning'; text: string }) => {
+    const node = nodeById.get(nodeId)
+    if (!node) return
+    if (!node.data.badges) node.data.badges = []
+    node.data.badges.push(badge)
+  }
+
+  // 1) Broken upstream references — populated by the Phase A reference
+  //    health checker. We translate (resourceType, resourceId) into the
+  //    set of nodes that would call into that resource.
+  const brokenRefs = await db.agentReferenceHealth.findMany({
+    where: { agentId, status: 'broken' },
+    select: { resourceType: true, resourceId: true },
+  })
+
+  for (const ref of brokenRefs) {
+    if (ref.resourceType === 'calendar') {
+      for (const toolName of CALENDAR_DEPENDENT_TOOLS) {
+        const key = `tool:${toolName}`
+        if (nodeById.has(key)) pushBadge(key, { kind: 'broken', text: 'Calendar broken' })
+      }
+    } else if (ref.resourceType === 'workflow') {
+      for (const toolName of WORKFLOW_TOOLS) {
+        const key = `tool:${toolName}`
+        if (nodeById.has(key)) pushBadge(key, { kind: 'broken', text: 'Workflow broken' })
+      }
+      // Stop conditions that enroll/remove the broken workflow id.
+      for (const sc of agent.stopConditions) {
+        if (sc.enrollWorkflowId === ref.resourceId || sc.removeWorkflowId === ref.resourceId) {
+          pushBadge(`stop:${sc.id}`, { kind: 'broken', text: 'Workflow broken' })
+        }
+      }
+    }
+  }
+
+  // 2) Enforced tools with no useWhen — the B3 gate would always block.
+  for (const [toolName, resolved] of resolvedTools) {
+    if (!enabledNames.has(toolName)) continue
+    const catalog = catalogByName.get(toolName)
+    if (!catalog || catalog.enforcement !== 'enforced') continue
+    if (resolved.useWhen.trim().length === 0) {
+      pushBadge(`tool:${toolName}`, { kind: 'warning', text: 'No rule — gate will block' })
+    }
+  }
+
+  // 3) Routing rules with no conditions — would never match anything.
+  // A rule is unmatchable when there's no compound `conditions` clause
+  // AND its legacy ruleType isn't ALL AND it carries no legacy value to
+  // match against. The ALL rule type matches anything, so it's fine
+  // even with no value.
+  for (const rule of agent.routingRules) {
+    const c = rule.conditions as { clauses?: unknown[] } | null
+    const hasClauses = !!c && Array.isArray(c.clauses) && c.clauses.length > 0
+    const hasLegacyPredicate = rule.ruleType === 'ALL' || (rule.value !== null && rule.value !== '')
+    if (!hasClauses && !hasLegacyPredicate) {
+      pushBadge(`routing:${rule.id}`, { kind: 'warning', text: 'No condition' })
     }
   }
 
