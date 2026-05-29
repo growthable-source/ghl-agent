@@ -20,7 +20,18 @@ export function autoLayout(
   overrides: Map<string, { x: number; y: number }>,
 ): FlowNode[] {
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: 'LR', nodesep: 60, ranksep: 100 })
+  // Looser separation than dagre's defaults so edge labels + corner
+  // badges have breathing room. ranksep controls horizontal gap between
+  // layers (rankdir=LR), nodesep controls vertical gap between siblings
+  // in the same layer. Phase 5 bump from 100/60 → 120/80 after tangled
+  // output on agents with many parallel filters/tools.
+  g.setGraph({
+    rankdir: 'LR',
+    nodesep: 80,
+    ranksep: 120,
+    marginx: 24,
+    marginy: 24,
+  })
   g.setDefaultEdgeLabel(() => ({}))
 
   for (const n of nodes) g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
