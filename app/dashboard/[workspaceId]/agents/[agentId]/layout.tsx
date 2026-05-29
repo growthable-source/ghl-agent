@@ -5,6 +5,7 @@ import { useParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { AgentReferenceHealthBanner } from '@/components/dashboard/AgentReferenceHealthBanner'
 import NewBadge from '@/components/NewBadge'
+import { ViewModeToggle } from '@/components/dashboard/ViewModeToggle'
 
 // ─── IA ──────────────────────────────────────────────────────────────────────
 // Five primary "hubs" that answer the only five questions an operator has
@@ -122,7 +123,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
   const base = `/dashboard/${workspaceId}/agents/${agentId}`
 
-  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number; viewMode: 'simple' | 'advanced' } | null>(null)
   const [toggling, setToggling] = useState(false)
   const [channelCount, setChannelCount] = useState<number | null>(null)
 
@@ -137,6 +138,10 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         // count here so the header banner can flag the misconfig the
         // same way the listening pill on the agents list does.
         ruleCount: agent.routingRules?.length ?? 0,
+        // viewMode drives whether the tabbed IA or the canvas is the
+        // primary surface. Default to 'simple' when the column is missing
+        // or the value isn't one we recognise.
+        viewMode: agent.viewMode === 'advanced' ? 'advanced' : 'simple',
       }))
   }, [workspaceId, agentId])
 
@@ -169,6 +174,12 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
   const suffix = pathname.replace(base, '')
   const { hub: activeHub, tab: activeTab } = resolveActive(suffix)
+
+  // In advanced mode the canvas is the entire surface — the tabbed nav
+  // strips below the header are hidden so the /flow page renders edge
+  // to edge. The header itself (breadcrumb + status + Test/Pause + the
+  // toggle pill) stays so operators have a way back out.
+  const isAdvanced = agent?.viewMode === 'advanced'
 
   function tabLabel(tab: Tab) {
     if (tab.key === 'deploy' && channelCount !== null && channelCount > 0) {
@@ -241,6 +252,13 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
           )}
         </div>
         <div className="flex items-center gap-2">
+          {agent && (
+            <ViewModeToggle
+              workspaceId={workspaceId}
+              agentId={agentId}
+              viewMode={agent.viewMode}
+            />
+          )}
           <Link
             href={`/dashboard/${workspaceId}/playground?agentId=${agentId}`}
             className="text-xs border rounded-lg px-3 py-1.5 transition-colors"
@@ -264,96 +282,109 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         </div>
       </div>
 
-      {/* Primary tabs — five hubs. Renders without a bottom border when
-          a secondary strip follows it, so the two strips read as one
-          continuous nav rather than stacked banners. */}
-      <div className="flex items-stretch px-8 mt-4 shrink-0">
-        <div className="flex items-stretch gap-1 overflow-x-auto min-w-0 flex-1">
-          {HUBS.map(h => {
-            const isActive = activeHub.key === h.key
-            const href = `${base}${h.tabs[0].path}`
-            return (
-              <Link
-                key={h.key}
-                href={href}
-                className="px-3 py-2 text-[13px] font-medium tracking-tight whitespace-nowrap rounded-md transition-colors"
-                style={
-                  isActive
-                    ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                    : { color: 'var(--text-secondary)' }
-                }
-                onMouseEnter={e => {
-                  if (!isActive) e.currentTarget.style.color = 'var(--text-primary)'
-                }}
-                onMouseLeave={e => {
-                  if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
-                }}
-              >
-                {h.label}
-              </Link>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Divider that sits between primary and secondary strips. Single
-          line, full bleed under the page padding. */}
-      <div className="px-8 mt-2 shrink-0">
-        <div className="h-px" style={{ background: 'var(--border)' }} />
-      </div>
-
-      {/* Secondary tabs — sections within the active hub. Underline-style
-          on the same canvas (no banner background), smaller text and
-          tighter padding so the hierarchy is obvious without shouting. */}
-      {activeHub.tabs.length > 1 && (
-        <div className="flex items-stretch px-8 shrink-0">
-          <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
-            {activeHub.tabs.map(t => {
-              const isActive = activeTab.key === t.key
-              return (
-                <Link
-                  key={t.key}
-                  href={`${base}${t.path}`}
-                  className="relative px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors"
-                  style={
-                    isActive
-                      ? { color: 'var(--accent-primary)' }
-                      : { color: 'var(--text-tertiary)' }
-                  }
-                  onMouseEnter={e => {
-                    if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
-                  }}
-                  onMouseLeave={e => {
-                    if (!isActive) e.currentTarget.style.color = 'var(--text-tertiary)'
-                  }}
-                >
-                  {tabLabel(t)}
-                  {t.key === 'tools' && <NewBadge since="2026-05-29" className="ml-1.5" />}
-                  {isActive && (
-                    <span
-                      className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"
-                      style={{ background: 'var(--accent-primary)' }}
-                    />
-                  )}
-                </Link>
-              )
-            })}
+      {/* Tabbed IA — only rendered in 'simple' mode. In 'advanced' mode
+          the workflow canvas at /flow is the entire surface and the
+          tab strips are suppressed so the canvas can render edge to
+          edge below the header. */}
+      {!isAdvanced && (
+        <>
+          {/* Primary tabs — five hubs. Renders without a bottom border when
+              a secondary strip follows it, so the two strips read as one
+              continuous nav rather than stacked banners. */}
+          <div className="flex items-stretch px-8 mt-4 shrink-0">
+            <div className="flex items-stretch gap-1 overflow-x-auto min-w-0 flex-1">
+              {HUBS.map(h => {
+                const isActive = activeHub.key === h.key
+                const href = `${base}${h.tabs[0].path}`
+                return (
+                  <Link
+                    key={h.key}
+                    href={href}
+                    className="px-3 py-2 text-[13px] font-medium tracking-tight whitespace-nowrap rounded-md transition-colors"
+                    style={
+                      isActive
+                        ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                        : { color: 'var(--text-secondary)' }
+                    }
+                    onMouseEnter={e => {
+                      if (!isActive) e.currentTarget.style.color = 'var(--text-primary)'
+                    }}
+                    onMouseLeave={e => {
+                      if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
+                    }}
+                  >
+                    {h.label}
+                  </Link>
+                )
+              })}
+            </div>
           </div>
-        </div>
+
+          {/* Divider that sits between primary and secondary strips. Single
+              line, full bleed under the page padding. */}
+          <div className="px-8 mt-2 shrink-0">
+            <div className="h-px" style={{ background: 'var(--border)' }} />
+          </div>
+
+          {/* Secondary tabs — sections within the active hub. Underline-style
+              on the same canvas (no banner background), smaller text and
+              tighter padding so the hierarchy is obvious without shouting. */}
+          {activeHub.tabs.length > 1 && (
+            <div className="flex items-stretch px-8 shrink-0">
+              <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
+                {activeHub.tabs.map(t => {
+                  const isActive = activeTab.key === t.key
+                  return (
+                    <Link
+                      key={t.key}
+                      href={`${base}${t.path}`}
+                      className="relative px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors"
+                      style={
+                        isActive
+                          ? { color: 'var(--accent-primary)' }
+                          : { color: 'var(--text-tertiary)' }
+                      }
+                      onMouseEnter={e => {
+                        if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
+                      }}
+                      onMouseLeave={e => {
+                        if (!isActive) e.currentTarget.style.color = 'var(--text-tertiary)'
+                      }}
+                    >
+                      {tabLabel(t)}
+                      {t.key === 'tools' && <NewBadge since="2026-05-29" className="ml-1.5" />}
+                      {isActive && (
+                        <span
+                          className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"
+                          style={{ background: 'var(--accent-primary)' }}
+                        />
+                      )}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Bottom divider — separates the nav from page content. Always
+              present so the canvas reads consistently whether or not a
+              secondary strip is showing. */}
+          <div className="shrink-0">
+            <div className="h-px" style={{ background: 'var(--border)' }} />
+          </div>
+        </>
       )}
 
-      {/* Bottom divider — separates the nav from page content. Always
-          present so the canvas reads consistently whether or not a
-          secondary strip is showing. */}
-      <div className="shrink-0">
-        <div className="h-px" style={{ background: 'var(--border)' }} />
-      </div>
-
-      {/* Page content */}
+      {/* Page content. In advanced mode the canvas is the entire surface
+          so we suppress the reference-health banner and the surrounding
+          padding wrapper — the /flow page sizes itself with viewport
+          math and wants edge-to-edge bleed. */}
       <div className="flex-1 overflow-y-auto">
-        <div className="px-8 pt-4">
-          <AgentReferenceHealthBanner workspaceId={workspaceId} agentId={agentId} />
-        </div>
+        {!isAdvanced && (
+          <div className="px-8 pt-4">
+            <AgentReferenceHealthBanner workspaceId={workspaceId} agentId={agentId} />
+          </div>
+        )}
         {children}
       </div>
     </div>
