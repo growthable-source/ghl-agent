@@ -5,6 +5,7 @@ import { canCreateAgent, isTrialExpired, getPlanFeatures, recommendPlanForLimit,
 import { isInternalWorkspace } from '@/lib/internal-workspace'
 import { resolveLocationForProvider, type RequestedProvider } from '@/lib/crm/resolve-location'
 import { defaultAgentName } from '@/lib/random-name'
+import { listCrmConnections } from '@/lib/workspace-crm-connections'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -55,11 +56,42 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
     }
   }
 
-  // Inline nextActions onto each agent for the UI
-  const agentsWithNextActions = agents.map(a => ({
-    ...a,
-    nextActions: nextActionsByAgent[a.id] ?? { count: 0, nextAt: null },
-  }))
+  // Per-agent connection identity — joins each agent's Location to its
+  // MarketplaceInstall snapshot so the card can render "Connected to
+  // <BusinessName>" instead of an opaque locationId. Native/placeholder
+  // locations are filtered out by listCrmConnections, so agents on a
+  // native CRM yield null here and the UI shows "Native CRM" instead.
+  let connectionByLocation: Map<string, { businessName: string | null; provider: string }> = new Map()
+  try {
+    const conns = await listCrmConnections(workspaceId)
+    connectionByLocation = new Map(
+      conns.map(c => [c.locationId, { businessName: c.businessName, provider: c.provider }]),
+    )
+  } catch (err: any) {
+    console.warn('[Agents] CRM connection identity lookup failed:', err?.message)
+  }
+
+  // Inline nextActions + connection onto each agent for the UI. The
+  // connection field is null when the agent runs on a native:/placeholder:
+  // location — the card surfaces that as "Native CRM" instead of a
+  // sub-account name, which is the right read for those workspaces.
+  const agentsWithNextActions = agents.map(a => {
+    const conn = connectionByLocation.get(a.locationId) ?? null
+    const isNative = a.locationId.startsWith('native:')
+    const isPlaceholder = a.locationId.startsWith('placeholder:')
+    return {
+      ...a,
+      nextActions: nextActionsByAgent[a.id] ?? { count: 0, nextAt: null },
+      connection: {
+        locationId: a.locationId,
+        // Resolved name for the card. Falls back to a generic provider
+        // label when there's no MarketplaceInstall snapshot yet (pre-
+        // backfill installs) or when the location is native/placeholder.
+        businessName: conn?.businessName ?? null,
+        provider: isNative ? 'native' : isPlaceholder ? 'none' : (conn?.provider ?? 'ghl'),
+      },
+    }
+  })
 
   // Get workspace plan info for agent limit display
   let planInfo: { plan: string; agentLimit: number; extraAgentCount: number } | null = null

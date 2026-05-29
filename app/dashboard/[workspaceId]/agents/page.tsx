@@ -20,6 +20,18 @@ interface AgentData {
   channelDeployments: { channel: string }[]
   vapiConfig: { isActive: boolean; phoneNumber: string | null } | null
   nextActions: { count: number; nextAt: string | null }
+  /**
+   * Which CRM sub-account this agent is wired to. The card uses
+   * `businessName` to render "Connected to <Acme Co>" so operators can
+   * spot at a glance which Location an agent runs on without opening
+   * its settings. `provider` distinguishes native/none from real CRM
+   * installs so the card can render a friendly label for those too.
+   */
+  connection?: {
+    locationId: string
+    businessName: string | null
+    provider: string
+  } | null
   _count: {
     knowledgeEntries?: number         // legacy: pre-knowledge-workspace servers
     attachedKnowledge?: number        // legacy: per-entry junction (now removed)
@@ -801,7 +813,7 @@ export default function AgentsPage() {
                   </div>
 
                   {/* Channel badges */}
-                  <div className="flex flex-wrap gap-1.5 mb-4">
+                  <div className="flex flex-wrap gap-1.5 mb-2">
                     {agent.channelDeployments.length > 0 ? (
                       agent.channelDeployments.map((cd: { channel: string }) => {
                         const cfg = CHANNEL_CONFIG[cd.channel]
@@ -827,6 +839,45 @@ export default function AgentsPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* Connected-to line — surfaces the CRM sub-account
+                      business name (joined from MarketplaceInstall) so
+                      the operator can see which LeadConnector location
+                      this agent is wired to without clicking through.
+                      Fallback chain:
+                        1. businessName from the install snapshot
+                        2. "Native CRM" / "No CRM" for native/placeholder rows
+                        3. The raw locationId in monospace (older installs
+                           where the snapshot hasn't backfilled yet) */}
+                  {(() => {
+                    const c = agent.connection
+                    if (!c) return null
+                    const label = c.businessName
+                      ? c.businessName
+                      : c.provider === 'native'
+                        ? 'Native CRM'
+                        : c.provider === 'none'
+                          ? 'No CRM connected'
+                          : null
+                    return (
+                      <p
+                        className="text-[11px] mb-3 flex items-center gap-1 min-w-0"
+                        style={{ color: 'var(--text-tertiary)' }}
+                        title={c.locationId}
+                      >
+                        <svg className="w-3 h-3 flex-shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        {label ? (
+                          <span className="truncate">{label}</span>
+                        ) : (
+                          <span className="font-mono truncate select-all" style={{ color: 'var(--text-muted)' }}>
+                            {c.locationId}
+                          </span>
+                        )}
+                      </p>
+                    )
+                  })()}
 
                   {/* Stats row */}
                   <div className="grid grid-cols-3 gap-3 py-3 border-t border-zinc-800">
