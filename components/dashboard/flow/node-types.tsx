@@ -92,18 +92,87 @@ const ENDPOINT_STYLE: React.CSSProperties = {
   background: '#fff',
 }
 
+// ── Corner validation badge ────────────────────────────────────────────
+// Renders as a small absolutely-positioned chip in the top-right of the
+// node it's attached to. When multiple badges are present we display the
+// most severe (broken > warning) — stacking chips would clutter the
+// canvas. The badge auto-collapses to a coloured dot when text won't
+// fit; the full text is always available via the `title` attribute.
+
+const BADGE_TEXT_MAX = 18
+
+function pickBadge(
+  badges: Array<{ kind: 'broken' | 'warning'; text: string }> | undefined,
+): { kind: 'broken' | 'warning'; text: string } | null {
+  if (!badges || badges.length === 0) return null
+  const broken = badges.find(b => b.kind === 'broken')
+  if (broken) return broken
+  return badges[0] ?? null
+}
+
+function CornerBadge({
+  badge,
+}: {
+  badge: { kind: 'broken' | 'warning'; text: string }
+}) {
+  const isBroken = badge.kind === 'broken'
+  const bg = isBroken
+    ? 'var(--accent-red, #dc2626)'
+    : 'var(--accent-amber, #d97706)'
+  const fg = isBroken ? '#fff' : '#1f2937'
+  const compact = badge.text.length > BADGE_TEXT_MAX
+
+  return (
+    <div
+      title={badge.text}
+      aria-label={badge.text}
+      style={{
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        background: bg,
+        color: fg,
+        borderRadius: 9999,
+        fontSize: 10,
+        fontWeight: 600,
+        lineHeight: 1,
+        padding: compact ? 0 : '3px 7px',
+        width: compact ? 12 : 'auto',
+        height: compact ? 12 : 'auto',
+        minWidth: compact ? 12 : undefined,
+        boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2,
+        pointerEvents: 'auto',
+        whiteSpace: 'nowrap',
+        maxWidth: 160,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      }}
+    >
+      {compact ? '' : badge.text}
+    </div>
+  )
+}
+
+
 // ── Trigger nodes (source only) ────────────────────────────────────────
 
 export function ChannelTriggerNode({ data }: NodeProps<NodeData>) {
+  const badge = pickBadge(data.badges)
   return (
     <div
       style={{
         ...PILL_STYLE,
+        position: 'relative',
         borderColor: 'var(--accent-coral, #fa4d2e)',
         color: 'var(--accent-coral, #fa4d2e)',
         background: 'var(--accent-coral-bg, #fff5f3)',
       }}
     >
+      {badge && <CornerBadge badge={badge} />}
       {data.label}
       <Handle type="source" position={Position.Right} />
     </div>
@@ -111,15 +180,18 @@ export function ChannelTriggerNode({ data }: NodeProps<NodeData>) {
 }
 
 export function CrmTriggerNode({ data }: NodeProps<NodeData>) {
+  const badge = pickBadge(data.badges)
   return (
     <div
       style={{
         ...PILL_STYLE,
+        position: 'relative',
         borderColor: 'var(--accent-coral, #fa4d2e)',
         color: 'var(--accent-coral, #fa4d2e)',
         background: 'var(--accent-coral-bg, #fff5f3)',
       }}
     >
+      {badge && <CornerBadge badge={badge} />}
       {data.label}
       <Handle type="source" position={Position.Right} />
     </div>
@@ -133,33 +205,39 @@ function diamondColors(color: string, bg: string) {
 }
 
 export function RoutingRuleNode({ data }: NodeProps<NodeData>) {
+  const badge = pickBadge(data.badges)
   return (
     <div style={DIAMOND_WRAP}>
       <Handle type="target" position={Position.Left} />
       <div style={{ ...DIAMOND_INNER, ...diamondColors('var(--accent-amber, #d97706)', 'var(--accent-amber-bg, #fffbeb)') }} />
       <div style={{ ...DIAMOND_LABEL, color: 'var(--accent-amber, #d97706)' }}>{data.label}</div>
+      {badge && <CornerBadge badge={badge} />}
       <Handle type="source" position={Position.Right} />
     </div>
   )
 }
 
 export function WorkingHoursNode({ data }: NodeProps<NodeData>) {
+  const badge = pickBadge(data.badges)
   return (
     <div style={DIAMOND_WRAP}>
       <Handle type="target" position={Position.Left} />
       <div style={{ ...DIAMOND_INNER, ...diamondColors('var(--accent-amber, #d97706)', 'var(--accent-amber-bg, #fffbeb)') }} />
       <div style={{ ...DIAMOND_LABEL, color: 'var(--accent-amber, #d97706)' }}>{data.label}</div>
+      {badge && <CornerBadge badge={badge} />}
       <Handle type="source" position={Position.Right} />
     </div>
   )
 }
 
 export function StopConditionNode({ data }: NodeProps<NodeData>) {
+  const badge = pickBadge(data.badges)
   return (
     <div style={DIAMOND_WRAP}>
       <Handle type="target" position={Position.Left} />
       <div style={{ ...DIAMOND_INNER, ...diamondColors('var(--accent-purple, #7c3aed)', 'var(--accent-purple-bg, #f5f3ff)') }} />
       <div style={{ ...DIAMOND_LABEL, color: 'var(--accent-purple, #7c3aed)' }}>{data.label}</div>
+      {badge && <CornerBadge badge={badge} />}
       <Handle type="source" position={Position.Right} />
     </div>
   )
@@ -168,16 +246,19 @@ export function StopConditionNode({ data }: NodeProps<NodeData>) {
 // ── Tool nodes ─────────────────────────────────────────────────────────
 
 export function ToolNode({ data }: NodeProps<NodeData>) {
+  const badge = pickBadge(data.badges)
   return (
     <div
       style={{
         ...RECT_STYLE,
+        position: 'relative',
         borderColor: 'var(--accent-blue, #2563eb)',
         color: 'var(--accent-blue, #2563eb)',
         background: 'var(--accent-blue-bg, #eff6ff)',
       }}
     >
       <Handle type="target" position={Position.Left} />
+      {badge && <CornerBadge badge={badge} />}
       {data.label}
       <Handle type="source" position={Position.Right} />
     </div>
@@ -272,10 +353,12 @@ export function HandoverEndpointNode({ data }: NodeProps<NodeData>) {
 // ── Auxiliary lanes ────────────────────────────────────────────────────
 
 export function FollowUpNode({ data }: NodeProps<NodeData>) {
+  const badge = pickBadge(data.badges)
   return (
     <div
       style={{
         ...RECT_STYLE,
+        position: 'relative',
         borderColor: 'var(--accent-emerald, #0d9488)',
         color: 'var(--accent-emerald, #0d9488)',
         background: 'var(--accent-emerald-bg, #f0fdfa)',
@@ -283,6 +366,7 @@ export function FollowUpNode({ data }: NodeProps<NodeData>) {
       }}
     >
       <Handle type="target" position={Position.Left} />
+      {badge && <CornerBadge badge={badge} />}
       {data.label}
       <Handle type="source" position={Position.Right} />
     </div>
