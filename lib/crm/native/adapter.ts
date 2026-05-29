@@ -280,7 +280,7 @@ export class NativeAdapter implements CrmAdapter {
   async updateAppointment(_eventId: string, _payload: any): Promise<any> {
     notSupported('Calendar booking')
   }
-  async getCalendarEvents(_contactId: string): Promise<any> {
+  async getCalendarEvents(_contactId: string, _calendarId?: string): Promise<any> {
     return { events: [] }
   }
   async createAppointmentNote(_appointmentId: string, _body: string): Promise<any> {

@@ -56,7 +56,7 @@ export class NoCrmAdapter implements CrmAdapter {
   bookAppointment(_payload: BookAppointmentPayload): Promise<any> { missing() }
   getAppointment(_eventId: string): Promise<any> { missing() }
   updateAppointment(_eventId: string, _payload: any): Promise<any> { missing() }
-  getCalendarEvents(_contactId: string): Promise<any> { missing() }
+  getCalendarEvents(_contactId: string, _calendarId?: string): Promise<any> { missing() }
   createAppointmentNote(_appointmentId: string, _body: string): Promise<any> { missing() }
   updateAppointmentNote(_appointmentId: string, _noteId: string, _body: string): Promise<any> { missing() }
 

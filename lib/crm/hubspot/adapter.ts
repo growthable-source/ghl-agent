@@ -461,7 +461,10 @@ export class HubSpotAdapter implements CrmAdapter {
     })
   }
 
-  async getCalendarEvents(contactId: string): Promise<any> {
+  async getCalendarEvents(contactId: string, _calendarId?: string): Promise<any> {
+    // HubSpot scopes meetings by contact directly — calendarId is a
+    // LeadConnector concept and isn't used here. Signature kept compat
+    // with the CrmAdapter interface so the GHL caller can pass through.
     // Get meetings associated with a contact
     try {
       const assocData = await this.apiFetch<{ results: any[] }>(

@@ -90,7 +90,13 @@ export interface CrmAdapter {
   bookAppointment(payload: BookAppointmentPayload): Promise<any>
   getAppointment(eventId: string): Promise<any>
   updateAppointment(eventId: string, payload: any): Promise<any>
-  getCalendarEvents(contactId: string): Promise<any>
+  /**
+   * List upcoming calendar events for a contact. The GHL adapter requires
+   * a calendarId (per LeadConnector's /calendars/events spec); others
+   * ignore it. Optional in the interface so the contract stays
+   * back-compat with callers that don't yet pass it through.
+   */
+  getCalendarEvents(contactId: string, calendarId?: string): Promise<any>
   createAppointmentNote(appointmentId: string, body: string): Promise<any>
   updateAppointmentNote(appointmentId: string, noteId: string, body: string): Promise<any>
 

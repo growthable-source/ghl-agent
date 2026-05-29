@@ -278,8 +278,8 @@ export class WidgetAdapter implements CrmAdapter {
     if (!this.inner) throw new Error('No CRM connected')
     return this.inner.updateAppointment(eventId, payload)
   }
-  async getCalendarEvents(contactId: string): Promise<any> {
-    return this.inner?.getCalendarEvents(contactId) ?? { events: [] }
+  async getCalendarEvents(contactId: string, calendarId?: string): Promise<any> {
+    return this.inner?.getCalendarEvents(contactId, calendarId) ?? { events: [] }
   }
   async createAppointmentNote(appointmentId: string, body: string): Promise<any> {
     if (!this.inner) return { success: false, note: 'No CRM — note skipped' }
