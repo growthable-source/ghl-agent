@@ -33,6 +33,7 @@ import type { FlowNode, FlowResponse } from '@/lib/agent/flow/types'
 import { AgentFlowSidePanel } from './flow/AgentFlowSidePanel'
 import type { EditorHandle } from './flow/editors/types'
 import { ToolNodeEditor } from './flow/editors/ToolNodeEditor'
+import { RoutingRuleEditor } from './flow/editors/RoutingRuleEditor'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -459,7 +460,17 @@ function renderEditorFor(
         />
       )
     case 'routingRule':
-      return <NotImplementedStub label={`Routing rule editor for ${sourceId}`} />
+      return (
+        <RoutingRuleEditor
+          ref={ctx.editorRef}
+          workspaceId={ctx.workspaceId}
+          agentId={ctx.agentId}
+          routingRuleId={sourceId}
+          onSaved={ctx.onSaved}
+          onDirtyChange={ctx.onDirtyChange}
+          onSavingChange={ctx.onSavingChange}
+        />
+      )
     case 'stopCondition':
       return <NotImplementedStub label={`Stop condition editor for ${sourceId}`} />
     case 'crmTrigger':
