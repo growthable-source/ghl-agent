@@ -2,12 +2,12 @@
 
 /**
  * AgentFlowCanvas — the client-side React Flow renderer for the visual
- * workflow canvas (Phase Adv-1 → Adv-2).
+ * workflow canvas (Phase Adv-1 → Adv-3).
  *
  * Fetches `GET /api/workspaces/{wsId}/agents/{agentId}/flow` and mounts
  * a React Flow viewport with our custom node types. The toolbar carries
- * a Reset-layout button (calls the sibling POST endpoint) and a node /
- * edge count summary.
+ * a Reset-layout button (opens a confirm modal that calls the sibling
+ * POST endpoint) and a node / edge count summary.
  *
  * Phase 3 — drag-to-persist:
  *   • onNodeDragStop captures the new position into a pending Map
@@ -45,6 +45,7 @@ export function AgentFlowCanvas({
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [error, setError] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [layoutSaveStatus, setLayoutSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const pendingPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map())
@@ -133,8 +134,7 @@ export function AgentFlowCanvas({
     }
   }, [workspaceId, agentId, flushLayoutPatch])
 
-  async function reset() {
-    if (!confirm('Reset all positions to auto-layout? This can\'t be undone.')) return
+  async function confirmReset() {
     setResetting(true)
     try {
       await fetch(
@@ -148,6 +148,7 @@ export function AgentFlowCanvas({
         saveTimerRef.current = null
       }
       await load()
+      setResetDialogOpen(false)
     } finally {
       setResetting(false)
     }
@@ -176,7 +177,7 @@ export function AgentFlowCanvas({
       >
         <button
           type="button"
-          onClick={reset}
+          onClick={() => setResetDialogOpen(true)}
           disabled={resetting}
           className="text-xs font-medium px-2.5 py-1 rounded border"
           style={{
@@ -215,6 +216,83 @@ export function AgentFlowCanvas({
           <MiniMap position="bottom-left" zoomable pannable />
         </ReactFlow>
       </div>
+
+      {resetDialogOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-layout-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: 16,
+          }}
+          onClick={() => { if (!resetting) setResetDialogOpen(false) }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg, #fff)',
+              border: '1px solid var(--border, #e5e7eb)',
+              borderRadius: 8,
+              padding: 20,
+              width: '100%',
+              maxWidth: 440,
+              boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+            }}
+          >
+            <h3
+              id="reset-layout-title"
+              style={{ fontSize: 16, fontWeight: 600, margin: 0, marginBottom: 12 }}
+            >
+              Reset layout?
+            </h3>
+            <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: 'var(--text-secondary, #4b5563)' }}>
+              Auto-layout will reposition every node from scratch. Any manual positions you&rsquo;ve dragged will be lost. This can&rsquo;t be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={() => setResetDialogOpen(false)}
+                disabled={resetting}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  border: '1px solid var(--border, #e5e7eb)',
+                  background: 'var(--bg, #fff)',
+                  color: 'var(--fg, #111827)',
+                  borderRadius: 6,
+                  cursor: resetting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { void confirmReset() }}
+                disabled={resetting}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  background: 'var(--accent-red, #dc2626)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: resetting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {resetting ? 'Resetting…' : 'Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
