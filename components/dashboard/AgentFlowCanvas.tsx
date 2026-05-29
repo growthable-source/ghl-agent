@@ -29,6 +29,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { nodeTypes } from './flow/node-types'
+import { edgeTypes } from './flow/edge-types'
 import type { FlowNode, FlowResponse } from '@/lib/agent/flow/types'
 import { AgentFlowSidePanel } from './flow/AgentFlowSidePanel'
 import type { EditorHandle } from './flow/editors/types'
@@ -154,7 +155,10 @@ export function AgentFlowCanvas({
         id: e.id,
         source: e.source,
         target: e.target,
-        type: 'smoothstep',
+        // Edges with a label go through our custom `labeled` edge so we
+        // can truncate long text with a hover tooltip. Plain edges keep
+        // the default smoothstep renderer.
+        type: e.label ? 'labeled' : 'smoothstep',
         label: e.label,
         style: edgeStyleFor(e.type),
         animated: e.type === 'gated',
@@ -267,6 +271,7 @@ export function AgentFlowCanvas({
           onNodeDragStop={handleNodeDragStop}
           onNodeClick={handleNodeClick}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
