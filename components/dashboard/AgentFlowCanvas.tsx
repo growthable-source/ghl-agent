@@ -37,6 +37,7 @@ import { RoutingRuleEditor } from './flow/editors/RoutingRuleEditor'
 import { StopConditionEditor } from './flow/editors/StopConditionEditor'
 import { CrmTriggerEditor } from './flow/editors/CrmTriggerEditor'
 import { ChannelDeploymentEditor } from './flow/editors/ChannelDeploymentEditor'
+import { WorkingHoursEditor } from './flow/editors/WorkingHoursEditor'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -511,7 +512,16 @@ function renderEditorFor(
         />
       )
     case 'workingHours':
-      return <NotImplementedStub label="Working hours editor" />
+      return (
+        <WorkingHoursEditor
+          ref={ctx.editorRef}
+          workspaceId={ctx.workspaceId}
+          agentId={ctx.agentId}
+          onSaved={ctx.onSaved}
+          onDirtyChange={ctx.onDirtyChange}
+          onSavingChange={ctx.onSavingChange}
+        />
+      )
     case 'followUp':
       return <NotImplementedStub label={`Follow-up editor for ${sourceId}`} />
     default:
