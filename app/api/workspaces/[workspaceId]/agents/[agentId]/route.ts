@@ -131,6 +131,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ? body.businessContext.trim() || null
           : null,
       }),
+      // viewMode toggles the entire agent shell between the legacy tabbed
+      // IA ('simple') and the visual workflow canvas ('advanced'). Only
+      // accept the two known values — anything else is ignored rather than
+      // erroring so older clients can keep PATCHing other fields safely.
+      ...(typeof body.viewMode === 'string' && (body.viewMode === 'simple' || body.viewMode === 'advanced') && {
+        viewMode: body.viewMode,
+      }),
   })
 
   // Validate every referenced CRM resource immediately so the UI can show
