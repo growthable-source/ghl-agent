@@ -174,8 +174,11 @@ async function dispatchSlack(
 }
 
 /**
- * Email dispatch via Resend (https://resend.com).
- * Requires env: RESEND_API_KEY and NOTIFICATION_FROM_EMAIL (verified domain).
+ * Email dispatch via the shared branded wrapper (lib/email-render.ts +
+ * lib/email-send.ts). The severity strings we accept here match the
+ * EmailSeverity enum on the render side ('error' | 'warning' | other →
+ * info), so a notification flagged 'error' renders with the red top
+ * bar + "Attention required" badge automatically.
  */
 async function dispatchEmail(
   config: { email?: string },
@@ -184,80 +187,29 @@ async function dispatchEmail(
   const to = config.email
   if (!to) return
 
-  const apiKey = process.env.RESEND_API_KEY
-  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Voxility <notifications@voxility.app>'
+  const { renderBrandedEmail, paragraphs } = await import('@/lib/email-render')
+  const { sendEmail } = await import('@/lib/email-send')
 
-  if (!apiKey) {
-    console.warn('[Notify] RESEND_API_KEY not set — email to', to, 'skipped:', params.title)
-    return
-  }
+  const severity =
+    params.severity === 'error' ? 'error'
+    : params.severity === 'warning' ? 'warning'
+    : 'info'
 
-  const severityBadge = params.severity === 'error'
-    ? '<span style="display:inline-block;padding:2px 8px;background:#fee2e2;color:#b91c1c;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.5px;">ERROR</span>'
-    : params.severity === 'warning'
-    ? '<span style="display:inline-block;padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:0.5px;">WARNING</span>'
-    : ''
-  const accent = params.severity === 'error' ? '#ef4444'
-    : params.severity === 'warning' ? '#f59e0b'
-    : '#fa4d2e'
-
-  const html = `<!DOCTYPE html>
-<html>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" style="max-width:560px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-          <tr>
-            <td style="padding:24px 28px;border-top:4px solid ${accent};">
-              ${severityBadge}
-              <h1 style="margin:${severityBadge ? '12px' : '0'} 0 8px;font-size:20px;color:#111827;line-height:1.3;font-weight:600;">${escapeHtml(params.title)}</h1>
-              ${params.body ? `<p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.6;">${escapeHtml(params.body)}</p>` : ''}
-              ${params.link ? `<a href="${escapeAttr(params.link)}" style="display:inline-block;padding:10px 18px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Open in Voxility</a>` : ''}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:16px 28px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;">
-              Sent by Voxility · <a href="${process.env.APP_URL || ''}/dashboard" style="color:#9ca3af;">Manage notifications</a>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
-
-  const text = `${params.title}\n\n${params.body || ''}${params.link ? '\n\nOpen: ' + params.link : ''}\n\n— Voxility`
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: params.title,
-      html,
-      text,
-    }),
+  const { html, text } = renderBrandedEmail({
+    title: params.title,
+    severity,
+    bodyHtml: params.body ? paragraphs([params.body]) : '',
+    cta: params.link ? { label: 'Open in Voxility', url: params.link } : undefined,
+    manageNotificationsUrl: `${process.env.APP_URL || ''}/dashboard`,
   })
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`Resend ${res.status}: ${body.slice(0, 200)}`)
-  }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, ch => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[ch]!))
-}
-function escapeAttr(s: string): string {
-  return escapeHtml(s)
+  await sendEmail({
+    to,
+    subject: params.title,
+    html,
+    text,
+    context: 'Notify',
+  })
 }
 
 /**

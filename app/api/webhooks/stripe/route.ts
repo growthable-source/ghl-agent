@@ -3,6 +3,7 @@ import { stripe } from '@/lib/stripe'
 import { db } from '@/lib/db'
 import { getPlanDefaults, type PlanId } from '@/lib/plans'
 import { resetUsageCounters } from '@/lib/usage'
+import { sendTrialEndingEmail, sendPaymentFailedEmail } from '@/lib/billing-alert-email'
 
 /**
  * POST /api/webhooks/stripe
@@ -133,7 +134,23 @@ export async function POST(req: NextRequest) {
         if (!workspace) break
 
         console.warn(`[Stripe] Payment failed for workspace ${workspace.id} — invoice ${invoice.id}`)
-        // Could send email notification here or set a "payment_failed" flag
+
+        // Branded error email to every owner. Failures here are
+        // logged but never thrown — the webhook must 200 back to
+        // Stripe regardless.
+        try {
+          await sendPaymentFailedEmail({
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+            billingUrl: `${process.env.APP_URL || ''}/dashboard/${workspace.id}/settings/billing`,
+            amountDue: typeof invoice.amount_due === 'number' ? invoice.amount_due : null,
+            currency: typeof invoice.currency === 'string' ? invoice.currency : null,
+            attemptCount: typeof invoice.attempt_count === 'number' ? invoice.attempt_count : null,
+            hostedInvoiceUrl: typeof invoice.hosted_invoice_url === 'string' ? invoice.hosted_invoice_url : null,
+          })
+        } catch (err: any) {
+          console.warn('[Stripe] payment-failed email dispatch threw:', err?.message)
+        }
         break
       }
 
@@ -171,9 +188,29 @@ export async function POST(req: NextRequest) {
       case 'customer.subscription.trial_will_end': {
         const subscription = event.data.object as any
         const { workspaceId } = subscription.metadata || {}
-        if (workspaceId) {
-          console.log(`[Stripe] Trial ending soon for workspace ${workspaceId}`)
-          // Could trigger email notification here
+        if (!workspaceId) break
+
+        const workspace = await db.workspace.findUnique({ where: { id: workspaceId } })
+        if (!workspace) break
+
+        console.log(`[Stripe] Trial ending soon for workspace ${workspaceId}`)
+
+        // Stripe sends `trial_end` as a unix timestamp on the subscription
+        // (seconds since epoch). Fall back to the workspace's own
+        // trialEndsAt when the subscription field is missing.
+        const trialEndsAt = typeof subscription.trial_end === 'number'
+          ? new Date(subscription.trial_end * 1000)
+          : workspace.trialEndsAt ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+
+        try {
+          await sendTrialEndingEmail({
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+            billingUrl: `${process.env.APP_URL || ''}/dashboard/${workspace.id}/settings/billing`,
+            trialEndsAt,
+          })
+        } catch (err: any) {
+          console.warn('[Stripe] trial-ending email dispatch threw:', err?.message)
         }
         break
       }
