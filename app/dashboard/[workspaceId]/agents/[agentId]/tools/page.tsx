@@ -31,6 +31,19 @@ export default function ReflexesPage() {
   const [calendarId, setCalendarId] = useState('')
   const [calendars, setCalendars] = useState<Array<{ id: string; name: string }>>([])
   const [loadingCalendars, setLoadingCalendars] = useState(false)
+  /**
+   * Surface which Location the calendar list came from so operators see
+   * "calendars from LeadConnector sub-account abc123" rather than just
+   * "0 calendars" with no clue why. Populated by the /calendars endpoint
+   * response — also carries error strings when LC isn't connected on this
+   * Location at all.
+   */
+  const [calendarSource, setCalendarSource] = useState<{
+    locationId: string | null
+    crmProvider: string | null
+    errorKind: 'not_ghl' | 'no_token' | 'other' | null
+    errorMessage: string | null
+  }>({ locationId: null, crmProvider: null, errorKind: null, errorMessage: null })
   // Per-field broken-reference badges. We render an inline warning next
   // to a configured calendar (or workflow input, when present) when the
   // hourly health check flagged the resource as gone from the CRM.
@@ -54,9 +67,23 @@ export default function ReflexesPage() {
       .finally(() => setLoading(false))
 
     setLoadingCalendars(true)
-    fetch(`/api/workspaces/${workspaceId}/calendars`)
+    // Pass agentId so the API resolves the agent's actual location
+    // (not just the first workspace location, which on dual-CRM
+    // workspaces could be the native placeholder with no calendars).
+    fetch(`/api/workspaces/${workspaceId}/calendars?agentId=${agentId}`)
       .then(r => r.json())
-      .then(({ calendars }) => setCalendars(calendars ?? []))
+      .then(data => {
+        setCalendars(data.calendars ?? [])
+        setCalendarSource({
+          locationId: data.locationId ?? null,
+          crmProvider: data.crmProvider ?? null,
+          errorKind: data.error === 'not_ghl' ? 'not_ghl'
+            : data.error === 'no_token' ? 'no_token'
+            : data.error ? 'other'
+            : null,
+          errorMessage: data.message ?? (typeof data.error === 'string' ? data.error : null),
+        })
+      })
       .catch(() => {})
       .finally(() => setLoadingCalendars(false))
 
@@ -121,90 +148,192 @@ export default function ReflexesPage() {
 
   return (
     <div className="p-8 max-w-2xl space-y-6">
-      {/* Calendar binding — hoisted to the TOP of /tools so operators
-          can SEE which calendar is wired up + change it without hunting.
-          Previously this UI lived inside the Calendar reflex group, two
-          screens down. Ryan's complaint: "no way of seeing which
-          calendar is connected, or how to change it at the agent level."
-          Now it's the first card on the page. */}
+      {/* Bookings — top-of-page card consolidating: which CRM location
+          this agent is bound to (visibility into the LeadConnector
+          sub-account), which calendar inside that location is wired up,
+          and clear error messages when neither is set. Ryan's feedback:
+          "the integration to leadconnector at the agent level keeps
+          pushing me back to workspace level" / "I should always see
+          which location the LeadConnector is connected to". */}
       <section style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
-          Calendar binding
+          Bookings
           <span style={{ fontSize: 12, opacity: 0.6, fontWeight: 400, marginLeft: 8 }}>
-            — which calendar this agent books into
+            — where this agent looks up availability and creates appointments
           </span>
         </h2>
         <div
-          className="rounded-xl border p-4"
+          className="rounded-xl border p-4 space-y-3"
           style={{
             borderColor: calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)',
             background: calendarId ? 'var(--accent-emerald-bg)' : 'var(--accent-amber-bg)',
           }}
         >
-          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                {calendarId ? 'Connected' : 'Not connected'}
+          {/* Row 1: which CRM location this agent is bound to */}
+          <div
+            className="rounded-lg border p-3"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          >
+            <p
+              className="text-[11px] font-semibold uppercase tracking-wider mb-1"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              CRM location for this agent
+            </p>
+            {calendarSource.crmProvider === 'ghl' && (
+              <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                LeadConnector{' '}
+                <code className="text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                  {calendarSource.locationId}
+                </code>
               </p>
-              <span
-                className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                style={{
-                  background: calendarId ? 'var(--accent-emerald-bg)' : 'var(--accent-amber-bg)',
-                  color: calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)',
-                  border: `1px solid ${calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)'}`,
-                }}
-              >
-                {calendarId ? (pickedCalendar?.name ?? 'Unknown') : 'No calendar'}
-              </span>
-            </div>
-            {calendarId && (
-              <button
-                type="button"
-                onClick={() => saveCalendarId('')}
-                className="text-[11px] font-medium px-2 py-1 rounded border"
-                style={{
-                  borderColor: 'var(--border)',
-                  background: 'var(--surface)',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                Disconnect
-              </button>
+            )}
+            {calendarSource.crmProvider && calendarSource.crmProvider !== 'ghl' && (
+              <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                <strong>{calendarSource.crmProvider}</strong> — not LeadConnector
+              </p>
+            )}
+            {!calendarSource.crmProvider && (
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Resolving…</p>
             )}
           </div>
-          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-            {calendarId
-              ? 'Pick a different calendar to rebind. Booking reflexes stay on while a calendar is connected.'
-              : 'Pick a calendar to enable booking. Without one, get_available_slots / book_appointment will be blocked at runtime.'}
-          </p>
-          {loadingCalendars ? (
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading calendars…</p>
-          ) : calendars.length === 0 ? (
-            <p className="text-xs" style={{ color: 'var(--accent-amber)' }}>
-              No calendars found in this location. Create one in your CRM, then come back.
-            </p>
-          ) : (
-            <select
-              value={calendarId}
-              onChange={e => saveCalendarId(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-              style={{
-                background: 'var(--input-bg)',
-                color: 'var(--input-text)',
-                border: '1px solid var(--input-border)',
-              }}
+
+          {/* Row 2: status + calendar picker, or error state */}
+          {calendarSource.errorKind === 'not_ghl' && (
+            <div
+              className="rounded-lg border p-3"
+              style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
             >
-              <option value="">Select a calendar…</option>
-              {calendars.map(cal => (
-                <option key={cal.id} value={cal.id}>{cal.name}</option>
-              ))}
-            </select>
+              <p className="text-sm font-medium mb-1" style={{ color: 'var(--accent-amber)' }}>
+                LeadConnector isn&apos;t the CRM for this agent
+              </p>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
+                {calendarSource.errorMessage}
+              </p>
+              <a
+                href={`/dashboard/${workspaceId}/integrations`}
+                className="text-xs font-medium underline"
+                style={{ color: 'var(--accent-primary)' }}
+              >
+                Connect LeadConnector at the workspace level →
+              </a>
+            </div>
           )}
-          {calendarId && (
-            <p className="text-[11px] mt-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
-              ID: {calendarId}
-            </p>
+
+          {calendarSource.errorKind === 'no_token' && (
+            <div
+              className="rounded-lg border p-3"
+              style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
+            >
+              <p className="text-sm font-medium mb-1" style={{ color: 'var(--accent-red)' }}>
+                LeadConnector connection expired
+              </p>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
+                {calendarSource.errorMessage}
+              </p>
+              <a
+                href={`/dashboard/${workspaceId}/integrations`}
+                className="text-xs font-medium underline"
+                style={{ color: 'var(--accent-primary)' }}
+              >
+                Reconnect from Integrations →
+              </a>
+            </div>
           )}
+
+          {calendarSource.errorKind === 'other' && (
+            <div
+              className="rounded-lg border p-3"
+              style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
+            >
+              <p className="text-sm font-medium mb-1" style={{ color: 'var(--accent-red)' }}>
+                Couldn&apos;t load calendars
+              </p>
+              <p className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                {calendarSource.errorMessage}
+              </p>
+            </div>
+          )}
+
+          {!calendarSource.errorKind && (
+            <div
+              className="rounded-lg border p-3"
+              style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            >
+              <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    Connected calendar
+                  </p>
+                  <span
+                    className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                    style={{
+                      background: calendarId ? 'var(--accent-emerald-bg)' : 'var(--accent-amber-bg)',
+                      color: calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)',
+                      border: `1px solid ${calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)'}`,
+                    }}
+                  >
+                    {calendarId ? (pickedCalendar?.name ?? 'Unknown') : 'No calendar'}
+                  </span>
+                </div>
+                {calendarId && (
+                  <button
+                    type="button"
+                    onClick={() => saveCalendarId('')}
+                    className="text-[11px] font-medium px-2 py-1 rounded border"
+                    style={{
+                      borderColor: 'var(--border)',
+                      background: 'var(--surface)',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                )}
+              </div>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+                {calendarId
+                  ? 'Pick a different calendar to rebind. Booking reflexes stay on while a calendar is connected.'
+                  : 'Pick a calendar to enable booking. Without one, get_available_slots / book_appointment will be blocked at runtime.'}
+              </p>
+              {loadingCalendars ? (
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading calendars…</p>
+              ) : calendars.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--accent-amber)' }}>
+                  No calendars found in this LeadConnector sub-account. Create one in LeadConnector, then come back.
+                </p>
+              ) : (
+                <select
+                  value={calendarId}
+                  onChange={e => saveCalendarId(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{
+                    background: 'var(--input-bg)',
+                    color: 'var(--input-text)',
+                    border: '1px solid var(--input-border)',
+                  }}
+                >
+                  <option value="">Select a calendar…</option>
+                  {calendars.map(cal => (
+                    <option key={cal.id} value={cal.id}>{cal.name}</option>
+                  ))}
+                </select>
+              )}
+              {calendarId && (
+                <p className="text-[11px] mt-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                  Calendar ID: {calendarId}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Row 3: tiny status line showing which booking tools are on */}
+          <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+            Booking tools:{' '}
+            {['get_available_slots', 'book_appointment', 'cancel_appointment', 'reschedule_appointment', 'get_calendar_events', 'create_appointment_note']
+              .filter(t => enabledTools.includes(t))
+              .join(', ') || '(none enabled)'}
+          </p>
         </div>
       </section>
 
