@@ -14,6 +14,33 @@ import { executeSandboxTool } from './sandbox'
 import type { DeferredSendCapture, HandoverCapture } from './types'
 
 /**
+ * Detect when the model has tried to call a tool by emitting XML markup
+ * INSIDE a message body instead of using the Anthropic tool-use channel.
+ * Production WhatsApp smoke test on 2026-05-29 caught this: the model
+ * sent `<invoke name="send_reply"><parameter name="message">Perfect!…`
+ * verbatim as the message text. The agent dutifully forwarded the raw
+ * XML to the contact.
+ *
+ * Returns a short tag name describing the leakage when detected, else
+ * null. The caller refuses the send + returns a structured retry hint
+ * to the model.
+ *
+ * Kept conservative — only matches the unambiguous Anthropic-style
+ * tool-call wrappers. A contact whose name actually contains `<invoke>`
+ * isn't going to happen in practice.
+ */
+function detectXmlToolMarkup(s: string | null | undefined): string | null {
+  if (!s || typeof s !== 'string') return null
+  if (/<invoke\b/i.test(s)) return '<invoke>'
+  if (/<\/invoke>/i.test(s)) return '</invoke>'
+  if (/<parameter\s+name=/i.test(s)) return '<parameter>'
+  if (/<function_calls\b/i.test(s)) return '<function_calls>'
+  if (/<invoke\b/i.test(s)) return '<invoke>'
+  if (/<parameter\b/i.test(s)) return '<parameter>'
+  return null
+}
+
+/**
  * Surface a tool failure to operators in real time.
  *
  * Three channels:
@@ -410,6 +437,21 @@ export async function executeTool(
       case 'send_reply': {
         const replyChannel = (channel || 'SMS') as import('@/types').MessageChannelType
         const msg = input.message as string
+        const xmlCheck = detectXmlToolMarkup(msg)
+        if (xmlCheck) {
+          // Production WhatsApp smoke test (2026-05-29) showed the model
+          // emitting `<invoke name="send_reply"><parameter name="message">…
+          // verbatim into the message body and the agent dutifully sent the
+          // raw XML to the contact. The Anthropic tool-use channel is the
+          // ONLY legitimate way to send; raw XML in a message arg is the
+          // model getting confused. Refuse + return a structured retry
+          // hint so the model rewrites in plain text.
+          return JSON.stringify({
+            success: false,
+            error: `Refused to send message: it contained ${xmlCheck} tool-call markup. The model must call send_reply via the Anthropic tool-use channel, not embed XML in the message body.`,
+            hint: 'Rewrite your reply as plain conversational text — no <invoke> / <parameter> / <function_calls> blocks — and call send_reply again with just the natural-language message.',
+          })
+        }
         // Deferred send path — capture the intended message, don't deliver.
         // Used when the agent is configured with requireApproval: the caller
         // (webhook handler) will check approval rules and decide whether to
@@ -438,6 +480,14 @@ export async function executeTool(
       }
       case 'send_sms': {
         const msg = input.message as string
+        const xmlCheck = detectXmlToolMarkup(msg)
+        if (xmlCheck) {
+          return JSON.stringify({
+            success: false,
+            error: `Refused to send SMS: contained ${xmlCheck} tool-call markup.`,
+            hint: 'Rewrite as plain conversational text and call send_sms again.',
+          })
+        }
         if (deferredSend) {
           deferredSend.captured = {
             channel: 'SMS',
@@ -884,11 +934,22 @@ export async function executeTool(
         return JSON.stringify({ success: true, contact })
       }
       case 'send_email': {
+        const emailBody = input.body as string
+        const subj = input.subject as string
+        const xmlInBody = detectXmlToolMarkup(emailBody)
+        const xmlInSubj = detectXmlToolMarkup(subj)
+        if (xmlInBody || xmlInSubj) {
+          return JSON.stringify({
+            success: false,
+            error: `Refused to send email: ${xmlInBody || xmlInSubj} tool-call markup detected in ${xmlInBody ? 'body' : 'subject'}.`,
+            hint: 'Rewrite the email as plain text and call send_email again.',
+          })
+        }
         const result = await crm.sendMessage({
           type: 'Email',
           contactId: input.contactId as string,
-          message: input.body as string,
-          subject: input.subject as string,
+          message: emailBody,
+          subject: subj,
         })
         return JSON.stringify({ success: true, ...result })
       }

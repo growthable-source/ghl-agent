@@ -114,8 +114,100 @@ export default function ReflexesPage() {
 
   const calendarReflexesOn = ['get_available_slots', 'book_appointment'].some(t => enabledTools.includes(t))
 
+  // Lookup helper for the prominent top-of-page calendar binding card.
+  // The picked calendar's friendly name is more useful than the raw id —
+  // operators recognise "Sales calendar" before they recognise "cal_a1b2".
+  const pickedCalendar = calendarId ? calendars.find(c => c.id === calendarId) ?? null : null
+
   return (
     <div className="p-8 max-w-2xl space-y-6">
+      {/* Calendar binding — hoisted to the TOP of /tools so operators
+          can SEE which calendar is wired up + change it without hunting.
+          Previously this UI lived inside the Calendar reflex group, two
+          screens down. Ryan's complaint: "no way of seeing which
+          calendar is connected, or how to change it at the agent level."
+          Now it's the first card on the page. */}
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
+          Calendar binding
+          <span style={{ fontSize: 12, opacity: 0.6, fontWeight: 400, marginLeft: 8 }}>
+            — which calendar this agent books into
+          </span>
+        </h2>
+        <div
+          className="rounded-xl border p-4"
+          style={{
+            borderColor: calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)',
+            background: calendarId ? 'var(--accent-emerald-bg)' : 'var(--accent-amber-bg)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                {calendarId ? 'Connected' : 'Not connected'}
+              </p>
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                style={{
+                  background: calendarId ? 'var(--accent-emerald-bg)' : 'var(--accent-amber-bg)',
+                  color: calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)',
+                  border: `1px solid ${calendarId ? 'var(--accent-emerald)' : 'var(--accent-amber)'}`,
+                }}
+              >
+                {calendarId ? (pickedCalendar?.name ?? 'Unknown') : 'No calendar'}
+              </span>
+            </div>
+            {calendarId && (
+              <button
+                type="button"
+                onClick={() => saveCalendarId('')}
+                className="text-[11px] font-medium px-2 py-1 rounded border"
+                style={{
+                  borderColor: 'var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+            {calendarId
+              ? 'Pick a different calendar to rebind. Booking reflexes stay on while a calendar is connected.'
+              : 'Pick a calendar to enable booking. Without one, get_available_slots / book_appointment will be blocked at runtime.'}
+          </p>
+          {loadingCalendars ? (
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading calendars…</p>
+          ) : calendars.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--accent-amber)' }}>
+              No calendars found in this location. Create one in your CRM, then come back.
+            </p>
+          ) : (
+            <select
+              value={calendarId}
+              onChange={e => saveCalendarId(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+              style={{
+                background: 'var(--input-bg)',
+                color: 'var(--input-text)',
+                border: '1px solid var(--input-border)',
+              }}
+            >
+              <option value="">Select a calendar…</option>
+              {calendars.map(cal => (
+                <option key={cal.id} value={cal.id}>{cal.name}</option>
+              ))}
+            </select>
+          )}
+          {calendarId && (
+            <p className="text-[11px] mt-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+              ID: {calendarId}
+            </p>
+          )}
+        </div>
+      </section>
+
       {/* Per-tool rules editor — autonomy mode + per-tool useWhen + onFailure.
           Renders above the legacy Reflex on/off toggles so the new
           per-tool surface is the first thing operators see. The toggles
