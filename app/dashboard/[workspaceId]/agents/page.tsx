@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import NewBadge from '@/components/NewBadge'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -10,6 +11,8 @@ interface AgentData {
   id: string
   name: string
   isActive: boolean
+  /** Optional folder grouping — null when the agent is unfiled. */
+  folderId: string | null
   createdAt: string
   updatedAt: string
   enabledTools: string[]
@@ -26,6 +29,18 @@ interface AgentData {
     conversationStates: number
   }
 }
+
+interface AgentFolderData {
+  id: string
+  name: string
+  color: string | null
+  order: number
+}
+
+// Sentinel "folder id" used by the filter pill bar to mean "agents that
+// have no folder assigned". Real folder IDs are cuids and never collide
+// with this string.
+const UNFILED = '__unfiled__'
 
 function formatNextActionTime(iso: string | null): string | null {
   if (!iso) return null
@@ -132,6 +147,22 @@ export default function AgentsPage() {
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [actionFlash, setActionFlash] = useState<{ agentId: string; kind: 'ok' | 'err'; msg: string } | null>(null)
 
+  // ─── Folders ──────────────────────────────────────────────────────────
+  // A workspace's agents grow past the point where a flat grid scales
+  // (sales / support / per-client whitelabel buckets). Folders are the
+  // operator's organizing tool. Selecting a pill filters the grid;
+  // selecting "All" (null) shows everything regardless of folder.
+  const [folders, setFolders] = useState<AgentFolderData[]>([])
+  const [foldersAvailable, setFoldersAvailable] = useState(true) // false if schema not yet migrated
+  const [activeFolder, setActiveFolder] = useState<string | null>(null)
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
+  const [editingFolderName, setEditingFolderName] = useState('')
+  // When the per-agent menu opens the "Move to…" submenu we stash the
+  // agentId here so the submenu knows which agent to PATCH.
+  const [moveMenuAgentId, setMoveMenuAgentId] = useState<string | null>(null)
+
   const fetchAgents = useCallback(async () => {
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents`)
@@ -145,7 +176,107 @@ export default function AgentsPage() {
     }
   }, [workspaceId])
 
-  useEffect(() => { fetchAgents() }, [fetchAgents])
+  const fetchFolders = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agent-folders`)
+      const data = await res.json()
+      setFolders(data.folders || [])
+      // notMigrated=true means the AgentFolder table doesn't exist yet
+      // (fresh tenant on a build that ran before the migration). Hide
+      // the folders UI entirely rather than letting every action fail.
+      if (data.notMigrated) setFoldersAvailable(false)
+    } catch (err) {
+      console.error('Failed to fetch agent folders:', err)
+      // Network failure — don't hide the UI; user can retry.
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    fetchAgents()
+    fetchFolders()
+  }, [fetchAgents, fetchFolders])
+
+  // ─── Folder CRUD + agent-move ─────────────────────────────────────────
+
+  async function createFolder() {
+    const name = newFolderName.trim()
+    if (!name) { setNewFolderOpen(false); return }
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agent-folders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, order: folders.length }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Create failed (${res.status})`)
+      setFolders(prev => [...prev, data.folder])
+      setNewFolderName('')
+      setNewFolderOpen(false)
+    } catch (err: any) {
+      console.error('createFolder:', err)
+    }
+  }
+
+  async function renameFolder(folderId: string) {
+    const name = editingFolderName.trim()
+    if (!name) { setEditingFolderId(null); return }
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agent-folders/${folderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Rename failed (${res.status})`)
+      setFolders(prev => prev.map(f => (f.id === folderId ? data.folder : f)))
+    } catch (err: any) {
+      console.error('renameFolder:', err)
+    } finally {
+      setEditingFolderId(null)
+    }
+  }
+
+  async function deleteFolder(folderId: string) {
+    // No confirm modal — folder delete is non-destructive (agents survive,
+    // they just drop back to "Unfiled"). Matches WidgetFolder semantics.
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agent-folders/${folderId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Delete failed (${res.status})`)
+      }
+      setFolders(prev => prev.filter(f => f.id !== folderId))
+      // Local-only fix-up: any agent whose folderId pointed at the
+      // deleted folder is now unfiled. The DB SetNull does this server-
+      // side too, but updating local state avoids a refetch.
+      setAgents(prev => prev.map(a => (a.folderId === folderId ? { ...a, folderId: null } : a)))
+      if (activeFolder === folderId) setActiveFolder(null)
+    } catch (err: any) {
+      console.error('deleteFolder:', err)
+    }
+  }
+
+  async function moveAgentToFolder(agentId: string, folderId: string | null) {
+    setMenuOpen(null)
+    setMoveMenuAgentId(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderId }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Move failed (${res.status})`)
+      }
+      setAgents(prev => prev.map(a => (a.id === agentId ? { ...a, folderId } : a)))
+    } catch (err: any) {
+      console.error('moveAgentToFolder:', err)
+      setActionFlash({ agentId, kind: 'err', msg: err.message ?? 'Move failed' })
+    }
+  }
 
   // Toggle agent active state
   async function toggleActive(agentId: string, currentlyActive: boolean) {
@@ -231,6 +362,27 @@ export default function AgentsPage() {
       setActionBusy(null)
     }
   }
+
+  // ─── Filtered view ───────────────────────────────────────────────────
+  // Apply the active-folder pill. null = show all; UNFILED = only agents
+  // with folderId === null; otherwise filter by that folderId.
+  const visibleAgents = useMemo(() => {
+    if (activeFolder === null) return agents
+    if (activeFolder === UNFILED) return agents.filter(a => !a.folderId)
+    return agents.filter(a => a.folderId === activeFolder)
+  }, [agents, activeFolder])
+
+  // Per-folder agent counts for the pill badges. Computed off the full
+  // list so the count doesn't change when a pill is active.
+  const counts = useMemo(() => {
+    const map: Record<string, number> = { __all: agents.length, [UNFILED]: 0 }
+    for (const f of folders) map[f.id] = 0
+    for (const a of agents) {
+      if (a.folderId && map[a.folderId] !== undefined) map[a.folderId]++
+      else map[UNFILED]++
+    }
+    return map
+  }, [agents, folders])
 
   // ─── Plan usage bar ────────────────────────────────────────────────────────
 
@@ -384,6 +536,137 @@ export default function AgentsPage() {
           )
         })()}
 
+        {/* ─── Folders bar ─────────────────────────────────────────────
+            Pill row: All · <folder pills> · Unfiled · + Folder. Clicking
+            a pill filters the grid below; clicking the active pill
+            again clears the filter. Per-folder pill includes inline
+            rename (double-click the label) and a delete (×) on hover.
+
+            Hidden entirely when the schema hasn't yet picked up the
+            AgentFolder table (notMigrated=true from the API), so a
+            fresh deploy doesn't show a broken UI for a few seconds.
+            Also hidden when there are zero agents to keep the empty
+            state clean — folders are an organising tool, they don't
+            need to appear before there's anything to organise. */}
+        {foldersAvailable && agents.length > 0 && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveFolder(null)}
+              className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+              style={{
+                background: activeFolder === null ? 'rgba(250,77,46,0.15)' : 'var(--surface-secondary)',
+                color: activeFolder === null ? '#fa4d2e' : 'var(--text-secondary)',
+              }}
+            >
+              All <span className="opacity-60 ml-1">{counts.__all}</span>
+            </button>
+
+            {folders.map(folder => {
+              const isActive = activeFolder === folder.id
+              const isEditing = editingFolderId === folder.id
+              return (
+                <div key={folder.id} className="relative group/folder inline-flex items-center">
+                  {isEditing ? (
+                    <input
+                      autoFocus
+                      value={editingFolderName}
+                      onChange={e => setEditingFolderName(e.target.value)}
+                      onBlur={() => renameFolder(folder.id)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') renameFolder(folder.id)
+                        if (e.key === 'Escape') setEditingFolderId(null)
+                      }}
+                      className="text-xs font-medium px-3 py-1.5 rounded-full focus:outline-none"
+                      style={{
+                        background: 'var(--input-bg)',
+                        border: '1px solid var(--input-border)',
+                        color: 'var(--input-text)',
+                        minWidth: 80,
+                      }}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setActiveFolder(isActive ? null : folder.id)}
+                      onDoubleClick={() => {
+                        setEditingFolderId(folder.id)
+                        setEditingFolderName(folder.name)
+                      }}
+                      className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+                      title="Click to filter · Double-click to rename"
+                      style={{
+                        background: isActive ? 'rgba(250,77,46,0.15)' : 'var(--surface-secondary)',
+                        color: isActive ? '#fa4d2e' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {folder.name}
+                      <span className="opacity-60 ml-1">{counts[folder.id] ?? 0}</span>
+                    </button>
+                  )}
+                  {!isEditing && (
+                    <button
+                      onClick={() => deleteFolder(folder.id)}
+                      className="ml-1 opacity-0 group-hover/folder:opacity-100 transition-opacity text-zinc-500 hover:text-red-400 text-xs"
+                      title="Delete folder (agents inside become Unfiled)"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* "Unfiled" pill only renders when there are actually some
+                unfiled agents AND at least one folder exists. With zero
+                folders, the All pill already covers everything. */}
+            {folders.length > 0 && counts[UNFILED] > 0 && (
+              <button
+                onClick={() => setActiveFolder(activeFolder === UNFILED ? null : UNFILED)}
+                className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+                style={{
+                  background: activeFolder === UNFILED ? 'rgba(250,77,46,0.15)' : 'var(--surface-secondary)',
+                  color: activeFolder === UNFILED ? '#fa4d2e' : 'var(--text-tertiary)',
+                }}
+              >
+                Unfiled <span className="opacity-60 ml-1">{counts[UNFILED]}</span>
+              </button>
+            )}
+
+            {/* + Folder — inline-prompt UX matches WidgetFolder's recent
+                redesign and avoids a modal for a single-field create. */}
+            {newFolderOpen ? (
+              <div className="inline-flex items-center gap-1">
+                <input
+                  autoFocus
+                  value={newFolderName}
+                  onChange={e => setNewFolderName(e.target.value)}
+                  onBlur={createFolder}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') createFolder()
+                    if (e.key === 'Escape') { setNewFolderOpen(false); setNewFolderName('') }
+                  }}
+                  placeholder="Folder name"
+                  className="text-xs font-medium px-3 py-1.5 rounded-full focus:outline-none"
+                  style={{
+                    background: 'var(--input-bg)',
+                    border: '1px solid var(--input-border)',
+                    color: 'var(--input-text)',
+                    minWidth: 120,
+                  }}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setNewFolderOpen(true)}
+                className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
+                style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
+              >
+                + Folder
+                <NewBadge since="2026-05-29" />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* ─── Empty State ─────────────────────────────────────────────── */}
         {agents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 px-6 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
@@ -409,8 +692,19 @@ export default function AgentsPage() {
           </div>
         ) : (
           /* ─── Agent Grid ─────────────────────────────────────────────── */
+          visibleAgents.length === 0 ? (
+            // Filter active but nothing in this folder. Soft message
+            // rather than the big "No agents yet" empty state, since
+            // the workspace clearly has agents — they're just elsewhere.
+            <div
+              className="text-sm text-center py-12 px-4 rounded-xl border border-dashed"
+              style={{ borderColor: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
+            >
+              No agents in this folder yet. Use the ⋯ menu on any agent to move it here.
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agents.map(agent => (
+            {visibleAgents.map(agent => (
               <div
                 key={agent.id}
                 className="group relative border border-zinc-800 rounded-xl bg-zinc-900/40 hover:border-zinc-700 transition-all duration-200 overflow-hidden"
@@ -627,6 +921,41 @@ export default function AgentsPage() {
                             Save as template
                             <span className="block text-[10px] text-zinc-600 mt-0.5">Reuse this agent's full config</span>
                           </button>
+                          {/* Move to folder — hidden when no folders exist
+                              and when the schema isn't migrated, since
+                              there's nowhere to move TO. */}
+                          {foldersAvailable && folders.length > 0 && (
+                            <>
+                              <button
+                                onClick={() => setMoveMenuAgentId(moveMenuAgentId === agent.id ? null : agent.id)}
+                                className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors border-t border-zinc-800 flex items-center justify-between"
+                              >
+                                <span>Move to folder…</span>
+                                <span className="text-zinc-500">›</span>
+                              </button>
+                              {moveMenuAgentId === agent.id && (
+                                <div className="bg-zinc-900/60 border-t border-zinc-800 max-h-48 overflow-y-auto">
+                                  {agent.folderId && (
+                                    <button
+                                      onClick={() => moveAgentToFolder(agent.id, null)}
+                                      className="w-full text-left px-5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800 transition-colors italic"
+                                    >
+                                      Remove from folder
+                                    </button>
+                                  )}
+                                  {folders.filter(f => f.id !== agent.folderId).map(f => (
+                                    <button
+                                      key={f.id}
+                                      onClick={() => moveAgentToFolder(agent.id, f.id)}
+                                      className="w-full text-left px-5 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-800 transition-colors"
+                                    >
+                                      {f.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
                           <button
                             onClick={() => { setMenuOpen(null); setDeleteConfirm(agent.id) }}
                             className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors border-t border-zinc-800"
@@ -678,6 +1007,7 @@ export default function AgentsPage() {
               </div>
             ))}
           </div>
+          )
         )}
       </div>
     </div>

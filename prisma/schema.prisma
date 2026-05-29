@@ -148,6 +148,7 @@ model Workspace {
   invites              WorkspaceInvite[]
   locations            Location[]            @relation("WorkspaceLocations")
   agents               Agent[]               @relation("WorkspaceAgents")
+  agentFolders         AgentFolder[]
   usageRecords         UsageRecord[]
   templates            AgentTemplate[]       @relation("WorkspaceTemplates")
   knowledgeEntries     KnowledgeEntry[]      @relation("WorkspaceKnowledge")
@@ -496,12 +497,45 @@ model Location {
   @@index([workspaceId])
 }
 
+// AgentFolder — operator-defined grouping for the workspace's agents.
+// Same shape and intent as WidgetFolder (further down): once a workspace
+// has more than a handful of agents, the flat grid stops scaling, so
+// operators bucket them ("Sales", "Support", "Test", per-client folders
+// on whitelabel installs, etc).
+//
+// Deliberately flat — no parentFolderId. The WidgetFolder precedent and
+// every operator request so far has been single-level. Nested folders
+// would force a drag-target UX that isn't worth the complexity today.
+//
+// Color is optional and stores either a hex string or a token name —
+// the agents list UI can colour the folder chip if set, otherwise it
+// falls back to the neutral surface. Same pattern as WidgetFolder.color.
+model AgentFolder {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  color       String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  agents      Agent[]
+
+  @@index([workspaceId, order])
+}
+
 model Agent {
   id           String     @id @default(cuid())
   workspaceId  String?
   workspace    Workspace? @relation("WorkspaceAgents", fields: [workspaceId], references: [id], onDelete: Cascade)
   locationId   String
   location     Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  // Optional grouping. Operators can drop agents into folders for
+  // organization once they've got more than a handful. SetNull on
+  // folder delete so agents survive a folder cleanup — operators
+  // expect this and it matches WidgetFolder's contract.
+  folderId     String?
+  folder       AgentFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
   name         String
   systemPrompt String     @db.Text
   instructions String?    @db.Text

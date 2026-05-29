@@ -81,6 +81,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.isActive !== undefined && { isActive: body.isActive }),
       ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
       ...(body.calendarId !== undefined && { calendarId: body.calendarId }),
+      // folderId is nullable. We accept null explicitly so the agents
+      // list "Move to: No folder" action works — `=== undefined` keeps
+      // unrelated PATCH calls from clobbering an existing folder
+      // assignment.
+      ...(body.folderId !== undefined && { folderId: body.folderId === null ? null : String(body.folderId) }),
       ...(body.addToWorkflowsPick !== undefined && { addToWorkflowsPick: body.addToWorkflowsPick }),
       ...(body.removeFromWorkflowsPick !== undefined && { removeFromWorkflowsPick: body.removeFromWorkflowsPick }),
       ...(body.agentPersonaName !== undefined && { agentPersonaName: body.agentPersonaName }),
