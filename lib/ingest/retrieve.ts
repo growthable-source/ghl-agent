@@ -20,6 +20,7 @@
  * is augmentation, never the only ground truth.
  */
 
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { embedTexts } from './embed'
 
@@ -175,13 +176,18 @@ ${formatted}
  * treats as a no-op.
  */
 function buildDomainFilter(opts: RetrieveOptions) {
+  // Must return a Prisma.Sql FRAGMENT (built by Prisma.sql), not an
+  // EXECUTOR like db.$queryRaw. The previous code called $queryRaw which
+  // returns a Promise — interpolating that into the outer $queryRaw
+  // template produced bogus `$3` placeholders with no matching binding,
+  // crashing every retrieve with "syntax error at or near $3".
   if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
-    return db.$queryRaw`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
+    return Prisma.sql`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
   }
   if (opts.knowledgeDomainId) {
-    return db.$queryRaw`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`
+    return Prisma.sql`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`
   }
-  return db.$queryRaw``
+  return Prisma.empty
 }
 
 /** Row shape returned by every vector top-K query — selected columns

@@ -428,11 +428,12 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   },
   {
     name: 'get_calendar_events',
-    description: 'Get upcoming calendar appointments for a contact.',
+    description: 'Get upcoming calendar appointments for a contact. Filters by contactId after the API returns results. If your agent has a calendar bound on the Bookings card, calendarId is auto-filled — otherwise pass it explicitly.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        contactId: { type: 'string' },
+        contactId: { type: 'string', description: 'The contact whose appointments to list' },
+        calendarId: { type: 'string', description: 'The GHL calendar ID — defaults to the agent\'s bound calendar from the Bookings card. Pass explicitly when querying a different calendar than the agent\'s default.' },
       },
       required: ['contactId'],
     },

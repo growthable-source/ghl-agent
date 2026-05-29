@@ -1089,24 +1089,35 @@ export class GhlAdapter implements CrmAdapter {
     })
   }
 
-  async getCalendarEvents(contactId: string): Promise<any> {
-    // GHL spec requires startTime + endTime (millis). Default to the
-    // next 90 days — good enough to show a contact's upcoming events.
+  async getCalendarEvents(contactId: string, calendarId?: string): Promise<any> {
+    // GHL /calendars/events spec REQUIRES one of `userId`, `calendarId`,
+    // OR `groupId` alongside `locationId`+ time range. The previous
+    // implementation only sent locationId + time and 422'd every time.
+    //
+    // We accept calendarId from the caller (agent.calendarId on the
+    // dispatcher) so the agent's bound calendar scopes the lookup.
+    // After fetching, filter to events where the contactId matches the
+    // request — GHL doesn't accept contactId as a query param so the
+    // filter happens client-side.
+    if (!calendarId) {
+      throw new Error('getCalendarEvents requires a calendarId — the agent\'s calendar binding wasn\'t passed through. Configure the agent\'s calendar on the Bookings card or pass calendarId explicitly.')
+    }
     const now = Date.now()
     const ninetyDays = 90 * 24 * 60 * 60 * 1000
     const params = new URLSearchParams({
       locationId: this.locationId,
-      // Per spec: either userId, calendarId, OR groupId is also required
-      // alongside locationId. Most tenants use calendarId scoping via
-      // contactId filter client-side, but since the spec doesn't accept
-      // contactId as a filter, we pass it anyway and let GHL return
-      // everything the token sees for the location, scoped by time.
+      calendarId,
       startTime: String(now - ninetyDays),
       endTime: String(now + ninetyDays),
     })
-    return this.apiFetch(`/calendars/events?${params}`, {
+    const raw: any = await this.apiFetch(`/calendars/events?${params}`, {
       headers: { 'Version': '2021-04-15' },
     })
+    // Spec shape: { events: CalendarEventDTO[] } each with contactId.
+    if (contactId && Array.isArray(raw?.events)) {
+      return { events: raw.events.filter((e: any) => e?.contactId === contactId) }
+    }
+    return raw
   }
 
   async createAppointmentNote(appointmentId: string, body: string): Promise<any> {

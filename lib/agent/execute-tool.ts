@@ -437,6 +437,21 @@ export async function executeTool(
       case 'send_reply': {
         const replyChannel = (channel || 'SMS') as import('@/types').MessageChannelType
         const msg = input.message as string
+        // Hard guard: the model must always pass contactId. Without it
+        // we'd POST contact=undefined to the CRM and the API 404's with
+        // "Contact id not given" — Ryan's WhatsApp smoke test hit this.
+        // Fall back to the runAgent-level contactId (which we know from
+        // the inbound webhook) when the model dropped it.
+        const replyContactId = (typeof input.contactId === 'string' && input.contactId.length > 0)
+          ? input.contactId
+          : contactId
+        if (!replyContactId) {
+          return JSON.stringify({
+            success: false,
+            error: 'send_reply was called without a contactId — the model didn\'t include it AND there\'s no inbound contact context to fall back on.',
+            hint: 'Include the contactId parameter in your send_reply call. The contactId for THIS conversation is in your tool context — re-read it from get_contact_details if you\'ve lost track.',
+          })
+        }
         const xmlCheck = detectXmlToolMarkup(msg)
         if (xmlCheck) {
           // Production WhatsApp smoke test (2026-05-29) showed the model
@@ -459,7 +474,7 @@ export async function executeTool(
         if (deferredSend) {
           deferredSend.captured = {
             channel: replyChannel,
-            contactId: input.contactId as string,
+            contactId: replyContactId,
             message: msg,
             conversationProviderId: conversationProviderId || input.conversationProviderId as string | undefined,
           }
@@ -472,7 +487,7 @@ export async function executeTool(
         }
         const result = await crm.sendMessage({
           type: replyChannel,
-          contactId: input.contactId as string,
+          contactId: replyContactId,
           conversationProviderId: conversationProviderId || input.conversationProviderId as string | undefined,
           message: msg,
         })
@@ -480,6 +495,16 @@ export async function executeTool(
       }
       case 'send_sms': {
         const msg = input.message as string
+        const smsContactId = (typeof input.contactId === 'string' && input.contactId.length > 0)
+          ? input.contactId
+          : contactId
+        if (!smsContactId) {
+          return JSON.stringify({
+            success: false,
+            error: 'send_sms was called without a contactId.',
+            hint: 'Include the contactId parameter — it\'s the same id passed to every CRM-write tool in this conversation.',
+          })
+        }
         const xmlCheck = detectXmlToolMarkup(msg)
         if (xmlCheck) {
           return JSON.stringify({
@@ -491,7 +516,7 @@ export async function executeTool(
         if (deferredSend) {
           deferredSend.captured = {
             channel: 'SMS',
-            contactId: input.contactId as string,
+            contactId: smsContactId,
             message: msg,
             conversationProviderId,
           }
@@ -499,7 +524,7 @@ export async function executeTool(
         }
         const result = await crm.sendMessage({
           type: 'SMS',
-          contactId: input.contactId as string,
+          contactId: smsContactId,
           conversationProviderId,
           message: msg,
         })
@@ -971,8 +996,44 @@ export async function executeTool(
         return JSON.stringify({ success: true, ...opp })
       }
       case 'get_calendar_events': {
-        const data = await crm.getCalendarEvents(input.contactId as string)
-        return JSON.stringify(data)
+        // Resolve calendarId in priority order:
+        //   1. explicit input.calendarId from the model
+        //   2. fall back to the agent's bound calendar (Agent.calendarId)
+        // GHL requires one of userId|calendarId|groupId — without it the
+        // API 422s and the agent can't find an appointment to cancel.
+        let resolvedCalendarId = typeof input.calendarId === 'string' && input.calendarId.length > 0
+          ? input.calendarId
+          : ''
+        if (!resolvedCalendarId && agentId) {
+          try {
+            const { db: dbClient } = await import('@/lib/db')
+            const agent = await dbClient.agent.findUnique({
+              where: { id: agentId },
+              select: { calendarId: true },
+            })
+            if (agent?.calendarId) resolvedCalendarId = agent.calendarId
+          } catch {}
+        }
+        if (!resolvedCalendarId) {
+          return JSON.stringify({
+            success: false,
+            error: 'No calendar bound to this agent. Pick a calendar on the Bookings card in the agent\'s Tools page, OR pass calendarId explicitly.',
+            hint: 'You cannot list appointments without a calendarId. If the contact wants to cancel or reschedule, ask them which calendar/service the booking was for, OR have an operator wire up the agent\'s calendar.',
+          })
+        }
+        try {
+          const data = await crm.getCalendarEvents(input.contactId as string, resolvedCalendarId)
+          return JSON.stringify(data)
+        } catch (err: any) {
+          const msg = err?.message ?? 'Unknown error'
+          return JSON.stringify({
+            success: false,
+            error: msg,
+            hint: /422|not\s*found|404/i.test(msg)
+              ? 'The calendar may have been deleted or the agent\'s calendar binding is wrong. Reconfigure the agent\'s calendar.'
+              : 'Couldn\'t list appointments. Ask the contact for the specific booking details + offer to have a teammate handle the cancellation.',
+          })
+        }
       }
       case 'save_qualifying_answer': {
         if (agentId) {
