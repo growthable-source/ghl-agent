@@ -486,10 +486,11 @@ model Location {
   updatedAt             DateTime   @updatedAt
   onboardingCompletedAt DateTime?
 
-  agents      Agent[]
-  messageLogs MessageLog[]
-  users       UserLocation[]
-  campaigns   Campaign[]
+  agents                   Agent[]
+  messageLogs              MessageLog[]
+  users                    UserLocation[]
+  campaigns                Campaign[]
+  conversationStateRecords ConversationStateRecord[]
 
   @@index([companyId])
   @@index([workspaceId])
@@ -1656,6 +1657,10 @@ model ConversationStateRecord {
   agentId           String
   agent             Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
   locationId        String
+  /// Added 2026-05-29 so /needs-attention can read Location.crmProvider
+  /// for HandoffAlertBanner deep-link routing. Column already existed;
+  /// only the Prisma relation declaration was missing — no SQL needed.
+  location          Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
   contactId         String
   conversationId    String?
   state             ConversationState @default(ACTIVE)
