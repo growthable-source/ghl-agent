@@ -32,6 +32,7 @@ import { nodeTypes } from './flow/node-types'
 import type { FlowNode, FlowResponse } from '@/lib/agent/flow/types'
 import { AgentFlowSidePanel } from './flow/AgentFlowSidePanel'
 import type { EditorHandle } from './flow/editors/types'
+import { ToolNodeEditor } from './flow/editors/ToolNodeEditor'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -446,7 +447,17 @@ function renderEditorFor(
 
   switch (node.type) {
     case 'tool':
-      return <NotImplementedStub label={`Tool editor for "${idTail}"`} />
+      return (
+        <ToolNodeEditor
+          ref={ctx.editorRef}
+          workspaceId={ctx.workspaceId}
+          agentId={ctx.agentId}
+          toolName={idTail}
+          onSaved={ctx.onSaved}
+          onDirtyChange={ctx.onDirtyChange}
+          onSavingChange={ctx.onSavingChange}
+        />
+      )
     case 'routingRule':
       return <NotImplementedStub label={`Routing rule editor for ${sourceId}`} />
     case 'stopCondition':
