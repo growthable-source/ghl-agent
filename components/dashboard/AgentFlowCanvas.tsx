@@ -29,7 +29,9 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { nodeTypes } from './flow/node-types'
-import type { FlowResponse } from '@/lib/agent/flow/types'
+import type { FlowNode, FlowResponse } from '@/lib/agent/flow/types'
+import { AgentFlowSidePanel } from './flow/AgentFlowSidePanel'
+import type { EditorHandle } from './flow/editors/types'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -47,6 +49,13 @@ export function AgentFlowCanvas({
   const [resetting, setResetting] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [layoutSaveStatus, setLayoutSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+
+  // Side-panel state — which node the user clicked, plus dirty/saving so
+  // the panel footer's Save/Cancel buttons can reflect the editor's state.
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [editorDirty, setEditorDirty] = useState(false)
+  const [editorSaving, setEditorSaving] = useState(false)
+  const editorRef = useRef<EditorHandle | null>(null)
 
   const pendingPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map())
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -75,6 +84,49 @@ export function AgentFlowCanvas({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => { void flushLayoutPatch() }, SAVE_DEBOUNCE_MS)
   }, [flushLayoutPatch])
+
+  // Clicking a node opens the side panel anchored to that node id.
+  // If the user already had unsaved edits on a different node, we
+  // run them through the panel's close-confirm flow before switching.
+  const handleNodeClick = useCallback((_e: React.MouseEvent, node: Node) => {
+    if (selectedNodeId === node.id) return
+    if (editorDirty && typeof window !== 'undefined') {
+      if (!window.confirm('Discard unsaved changes?')) return
+    }
+    setSelectedNodeId(node.id)
+    setEditorDirty(false)
+    setEditorSaving(false)
+    editorRef.current = null
+  }, [selectedNodeId, editorDirty])
+
+  function closePanel() {
+    setSelectedNodeId(null)
+    setEditorDirty(false)
+    setEditorSaving(false)
+    editorRef.current = null
+  }
+
+  async function handleFooterSave() {
+    if (!editorRef.current) return
+    const ok = await editorRef.current.save()
+    if (ok) {
+      // Refetch the flow so any visible side effect of the save (a tool
+      // being disabled, a stop condition being removed, …) shows up.
+      await load()
+    }
+  }
+
+  function handleFooterCancel() {
+    if (!editorRef.current) {
+      closePanel()
+      return
+    }
+    if (editorDirty && typeof window !== 'undefined') {
+      if (!window.confirm('Discard unsaved changes?')) return
+    }
+    editorRef.current.cancel()
+    closePanel()
+  }
 
   const load = useCallback(async () => {
     try {
@@ -206,6 +258,7 @@ export function AgentFlowCanvas({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={handleNodeDragStop}
+          onNodeClick={handleNodeClick}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.2 }}
@@ -216,6 +269,61 @@ export function AgentFlowCanvas({
           <MiniMap position="bottom-left" zoomable pannable />
         </ReactFlow>
       </div>
+
+      {(() => {
+        const selectedNode = selectedNodeId
+          ? flow.nodes.find(n => n.id === selectedNodeId) ?? null
+          : null
+        if (!selectedNode) return null
+        return (
+          <AgentFlowSidePanel
+            open={true}
+            onClose={closePanel}
+            title={panelTitleFor(selectedNode)}
+            unsavedChanges={editorDirty}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={handleFooterCancel}
+                  disabled={editorSaving}
+                  className="text-xs font-medium px-3 py-1.5 rounded border"
+                  style={{
+                    borderColor: 'var(--border, #e5e7eb)',
+                    background: 'var(--surface, #ffffff)',
+                    color: 'var(--text-secondary, #4b5563)',
+                    cursor: editorSaving ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleFooterSave() }}
+                  disabled={!editorDirty || editorSaving}
+                  className="text-xs font-semibold px-3 py-1.5 rounded"
+                  style={{
+                    background: editorDirty && !editorSaving ? 'var(--accent-primary, #2563eb)' : 'var(--surface-tertiary, #e5e7eb)',
+                    color: editorDirty && !editorSaving ? 'var(--btn-primary-text, #fff)' : 'var(--text-tertiary, #6b7280)',
+                    cursor: editorSaving ? 'wait' : (!editorDirty ? 'not-allowed' : 'pointer'),
+                  }}
+                >
+                  {editorSaving ? 'Saving…' : 'Save'}
+                </button>
+              </>
+            }
+          >
+            {renderEditorFor(selectedNode, {
+              workspaceId,
+              agentId,
+              editorRef,
+              onSaved: () => { void load() },
+              onDirtyChange: setEditorDirty,
+              onSavingChange: setEditorSaving,
+            })}
+          </AgentFlowSidePanel>
+        )
+      })()}
 
       {resetDialogOpen && (
         <div
@@ -293,6 +401,76 @@ export function AgentFlowCanvas({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Title shown in the side-panel header for a given flow node. Falls back
+ * to the node's own label when we don't have a more specific name.
+ */
+function panelTitleFor(node: FlowNode): string {
+  switch (node.type) {
+    case 'tool': return `Tool · ${node.data.label}`
+    case 'routingRule': return `Routing rule · ${node.data.label}`
+    case 'stopCondition': return `Stop condition · ${node.data.label}`
+    case 'crmTrigger': return `CRM trigger · ${node.data.label}`
+    case 'channelTrigger': return `Channel · ${node.data.label}`
+    case 'workingHours': return 'Working hours'
+    case 'followUp': return `Follow-up · ${node.data.label}`
+    default: return node.data.label
+  }
+}
+
+/**
+ * Dispatch the side-panel body for a given node. Each branch mounts the
+ * editor specific to the node's underlying entity. T2 ships stubs only —
+ * real editors land in T3-T9 as separate commits.
+ */
+function renderEditorFor(
+  node: FlowNode,
+  ctx: {
+    workspaceId: string
+    agentId: string
+    editorRef: React.MutableRefObject<EditorHandle | null>
+    onSaved: () => void
+    onDirtyChange: (dirty: boolean) => void
+    onSavingChange: (saving: boolean) => void
+  },
+): React.ReactNode {
+  // The FK to the underlying row when applicable.
+  // For tools, the catalog name is encoded in the node id as "tool:<name>".
+  const colonIdx = node.id.indexOf(':')
+  const idTail = colonIdx >= 0 ? node.id.slice(colonIdx + 1) : node.id
+  const sourceId = node.data.sourceId ?? idTail
+
+  switch (node.type) {
+    case 'tool':
+      return <NotImplementedStub label={`Tool editor for "${idTail}"`} />
+    case 'routingRule':
+      return <NotImplementedStub label={`Routing rule editor for ${sourceId}`} />
+    case 'stopCondition':
+      return <NotImplementedStub label={`Stop condition editor for ${sourceId}`} />
+    case 'crmTrigger':
+      return <NotImplementedStub label={`CRM trigger editor for ${sourceId}`} />
+    case 'channelTrigger':
+      return <NotImplementedStub label={`Channel deployment editor for ${idTail}`} />
+    case 'workingHours':
+      return <NotImplementedStub label="Working hours editor" />
+    case 'followUp':
+      return <NotImplementedStub label={`Follow-up editor for ${sourceId}`} />
+    default:
+      return <NotImplementedStub label={`${node.type}: no editor yet`} />
+  }
+}
+
+function NotImplementedStub({ label }: { label: string }) {
+  return (
+    <div
+      className="text-xs rounded-md p-3"
+      style={{ background: 'var(--surface-secondary, #f3f4f6)', color: 'var(--text-tertiary, #6b7280)' }}
+    >
+      {label} — not yet implemented.
     </div>
   )
 }
