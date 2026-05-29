@@ -35,6 +35,7 @@ import type { EditorHandle } from './flow/editors/types'
 import { ToolNodeEditor } from './flow/editors/ToolNodeEditor'
 import { RoutingRuleEditor } from './flow/editors/RoutingRuleEditor'
 import { StopConditionEditor } from './flow/editors/StopConditionEditor'
+import { CrmTriggerEditor } from './flow/editors/CrmTriggerEditor'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -485,7 +486,17 @@ function renderEditorFor(
         />
       )
     case 'crmTrigger':
-      return <NotImplementedStub label={`CRM trigger editor for ${sourceId}`} />
+      return (
+        <CrmTriggerEditor
+          ref={ctx.editorRef}
+          workspaceId={ctx.workspaceId}
+          agentId={ctx.agentId}
+          triggerId={sourceId}
+          onSaved={ctx.onSaved}
+          onDirtyChange={ctx.onDirtyChange}
+          onSavingChange={ctx.onSavingChange}
+        />
+      )
     case 'channelTrigger':
       return <NotImplementedStub label={`Channel deployment editor for ${idTail}`} />
     case 'workingHours':
