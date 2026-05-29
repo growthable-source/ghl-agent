@@ -687,14 +687,30 @@ export async function runAgent(opts: {
   // schema so the agent can only pick from that whitelist. If nothing is
   // pinned for a given tool, drop the tool entirely — publishing it with no
   // valid target just invites hallucinated workflowIds that 404 against GHL.
+  //
+  // We also strip Voxility-internal metadata (defaultUseWhen,
+  // defaultOnFailure, enforcement) from each entry before passing to the
+  // Anthropic API. Those fields live on AgentToolDef for the resolver +
+  // gate to consume — Anthropic's tool-definition shape only accepts
+  // { name, description, input_schema } and rejects anything else with
+  // `invalid_request_error: Extra inputs are not permitted`. Caused
+  // production 400s after the Phase B1 catalog additions shipped.
+  function toAnthropicTool(t: any) {
+    return {
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema,
+      ...(t.cache_control ? { cache_control: t.cache_control } : {}),
+    }
+  }
   const tools = filteredTools.flatMap(t => {
     if (t.name === 'add_to_workflow') {
-      return constrainWorkflowTool(t, workflowPicks?.addTo, 'enroll')
+      return constrainWorkflowTool(t, workflowPicks?.addTo, 'enroll').map(toAnthropicTool)
     }
     if (t.name === 'remove_from_workflow') {
-      return constrainWorkflowTool(t, workflowPicks?.removeFrom, 'remove')
+      return constrainWorkflowTool(t, workflowPicks?.removeFrom, 'remove').map(toAnthropicTool)
     }
-    return [t]
+    return [toAnthropicTool(t)]
   })
 
   // Agentic loop — keeps going until Claude stops calling tools
