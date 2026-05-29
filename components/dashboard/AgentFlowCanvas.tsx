@@ -2,22 +2,36 @@
 
 /**
  * AgentFlowCanvas — the client-side React Flow renderer for the visual
- * workflow canvas (Phase Adv-1).
+ * workflow canvas (Phase Adv-1 → Adv-2).
  *
  * Fetches `GET /api/workspaces/{wsId}/agents/{agentId}/flow` and mounts
  * a React Flow viewport with our custom node types. The toolbar carries
  * a Reset-layout button (calls the sibling POST endpoint) and a node /
  * edge count summary.
  *
- * Read-only in Phase 1 — no drag-to-save, no side panel, no badges.
- * The page mount provides a full-bleed container.
+ * Phase 3 — drag-to-persist:
+ *   • onNodeDragStop captures the new position into a pending Map
+ *   • a 500ms debounce batches multi-node moves into a single PATCH
+ *   • beforeunload + unmount flushes pending writes via sendBeacon so
+ *     dragging then immediately closing the tab doesn't lose work
+ *   • toolbar shows a transient "Saving layout…" / "Layout saved" hint
  */
 
-import { useEffect, useState, useCallback } from 'react'
-import ReactFlow, { Background, Controls, MiniMap, type Node, type Edge } from 'reactflow'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  type Node,
+  type Edge,
+} from 'reactflow'
 import 'reactflow/dist/style.css'
 import { nodeTypes } from './flow/node-types'
 import type { FlowResponse } from '@/lib/agent/flow/types'
+
+const SAVE_DEBOUNCE_MS = 500
 
 export function AgentFlowCanvas({
   workspaceId,
@@ -27,8 +41,39 @@ export function AgentFlowCanvas({
   agentId: string
 }) {
   const [flow, setFlow] = useState<FlowResponse | null>(null)
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node['data']>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [error, setError] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
+  const [layoutSaveStatus, setLayoutSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+
+  const pendingPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map())
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flushLayoutPatch = useCallback(async () => {
+    if (pendingPositionsRef.current.size === 0) return
+    const positions = Array.from(pendingPositionsRef.current.entries()).map(([nodeKey, { x, y }]) => ({ nodeKey, x, y }))
+    pendingPositionsRef.current.clear()
+    setLayoutSaveStatus('saving')
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/flow/layout`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positions }),
+      })
+      setLayoutSaveStatus('saved')
+      setTimeout(() => setLayoutSaveStatus('idle'), 1500)
+    } catch {
+      // Drop silently — next drag re-batches.
+      setLayoutSaveStatus('idle')
+    }
+  }, [workspaceId, agentId])
+
+  const handleNodeDragStop = useCallback((_e: React.MouseEvent | unknown, node: Node) => {
+    pendingPositionsRef.current.set(node.id, { x: node.position.x, y: node.position.y })
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => { void flushLayoutPatch() }, SAVE_DEBOUNCE_MS)
+  }, [flushLayoutPatch])
 
   const load = useCallback(async () => {
     try {
@@ -39,16 +84,54 @@ export function AgentFlowCanvas({
       if (!res.ok) throw new Error(`Failed (${res.status})`)
       const data = (await res.json()) as FlowResponse
       setFlow(data)
+      setNodes(data.nodes.map(n => ({
+        id: n.id,
+        type: n.type,
+        data: n.data,
+        position: n.position,
+      })))
+      setEdges(data.edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: 'smoothstep',
+        label: e.label,
+        style: edgeStyleFor(e.type),
+        animated: e.type === 'gated',
+      })))
       setError(null)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load flow'
       setError(msg)
     }
-  }, [workspaceId, agentId])
+  }, [workspaceId, agentId, setNodes, setEdges])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Flush on unmount + window unload — dragging then alt-tabbing away shouldn't lose work.
+  useEffect(() => {
+    const onUnload = () => {
+      if (pendingPositionsRef.current.size > 0) {
+        const positions = Array.from(pendingPositionsRef.current.entries())
+          .map(([nodeKey, { x, y }]) => ({ nodeKey, x, y }))
+        navigator.sendBeacon(
+          `/api/workspaces/${workspaceId}/agents/${agentId}/flow/layout`,
+          new Blob([JSON.stringify({ positions })], { type: 'application/json' }),
+        )
+      }
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onUnload)
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      void flushLayoutPatch()
+    }
+  }, [workspaceId, agentId, flushLayoutPatch])
 
   async function reset() {
     if (!confirm('Reset all positions to auto-layout? This can\'t be undone.')) return
@@ -58,6 +141,12 @@ export function AgentFlowCanvas({
         `/api/workspaces/${workspaceId}/agents/${agentId}/flow/reset-layout`,
         { method: 'POST' },
       )
+      // Drop any in-flight pending writes — they'd undo the reset.
+      pendingPositionsRef.current.clear()
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
       await load()
     } finally {
       setResetting(false)
@@ -78,22 +167,6 @@ export function AgentFlowCanvas({
       </div>
     )
   }
-
-  const nodes: Node[] = flow.nodes.map(n => ({
-    id: n.id,
-    type: n.type,
-    data: n.data,
-    position: n.position,
-  }))
-  const edges: Edge[] = flow.edges.map(e => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: 'smoothstep',
-    label: e.label,
-    style: edgeStyleFor(e.type),
-    animated: e.type === 'gated',
-  }))
 
   return (
     <div className="flex flex-col h-full">
@@ -118,11 +191,20 @@ export function AgentFlowCanvas({
         <span className="text-xs" style={{ color: 'var(--text-tertiary, #6b7280)' }}>
           {flow.nodes.length} node{flow.nodes.length === 1 ? '' : 's'} · {flow.edges.length} edge{flow.edges.length === 1 ? '' : 's'}
         </span>
+        {layoutSaveStatus === 'saving' && (
+          <span className="text-xs" style={{ color: 'var(--text-tertiary, #6b7280)' }}>Saving layout…</span>
+        )}
+        {layoutSaveStatus === 'saved' && (
+          <span className="text-xs" style={{ color: 'var(--accent-emerald, #059669)' }}>Layout saved</span>
+        )}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={handleNodeDragStop}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.2 }}
