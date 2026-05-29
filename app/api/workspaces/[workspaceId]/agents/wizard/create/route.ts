@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { defaultAgentName } from '@/lib/random-name'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -22,8 +23,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
   const p = body.proposal
-  if (!p || !p.name || !p.systemPrompt) {
-    return NextResponse.json({ error: 'proposal with name and systemPrompt required' }, { status: 400 })
+  // Name is now optional — defaultAgentName() fills in a "Curious Llama"
+  // style placeholder if the LLM proposal omitted one. systemPrompt is
+  // still required because it carries the agent's actual behaviour.
+  if (!p || !p.systemPrompt) {
+    return NextResponse.json({ error: 'proposal with systemPrompt required' }, { status: 400 })
   }
 
   // Reuse the agent-create location-resolution logic — find or create a
@@ -55,7 +59,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       data: {
         workspaceId,
         locationId: location.id,
-        name: p.name,
+        name: defaultAgentName(p.name),
         systemPrompt: p.systemPrompt,
         instructions: p.instructions || null,
         enabledTools: Array.isArray(p.enabledTools) ? p.enabledTools : [],

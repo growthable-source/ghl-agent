@@ -11,6 +11,7 @@ import {
 import { BUSINESS_CONTEXT_EXAMPLES } from '@/lib/business-context-examples'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 import PlanLimitNotice, { isPlanLimitError, type PlanLimitData } from '@/components/PlanLimitNotice'
+import { generateAgentName } from '@/lib/random-name'
 
 type Step = 'template' | 'crm' | 'calendar' | 'channels' | 'knowledge' | 'build'
 
@@ -355,8 +356,14 @@ export default function NewAgentWizard() {
     [skipCrmStep],
   )
 
-  // Build step
-  const [name, setName] = useState('')
+  // Build step. The default name is a randomly-generated "<Adjective>
+  // <Animal>" placeholder (e.g. "Curious Llama") — same spirit as the
+  // anonymous-user labels in Google Docs. The operator can rename freely;
+  // until they do, every new agent gets its own readable identity instead
+  // of a wall of duplicate "Outbound Sales Agent" rows. useState's lazy
+  // initialiser keeps the name stable across re-renders (otherwise it
+  // would re-randomise on every keystroke elsewhere in the form).
+  const [name, setName] = useState(() => generateAgentName())
   const [systemPrompt, setSystemPrompt] = useState('')
   const [instructions, setInstructions] = useState('')
   // Advanced-context agent profile — Simple is the default and matches the
@@ -369,13 +376,12 @@ export default function NewAgentWizard() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [planLimit, setPlanLimit] = useState<PlanLimitData | null>(null)
-  // Track whether the user has hand-edited the name. Template changes only
-  // overwrite the name while it's still template-derived — otherwise we'd
-  // clobber a name the user typed. Previously this used `if (!name)` which
-  // locked the name to whatever template was picked FIRST, even if the user
-  // later switched templates (e.g. Outbound → Inbound Assistant stuck as
-  // "Outbound Assistant Agent").
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(false)
+  // Name is now random-by-default ("Curious Llama" style) — we no longer
+  // overwrite it when the user picks or switches templates, because doing
+  // so would clobber both a random default the operator might want to
+  // keep AND any name they typed by hand. The user can rename freely via
+  // the Name input; nothing in the wizard reassigns this state behind
+  // their back.
 
   const currentIdx = visibleSteps.findIndex(s => s.key === step)
 
@@ -438,10 +444,12 @@ export default function NewAgentWizard() {
 
   function selectTemplate(t: AgentTemplate) {
     setSelectedTemplate(t)
-    // Update the name to match the new template unless the user has typed
-    // their own name. System prompt and instructions always follow the
-    // template — those are expected to reset on template change.
-    if (!nameManuallyEdited) setName(t.name + ' Agent')
+    // System prompt and instructions follow the template — those are
+    // expected to reset on template change. The agent NAME does NOT
+    // follow the template anymore: we now keep whatever random name the
+    // wizard initialised with (or whatever the user has typed) so a
+    // "Curious Llama" stays a Curious Llama even after picking Outbound
+    // Sales as the template.
     setSystemPrompt(t.systemPrompt)
     setInstructions(t.instructions)
     // Live Chat is channel-specific — preselect Live_Chat so the
@@ -1024,9 +1032,21 @@ export default function NewAgentWizard() {
             )}
             <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Agent Name</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Agent Name</label>
+                  {/* Shuffle re-rolls the random "Curious Llama"-style default.
+                      Visible always — the operator may want a different
+                      vibe even after typing one in. Pure client; doesn't
+                      touch the server. */}
+                  <button type="button"
+                    onClick={() => setName(generateAgentName())}
+                    className="text-xs underline hover:opacity-80"
+                    style={{ color: 'var(--text-tertiary)' }}>
+                    Shuffle
+                  </button>
+                </div>
                 <input type="text" value={name}
-                  onChange={e => { setName(e.target.value); setNameManuallyEdited(true) }}
+                  onChange={e => setName(e.target.value)}
                   placeholder="e.g. Sales Assistant"
                   className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
                   style={{

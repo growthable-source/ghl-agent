@@ -4,6 +4,7 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { canCreateAgent, isTrialExpired, getPlanFeatures, recommendPlanForLimit, PLAN_FEATURES } from '@/lib/plans'
 import { isInternalWorkspace } from '@/lib/internal-workspace'
 import { resolveLocationForProvider, type RequestedProvider } from '@/lib/crm/resolve-location'
+import { defaultAgentName } from '@/lib/random-name'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -191,7 +192,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       data: {
         workspaceId,
         locationId: location.id,
-        name: body.name,
+        // Default to a friendly "Curious Llama"-style name when the caller
+        // doesn't supply one. The wizard sends a name (also random — see
+        // app/dashboard/[workspaceId]/agents/new/page.tsx), but other
+        // callers (test scripts, future API integrations) may not, and a
+        // blank name violates the NOT NULL constraint and reads as a bug.
+        name: defaultAgentName(body.name),
         systemPrompt: body.systemPrompt,
         instructions: body.instructions ?? null,
         ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
