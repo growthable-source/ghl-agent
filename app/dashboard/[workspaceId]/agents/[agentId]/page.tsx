@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 
@@ -82,6 +82,7 @@ const CHANNEL_BADGES: Record<string, { label: string; color: string }> = {
 
 export default function AgentIdentityPage() {
   const params = useParams()
+  const router = useRouter()
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
   const base = `/dashboard/${workspaceId}/agents/${agentId}`
@@ -91,6 +92,10 @@ export default function AgentIdentityPage() {
   const [knowledge, setKnowledge] = useState<KnowledgeSource[]>([])
   const [channels, setChannels] = useState<ChannelDeployment[]>([])
   const [autopilotPending, setAutopilotPending] = useState(false)
+  // Track an in-flight redirect to /flow so we can keep the loading
+  // spinner up instead of flashing the Identity page for a frame before
+  // the route swap lands.
+  const [redirectingToFlow, setRedirectingToFlow] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -100,6 +105,17 @@ export default function AgentIdentityPage() {
     ])
       .then(([agentRes, channelsRes, knowledgeRes]) => {
         const agent = agentRes.agent
+        // Advanced-mode short-circuit. When the agent is configured to
+        // render as a canvas, the root URL should land directly on /flow
+        // rather than the Identity page — the operator never picked
+        // Identity, they picked Advanced. We use router.replace (not
+        // push) so the back button doesn't re-loop them through the
+        // Identity page they never wanted to see.
+        if (agent?.viewMode === 'advanced') {
+          setRedirectingToFlow(true)
+          router.replace(`${base}/flow`)
+          return
+        }
         if (agent) {
           setInitial({
             name: agent.name ?? '',
@@ -123,7 +139,7 @@ export default function AgentIdentityPage() {
         }
       })
       .finally(() => setLoading(false))
-  }, [workspaceId, agentId])
+  }, [workspaceId, agentId, base, router])
 
   const { draft, set, dirty, saving, savedAt, error, save, reset } = useDirtyForm<AgentRecord>({
     initial,
@@ -162,10 +178,12 @@ export default function AgentIdentityPage() {
     }
   }
 
-  if (loading || !initial || !draft) {
+  if (loading || redirectingToFlow || !initial || !draft) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading agent…</p>
+        <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+          {redirectingToFlow ? 'Opening canvas…' : 'Loading agent…'}
+        </p>
       </div>
     )
   }
