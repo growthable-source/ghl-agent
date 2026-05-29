@@ -9,6 +9,7 @@ import {
 import NewBadge from '@/components/NewBadge'
 import { useEmbedded } from '@/lib/embedded-context'
 import { ConnectivityCheckPanel } from '@/components/dashboard/ConnectivityCheckPanel'
+import { getLocationDashboardUrl } from '@/lib/leadconnector-dashboard-url'
 
 interface Integration {
   id: string
@@ -959,9 +960,28 @@ export default function IntegrationsPage() {
                         {conn.installedByRole && <> · {conn.installedByRole}</>}
                       </p>
                     )}
-                    <p className="text-[10px] text-zinc-700 font-mono select-all" title="LeadConnector location ID — handy for support tickets">
-                      {conn.locationId}
-                    </p>
+                    {/* Linked location id. Clicking opens the
+                        whitelabel LC dashboard for this sub-account.
+                        Falls back to a select-all mono span when no
+                        URL is available (native/placeholder rows). */}
+                    {(() => {
+                      const href = getLocationDashboardUrl(conn.locationId, conn.provider)
+                      return href ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-zinc-700 font-mono hover:text-zinc-400 hover:underline"
+                          title="Open this sub-account in LeadConnector"
+                        >
+                          {conn.locationId}
+                        </a>
+                      ) : (
+                        <p className="text-[10px] text-zinc-700 font-mono select-all" title="Location id — handy for support tickets">
+                          {conn.locationId}
+                        </p>
+                      )
+                    })()}
                   </div>
                 )
               })}

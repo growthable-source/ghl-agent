@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
+import { getLocationDashboardUrl } from '@/lib/leadconnector-dashboard-url'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -844,11 +845,17 @@ export default function AgentsPage() {
                       business name (joined from MarketplaceInstall) so
                       the operator can see which LeadConnector location
                       this agent is wired to without clicking through.
-                      Fallback chain:
-                        1. businessName from the install snapshot
-                        2. "Native CRM" / "No CRM" for native/placeholder rows
-                        3. The raw locationId in monospace (older installs
-                           where the snapshot hasn't backfilled yet) */}
+                      Format: "<BusinessName> (<linked locationId>)".
+                      The locationId itself is a hyperlink into the
+                      whitelabel LC dashboard (app.voxility.ai by
+                      default; configurable via env). Fallback chain:
+                        1. businessName + linked locationId (real install
+                           with a snapshot)
+                        2. Just the linked locationId (snapshot hasn't
+                           backfilled yet)
+                        3. "Native CRM" / "No CRM connected" label only
+                           for native/placeholder rows (no external
+                           dashboard to link to) */}
                   {(() => {
                     const c = agent.connection
                     if (!c) return null
@@ -859,6 +866,7 @@ export default function AgentsPage() {
                         : c.provider === 'none'
                           ? 'No CRM connected'
                           : null
+                    const dashHref = getLocationDashboardUrl(c.locationId, c.provider)
                     return (
                       <p
                         className="text-[11px] mb-3 flex items-center gap-1 min-w-0"
@@ -868,13 +876,27 @@ export default function AgentsPage() {
                         <svg className="w-3 h-3 flex-shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
-                        {label ? (
-                          <span className="truncate">{label}</span>
-                        ) : (
+                        {label && <span className="truncate">{label}</span>}
+                        {dashHref ? (
+                          <a
+                            href={dashHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="font-mono truncate hover:underline"
+                            style={{ color: 'var(--text-muted)' }}
+                            title="Open in LeadConnector"
+                          >
+                            {label ? `(${c.locationId})` : c.locationId}
+                          </a>
+                        ) : !label ? (
+                          // No real label (so no native/none copy) and
+                          // no dashboard URL — render the bare id so we
+                          // at least show something for diagnostics.
                           <span className="font-mono truncate select-all" style={{ color: 'var(--text-muted)' }}>
                             {c.locationId}
                           </span>
-                        )}
+                        ) : null}
                       </p>
                     )
                   })()}
