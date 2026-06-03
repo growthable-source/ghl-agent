@@ -322,10 +322,12 @@ function SidebarBody() {
                         primary nav entry now. No duplicate Overview
                         link here. */}
 
-                    {/* ── Getting started — first-run guide; carries the
-                        NewBadge for 90 days so it doesn't disappear into
-                        the nav for users who installed last week. ── */}
-                    {navLink(`/dashboard/${workspaceId}/getting-started`, 'Getting started', null, FEATURE_SHIP_DATES.gettingStarted)}
+                    {/* ── Getting started — first-run guide; lives on the
+                        public marketing surface (/getting-started) so a
+                        user can share the link, but we link it here too
+                        for newly-installed workspaces who want to re-open
+                        it from inside the dashboard. ── */}
+                    {navLink('/getting-started', 'Getting started', null, FEATURE_SHIP_DATES.gettingStarted)}
 
                     {/* ── Activity — what the agents are doing ── */}
                     <div className="pt-3 pb-1 px-3">
