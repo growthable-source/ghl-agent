@@ -18,6 +18,7 @@ const FEATURE_SHIP_DATES: Record<string, string> = {
   simulations: '2026-04-20',
   integrations: '2026-05-12', // Shopify connector ships today
   toolGate:    '2026-05-30', // Phase B3 enforced-tool gate analytics
+  gettingStarted: '2026-05-29', // First-run guide for newly-installed workspaces
 }
 
 export default function DashboardSidebar() {
@@ -320,6 +321,11 @@ function SidebarBody() {
                     {/* Workspace home is the top-level "Dashboard"
                         primary nav entry now. No duplicate Overview
                         link here. */}
+
+                    {/* ── Getting started — first-run guide; carries the
+                        NewBadge for 90 days so it doesn't disappear into
+                        the nav for users who installed last week. ── */}
+                    {navLink(`/dashboard/${workspaceId}/getting-started`, 'Getting started', null, FEATURE_SHIP_DATES.gettingStarted)}
 
                     {/* ── Activity — what the agents are doing ── */}
                     <div className="pt-3 pb-1 px-3">
