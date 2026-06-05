@@ -4,7 +4,6 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
-import XaiTestCall from '@/components/dashboard/XaiTestCall'
 
 interface VapiConfig {
   phoneNumberId: string | null
@@ -237,11 +236,12 @@ export default function VoicePage() {
   }, [config.ttsProvider])
 
   function playPreview(voiceId: string, previewUrl: string | null) {
-    // XAI voices don't come with a static preview URL — synthesise one
-    // on-demand through /api/voice/xai/preview so the click-to-play
-    // experience still works. Vapi/ElevenLabs always ships a preview_url.
+    // Grok voices don't come with a static preview URL — synthesise one
+    // on-demand through /api/voice/preview so the click-to-play
+    // experience still works. ElevenLabs voices always ship a
+    // preview_url so we use that directly.
     const url = previewUrl
-      ?? (config.ttsProvider === 'xai' ? `/api/voice/xai/preview?voice=${encodeURIComponent(voiceId)}` : null)
+      ?? (config.ttsProvider === 'xai' ? `/api/voice/preview?engine=xai&voiceId=${encodeURIComponent(voiceId)}` : null)
     if (!url) return
     if (playingId === voiceId) {
       audioRef.current?.pause()
@@ -850,19 +850,11 @@ export default function VoicePage() {
         </button>
       </form>
 
-      {/* ── Test Call Panel: XAI branch uses its own realtime WebSocket client ── */}
-      {config.ttsProvider === 'xai' && (
-        <XaiTestCall
-          voiceId={config.voiceId}
-          agentName={agentName}
-          systemPrompt={testSystemPrompt}
-          firstMessage={config.firstMessage}
-          agentId={agentId}
-        />
-      )}
+      {/* xAI test panel removed — Grok now runs through Vapi too.
+          Both engines share the existing Vapi test-call panel below. */}
 
-      {/* ── Test Call Panel (Vapi) ── */}
-      {config.ttsProvider === 'vapi' && vapiReady && vapiPublicKey && (
+      {/* ── Test Call Panel — Vapi browser SDK powers both engines ── */}
+      {vapiReady && vapiPublicKey && (
         <div className="mt-6 rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div className="flex items-center justify-between">
             <div>

@@ -1,17 +1,17 @@
 /**
- * VoiceAdapter — provider-agnostic TTS/voice interface.
+ * VoiceAdapter — provider-agnostic surface.
  *
- * Same pattern as CrmAdapter. Each voice provider (Vapi/ElevenLabs, XAI,
- * Deepgram, Rime, etc.) implements this surface. The UI reads
- * `capabilities` to know which sections to render; the runtime reads the
- * provider to decide how to deliver audio.
+ * The platform has ONE adapter today: Vapi (lib/voice/vapi-adapter.ts).
+ * The historical xAI adapter has been removed — xAI is now a TTS
+ * engine selectable inside the Vapi assistant config, not a parallel
+ * adapter (see lib/voice/vapi-adapter.ts:buildVapiVoiceBlock and
+ * lib/voice/xai-voices.ts).
  *
- * Why: users pick *their* voice for *their* use case. The adapter
- * declares what that provider can actually do — phone? browser only?
- * TTS only? — and the UI stays honest about it.
+ * The interface stays in place so future providers (LiveKit, etc.)
+ * can be added without rewriting call sites.
  */
 
-export type VoiceProviderId = 'vapi' | 'xai'
+export type VoiceProviderId = 'vapi'
 
 export interface VoiceProviderCapabilities {
   /** Can this provider route inbound PSTN phone calls on its own? */
@@ -27,15 +27,15 @@ export interface VoiceProviderCapabilities {
 }
 
 export interface VoiceOption {
-  /** Provider-specific voice ID (e.g. XAI 'eve', 11labs 'EXAVITQu4vr4xnSDxMaL'). */
+  /** Provider-specific voice ID (ElevenLabs cuid, Grok mnemonic like 'eve'). */
   id: string
   /** Human-readable name. */
   name: string
-  /** BCP-47 language code if the provider reports one. */
+  /** BCP-47 language code if reported. */
   language?: string
-  /** Labels (gender, accent, age, etc.) when the provider exposes them. */
+  /** Labels (gender, accent, age, etc.) when exposed. */
   labels?: Record<string, string>
-  /** Direct audio URL for click-to-preview, when the provider supplies one. */
+  /** Direct audio URL for click-to-preview, when the source supplies one. */
   previewUrl?: string | null
 }
 
@@ -46,26 +46,10 @@ export interface SpeakOpts {
   bitRate?: 32000 | 64000 | 96000 | 128000 | 192000
 }
 
-export interface RealtimeToken {
-  /** Ephemeral bearer token the browser uses to open the realtime WebSocket. */
-  value: string
-  /** Unix seconds. */
-  expiresAt: number
-  /** WebSocket URL the browser should connect to. */
-  wsUrl: string
-}
-
 export interface VoiceAdapter {
   provider: VoiceProviderId
   capabilities: VoiceProviderCapabilities
-
-  /** List voices offered by this provider. `search` is optional and free-form. */
   listVoices(search?: string): Promise<VoiceOption[]>
-
-  /** Batch text-to-speech. Returns raw audio bytes. */
+  /** Batch text-to-speech (optional — Vapi proxies its own). */
   speak?(text: string, voiceId: string, opts?: SpeakOpts): Promise<ArrayBuffer>
-
-  /** Mint an ephemeral client secret for a browser to connect to this
-   *  provider's realtime API. Only implemented when capabilities.realtimeBrowser. */
-  getRealtimeToken?(opts?: { expiresInSeconds?: number }): Promise<RealtimeToken>
 }

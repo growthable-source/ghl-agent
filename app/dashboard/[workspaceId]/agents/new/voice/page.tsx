@@ -29,12 +29,12 @@ const STEPS: { key: Step; label: string }[] = [
   { key: 'try_it',      label: 'Try it' },
 ]
 
-// Wizard is Vapi-only by design. The wizard's headline says "Test it on
-// a real call at the end" — xAI (Grok) doesn't have phone support yet,
-// so it would never satisfy that promise. xAI stays available on the
-// agent's post-creation Voice tab for operators who want a browser-only
-// experiment; the wizard simply doesn't ask.
-type Provider = 'vapi'
+// Vapi is always the phone provider (owns the number, owns the bridge).
+// What the user actually picks is the TTS engine that runs inside the
+// Vapi assistant config — ElevenLabs v3 (5000+ voices) or xAI Grok (5
+// voices, native Vapi partner integration). Both route through Vapi
+// for phone calls; the difference is the voice itself.
+type Engine = 'elevenlabs' | 'xai'
 
 interface VoiceOption {
   id: string
@@ -67,9 +67,11 @@ export default function VoiceWizardPage() {
   // ─── Step 1: use case ─────────────────────────────────────────────
   const [template, setTemplate] = useState<VoiceTemplate | null>(null)
 
-  // ─── Provider — fixed to Vapi for the wizard (see Provider type
-  //     declaration above). Not a step the user sees.
-  const provider: Provider = 'vapi'
+  // ─── Voice engine — tab choice on the Voice step. Default to
+  //     ElevenLabs (the 5000+ voice catalogue is the natural starting
+  //     point). Persisted to VapiConfig.ttsProvider on submit so the
+  //     server-side Vapi voice-block builder picks the right engine.
+  const [engine, setEngine] = useState<Engine>('elevenlabs')
 
   // ─── Step 3: voice ────────────────────────────────────────────────
   const [voices, setVoices] = useState<VoiceOption[]>([])
@@ -125,10 +127,15 @@ export default function VoiceWizardPage() {
   // both work without per-call massaging in every render path. Without
   // this map every voice had id=undefined → every card looked selected
   // and the play button did nothing.
-  const fetchVoices = useCallback(async (prov: Provider) => {
+  const fetchVoices = useCallback(async (eng: Engine) => {
     setVoicesLoading(true)
     try {
-      const res = await fetch(`/api/voices?provider=${prov}`)
+      // /api/voices accepts the legacy provider names: 'vapi' for the
+      // ElevenLabs catalogue (Vapi proxies it) and 'xai' for the Grok
+      // voices. Map the engine onto whichever name the endpoint
+      // currently understands.
+      const queryProvider = eng === 'xai' ? 'xai' : 'vapi'
+      const res = await fetch(`/api/voices?provider=${queryProvider}`)
       const data = await res.json()
       const raw = Array.isArray(data.voices) ? data.voices : []
       setVoices(raw.map((v: any) => ({
@@ -147,10 +154,11 @@ export default function VoiceWizardPage() {
   }, [])
 
   useEffect(() => {
-    fetchVoices(provider)
-    // Reset selection when provider changes — voice ids aren't portable.
+    fetchVoices(engine)
+    // Reset selection when engine changes — voice ids aren't portable
+    // between ElevenLabs and Grok.
     setSelectedVoice(null)
-  }, [provider, fetchVoices])
+  }, [engine, fetchVoices])
 
   // Knowledge domains fetcher
   useEffect(() => {
@@ -232,7 +240,11 @@ export default function VoiceWizardPage() {
         ...(knowledgeDomainIds && { knowledgeDomainIds }),
         vapiConfig: {
           isActive: true,
-          ttsProvider: provider,
+          // Persist 'xai' for the Grok engine; otherwise 'vapi' (the
+          // legacy synonym for ElevenLabs that the server's
+          // resolveVoiceEngine() helper maps to the 'elevenlabs'
+          // engine). Stays back-compat with existing rows.
+          ttsProvider: engine === 'xai' ? 'xai' : 'vapi',
           voiceId: selectedVoice?.id ?? '',
           voiceName: selectedVoice?.name ?? null,
           firstMessage,
@@ -351,7 +363,8 @@ export default function VoiceWizardPage() {
               onSelect={setSelectedVoice}
               previewPlaying={previewPlaying}
               onPreview={playPreview}
-              providerLabel="ElevenLabs v3 (via Vapi)"
+              engine={engine}
+              onEngine={setEngine}
             />
           )}
           {step === 'personality' && (
@@ -400,7 +413,11 @@ export default function VoiceWizardPage() {
               agentName={agentName}
               voiceId={selectedVoice?.id ?? ''}
               firstMessage={firstMessage}
-              ttsProvider={provider}
+              // Always Vapi for the browser test — both engines route
+              // through Vapi at runtime. The legacy ttsProvider prop is
+              // kept for shape compatibility until Step 4 removes the
+              // xAI realtime branch from VoicePhoneCallUI.
+              ttsProvider="vapi"
               outboundEnabled={!!purchasedNumber}
             />
           )}
@@ -495,23 +512,56 @@ function UseCaseStep({ template, onPick }: { template: VoiceTemplate | null; onP
 
 function VoiceStep({
   voices, loading, query, onQuery, accents, accent, onAccent,
-  selected, onSelect, previewPlaying, onPreview, providerLabel,
+  selected, onSelect, previewPlaying, onPreview, engine, onEngine,
 }: {
   voices: VoiceOption[]; loading: boolean
   query: string; onQuery: (v: string) => void
   accents: string[]; accent: string; onAccent: (v: string) => void
   selected: VoiceOption | null; onSelect: (v: VoiceOption) => void
   previewPlaying: string | null; onPreview: (v: VoiceOption) => void
-  providerLabel: string
+  engine: Engine; onEngine: (e: Engine) => void
 }) {
+  // Engine tabs sit at the top of the voice step. Both engines route
+  // through Vapi at runtime — the tab just controls which voice
+  // catalogue the user is browsing AND which provider gets baked into
+  // the assistant config (resolveVoiceEngine + buildVapiVoiceBlock
+  // server-side).
   return (
     <div>
       <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
         Pick a voice
       </h2>
       <p className="text-sm mb-5" style={{ color: 'var(--text-tertiary)' }}>
-        Browsing {providerLabel}. Click a card to preview, then select.
+        Both engines route phone calls through Vapi. Pick whichever voice
+        you like — the call works the same.
       </p>
+      <div
+        className="inline-flex items-center gap-1 p-1 rounded-lg mb-5"
+        style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+      >
+        {([
+          { id: 'elevenlabs' as const, label: 'ElevenLabs', count: '5000+' },
+          { id: 'xai' as const,        label: 'Grok',       count: '5' },
+        ]).map(opt => {
+          const active = engine === opt.id
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onEngine(opt.id)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
+              style={
+                active
+                  ? { background: '#fa4d2e', color: '#ffffff' }
+                  : { background: 'transparent', color: 'var(--text-secondary)' }
+              }
+            >
+              {opt.label}
+              <span className="ml-1.5 opacity-70 font-normal">{opt.count}</span>
+            </button>
+          )
+        })}
+      </div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <input
           type="text"

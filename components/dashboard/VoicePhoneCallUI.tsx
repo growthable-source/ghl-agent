@@ -3,23 +3,20 @@
 /**
  * Phone-call simulator UI.
  *
- * Wraps the existing browser test-call paths (XaiTestCall for xAI
- * agents, Vapi Web SDK for Vapi agents) in a phone-call-shaped shell:
- * idle screen with two big buttons, ring animation, connected screen
- * with live transcript + call timer, hang-up button. Also exposes
- * "dial a real number" mode that fires POST /api/actions/outbound-call.
+ * Wraps the Vapi Web SDK browser test-call path in a phone-shaped
+ * shell: idle screen with two big buttons, ring animation, connected
+ * screen with live transcript + call timer, hang-up button. Also
+ * exposes "dial a real number" mode that fires
+ * POST /api/actions/outbound-call.
  *
  * Used both inside the voice wizard's final step AND on the voice
- * agent's Voice tab as the test affordance. One component, two surfaces.
+ * agent's Voice tab as the test affordance. One component, two
+ * surfaces. Vapi handles both ElevenLabs and Grok engines at runtime
+ * — the engine choice on the agent config dictates which voice is
+ * used; this UI doesn't branch.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
-
-// XaiTestCall is heavy (audio context, web socket, mic capture). Lazy-
-// load so the rest of the wizard/page doesn't pay for it until the
-// user actually clicks "Test call (browser)".
-const XaiTestCall = dynamic(() => import('./XaiTestCall'), { ssr: false })
 
 export interface VoicePhoneCallUIProps {
   workspaceId: string
@@ -150,14 +147,11 @@ function BrowserCallScreen({
 
       {phase === 'connected' && (
         <div className="rounded-xl p-3" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-          {ttsProvider === 'xai' ? (
-            // The XAI test component already renders its own transcript,
-            // mic UI, and status. We just embed it inside our phone-call
-            // shell so the user sees the phone metaphor.
-            <XaiTestCall agentId={agentId} agentName={agentName} voiceId={voiceId} firstMessage={firstMessage ?? undefined} />
-          ) : (
-            <VapiBrowserCall agentId={agentId} firstMessage={firstMessage ?? undefined} />
-          )}
+          {/* Always Vapi — the legacy ttsProvider prop is kept on the
+              component surface for back-compat but no longer branches
+              the render. Vapi routes ElevenLabs or Grok based on the
+              agent's voice config at call time. */}
+          <VapiBrowserCall agentId={agentId} firstMessage={firstMessage ?? undefined} />
         </div>
       )}
 

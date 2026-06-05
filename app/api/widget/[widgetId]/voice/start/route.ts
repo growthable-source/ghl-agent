@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
+import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 type Params = { params: Promise<{ widgetId: string }> }
 
@@ -97,12 +98,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       messages: [{ role: 'system', content: systemPrompt }],
       tools: VAPI_TOOLS,
     },
-    voice: {
-      provider: agent.vapiConfig.voiceProvider || '11labs',
+    voice: buildVapiVoiceBlock({
+      engine: resolveVoiceEngine(agent.vapiConfig.ttsProvider),
       voiceId: agent.vapiConfig.voiceId,
       stability: agent.vapiConfig.stability,
       similarityBoost: agent.vapiConfig.similarityBoost,
-    },
+      speed: agent.vapiConfig.speed,
+      style: agent.vapiConfig.style,
+      language: agent.vapiConfig.language,
+    }),
     endCallMessage: agent.vapiConfig.endCallMessage || undefined,
     maxDurationSeconds: agent.vapiConfig.maxDurationSecs || 600,
     serverUrl: `${process.env.APP_URL || ''}/api/vapi/webhook`,

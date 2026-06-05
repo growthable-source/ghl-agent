@@ -1,29 +1,32 @@
 import type { VoiceAdapter, VoiceProviderId } from './types'
 import { VapiVoiceAdapter } from './vapi-adapter'
-import { XaiVoiceAdapter } from './xai-adapter'
 
 /**
- * Resolve a VoiceAdapter for a given provider id. Unknown providers fall
- * back to Vapi (the original default) rather than throwing — that keeps
- * agents that predate the provider column working.
+ * Voice provider factory.
  *
- * The adapters themselves are stateless — no DB or network work happens
- * until a method is called — so constructing one per request is cheap.
+ * The platform has ONE runtime voice provider: Vapi. It owns the phone
+ * bridge, owns the @vapi-ai/web browser SDK, and accepts multiple TTS
+ * engines (ElevenLabs, xAI Grok, …) on the assistant config's voice
+ * block. The previous xAI "adapter" lived alongside Vapi as a parallel
+ * realtime path; that path is gone now (every voice surface routes
+ * through Vapi). xAI's role narrows to "TTS engine selectable inside
+ * a Vapi assistant config" — see lib/voice/vapi-adapter.ts
+ * (buildVapiVoiceBlock) for how the engine choice maps onto Vapi's
+ * voice.provider field.
+ *
+ * This function is kept (rather than inlining `new VapiVoiceAdapter()`)
+ * so anyone reading old call sites still finds a familiar entry point.
  */
-export function getVoiceAdapter(provider: VoiceProviderId | string | null | undefined): VoiceAdapter {
-  switch (provider) {
-    case 'xai':
-      return new XaiVoiceAdapter()
-    case 'vapi':
-    default:
-      return new VapiVoiceAdapter()
-  }
+export function getVoiceAdapter(_provider?: VoiceProviderId | string | null): VoiceAdapter {
+  return new VapiVoiceAdapter()
 }
 
 /**
- * Lightweight summary of every provider we know about, used by the Voice
- * page to render the provider dropdown with capabilities up front.
- * Single source of truth — if you add a provider, add it here too.
+ * Lightweight summary used by the legacy Voice page's "providers"
+ * dropdown. Now reports a single entry — Vapi — so any UI still
+ * reading from this can render a stable single-option picker without
+ * crashing. Operator-facing engine choice (ElevenLabs vs Grok) lives
+ * inside the Vapi card / wizard, not here.
  */
 export function listVoiceProviders(): Array<{
   id: VoiceProviderId
@@ -34,15 +37,9 @@ export function listVoiceProviders(): Array<{
   return [
     {
       id: 'vapi',
-      name: 'Vapi (ElevenLabs)',
-      description: 'Phone + browser + widget. 5000+ ElevenLabs voices. Full platform.',
+      name: 'Vapi',
+      description: 'Phone + browser + widget. Choose ElevenLabs v3 or xAI Grok as the TTS engine inside the agent config.',
       envVar: 'VAPI_API_KEY',
-    },
-    {
-      id: 'xai',
-      name: 'Grok (xAI)',
-      description: 'Browser + widget + TTS. Five expressive Grok voices. Phone support via Twilio bridge — coming in a later wave.',
-      envVar: 'XAI_API_KEY',
     },
   ]
 }

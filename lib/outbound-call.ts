@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { createOutboundCall } from '@/lib/vapi-client'
 import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
-import { buildElevenLabsVoiceBlock } from '@/lib/voice/vapi-adapter'
+import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 interface OutboundCallOpts {
   locationId: string
@@ -88,7 +88,8 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
         ...((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest),
       ],
     },
-    voice: buildElevenLabsVoiceBlock({
+    voice: buildVapiVoiceBlock({
+      engine: resolveVoiceEngine(vapiConfig.ttsProvider),
       voiceId: vapiConfig.voiceId,
       stability: vapiConfig.stability,
       similarityBoost: vapiConfig.similarityBoost,

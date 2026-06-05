@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
-import { buildElevenLabsVoiceBlock } from '@/lib/voice/vapi-adapter'
+import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 async function findAgentByPhoneNumber(phoneNumber: string) {
   const vapiConfig: any = await db.vapiConfig.findFirst({
@@ -93,7 +93,8 @@ export async function POST(req: NextRequest) {
             ...((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest),
           ],
         },
-        voice: buildElevenLabsVoiceBlock({
+        voice: buildVapiVoiceBlock({
+          engine: resolveVoiceEngine(vapiConfig.ttsProvider),
           voiceId: vapiConfig.voiceId,
           stability: vapiConfig.stability,
           similarityBoost: vapiConfig.similarityBoost,
