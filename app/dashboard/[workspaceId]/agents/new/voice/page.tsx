@@ -843,8 +843,13 @@ function PhoneStep({
               {mode === 'buy' && (
                 <div>
                   {purchasedNumber ? (
-                    <div className="text-sm font-medium" style={{ color: '#22c55e' }}>
-                      ✓ {purchasedNumber.number} — ready
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium" style={{ color: '#22c55e' }}>
+                        ✓ {purchasedNumber.number}
+                      </div>
+                      <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                        Carrier wire-up takes 30 seconds to 2 minutes — if the Try-it dial fails right away, wait a moment and retry.
+                      </p>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">

@@ -1,5 +1,59 @@
 const VAPI_BASE = 'https://api.vapi.ai'
 
+/**
+ * Typed Vapi error. Carries the parsed body so callers can branch on
+ * specific Vapi failure modes (number-activating, concurrency limit,
+ * etc.) without re-parsing strings.
+ *
+ * Common subclasses we surface via .code:
+ *   - 'PHONE_NUMBER_ACTIVATING' — number was just provisioned and the
+ *     carrier is still wiring it up. Retry in 30–120s.
+ *   - 'CONCURRENCY_BLOCKED' — workspace hit its concurrent-call cap.
+ *   - 'UNKNOWN' — everything else; raw body is available on .body.
+ */
+export class VapiError extends Error {
+  constructor(
+    public status: number,
+    public code: 'PHONE_NUMBER_ACTIVATING' | 'CONCURRENCY_BLOCKED' | 'UNKNOWN',
+    public body: string,
+    public parsed: Record<string, unknown> | null,
+    /** Human-readable message safe to show the user. */
+    public userMessage: string,
+  ) {
+    super(`Vapi API error ${status}: ${userMessage}`)
+    this.name = 'VapiError'
+  }
+}
+
+function classifyVapiError(status: number, rawBody: string): VapiError {
+  let parsed: Record<string, unknown> | null = null
+  try { parsed = JSON.parse(rawBody) } catch {}
+  const message = String((parsed as any)?.message ?? '')
+
+  // Carrier still wiring up a fresh number. The text is verbatim from
+  // Vapi: "`phoneNumber` is activating. Contact support@vapi.ai if not
+  // active within 5 minutes."
+  if (status === 400 && /phoneNumber.+is activating/i.test(message)) {
+    return new VapiError(
+      status, 'PHONE_NUMBER_ACTIVATING', rawBody, parsed,
+      'Your phone number is still activating with the carrier. This usually takes 30 seconds to 2 minutes after purchase. Try again in a moment.',
+    )
+  }
+
+  // Workspace at the concurrent-call cap. The subscriptionLimits
+  // block on the parsed body carries the cap when this fires.
+  const limits = (parsed as any)?.subscriptionLimits
+  if (status === 400 && limits?.concurrencyBlocked) {
+    const cap = limits.concurrencyLimit
+    return new VapiError(
+      status, 'CONCURRENCY_BLOCKED', rawBody, parsed,
+      `Your Vapi account is at its concurrent-call cap${cap ? ` (${cap})` : ''}. Wait for one of the in-progress calls to end, or upgrade your Vapi plan.`,
+    )
+  }
+
+  return new VapiError(status, 'UNKNOWN', rawBody, parsed, message || rawBody.slice(0, 300))
+}
+
 async function vapiRequest(path: string, options: RequestInit = {}) {
   const apiKey = process.env.VAPI_API_KEY
   if (!apiKey) throw new Error('VAPI_API_KEY not set')
@@ -12,8 +66,8 @@ async function vapiRequest(path: string, options: RequestInit = {}) {
     },
   })
   if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Vapi API error ${res.status}: ${err}`)
+    const body = await res.text()
+    throw classifyVapiError(res.status, body)
   }
   return res.json()
 }
@@ -69,16 +123,30 @@ export async function createOutboundCall(opts: {
   assistant: Record<string, unknown>
   assistantOverrides?: { variableValues?: Record<string, string> }
 }): Promise<{ id: string; status: string }> {
-  const data = await vapiRequest('/call', {
-    method: 'POST',
-    body: JSON.stringify({
-      phoneNumberId: opts.phoneNumberId,
-      customer: { number: opts.customerNumber },
-      assistant: opts.assistant,
-      ...(opts.assistantOverrides ? { assistantOverrides: opts.assistantOverrides } : {}),
-    }),
+  const body = JSON.stringify({
+    phoneNumberId: opts.phoneNumberId,
+    customer: { number: opts.customerNumber },
+    assistant: opts.assistant,
+    ...(opts.assistantOverrides ? { assistantOverrides: opts.assistantOverrides } : {}),
   })
-  return { id: (data as any).id, status: (data as any).status }
+
+  // PHONE_NUMBER_ACTIVATING is the only Vapi error we treat as
+  // transient. Twilio's wire-up takes 30s–2min after the number is
+  // purchased; if the user dials immediately the first attempt
+  // bounces. One short retry usually clears it. After that we
+  // surface the typed VapiError so the UI can show the friendly
+  // "your number is still activating" copy.
+  try {
+    const data = await vapiRequest('/call', { method: 'POST', body })
+    return { id: (data as any).id, status: (data as any).status }
+  } catch (err) {
+    if (err instanceof VapiError && err.code === 'PHONE_NUMBER_ACTIVATING') {
+      await new Promise(r => setTimeout(r, 8000))
+      const data = await vapiRequest('/call', { method: 'POST', body })
+      return { id: (data as any).id, status: (data as any).status }
+    }
+    throw err
+  }
 }
 
 // ─── ElevenLabs Voice Library ──────────────────────────────────────────────

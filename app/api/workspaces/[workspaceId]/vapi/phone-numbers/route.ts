@@ -46,8 +46,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     const phoneNumber = await purchasePhoneNumber(areaCode)
     // Wizard expects { phoneNumber: { id, number, name } } — match that
     // shape verbatim so the client can use the result without massaging.
-    return NextResponse.json({ phoneNumber })
+    // Wizard also wants to show an "activating, 1-2 min" notice so the
+    // user knows not to dial immediately; include the hint here.
+    return NextResponse.json({
+      phoneNumber,
+      activatingHint: 'Carrier wire-up takes 30 seconds to 2 minutes. The Try-it dial may fail on the first attempt right after purchase.',
+    })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 400 })
+    const message = err?.userMessage || err?.message || 'Vapi phone-number purchase failed'
+    const code = err?.code === 'string' ? err.code : undefined
+    return NextResponse.json({ error: message, code }, { status: 400 })
   }
 }

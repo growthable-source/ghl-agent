@@ -272,7 +272,7 @@ function OutboundCallScreen({
 }: VoicePhoneCallUIProps & { onClose: () => void }) {
   const [phone, setPhone] = useState('')
   const [country, setCountry] = useState('+1')
-  const [phase, setPhase] = useState<'input' | 'dialing' | 'in_progress' | 'ended' | 'error'>('input')
+  const [phase, setPhase] = useState<'input' | 'dialing' | 'in_progress' | 'ended' | 'error' | 'activating'>('input')
   const [errMsg, setErrMsg] = useState<string | null>(null)
   const [callLogId, setCallLogId] = useState<string | null>(null)
 
@@ -291,7 +291,19 @@ function OutboundCallScreen({
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || `Dial failed (${res.status})`)
+      if (!res.ok) {
+        // PHONE_NUMBER_ACTIVATING is the common case right after a
+        // fresh number purchase. The route already retries server-side
+        // once with an 8s backoff; if it still fails we surface a
+        // friendly "your number is activating" screen with a retry
+        // button instead of dumping the raw Vapi error.
+        if (data.code === 'PHONE_NUMBER_ACTIVATING' || res.status === 503) {
+          setPhase('activating')
+          setErrMsg(data.error || 'Your phone number is still activating with the carrier.')
+          return
+        }
+        throw new Error(data.error || `Dial failed (${res.status})`)
+      }
       setCallLogId(data.callLogId || null)
       setPhase('in_progress')
       // We don't have live call-status push today (Vapi webhook updates
@@ -393,6 +405,36 @@ function OutboundCallScreen({
             <button
               onClick={onClose}
               className="text-sm px-4 py-2"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'activating' && (
+        <div className="max-w-sm mx-auto text-center space-y-3">
+          <div
+            className="rounded-xl p-4 text-sm"
+            style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+          >
+            <p className="font-semibold mb-1">Your number is still activating</p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {errMsg ?? 'Carrier wire-up usually takes 30 seconds to 2 minutes. Give it another moment and retry.'}
+            </p>
+          </div>
+          <button
+            onClick={dial}
+            className="text-sm font-semibold px-5 py-2.5 rounded-lg"
+            style={{ background: '#fa4d2e', color: '#ffffff' }}
+          >
+            Retry dial
+          </button>
+          <div>
+            <button
+              onClick={onClose}
+              className="text-xs px-4 py-2"
               style={{ color: 'var(--text-tertiary)' }}
             >
               Close

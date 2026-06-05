@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { initiateOutboundCall } from '@/lib/outbound-call'
+import { VapiError } from '@/lib/vapi-client'
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,6 +53,20 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, callLogId: result.callLogId, vapiCallId: result.vapiCallId })
   } catch (err) {
+    // Vapi-specific failures get a typed code so the client can render
+    // the right copy without parsing the message. PHONE_NUMBER_ACTIVATING
+    // is the most common one after a fresh number purchase.
+    if (err instanceof VapiError) {
+      console.warn(`[OutboundCall Action] Vapi ${err.code} (${err.status}): ${err.userMessage}`)
+      const status =
+        err.code === 'PHONE_NUMBER_ACTIVATING' ? 503  // retry-able
+        : err.code === 'CONCURRENCY_BLOCKED'   ? 429  // try later
+        : err.status
+      return NextResponse.json(
+        { error: err.userMessage, code: err.code, retryable: err.code === 'PHONE_NUMBER_ACTIVATING' },
+        { status },
+      )
+    }
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error('[OutboundCall Action]', message)
     return NextResponse.json({ error: message }, { status: 500 })
