@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
+import { buildElevenLabsVoiceBlock } from '@/lib/voice/vapi-adapter'
 
 async function findAgentByPhoneNumber(phoneNumber: string) {
   const vapiConfig: any = await db.vapiConfig.findFirst({
@@ -92,15 +93,14 @@ export async function POST(req: NextRequest) {
             ...((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest),
           ],
         },
-        voice: {
-          provider: '11labs' as any,
+        voice: buildElevenLabsVoiceBlock({
           voiceId: vapiConfig.voiceId,
           stability: vapiConfig.stability,
           similarityBoost: vapiConfig.similarityBoost,
           speed: vapiConfig.speed,
           style: vapiConfig.style,
-          ...(vapiConfig.language ? { language: vapiConfig.language } : {}),
-        } as any,
+          language: vapiConfig.language,
+        }) as any,
         firstMessage: renderMergeFields(
           vapiConfig.firstMessage || `Hi there! This is ${agent.agentPersonaName || agent.name}. How can I help you today?`,
           mergeCtx,

@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { AGENT_PRESETS, getPreset } from './presets'
 
 describe('AGENT_PRESETS registry', () => {
-  it('exports the three V1 presets', () => {
+  it('exports the four built-in presets', () => {
     const ids = AGENT_PRESETS.map(p => p.id).sort()
-    expect(ids).toEqual(['booking', 'conversational', 'custom'])
+    expect(ids).toEqual(['booking', 'conversational', 'custom', 'voice'])
   })
 
   it('every preset has guided autonomy by default', () => {
@@ -62,5 +62,26 @@ describe('Booking Bot preset', () => {
 describe('Custom preset', () => {
   it('has an empty tools array', () => {
     expect(getPreset('custom')?.tools).toEqual([])
+  })
+})
+
+describe('Voice Agent preset', () => {
+  const voice = getPreset('voice')!
+
+  it('disables every text-channel send tool', () => {
+    for (const t of ['send_reply', 'send_sms', 'send_email']) {
+      const delta = voice.tools.find(d => d.toolName === t)
+      expect(delta?.enabled).toBe(false)
+    }
+  })
+
+  it('routes book_appointment failure to transfer_to_human', () => {
+    const delta = voice.tools.find(t => t.toolName === 'book_appointment')
+    expect(delta?.onFailure).toBe('transfer_to_human')
+  })
+
+  it('disables workflow enrolment by default', () => {
+    expect(voice.tools.find(t => t.toolName === 'add_to_workflow')?.enabled).toBe(false)
+    expect(voice.tools.find(t => t.toolName === 'remove_from_workflow')?.enabled).toBe(false)
   })
 })

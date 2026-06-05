@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { createOutboundCall } from '@/lib/vapi-client'
 import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
+import { buildElevenLabsVoiceBlock } from '@/lib/voice/vapi-adapter'
 
 interface OutboundCallOpts {
   locationId: string
@@ -87,15 +88,14 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
         ...((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest),
       ],
     },
-    voice: {
-      provider: '11labs',
+    voice: buildElevenLabsVoiceBlock({
       voiceId: vapiConfig.voiceId,
       stability: vapiConfig.stability,
       similarityBoost: vapiConfig.similarityBoost,
       speed: vapiConfig.speed,
       style: vapiConfig.style,
-      ...(vapiConfig.language ? { language: vapiConfig.language } : {}),
-    },
+      language: vapiConfig.language,
+    }),
     firstMessage: contactName
       ? `Hi ${contactName}, this is ${agent.agentPersonaName || agent.name}. How are you doing today?`
       : `Hi there, this is ${agent.agentPersonaName || agent.name}. How are you doing today?`,
