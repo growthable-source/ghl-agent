@@ -94,6 +94,44 @@ export const AGENT_PRESETS: AgentPreset[] = [
     ],
   },
   {
+    id: 'voice',
+    label: 'Voice Agent',
+    description: 'Built for inbound + outbound phone calls. Voice IS the channel — every text-channel send tool is disabled (the agent SPEAKS, it doesn\'t SMS itself). Calendar, contact lookup, tagging, and post-call SMS-followup stay on so the agent can book, qualify, and follow up after the call.',
+    autonomyMode: 'guided',
+    tools: [
+      // Text-channel sends — off. Voice agents don't reply over SMS /
+      // Email / WhatsApp; they speak. Leaving these enabled lets the
+      // model occasionally try to "send a confirmation text" mid-call
+      // instead of saying it on the line — confusing for the caller.
+      { toolName: 'send_reply', enabled: false },
+      { toolName: 'send_sms', enabled: false },
+      { toolName: 'send_email', enabled: false },
+      // Scheduling outbound text follow-ups stays disabled — replaced
+      // by the voice-specific send_sms_followup tool that fires AFTER
+      // the call ends with a fixed template.
+      { toolName: 'cancel_scheduled_message', enabled: false },
+      // Workflows — keep off by default. A voice agent enrolling a
+      // contact in a marketing workflow mid-call is rarely desired
+      // and easy to trigger from a mishearing.
+      { toolName: 'add_to_workflow', enabled: false },
+      { toolName: 'remove_from_workflow', enabled: false },
+      // Commerce — off. Reading orders / inventory mid-call is fine
+      // in principle but the demo scope is conversation + booking.
+      // Operators who want commerce can re-enable per-tool.
+      { toolName: 'search_shopify_products', enabled: false },
+      { toolName: 'check_shopify_inventory', enabled: false },
+      { toolName: 'lookup_shopify_customer', enabled: false },
+      { toolName: 'check_shopify_order_status', enabled: false },
+      { toolName: 'create_shopify_checkout', enabled: false },
+      { toolName: 'create_shopify_discount', enabled: false },
+      { toolName: 'record_back_in_stock_interest', enabled: false },
+      // Booking failure → escalate. The caller is on the line; falling
+      // back to a "we'll get back to you" canned line is worse than
+      // bridging the call to a human.
+      { toolName: 'book_appointment', onFailure: 'transfer_to_human' },
+    ],
+  },
+  {
     id: 'custom',
     label: 'Custom',
     description: 'No defaults applied — all tools enabled with catalog rules. Start here when you want to configure everything yourself.',

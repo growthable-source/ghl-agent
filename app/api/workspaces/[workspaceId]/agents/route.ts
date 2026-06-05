@@ -202,15 +202,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       return NextResponse.json({ error: 'Could not resolve a Location for this agent' }, { status: 500 })
     }
 
-    // agentType is 'SIMPLE' by default (schema default). ADVANCED agents
-    // also persist a businessContext glossary; the runAgent path checks
-    // agentType to decide whether to fetch opportunities + hydrate custom
-    // fields. Free-text businessContext is harmless on a SIMPLE agent —
-    // upgrading later just flips the flag without a migration.
-    const agentType = body.agentType === 'ADVANCED' ? 'ADVANCED' : 'SIMPLE'
+    // agentType enum:
+    //   SIMPLE   — default text agent
+    //   ADVANCED — text agent + extra hydration (opportunities, customFields,
+    //              businessContext glossary) into every turn's system prompt
+    //   VOICE    — voice-first agent. Channels skip the SMS/Email/etc step;
+    //              the dashboard renders a different tab strip; the 'voice'
+    //              preset disables text-channel send tools automatically.
+    // Unknown values fall back to SIMPLE so legacy callers stay safe.
+    const agentType =
+      body.agentType === 'ADVANCED' ? 'ADVANCED'
+      : body.agentType === 'VOICE' ? 'VOICE'
+      : 'SIMPLE'
     const businessContext = typeof body.businessContext === 'string'
       ? body.businessContext.trim() || null
       : null
+
+    // Voice agents get the 'voice' preset applied automatically (unless
+    // the caller passed a different presetId, in which case the explicit
+    // choice wins). Keeps the wizard from having to wire preset logic
+    // separately — POST /agents creates a fully-configured voice agent.
+    const effectivePresetId: string | null =
+      typeof body.presetId === 'string' && body.presetId.length > 0
+        ? body.presetId
+        : agentType === 'VOICE' ? 'voice' : null
 
     // Calendar wiring at create time. The wizard sends `calendarId` when
     // the user picked a specific calendar in the LeadConnector calendar
@@ -242,18 +257,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       },
     })
 
-    // If the caller picked a preset, apply it server-side AFTER agent
-    // creation. Failure here doesn't block the agent — the agent still
-    // exists with catalog defaults and the user can re-apply via the UI.
-    if (typeof body.presetId === 'string' && body.presetId.length > 0) {
+    // Apply preset server-side AFTER agent creation. Voice agents get
+    // the 'voice' preset by default (effectivePresetId resolved above);
+    // text agents only get a preset when the caller explicitly passes one.
+    // Failure here doesn't block agent creation — the agent still exists
+    // with catalog defaults and the user can re-apply via the UI.
+    if (effectivePresetId) {
       try {
         const { applyPreset } = await import('@/lib/agent/presets')
-        const applied = await applyPreset(agent.id, body.presetId)
+        const applied = await applyPreset(agent.id, effectivePresetId)
         if (!applied) {
-          console.warn(`[Agents] Unknown presetId "${body.presetId}" — agent created without preset config`)
+          console.warn(`[Agents] Unknown presetId "${effectivePresetId}" — agent created without preset config`)
         }
       } catch (err: any) {
         console.warn(`[Agents] Preset application failed for ${agent.id}: ${err?.message}`)
+      }
+    }
+
+    // Voice agents may ship with an initial VapiConfig (from the voice
+    // wizard's voice + phone-number steps). Wrapped in try/catch so a
+    // schema mismatch — e.g. a brand-new field added to VapiConfig that
+    // the wizard sends but prod hasn't migrated — doesn't roll back the
+    // whole agent create. The user can re-save voice config from the
+    // Voice tab if this fails.
+    if (agentType === 'VOICE' && body.vapiConfig && typeof body.vapiConfig === 'object') {
+      try {
+        const v = body.vapiConfig as Record<string, unknown>
+        await db.vapiConfig.create({
+          data: {
+            agentId: agent.id,
+            isActive: v.isActive !== false,  // default on for voice agents
+            ttsProvider: typeof v.ttsProvider === 'string' ? v.ttsProvider : 'vapi',
+            voiceId: typeof v.voiceId === 'string' ? v.voiceId : '',
+            voiceName: typeof v.voiceName === 'string' ? v.voiceName : null,
+            phoneNumberId: typeof v.phoneNumberId === 'string' ? v.phoneNumberId : null,
+            phoneNumber: typeof v.phoneNumber === 'string' ? v.phoneNumber : null,
+            firstMessage: typeof v.firstMessage === 'string' ? v.firstMessage : null,
+            endCallMessage: typeof v.endCallMessage === 'string' ? v.endCallMessage : null,
+            language: typeof v.language === 'string' ? v.language : null,
+            maxDurationSecs: typeof v.maxDurationSecs === 'number' ? v.maxDurationSecs : 600,
+            recordCalls: v.recordCalls !== false,
+            backgroundSound: typeof v.backgroundSound === 'string' ? v.backgroundSound : null,
+            ...(typeof v.stability === 'number' && { stability: v.stability }),
+            ...(typeof v.similarityBoost === 'number' && { similarityBoost: v.similarityBoost }),
+            ...(typeof v.speed === 'number' && { speed: v.speed }),
+            ...(typeof v.style === 'number' && { style: v.style }),
+          } as any,
+        })
+      } catch (err: any) {
+        console.warn(`[Agents] VapiConfig create failed for ${agent.id}: ${err?.message}`)
       }
     }
 

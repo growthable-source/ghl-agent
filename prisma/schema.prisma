@@ -628,6 +628,15 @@ model Agent {
   // fields + the agent's businessContext glossary into every turn's system
   // prompt. Heavier on tokens but the agent can reason about commercial
   // context (e.g. a car dealer's vehicle inquiries) without tool calls.
+  //
+  // Enum values:
+  //   'SIMPLE'   — default text agent
+  //   'ADVANCED' — text agent + extra context (opportunities + businessContext)
+  //   'VOICE'    — voice-first agent. The dashboard renders a different tab
+  //                strip (Identity · Voice · Knowledge · Skills · When to run
+  //                · Activity), the agent-list shows a 🎤 affordance, and
+  //                the wizard at /agents/new/voice creates these. Text-channel
+  //                send tools are pre-disabled via the 'voice' preset.
   agentType       String  @default("SIMPLE")
   // Free-text glossary the operator fills once — tells the agent what
   // their custom fields / opportunities represent in their business. Only
