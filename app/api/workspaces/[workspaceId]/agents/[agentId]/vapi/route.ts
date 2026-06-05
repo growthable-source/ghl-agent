@@ -90,13 +90,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       console.warn('[voice test prompt] commerce block failed:', err?.message)
     }
 
-    // Pre-built voice block for browser test calls. The browser used
-    // to inline `voice: { provider: '11labs', voiceId }` regardless of
-    // the agent's engine — which Vapi rejects when a Grok voiceId is
-    // passed with provider '11labs', terminating the meeting with
-    // "Meeting ended due to ejection". Building server-side via the
-    // same helper used by outbound + inbound paths keeps every voice
-    // surface in lockstep.
+    // Pre-built voice block for browser test calls. Built server-side
+    // via the same helper used by outbound + inbound paths so every
+    // voice surface stays in lockstep.
     const voiceBlock = config
       ? buildVapiVoiceBlock({
           engine: resolveVoiceEngine(config.ttsProvider),
@@ -109,6 +105,46 @@ export async function GET(_req: NextRequest, { params }: Params) {
         })
       : null
 
+    // Full assistant config the browser passes straight to vapi.start().
+    // Mirrors the shape lib/outbound-call.ts uses for phone calls —
+    // including serverUrl/serverUrlSecret so Vapi proxies every turn
+    // back through /api/vapi/webhook (running OUR Claude + OUR tools
+    // server-side) instead of trying to run the model directly with
+    // provider keys we may not have configured on the Vapi side. That
+    // routing is what makes the browser test exercise the same code
+    // path the live agent runs through. Without it Vapi tears down
+    // the meeting on the first turn with "Meeting ended due to
+    // ejection" because it can't run claude-sonnet-4 without an
+    // Anthropic key in their dashboard.
+    let browserAssistant: Record<string, unknown> | null = null
+    if (config && voiceBlock) {
+      let VAPI_TOOLS: any[] = []
+      try {
+        VAPI_TOOLS = (await import('@/lib/voice-prompt')).VAPI_TOOLS
+      } catch {}
+      browserAssistant = {
+        name: agent?.name || 'Voice agent',
+        model: {
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-20250514',
+          messages: [{ role: 'system', content: testSystemPrompt }],
+          tools: [
+            ...VAPI_TOOLS,
+            ...(((config.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest)),
+          ],
+        },
+        voice: voiceBlock,
+        firstMessage: config.firstMessage || `Hi, this is ${agent?.agentPersonaName || agent?.name || 'your assistant'}. How can I help today?`,
+        endCallMessage: config.endCallMessage || 'Thanks. Have a great day!',
+        maxDurationSeconds: config.maxDurationSecs ?? 600,
+        recordingEnabled: config.recordCalls !== false,
+        ...(config.backgroundSound ? { backgroundSound: config.backgroundSound } : {}),
+        ...(config.endCallPhrases?.length ? { endCallPhrases: config.endCallPhrases } : {}),
+        serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
+        serverUrlSecret: process.env.VAPI_WEBHOOK_SECRET,
+      }
+    }
+
     return NextResponse.json({
       config,
       phoneNumbers,
@@ -119,6 +155,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       agentPersonaName: agent?.agentPersonaName || null,
       testSystemPrompt,
       voiceBlock,
+      browserAssistant,
       serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
       _debug: {
         keyPresent: !!rawKey,

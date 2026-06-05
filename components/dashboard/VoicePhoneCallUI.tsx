@@ -172,9 +172,30 @@ function BrowserCallScreen({
   )
 }
 
-// Inline Vapi browser-call subcomponent. Vapi's Web SDK is fully
-// inline-able; we don't have a Vapi-equivalent of XaiTestCall today
-// so this is the canonical place for it now.
+// Module-level Vapi SDK singleton. Loading @vapi-ai/web more than
+// once in a session triggers a "KrispSDK is duplicated" warning
+// (Krisp is bundled inside Vapi's Daily.co transport layer and only
+// tolerates one global instance). Caching the dynamic import + the
+// Vapi instance per public key keeps the SDK loaded exactly once
+// across re-renders, React strict-mode double-mounts, etc.
+let _vapiSdkPromise: Promise<any> | null = null
+let _vapiInstance: { key: string; instance: any } | null = null
+async function getVapi(publicKey: string): Promise<any> {
+  if (_vapiInstance?.key === publicKey) return _vapiInstance.instance
+  if (!_vapiSdkPromise) _vapiSdkPromise = import('@vapi-ai/web').then(m => m.default)
+  const Vapi = await _vapiSdkPromise
+  const instance = new Vapi(publicKey)
+  _vapiInstance = { key: publicKey, instance }
+  return instance
+}
+
+// Inline Vapi browser-call subcomponent. Receives a server-built
+// assistant config (matches the exact shape lib/outbound-call.ts uses
+// for phone calls — same voice block, same serverUrl callback to our
+// /api/vapi/webhook so the model + tools run server-side, same
+// engine routing). We never build the config client-side anymore —
+// drift between phone + browser is what caused the "Meeting ended
+// due to ejection" loop.
 function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMessage?: string }) {
   const [status, setStatus] = useState<'starting' | 'live' | 'ended' | 'error'>('starting')
   const [errMsg, setErrMsg] = useState<string | null>(null)
@@ -186,31 +207,47 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
 
     async function run() {
       try {
-        // The agent's vapi-config endpoint returns: publicKey + the
-        // pre-built voiceBlock (engine-aware — ElevenLabs or xAI) +
-        // the testSystemPrompt. Building the assistant config here
-        // client-side would risk drift from the outbound + inbound
-        // paths (it's how we ended up sending provider:'11labs' with
-        // a Grok voiceId and getting "Meeting ended due to ejection").
         const m = window.location.pathname.match(/\/dashboard\/([^/]+)/)
         if (!m) throw new Error('Could not resolve workspace from URL')
-        const fallback = await fetch(`/api/workspaces/${m[1]}/agents/${agentId}/vapi`)
-        if (!fallback.ok) {
-          const body = await fallback.text().catch(() => '')
-          throw new Error(`Could not load voice config (${fallback.status}): ${body.slice(0, 200)}`)
+        const res = await fetch(`/api/workspaces/${m[1]}/agents/${agentId}/vapi`)
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          throw new Error(`Could not load voice config (${res.status}): ${body.slice(0, 200)}`)
         }
-        const cfg = await fallback.json()
+        const cfg = await res.json()
 
         if (cancelled) return
 
         const publicKey = cfg.vapiPublicKey || cfg.publicKey
         if (!publicKey) throw new Error('Vapi public key is not configured on this deployment')
-        if (!cfg.voiceBlock) {
-          throw new Error('This agent has no voice configured. Save voice settings first.')
+
+        // Server pre-builds the entire assistant config (matches the
+        // phone-call shape from lib/outbound-call.ts — including the
+        // serverUrl callback to /api/vapi/webhook so model turns run
+        // server-side). Browser just passes through.
+        const assistant = cfg.browserAssistant
+        if (!assistant) {
+          throw new Error('This agent has no voice configured. Save voice settings first, then try again.')
+        }
+        // Allow caller to override the opening line per session
+        // (e.g. wizard test wants to use the just-typed firstMessage
+        // even if VapiConfig hasn't been updated yet).
+        if (firstMessage) assistant.firstMessage = firstMessage
+
+        // Diagnostic — surface what we're sending so failures don't
+        // require server-log diving. Strip the system prompt (long
+        // and noisy) before logging.
+        if (typeof console !== 'undefined') {
+          const { messages: _msgs, ...modelRest } = assistant.model || {}
+          console.log('[TestCall] starting with', {
+            voice: assistant.voice,
+            model: modelRest,
+            firstMessage: assistant.firstMessage,
+            serverUrl: assistant.serverUrl,
+          })
         }
 
-        const Vapi = (await import('@vapi-ai/web')).default
-        const vapi = new Vapi(publicKey)
+        const vapi = await getVapi(publicKey)
         vapiRef.current = vapi
 
         vapi.on('message', (msg: any) => {
@@ -223,22 +260,15 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
         vapi.on('error', (e: any) => {
           if (!cancelled) {
             setStatus('error')
-            // Vapi's "Meeting has ended" / "ejection" surfaces as a
-            // daily-error — make the copy actionable instead of a
-            // raw protocol blob.
             const msg = e?.errorMsg || e?.error?.message || e?.message
             const friendly = /ejection|Meeting has ended/i.test(String(msg))
-              ? "Vapi terminated the call (rejected assistant config). Check the agent's voice settings — most often the chosen voice id doesn't match the selected engine."
+              ? "Vapi terminated the call. Most common cause: the Anthropic model can't be reached by Vapi — either Vapi's webhook to our server is failing, or (legacy) you need to add an Anthropic key in the Vapi dashboard. Check the browser console for the 'TestCall starting with' log to verify what was sent."
               : (msg ?? 'Vapi error')
             setErrMsg(friendly)
           }
         })
 
-        await vapi.start({
-          model: { provider: 'anthropic', model: 'claude-sonnet-4-20250514', messages: cfg.testSystemPrompt ? [{ role: 'system', content: cfg.testSystemPrompt }] : undefined } as any,
-          voice: cfg.voiceBlock,
-          firstMessage: firstMessage ?? cfg.config?.firstMessage ?? 'Hello.',
-        } as any)
+        await vapi.start(assistant)
       } catch (err: any) {
         if (!cancelled) {
           setStatus('error')
