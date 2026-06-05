@@ -16,15 +16,15 @@ describe('elevenLabsModel', () => {
     else process.env.VAPI_ELEVENLABS_MODEL = original
   })
 
-  it('defaults to eleven_v3', () => {
+  it('defaults to eleven_turbo_v2_5 (Vapi-recommended for phone)', () => {
     delete process.env.VAPI_ELEVENLABS_MODEL
-    expect(elevenLabsModel()).toBe('eleven_v3')
-    expect(ELEVEN_DEFAULT_MODEL).toBe('eleven_v3')
+    expect(elevenLabsModel()).toBe('eleven_turbo_v2_5')
+    expect(ELEVEN_DEFAULT_MODEL).toBe('eleven_turbo_v2_5')
   })
 
-  it('respects VAPI_ELEVENLABS_MODEL override', () => {
-    process.env.VAPI_ELEVENLABS_MODEL = 'eleven_turbo_v2_5'
-    expect(elevenLabsModel()).toBe('eleven_turbo_v2_5')
+  it('respects VAPI_ELEVENLABS_MODEL override (e.g. opt into v3)', () => {
+    process.env.VAPI_ELEVENLABS_MODEL = 'eleven_v3'
+    expect(elevenLabsModel()).toBe('eleven_v3')
   })
 })
 
@@ -61,11 +61,11 @@ describe('resolveVoiceEngine', () => {
 })
 
 describe('buildVapiVoiceBlock — ElevenLabs engine', () => {
-  it('emits provider "11labs" and the default v3 model', () => {
+  it('emits provider "11labs" and the default turbo_v2_5 model', () => {
     const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'abc123' })
     expect(block.provider).toBe('11labs')
     expect(block.voiceId).toBe('abc123')
-    expect(block.model).toBe('eleven_v3')
+    expect(block.model).toBe('eleven_turbo_v2_5')
   })
 
   it('drops nullable tuning params instead of writing nulls', () => {
@@ -97,6 +97,18 @@ describe('buildVapiVoiceBlock — ElevenLabs engine', () => {
   it('honours an explicit model param over the env default', () => {
     const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'x', model: 'eleven_multilingual_v2' })
     expect(block.model).toBe('eleven_multilingual_v2')
+  })
+
+  it('lets operators opt into eleven_v3 via the env var', () => {
+    const prev = process.env.VAPI_ELEVENLABS_MODEL
+    process.env.VAPI_ELEVENLABS_MODEL = 'eleven_v3'
+    try {
+      const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'x' })
+      expect(block.model).toBe('eleven_v3')
+    } finally {
+      if (prev === undefined) delete process.env.VAPI_ELEVENLABS_MODEL
+      else process.env.VAPI_ELEVENLABS_MODEL = prev
+    }
   })
 
   it('defaults engine to elevenlabs when omitted (back-compat)', () => {
@@ -145,6 +157,6 @@ describe('buildElevenLabsVoiceBlock — back-compat alias', () => {
   it('still produces an ElevenLabs block (engine is forced)', () => {
     const block = buildElevenLabsVoiceBlock({ voiceId: 'x' })
     expect(block.provider).toBe('11labs')
-    expect(block.model).toBe('eleven_v3')
+    expect(block.model).toBe('eleven_turbo_v2_5')
   })
 })

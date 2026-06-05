@@ -15,11 +15,19 @@ config:**
 
 | Engine | Provider string | Voices | Tuning |
 |---|---|---|---|
-| ElevenLabs v3 | `'11labs'` | 5000+ catalogue | stability / similarityBoost / speed / style / model |
+| ElevenLabs | `'11labs'` | 5000+ catalogue | stability / similarityBoost / speed / style / model |
 | xAI Grok | `'xai'` | ~5 expressive voices | none (Vapi rejects extra params on non-11labs providers) |
 
 ElevenLabs is the default. Grok is picked per-agent via the engine
 tab in the wizard's Voice step or the post-creation Voice tab.
+
+**Default ElevenLabs model: `eleven_turbo_v2_5`.** Not `eleven_v3`.
+v3 is the newest expressive model but on a phone bridge (compressed
+codec, narrow bandwidth, low-latency requirement) it sounds noticeably
+worse than v2.5 turbo. The expressive emotion shifts get mangled by
+the codec and the longer per-utterance generation time adds
+conversational lag. Override via `VAPI_ELEVENLABS_MODEL` env var if
+you want to opt in to v3 for an account that has it fully enabled.
 
 ## How an agent picks its engine
 
@@ -97,8 +105,8 @@ but reachable from any UI that knows the engine and voiceId.
   upstream key on the Vapi side, so we don't need ours for the actual
   phone call's audio.
 - `VAPI_ELEVENLABS_MODEL` — optional override for the ElevenLabs
-  model id; defaults to `eleven_v3`. Set to `eleven_turbo_v2_5` on
-  accounts where v3 isn't yet enabled.
+  model id; defaults to `eleven_turbo_v2_5`. Set to `eleven_v3` to
+  opt into the alpha expressive model.
 - `VAPI_XAI_PROVIDER` — optional override for the xAI provider
   string Vapi expects; defaults to `xai`. Bump to `x-ai` or `grok`
   if Vapi later renames.
@@ -129,7 +137,7 @@ End-to-end happy path:
 1. **Engine = ElevenLabs**: `/agents/new/voice` → Voice step → keep
    the ElevenLabs tab → pick a voice → finish wizard → place a real
    outbound call → confirm Vapi dashboard's call log shows
-   `voice.provider: '11labs'` + `voice.model: 'eleven_v3'`.
+   `voice.provider: '11labs'` + `voice.model: 'eleven_turbo_v2_5'`.
 2. **Engine = Grok**: same flow, switch to Grok tab → pick e.g. "Eve"
    → finish → real call → Vapi dashboard shows `voice.provider: 'xai'`
    + `voice.voiceId: 'eve'` + no tuning fields.

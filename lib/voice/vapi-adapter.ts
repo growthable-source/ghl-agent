@@ -61,11 +61,19 @@ export function resolveVoiceEngine(ttsProvider?: string | null): VoiceEngine {
   return 'elevenlabs'
 }
 
-// ElevenLabs v3 expressive model — default for the elevenlabs engine.
-// Override per-deploy via VAPI_ELEVENLABS_MODEL (e.g. eleven_turbo_v2_5
-// for accounts that don't have v3 enabled).
-export const ELEVEN_DEFAULT_MODEL = 'eleven_v3'
-export const ELEVEN_FALLBACK_MODEL = 'eleven_turbo_v2_5'
+// Default ElevenLabs model. We use eleven_turbo_v2_5 — Vapi documents
+// this as the recommended model for phone calls (low latency, GA
+// quality, no expressive-pause artefacts that the alpha eleven_v3
+// produces on a narrow-band phone codec). eleven_v3 is the newest
+// expressive model but in practice phone calls using it sound worse,
+// not better — the expressive emotion shifts get mangled by the
+// phone bandwidth and the longer per-utterance generation time
+// adds noticeable conversational lag.
+//
+// Operators who want to opt into v3 (or any other model id) can set
+// VAPI_ELEVENLABS_MODEL on the deploy without touching code.
+export const ELEVEN_DEFAULT_MODEL = 'eleven_turbo_v2_5'
+export const ELEVEN_LEGACY_V3 = 'eleven_v3'
 export function elevenLabsModel(): string {
   return process.env.VAPI_ELEVENLABS_MODEL || ELEVEN_DEFAULT_MODEL
 }
