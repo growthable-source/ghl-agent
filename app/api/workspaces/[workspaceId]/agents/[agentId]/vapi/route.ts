@@ -106,42 +106,50 @@ export async function GET(_req: NextRequest, { params }: Params) {
       : null
 
     // Full assistant config the browser passes straight to vapi.start().
-    // Mirrors the shape lib/outbound-call.ts uses for phone calls —
-    // including serverUrl/serverUrlSecret so Vapi proxies every turn
-    // back through /api/vapi/webhook (running OUR Claude + OUR tools
-    // server-side) instead of trying to run the model directly with
-    // provider keys we may not have configured on the Vapi side. That
-    // routing is what makes the browser test exercise the same code
-    // path the live agent runs through. Without it Vapi tears down
-    // the meeting on the first turn with "Meeting ended due to
-    // ejection" because it can't run claude-sonnet-4 without an
-    // Anthropic key in their dashboard.
+    // Mirrors the shape the existing voice tab's startTestCall has been
+    // using successfully (lines 305+ of the voice page) — which is
+    // SUBTLY DIFFERENT from lib/outbound-call.ts:
+    //
+    //   • Browser SDK: `server: { url }` (nested) — and that's IT for
+    //     webhook routing. No top-level serverUrl/serverUrlSecret.
+    //     Vapi's browser SDK rejects the top-level form and tears the
+    //     meeting down with "Meeting ended due to ejection".
+    //   • Phone: top-level serverUrl + serverUrlSecret (outbound-call.ts).
+    //
+    // Both work for routing turns through /api/vapi/webhook — they're
+    // just different field names on the two Vapi entry points. Keep
+    // them separate; do NOT try to unify under one shape.
+    const browserServerUrl = `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`
     let browserAssistant: Record<string, unknown> | null = null
     if (config && voiceBlock) {
-      let VAPI_TOOLS: any[] = []
-      try {
-        VAPI_TOOLS = (await import('@/lib/voice-prompt')).VAPI_TOOLS
-      } catch {}
+      // Built-in voice-only tool surface, inline so the browser test
+      // matches what the existing voice tab sends today. Mirrors
+      // lib/voice-prompt.ts:VAPI_TOOLS but kept inline because the
+      // browser tab and the wizard's try-it share the same shape.
+      const builtInTools = [
+        { type: 'function', function: { name: 'get_available_slots', description: 'Get available appointment slots', parameters: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD' } }, required: ['date'] } } },
+        { type: 'function', function: { name: 'book_appointment',    description: 'Book an appointment',             parameters: { type: 'object', properties: { startTime: { type: 'string' }, name: { type: 'string' } }, required: ['startTime'] } } },
+        { type: 'function', function: { name: 'tag_contact',         description: 'Tag the caller contact',         parameters: { type: 'object', properties: { tag: { type: 'string' } }, required: ['tag'] } } },
+        { type: 'function', function: { name: 'send_sms_followup',   description: 'Post-call SMS follow-up',        parameters: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'] } } },
+      ]
+      const customTools = ((config.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest)
       browserAssistant = {
         name: agent?.name || 'Voice agent',
         model: {
           provider: 'anthropic',
           model: 'claude-sonnet-4-20250514',
-          messages: [{ role: 'system', content: testSystemPrompt }],
-          tools: [
-            ...VAPI_TOOLS,
-            ...(((config.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest)),
-          ],
+          messages: [{ role: 'system', content: testSystemPrompt + '\n\n## VOICE CALL INSTRUCTIONS\nYou are on a live phone call. Speak naturally and conversationally. Keep responses SHORT — 1-3 sentences max.' }],
+          tools: [...builtInTools, ...customTools],
         },
         voice: voiceBlock,
         firstMessage: config.firstMessage || `Hi, this is ${agent?.agentPersonaName || agent?.name || 'your assistant'}. How can I help today?`,
         endCallMessage: config.endCallMessage || 'Thanks. Have a great day!',
         maxDurationSeconds: config.maxDurationSecs ?? 600,
-        recordingEnabled: config.recordCalls !== false,
         ...(config.backgroundSound ? { backgroundSound: config.backgroundSound } : {}),
         ...(config.endCallPhrases?.length ? { endCallPhrases: config.endCallPhrases } : {}),
-        serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
-        serverUrlSecret: process.env.VAPI_WEBHOOK_SECRET,
+        // Nested form — required by Vapi's browser SDK. NOT top-level
+        // serverUrl/serverUrlSecret (that's the phone-call shape).
+        server: { url: browserServerUrl },
       }
     }
 

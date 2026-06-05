@@ -236,14 +236,15 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
 
         // Diagnostic — surface what we're sending so failures don't
         // require server-log diving. Strip the system prompt (long
-        // and noisy) before logging.
+        // and noisy) and the tool list (also noisy) before logging.
         if (typeof console !== 'undefined') {
-          const { messages: _msgs, ...modelRest } = assistant.model || {}
+          const { messages: _msgs, tools: _tools, ...modelRest } = assistant.model || {}
           console.log('[TestCall] starting with', {
             voice: assistant.voice,
             model: modelRest,
+            toolCount: Array.isArray(assistant.model?.tools) ? assistant.model.tools.length : 0,
             firstMessage: assistant.firstMessage,
-            serverUrl: assistant.serverUrl,
+            server: assistant.server,
           })
         }
 
@@ -262,7 +263,7 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
             setStatus('error')
             const msg = e?.errorMsg || e?.error?.message || e?.message
             const friendly = /ejection|Meeting has ended/i.test(String(msg))
-              ? "Vapi terminated the call. Most common cause: the Anthropic model can't be reached by Vapi — either Vapi's webhook to our server is failing, or (legacy) you need to add an Anthropic key in the Vapi dashboard. Check the browser console for the 'TestCall starting with' log to verify what was sent."
+              ? "Vapi terminated the call. Check the [TestCall] starting with… log in the browser console to see what was sent. Common causes: an Anthropic API key isn't configured on the Vapi dashboard (browser test calls run the model directly through Vapi unless 'server.url' is set), or the voice block's provider/voiceId pair is invalid."
               : (msg ?? 'Vapi error')
             setErrMsg(friendly)
           }
