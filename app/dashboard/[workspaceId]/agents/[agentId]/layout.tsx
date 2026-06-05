@@ -24,6 +24,11 @@ const HUBS: Hub[] = [
     // primary tab and drill into specific editors only when they need to
     // make a change. The overview pages live at /identity, /knowledge/overview,
     // /skills, /trigger, /activity respectively.
+    //
+    // Note: the Voice sub-tab here is for SIMPLE/ADVANCED agents that
+    // bolt voice onto a primarily-text agent. VOICE agents use a
+    // different HUBS layout (VOICE_HUBS below) where Voice is promoted
+    // to its own top-level hub.
     key: 'identity',
     label: 'Identity',
     tabs: [
@@ -90,29 +95,87 @@ const HUBS: Hub[] = [
   },
 ]
 
-const ALL_TABS: { hub: Hub; tab: Tab }[] = HUBS.flatMap(h =>
-  h.tabs.map(t => ({ hub: h, tab: t })),
-)
+// VOICE agents get a different IA: Voice is its own top-level hub
+// (because voice IS the channel) and the Identity hub loses its Voice
+// sub-tab to avoid double-listing. Channels in the When-to-run hub
+// still exist but the voice agent only ever deploys to a Voice
+// pseudo-channel, so the operator's day-to-day on this surface is
+// Identity → Voice → Knowledge → Skills → When to run → Activity.
+const VOICE_HUBS: Hub[] = [
+  {
+    key: 'identity',
+    label: 'Identity',
+    tabs: [
+      { key: 'identity', label: 'Overview', path: '/identity' },
+      { key: 'settings', label: 'Settings', path: '' },
+      { key: 'persona',  label: 'Persona',  path: '/persona' },
+    ],
+  },
+  {
+    // Voice is the primary configuration surface for these agents.
+    // Single tab for now — provider / voice picker / phone number /
+    // opening + closing line / tuning all live on /voice. Sub-tabs
+    // can be split out later (Test, Settings, Numbers, etc.) without
+    // changing the URL contract.
+    key: 'voice',
+    label: 'Voice',
+    tabs: [
+      { key: 'voice', label: 'Configuration', path: '/voice' },
+    ],
+  },
+  { key: 'knowledge', label: 'Knowledge', tabs: [
+    { key: 'knowledge-overview', label: 'Overview',   path: '/knowledge/overview' },
+    { key: 'knowledge',          label: 'Entries',    path: '/knowledge' },
+    { key: 'listening',          label: 'Listening',  path: '/listening' },
+    { key: 'qualifying',         label: 'Qualifying', path: '/qualifying' },
+  ] },
+  { key: 'skills', label: 'Skills', tabs: [
+    { key: 'skills',       label: 'Overview',        path: '/skills' },
+    { key: 'tools',        label: 'Tools',           path: '/tools' },
+    { key: 'playbook',     label: 'Playbook',        path: '/playbook' },
+    { key: 'integrations', label: 'Integrations',    path: '/integrations' },
+    { key: 'follow-ups',   label: 'Follow-ups',      path: '/follow-ups' },
+    { key: 'goals',        label: 'Stop conditions', path: '/goals' },
+  ] },
+  { key: 'trigger', label: 'When to run', tabs: [
+    { key: 'overview',      label: 'Triggers',      path: '/trigger' },
+    { key: 'routing',       label: 'Filter rules',  path: '/routing' },
+    { key: 'working-hours', label: 'Working hours', path: '/working-hours' },
+  ] },
+  { key: 'activity', label: 'Activity', tabs: [
+    { key: 'activity',        label: 'Overview',       path: '/activity' },
+    { key: 'replay',          label: 'Replay',         path: '/replay' },
+    { key: 'wins',            label: 'Objectives',     path: '/wins' },
+    { key: 'evaluations',     label: 'Evaluations',    path: '/evaluations' },
+    { key: 'experiments',     label: 'Experiments',    path: '/experiments' },
+    { key: 'prompt-versions', label: 'Prompt history', path: '/prompt-versions' },
+  ] },
+]
+
+const ALL_TABS_TEXT: { hub: Hub; tab: Tab }[] = HUBS.flatMap(h => h.tabs.map(t => ({ hub: h, tab: t })))
+const ALL_TABS_VOICE: { hub: Hub; tab: Tab }[] = VOICE_HUBS.flatMap(h => h.tabs.map(t => ({ hub: h, tab: t })))
 
 // Resolve a URL suffix back to the hub + tab it belongs to. Anything we
-// don't recognise falls through to Identity / Overview.
-function resolveActive(suffix: string): { hub: Hub; tab: Tab } {
+// don't recognise falls through to the first tab of the first hub.
+// The candidate list comes from whichever HUBS array is active for
+// the agent's type (text vs voice).
+function resolveActive(suffix: string, candidates: { hub: Hub; tab: Tab }[]): { hub: Hub; tab: Tab } {
   const trimmed = suffix === '/' ? '' : suffix
   // Exact match first (handles '' → settings, '/voice' → voice,
   // '/knowledge/overview' → knowledge-overview, etc.).
-  const exact = ALL_TABS.find(({ tab }) => tab.path === trimmed)
+  const exact = candidates.find(({ tab }) => tab.path === trimmed)
   if (exact) return exact
   // Prefix match for nested routes (e.g. '/replay/abc' → replay). Pick
   // the LONGEST match so '/knowledge/overview/anything' resolves to the
   // overview tab, not the parent /knowledge editor.
-  const prefixMatches = ALL_TABS
+  const prefixMatches = candidates
     .filter(({ tab }) => tab.path !== '' && trimmed.startsWith(tab.path + '/'))
     .sort((a, b) => b.tab.path.length - a.tab.path.length)
   if (prefixMatches.length > 0) return prefixMatches[0]
   // Bare prefix match (e.g. '/replay' itself, no trailing segment).
-  const bare = ALL_TABS.find(({ tab }) => tab.path !== '' && trimmed === tab.path)
+  const bare = candidates.find(({ tab }) => tab.path !== '' && trimmed === tab.path)
   if (bare) return bare
-  return ALL_TABS[0]
+  return candidates[0]
 }
 
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
@@ -123,7 +186,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
   const base = `/dashboard/${workspaceId}/agents/${agentId}`
 
-  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number; viewMode: 'simple' | 'advanced' } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number; viewMode: 'simple' | 'advanced'; agentType: string } | null>(null)
   const [toggling, setToggling] = useState(false)
   const [channelCount, setChannelCount] = useState<number | null>(null)
 
@@ -142,6 +205,10 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         // primary surface. Default to 'simple' when the column is missing
         // or the value isn't one we recognise.
         viewMode: agent.viewMode === 'advanced' ? 'advanced' : 'simple',
+        // agentType drives which HUBS layout we render: VOICE agents
+        // promote Voice to a top-level hub and drop it from Identity's
+        // sub-tabs (see VOICE_HUBS above).
+        agentType: typeof agent.agentType === 'string' ? agent.agentType : 'SIMPLE',
       }))
   }, [workspaceId, agentId])
 
@@ -173,7 +240,14 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   }
 
   const suffix = pathname.replace(base, '')
-  const { hub: activeHub, tab: activeTab } = resolveActive(suffix)
+  // Pick the right HUBS layout for this agent. Pre-fetch (agent still
+  // null) we render the text layout so the tab strip doesn't flash
+  // empty; once the agent loads we'll re-render with the voice layout
+  // if applicable.
+  const isVoiceAgent = agent?.agentType === 'VOICE'
+  const activeHubs = isVoiceAgent ? VOICE_HUBS : HUBS
+  const candidates = isVoiceAgent ? ALL_TABS_VOICE : ALL_TABS_TEXT
+  const { hub: activeHub, tab: activeTab } = resolveActive(suffix, candidates)
 
   // In advanced mode the canvas is the entire surface — the tabbed nav
   // strips below the header are hidden so the /flow page renders edge
@@ -293,7 +367,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
               continuous nav rather than stacked banners. */}
           <div className="flex items-stretch px-8 mt-4 shrink-0">
             <div className="flex items-stretch gap-1 overflow-x-auto min-w-0 flex-1">
-              {HUBS.map(h => {
+              {activeHubs.map(h => {
                 const isActive = activeHub.key === h.key
                 const href = `${base}${h.tabs[0].path}`
                 return (

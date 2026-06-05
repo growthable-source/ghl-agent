@@ -164,6 +164,10 @@ export default function VoicePage() {
   const [testSystemPrompt, setTestSystemPrompt] = useState('')
   const [agentName, setAgentName] = useState('Agent')
   const [serverUrl, setServerUrl] = useState('')
+  // For VOICE-typed agents we tweak the intro copy (voice is the
+  // channel, not a bolt-on). Fetched on mount alongside the rest of
+  // the agent metadata; harmless when it stays default.
+  const [agentType, setAgentType] = useState<string>('SIMPLE')
   const vapiInstanceRef = useRef<any>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
 
@@ -191,6 +195,15 @@ export default function VoicePage() {
       fetch('/api/voices')
         .then(r => r.json())
         .then(({ voices: v }) => setVoices(v || []))
+        .catch(() => {}),
+      // Pull agentType separately so we know whether this is a
+      // primary-voice agent (different intro copy + the Voice tab is
+      // promoted to a top-level hub in the parent layout).
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((d: any) => {
+          if (d?.agent?.agentType) setAgentType(d.agent.agentType)
+        })
         .catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [workspaceId, agentId])
@@ -391,7 +404,20 @@ export default function VoicePage() {
 
   return (
     <div className="p-8 max-w-2xl">
-      <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Configure inbound call handling. Same knowledge base and brain as SMS.</p>
+      {agentType === 'VOICE' ? (
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold mb-1.5" style={{ color: 'var(--text-primary)' }}>
+            Voice configuration
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+            Voice is this agent's primary channel. Provider, voice, phone number, and call settings all live here.
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+          Configure inbound call handling. Same knowledge base and brain as SMS.
+        </p>
+      )}
 
       {!vapiReady && (
         <div
