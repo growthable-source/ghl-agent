@@ -18,11 +18,10 @@ import { VOICE_TEMPLATES, type VoiceTemplate } from '@/lib/voice/templates'
 import { generateAgentName } from '@/lib/random-name'
 import VoicePhoneCallUI from '@/components/dashboard/VoicePhoneCallUI'
 
-type Step = 'use_case' | 'provider' | 'voice' | 'personality' | 'knowledge' | 'phone' | 'try_it'
+type Step = 'use_case' | 'voice' | 'personality' | 'knowledge' | 'phone' | 'try_it'
 
 const STEPS: { key: Step; label: string }[] = [
   { key: 'use_case',    label: 'Use case' },
-  { key: 'provider',    label: 'Provider' },
   { key: 'voice',       label: 'Voice' },
   { key: 'personality', label: 'Personality' },
   { key: 'knowledge',   label: 'Knowledge' },
@@ -30,7 +29,12 @@ const STEPS: { key: Step; label: string }[] = [
   { key: 'try_it',      label: 'Try it' },
 ]
 
-type Provider = 'vapi' | 'xai'
+// Wizard is Vapi-only by design. The wizard's headline says "Test it on
+// a real call at the end" — xAI (Grok) doesn't have phone support yet,
+// so it would never satisfy that promise. xAI stays available on the
+// agent's post-creation Voice tab for operators who want a browser-only
+// experiment; the wizard simply doesn't ask.
+type Provider = 'vapi'
 
 interface VoiceOption {
   id: string
@@ -63,8 +67,9 @@ export default function VoiceWizardPage() {
   // ─── Step 1: use case ─────────────────────────────────────────────
   const [template, setTemplate] = useState<VoiceTemplate | null>(null)
 
-  // ─── Step 2: provider ─────────────────────────────────────────────
-  const [provider, setProvider] = useState<Provider>('vapi')
+  // ─── Provider — fixed to Vapi for the wizard (see Provider type
+  //     declaration above). Not a step the user sees.
+  const provider: Provider = 'vapi'
 
   // ─── Step 3: voice ────────────────────────────────────────────────
   const [voices, setVoices] = useState<VoiceOption[]>([])
@@ -107,20 +112,32 @@ export default function VoiceWizardPage() {
   // ─── Step 7: try_it — handled by VoicePhoneCallUI after submit ────
   const [createdAgentId, setCreatedAgentId] = useState<string | null>(null)
 
-  // ─── Provider step: visibility of phone step depends on caps ──────
-  const phoneSupported = provider === 'vapi'
-  const visibleSteps = useMemo(() => {
-    return STEPS.filter(s => s.key !== 'phone' || phoneSupported)
-  }, [phoneSupported])
+  // Every wizard step is always visible (Vapi supports phone, so the
+  // phone step never auto-hides). Kept as a computed list for parity
+  // with the text wizard's pattern; future conditional steps go here.
+  const visibleSteps = useMemo(() => STEPS, [])
   const currentIdx = visibleSteps.findIndex(s => s.key === step)
 
-  // Voices fetcher
+  // Voices fetcher. The /api/voices endpoint returns the legacy
+  // ElevenLabs snake_case shape ({ voice_id, preview_url, … }); we
+  // normalise to the camelCase VoiceOption the wizard works with so
+  // selection (selected?.id === v.id) and preview (voice.previewUrl)
+  // both work without per-call massaging in every render path. Without
+  // this map every voice had id=undefined → every card looked selected
+  // and the play button did nothing.
   const fetchVoices = useCallback(async (prov: Provider) => {
     setVoicesLoading(true)
     try {
       const res = await fetch(`/api/voices?provider=${prov}`)
       const data = await res.json()
-      setVoices(Array.isArray(data.voices) ? data.voices : [])
+      const raw = Array.isArray(data.voices) ? data.voices : []
+      setVoices(raw.map((v: any) => ({
+        id: v.voice_id ?? v.id,
+        name: v.name,
+        previewUrl: v.preview_url ?? v.previewUrl ?? undefined,
+        labels: v.labels ?? {},
+        language: v.language ?? undefined,
+      })))
     } catch (err: any) {
       console.error('[voice-wizard] voices fetch failed:', err)
       setVoices([])
@@ -256,7 +273,6 @@ export default function VoiceWizardPage() {
   // ─── Per-step Continue-enabled rules ──────────────────────────────
   const canContinue = (() => {
     if (step === 'use_case') return template !== null
-    if (step === 'provider') return true
     if (step === 'voice') return selectedVoice !== null
     if (step === 'personality') return firstMessage.trim().length > 0 && systemPrompt.trim().length > 0
     if (step === 'knowledge') return true
@@ -281,7 +297,9 @@ export default function VoiceWizardPage() {
           New voice agent
         </h1>
         <p className="text-sm mb-8" style={{ color: 'var(--text-tertiary)' }}>
-          Build a voice agent in seven short steps. Test it on a real call at the end.
+          Build a voice agent in six short steps. Powered by ElevenLabs v3
+          + Vapi — Vapi handles the phone number and the call routing,
+          ElevenLabs supplies the voice. Test it on a real call at the end.
         </p>
 
         {/* Step pills */}
@@ -320,9 +338,6 @@ export default function VoiceWizardPage() {
           {step === 'use_case' && (
             <UseCaseStep template={template} onPick={setTemplate} />
           )}
-          {step === 'provider' && (
-            <ProviderStep provider={provider} onChange={setProvider} />
-          )}
           {step === 'voice' && (
             <VoiceStep
               voices={filteredVoices}
@@ -336,7 +351,7 @@ export default function VoiceWizardPage() {
               onSelect={setSelectedVoice}
               previewPlaying={previewPlaying}
               onPreview={playPreview}
-              providerLabel={provider === 'vapi' ? 'ElevenLabs (via Vapi)' : 'Grok (xAI)'}
+              providerLabel="ElevenLabs v3 (via Vapi)"
             />
           )}
           {step === 'personality' && (
@@ -386,7 +401,7 @@ export default function VoiceWizardPage() {
               voiceId={selectedVoice?.id ?? ''}
               firstMessage={firstMessage}
               ttsProvider={provider}
-              outboundEnabled={provider === 'vapi' && !!purchasedNumber}
+              outboundEnabled={!!purchasedNumber}
             />
           )}
         </div>
@@ -470,84 +485,6 @@ function UseCaseStep({ template, onPick }: { template: VoiceTemplate | null; onP
               <div className="text-2xl mb-2">{t.icon}</div>
               <div className="font-semibold text-sm mb-1" style={{ color: 'var(--text-primary)' }}>{t.name}</div>
               <div className="text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>{t.tagline}</div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function ProviderStep({ provider, onChange }: { provider: Provider; onChange: (p: Provider) => void }) {
-  const options: Array<{
-    id: Provider
-    name: string
-    summary: string
-    caps: string[]
-    badge?: string
-  }> = [
-    {
-      id: 'vapi',
-      name: 'Vapi + ElevenLabs v3',
-      summary: '5000+ expressive voices. Phone calls (inbound + outbound), browser, widget. Best for production calls.',
-      caps: ['Phone', 'Browser', 'Widget', 'TTS'],
-      badge: 'Recommended',
-    },
-    {
-      id: 'xai',
-      name: 'Grok (xAI)',
-      summary: 'Five expressive Grok voices, browser + widget only. Phone support coming. Best for quick browser experiments.',
-      caps: ['Browser', 'Widget', 'TTS'],
-    },
-  ]
-  return (
-    <div>
-      <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-        Which voice stack?
-      </h2>
-      <p className="text-sm mb-6" style={{ color: 'var(--text-tertiary)' }}>
-        Each provider exposes different voices and supports different surfaces.
-      </p>
-      <div className="space-y-3">
-        {options.map(opt => {
-          const active = provider === opt.id
-          return (
-            <button
-              key={opt.id}
-              onClick={() => onChange(opt.id)}
-              className="w-full text-left rounded-xl p-5 transition-all"
-              style={{
-                background: 'var(--surface-secondary)',
-                border: active ? '2px solid #fa4d2e' : '1px solid var(--border)',
-              }}
-            >
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div>
-                  <div className="font-semibold text-sm mb-1 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                    {opt.name}
-                    {opt.badge && (
-                      <span
-                        className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
-                      >
-                        {opt.badge}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>{opt.summary}</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {opt.caps.map(c => (
-                  <span
-                    key={c}
-                    className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                    style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
             </button>
           )
         })}
