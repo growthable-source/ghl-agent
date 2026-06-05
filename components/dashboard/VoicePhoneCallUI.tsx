@@ -186,27 +186,28 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
 
     async function run() {
       try {
-        const cfgRes = await fetch(`/api/workspaces/agents/${agentId}/vapi-browser-config`)
-        // The browser-config endpoint may not exist yet on every env
-        // (it's a thin wrapper around VapiConfig + the public key).
-        // Fall back to the agent's vapi-config endpoint which IS
-        // shipped.
-        let cfg: any
-        if (cfgRes.ok) {
-          cfg = await cfgRes.json()
-        } else {
-          // Resolve workspaceId from the URL — the agent's vapi-config
-          // endpoint is workspace-scoped.
-          const m = window.location.pathname.match(/\/dashboard\/([^/]+)/)
-          if (!m) throw new Error('Could not resolve workspace from URL')
-          const fallback = await fetch(`/api/workspaces/${m[1]}/agents/${agentId}/vapi`)
-          cfg = await fallback.json()
+        // The agent's vapi-config endpoint returns: publicKey + the
+        // pre-built voiceBlock (engine-aware — ElevenLabs or xAI) +
+        // the testSystemPrompt. Building the assistant config here
+        // client-side would risk drift from the outbound + inbound
+        // paths (it's how we ended up sending provider:'11labs' with
+        // a Grok voiceId and getting "Meeting ended due to ejection").
+        const m = window.location.pathname.match(/\/dashboard\/([^/]+)/)
+        if (!m) throw new Error('Could not resolve workspace from URL')
+        const fallback = await fetch(`/api/workspaces/${m[1]}/agents/${agentId}/vapi`)
+        if (!fallback.ok) {
+          const body = await fallback.text().catch(() => '')
+          throw new Error(`Could not load voice config (${fallback.status}): ${body.slice(0, 200)}`)
         }
+        const cfg = await fallback.json()
 
         if (cancelled) return
 
         const publicKey = cfg.vapiPublicKey || cfg.publicKey
         if (!publicKey) throw new Error('Vapi public key is not configured on this deployment')
+        if (!cfg.voiceBlock) {
+          throw new Error('This agent has no voice configured. Save voice settings first.')
+        }
 
         const Vapi = (await import('@vapi-ai/web')).default
         const vapi = new Vapi(publicKey)
@@ -220,13 +221,23 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
         vapi.on('call-start', () => { if (!cancelled) setStatus('live') })
         vapi.on('call-end', () => { if (!cancelled) setStatus('ended') })
         vapi.on('error', (e: any) => {
-          if (!cancelled) { setStatus('error'); setErrMsg(e?.message ?? 'Vapi error') }
+          if (!cancelled) {
+            setStatus('error')
+            // Vapi's "Meeting has ended" / "ejection" surfaces as a
+            // daily-error — make the copy actionable instead of a
+            // raw protocol blob.
+            const msg = e?.errorMsg || e?.error?.message || e?.message
+            const friendly = /ejection|Meeting has ended/i.test(String(msg))
+              ? "Vapi terminated the call (rejected assistant config). Check the agent's voice settings — most often the chosen voice id doesn't match the selected engine."
+              : (msg ?? 'Vapi error')
+            setErrMsg(friendly)
+          }
         })
 
         await vapi.start({
-          model: { provider: 'anthropic', model: 'claude-sonnet-4-20250514' } as any,
-          voice: { provider: '11labs', voiceId: cfg.voiceId ?? cfg.config?.voiceId },
-          firstMessage: firstMessage ?? cfg.firstMessage ?? cfg.config?.firstMessage ?? 'Hello.',
+          model: { provider: 'anthropic', model: 'claude-sonnet-4-20250514', messages: cfg.testSystemPrompt ? [{ role: 'system', content: cfg.testSystemPrompt }] : undefined } as any,
+          voice: cfg.voiceBlock,
+          firstMessage: firstMessage ?? cfg.config?.firstMessage ?? 'Hello.',
         } as any)
       } catch (err: any) {
         if (!cancelled) {

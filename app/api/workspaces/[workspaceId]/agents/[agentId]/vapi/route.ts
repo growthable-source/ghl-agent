@@ -4,6 +4,7 @@ import { listPhoneNumbers, purchasePhoneNumber } from '@/lib/vapi-client'
 import { getAllQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { buildPersonaBlock } from '@/lib/persona'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -89,6 +90,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
       console.warn('[voice test prompt] commerce block failed:', err?.message)
     }
 
+    // Pre-built voice block for browser test calls. The browser used
+    // to inline `voice: { provider: '11labs', voiceId }` regardless of
+    // the agent's engine — which Vapi rejects when a Grok voiceId is
+    // passed with provider '11labs', terminating the meeting with
+    // "Meeting ended due to ejection". Building server-side via the
+    // same helper used by outbound + inbound paths keeps every voice
+    // surface in lockstep.
+    const voiceBlock = config
+      ? buildVapiVoiceBlock({
+          engine: resolveVoiceEngine(config.ttsProvider),
+          voiceId: config.voiceId,
+          stability: config.stability,
+          similarityBoost: config.similarityBoost,
+          speed: config.speed,
+          style: config.style,
+          language: config.language,
+        })
+      : null
+
     return NextResponse.json({
       config,
       phoneNumbers,
@@ -98,6 +118,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       agentName: agent?.name || 'Agent',
       agentPersonaName: agent?.agentPersonaName || null,
       testSystemPrompt,
+      voiceBlock,
       serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
       _debug: {
         keyPresent: !!rawKey,
