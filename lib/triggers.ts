@@ -227,6 +227,55 @@ export async function processContactTrigger(event: TriggerEvent): Promise<{
 
       console.log(`[Trigger] Firing trigger ${trigger.id} (${trigger.messageMode}) for agent "${agent.name}" → contact ${contactId} on ${trigger.channel}`)
 
+      // ── VOICE_CALL channel: place an outbound phone call ──
+      // The trigger doesn't send a message at all — it dials the
+      // contact's phone via Vapi and the voice agent runs the
+      // conversation when the call connects. messageMode is ignored
+      // (no text to compose). Reuses lib/outbound-call.ts which
+      // already does the resolve-contact + Vapi-dial dance.
+      if (trigger.channel === 'VOICE_CALL') {
+        if (!contact?.phone) {
+          console.warn(`[Trigger] VOICE_CALL trigger ${trigger.id} skipped — contact ${contactId} has no phone number`)
+          skipped++
+          skipReasons.push(`Contact has no phone number (required for outbound call triggers)`)
+          continue
+        }
+        try {
+          const { initiateOutboundCall } = await import('./outbound-call')
+          const result = await initiateOutboundCall({
+            locationId,
+            contactId,
+            agentId: agent.id,
+            contactPhone: contact.phone,
+            contactName: [contact.firstName, contact.lastName].filter(Boolean).join(' ') || undefined,
+            triggerSource: 'trigger',
+          })
+          // Log the trigger fire so the dashboard can show it. The
+          // CallLog row is already written by initiateOutboundCall;
+          // this is just the trigger-fire audit trail (same shape as
+          // every other channel's success log).
+          await db.messageLog.create({
+            data: {
+              locationId,
+              agentId: agent.id,
+              contactId,
+              conversationId: '',
+              inboundMessage: `[Trigger: ${eventType}${trigger.tagFilter ? ` tag=${trigger.tagFilter}` : ''}]`,
+              outboundReply: `[Outbound call placed to ${contact.phone}${result?.callLogId ? ` — CallLog ${result.callLogId}` : ''}]`,
+              actionsPerformed: ['trigger_outbound_call'],
+              status: 'SUCCESS',
+            },
+          }).catch(err => console.warn(`[Trigger] MessageLog create failed for call trigger: ${err?.message}`))
+          fired++
+          console.log(`[Trigger] Outbound call placed for trigger ${trigger.id} → ${contact.phone}`)
+        } catch (err: any) {
+          console.error(`[Trigger] VOICE_CALL trigger ${trigger.id} failed: ${err?.message}`)
+          skipped++
+          skipReasons.push(`Outbound call dispatch failed: ${err?.message ?? 'unknown'}`)
+        }
+        continue
+      }
+
       if (trigger.messageMode === 'FIXED' && trigger.fixedMessage) {
         // ── FIXED MODE: send static message directly ──
         // Render merge fields — the template is authored with placeholders

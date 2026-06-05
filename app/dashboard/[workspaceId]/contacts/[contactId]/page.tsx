@@ -61,6 +61,12 @@ export default function ContactTimelinePage() {
     tags: string[]
     isSuppressed: boolean
   } | null>(null)
+  // Voice agents available for outbound calls from this contact's page.
+  // Loaded once; only voice agents with an active phone number are
+  // shown. We also need the contact's resolved locationId for the
+  // outbound-call API.
+  const [voiceAgents, setVoiceAgents] = useState<Array<{ id: string; name: string; phoneNumber: string | null }>>([])
+  const [callLocationId, setCallLocationId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/contacts/${contactId}/timeline`)
@@ -85,11 +91,32 @@ export default function ContactTimelinePage() {
             phone: c.phone ?? null,
             tags: c.tags ?? [],
             isSuppressed: !!c.isSuppressed,
-          })
+            locationId: c.locationId ?? null,
+          } as any)
+          if (c.locationId) setCallLocationId(c.locationId)
         }
       })
       .catch(() => {})
-  }, [workspaceId, contactId])
+
+    // Voice agents on this workspace with a provisioned phone number.
+    // Used by the Call-this-contact button to populate its picker —
+    // hidden entirely when zero match. Errors are swallowed so the
+    // page still renders.
+    fetch(`/api/workspaces/${workspaceId}/agents`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: any) => {
+        const all = Array.isArray(data?.agents) ? data.agents : []
+        const voice = all
+          .filter((a: any) => a.agentType === 'VOICE' && a.vapiConfig?.isActive && a.vapiConfig?.phoneNumber)
+          .map((a: any) => ({ id: a.id, name: a.name, phoneNumber: a.vapiConfig?.phoneNumber ?? null }))
+        setVoiceAgents(voice)
+        // Use the first voice agent's location as a fallback for callers
+        // when the native-contact lookup didn't resolve one. The
+        // outbound-call route validates the location server-side.
+        if (!callLocationId && all[0]?.locationId) setCallLocationId(all[0].locationId)
+      })
+      .catch(() => {})
+  }, [workspaceId, contactId, callLocationId])
 
   if (loading) {
     return <div className="flex-1 p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
@@ -150,13 +177,24 @@ export default function ContactTimelinePage() {
               </>
             )}
           </div>
-          {summary?.agentsInvolved && summary.agentsInvolved[0] && (
-            <TakeoverControl
-              workspaceId={workspaceId}
-              contactId={contactId}
-              agentId={summary.agentsInvolved[0].id}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {nativeContact?.phone && voiceAgents.length > 0 && callLocationId && (
+              <CallThisContactButton
+                voiceAgents={voiceAgents}
+                contactPhone={nativeContact.phone}
+                contactId={contactId}
+                locationId={callLocationId}
+                workspaceId={workspaceId}
+              />
+            )}
+            {summary?.agentsInvolved && summary.agentsInvolved[0] && (
+              <TakeoverControl
+                workspaceId={workspaceId}
+                contactId={contactId}
+                agentId={summary.agentsInvolved[0].id}
+              />
+            )}
+          </div>
         </div>
 
         {/* Summary */}
@@ -343,5 +381,94 @@ function TakeoverControl({ workspaceId, contactId, agentId }: {
     >
       {busy ? '...' : 'Take over conversation'}
     </button>
+  )
+}
+
+// ─── Call this contact (outbound voice) ─────────────────────────────
+// Renders a small button next to the take-over control. Hidden by the
+// parent when zero voice agents match. Picking an agent in the dropdown
+// dials the contact's phone via /api/actions/outbound-call.
+function CallThisContactButton({
+  voiceAgents, contactPhone, contactId, locationId, workspaceId,
+}: {
+  voiceAgents: Array<{ id: string; name: string; phoneNumber: string | null }>
+  contactPhone: string
+  contactId: string
+  locationId: string
+  workspaceId: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [flash, setFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+
+  async function dial(agentId: string) {
+    setBusy(agentId)
+    setFlash(null)
+    setOpen(false)
+    try {
+      const res = await fetch('/api/actions/outbound-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locationId, agentId, contactId, phone: contactPhone }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Dial failed (${res.status})`)
+      setFlash({ kind: 'ok', msg: 'Call queued — phone should ring shortly.' })
+    } catch (err: any) {
+      setFlash({ kind: 'err', msg: err.message ?? 'Dial failed' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={!!busy}
+        className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors inline-flex items-center gap-1.5"
+        style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+        title="Place an outbound voice call to this contact"
+      >
+        <span aria-hidden>📞</span>
+        {busy ? 'Dialling…' : 'Call this contact'}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 mt-1 w-60 rounded-lg overflow-hidden z-20"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.25)' }}
+          >
+            <div className="px-3 py-2 text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+              Pick a voice agent
+            </div>
+            {voiceAgents.map(a => (
+              <button
+                key={a.id}
+                onClick={() => dial(a.id)}
+                className="block w-full text-left px-3 py-2 hover:opacity-90 text-sm"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <div className="font-medium">{a.name}</div>
+                {a.phoneNumber && (
+                  <div className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    From {a.phoneNumber}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {flash && (
+        <p
+          className="absolute right-0 mt-2 text-[11px] whitespace-nowrap"
+          style={{ color: flash.kind === 'ok' ? 'var(--accent-emerald)' : 'var(--accent-red)' }}
+        >
+          {flash.msg}
+        </p>
+      )}
+    </div>
   )
 }

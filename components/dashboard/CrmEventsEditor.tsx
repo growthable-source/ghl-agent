@@ -28,13 +28,21 @@ import TagCombobox from '@/components/TagCombobox'
 // SHOULD eventually live in a shared module; today the duplication is
 // 7 short rows and not worth a separate file.
 const CHANNELS = [
-  { key: 'SMS',       label: 'SMS' },
-  { key: 'WhatsApp',  label: 'WhatsApp' },
-  { key: 'FB',        label: 'Facebook Messenger' },
-  { key: 'IG',        label: 'Instagram DMs' },
-  { key: 'GMB',       label: 'Google Business' },
-  { key: 'Live_Chat', label: 'Live Chat' },
-  { key: 'Email',     label: 'Email' },
+  { key: 'SMS',        label: 'SMS' },
+  { key: 'WhatsApp',   label: 'WhatsApp' },
+  { key: 'FB',         label: 'Facebook Messenger' },
+  { key: 'IG',         label: 'Instagram DMs' },
+  { key: 'GMB',        label: 'Google Business' },
+  { key: 'Live_Chat',  label: 'Live Chat' },
+  { key: 'Email',      label: 'Email' },
+  // VOICE_CALL is a special channel that places an outbound phone
+  // call via Vapi instead of sending a text message. The trigger's
+  // messageMode/fixedMessage/aiInstructions are ignored — the call
+  // IS the action. Pickers should only show this option when the
+  // agent has a voice config with an active phone number; the
+  // backend in lib/triggers.ts skips the trigger gracefully if the
+  // contact has no phone number on file.
+  { key: 'VOICE_CALL', label: '📞 Outbound phone call' },
 ] as const
 const CHANNEL_LABELS: Record<string, string> = Object.fromEntries(CHANNELS.map(c => [c.key, c.label]))
 
