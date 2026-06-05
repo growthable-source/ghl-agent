@@ -531,7 +531,7 @@ function VoiceStep({
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
         {([
-          { id: 'vapi' as const,       label: 'Vapi-native',  count: '8' },
+          { id: 'vapi' as const,       label: 'Vapi-native',  count: '30' },
           { id: 'elevenlabs' as const, label: 'ElevenLabs',   count: '5000+' },
         ]).map(opt => {
           const active = engine === opt.id
@@ -553,6 +553,20 @@ function VoiceStep({
           )
         })}
       </div>
+      {engine === 'vapi' && (
+        <div
+          className="rounded-lg px-3 py-2 text-xs mb-4"
+          style={{
+            background: 'var(--surface-secondary)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <strong>Heads up:</strong> Vapi-native voices don&apos;t expose one-shot previews — Vapi&apos;s API
+          is WebRTC-only. The fastest way to hear a voice is the Test Call panel at the end of the
+          wizard. ElevenLabs voices have inline previews if you need to audition first.
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <input
           type="text"

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, usePathname } from 'next/navigation'
+import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AgentReferenceHealthBanner } from '@/components/dashboard/AgentReferenceHealthBanner'
 import NewBadge from '@/components/NewBadge'
@@ -181,6 +181,7 @@ function resolveActive(suffix: string, candidates: { hub: Hub; tab: Tab }[]): { 
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
   const params = useParams()
   const pathname = usePathname()
+  const router = useRouter()
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
 
@@ -193,24 +194,46 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
       .then(r => r.json())
-      .then(({ agent }) => setAgent({
-        name: agent.name,
-        isActive: agent.isActive,
-        // Routing rules are required for the agent to actually pick up
-        // an inbound (the webhook pre-filter checks for ≥1). Surface the
-        // count here so the header banner can flag the misconfig the
-        // same way the listening pill on the agents list does.
-        ruleCount: agent.routingRules?.length ?? 0,
-        // viewMode drives whether the tabbed IA or the canvas is the
-        // primary surface. Default to 'simple' when the column is missing
-        // or the value isn't one we recognise.
-        viewMode: agent.viewMode === 'advanced' ? 'advanced' : 'simple',
-        // agentType drives which HUBS layout we render: VOICE agents
-        // promote Voice to a top-level hub and drop it from Identity's
-        // sub-tabs (see VOICE_HUBS above).
-        agentType: typeof agent.agentType === 'string' ? agent.agentType : 'SIMPLE',
-      }))
-  }, [workspaceId, agentId])
+      .then(({ agent }) => {
+        const agentType = typeof agent.agentType === 'string' ? agent.agentType : 'SIMPLE'
+        // Voice agents have their own dedicated URL space at /voice/[id].
+        // If we landed here (old bookmark, stale link), redirect to the
+        // matching sub-tab under /voice/ so the sidebar and breadcrumb
+        // are correct. Mapping is mostly 1:1 except the bolt-on
+        // /agents/[id]/voice page → /voice/[id]/configuration.
+        if (agentType === 'VOICE') {
+          const suffix = pathname.replace(base, '') || ''
+          const voiceBase = `/dashboard/${workspaceId}/voice/${agentId}`
+          const target =
+            suffix === '' || suffix === '/' ? voiceBase
+            : suffix === '/voice' ? `${voiceBase}/configuration`
+            : suffix === '/trigger' ? `${voiceBase}/triggers`
+            : suffix === '/knowledge' ? `${voiceBase}/knowledge`
+            : suffix === '/skills' ? `${voiceBase}/skills`
+            : suffix === '/identity' ? `${voiceBase}/identity`
+            : suffix.startsWith('/calls') ? `${voiceBase}/calls`
+            : voiceBase // unknown sub-tab → Overview
+          router.replace(target)
+          return
+        }
+        setAgent({
+          name: agent.name,
+          isActive: agent.isActive,
+          // Routing rules are required for the agent to actually pick up
+          // an inbound (the webhook pre-filter checks for ≥1). Surface the
+          // count here so the header banner can flag the misconfig the
+          // same way the listening pill on the agents list does.
+          ruleCount: agent.routingRules?.length ?? 0,
+          // viewMode drives whether the tabbed IA or the canvas is the
+          // primary surface. Default to 'simple' when the column is missing
+          // or the value isn't one we recognise.
+          viewMode: agent.viewMode === 'advanced' ? 'advanced' : 'simple',
+          // agentType drives which HUBS layout we render. VOICE agents
+          // get redirected above; this branch only sees SIMPLE / ADVANCED.
+          agentType,
+        })
+      })
+  }, [workspaceId, agentId, pathname, base, router])
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`)

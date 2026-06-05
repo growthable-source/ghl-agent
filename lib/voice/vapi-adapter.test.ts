@@ -42,14 +42,30 @@ describe('resolveVoiceEngine', () => {
 })
 
 describe('buildVapiVoiceBlock — Vapi-native engine (default)', () => {
-  it('emits provider "vapi" + voiceId only', () => {
-    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'elliot' })
+  it('emits provider "vapi" + canonical (capitalized) voiceId', () => {
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'Elliot' })
     expect(block.provider).toBe('vapi')
-    expect(block.voiceId).toBe('elliot')
+    expect(block.voiceId).toBe('Elliot')
+  })
+
+  it('capitalizes legacy lowercase voiceId to the Vapi-accepted form', () => {
+    // Round 4 shipped lowercase ('elliot'); Vapi rejects it with a typed
+    // 400. The adapter canonicalises so pre-migration rows still produce
+    // a valid payload until the SQL migration runs.
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'elliot' })
+    expect(block.voiceId).toBe('Elliot')
+  })
+
+  it('leaves non-catalogue ids unchanged', () => {
+    // Defensive: an unknown id (typo, ElevenLabs id misrouted, etc.)
+    // shouldn't get mangled — pass it through and let Vapi reject it
+    // with a useful error.
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'not-a-real-voice-xyz' })
+    expect(block.voiceId).toBe('not-a-real-voice-xyz')
   })
 
   it('does NOT include the ElevenLabs model / tuning fields', () => {
-    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'elliot' })
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'Elliot' })
     expect(block).not.toHaveProperty('model')
     expect(block).not.toHaveProperty('stability')
     expect(block).not.toHaveProperty('similarityBoost')
@@ -60,7 +76,7 @@ describe('buildVapiVoiceBlock — Vapi-native engine (default)', () => {
   it('strips ElevenLabs-specific tuning even when provided', () => {
     const block = buildVapiVoiceBlock({
       engine: 'vapi',
-      voiceId: 'elliot',
+      voiceId: 'Elliot',
       stability: 0.5,
       similarityBoost: 0.7,
       speed: 1.1,
@@ -72,12 +88,12 @@ describe('buildVapiVoiceBlock — Vapi-native engine (default)', () => {
   })
 
   it('passes language through when set', () => {
-    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'elliot', language: 'en' })
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'Elliot', language: 'en' })
     expect(block.language).toBe('en')
   })
 
   it('defaults engine to vapi when omitted', () => {
-    const block = buildVapiVoiceBlock({ voiceId: 'elliot' })
+    const block = buildVapiVoiceBlock({ voiceId: 'Elliot' })
     expect(block.provider).toBe('vapi')
   })
 })

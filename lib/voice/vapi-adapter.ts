@@ -1,4 +1,5 @@
 import { searchElevenLabsVoices } from '../vapi-client'
+import { canonicalVapiVoiceId } from './vapi-native-voices'
 import type { VoiceAdapter, VoiceOption, VoiceProviderCapabilities } from './types'
 
 /**
@@ -125,10 +126,17 @@ export function buildVapiVoiceBlock(p: VapiVoiceParams): Record<string, unknown>
 
   // Vapi-native (default). Just provider + voiceId — Vapi rejects
   // extra params on the 'vapi' provider (it's pre-tuned). Matches
-  // the demo Riley agent's voice block: { provider: 'vapi', voiceId: 'elliot' }.
+  // the demo Riley agent's voice block: { provider: 'vapi', voiceId: 'Elliot' }.
+  //
+  // Capitalize the voiceId defensively. Vapi rejects lowercase ids
+  // with a typed 400. Pre-Round-5 DB rows may still hold 'elliot' from
+  // the Round 4 SQL; `canonicalVapiVoiceId` maps that back to the
+  // catalogue's canonical 'Elliot' so the assistant payload is always
+  // accepted, even before / mid-migration. Non-catalogue ids pass
+  // through unchanged.
   return {
     provider: 'vapi' as const,
-    voiceId: p.voiceId,
+    voiceId: canonicalVapiVoiceId(p.voiceId),
     ...(p.language && { language: p.language }),
   }
 }

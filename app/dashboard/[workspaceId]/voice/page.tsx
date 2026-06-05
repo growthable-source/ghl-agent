@@ -247,10 +247,14 @@ function VoiceAgentCard({ agent, workspaceId }: { agent: VoiceAgent; workspaceId
   const phone = agent.vapiConfig?.phoneNumber
   const voiceName = agent.vapiConfig?.voiceName || agent.vapiConfig?.voiceId || 'No voice'
   const engine = agent.vapiConfig?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Vapi'
-  const hrefBase = `/dashboard/${workspaceId}/agents/${agent.id}`
+  // Canonical URL for a voice agent is /voice/[id] — the dedicated
+  // surface with its own layout, breadcrumb, and tab strip. Old
+  // /agents/[id]/voice URLs still resolve (the agents layout redirects
+  // voice-typed agents) but new card clicks should land at the
+  // canonical home page.
   return (
     <Link
-      href={`${hrefBase}/voice`}
+      href={`/dashboard/${workspaceId}/voice/${agent.id}`}
       className="rounded-xl p-4 block transition-colors hover:opacity-95"
       style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
     >
