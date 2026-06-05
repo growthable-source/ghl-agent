@@ -205,6 +205,17 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { workspaceId, agentId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
+
+  // Best-effort: delete the registered Vapi assistant before the DB
+  // cascade nukes the VapiConfig row. We swallow errors here — a
+  // failed cleanup shouldn't block the agent delete.
+  try {
+    const { tearDownVapiAssistant } = await import('@/lib/voice/vapi-assistant')
+    await tearDownVapiAssistant(agentId)
+  } catch (err: any) {
+    console.warn(`[Agent DELETE] Vapi teardown failed for ${agentId}:`, err?.message)
+  }
+
   await db.agent.delete({ where: { id: agentId } })
   return NextResponse.json({ success: true })
 }

@@ -80,49 +80,35 @@ export async function POST(req: NextRequest, { params }: Params) {
     data: { conversationId, status: 'requested' },
   })
 
-  // Build the assistant override for this call using the existing voice prompt builder.
-  const systemPrompt = await buildVoiceSystemPrompt(
-    agent,
-    agent.knowledgeEntries,
-    convo.visitor.phone || '',
-    `widget:${widgetId}`,
-    null,
-  )
-
-  const assistant = {
-    name: agent.agentPersonaName || agent.name,
-    firstMessage: agent.vapiConfig.firstMessage || `Hi${convo.visitor.name ? ' ' + convo.visitor.name : ''}, how can I help?`,
-    model: {
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-20250514',
-      messages: [{ role: 'system', content: systemPrompt }],
-      tools: VAPI_TOOLS,
-    },
-    voice: buildVapiVoiceBlock({
-      engine: resolveVoiceEngine(agent.vapiConfig.ttsProvider),
-      voiceId: agent.vapiConfig.voiceId,
-      stability: agent.vapiConfig.stability,
-      similarityBoost: agent.vapiConfig.similarityBoost,
-      speed: agent.vapiConfig.speed,
-      style: agent.vapiConfig.style,
-      language: agent.vapiConfig.language,
-    }),
-    endCallMessage: agent.vapiConfig.endCallMessage || undefined,
-    maxDurationSeconds: agent.vapiConfig.maxDurationSecs || 600,
-    serverUrl: `${process.env.APP_URL || ''}/api/vapi/webhook`,
-    serverUrlSecret: process.env.VAPI_WEBHOOK_SECRET,
-    // Inject variables for tool calls back through the server
-    metadata: {
-      widgetConversationId: conversationId,
-      widgetCallId: call.id,
-      agentId: agent.id,
-      workspaceId: v.widget.workspaceId,
-    },
+  // Resolve the registered Vapi assistant id. The widget references
+  // the assistant by id at vapi.start() time — no inline config
+  // (matches the browser test path and outbound phone path).
+  let vapiAssistantId: string
+  try {
+    const { ensureVapiAssistant } = await import('@/lib/voice/vapi-assistant')
+    vapiAssistantId = await ensureVapiAssistant(agent.id)
+  } catch (err: any) {
+    return NextResponse.json({
+      error: `Could not register Vapi assistant for this agent: ${err?.message ?? 'unknown'}`,
+    }, { status: 500, headers })
   }
 
   return NextResponse.json({
     callId: call.id,
     vapiPublicKey,
-    assistant,
+    // Widget passes assistantId + overrides to vapi.start() — overrides
+    // carry visitor context the assistant's system prompt can read.
+    assistantId: vapiAssistantId,
+    assistantOverrides: {
+      ...(agent.vapiConfig.firstMessage || convo.visitor.name
+        ? { firstMessage: agent.vapiConfig.firstMessage || `Hi${convo.visitor.name ? ' ' + convo.visitor.name : ''}, how can I help?` }
+        : {}),
+      variableValues: {
+        widgetConversationId: conversationId,
+        widgetCallId: call.id,
+        agentId: agent.id,
+        workspaceId: v.widget.workspaceId,
+      },
+    },
   }, { headers })
 }

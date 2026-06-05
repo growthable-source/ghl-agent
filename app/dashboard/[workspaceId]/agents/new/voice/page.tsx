@@ -272,6 +272,14 @@ export default function VoiceWizardPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Create failed (${res.status})`)
       setCreatedAgentId(data.agent.id)
+      // The server may have created the agent but failed to register
+      // the assistant with Vapi (validation error on the config).
+      // Surface that to the user on the Try It step so they can fix
+      // and retry from the Voice tab instead of hitting an opaque
+      // "Meeting ended" on the test call.
+      if (data.vapiSyncError?.message) {
+        setError(`Agent created, but Vapi rejected the voice config: ${data.vapiSyncError.message}. Open the agent's Voice tab to adjust and re-save.`)
+      }
       // Wizard stays on the try_it step; VoicePhoneCallUI takes over
       // (it needs an agent that exists to issue browser/test calls).
       setStep('try_it')

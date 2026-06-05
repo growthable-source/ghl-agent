@@ -115,18 +115,70 @@ export async function purchasePhoneNumber(areaCode: string) {
   }
 }
 
+// ─── Assistants ─────────────────────────────────────────────────────────
+//
+// Pre-registered Vapi assistants replace the inline transient assistant
+// configs that were failing "Meeting ended due to ejection" on browser
+// test calls. We POST the config once at agent-create time, store the
+// returned id on VapiConfig.vapiAssistantId, then every call site
+// (browser, outbound, widget) just references the assistant by id.
+//
+// Vapi validates the config synchronously at registration time — any
+// shape problem surfaces as a typed VapiError with a real message
+// (instead of daily-co's opaque "Meeting has ended" at call time).
+
+export async function createAssistant(config: Record<string, unknown>): Promise<{ id: string; [k: string]: unknown }> {
+  const data = await vapiRequest('/assistant', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  })
+  return data as { id: string }
+}
+
+export async function updateAssistant(
+  assistantId: string,
+  partial: Record<string, unknown>,
+): Promise<{ id: string; [k: string]: unknown }> {
+  const data = await vapiRequest(`/assistant/${assistantId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(partial),
+  })
+  return data as { id: string }
+}
+
+export async function deleteAssistant(assistantId: string): Promise<void> {
+  try {
+    await vapiRequest(`/assistant/${assistantId}`, { method: 'DELETE' })
+  } catch (err) {
+    // Vapi returns 404 for already-deleted assistants — treat as success
+    // (idempotent delete) so cleanup paths don't blow up.
+    if (err instanceof VapiError && err.status === 404) return
+    throw err
+  }
+}
+
 // ─── Outbound Calls ───────────────────────────────────────────────────────
 
 export async function createOutboundCall(opts: {
   phoneNumberId: string
   customerNumber: string
-  assistant: Record<string, unknown>
+  /**
+   * EITHER an inline `assistant` object (legacy) OR an `assistantId`
+   * referencing a pre-registered Vapi assistant (preferred — what
+   * lib/voice/vapi-assistant.ts creates at agent-create time).
+   * Pass one or the other, not both.
+   */
+  assistant?: Record<string, unknown>
+  assistantId?: string
   assistantOverrides?: { variableValues?: Record<string, string> }
 }): Promise<{ id: string; status: string }> {
+  if (!opts.assistant && !opts.assistantId) {
+    throw new Error('createOutboundCall: must pass either `assistant` or `assistantId`')
+  }
   const body = JSON.stringify({
     phoneNumberId: opts.phoneNumberId,
     customer: { number: opts.customerNumber },
-    assistant: opts.assistant,
+    ...(opts.assistantId ? { assistantId: opts.assistantId } : { assistant: opts.assistant }),
     ...(opts.assistantOverrides ? { assistantOverrides: opts.assistantOverrides } : {}),
   })
 

@@ -209,7 +209,8 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
       try {
         const m = window.location.pathname.match(/\/dashboard\/([^/]+)/)
         if (!m) throw new Error('Could not resolve workspace from URL')
-        const res = await fetch(`/api/workspaces/${m[1]}/agents/${agentId}/vapi`)
+        const workspaceId = m[1]
+        const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`)
         if (!res.ok) {
           const body = await res.text().catch(() => '')
           throw new Error(`Could not load voice config (${res.status}): ${body.slice(0, 200)}`)
@@ -221,32 +222,22 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
         const publicKey = cfg.vapiPublicKey || cfg.publicKey
         if (!publicKey) throw new Error('Vapi public key is not configured on this deployment')
 
-        // Server pre-builds the entire assistant config (matches the
-        // phone-call shape from lib/outbound-call.ts — including the
-        // serverUrl callback to /api/vapi/webhook so model turns run
-        // server-side). Browser just passes through.
-        const assistant = cfg.browserAssistant
-        if (!assistant) {
-          throw new Error('This agent has no voice configured. Save voice settings first, then try again.')
+        // Vapi assistants are registered server-side at agent-create
+        // time (or lazily on next save). The browser just references
+        // the registered assistant by id — no shape for us to get
+        // wrong. If vapiAssistantId is null, the assistant hasn't
+        // been synced yet; tell the user to save voice config first
+        // (which triggers sync).
+        const assistantId = cfg.vapiAssistantId as string | null
+        if (!assistantId) {
+          throw new Error("This agent isn't synced with Vapi yet. Open the Voice tab and click Save to register it, then try the test call again.")
         }
-        // Allow caller to override the opening line per session
-        // (e.g. wizard test wants to use the just-typed firstMessage
-        // even if VapiConfig hasn't been updated yet).
-        if (firstMessage) assistant.firstMessage = firstMessage
 
-        // Diagnostic — surface what we're sending so failures don't
-        // require server-log diving. Strip the system prompt (long
-        // and noisy) and the tool list (also noisy) before logging.
-        if (typeof console !== 'undefined') {
-          const { messages: _msgs, tools: _tools, ...modelRest } = assistant.model || {}
-          console.log('[TestCall] starting with', {
-            voice: assistant.voice,
-            model: modelRest,
-            toolCount: Array.isArray(assistant.model?.tools) ? assistant.model.tools.length : 0,
-            firstMessage: assistant.firstMessage,
-            server: assistant.server,
-          })
-        }
+        // Diagnostic — surface what we're about to do.
+        console.log('[TestCall] starting with', {
+          assistantId,
+          firstMessageOverride: firstMessage || null,
+        })
 
         const vapi = await getVapi(publicKey)
         vapiRef.current = vapi
@@ -263,19 +254,63 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
             setStatus('error')
             const msg = e?.errorMsg || e?.error?.message || e?.message
             const friendly = /ejection|Meeting has ended/i.test(String(msg))
-              ? "Vapi terminated the call. Check the [TestCall] starting with… log in the browser console to see what was sent. Common causes: an Anthropic API key isn't configured on the Vapi dashboard (browser test calls run the model directly through Vapi unless 'server.url' is set), or the voice block's provider/voiceId pair is invalid."
+              ? "Vapi terminated the call. The full error payload has been captured to the server — check VoiceTestCallDiagnostic for details, or look in the browser console for the daily-error object."
               : (msg ?? 'Vapi error')
             setErrMsg(friendly)
+            // Post the full error payload so the next "still failing"
+            // report has actionable detail captured server-side.
+            try {
+              fetch('/api/voice/diagnostic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  workspaceId,
+                  agentId,
+                  vapiAssistantId: assistantId,
+                  errorType: e?.type || 'unknown',
+                  errorPayload: { errorMsg: msg, action: e?.action, raw: stripCircular(e) },
+                  userAgent: navigator.userAgent,
+                }),
+              }).catch(() => {})
+            } catch {}
           }
         })
 
-        await vapi.start(assistant)
+        // Per-session overrides: opening line + variable values the
+        // assistant's system prompt can reference. Variable values
+        // come back to /api/vapi/webhook on each turn.
+        const overrides: Record<string, unknown> = {
+          variableValues: {
+            workspaceId,
+            agentId,
+            direction: 'browser-test',
+          },
+        }
+        if (firstMessage) overrides.firstMessage = firstMessage
+
+        await vapi.start(assistantId, overrides)
       } catch (err: any) {
         if (!cancelled) {
           setStatus('error')
           setErrMsg(err.message ?? 'Failed to start call')
         }
       }
+    }
+
+    // JSON.stringify can't handle DOM/circular references inside the
+    // daily-error object; this strips them so the diagnostic POST
+    // doesn't throw.
+    function stripCircular(value: unknown, seen = new WeakSet()): unknown {
+      if (!value || typeof value !== 'object') return value
+      if (seen.has(value as object)) return '[Circular]'
+      seen.add(value as object)
+      if (Array.isArray(value)) return value.map(v => stripCircular(v, seen))
+      const out: Record<string, unknown> = {}
+      for (const k of Object.keys(value)) {
+        try { out[k] = stripCircular((value as any)[k], seen) }
+        catch { out[k] = '[Unserialisable]' }
+      }
+      return out
     }
 
     run()

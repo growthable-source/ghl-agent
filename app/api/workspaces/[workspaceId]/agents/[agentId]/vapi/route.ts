@@ -164,6 +164,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
       testSystemPrompt,
       voiceBlock,
       browserAssistant,
+      // The registered Vapi assistant id — what the browser passes
+      // to vapi.start(assistantId, overrides). Falls back to null
+      // when the agent doesn't have one yet (lazy backfill happens
+      // on next save or call).
+      vapiAssistantId: config?.vapiAssistantId ?? null,
       serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
       _debug: {
         keyPresent: !!rawKey,
@@ -194,7 +199,41 @@ export async function PUT(req: NextRequest, { params }: Params) {
     update: body,
   })
 
-  return NextResponse.json({ config })
+  // Sync the registered Vapi assistant with the new config. This is
+  // the validation gate — if Vapi rejects any field, we return the
+  // typed error so the UI can render it inline next to the save
+  // button instead of letting the user discover it later as a
+  // "Meeting ended due to ejection" on the test call.
+  let vapiAssistantId: string | null = config.vapiAssistantId ?? null
+  let vapiSyncError: { message: string; code?: string } | null = null
+  try {
+    const { syncVapiAssistant } = await import('@/lib/voice/vapi-assistant')
+    const { VapiError } = await import('@/lib/vapi-client')
+    try {
+      vapiAssistantId = await syncVapiAssistant(agentId)
+    } catch (err: any) {
+      if (err instanceof VapiError) {
+        vapiSyncError = { message: err.userMessage, code: err.code }
+      } else {
+        vapiSyncError = { message: err?.message ?? 'Vapi sync failed' }
+      }
+      console.warn(`[VapiConfig PUT] sync failed for ${agentId}:`, vapiSyncError.message)
+    }
+  } catch (err: any) {
+    console.warn(`[VapiConfig PUT] module load failed for ${agentId}:`, err?.message)
+  }
+
+  // If sync failed, return 4xx so the form treats it as an error to
+  // show inline. The VapiConfig row itself was already saved (lets
+  // the operator re-trigger sync from the Retry button without
+  // re-typing everything).
+  if (vapiSyncError) {
+    return NextResponse.json(
+      { config, vapiAssistantId, error: vapiSyncError.message, code: vapiSyncError.code },
+      { status: 422 },
+    )
+  }
+  return NextResponse.json({ config, vapiAssistantId })
 }
 
 // POST — purchase a new phone number

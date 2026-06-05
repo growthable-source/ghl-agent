@@ -280,6 +280,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     // the wizard sends but prod hasn't migrated — doesn't roll back the
     // whole agent create. The user can re-save voice config from the
     // Voice tab if this fails.
+    // Track any Vapi-registration error so we can surface it back to the
+    // wizard without rolling back the agent. The agent + VapiConfig stay
+    // in DB; the user can retry registration from the Voice tab (or via
+    // the wizard's "Retry" affordance on the final step).
+    let vapiAssistantId: string | null = null
+    let vapiSyncError: { message: string; code?: string } | null = null
+
     if (agentType === 'VOICE' && body.vapiConfig && typeof body.vapiConfig === 'object') {
       try {
         const v = body.vapiConfig as Record<string, unknown>
@@ -304,12 +311,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
             ...(typeof v.style === 'number' && { style: v.style }),
           } as any,
         })
+
+        // Register the assistant on Vapi so phone + browser calls can
+        // reference it by id (eliminating the "Meeting ended due to
+        // ejection" class of bug from inline transient assistants).
+        // Failure here is captured but doesn't roll back agent +
+        // VapiConfig; user retries from the wizard's final step.
+        try {
+          const { ensureVapiAssistant } = await import('@/lib/voice/vapi-assistant')
+          const { VapiError } = await import('@/lib/vapi-client')
+          try {
+            vapiAssistantId = await ensureVapiAssistant(agent.id)
+          } catch (err: any) {
+            if (err instanceof VapiError) {
+              vapiSyncError = { message: err.userMessage, code: err.code }
+            } else {
+              vapiSyncError = { message: err?.message ?? 'Vapi registration failed' }
+            }
+            console.warn(`[Agents] Vapi assistant registration failed for ${agent.id}:`, vapiSyncError.message)
+          }
+        } catch (err: any) {
+          console.warn(`[Agents] Vapi assistant module load failed for ${agent.id}:`, err?.message)
+        }
       } catch (err: any) {
         console.warn(`[Agents] VapiConfig create failed for ${agent.id}: ${err?.message}`)
       }
     }
 
-    return NextResponse.json({ agent }, { status: 201 })
+    return NextResponse.json({ agent, vapiAssistantId, vapiSyncError }, { status: 201 })
   } catch (err: any) {
     console.error('[Agents] Failed to create agent:', err.message)
     return NextResponse.json({ error: err.message || 'Failed to create agent' }, { status: 500 })

@@ -137,6 +137,12 @@ export default function VoicePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // Vapi sync error from the PUT response. Surfaces inline next to
+  // Save so the user sees the exact reason Vapi rejected their config
+  // (e.g. "model 'claude-sonnet-4-20250514' is not supported") instead
+  // of discovering it later as "Meeting ended due to ejection" on a
+  // test call.
+  const [syncError, setSyncError] = useState<string | null>(null)
   const [vapiReady, setVapiReady] = useState(false)
   const [vapiError, setVapiError] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
@@ -265,20 +271,34 @@ export default function VoicePage() {
   async function save(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
+    setSyncError(null)
     const phone = phoneNumbers.find(p => p.id === config.phoneNumberId)
     const payload = {
       ...config,
       phoneNumber: phone?.number || null,
       voiceTools: config.voiceTools && config.voiceTools.length > 0 ? config.voiceTools : null,
     }
-    await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // 422 = config saved to DB but Vapi rejected the assistant
+        // sync (the validation gate). Render the error inline; the
+        // operator fixes and re-saves to retry.
+        setSyncError(data.error || `Vapi rejected the config (HTTP ${res.status})`)
+        return
+      }
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (err: any) {
+      setSyncError(err?.message ?? 'Save failed')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function buyNumber() {
@@ -839,6 +859,19 @@ export default function VoicePage() {
           }}>
           {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Voice Settings'}
         </button>
+
+        {syncError && (
+          <div
+            className="rounded-lg border p-3 text-xs space-y-2"
+            style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+          >
+            <p className="font-semibold">Vapi rejected this configuration</p>
+            <p style={{ color: 'var(--text-secondary)' }}>{syncError}</p>
+            <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+              The settings were saved locally — fix the issue above and click Save again to retry the Vapi sync. Browser test calls will not work until the assistant is registered with Vapi.
+            </p>
+          </div>
+        )}
       </form>
 
       {/* xAI test panel removed — Grok now runs through Vapi too.

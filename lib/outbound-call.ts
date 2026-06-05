@@ -122,12 +122,33 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
     },
   })
 
-  // 6. Call Vapi to initiate outbound call
+  // 6. Resolve the registered Vapi assistant id for this agent.
+  //    Lazy-backfill: agents created before this column existed get
+  //    their assistant registered on first call. New agents already
+  //    have it from agent-create. After this resolves we ALWAYS
+  //    reference by id (never inline assistant config) — Vapi's
+  //    registered assistant is the single source of truth.
+  let assistantId: string
+  try {
+    const { ensureVapiAssistant } = await import('./voice/vapi-assistant')
+    assistantId = await ensureVapiAssistant(agentId)
+  } catch (err: any) {
+    await db.callLog.update({
+      where: { id: callLog.id },
+      data: { status: 'failed', endedReason: `vapi_assistant_register_failed: ${err?.message ?? 'unknown'}` },
+    })
+    throw err
+  }
+
+  // 7. Call Vapi to initiate outbound call. We pass assistantId, not
+  //    inline assistant config — the registered assistant has the
+  //    voice block, model, tools, and server.url already validated
+  //    by Vapi at registration time.
   try {
     const vapiResult = await createOutboundCall({
       phoneNumberId: vapiConfig.phoneNumberId!,
       customerNumber: contactPhone,
-      assistant: assistantConfig,
+      assistantId,
       assistantOverrides: {
         variableValues: {
           locationId,

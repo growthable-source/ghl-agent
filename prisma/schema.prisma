@@ -1832,8 +1832,37 @@ model VapiConfig {
   language        String?
   voiceTools      Json?
   isActive        Boolean  @default(false)
+  // Vapi assistant id — the id of the pre-registered assistant in Vapi
+  // that browser + phone calls reference by id. Replaces the previous
+  // approach of building an inline transient assistant config at every
+  // call site (which made shape mismatches fail late as "Meeting ended
+  // due to ejection" with no actionable error). When this column is
+  // null, the lifecycle code creates the assistant lazily on the next
+  // save / call and stores the id here. Unique because Vapi assistant
+  // ids are 1:1 with VapiConfig rows.
+  vapiAssistantId String?  @unique
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// Diagnostic capture for browser test-call failures. The @vapi-ai/web
+// daily-co transport reports failures as a generic "Meeting ended due
+// to ejection" — useless for debugging. This table stores the full
+// error payload posted from the browser when vapi.on('error') fires,
+// so the next failure is grep-able server-side instead of lost in the
+// user's browser console.
+model VoiceTestCallDiagnostic {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  agentId         String
+  vapiAssistantId String?
+  errorType       String?  // 'daily-error' | 'config' | 'permission' | etc.
+  errorPayload    Json?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([agentId])
+  @@index([workspaceId, createdAt])
 }
 
 model CallLog {
