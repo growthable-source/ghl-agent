@@ -464,54 +464,45 @@ export default function VoicePage() {
           </button>
         </div>
 
-        {/* ── TTS provider picker ── */}
-        {providers.length > 0 && (
-          <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            <div>
-              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice Provider</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Which TTS stack powers this agent&apos;s voice. Each provider exposes different voices and capabilities.</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {providers.map(p => {
-                const selected = config.ttsProvider === p.id
-                return (
-                  <button key={p.id} type="button"
-                    onClick={() => setConfig(c => ({ ...c, ttsProvider: p.id }))}
-                    className="text-left rounded-lg border p-3 transition-colors"
-                    style={{
-                      borderColor: selected ? 'var(--accent-primary)' : 'var(--border)',
-                      background: selected ? 'var(--surface-secondary)' : 'transparent',
-                      opacity: !p.configured ? 0.7 : 1,
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{p.name}</span>
-                      {!p.configured && (
-                        <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">Needs {p.envVar}</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>{p.description}</p>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {p.capabilities.phoneCalls && <Chip>Phone</Chip>}
-                      {p.capabilities.widgetVoice && <Chip>Widget</Chip>}
-                      {p.capabilities.realtimeBrowser && <Chip>Browser</Chip>}
-                      {p.capabilities.ttsBatch && <Chip>TTS</Chip>}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-            {!caps.phoneCalls && (
-              <p className="text-[11px] text-amber-400">
-                {currentProvider?.name ?? 'This provider'} doesn&apos;t support phone calls yet — the phone-number section below is hidden.
-                Use Vapi for phone, or keep this one for widget + browser voice.
-              </p>
-            )}
+        {/* ── Voice engine tabs (ElevenLabs / Grok inside Vapi) ── */}
+        <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice engine</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              Both engines route phone calls through Vapi. ElevenLabs ships 5000+ voices with full tuning; Grok ships five expressive voices with no tuning fields.
+            </p>
           </div>
-        )}
+          <div
+            className="inline-flex items-center gap-1 p-1 rounded-lg"
+            style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+          >
+            {([
+              { id: 'vapi', label: 'ElevenLabs', count: '5000+' },
+              { id: 'xai',  label: 'Grok',       count: '5' },
+            ] as const).map(opt => {
+              const active = (config.ttsProvider === opt.id) || (opt.id === 'vapi' && config.ttsProvider !== 'xai')
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setConfig(c => ({ ...c, ttsProvider: opt.id as 'vapi' | 'xai' }))}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
+                  style={active
+                    ? { background: '#fa4d2e', color: '#ffffff' }
+                    : { background: 'transparent', color: 'var(--text-secondary)' }
+                  }
+                >
+                  {opt.label}
+                  <span className="ml-1.5 opacity-70 font-normal">{opt.count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
-        {/* ── Phone number (hidden when the selected provider can't do phone) ── */}
-        {caps.phoneCalls && (
+        {/* ── Phone number — Vapi owns the bridge for both engines, so
+            this section is always visible regardless of voice engine. ── */}
+        {(
           <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Phone Number</p>
@@ -672,7 +663,7 @@ export default function VoicePage() {
               className="rounded-lg border px-3 py-2 text-xs"
               style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
             >
-              These settings only apply to <strong>11Labs</strong> voices (via Vapi). XAI voices use the model&apos;s default delivery — switch to a Vapi voice in the provider picker above to use these controls.
+              Tuning controls only apply to <strong>ElevenLabs</strong> voices. Grok voices use the model&apos;s default delivery — switch to the ElevenLabs tab in the engine picker above to use these controls.
             </div>
           )}
           <fieldset disabled={config.ttsProvider === 'xai'} className={config.ttsProvider === 'xai' ? 'opacity-50 pointer-events-none' : ''}>

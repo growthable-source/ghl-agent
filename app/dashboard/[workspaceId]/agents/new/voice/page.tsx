@@ -191,13 +191,22 @@ export default function VoiceWizardPage() {
   }, [voices, voiceQuery, accentFilter])
 
   function playPreview(voice: VoiceOption) {
-    if (!voice.previewUrl) return
+    // ElevenLabs voices ship a preview_url with the catalogue; Grok
+    // voices don't, so we route through the engine-agnostic synthesiser
+    // at /api/voice/preview which calls xAI's /v1/tts on demand. The
+    // resulting MP3 is short-cached (5min) so repeat clicks on the
+    // same Grok voice are instant.
+    const url = voice.previewUrl
+      ?? (engine === 'xai'
+        ? `/api/voice/preview?engine=xai&voiceId=${encodeURIComponent(voice.id)}`
+        : null)
+    if (!url) return
     if (previewPlaying === voice.id) {
       setPreviewPlaying(null)
       return
     }
     setPreviewPlaying(voice.id)
-    const audio = new Audio(voice.previewUrl)
+    const audio = new Audio(url)
     audio.onended = () => setPreviewPlaying(null)
     audio.onerror = () => setPreviewPlaying(null)
     audio.play().catch(() => setPreviewPlaying(null))
@@ -609,10 +618,14 @@ function VoiceStep({
               >
                 <button
                   onClick={(e) => { e.stopPropagation(); onPreview(v) }}
-                  disabled={!v.previewUrl}
+                  // Grok voices have null previewUrl but the play
+                  // function falls back to /api/voice/preview which
+                  // synthesises on demand; keep the button enabled
+                  // for them.
+                  disabled={!v.previewUrl && engine !== 'xai'}
                   className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors disabled:opacity-40"
                   style={{ background: 'rgba(250,77,46,0.15)', color: '#fa4d2e' }}
-                  title={v.previewUrl ? 'Preview' : 'No preview available'}
+                  title={(v.previewUrl || engine === 'xai') ? 'Preview' : 'No preview available'}
                 >
                   {previewPlaying === v.id ? '⏸' : '▶'}
                 </button>
