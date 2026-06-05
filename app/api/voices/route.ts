@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { VapiVoiceAdapter } from '@/lib/voice/vapi-adapter'
-import { listXaiVoices } from '@/lib/voice/xai-voices'
+import { VAPI_NATIVE_VOICES } from '@/lib/voice/vapi-native-voices'
 
 /**
- * GET /api/voices?provider=vapi|xai&search=…
+ * GET /api/voices?provider=vapi|elevenlabs&search=…
  *
- * Lists voices for the wizard / voice-config UI. There's only one
- * runtime provider (Vapi — phone bridge), but two engines live inside
- * Vapi's assistant config: ElevenLabs (via the Vapi catalogue) and
- * Grok (via xAI's voice list, accepted natively by Vapi as
- * `voice.provider: 'xai'`).
+ * Lists voices for the wizard / voice-config UI.
  *
- *   provider=vapi  → ElevenLabs voices via Vapi's proxy
- *   provider=xai   → Grok voices via xAI's /v1/tts/voices
+ *   provider=vapi  (default) → Vapi-native voices (Elliot et al.)
+ *   provider=elevenlabs       → ElevenLabs 5000+ catalogue (via Vapi proxy)
  *
  * Response shape stays the same for both: { voice_id, name,
  * preview_url, labels, language, category } — the UI doesn't branch.
@@ -22,10 +18,11 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search') || undefined
 
   try {
-    if (provider === 'xai') {
-      const voices = await listXaiVoices()
+    if (provider === 'elevenlabs' || provider === '11labs') {
+      const adapter = new VapiVoiceAdapter()
+      const voices = await adapter.listVoices(search)
       return NextResponse.json({
-        provider: 'xai',
+        provider: 'elevenlabs',
         voices: voices.map(v => ({
           voice_id: v.id,
           name: v.name,
@@ -37,12 +34,17 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Default: ElevenLabs catalogue via Vapi.
-    const adapter = new VapiVoiceAdapter()
-    const voices = await adapter.listVoices(search)
+    // Default: Vapi-native catalogue (Elliot, Cole, …). Hardcoded
+    // list — see lib/voice/vapi-native-voices.ts.
+    const filtered = search
+      ? VAPI_NATIVE_VOICES.filter(v =>
+          v.name.toLowerCase().includes(search.toLowerCase()) ||
+          (v.labels?.description ?? '').toLowerCase().includes(search.toLowerCase()),
+        )
+      : VAPI_NATIVE_VOICES
     return NextResponse.json({
       provider: 'vapi',
-      voices: voices.map(v => ({
+      voices: filtered.map(v => ({
         voice_id: v.id,
         name: v.name,
         preview_url: v.previewUrl ?? null,

@@ -11,9 +11,9 @@
  *
  * Used both inside the voice wizard's final step AND on the voice
  * agent's Voice tab as the test affordance. One component, two
- * surfaces. Vapi handles both ElevenLabs and Grok engines at runtime
- * — the engine choice on the agent config dictates which voice is
- * used; this UI doesn't branch.
+ * surfaces. Vapi handles every TTS engine (Vapi-native, ElevenLabs)
+ * at runtime — the engine choice on the agent config dictates which
+ * voice is used; this UI doesn't branch.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -22,15 +22,21 @@ export interface VoicePhoneCallUIProps {
   workspaceId: string
   agentId: string
   agentName: string
-  /** Voice id to play — passed through to XAI or Vapi assistant config */
+  /** Voice id to play — passed through to the Vapi assistant config */
   voiceId: string
   /** Opening line the agent says when the call starts */
   firstMessage?: string | null
-  /** 'vapi' | 'xai' — controls which browser-call path runs */
-  ttsProvider: 'vapi' | 'xai'
+  /**
+   * Engine identifier on the agent's VapiConfig. Kept as a prop for
+   * back-compat with old call sites — the UI no longer branches on
+   * it. Vapi routes the right TTS engine based on the registered
+   * assistant's voice block. Accepts 'vapi' | 'elevenlabs' (post-Phase-D
+   * values) and tolerates legacy strings.
+   */
+  ttsProvider: 'vapi' | 'elevenlabs' | string
   /** Workspace's primary location id, needed for outbound-call API */
   locationId: string
-  /** When true, the dial-real-number button is hidden (e.g. xAI agents with no phone) */
+  /** When true, the dial-real-number button is hidden */
   outboundEnabled?: boolean
 }
 
@@ -97,8 +103,9 @@ function IdleScreen({
 // ─── Browser call ────────────────────────────────────────────────────
 
 function BrowserCallScreen({
-  agentId, agentName, voiceId, firstMessage, ttsProvider, onHangUp,
+  agentId, agentName, voiceId, firstMessage, onHangUp,
 }: VoicePhoneCallUIProps & { onHangUp: () => void }) {
+  void voiceId // displayed on idle screen only; kept on the interface for consistency
   // Brief "ringing" theatre before connecting — sells the phone-call
   // metaphor. 900ms is long enough to register, short enough not to
   // annoy on repeat tests.
@@ -149,8 +156,9 @@ function BrowserCallScreen({
         <div className="rounded-xl p-3" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
           {/* Always Vapi — the legacy ttsProvider prop is kept on the
               component surface for back-compat but no longer branches
-              the render. Vapi routes ElevenLabs or Grok based on the
-              agent's voice config at call time. */}
+              the render. Vapi routes the right TTS engine (Vapi-native
+              or ElevenLabs) based on the agent's voice config at call
+              time. */}
           <VapiBrowserCall agentId={agentId} firstMessage={firstMessage ?? undefined} />
         </div>
       )}

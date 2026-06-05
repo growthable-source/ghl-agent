@@ -19,6 +19,7 @@ const FEATURE_SHIP_DATES: Record<string, string> = {
   integrations: '2026-05-12', // Shopify connector ships today
   toolGate:    '2026-05-30', // Phase B3 enforced-tool gate analytics
   gettingStarted: '2026-05-29', // First-run guide for newly-installed workspaces
+  voiceAgents: '2026-06-06', // Voice agents promoted to their own top-level section
 }
 
 export default function DashboardSidebar() {
@@ -145,7 +146,8 @@ function SidebarBody() {
     href: string,
     label: string,
     icon: React.ReactNode,
-    badgeCount?: number | null
+    badgeCount?: number | null,
+    newSince?: string,
   ) {
     const active = pathname === href || pathname.startsWith(href + '/') || pathname === href
     return (
@@ -158,6 +160,7 @@ function SidebarBody() {
       >
         <span className="shrink-0 w-[18px] h-[18px] flex items-center justify-center">{icon}</span>
         <span className="flex-1 truncate font-medium">{label}</span>
+        {newSince && <NewBadge since={newSince} />}
         <NavBadge count={badgeCount} />
       </Link>
     )
@@ -246,11 +249,25 @@ function SidebarBody() {
                 )}
                 {navItemPrimary(
                   `/dashboard/${workspaceId}/agents`,
-                  'Agent',
+                  'Text agents',
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
                     <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
                     <circle cx="12" cy="12" r="3.5" />
                   </svg>,
+                )}
+                {/* Voice agents — their own top-level surface. Promoted
+                    out of the agent sub-tab on 2026-06-06. */}
+                {navItemPrimary(
+                  `/dashboard/${workspaceId}/voice`,
+                  'Voice agents',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>,
+                  null,
+                  FEATURE_SHIP_DATES.voiceAgents,
                 )}
                 {navItemPrimary(
                   `/dashboard/${workspaceId}/playground`,

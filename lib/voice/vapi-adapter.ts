@@ -4,14 +4,16 @@ import type { VoiceAdapter, VoiceOption, VoiceProviderCapabilities } from './typ
 /**
  * Vapi adapter. Vapi is the ONLY voice-provider abstraction we keep —
  * it owns the phone bridge, owns the @vapi-ai/web browser SDK, and
- * accepts multiple TTS engines (11labs, xai, openai, cartesia, …) on
- * the same assistant config. Engine choice is a property of the
- * assistant config's voice block, NOT a separate provider.
+ * accepts multiple TTS engines (vapi-native, 11labs, openai, cartesia,
+ * deepgram, …) on the same assistant config. Engine choice is a
+ * property of the assistant config's voice block, NOT a separate
+ * provider.
  *
- * listVoices() defaults to ElevenLabs since that's the engine with
- * 5000+ voices and the natural default. Grok voices are listed by
- * lib/voice/xai-voices.ts and surface in the wizard under their own
- * tab — same Vapi pipeline at runtime.
+ * listVoices() returns the ElevenLabs catalogue (5000+ voices) since
+ * that's the engine with the broadest selection. The Vapi-native
+ * catalogue (Elliot et al.) is hardcoded in lib/voice/vapi-native-voices.ts
+ * and surfaces in the wizard under its own tab — same Vapi pipeline
+ * at runtime.
  */
 export class VapiVoiceAdapter implements VoiceAdapter {
   provider = 'vapi' as const
@@ -37,28 +39,31 @@ export class VapiVoiceAdapter implements VoiceAdapter {
 // ─── Engine selection + voice block builder ─────────────────────────
 //
 // Vapi accepts a voice provider on the assistant config's `voice.provider`
-// field. Two engines we support today:
+// field. Two engines we support:
 //
+//   'vapi'       → emits  { provider: 'vapi', voiceId, language? }
+//                  Vapi-native voices (Elliot, Cole, Harry, Hana, Neha,
+//                  Paige, Rohan, Spencer). Pre-tuned by Vapi — no
+//                  tuning fields. THIS IS THE NEW DEFAULT.
 //   'elevenlabs' → emits  { provider: '11labs', voiceId, model, ...tuning }
-//                  ElevenLabs v3 by default; full tuning fields apply.
-//   'xai'        → emits  { provider: 'xai',    voiceId, language? }
-//                  Grok voices via Vapi's xAI partner integration.
-//                  No ElevenLabs-specific tuning fields (model/stability/
-//                  similarityBoost/speed/style); Vapi rejects calls with
-//                  extra params on non-11labs providers.
+//                  5000+ ElevenLabs catalogue with full tuning. Kept
+//                  as the alternative for operators who want a
+//                  specific ElevenLabs voice.
 //
-// Engine identity lives on VapiConfig.ttsProvider (legacy column;
-// values 'vapi'/'elevenlabs' both map to 'elevenlabs', 'xai' maps to
-// 'xai'). Unknown values fall back to 'elevenlabs' so existing rows
-// keep working.
+// Engine identity lives on VapiConfig.ttsProvider. Post-migration
+// (Phase D SQL) values are 'vapi' or 'elevenlabs' — no more 'xai'
+// rows. Unknown values fall back to 'vapi' (the new default).
 
-export type VoiceEngine = 'elevenlabs' | 'xai'
+export type VoiceEngine = 'elevenlabs' | 'vapi'
 
 /** Map the persisted VapiConfig.ttsProvider field to a VoiceEngine. */
 export function resolveVoiceEngine(ttsProvider?: string | null): VoiceEngine {
-  if (ttsProvider === 'xai') return 'xai'
-  // 'vapi' (legacy), 'elevenlabs', '11labs', null, undefined → elevenlabs
-  return 'elevenlabs'
+  if (ttsProvider === 'elevenlabs' || ttsProvider === '11labs') return 'elevenlabs'
+  // 'vapi' (new default), legacy 'xai', null, undefined → 'vapi'.
+  // Legacy 'xai' rows should never reach here after Phase D SQL runs
+  // (they're rewritten to 'vapi'/'elliot'); this fallback covers any
+  // that slip through.
+  return 'vapi'
 }
 
 // Default ElevenLabs model. We use eleven_turbo_v2_5 — Vapi documents
@@ -78,20 +83,13 @@ export function elevenLabsModel(): string {
   return process.env.VAPI_ELEVENLABS_MODEL || ELEVEN_DEFAULT_MODEL
 }
 
-// Vapi's provider string for xAI. The AI Overview that announced the
-// partnership uses 'xai'; if Vapi later renames to 'x-ai' or 'grok',
-// override here without touching the call sites.
-export function xaiProviderString(): string {
-  return process.env.VAPI_XAI_PROVIDER || 'xai'
-}
-
 export interface VapiVoiceParams {
   /** Which TTS engine Vapi should route to. Derived from VapiConfig.ttsProvider. */
   engine?: VoiceEngine | null
   voiceId: string
-  /** Override the ElevenLabs model id. Ignored for the xai engine. */
+  /** Override the ElevenLabs model id. Ignored for the vapi engine. */
   model?: string | null
-  /** ElevenLabs tuning fields — ignored for the xai engine. */
+  /** ElevenLabs tuning fields — ignored for the vapi engine. */
   stability?: number | null
   similarityBoost?: number | null
   speed?: number | null
@@ -107,40 +105,38 @@ export interface VapiVoiceParams {
  * and is invisible to call sites.
  */
 export function buildVapiVoiceBlock(p: VapiVoiceParams): Record<string, unknown> {
-  const engine = p.engine ?? 'elevenlabs'
+  const engine = p.engine ?? 'vapi'
 
-  if (engine === 'xai') {
-    // xAI partner integration via Vapi. Only the bare minimum — Vapi
-    // rejects assistant configs with extra params on non-11labs
-    // providers (the elevenlabs-shaped tuning fields are dropped here
-    // even if the agent's VapiConfig carries leftover values from a
-    // previous ElevenLabs config).
+  if (engine === 'elevenlabs') {
+    // ElevenLabs path — full shape with tuning + model. Kept for
+    // operators who want a specific ElevenLabs voice; new agents
+    // default to the Vapi-native engine below.
     return {
-      provider: xaiProviderString(),
+      provider: '11labs' as const,
       voiceId: p.voiceId,
+      model: p.model || elevenLabsModel(),
+      ...(p.stability != null && { stability: p.stability }),
+      ...(p.similarityBoost != null && { similarityBoost: p.similarityBoost }),
+      ...(p.speed != null && { speed: p.speed }),
+      ...(p.style != null && { style: p.style }),
       ...(p.language && { language: p.language }),
     }
   }
 
-  // ElevenLabs (default). Full shape with tuning + model.
+  // Vapi-native (default). Just provider + voiceId — Vapi rejects
+  // extra params on the 'vapi' provider (it's pre-tuned). Matches
+  // the demo Riley agent's voice block: { provider: 'vapi', voiceId: 'elliot' }.
   return {
-    provider: '11labs' as const,
+    provider: 'vapi' as const,
     voiceId: p.voiceId,
-    model: p.model || elevenLabsModel(),
-    ...(p.stability != null && { stability: p.stability }),
-    ...(p.similarityBoost != null && { similarityBoost: p.similarityBoost }),
-    ...(p.speed != null && { speed: p.speed }),
-    ...(p.style != null && { style: p.style }),
     ...(p.language && { language: p.language }),
   }
 }
 
 /**
- * Back-compat alias. Old callers in lib/outbound-call.ts and
- * app/api/vapi/webhook/route.ts referenced buildElevenLabsVoiceBlock
- * directly; the new code uses buildVapiVoiceBlock with an explicit
- * engine. The alias forces 'elevenlabs' so an un-migrated caller
- * doesn't accidentally regress to the xai engine.
+ * Back-compat alias. Old callers (now mostly migrated) referenced
+ * buildElevenLabsVoiceBlock directly; new code uses
+ * buildVapiVoiceBlock with an explicit engine. Forces 'elevenlabs'.
  *
  * @deprecated use buildVapiVoiceBlock({ engine, ...params }) instead
  */

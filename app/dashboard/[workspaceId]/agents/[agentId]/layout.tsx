@@ -287,11 +287,13 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
       <div className="flex items-center justify-between px-8 pt-6 pb-0 shrink-0">
         <div className="flex items-center gap-3">
           <Link
-            href={`/dashboard/${workspaceId}/agents`}
+            href={isVoiceAgent
+              ? `/dashboard/${workspaceId}/voice`
+              : `/dashboard/${workspaceId}/agents`}
             className="transition-colors text-sm"
             style={{ color: 'var(--text-tertiary)' }}
           >
-            ← Agents
+            {isVoiceAgent ? '← Voice agents' : '← Agents'}
           </Link>
           <span style={{ color: 'var(--text-muted)' }}>/</span>
           {agent ? (

@@ -5,7 +5,6 @@ import {
   elevenLabsModel,
   ELEVEN_DEFAULT_MODEL,
   resolveVoiceEngine,
-  xaiProviderString,
 } from './vapi-adapter'
 
 describe('elevenLabsModel', () => {
@@ -28,40 +27,63 @@ describe('elevenLabsModel', () => {
   })
 })
 
-describe('xaiProviderString', () => {
-  const original = process.env.VAPI_XAI_PROVIDER
-
-  afterEach(() => {
-    if (original === undefined) delete process.env.VAPI_XAI_PROVIDER
-    else process.env.VAPI_XAI_PROVIDER = original
-  })
-
-  it("defaults to 'xai'", () => {
-    delete process.env.VAPI_XAI_PROVIDER
-    expect(xaiProviderString()).toBe('xai')
-  })
-
-  it('respects VAPI_XAI_PROVIDER override', () => {
-    process.env.VAPI_XAI_PROVIDER = 'x-ai'
-    expect(xaiProviderString()).toBe('x-ai')
-  })
-})
-
 describe('resolveVoiceEngine', () => {
-  it('maps "xai" to xai', () => {
-    expect(resolveVoiceEngine('xai')).toBe('xai')
+  it('maps "elevenlabs" / "11labs" to elevenlabs', () => {
+    expect(resolveVoiceEngine('elevenlabs')).toBe('elevenlabs')
+    expect(resolveVoiceEngine('11labs')).toBe('elevenlabs')
   })
 
-  it.each(['vapi', 'elevenlabs', '11labs', '', null, undefined])(
-    'maps %p to elevenlabs (back-compat)',
+  it.each(['vapi', 'xai', '', null, undefined, 'unknown'])(
+    'maps %p to vapi (the new default)',
     (input) => {
-      expect(resolveVoiceEngine(input as any)).toBe('elevenlabs')
+      expect(resolveVoiceEngine(input as any)).toBe('vapi')
     },
   )
 })
 
+describe('buildVapiVoiceBlock — Vapi-native engine (default)', () => {
+  it('emits provider "vapi" + voiceId only', () => {
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'elliot' })
+    expect(block.provider).toBe('vapi')
+    expect(block.voiceId).toBe('elliot')
+  })
+
+  it('does NOT include the ElevenLabs model / tuning fields', () => {
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'elliot' })
+    expect(block).not.toHaveProperty('model')
+    expect(block).not.toHaveProperty('stability')
+    expect(block).not.toHaveProperty('similarityBoost')
+    expect(block).not.toHaveProperty('speed')
+    expect(block).not.toHaveProperty('style')
+  })
+
+  it('strips ElevenLabs-specific tuning even when provided', () => {
+    const block = buildVapiVoiceBlock({
+      engine: 'vapi',
+      voiceId: 'elliot',
+      stability: 0.5,
+      similarityBoost: 0.7,
+      speed: 1.1,
+      style: 0.3,
+      model: 'should-be-ignored',
+    })
+    expect(block).not.toHaveProperty('model')
+    expect(block).not.toHaveProperty('stability')
+  })
+
+  it('passes language through when set', () => {
+    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'elliot', language: 'en' })
+    expect(block.language).toBe('en')
+  })
+
+  it('defaults engine to vapi when omitted', () => {
+    const block = buildVapiVoiceBlock({ voiceId: 'elliot' })
+    expect(block.provider).toBe('vapi')
+  })
+})
+
 describe('buildVapiVoiceBlock — ElevenLabs engine', () => {
-  it('emits provider "11labs" and the default turbo_v2_5 model', () => {
+  it('emits provider "11labs" with the default turbo_v2_5 model', () => {
     const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'abc123' })
     expect(block.provider).toBe('11labs')
     expect(block.voiceId).toBe('abc123')
@@ -97,59 +119,6 @@ describe('buildVapiVoiceBlock — ElevenLabs engine', () => {
   it('honours an explicit model param over the env default', () => {
     const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'x', model: 'eleven_multilingual_v2' })
     expect(block.model).toBe('eleven_multilingual_v2')
-  })
-
-  it('lets operators opt into eleven_v3 via the env var', () => {
-    const prev = process.env.VAPI_ELEVENLABS_MODEL
-    process.env.VAPI_ELEVENLABS_MODEL = 'eleven_v3'
-    try {
-      const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'x' })
-      expect(block.model).toBe('eleven_v3')
-    } finally {
-      if (prev === undefined) delete process.env.VAPI_ELEVENLABS_MODEL
-      else process.env.VAPI_ELEVENLABS_MODEL = prev
-    }
-  })
-
-  it('defaults engine to elevenlabs when omitted (back-compat)', () => {
-    const block = buildVapiVoiceBlock({ voiceId: 'x' })
-    expect(block.provider).toBe('11labs')
-  })
-})
-
-describe('buildVapiVoiceBlock — xAI engine', () => {
-  it('emits provider "xai" and the voiceId only', () => {
-    const block = buildVapiVoiceBlock({ engine: 'xai', voiceId: 'eve' })
-    expect(block.provider).toBe('xai')
-    expect(block.voiceId).toBe('eve')
-  })
-
-  it('does NOT include the ElevenLabs model field', () => {
-    const block = buildVapiVoiceBlock({ engine: 'xai', voiceId: 'eve' })
-    expect(block).not.toHaveProperty('model')
-  })
-
-  it('strips ElevenLabs-specific tuning even when provided', () => {
-    // Existing rows may carry leftover ElevenLabs tuning from a
-    // previous config — Vapi rejects extra params on non-11labs
-    // providers, so the builder must drop them.
-    const block = buildVapiVoiceBlock({
-      engine: 'xai',
-      voiceId: 'eve',
-      stability: 0.5,
-      similarityBoost: 0.7,
-      speed: 1.1,
-      style: 0.3,
-    })
-    expect(block).not.toHaveProperty('stability')
-    expect(block).not.toHaveProperty('similarityBoost')
-    expect(block).not.toHaveProperty('speed')
-    expect(block).not.toHaveProperty('style')
-  })
-
-  it('passes language through when set', () => {
-    const block = buildVapiVoiceBlock({ engine: 'xai', voiceId: 'eve', language: 'en' })
-    expect(block.language).toBe('en')
   })
 })
 

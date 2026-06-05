@@ -9,12 +9,13 @@ interface VapiConfig {
   phoneNumberId: string | null
   phoneNumber: string | null
   /**
-   * Which TTS adapter drives this agent. 'vapi' is ElevenLabs via Vapi;
-   * 'xai' is Grok. The UI below hides/shows sections based on what the
-   * selected provider's capabilities report — e.g. XAI has no phone
-   * support today, so the phone-number section collapses for XAI agents.
+   * Which TTS engine Vapi should route to:
+   *   'vapi'       → Vapi-native voices (Elliot et al.) — the new default
+   *   'elevenlabs' → ElevenLabs 5000+ catalogue with full tuning
+   * Tuning sliders (stability/similarityBoost/speed/style) only apply
+   * to ElevenLabs voices; the UI hides them on Vapi-native.
    */
-  ttsProvider: 'vapi' | 'xai'
+  ttsProvider: 'vapi' | 'elevenlabs'
   voiceId: string
   voiceName: string | null
   stability: number
@@ -41,7 +42,7 @@ interface ProviderCapabilities {
 }
 
 interface ProviderMeta {
-  id: 'vapi' | 'xai'
+  id: 'vapi' | 'elevenlabs'
   name: string
   description: string
   envVar: string
@@ -213,9 +214,9 @@ export default function VoicePage() {
     ]).finally(() => setLoading(false))
   }, [workspaceId, agentId])
 
-  // Re-fetch voices whenever the TTS provider changes. Keeps the voice
-  // list honest (ElevenLabs catalogue vs. Grok's 5) without reloading
-  // the whole page.
+  // Re-fetch voices whenever the TTS engine changes. Keeps the voice
+  // list honest (Vapi-native catalogue vs. ElevenLabs 5000+) without
+  // reloading the whole page.
   useEffect(() => {
     if (loading) return
     fetch(`/api/voices?provider=${config.ttsProvider}`)
@@ -242,12 +243,11 @@ export default function VoicePage() {
   }, [config.ttsProvider])
 
   function playPreview(voiceId: string, previewUrl: string | null) {
-    // Grok voices don't come with a static preview URL — synthesise one
-    // on-demand through /api/voice/preview so the click-to-play
-    // experience still works. ElevenLabs voices always ship a
-    // preview_url so we use that directly.
+    // Both engines ship a preview URL: ElevenLabs via the catalogue
+    // response, Vapi-native via lib/voice/vapi-native-voices.ts. No
+    // on-demand synth fallback needed.
+    void voiceId
     const url = previewUrl
-      ?? (config.ttsProvider === 'xai' ? `/api/voice/preview?engine=xai&voiceId=${encodeURIComponent(voiceId)}` : null)
     if (!url) return
     if (playingId === voiceId) {
       audioRef.current?.pause()
@@ -484,12 +484,12 @@ export default function VoicePage() {
           </button>
         </div>
 
-        {/* ── Voice engine tabs (ElevenLabs / Grok inside Vapi) ── */}
+        {/* ── Voice engine tabs (Vapi-native / ElevenLabs inside Vapi) ── */}
         <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice engine</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              Both engines route phone calls through Vapi. ElevenLabs ships 5000+ voices with full tuning; Grok ships five expressive voices with no tuning fields.
+              Vapi-native voices are the new default (eight pre-tuned voices, zero phone-codec artefacts). ElevenLabs gives you the 5000+ catalogue with full tuning sliders.
             </p>
           </div>
           <div
@@ -497,15 +497,15 @@ export default function VoicePage() {
             style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
           >
             {([
-              { id: 'vapi', label: 'ElevenLabs', count: '5000+' },
-              { id: 'xai',  label: 'Grok',       count: '5' },
+              { id: 'vapi',       label: 'Vapi-native', count: '8' },
+              { id: 'elevenlabs', label: 'ElevenLabs',  count: '5000+' },
             ] as const).map(opt => {
-              const active = (config.ttsProvider === opt.id) || (opt.id === 'vapi' && config.ttsProvider !== 'xai')
+              const active = config.ttsProvider === opt.id
               return (
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => setConfig(c => ({ ...c, ttsProvider: opt.id as 'vapi' | 'xai' }))}
+                  onClick={() => setConfig(c => ({ ...c, ttsProvider: opt.id }))}
                   className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
                   style={active
                     ? { background: '#fa4d2e', color: '#ffffff' }
@@ -668,25 +668,23 @@ export default function VoicePage() {
 
         {/* ── Voice tuning ── */}
         {/*
-          Stability / Similarity / Style are 11Labs-specific parameters and
-          only get applied on the Vapi path (which uses 11Labs underneath).
-          XAI's realtime API doesn't accept any tuning parameters today —
-          its session.update only takes voice id + audio format. So we
-          show the sliders disabled with a clear note when the workspace
-          is on XAI, rather than letting users drag them and wonder why
+          Stability / Similarity / Style are ElevenLabs-specific parameters
+          — the Vapi-native engine is pre-tuned and rejects extra params.
+          Show the sliders disabled with a clear note when the engine is
+          Vapi-native, rather than letting users drag them and wonder why
           nothing changes.
         */}
         <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice Tuning</p>
-          {config.ttsProvider === 'xai' && (
+          {config.ttsProvider !== 'elevenlabs' && (
             <div
               className="rounded-lg border px-3 py-2 text-xs"
               style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
             >
-              Tuning controls only apply to <strong>ElevenLabs</strong> voices. Grok voices use the model&apos;s default delivery — switch to the ElevenLabs tab in the engine picker above to use these controls.
+              Tuning controls only apply to <strong>ElevenLabs</strong> voices. Vapi-native voices are pre-tuned — switch engine above to use these controls.
             </div>
           )}
-          <fieldset disabled={config.ttsProvider === 'xai'} className={config.ttsProvider === 'xai' ? 'opacity-50 pointer-events-none' : ''}>
+          <fieldset disabled={config.ttsProvider !== 'elevenlabs'} className={config.ttsProvider !== 'elevenlabs' ? 'opacity-50 pointer-events-none' : ''}>
             <div className="space-y-4">
               <SliderField label="Speed" desc="How fast the agent speaks. 1.0 is normal." value={config.speed}
                 onChange={v => setConfig(c => ({ ...c, speed: v }))} min={0.5} max={2.0} step={0.05}
@@ -874,8 +872,8 @@ export default function VoicePage() {
         )}
       </form>
 
-      {/* xAI test panel removed — Grok now runs through Vapi too.
-          Both engines share the existing Vapi test-call panel below. */}
+      {/* Single Vapi-powered test panel — covers both Vapi-native and
+          ElevenLabs engines transparently via the registered assistant. */}
 
       {/* ── Test Call Panel — Vapi browser SDK powers both engines ── */}
       {vapiReady && vapiPublicKey && (

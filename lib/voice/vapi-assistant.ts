@@ -29,6 +29,17 @@ import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapte
 
 const APP_URL = process.env.APP_URL || 'https://app.voxility.ai'
 
+// Default model + transcriber stack. Mirrors Vapi's demo "Riley"
+// assistant exactly (OpenAI gpt-4.1 + Deepgram nova-3 + Vapi-native
+// voice "elliot") because that's the stack we verified end-to-end
+// works on Vapi's side. Each is env-overridable so an operator can
+// switch tier or vendor without a code change.
+const DEFAULT_MODEL_PROVIDER = process.env.VAPI_DEFAULT_MODEL_PROVIDER || 'openai'
+const DEFAULT_MODEL = process.env.VAPI_DEFAULT_MODEL || 'gpt-4.1'
+const DEFAULT_TRANSCRIBER_PROVIDER = process.env.VAPI_DEFAULT_TRANSCRIBER_PROVIDER || 'deepgram'
+const DEFAULT_TRANSCRIBER_MODEL = process.env.VAPI_DEFAULT_TRANSCRIBER_MODEL || 'nova-3'
+const DEFAULT_TRANSCRIBER_LANGUAGE = process.env.VAPI_DEFAULT_TRANSCRIBER_LANGUAGE || 'en'
+
 /**
  * Build the system prompt for a registered Vapi assistant.
  *
@@ -86,10 +97,14 @@ async function buildAssistantSystemPrompt(opts: {
 
 export interface BuildAssistantOpts {
   agentId: string
-  /** Override the model id ('claude-sonnet-4-20250514' default). */
+  /** Override the model id (defaults to VAPI_DEFAULT_MODEL or 'gpt-4.1'). */
   modelId?: string
-  /** Override the model provider ('anthropic' default). */
+  /** Override the model provider (defaults to VAPI_DEFAULT_MODEL_PROVIDER or 'openai'). */
   modelProvider?: string
+  /** Override the transcriber provider (defaults to VAPI_DEFAULT_TRANSCRIBER_PROVIDER or 'deepgram'). */
+  transcriberProvider?: string
+  /** Override the transcriber model (defaults to VAPI_DEFAULT_TRANSCRIBER_MODEL or 'nova-3'). */
+  transcriberModel?: string
 }
 
 /**
@@ -103,7 +118,7 @@ export interface BuildAssistantOpts {
  * yet) — caller decides what to do (skip, throw, etc.).
  */
 export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promise<Record<string, unknown> | null> {
-  const { agentId, modelId, modelProvider } = opts
+  const { agentId, modelId, modelProvider, transcriberProvider, transcriberModel } = opts
 
   const agent = await db.agent.findUnique({ where: { id: agentId } })
   if (!agent) throw new Error(`buildVapiAssistantConfig: agent ${agentId} not found`)
@@ -143,11 +158,22 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
 
   return {
     name: agent.name,
+    // Riley-stack default: OpenAI gpt-4.1 brain. Vapi has built-in
+    // OpenAI access so this works without an Anthropic key wired into
+    // the Vapi account. Operators can swap via env or per-call opts.
     model: {
-      provider: modelProvider || 'anthropic',
-      model: modelId || 'claude-sonnet-4-20250514',
+      provider: modelProvider || DEFAULT_MODEL_PROVIDER,
+      model: modelId || DEFAULT_MODEL,
       messages: [{ role: 'system', content: systemPrompt }],
       tools: [...VAPI_TOOLS, ...customTools],
+    },
+    // Deepgram nova-3 transcriber. Same model Vapi's "Riley" demo
+    // uses; significantly better than the previous (unset → Vapi
+    // default) STT path on a phone-bandwidth codec.
+    transcriber: {
+      provider: transcriberProvider || DEFAULT_TRANSCRIBER_PROVIDER,
+      model: transcriberModel || DEFAULT_TRANSCRIBER_MODEL,
+      language: vapiConfig.language || DEFAULT_TRANSCRIBER_LANGUAGE,
     },
     voice: voiceBlock,
     firstMessage: vapiConfig.firstMessage || `Hi, this is ${(agent as any).agentPersonaName || agent.name}. How can I help today?`,

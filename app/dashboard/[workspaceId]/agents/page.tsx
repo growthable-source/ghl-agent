@@ -185,7 +185,11 @@ export default function AgentsPage() {
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents`)
       const data = await res.json()
-      setAgents(data.agents || [])
+      // Voice agents live under their own /voice section as of 2026-06-06.
+      // This page is the TEXT-agent surface — filter VOICE out so the
+      // grid stays focused on SIMPLE/ADVANCED agents only.
+      const textOnly = (data.agents || []).filter((a: AgentData) => a.agentType !== 'VOICE')
+      setAgents(textOnly)
       setMeta(data.meta || null)
     } catch (err) {
       console.error('Failed to fetch agents:', err)
@@ -436,11 +440,17 @@ export default function AgentsPage() {
         {/* ─── Header ──────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Agents</h1>
-            <p className="text-sm text-zinc-400 mt-1">Manage your AI agents, channels, and deployments</p>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Text agents</h1>
+            <p className="text-sm text-zinc-400 mt-1">
+              SMS, WhatsApp, email, and live chat. For phone calls, head to{' '}
+              <Link href={`/dashboard/${workspaceId}/voice`} className="underline" style={{ color: 'var(--accent-primary)' }}>
+                Voice agents
+              </Link>
+              .
+            </p>
           </div>
 
-          <NewAgentDropdown workspaceId={workspaceId} atLimit={atLimit} />
+          <NewTextAgentButton workspaceId={workspaceId} atLimit={atLimit} />
         </div>
 
         {/* ─── Plan Usage Indicator ────────────────────────────────────── */}
@@ -1090,79 +1100,29 @@ export default function AgentsPage() {
   )
 }
 
-// ─── + New Agent dropdown ───────────────────────────────────────────
-// Splits the entry into "+ Text Agent" / "+ Voice Agent". Stays a
-// dropdown rather than a tab/group so the page header doesn't get
-// noisier; one prominent orange button, click reveals the two options.
-function NewAgentDropdown({ workspaceId, atLimit }: { workspaceId: string; atLimit: boolean }) {
-  const [open, setOpen] = useState(false)
-
-  // Close on outside click — no portal, just a backdrop that catches
-  // anything outside the dropdown.
+// ─── + New text agent button ────────────────────────────────────────
+// Voice agents have their own dedicated section (/voice) with their
+// own "+ New voice agent" CTA, so this page's new-agent button is a
+// single text-only entry — no dropdown needed.
+function NewTextAgentButton({ workspaceId, atLimit }: { workspaceId: string; atLimit: boolean }) {
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(o => !o)}
-        disabled={atLimit}
-        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-          atLimit ? 'cursor-not-allowed' : 'hover:opacity-90'
-        }`}
-        style={
-          atLimit
-            ? { background: 'var(--surface-tertiary)', color: 'var(--text-muted)' }
-            : { background: '#fa4d2e', color: '#fff' }
-        }
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
-        New Agent
-        <svg className="w-3.5 h-3.5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div
-            className="absolute right-0 mt-1 w-64 rounded-lg overflow-hidden z-20"
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              boxShadow: '0 10px 30px -10px rgba(0,0,0,0.25)',
-            }}
-          >
-            <Link
-              href={`/dashboard/${workspaceId}/agents/new`}
-              className="block px-4 py-3 text-sm hover:opacity-90"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              <div className="flex items-center gap-2">
-                <span aria-hidden>💬</span>
-                <span className="font-medium">Text Agent</span>
-              </div>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                SMS · WhatsApp · Email · Live Chat
-              </p>
-            </Link>
-            <div className="h-px" style={{ background: 'var(--border)' }} />
-            <Link
-              href={`/dashboard/${workspaceId}/agents/new/voice`}
-              className="block px-4 py-3 text-sm hover:opacity-90"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              <div className="flex items-center gap-2">
-                <span aria-hidden>🎤</span>
-                <span className="font-medium">Voice Agent</span>
-                <NewBadge since="2026-05-29" />
-              </div>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                Inbound + outbound phone calls
-              </p>
-            </Link>
-          </div>
-        </>
-      )}
-    </div>
+    <Link
+      href={atLimit ? '#' : `/dashboard/${workspaceId}/agents/new`}
+      onClick={e => { if (atLimit) e.preventDefault() }}
+      aria-disabled={atLimit}
+      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+        atLimit ? 'cursor-not-allowed' : 'hover:opacity-90'
+      }`}
+      style={
+        atLimit
+          ? { background: 'var(--surface-tertiary)', color: 'var(--text-muted)' }
+          : { background: '#fa4d2e', color: '#fff' }
+      }
+    >
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+      </svg>
+      New text agent
+    </Link>
   )
 }

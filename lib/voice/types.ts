@@ -2,10 +2,9 @@
  * VoiceAdapter — provider-agnostic surface.
  *
  * The platform has ONE adapter today: Vapi (lib/voice/vapi-adapter.ts).
- * The historical xAI adapter has been removed — xAI is now a TTS
- * engine selectable inside the Vapi assistant config, not a parallel
- * adapter (see lib/voice/vapi-adapter.ts:buildVapiVoiceBlock and
- * lib/voice/xai-voices.ts).
+ * Vapi owns phone bridging + the @vapi-ai/web browser SDK and accepts
+ * multiple TTS engines (Vapi-native, ElevenLabs, etc.) selected on the
+ * assistant config's voice block, not as parallel adapters.
  *
  * The interface stays in place so future providers (LiveKit, etc.)
  * can be added without rewriting call sites.
@@ -27,7 +26,7 @@ export interface VoiceProviderCapabilities {
 }
 
 export interface VoiceOption {
-  /** Provider-specific voice ID (ElevenLabs cuid, Grok mnemonic like 'eve'). */
+  /** Engine-specific voice ID (e.g. ElevenLabs cuid, or Vapi-native id like 'elliot'). */
   id: string
   /** Human-readable name. */
   name: string
