@@ -16,6 +16,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { VOICE_TEMPLATES, type VoiceTemplate } from '@/lib/voice/templates'
 import { generateAgentName } from '@/lib/random-name'
+import VoicePhoneCallUI from '@/components/dashboard/VoicePhoneCallUI'
 
 type Step = 'use_case' | 'provider' | 'voice' | 'personality' | 'knowledge' | 'phone' | 'try_it'
 
@@ -381,6 +382,11 @@ export default function VoiceWizardPage() {
               error={error}
               onCreate={submit}
               hasSelection={!!selectedVoice}
+              agentName={agentName}
+              voiceId={selectedVoice?.id ?? ''}
+              firstMessage={firstMessage}
+              ttsProvider={provider}
+              outboundEnabled={provider === 'vapi' && !!purchasedNumber}
             />
           )}
         </div>
@@ -910,6 +916,7 @@ function PhoneStep({
 
 function TryItStep({
   workspaceId, agentId, submitting, error, onCreate, hasSelection,
+  agentName, voiceId, firstMessage, ttsProvider, outboundEnabled,
 }: {
   workspaceId: string
   agentId: string | null
@@ -917,14 +924,30 @@ function TryItStep({
   error: string | null
   onCreate: () => void
   hasSelection: boolean
+  agentName: string
+  voiceId: string
+  firstMessage: string
+  ttsProvider: 'vapi' | 'xai'
+  outboundEnabled: boolean
 }) {
+  // Resolve the workspace's primary location id — needed for the
+  // outbound-call API. Fetched lazily once we have an agent.
+  const [locationId, setLocationId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!agentId) return
+    fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((d: any) => d?.agent?.locationId && setLocationId(d.agent.locationId))
+      .catch(() => {})
+  }, [workspaceId, agentId])
+
   return (
     <div>
       <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
         Try it on a real call
       </h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-tertiary)' }}>
-        We'll create the agent and bring up a phone simulator. You can test in your browser or dial out to a real number.
+        We'll create the agent and bring up a phone simulator. Test in your browser or dial out to a real number.
       </p>
       {!agentId ? (
         <div>
@@ -943,27 +966,20 @@ function TryItStep({
           </button>
         </div>
       ) : (
-        // Embed the phone-call simulator (created in Phase 3). For now,
-        // an inline placeholder + a deep link to the agent's voice tab
-        // where the same simulator lives.
-        <div>
-          <div
-            className="rounded-2xl p-8 text-center"
-            style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
-          >
-            <div className="text-4xl mb-3">📞</div>
-            <h3 className="font-semibold text-base mb-2" style={{ color: 'var(--text-primary)' }}>Your voice agent is live</h3>
-            <p className="text-sm mb-5" style={{ color: 'var(--text-tertiary)' }}>
-              Open the agent to start a browser test call or dial a real number.
-            </p>
-            <Link
-              href={`/dashboard/${workspaceId}/agents/${agentId}/voice`}
-              className="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-lg"
-              style={{ background: '#fa4d2e', color: '#ffffff' }}
-            >
-              Open voice tab →
-            </Link>
-          </div>
+        <div className="space-y-4">
+          <VoicePhoneCallUI
+            workspaceId={workspaceId}
+            agentId={agentId}
+            agentName={agentName}
+            voiceId={voiceId}
+            firstMessage={firstMessage}
+            ttsProvider={ttsProvider}
+            locationId={locationId ?? ''}
+            outboundEnabled={outboundEnabled && !!locationId}
+          />
+          <p className="text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Your voice agent is live. <Link href={`/dashboard/${workspaceId}/agents/${agentId}`} className="underline" style={{ color: '#fa4d2e' }}>Open the agent</Link> to keep configuring.
+          </p>
         </div>
       )}
     </div>
