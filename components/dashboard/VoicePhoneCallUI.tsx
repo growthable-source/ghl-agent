@@ -229,7 +229,7 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
         if (cancelled) return
 
         const publicKey = cfg.vapiPublicKey || cfg.publicKey
-        if (!publicKey) throw new Error('Vapi public key is not configured on this deployment')
+        if (!publicKey) throw new Error('Voice provider isn\'t configured on this deployment. Contact support.')
 
         // Vapi assistants are registered server-side at agent-create
         // time (or lazily on next save). The browser just references
@@ -239,7 +239,7 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
         // (which triggers sync).
         const assistantId = cfg.vapiAssistantId as string | null
         if (!assistantId) {
-          throw new Error("This agent isn't synced with Vapi yet. Open the Voice tab and click Save to register it, then try the test call again.")
+          throw new Error("This agent isn't synced with the voice provider yet. Open the Configuration tab and click Save to register it, then try the test call again.")
         }
 
         // Diagnostic — surface what we're about to do.
@@ -263,8 +263,8 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
             setStatus('error')
             const msg = e?.errorMsg || e?.error?.message || e?.message
             const friendly = /ejection|Meeting has ended/i.test(String(msg))
-              ? "Vapi terminated the call. The full error payload has been captured to the server — check VoiceTestCallDiagnostic for details, or look in the browser console for the daily-error object."
-              : (msg ?? 'Vapi error')
+              ? "The call ended unexpectedly. We've captured the full error payload server-side for our team to investigate — try again in a moment."
+              : (msg ?? 'Voice call error')
             setErrMsg(friendly)
             // Post the full error payload so the next "still failing"
             // report has actionable detail captured server-side.
@@ -332,7 +332,7 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
   return (
     <div>
       <p className="text-[11px] mb-2" style={{ color: 'var(--text-tertiary)' }}>
-        Vapi · {status === 'live' ? 'Listening' : status === 'starting' ? 'Connecting…' : status === 'ended' ? 'Call ended' : 'Error'}
+        {status === 'live' ? 'Listening' : status === 'starting' ? 'Connecting…' : status === 'ended' ? 'Call ended' : 'Error'}
       </p>
       {errMsg && (
         <p className="text-[11px] mb-2" style={{ color: '#ef4444' }}>{errMsg}</p>
@@ -544,27 +544,25 @@ function OutboundCallScreen({
             className="rounded-xl p-4 text-sm"
             style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
           >
-            <p className="font-semibold mb-1">International calls aren&apos;t enabled yet</p>
+            <p className="font-semibold mb-1">International calls aren&apos;t enabled on your workspace yet</p>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              {errMsg ?? 'Vapi\'s free-tier numbers can only dial US destinations. Pick one of the options below.'}
+              The number you tried to dial is outside the country your current voice plan covers. Two ways to unblock:
             </p>
           </div>
           <div className="space-y-2">
             <a
-              href="https://dash.vapi.ai/account?tab=billing"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="mailto:support@voxility.ai?subject=Enable%20international%20voice%20calls"
               className="block rounded-xl p-4 transition-colors hover:opacity-95"
               style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
             >
               <div className="flex items-start gap-3">
-                <span className="text-lg shrink-0" aria-hidden>💳</span>
+                <span className="text-lg shrink-0" aria-hidden>💬</span>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
-                    Add billing on Vapi (recommended for testing)
+                    Contact support to enable international outbound
                   </p>
                   <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    Add a payment method at <strong>dash.vapi.ai → Billing</strong>. Your existing US number can then dial AU / UK / anywhere — Vapi charges per-minute international rates (a few cents/min). No config change here. Opens in a new tab.
+                    We&apos;ll switch your workspace onto our international voice plan. Per-minute rates apply (a few cents/min, depending on the destination). Your existing number keeps working — no config changes on your side.
                   </p>
                 </div>
                 <span className="text-xs" style={{ color: 'var(--text-tertiary)' }} aria-hidden>↗</span>
@@ -579,10 +577,10 @@ function OutboundCallScreen({
                 <span className="text-lg shrink-0" aria-hidden>📞</span>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
-                    Buy a local number in the destination country
+                    Provision a number in the destination country
                   </p>
                   <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    Better UX — customers see a local caller ID and there are no international fees. Open the agent&apos;s Configuration tab and buy an AU (or GB / CA) number from there. Requires Vapi billing too.
+                    Customers see a local caller ID and there are no international fees on the call leg itself. Open the agent&apos;s Configuration tab to add an AU / GB / CA / NZ number.
                   </p>
                 </div>
               </div>

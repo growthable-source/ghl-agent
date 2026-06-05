@@ -115,7 +115,7 @@ export default function VoiceAgentOverview() {
   }
 
   const voiceLabel = vapi?.voiceName || vapi?.voiceId || 'No voice selected'
-  const engineLabel = vapi?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Vapi-native'
+  const engineLabel = vapi?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Built-in'
   const phoneNumber = vapi?.phoneNumber
   const hasAssistantSync = !!vapi?.vapiAssistantId
 
@@ -140,10 +140,10 @@ export default function VoiceAgentOverview() {
           <span className="text-xl shrink-0" aria-hidden>⚠️</span>
           <div className="text-sm flex-1">
             <p className="font-semibold mb-0.5" style={{ color: '#ef4444' }}>
-              This agent isn&apos;t synced with Vapi
+              This agent isn&apos;t synced with the voice provider yet
             </p>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Open Configuration and click Save to register the assistant. Phone calls and browser test calls won&apos;t work until this succeeds — the save button surfaces Vapi&apos;s exact error inline.
+              Open Configuration and click Save to register it. Phone calls and browser test calls won&apos;t work until this succeeds — the save button surfaces the exact error inline.
             </p>
             <Link
               href={`/dashboard/${workspaceId}/voice/${agentId}/configuration`}

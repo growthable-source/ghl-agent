@@ -142,8 +142,8 @@ export default function VoiceAgentsListPage() {
             </h1>
           </div>
           <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-            Inbound and outbound phone calls, powered by Vapi. Build once, dial anywhere. Each voice agent gets a
-            phone number, a voice, and a system prompt — and shows up here.
+            Inbound and outbound phone calls — fully managed. Each voice agent gets a phone number, a voice,
+            and a system prompt, and shows up here.
           </p>
         </div>
         <Link
@@ -246,7 +246,7 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint?: 
 function VoiceAgentCard({ agent, workspaceId }: { agent: VoiceAgent; workspaceId: string }) {
   const phone = agent.vapiConfig?.phoneNumber
   const voiceName = agent.vapiConfig?.voiceName || agent.vapiConfig?.voiceId || 'No voice'
-  const engine = agent.vapiConfig?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Vapi'
+  const engine = agent.vapiConfig?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Built-in'
   // Canonical URL for a voice agent is /voice/[id] — the dedicated
   // surface with its own layout, breadcrumb, and tab strip. Old
   // /agents/[id]/voice URLs still resolve (the agents layout redirects

@@ -292,7 +292,7 @@ export default function VoicePage() {
         // 422 = config saved to DB but Vapi rejected the assistant
         // sync (the validation gate). Render the error inline; the
         // operator fixes and re-saves to retry.
-        setSyncError(data.error || `Vapi rejected the config (HTTP ${res.status})`)
+        setSyncError(data.error || `Voice provider rejected the config (HTTP ${res.status}). Contact support if this keeps happening.`)
         return
       }
       setSaved(true)
@@ -466,7 +466,7 @@ export default function VoicePage() {
           className="mb-6 rounded-xl border p-4 space-y-1"
           style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
         >
-          <p className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>Vapi API error</p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>Voice provider error</p>
           <p className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{vapiError}</p>
         </div>
       )}
@@ -487,12 +487,15 @@ export default function VoicePage() {
           </button>
         </div>
 
-        {/* ── Voice engine tabs (Vapi-native / ElevenLabs inside Vapi) ── */}
+        {/* ── Voice engine tabs (built-in / ElevenLabs) ── */}
+        {/* Internal note: 'vapi' on VapiConfig.ttsProvider == "Built-in".
+            ElevenLabs is exposed as itself because customers may have
+            specific voices they want and the name is widely known. */}
         <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice engine</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              Vapi-native voices are the new default (eight pre-tuned voices, zero phone-codec artefacts). ElevenLabs gives you the 5000+ catalogue with full tuning sliders.
+              Built-in voices are the new default — 30 pre-tuned voices, zero phone-codec artefacts. ElevenLabs gives you the 5000+ catalogue with full tuning sliders.
             </p>
           </div>
           <div
@@ -500,8 +503,8 @@ export default function VoicePage() {
             style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
           >
             {([
-              { id: 'vapi',       label: 'Vapi-native', count: '8' },
-              { id: 'elevenlabs', label: 'ElevenLabs',  count: '5000+' },
+              { id: 'vapi',       label: 'Built-in',   count: '30' },
+              { id: 'elevenlabs', label: 'ElevenLabs', count: '5000+' },
             ] as const).map(opt => {
               const active = config.ttsProvider === opt.id
               return (
@@ -539,17 +542,7 @@ export default function VoicePage() {
             {showBuyForm && (
               <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface-secondary)' }}>
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                  Provision a phone number via Vapi. US is on the free tier; AU / GB / CA / NZ require billing enabled at{' '}
-                  <a
-                    href="https://dash.vapi.ai/account?tab=billing"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                    style={{ color: 'var(--accent-primary)' }}
-                  >
-                    dash.vapi.ai
-                  </a>
-                  .
+                  Provision a new phone number for this agent. US numbers are included on every workspace; AU / GB / CA / NZ numbers are part of the international plan — if your workspace isn&apos;t on it yet, the request returns a friendly error with a contact-support link.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <select
@@ -714,7 +707,7 @@ export default function VoicePage() {
               className="rounded-lg border px-3 py-2 text-xs"
               style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
             >
-              Tuning controls only apply to <strong>ElevenLabs</strong> voices. Vapi-native voices are pre-tuned — switch engine above to use these controls.
+              Tuning controls only apply to <strong>ElevenLabs</strong> voices. Built-in voices are pre-tuned — switch engine above to use these controls.
             </div>
           )}
           <fieldset disabled={config.ttsProvider !== 'elevenlabs'} className={config.ttsProvider !== 'elevenlabs' ? 'opacity-50 pointer-events-none' : ''}>
@@ -896,10 +889,10 @@ export default function VoicePage() {
             className="rounded-lg border p-3 text-xs space-y-2"
             style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
           >
-            <p className="font-semibold">Vapi rejected this configuration</p>
+            <p className="font-semibold">Voice provider rejected this configuration</p>
             <p style={{ color: 'var(--text-secondary)' }}>{syncError}</p>
             <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-              The settings were saved locally — fix the issue above and click Save again to retry the Vapi sync. Browser test calls will not work until the assistant is registered with Vapi.
+              The settings were saved locally — fix the issue above and click Save again to retry the sync. Browser test calls won&apos;t work until the agent registers successfully.
             </p>
           </div>
         )}

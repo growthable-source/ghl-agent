@@ -318,11 +318,10 @@ export default function VoiceWizardPage() {
           New voice agent
         </h1>
         <p className="text-sm mb-8" style={{ color: 'var(--text-tertiary)' }}>
-          Build a voice agent in six short steps. Powered by Vapi — Vapi
-          handles the phone number and the call routing; the default voice
-          stack mirrors Vapi&apos;s demo &quot;Riley&quot; agent (Vapi-native
-          voice, OpenAI GPT-4.1, Deepgram nova-3 transcriber). Test it on a
-          real call at the end.
+          Build a voice agent in six short steps. Pick a use case, a voice, a phone
+          number, and you&apos;re live. The default stack ships a built-in voice
+          with industry-grade transcription baked in — you can test on a real call
+          at the end.
         </p>
 
         <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2">
@@ -531,8 +530,8 @@ function VoiceStep({
         Pick a voice
       </h2>
       <p className="text-sm mb-5" style={{ color: 'var(--text-tertiary)' }}>
-        Vapi-native is the default — eight pre-tuned voices that ship with
-        zero phone-codec artefacts. If you need a specific voice, switch to
+        Built-in is the default — 30 pre-tuned voices that ship with zero
+        phone-codec artefacts. If you need a specific voice, switch to
         ElevenLabs for the full 5000+ catalogue.
       </p>
       <div
@@ -540,8 +539,8 @@ function VoiceStep({
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
         {([
-          { id: 'vapi' as const,       label: 'Vapi-native',  count: '30' },
-          { id: 'elevenlabs' as const, label: 'ElevenLabs',   count: '5000+' },
+          { id: 'vapi' as const,       label: 'Built-in',   count: '30' },
+          { id: 'elevenlabs' as const, label: 'ElevenLabs', count: '5000+' },
         ]).map(opt => {
           const active = engine === opt.id
           return (
@@ -571,9 +570,9 @@ function VoiceStep({
             color: 'var(--text-secondary)',
           }}
         >
-          <strong>Heads up:</strong> Vapi-native voices don&apos;t expose one-shot previews — Vapi&apos;s API
-          is WebRTC-only. The fastest way to hear a voice is the Test Call panel at the end of the
-          wizard. ElevenLabs voices have inline previews if you need to audition first.
+          <strong>Heads up:</strong> Built-in voices don&apos;t have one-shot previews — the fastest
+          way to hear a voice is the Test Call panel at the end of the wizard. ElevenLabs voices
+          have inline previews if you need to audition first.
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -857,17 +856,7 @@ function PhoneStep({
             <div className="flex-1">
               <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Buy a new number</div>
               <div className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
-                Provision a fresh number through Vapi. US is on the free tier; AU / GB / CA / NZ require billing enabled on{' '}
-                <a
-                  href="https://dash.vapi.ai/account?tab=billing"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                  style={{ color: 'var(--accent-primary)' }}
-                >
-                  dash.vapi.ai
-                </a>
-                .
+                Provision a new phone number for this agent. US numbers are included on every workspace; AU / GB / CA / NZ numbers are part of the international plan — if your workspace isn&apos;t on it yet, the request returns a friendly error with a contact-support link.
               </div>
               {mode === 'buy' && (
                 <div>

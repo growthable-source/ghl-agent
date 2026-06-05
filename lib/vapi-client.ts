@@ -14,7 +14,7 @@ const VAPI_BASE = 'https://api.vapi.ai'
 export class VapiError extends Error {
   constructor(
     public status: number,
-    public code: 'PHONE_NUMBER_ACTIVATING' | 'CONCURRENCY_BLOCKED' | 'FREE_TIER_INTL_BLOCKED' | 'UNKNOWN',
+    public code: 'PHONE_NUMBER_ACTIVATING' | 'CONCURRENCY_BLOCKED' | 'FREE_TIER_INTL_BLOCKED' | 'INTL_NUMBER_PLAN_REQUIRED' | 'UNKNOWN',
     public body: string,
     public parsed: Record<string, unknown> | null,
     /** Human-readable message safe to show the user. */
@@ -51,16 +51,29 @@ function classifyVapiError(status: number, rawBody: string): VapiError {
     )
   }
 
-  // Vapi free tier blocks international outbound from US Vapi-provisioned
-  // numbers ("Free Vapi numbers do not support international calls").
-  // Two real fixes for the operator: add billing on Vapi (cheapest, US
-  // caller ID stays), or buy a local number in the destination country
-  // (better UX). Code is FREE_TIER_INTL_BLOCKED so the dial UI can render
-  // a card with both links.
+  // Voxility's default voice plan covers US outbound only. Calls to
+  // non-US destinations bubble up here. The user-facing copy is
+  // brand-neutral on purpose — customers shouldn't see the underlying
+  // voice-vendor's brand name (we whitelabel across thousands of
+  // agency domains, see CLAUDE.md). The UI surfaces a card with two
+  // paths: contact support to enable international outbound, or
+  // provision a number local to the destination country.
   if (/free\s+vapi\s+numbers.+international|international\s+calls/i.test(message)) {
     return new VapiError(
       status, 'FREE_TIER_INTL_BLOCKED', rawBody, parsed,
-      'Vapi\'s free tier doesn\'t support international outbound calls. Add a payment method at dash.vapi.ai (cheapest), or buy a phone number local to the destination country from the agent\'s Configuration tab.',
+      'International calls aren\'t enabled on your workspace yet. Contact support to enable them, or provision a number in the destination country from the agent\'s Configuration tab.',
+    )
+  }
+
+  // International phone-number purchase rejected because the platform's
+  // voice account isn't on the paid plan that covers that country.
+  // Operator never set this up directly — the right path is "contact
+  // support" so Voxility flips them onto the international plan. Same
+  // brand-neutral rationale as above.
+  if (status === 400 && /payment|billing|subscription|plan/i.test(message) && /country|international|number/i.test(message)) {
+    return new VapiError(
+      status, 'INTL_NUMBER_PLAN_REQUIRED', rawBody, parsed,
+      'Numbers in this country aren\'t available on your current voice plan. Contact support and we\'ll switch your workspace onto the international plan — usually same-day.',
     )
   }
 
