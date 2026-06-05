@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 
 export interface VoicePhoneCallUIProps {
   workspaceId: string
@@ -357,7 +358,7 @@ function OutboundCallScreen({
 }: VoicePhoneCallUIProps & { onClose: () => void }) {
   const [phone, setPhone] = useState('')
   const [country, setCountry] = useState('+1')
-  const [phase, setPhase] = useState<'input' | 'dialing' | 'in_progress' | 'ended' | 'error' | 'activating'>('input')
+  const [phase, setPhase] = useState<'input' | 'dialing' | 'in_progress' | 'ended' | 'error' | 'activating' | 'intl_blocked'>('input')
   const [errMsg, setErrMsg] = useState<string | null>(null)
   const [callLogId, setCallLogId] = useState<string | null>(null)
 
@@ -385,6 +386,15 @@ function OutboundCallScreen({
         if (data.code === 'PHONE_NUMBER_ACTIVATING' || res.status === 503) {
           setPhase('activating')
           setErrMsg(data.error || 'Your phone number is still activating with the carrier.')
+          return
+        }
+        // Vapi free-tier numbers can only dial US. International dest
+        // numbers (+44, +61, etc.) hit this. Route to its own screen
+        // with actionable next steps — add billing on Vapi, or buy a
+        // number local to the destination country.
+        if (data.code === 'FREE_TIER_INTL_BLOCKED') {
+          setPhase('intl_blocked')
+          setErrMsg(data.error || null)
           return
         }
         throw new Error(data.error || `Dial failed (${res.status})`)
@@ -523,6 +533,75 @@ function OutboundCallScreen({
               style={{ color: 'var(--text-tertiary)' }}
             >
               Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'intl_blocked' && (
+        <div className="max-w-lg mx-auto space-y-4">
+          <div
+            className="rounded-xl p-4 text-sm"
+            style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+          >
+            <p className="font-semibold mb-1">International calls aren&apos;t enabled yet</p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {errMsg ?? 'Vapi\'s free-tier numbers can only dial US destinations. Pick one of the options below.'}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <a
+              href="https://dash.vapi.ai/account?tab=billing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-xl p-4 transition-colors hover:opacity-95"
+              style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-lg shrink-0" aria-hidden>💳</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+                    Add billing on Vapi (recommended for testing)
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    Add a payment method at <strong>dash.vapi.ai → Billing</strong>. Your existing US number can then dial AU / UK / anywhere — Vapi charges per-minute international rates (a few cents/min). No config change here. Opens in a new tab.
+                  </p>
+                </div>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }} aria-hidden>↗</span>
+              </div>
+            </a>
+            <Link
+              href={`/dashboard/${workspaceId}/voice/${agentId}/configuration`}
+              className="block rounded-xl p-4 transition-colors hover:opacity-95"
+              style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-lg shrink-0" aria-hidden>📞</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+                    Buy a local number in the destination country
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    Better UX — customers see a local caller ID and there are no international fees. Open the agent&apos;s Configuration tab and buy an AU (or GB / CA) number from there. Requires Vapi billing too.
+                  </p>
+                </div>
+              </div>
+            </Link>
+          </div>
+          <div className="flex items-center justify-between pt-1">
+            <button
+              onClick={() => setPhase('input')}
+              className="text-xs px-3 py-2"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              ← Change number
+            </button>
+            <button
+              onClick={dial}
+              className="text-xs font-semibold px-4 py-2 rounded-lg"
+              style={{ background: '#fa4d2e', color: '#ffffff' }}
+            >
+              Retry dial
             </button>
           </div>
         </div>

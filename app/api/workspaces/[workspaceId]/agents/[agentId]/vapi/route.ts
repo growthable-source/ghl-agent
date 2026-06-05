@@ -236,18 +236,24 @@ export async function PUT(req: NextRequest, { params }: Params) {
   return NextResponse.json({ config, vapiAssistantId })
 }
 
-// POST — purchase a new phone number
+// POST — purchase a new phone number. Accepts:
+//   { countryCode: 'US' | 'AU' | 'GB' | 'CA' | 'NZ', areaCode?: string }
+// Defaults to US for back-compat with older clients passing only areaCode.
 export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
   const body = await req.json()
-  const { areaCode } = body
+  const countryCode = String(body.countryCode || 'US').toUpperCase()
+  const areaCode = String(body.areaCode || '').trim()
 
   try {
-    const phone = await purchasePhoneNumber((areaCode || '').trim())
+    const phone = await purchasePhoneNumber({ countryCode, areaCode: areaCode || undefined })
     return NextResponse.json({ phone })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 400 })
+    return NextResponse.json(
+      { error: err?.userMessage || err?.message, code: err?.code },
+      { status: 400 },
+    )
   }
 }

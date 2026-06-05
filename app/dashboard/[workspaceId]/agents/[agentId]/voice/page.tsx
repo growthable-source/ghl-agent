@@ -152,6 +152,9 @@ export default function VoicePage() {
   // Phone provisioning
   const [showBuyForm, setShowBuyForm] = useState(false)
   const [areaCode, setAreaCode] = useState('')
+  // Country code for the buy-a-number flow. US is the only free-tier
+  // option; AU / GB / CA / NZ require billing on Vapi.
+  const [buyCountryCode, setBuyCountryCode] = useState('US')
   const [buying, setBuying] = useState(false)
   const [buyError, setBuyError] = useState('')
 
@@ -309,7 +312,7 @@ export default function VoicePage() {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ areaCode: areaCode.trim() }),
+        body: JSON.stringify({ countryCode: buyCountryCode, areaCode: areaCode.trim() }),
       })
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to provision number')
@@ -535,12 +538,42 @@ export default function VoicePage() {
             </div>
             {showBuyForm && (
               <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface-secondary)' }}>
-                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Provision a US phone number via Vapi. Optionally specify a preferred area code.</p>
-                <div className="flex gap-2">
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  Provision a phone number via Vapi. US is on the free tier; AU / GB / CA / NZ require billing enabled at{' '}
+                  <a
+                    href="https://dash.vapi.ai/account?tab=billing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                    style={{ color: 'var(--accent-primary)' }}
+                  >
+                    dash.vapi.ai
+                  </a>
+                  .
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={buyCountryCode}
+                    onChange={e => { setBuyCountryCode(e.target.value); setAreaCode('') }}
+                    className="rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}
+                  >
+                    <option value="US">🇺🇸 United States</option>
+                    <option value="AU">🇦🇺 Australia</option>
+                    <option value="GB">🇬🇧 United Kingdom</option>
+                    <option value="CA">🇨🇦 Canada</option>
+                    <option value="NZ">🇳🇿 New Zealand</option>
+                  </select>
                   <input type="text" value={areaCode}
-                    onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                    placeholder="Area code (optional, e.g. 415)"
-                    className="flex-1 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none"
+                    onChange={e => setAreaCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder={
+                      buyCountryCode === 'US' ? 'Area code (e.g. 415)' :
+                      buyCountryCode === 'AU' ? 'Area code (optional, e.g. 02)' :
+                      buyCountryCode === 'GB' ? 'Area code (optional, e.g. 20)' :
+                      buyCountryCode === 'CA' ? 'Area code (e.g. 416)' :
+                      'Area code (optional, e.g. 9)'
+                    }
+                    className="flex-1 min-w-[160px] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none"
                     style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }} />
                   <button type="button" onClick={buyNumber} disabled={buying}
                     className="px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"

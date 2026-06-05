@@ -8,12 +8,21 @@
  * agent-FK lookup.
  *
  *   GET   list every Vapi-provisioned number on this workspace's Vapi account
- *   POST  buy a new number — body { areaCode }
+ *   POST  buy a new number — body { countryCode, areaCode?, name? }
+ *           countryCode  ISO-3166 alpha-2 (default 'US')
+ *           areaCode     optional regional code; US wants 3 digits,
+ *                        AU/GB are 2-3, etc.
+ *           name         friendly label on Vapi's side
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { listPhoneNumbers, purchasePhoneNumber } from '@/lib/vapi-client'
+import {
+  listPhoneNumbers,
+  purchasePhoneNumber,
+  VAPI_PURCHASEABLE_COUNTRIES,
+  type VapiPurchaseableCountry,
+} from '@/lib/vapi-client'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -37,13 +46,25 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   let body: any = {}
   try { body = await req.json() } catch {}
-  const areaCode = String(body.areaCode || '').replace(/\D/g, '').slice(0, 3)
-  if (!areaCode) {
-    return NextResponse.json({ error: 'areaCode (3 digits) is required' }, { status: 400 })
+  const rawCountry = String(body.countryCode || 'US').toUpperCase()
+  if (!VAPI_PURCHASEABLE_COUNTRIES.includes(rawCountry as VapiPurchaseableCountry)) {
+    return NextResponse.json(
+      { error: `countryCode must be one of ${VAPI_PURCHASEABLE_COUNTRIES.join(', ')}` },
+      { status: 400 },
+    )
+  }
+  const countryCode = rawCountry as VapiPurchaseableCountry
+  // Area code is optional outside the US — Vapi will pick any available
+  // number in the country if it's omitted. US still validates 3 digits
+  // to preserve the old wizard contract.
+  const areaCodeRaw = String(body.areaCode || '').replace(/\D/g, '')
+  const areaCode = countryCode === 'US' ? areaCodeRaw.slice(0, 3) : areaCodeRaw.slice(0, 4)
+  if (countryCode === 'US' && !areaCode) {
+    return NextResponse.json({ error: 'areaCode (3 digits) is required for US numbers' }, { status: 400 })
   }
 
   try {
-    const phoneNumber = await purchasePhoneNumber(areaCode)
+    const phoneNumber = await purchasePhoneNumber({ countryCode, areaCode: areaCode || undefined })
     // Wizard expects { phoneNumber: { id, number, name } } — match that
     // shape verbatim so the client can use the result without massaging.
     // Wizard also wants to show an "activating, 1-2 min" notice so the

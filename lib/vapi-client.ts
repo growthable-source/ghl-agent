@@ -14,7 +14,7 @@ const VAPI_BASE = 'https://api.vapi.ai'
 export class VapiError extends Error {
   constructor(
     public status: number,
-    public code: 'PHONE_NUMBER_ACTIVATING' | 'CONCURRENCY_BLOCKED' | 'UNKNOWN',
+    public code: 'PHONE_NUMBER_ACTIVATING' | 'CONCURRENCY_BLOCKED' | 'FREE_TIER_INTL_BLOCKED' | 'UNKNOWN',
     public body: string,
     public parsed: Record<string, unknown> | null,
     /** Human-readable message safe to show the user. */
@@ -48,6 +48,19 @@ function classifyVapiError(status: number, rawBody: string): VapiError {
     return new VapiError(
       status, 'CONCURRENCY_BLOCKED', rawBody, parsed,
       `Your Vapi account is at its concurrent-call cap${cap ? ` (${cap})` : ''}. Wait for one of the in-progress calls to end, or upgrade your Vapi plan.`,
+    )
+  }
+
+  // Vapi free tier blocks international outbound from US Vapi-provisioned
+  // numbers ("Free Vapi numbers do not support international calls").
+  // Two real fixes for the operator: add billing on Vapi (cheapest, US
+  // caller ID stays), or buy a local number in the destination country
+  // (better UX). Code is FREE_TIER_INTL_BLOCKED so the dial UI can render
+  // a card with both links.
+  if (/free\s+vapi\s+numbers.+international|international\s+calls/i.test(message)) {
+    return new VapiError(
+      status, 'FREE_TIER_INTL_BLOCKED', rawBody, parsed,
+      'Vapi\'s free tier doesn\'t support international outbound calls. Add a payment method at dash.vapi.ai (cheapest), or buy a phone number local to the destination country from the agent\'s Configuration tab.',
     )
   }
 
@@ -100,9 +113,48 @@ export async function listPhoneNumbers() {
     .filter((p) => p.number) // Only show numbers with an actual phone number assigned
 }
 
-export async function purchasePhoneNumber(areaCode: string) {
-  const payload: Record<string, string> = { provider: 'vapi' }
-  if (areaCode) payload.numberDesiredAreaCode = areaCode
+/**
+ * ISO-3166-1 alpha-2 country codes Vapi sells provider-managed numbers
+ * for. US is the only one available on free tier — the rest require
+ * billing on dash.vapi.ai. Surface a friendly VapiError when Vapi
+ * rejects a non-US purchase with a billing block (currently bubbles
+ * up as an UNKNOWN 4xx; classify in a later pass once we see real
+ * error bodies from production).
+ */
+export const VAPI_PURCHASEABLE_COUNTRIES = ['US', 'GB', 'CA', 'AU', 'NZ'] as const
+export type VapiPurchaseableCountry = typeof VAPI_PURCHASEABLE_COUNTRIES[number]
+
+export interface PurchasePhoneNumberOpts {
+  /** ISO-3166-1 alpha-2. Defaults to 'US' to match the historical behaviour. */
+  countryCode?: VapiPurchaseableCountry | string
+  /** Numeric area / region code (US: 3 digits; AU: 2-3 digits; etc.). Optional. */
+  areaCode?: string
+  /**
+   * Optional friendly name to attach to the number on Vapi's side
+   * (defaults to the number itself in their dashboard).
+   */
+  name?: string
+}
+
+/**
+ * Buy a Vapi-provisioned phone number. Vapi's `/phone-number` POST
+ * accepts `numberDesiredCountryCode` (ISO-3166 alpha-2) alongside
+ * `numberDesiredAreaCode`. Free-tier accounts get US-only; AU / GB /
+ * CA / NZ require billing.
+ *
+ * Back-compat: the historical call site passes a bare areaCode string,
+ * which still works (defaults to US).
+ */
+export async function purchasePhoneNumber(opts: PurchasePhoneNumberOpts | string) {
+  // Back-compat: old callers pass a bare areaCode.
+  const params: PurchasePhoneNumberOpts = typeof opts === 'string' ? { areaCode: opts } : opts
+  const countryCode = (params.countryCode || 'US').toUpperCase()
+  const payload: Record<string, string> = {
+    provider: 'vapi',
+    numberDesiredCountryCode: countryCode,
+  }
+  if (params.areaCode) payload.numberDesiredAreaCode = params.areaCode
+  if (params.name) payload.name = params.name
 
   const data = await vapiRequest('/phone-number', {
     method: 'POST',
@@ -112,6 +164,7 @@ export async function purchasePhoneNumber(areaCode: string) {
     id: (data as any).id,
     number: (data as any).number,
     name: (data as any).name || (data as any).number,
+    countryCode,
   }
 }
 

@@ -114,6 +114,13 @@ export default function VoiceWizardPage() {
   // ─── Step 5: phone ────────────────────────────────────────────────
   const [phoneMode, setPhoneMode] = useState<'buy' | 'skip' | 'port'>('buy')
   const [areaCode, setAreaCode] = useState('')
+  // Vapi sells provider-managed numbers in a few countries. US is the
+  // only one on the free tier; AU / GB / CA / NZ require billing on
+  // dash.vapi.ai. The picker is a no-op for free-tier operators (the
+  // API rejects non-US gracefully) — we still surface the option here
+  // so customers ready for international calls don't have to drop into
+  // Vapi's dashboard to provision.
+  const [countryCode, setCountryCode] = useState('US')
   const [purchasedNumber, setPurchasedNumber] = useState<PhoneNumberOption | null>(null)
   const [purchasing, setPurchasing] = useState(false)
   const [purchaseError, setPurchaseError] = useState<string | null>(null)
@@ -215,7 +222,7 @@ export default function VoiceWizardPage() {
       const res = await fetch(`/api/workspaces/${workspaceId}/vapi/phone-numbers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ areaCode: areaCode.trim() }),
+        body: JSON.stringify({ countryCode, areaCode: areaCode.trim() }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Purchase failed (${res.status})`)
@@ -396,6 +403,8 @@ export default function VoiceWizardPage() {
             <PhoneStep
               mode={phoneMode}
               onMode={setPhoneMode}
+              countryCode={countryCode}
+              onCountryCode={setCountryCode}
               areaCode={areaCode}
               onAreaCode={setAreaCode}
               purchasedNumber={purchasedNumber}
@@ -798,10 +807,13 @@ function KnowledgeStep({
 }
 
 function PhoneStep({
-  mode, onMode, areaCode, onAreaCode, purchasedNumber, purchasing, error, onPurchase,
+  mode, onMode, countryCode, onCountryCode, areaCode, onAreaCode,
+  purchasedNumber, purchasing, error, onPurchase,
 }: {
   mode: 'buy' | 'skip' | 'port'
   onMode: (m: 'buy' | 'skip' | 'port') => void
+  countryCode: string
+  onCountryCode: (v: string) => void
   areaCode: string
   onAreaCode: (v: string) => void
   purchasedNumber: PhoneNumberOption | null
@@ -809,6 +821,20 @@ function PhoneStep({
   error: string | null
   onPurchase: () => void
 }) {
+  // Vapi sells provider-managed numbers in these countries. US is the
+  // only one on the free tier — the rest need billing enabled at
+  // dash.vapi.ai. We surface them all and let the operator deal with
+  // Vapi's billing prompt if it fires.
+  const countryOptions = [
+    { code: 'US', label: '🇺🇸 United States', areaHint: 'e.g. 415', requireArea: true,  prefix: '+1' },
+    { code: 'AU', label: '🇦🇺 Australia',     areaHint: 'optional, e.g. 02', requireArea: false, prefix: '+61' },
+    { code: 'GB', label: '🇬🇧 United Kingdom', areaHint: 'optional, e.g. 20', requireArea: false, prefix: '+44' },
+    { code: 'CA', label: '🇨🇦 Canada',         areaHint: 'e.g. 416', requireArea: true,  prefix: '+1' },
+    { code: 'NZ', label: '🇳🇿 New Zealand',    areaHint: 'optional, e.g. 9',  requireArea: false, prefix: '+64' },
+  ]
+  const active = countryOptions.find(c => c.code === countryCode) || countryOptions[0]
+  const areaInvalid = active.requireArea && !areaCode
+
   return (
     <div>
       <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
@@ -830,7 +856,19 @@ function PhoneStep({
             <input type="radio" name="pmode" checked={mode === 'buy'} onChange={() => onMode('buy')} className="mt-1 accent-orange-500" />
             <div className="flex-1">
               <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Buy a new number</div>
-              <div className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>Provision a fresh number through Vapi (US area-code).</div>
+              <div className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                Provision a fresh number through Vapi. US is on the free tier; AU / GB / CA / NZ require billing enabled on{' '}
+                <a
+                  href="https://dash.vapi.ai/account?tab=billing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                  style={{ color: 'var(--accent-primary)' }}
+                >
+                  dash.vapi.ai
+                </a>
+                .
+              </div>
               {mode === 'buy' && (
                 <div>
                   {purchasedNumber ? (
@@ -843,19 +881,29 @@ function PhoneStep({
                       </p>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={countryCode}
+                        onChange={e => { onCountryCode(e.target.value); onAreaCode('') }}
+                        className="rounded-lg px-3 py-2 text-sm focus:outline-none"
+                        style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+                      >
+                        {countryOptions.map(c => (
+                          <option key={c.code} value={c.code}>{c.label}</option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         value={areaCode}
-                        onChange={e => onAreaCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                        placeholder="e.g. 415"
-                        className="w-28 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                        onChange={e => onAreaCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder={active.areaHint}
+                        className="w-36 rounded-lg px-3 py-2 text-sm focus:outline-none"
                         style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
                       />
                       <button
                         type="button"
                         onClick={onPurchase}
-                        disabled={!areaCode || purchasing}
+                        disabled={areaInvalid || purchasing}
                         className="text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-40"
                         style={{ background: '#fa4d2e', color: '#ffffff' }}
                       >
