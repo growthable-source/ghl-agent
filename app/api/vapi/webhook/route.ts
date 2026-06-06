@@ -96,7 +96,7 @@ async function runVoiceTool(
       const workspaceIdForShopify = agentForShopify?.workspaceId
       if (!workspaceIdForShopify) return 'Could not resolve workspace for store lookup.'
       const { executeTool } = await import('@/lib/agent/execute-tool')
-      return await executeTool(
+      const result = await executeTool(
         functionName,
         params,
         ctx.locationId,
@@ -111,6 +111,15 @@ async function runVoiceTool(
         workspaceIdForShopify,
         undefined,
       )
+      // Surface whether the executor reached the store or fell back to
+      // shopify_not_connected. Result is a JSON string — log a preview
+      // so we don't blow out log size on big product lists.
+      console.log('[Voice tool] shopify result:', {
+        tool: functionName,
+        workspaceId: workspaceIdForShopify,
+        preview: result.slice(0, 400),
+      })
+      return result
     }
 
     // ── CRM / calendar tools (the original 4) ──
