@@ -257,6 +257,13 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
     }
   }
 
+  // Vapi built-in tools — `{ type: 'endCall' }` is a Vapi-managed tool
+  // (NOT a function); the model can invoke it to gracefully end the
+  // call when the conversation is done, instead of trailing off and
+  // forcing the caller to hang up first. No webhook handler needed —
+  // Vapi runs it at the call layer.
+  const builtInTools = [{ type: 'endCall' as const }]
+
   return {
     name: agent.name,
     // Riley-stack default: OpenAI gpt-4.1 brain. Vapi has built-in
@@ -266,7 +273,7 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
       provider: modelProvider || DEFAULT_MODEL_PROVIDER,
       model: modelId || DEFAULT_MODEL,
       messages: [{ role: 'system', content: systemPrompt }],
-      tools: [...VAPI_TOOLS, ...shopifyTools, ...customTools],
+      tools: [...builtInTools, ...VAPI_TOOLS, ...shopifyTools, ...customTools],
     },
     // Deepgram nova-3 transcriber. Same model Vapi's "Riley" demo
     // uses; significantly better than the previous (unset → Vapi
@@ -279,6 +286,13 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
     voice: voiceBlock,
     firstMessage: vapiConfig.firstMessage || `Hi, this is ${(agent as any).agentPersonaName || agent.name}. How can I help today?`,
     endCallMessage: vapiConfig.endCallMessage || 'Thanks. Have a great day!',
+    // Voicemail message — what the agent says if an outbound call goes
+    // to an answering machine. Vapi's voicemailDetection is enabled
+    // by default; this is just the script. Without it, hitting a
+    // voicemail box results in a silent hang-up (per Vapi's typedef).
+    // Kept simple and brand-neutral so it works for any vertical;
+    // operators can override via VapiConfig if they want a custom one.
+    voicemailMessage: (vapiConfig as any).voicemailMessage || `Hi, this is ${(agent as any).agentPersonaName || agent.name}. Sorry I missed you — I'll try you back shortly. Thanks.`,
     maxDurationSeconds: vapiConfig.maxDurationSecs ?? 600,
     ...(vapiConfig.backgroundSound ? { backgroundSound: vapiConfig.backgroundSound } : {}),
     ...(vapiConfig.endCallPhrases?.length ? { endCallPhrases: vapiConfig.endCallPhrases } : {}),
