@@ -138,7 +138,89 @@ export async function POST(req: NextRequest) {
     const agentId: string = call?.assistantOverrides?.variableValues?.agentId
     const callerPhone: string = call?.assistantOverrides?.variableValues?.callerPhone || call?.customer?.number
 
+    // Shopify tools: dispatch through the existing executeTool
+    // pipeline so the voice runtime reuses the text-agent adapter
+    // (no duplicated Shopify logic). The voice webhook is now a thin
+    // shim that translates Vapi's function-call shape to the
+    // dispatcher's signature and back.
+    const SHOPIFY_TOOL_NAMES = new Set([
+      'search_shopify_products',
+      'check_shopify_inventory',
+      'lookup_shopify_customer',
+      'check_shopify_order_status',
+      'create_shopify_checkout',
+      'create_shopify_discount',
+      'record_back_in_stock_interest',
+    ])
+
     try {
+      // ── query_knowledge — vector-search the workspace's indexed
+      // content with the caller's question and return the top 5
+      // matched snippets. Replaces the static-bake-in-30-entries
+      // path that dropped 99% of large knowledge collections.
+      if (functionName === 'query_knowledge') {
+        if (!agentId) {
+          return NextResponse.json({ result: 'No agent context — try again or contact support.' })
+        }
+        const agent = await db.agent.findUnique({
+          where: { id: agentId },
+          select: { workspaceId: true, knowledgeDomainIds: true },
+        })
+        if (!agent || !agent.workspaceId) {
+          return NextResponse.json({ result: 'Agent not found or not assigned to a workspace.' })
+        }
+        const query: string = typeof params.query === 'string' ? params.query : ''
+        if (!query.trim()) {
+          return NextResponse.json({ result: 'No query provided — please ask again with a specific question.' })
+        }
+        const { retrieveAndFormatForAgent } = await import('@/lib/agent/retrieve-for-agent')
+        const { block, chunks } = await retrieveAndFormatForAgent(
+          { id: agentId, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds },
+          query,
+        )
+        if (!chunks || chunks.length === 0) {
+          return NextResponse.json({ result: 'No relevant information in the knowledge base. Tell the caller honestly and offer a follow-up.' })
+        }
+        // `block` is markdown-ish but Vapi's function result is plain
+        // text shown to the LLM. Keep it concise — the model summarises
+        // for the caller anyway.
+        return NextResponse.json({ result: block })
+      }
+
+      // Shopify tools — single executor call, brand-neutral error path.
+      // The executor requires workspaceId for the commerce adapter
+      // lookup (see lib/agent/execute-tool.ts:1246+), so we resolve it
+      // from the agent record before delegating.
+      if (SHOPIFY_TOOL_NAMES.has(functionName)) {
+        if (!locationId) return NextResponse.json({ result: 'Cannot reach the store right now.' })
+        if (!agentId) return NextResponse.json({ result: 'No agent context for this call.' })
+        const agentForShopify = await db.agent.findUnique({
+          where: { id: agentId },
+          select: { workspaceId: true },
+        })
+        const workspaceIdForShopify = agentForShopify?.workspaceId
+        if (!workspaceIdForShopify) {
+          return NextResponse.json({ result: 'Could not resolve workspace for store lookup.' })
+        }
+        const { executeTool } = await import('@/lib/agent/execute-tool')
+        const result = await executeTool(
+          functionName,                   // toolName
+          params as Record<string, unknown>, // input
+          locationId,                     // locationId
+          false,                          // sandbox
+          agentId,                        // agentId
+          'voice',                        // channel
+          undefined,                      // conversationProviderId
+          undefined,                      // adapter (lazy-resolved by executeTool)
+          undefined,                      // deferredSend
+          undefined,                      // fieldOverwriteMap
+          undefined,                      // handoverCapture
+          workspaceIdForShopify,          // workspaceId — required for Shopify adapter lookup
+          undefined,                      // contactId — voice hydrates via callerPhone separately
+        )
+        return NextResponse.json({ result })
+      }
+
       switch (functionName) {
         case 'get_available_slots': {
           if (!locationId) return NextResponse.json({ result: 'Sorry, I cannot check availability right now.' })

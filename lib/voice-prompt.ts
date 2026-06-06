@@ -9,6 +9,28 @@ export const VAPI_TOOLS = [
   {
     type: 'function',
     function: {
+      // Per-turn knowledge retrieval. Voice agents previously got a
+      // hard-capped 30-entry slice of their knowledge base baked into
+      // the static system prompt — for collections with thousands of
+      // RSS entries (or anything > 30) the most-recent and most-
+      // relevant items never reached the model. This tool replaces
+      // the bake-in: the model calls it with the user's question, the
+      // webhook runs vector retrieval and returns the top 5 matched
+      // chunks as the tool result.
+      name: 'query_knowledge',
+      description: 'Search the workspace knowledge base for information relevant to the caller\'s question. ALWAYS call this BEFORE answering any question that asks for specific facts — product details, release notes, FAQ answers, policies, pricing, anything the merchant has documented. Pass the caller\'s question restated naturally. Returns up to 5 ranked snippets; if it returns nothing, say so honestly instead of guessing.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The caller\'s question, restated naturally as a search query.' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'book_appointment',
       description: 'Book an appointment for the caller',
       parameters: {
