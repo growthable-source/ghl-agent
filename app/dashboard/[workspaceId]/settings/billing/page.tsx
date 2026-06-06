@@ -290,7 +290,7 @@ export default function BillingPage() {
             </p>
             {usage.voice.overage > 0 && (
               <p className="text-xs text-amber-500 mt-1">
-                {usage.voice.overage} min overage — ~${usage.voice.estimatedOverageCost}
+                Over limit — calls are paused. Upgrade to resume.
               </p>
             )}
             {usage.voice.minuteLimit > 0 && (
@@ -299,10 +299,19 @@ export default function BillingPage() {
                   className="h-full rounded-full transition-all"
                   style={{
                     width: `${Math.min(100, (usage.voice.minutesUsed / usage.voice.minuteLimit) * 100)}%`,
-                    background: usage.voice.minutesUsed > usage.voice.minuteLimit ? '#f59e0b' : '#fa4d2e',
+                    background: usage.voice.minutesUsed >= usage.voice.minuteLimit
+                      ? '#ef4444'
+                      : usage.voice.minutesUsed >= usage.voice.minuteLimit * 0.8
+                        ? '#f59e0b'
+                        : '#fa4d2e',
                   }}
                 />
               </div>
+            )}
+            {usage.voice.minuteLimit === 0 && (
+              <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                Voice calls aren&apos;t included on this plan. Upgrade to enable inbound and outbound calling.
+              </p>
             )}
           </div>
         </div>

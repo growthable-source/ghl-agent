@@ -153,6 +153,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
       }
     }
 
+    // Voice-minute quota — surfaced so the browser test panel can show
+    // the upgrade nudge BEFORE attempting vapi.start (otherwise the user
+    // experiences a connection that's then torn down mid-handshake).
+    // Same gate as the outbound dial uses; brand-neutral copy.
+    const { checkVoiceQuota } = await import('@/lib/voice-quota')
+    const voiceQuota = await checkVoiceQuota(workspaceId)
+
     return NextResponse.json({
       config,
       phoneNumbers,
@@ -169,6 +176,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
       // when the agent doesn't have one yet (lazy backfill happens
       // on next save or call).
       vapiAssistantId: config?.vapiAssistantId ?? null,
+      // { blocked: false, used, limit } when the workspace can dial;
+      // { blocked: true, code, message, used, limit, planLabel } when over.
+      voiceQuota: voiceQuota.ok
+        ? { blocked: false, used: voiceQuota.used, limit: voiceQuota.limit }
+        : {
+            blocked: true,
+            code: voiceQuota.code,
+            message: voiceQuota.message,
+            used: voiceQuota.used,
+            limit: voiceQuota.limit,
+            planLabel: voiceQuota.planLabel,
+          },
       serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
       _debug: {
         keyPresent: !!rawKey,

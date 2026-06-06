@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { initiateOutboundCall } from '@/lib/outbound-call'
+import { initiateOutboundCall, VoiceQuotaError } from '@/lib/outbound-call'
 import { VapiError } from '@/lib/vapi-client'
 
 export async function POST(req: NextRequest) {
@@ -53,6 +53,21 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, callLogId: result.callLogId, vapiCallId: result.vapiCallId })
   } catch (err) {
+    // Workspace is over its included voice minutes (or voice isn't on
+    // the plan). HTTP 402 = Payment Required — standard for quota gates.
+    // The dial UI checks for this code and renders the "upgrade plan"
+    // card instead of dumping the raw error.
+    if (err instanceof VoiceQuotaError) {
+      console.warn(`[OutboundCall Action] VoiceQuota ${err.code}: ${err.userMessage}`)
+      return NextResponse.json(
+        {
+          error: err.userMessage,
+          code: err.code,
+          quota: { used: err.used, limit: err.limit, planLabel: err.planLabel },
+        },
+        { status: 402 },
+      )
+    }
     // Vapi-specific failures get a typed code so the client can render
     // the right copy without parsing the message. PHONE_NUMBER_ACTIVATING
     // is the most common one after a fresh number purchase.

@@ -46,10 +46,11 @@ export async function trackVoiceUsage(workspaceId: string, agentId: string, dura
   if (durationSeconds <= 0) return
   const period = currentBillingPeriod()
 
-  await Promise.all([
+  const [updated] = await Promise.all([
     db.workspace.update({
       where: { id: workspaceId },
       data: { voiceMinuteUsage: { increment: durationSeconds } },
+      select: { voiceMinuteUsage: true },
     }),
 
     db.usageRecord.create({
@@ -62,6 +63,17 @@ export async function trackVoiceUsage(workspaceId: string, agentId: string, dura
       },
     }),
   ])
+
+  // After the atomic increment, check whether this call pushed the
+  // workspace past the 80% warning threshold. Idempotent per billing
+  // period via a UsageRecord marker. Fire-and-forget — a failed warning
+  // must never break the call accounting.
+  try {
+    const { maybeSendVoiceQuotaWarning } = await import('@/lib/voice-quota')
+    await maybeSendVoiceQuotaWarning(workspaceId, updated.voiceMinuteUsage)
+  } catch (err: any) {
+    console.warn(`[Usage] Voice quota warning check failed for ${workspaceId}:`, err?.message)
+  }
 }
 
 /**

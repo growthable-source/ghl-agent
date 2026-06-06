@@ -2,6 +2,27 @@ import { db } from '@/lib/db'
 import { createOutboundCall } from '@/lib/vapi-client'
 import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
 import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
+import { checkVoiceQuota } from '@/lib/voice-quota'
+
+/**
+ * Thrown when a workspace can't start a new voice call because it's
+ * over its plan's included voice minutes (or voice isn't on the plan
+ * at all). The route handler catches this and surfaces a brand-neutral
+ * 402 with the typed code so the UI can render the "upgrade your plan"
+ * card.
+ */
+export class VoiceQuotaError extends Error {
+  constructor(
+    public code: 'VOICE_QUOTA_EXCEEDED' | 'VOICE_NOT_ON_PLAN',
+    public userMessage: string,
+    public used: number,
+    public limit: number,
+    public planLabel: string,
+  ) {
+    super(userMessage)
+    this.name = 'VoiceQuotaError'
+  }
+}
 
 interface OutboundCallOpts {
   locationId: string
@@ -48,6 +69,21 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
   const knMap = await bulkLoadKnowledgeForAgents([agent.id])
   agent.knowledgeEntries = knMap.get(agent.id) ?? []
   const agentId = agent.id
+
+  // 1a. Voice-minute quota check. Block the dial if the workspace has
+  // used its included minutes — surfaces a brand-neutral "upgrade your
+  // plan" message via the typed VoiceQuotaError. Calls in progress are
+  // never affected; this gates new-call starts only.
+  const quota = await checkVoiceQuota(agent.workspaceId)
+  if (!quota.ok) {
+    throw new VoiceQuotaError(
+      quota.code,
+      quota.message,
+      quota.used,
+      quota.limit,
+      quota.planLabel,
+    )
+  }
 
   // 2. Duplicate check — skip if call to same number initiated in last 5 minutes
   const recentCall = await db.callLog.findFirst({

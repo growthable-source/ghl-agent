@@ -206,8 +206,9 @@ async function getVapi(publicKey: string): Promise<any> {
 // drift between phone + browser is what caused the "Meeting ended
 // due to ejection" loop.
 function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMessage?: string }) {
-  const [status, setStatus] = useState<'starting' | 'live' | 'ended' | 'error'>('starting')
+  const [status, setStatus] = useState<'starting' | 'live' | 'ended' | 'error' | 'quota_blocked'>('starting')
   const [errMsg, setErrMsg] = useState<string | null>(null)
+  const [quotaInfo, setQuotaInfo] = useState<{ workspaceId: string; used: number; limit: number; planLabel: string; code: string; message: string } | null>(null)
   const [transcript, setTranscript] = useState<Array<{ role: string; text: string }>>([])
   const vapiRef = useRef<any>(null)
 
@@ -227,6 +228,25 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
         const cfg = await res.json()
 
         if (cancelled) return
+
+        // Voice-minute quota check. The server tells us up-front if the
+        // workspace is over its included minutes (or voice isn't on the
+        // plan); render the upgrade card without attempting vapi.start
+        // — otherwise the user sees a connection that's immediately
+        // terminated and a generic "call ended" with no actionable
+        // next step.
+        if (cfg.voiceQuota?.blocked) {
+          setStatus('quota_blocked')
+          setQuotaInfo({
+            workspaceId,
+            used: cfg.voiceQuota.used ?? 0,
+            limit: cfg.voiceQuota.limit ?? 0,
+            planLabel: cfg.voiceQuota.planLabel ?? 'your current plan',
+            code: cfg.voiceQuota.code ?? 'VOICE_QUOTA_EXCEEDED',
+            message: cfg.voiceQuota.message ?? '',
+          })
+          return
+        }
 
         const publicKey = cfg.vapiPublicKey || cfg.publicKey
         if (!publicKey) throw new Error('Voice provider isn\'t configured on this deployment. Contact support.')
@@ -329,6 +349,21 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
     }
   }, [agentId, firstMessage])
 
+  // Quota-blocked path takes over the entire body — no transcript or
+  // status pill (there's no call to talk about).
+  if (status === 'quota_blocked' && quotaInfo) {
+    return (
+      <VoiceQuotaBlockedScreen
+        workspaceId={quotaInfo.workspaceId}
+        code={quotaInfo.code}
+        used={quotaInfo.used}
+        limit={quotaInfo.limit}
+        planLabel={quotaInfo.planLabel}
+        message={quotaInfo.message || null}
+      />
+    )
+  }
+
   return (
     <div>
       <p className="text-[11px] mb-2" style={{ color: 'var(--text-tertiary)' }}>
@@ -358,8 +393,9 @@ function OutboundCallScreen({
 }: VoicePhoneCallUIProps & { onClose: () => void }) {
   const [phone, setPhone] = useState('')
   const [country, setCountry] = useState('+1')
-  const [phase, setPhase] = useState<'input' | 'dialing' | 'in_progress' | 'ended' | 'error' | 'activating' | 'intl_blocked'>('input')
+  const [phase, setPhase] = useState<'input' | 'dialing' | 'in_progress' | 'ended' | 'error' | 'activating' | 'intl_blocked' | 'quota_blocked'>('input')
   const [errMsg, setErrMsg] = useState<string | null>(null)
+  const [quotaInfo, setQuotaInfo] = useState<{ used: number; limit: number; planLabel: string; code: string } | null>(null)
   const [callLogId, setCallLogId] = useState<string | null>(null)
 
   async function dial() {
@@ -395,6 +431,19 @@ function OutboundCallScreen({
         if (data.code === 'FREE_TIER_INTL_BLOCKED') {
           setPhase('intl_blocked')
           setErrMsg(data.error || null)
+          return
+        }
+        // Workspace over its included voice minutes (or voice not on
+        // plan). Show the upgrade card instead of a raw error.
+        if (data.code === 'VOICE_QUOTA_EXCEEDED' || data.code === 'VOICE_NOT_ON_PLAN') {
+          setPhase('quota_blocked')
+          setErrMsg(data.error || null)
+          setQuotaInfo({
+            used: data.quota?.used ?? 0,
+            limit: data.quota?.limit ?? 0,
+            planLabel: data.quota?.planLabel ?? 'your current plan',
+            code: data.code,
+          })
           return
         }
         throw new Error(data.error || `Dial failed (${res.status})`)
@@ -605,6 +654,18 @@ function OutboundCallScreen({
         </div>
       )}
 
+      {phase === 'quota_blocked' && (
+        <VoiceQuotaBlockedScreen
+          workspaceId={workspaceId}
+          code={quotaInfo?.code || 'VOICE_QUOTA_EXCEEDED'}
+          used={quotaInfo?.used ?? 0}
+          limit={quotaInfo?.limit ?? 0}
+          planLabel={quotaInfo?.planLabel || 'your current plan'}
+          message={errMsg}
+          onChangeNumber={() => setPhase('input')}
+        />
+      )}
+
       {phase === 'error' && (
         <div className="max-w-sm mx-auto text-center space-y-3">
           <p className="text-sm" style={{ color: '#ef4444' }}>{errMsg}</p>
@@ -614,6 +675,86 @@ function OutboundCallScreen({
             style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)' }}
           >
             Try again
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Voice-quota blocked (shared by outbound + browser screens) ──────
+
+/**
+ * Rendered when the workspace has hit its voice-minute quota or voice
+ * isn't on the current plan. Brand-neutral copy + a single "Upgrade
+ * plan" CTA that lands on the workspace's billing settings.
+ *
+ * Two messages depending on the code:
+ *   VOICE_NOT_ON_PLAN      → "Voice isn't included on this plan"
+ *   VOICE_QUOTA_EXCEEDED   → "You've used your monthly minutes"
+ *
+ * The "Change number" button only shows for the outbound version
+ * (when onChangeNumber is provided); the browser-test version
+ * doesn't need it.
+ */
+function VoiceQuotaBlockedScreen({
+  workspaceId, code, used, limit, planLabel, message, onChangeNumber,
+}: {
+  workspaceId: string
+  code: string
+  used: number
+  limit: number
+  planLabel: string
+  message: string | null
+  onChangeNumber?: () => void
+}) {
+  const isUpgradeNeeded = code === 'VOICE_NOT_ON_PLAN'
+  const title = isUpgradeNeeded
+    ? 'Voice isn\'t included on your current plan'
+    : 'You\'ve used your monthly voice minutes'
+  const billingUrl = `/dashboard/${workspaceId}/settings/billing`
+  return (
+    <div className="max-w-lg mx-auto space-y-4">
+      <div
+        className="rounded-xl p-4 text-sm"
+        style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+      >
+        <p className="font-semibold mb-1">{title}</p>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          {message ?? (isUpgradeNeeded
+            ? `Your current plan (${planLabel}) doesn't include voice calls. Upgrade to make inbound and outbound calls on this workspace.`
+            : `You've used ${used} of ${limit} minutes for this billing period. Upgrade your plan to keep making calls — your agents and configuration stay intact.`
+          )}
+        </p>
+      </div>
+      <Link
+        href={billingUrl}
+        className="block rounded-xl p-4 transition-colors hover:opacity-95"
+        style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+      >
+        <div className="flex items-start gap-3">
+          <span className="text-lg shrink-0" aria-hidden>⚡</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+              Upgrade your plan
+            </p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+              {isUpgradeNeeded
+                ? 'See plans with voice included. Upgrades take effect immediately — no re-setup needed.'
+                : 'See plans with more voice minutes. Upgrades take effect immediately and you can keep dialing right away.'}
+            </p>
+          </div>
+          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }} aria-hidden>→</span>
+        </div>
+      </Link>
+      {onChangeNumber && (
+        <div className="flex items-center justify-start pt-1">
+          <button
+            onClick={onChangeNumber}
+            className="text-xs px-3 py-2"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            ← Change number
           </button>
         </div>
       )}
