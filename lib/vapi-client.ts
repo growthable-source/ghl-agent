@@ -129,7 +129,7 @@ export async function listPhoneNumbers() {
 /**
  * ISO-3166-1 alpha-2 country codes Vapi sells provider-managed numbers
  * for. US is the only one available on free tier — the rest require
- * billing on dash.vapi.ai. Surface a friendly VapiError when Vapi
+ * billing on dashboard.vapi.ai. Surface a friendly VapiError when Vapi
  * rejects a non-US purchase with a billing block (currently bubbles
  * up as an UNKNOWN 4xx; classify in a later pass once we see real
  * error bodies from production).

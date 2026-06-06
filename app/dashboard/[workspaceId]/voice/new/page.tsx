@@ -116,7 +116,7 @@ export default function VoiceWizardPage() {
   const [areaCode, setAreaCode] = useState('')
   // Vapi sells provider-managed numbers in a few countries. US is the
   // only one on the free tier; AU / GB / CA / NZ require billing on
-  // dash.vapi.ai. The picker is a no-op for free-tier operators (the
+  // dashboard.vapi.ai. The picker is a no-op for free-tier operators (the
   // API rejects non-US gracefully) — we still surface the option here
   // so customers ready for international calls don't have to drop into
   // Vapi's dashboard to provision.
@@ -822,7 +822,7 @@ function PhoneStep({
 }) {
   // Vapi sells provider-managed numbers in these countries. US is the
   // only one on the free tier — the rest need billing enabled at
-  // dash.vapi.ai. We surface them all and let the operator deal with
+  // dashboard.vapi.ai. We surface them all and let the operator deal with
   // Vapi's billing prompt if it fires.
   const countryOptions = [
     { code: 'US', label: '🇺🇸 United States', areaHint: 'e.g. 415', requireArea: true,  prefix: '+1' },
