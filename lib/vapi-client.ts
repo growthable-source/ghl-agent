@@ -223,6 +223,58 @@ export async function deleteAssistant(assistantId: string): Promise<void> {
   }
 }
 
+// ─── Tools (org-level Tool entities) ──────────────────────────────────
+//
+// Vapi's runtime dispatches tools registered as standalone Tool entities
+// (POST /tool) and referenced by id from the assistant via model.toolIds.
+// Inline model.tools[] arrays render as "No tools attached" on the
+// dashboard and aren't dispatched at call time — switched to this
+// approach in Round 14 after a week of mysterious "model never calls
+// any tool" reports.
+//
+// Tools are org-scoped (one Vapi account = one shared list). The
+// `name` field is the function name the model sees and what we look up
+// for idempotent create-or-update. Listing them on each assistant
+// registration keeps us from accumulating duplicates.
+
+interface VapiTool {
+  id: string
+  type: string
+  function?: { name?: string }
+  [k: string]: unknown
+}
+
+export async function listTools(): Promise<VapiTool[]> {
+  const data = await vapiRequest('/tool')
+  if (Array.isArray(data)) return data as VapiTool[]
+  return ((data as any).results || (data as any).data || []) as VapiTool[]
+}
+
+export async function createTool(config: Record<string, unknown>): Promise<VapiTool> {
+  const data = await vapiRequest('/tool', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  })
+  return data as VapiTool
+}
+
+export async function updateTool(toolId: string, partial: Record<string, unknown>): Promise<VapiTool> {
+  const data = await vapiRequest(`/tool/${toolId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(partial),
+  })
+  return data as VapiTool
+}
+
+export async function deleteTool(toolId: string): Promise<void> {
+  try {
+    await vapiRequest(`/tool/${toolId}`, { method: 'DELETE' })
+  } catch (err) {
+    if (err instanceof VapiError && err.status === 404) return
+    throw err
+  }
+}
+
 // ─── Outbound Calls ───────────────────────────────────────────────────────
 
 export async function createOutboundCall(opts: {

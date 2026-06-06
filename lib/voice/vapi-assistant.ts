@@ -257,12 +257,17 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
     }
   }
 
-  // Vapi built-in tools — `{ type: 'endCall' }` is a Vapi-managed tool
-  // (NOT a function); the model can invoke it to gracefully end the
-  // call when the conversation is done, instead of trailing off and
-  // forcing the caller to hang up first. No webhook handler needed —
-  // Vapi runs it at the call layer.
-  const builtInTools = [{ type: 'endCall' as const }]
+  // Ensure org-level Vapi Tool entities exist for every function the
+  // assistant needs, then reference them by id from model.toolIds.
+  // Inline model.tools[] doesn't dispatch at runtime — Vapi's UI shows
+  // "No tools attached" and the webhook never gets hit. Migrating to
+  // standalone Tools (Round 14) is the fix.
+  const desiredFunctionTools = [...VAPI_TOOLS, ...shopifyTools, ...customTools]
+  const functionToolIds = await ensureVapiTools(desiredFunctionTools)
+
+  // Vapi built-in `endCall` tool — Vapi-managed, not a function. Stored
+  // as a separate Tool entity once and referenced by id.
+  const builtInToolIds = await ensureVapiTools([{ type: 'endCall' }])
 
   return {
     name: agent.name,
@@ -273,7 +278,7 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
       provider: modelProvider || DEFAULT_MODEL_PROVIDER,
       model: modelId || DEFAULT_MODEL,
       messages: [{ role: 'system', content: systemPrompt }],
-      tools: [...builtInTools, ...VAPI_TOOLS, ...shopifyTools, ...customTools],
+      toolIds: [...builtInToolIds, ...functionToolIds],
     },
     // Deepgram nova-3 transcriber. Same model Vapi's "Riley" demo
     // uses; significantly better than the previous (unset → Vapi
@@ -302,6 +307,74 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
     // assistant object specifically, regardless of how the call started).
     server: { url: `${APP_URL}/api/vapi/webhook` },
   }
+}
+
+/**
+ * Find-or-create org-level Vapi Tool entities for the given function
+ * definitions. Returns the list of tool IDs in input order. Function
+ * tools are matched by `function.name`; built-in tools (`endCall`,
+ * `transferCall`, etc.) are matched by `type` (one per type per org).
+ *
+ * Vapi's runtime only dispatches tools registered as standalone Tool
+ * entities + referenced via assistant.model.toolIds — inline
+ * `model.tools[]` was deprecated / unimplemented (Round 14 finding,
+ * after watching "no tools attached" + zero webhook hits for 3 rounds).
+ *
+ * Idempotent — listing existing tools each sync keeps us from
+ * accumulating duplicates. Tools whose `function.parameters` differ
+ * from the desired shape get PATCHed in place.
+ */
+async function ensureVapiTools(
+  desired: Array<{ type: string; function?: { name?: string; description?: string; parameters?: unknown } }>,
+): Promise<string[]> {
+  if (desired.length === 0) return []
+
+  const { listTools, createTool, updateTool } = await import('@/lib/vapi-client')
+  const existing = await listTools().catch(err => {
+    console.warn('[vapi-assistant] listTools failed, will create everything from scratch:', err?.message)
+    return [] as any[]
+  })
+
+  const ids: string[] = []
+  for (const d of desired) {
+    try {
+      // Match key: built-in tools key on `type` (one endCall per org);
+      // function tools key on `function.name`.
+      const isFunction = d.type === 'function'
+      const match = existing.find((t: any) => {
+        if (t.type !== d.type) return false
+        if (isFunction) return t.function?.name === d.function?.name
+        return true
+      })
+
+      if (match) {
+        ids.push(match.id)
+        // Patch in place if the function shape drifted (description /
+        // parameters edits). Cheap and idempotent on no-change.
+        if (isFunction && d.function) {
+          const drift =
+            match.function?.description !== d.function.description ||
+            JSON.stringify(match.function?.parameters) !== JSON.stringify(d.function.parameters)
+          if (drift) {
+            try {
+              await updateTool(match.id, { function: d.function })
+            } catch (err: any) {
+              console.warn(`[vapi-assistant] updateTool failed for ${d.function.name}:`, err?.message)
+            }
+          }
+        }
+        continue
+      }
+
+      const created = await createTool(d as any)
+      ids.push(created.id)
+    } catch (err: any) {
+      const label = d.function?.name || d.type
+      console.warn(`[vapi-assistant] ensureVapiTools failed for ${label}:`, err?.message)
+      // Skip this tool; assistant still registers with whatever succeeded.
+    }
+  }
+  return ids
 }
 
 /**
