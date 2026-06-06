@@ -23,6 +23,18 @@ export async function POST(req: NextRequest) {
 
   const messageType = message.type
 
+  // Unconditional top-level log — search Vercel logs for "[Vapi webhook]"
+  // to confirm whether Vapi is hitting us AT ALL. If you don't see
+  // this on a test call, the assistant's `server.url` is wrong
+  // (APP_URL misconfigured at deploy time, or the assistant was
+  // registered before APP_URL was correct and cached the wrong URL).
+  // The fix in that case is to verify APP_URL and re-clear vapiAssistantId.
+  console.log('[Vapi webhook] hit:', {
+    type: messageType,
+    callId: message?.call?.id || null,
+    assistantId: message?.call?.assistantId || null,
+  })
+
   // ── Assistant request — return agent config for this call ──
   if (messageType === 'assistant-request') {
     const call = message.call
