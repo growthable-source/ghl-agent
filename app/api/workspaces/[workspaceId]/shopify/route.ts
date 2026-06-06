@@ -1,6 +1,10 @@
 /**
  * Workspace-scoped Shopify connection management.
  *
+ * GET — connection status for the agent Knowledge tab's "Live data
+ *   sources" panel. Returns { connected: false } when the workspace
+ *   has no row OR the row is soft-uninstalled.
+ *
  * DELETE — disconnect the Shopify store from this workspace.
  *   Marks `uninstalledAt` rather than deleting the row so we keep
  *   historical references intact (e.g. orders we already pulled into
@@ -23,6 +27,32 @@ import { markShopifyUninstalled } from '@/lib/commerce/shopify/token-store'
 import { db } from '@/lib/db'
 
 type Params = { params: Promise<{ workspaceId: string }> }
+
+/**
+ * GET — lightweight connection-status check. Used by the agent
+ * Knowledge tab's "Live data sources" panel so it can show a
+ * green-connected card with the shop name + capabilities, or a
+ * grey "Connect Shopify" CTA. Single row lookup on ShopifyShop.
+ */
+export async function GET(_req: NextRequest, { params }: Params) {
+  const { workspaceId } = await params
+  const access = await requireWorkspaceAccess(workspaceId)
+  if (access instanceof NextResponse) return access
+
+  const row = await db.shopifyShop.findUnique({
+    where: { workspaceId },
+    select: { id: true, scope: true, installedAt: true, uninstalledAt: true },
+  })
+  if (!row || row.uninstalledAt) {
+    return NextResponse.json({ connected: false })
+  }
+  return NextResponse.json({
+    connected: true,
+    shop: row.id,
+    scope: row.scope,
+    installedAt: row.installedAt,
+  })
+}
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { workspaceId } = await params

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import LiveDataSourcesPanel from '@/components/dashboard/LiveDataSourcesPanel'
 
 interface CollectionLite {
   id: string
@@ -143,6 +144,13 @@ export default function AgentKnowledgePage() {
           </p>
         </div>
       </div>
+
+      {/* Live data sources — Shopify (and any future integrations). Agents
+          access these via tool calls during a conversation, not via
+          indexed text. The connection lives at workspace level and applies
+          to every agent in that workspace, so this is a status panel +
+          one-click connect/disconnect, not a per-agent attach toggle. */}
+      <LiveDataSourcesPanel workspaceId={workspaceId} />
 
       {/* Phase 2 knowledge-domain scope — pick which indexed knowledge
           collections this agent reads from. */}
