@@ -99,23 +99,36 @@ export async function getShopifyConnection(workspaceId: string): Promise<Shopify
       uninstalledAt: true,
     },
   })
-  if (!row || row.uninstalledAt) return null
+  if (!row) {
+    console.warn(`[Shopify connection] workspace ${workspaceId}: no row`)
+    return null
+  }
+  if (row.uninstalledAt) {
+    console.warn(`[Shopify connection] workspace ${workspaceId} shop ${row.id}: soft-uninstalled at ${row.uninstalledAt.toISOString()}`)
+    return null
+  }
 
   // Legacy row: no refresh capability. Token is presumed non-expiring,
   // which Shopify now rejects. Force a reconnect.
   if (!row.refreshToken || !row.expiresAt) {
-    console.warn(`[Shopify] shop ${row.id} has no refresh_token — needs OAuth reconnect`)
+    console.warn(`[Shopify connection] workspace ${workspaceId} shop ${row.id}: no refresh_token (legacy or refresh-killed) — needs OAuth reconnect`)
     return null
   }
 
   const expiresInMs = row.expiresAt.getTime() - Date.now()
   if (expiresInMs > EXPIRY_BUFFER_MS) {
+    console.log(`[Shopify connection] workspace ${workspaceId} shop ${row.id}: ok, ${Math.round(expiresInMs / 60000)}min until expiry`)
     return { shop: row.id, accessToken: row.accessToken, scope: row.scope }
   }
 
   // Past the buffer — refresh before returning.
+  console.log(`[Shopify connection] workspace ${workspaceId} shop ${row.id}: refreshing (expires in ${Math.round(expiresInMs / 1000)}s)`)
   const refreshed = await refreshShopifyToken(row.id, row.refreshToken)
-  if (!refreshed) return null
+  if (!refreshed) {
+    console.warn(`[Shopify connection] workspace ${workspaceId} shop ${row.id}: refresh failed → returning null. See [Shopify refresh] log above for cause`)
+    return null
+  }
+  console.log(`[Shopify connection] workspace ${workspaceId} shop ${row.id}: refreshed ok`)
   return { shop: row.id, accessToken: refreshed.accessToken, scope: row.scope }
 }
 
