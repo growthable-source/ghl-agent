@@ -17,6 +17,195 @@ async function findAgentByPhoneNumber(phoneNumber: string) {
   return vapiConfig
 }
 
+/** Per-call context shared across every voice tool dispatch. */
+interface VoiceToolContext {
+  locationId: string
+  agentId: string
+  callerPhone: string
+}
+
+/**
+ * Single dispatcher for every voice-side function tool. Returns a
+ * string result that gets wrapped per event-shape by the caller —
+ * either { result } for legacy function-call or
+ * { results: [{ toolCallId, name, result }] } for the modern
+ * tool-calls event (Round 15).
+ *
+ * Errors are caught and stringified so the model gets a coherent
+ * response back instead of Vapi seeing "No result returned".
+ */
+async function runVoiceTool(
+  functionName: string,
+  params: Record<string, unknown>,
+  ctx: VoiceToolContext,
+): Promise<string> {
+  console.log('[Voice tool] called:', {
+    tool: functionName,
+    agentId: ctx.agentId,
+    paramsPreview: JSON.stringify(params).slice(0, 300),
+  })
+
+  const SHOPIFY_TOOL_NAMES = new Set([
+    'search_shopify_products',
+    'check_shopify_inventory',
+    'lookup_shopify_customer',
+    'check_shopify_order_status',
+    'create_shopify_checkout',
+    'create_shopify_discount',
+    'record_back_in_stock_interest',
+  ])
+
+  try {
+    // ── query_knowledge — vector retrieval over the workspace's
+    // indexed content. THE primary voice tool for fact-grounding.
+    if (functionName === 'query_knowledge') {
+      if (!ctx.agentId) return 'No agent context — try again or contact support.'
+      const agent = await db.agent.findUnique({
+        where: { id: ctx.agentId },
+        select: { workspaceId: true, knowledgeDomainIds: true },
+      })
+      if (!agent || !agent.workspaceId) return 'Agent not found or not assigned to a workspace.'
+      const query: string = typeof params.query === 'string' ? params.query : ''
+      if (!query.trim()) return 'No query provided — please ask again with a specific question.'
+      const { retrieveAndFormatForAgent } = await import('@/lib/agent/retrieve-for-agent')
+      const { block, chunks } = await retrieveAndFormatForAgent(
+        { id: ctx.agentId, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds },
+        query,
+      )
+      console.log('[Voice tool] query_knowledge result:', {
+        query,
+        chunkCount: chunks.length,
+        topTitle: chunks[0]?.sourceMetadata?.page_title ?? chunks[0]?.primaryTopic ?? null,
+        topSimilarity: chunks[0]?.similarity ?? null,
+      })
+      if (!chunks || chunks.length === 0) {
+        return 'No relevant information in the knowledge base. Tell the caller honestly and offer a follow-up.'
+      }
+      return block
+    }
+
+    // ── Shopify tools — delegate to the canonical text-agent executor
+    // so we never duplicate the commerce adapter logic.
+    if (SHOPIFY_TOOL_NAMES.has(functionName)) {
+      if (!ctx.locationId) return 'Cannot reach the store right now.'
+      if (!ctx.agentId) return 'No agent context for this call.'
+      const agentForShopify = await db.agent.findUnique({
+        where: { id: ctx.agentId },
+        select: { workspaceId: true },
+      })
+      const workspaceIdForShopify = agentForShopify?.workspaceId
+      if (!workspaceIdForShopify) return 'Could not resolve workspace for store lookup.'
+      const { executeTool } = await import('@/lib/agent/execute-tool')
+      return await executeTool(
+        functionName,
+        params,
+        ctx.locationId,
+        false,
+        ctx.agentId,
+        'voice',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        workspaceIdForShopify,
+        undefined,
+      )
+    }
+
+    // ── CRM / calendar tools (the original 4) ──
+    switch (functionName) {
+      case 'get_available_slots': {
+        if (!ctx.locationId) return 'Sorry, I cannot check availability right now.'
+        const { getFreeSlots } = await import('@/lib/crm-client')
+        const agent = ctx.agentId ? await db.agent.findUnique({ where: { id: ctx.agentId } }) : null
+        if (!agent?.calendarId) return 'No calendar configured for this agent.'
+        const startDate: string = (params.date as string) || new Date().toISOString().split('T')[0]
+        const endDateObj = new Date(startDate)
+        endDateObj.setDate(endDateObj.getDate() + 2)
+        const endDate = endDateObj.toISOString().split('T')[0]
+        const timezone = (params.timezone as string) || 'America/New_York'
+        const slots = await getFreeSlots(ctx.locationId, agent.calendarId, startDate, endDate, timezone)
+        if (!slots || slots.length === 0) return 'No available slots in the next few days. Would you like to try a different date?'
+        const byDay: Record<string, string[]> = {}
+        for (const s of slots.slice(0, 15)) {
+          const dt = new Date(s.startTime)
+          const dayKey = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+          const time = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+          if (!byDay[dayKey]) byDay[dayKey] = []
+          byDay[dayKey].push(time)
+        }
+        const formatted = Object.entries(byDay).map(([day, times]) => `${day}: ${times.join(', ')}`).join('. ')
+        return `Here are the available times. ${formatted}`
+      }
+
+      case 'book_appointment': {
+        if (!ctx.locationId) return 'Sorry, I cannot book right now.'
+        const { bookAppointment, searchContacts: sc } = await import('@/lib/crm-client')
+        const agentForBook = ctx.agentId ? await db.agent.findUnique({ where: { id: ctx.agentId } }) : null
+        if (!agentForBook?.calendarId) return 'No calendar configured.'
+        let contactId = ''
+        try {
+          const contacts = await sc(ctx.locationId, ctx.callerPhone)
+          if (contacts && contacts.length > 0) contactId = contacts[0].id
+        } catch {}
+        if (!contactId) return 'I could not find your contact record. I will have someone follow up.'
+        const startTime = params.startTime as string
+        let endTime = (params.endTime as string) || ''
+        if (!endTime && startTime) {
+          const end = new Date(startTime)
+          end.setMinutes(end.getMinutes() + 30)
+          endTime = end.toISOString()
+        }
+        await bookAppointment(ctx.locationId, {
+          calendarId: agentForBook.calendarId,
+          contactId,
+          startTime,
+          endTime,
+          title: params.name ? `Call with ${params.name}` : 'Appointment',
+          selectedTimezone: (params.timezone as string) || 'America/New_York',
+        })
+        const bookedTime = new Date(startTime).toLocaleString('en-US', {
+          weekday: 'long', month: 'short', day: 'numeric',
+          hour: 'numeric', minute: '2-digit', hour12: true,
+        })
+        return `Done! Your appointment is booked for ${bookedTime}. You will receive a confirmation shortly.`
+      }
+
+      case 'tag_contact': {
+        if (!ctx.locationId || !ctx.callerPhone) return 'Could not tag contact.'
+        const { searchContacts: sc2, addTagsToContact } = await import('@/lib/crm-client')
+        const contacts = await sc2(ctx.locationId, ctx.callerPhone)
+        if (contacts && contacts.length > 0) {
+          await addTagsToContact(ctx.locationId, contacts[0].id, [params.tag as string])
+        }
+        return 'Done.'
+      }
+
+      case 'send_sms_followup': {
+        if (!ctx.locationId || !ctx.callerPhone) return 'Could not send SMS.'
+        const { searchContacts: sc3, sendMessage } = await import('@/lib/crm-client')
+        const contacts = await sc3(ctx.locationId, ctx.callerPhone)
+        if (contacts && contacts.length > 0) {
+          await sendMessage(ctx.locationId, {
+            type: 'SMS',
+            contactId: contacts[0].id,
+            message: params.message as string,
+          })
+        }
+        return 'SMS sent.'
+      }
+
+      default:
+        return 'Function not found.'
+    }
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    console.warn('[Voice tool] dispatch error:', { tool: functionName, errMsg })
+    return `Error: ${errMsg}`
+  }
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const message = body.message || body
@@ -139,7 +328,58 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // ── Function call — execute tool ──
+  // ── Tool calls — the modern event shape (Round 14 onwards) ──
+  //
+  // When the assistant references tools via model.toolIds (standalone
+  // Tool entities), Vapi fires `tool-calls` instead of the older
+  // `function-call`. Shape difference:
+  //   { type: 'tool-calls', toolCallList: [{ id, function: { name, arguments } }] }
+  // Expected response:
+  //   { results: [{ toolCallId, name, result }] }
+  // Sending the old { result } shape causes "No result returned" in
+  // Vapi's call log (Round 15 finding — burned 5 rounds chasing the
+  // wrong layer).
+  if (messageType === 'tool-calls') {
+    const call = message.call
+    const locationId: string = call?.assistantOverrides?.variableValues?.locationId || call?.metadata?.locationId
+    const agentId: string = call?.assistantOverrides?.variableValues?.agentId
+    const callerPhone: string = call?.assistantOverrides?.variableValues?.callerPhone || call?.customer?.number
+
+    const toolCalls: Array<{ id: string; function?: { name?: string; arguments?: string | object } }> =
+      Array.isArray(message.toolCallList) ? message.toolCallList : []
+
+    console.log('[Vapi webhook] tool-calls:', {
+      count: toolCalls.length,
+      tools: toolCalls.map(tc => tc.function?.name),
+    })
+
+    const ctx = { locationId, agentId, callerPhone }
+    const results = await Promise.all(toolCalls.map(async tc => {
+      const name = tc.function?.name || ''
+      // arguments is a JSON string per Vapi's ToolCallFunction.arguments
+      // type — parse defensively because some clients send objects.
+      let args: Record<string, unknown> = {}
+      try {
+        if (typeof tc.function?.arguments === 'string' && tc.function.arguments.trim()) {
+          args = JSON.parse(tc.function.arguments)
+        } else if (typeof tc.function?.arguments === 'object' && tc.function.arguments) {
+          args = tc.function.arguments as Record<string, unknown>
+        }
+      } catch (err: any) {
+        console.warn('[Vapi webhook] tool args parse failed:', err?.message)
+      }
+      const result = await runVoiceTool(name, args, ctx)
+      return { toolCallId: tc.id, name, result }
+    }))
+
+    return NextResponse.json({ results })
+  }
+
+  // ── Function call — legacy event shape ──
+  // Older event Vapi fires when the assistant uses inline model.tools[]
+  // instead of toolIds. Kept for back-compat with any agent still
+  // running an inline-tools assistant. Returns the singular { result }
+  // shape that this event expects.
   if (messageType === 'function-call') {
     const call = message.call
     const functionCall = message.functionCall
@@ -150,203 +390,8 @@ export async function POST(req: NextRequest) {
     const agentId: string = call?.assistantOverrides?.variableValues?.agentId
     const callerPhone: string = call?.assistantOverrides?.variableValues?.callerPhone || call?.customer?.number
 
-    // Observability — every voice tool call goes through here. Search
-    // Vercel logs for "[Voice tool]" to confirm whether the model is
-    // actually invoking query_knowledge / search_shopify_products /
-    // etc. If you don't see "[Voice tool]" log entries during a test
-    // call, the model isn't calling any tools at all (system prompt
-    // not strong enough, OR the assistant on Vapi's side lacks the
-    // tools — see ensureVapiAssistant / vapiAssistantId).
-    console.log('[Voice tool] called:', {
-      tool: functionName,
-      agentId,
-      paramsPreview: JSON.stringify(params).slice(0, 300),
-    })
-
-    // Shopify tools: dispatch through the existing executeTool
-    // pipeline so the voice runtime reuses the text-agent adapter
-    // (no duplicated Shopify logic). The voice webhook is now a thin
-    // shim that translates Vapi's function-call shape to the
-    // dispatcher's signature and back.
-    const SHOPIFY_TOOL_NAMES = new Set([
-      'search_shopify_products',
-      'check_shopify_inventory',
-      'lookup_shopify_customer',
-      'check_shopify_order_status',
-      'create_shopify_checkout',
-      'create_shopify_discount',
-      'record_back_in_stock_interest',
-    ])
-
-    try {
-      // ── query_knowledge — vector-search the workspace's indexed
-      // content with the caller's question and return the top 5
-      // matched snippets. Replaces the static-bake-in-30-entries
-      // path that dropped 99% of large knowledge collections.
-      if (functionName === 'query_knowledge') {
-        if (!agentId) {
-          return NextResponse.json({ result: 'No agent context — try again or contact support.' })
-        }
-        const agent = await db.agent.findUnique({
-          where: { id: agentId },
-          select: { workspaceId: true, knowledgeDomainIds: true },
-        })
-        if (!agent || !agent.workspaceId) {
-          return NextResponse.json({ result: 'Agent not found or not assigned to a workspace.' })
-        }
-        const query: string = typeof params.query === 'string' ? params.query : ''
-        if (!query.trim()) {
-          return NextResponse.json({ result: 'No query provided — please ask again with a specific question.' })
-        }
-        const { retrieveAndFormatForAgent } = await import('@/lib/agent/retrieve-for-agent')
-        const { block, chunks } = await retrieveAndFormatForAgent(
-          { id: agentId, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds },
-          query,
-        )
-        // Observability — log the retrieval outcome. If chunks=0, the
-        // workspace either has no indexed content or the embedding match
-        // scored too low for this query phrasing.
-        console.log('[Voice tool] query_knowledge result:', {
-          query,
-          chunkCount: chunks.length,
-          topTitle: chunks[0]?.sourceMetadata?.page_title ?? chunks[0]?.primaryTopic ?? null,
-          topSimilarity: chunks[0]?.similarity ?? null,
-        })
-        if (!chunks || chunks.length === 0) {
-          return NextResponse.json({ result: 'No relevant information in the knowledge base. Tell the caller honestly and offer a follow-up.' })
-        }
-        // `block` is markdown-ish but Vapi's function result is plain
-        // text shown to the LLM. Keep it concise — the model summarises
-        // for the caller anyway.
-        return NextResponse.json({ result: block })
-      }
-
-      // Shopify tools — single executor call, brand-neutral error path.
-      // The executor requires workspaceId for the commerce adapter
-      // lookup (see lib/agent/execute-tool.ts:1246+), so we resolve it
-      // from the agent record before delegating.
-      if (SHOPIFY_TOOL_NAMES.has(functionName)) {
-        if (!locationId) return NextResponse.json({ result: 'Cannot reach the store right now.' })
-        if (!agentId) return NextResponse.json({ result: 'No agent context for this call.' })
-        const agentForShopify = await db.agent.findUnique({
-          where: { id: agentId },
-          select: { workspaceId: true },
-        })
-        const workspaceIdForShopify = agentForShopify?.workspaceId
-        if (!workspaceIdForShopify) {
-          return NextResponse.json({ result: 'Could not resolve workspace for store lookup.' })
-        }
-        const { executeTool } = await import('@/lib/agent/execute-tool')
-        const result = await executeTool(
-          functionName,                   // toolName
-          params as Record<string, unknown>, // input
-          locationId,                     // locationId
-          false,                          // sandbox
-          agentId,                        // agentId
-          'voice',                        // channel
-          undefined,                      // conversationProviderId
-          undefined,                      // adapter (lazy-resolved by executeTool)
-          undefined,                      // deferredSend
-          undefined,                      // fieldOverwriteMap
-          undefined,                      // handoverCapture
-          workspaceIdForShopify,          // workspaceId — required for Shopify adapter lookup
-          undefined,                      // contactId — voice hydrates via callerPhone separately
-        )
-        return NextResponse.json({ result })
-      }
-
-      switch (functionName) {
-        case 'get_available_slots': {
-          if (!locationId) return NextResponse.json({ result: 'Sorry, I cannot check availability right now.' })
-          const { getFreeSlots } = await import('@/lib/crm-client')
-          const agent = agentId ? await db.agent.findUnique({ where: { id: agentId } }) : null
-          if (!agent?.calendarId) return NextResponse.json({ result: 'No calendar configured for this agent.' })
-          const startDate: string = params.date || new Date().toISOString().split('T')[0]
-          // Check the requested day plus the next 2 days to give more options
-          const endDateObj = new Date(startDate)
-          endDateObj.setDate(endDateObj.getDate() + 2)
-          const endDate = endDateObj.toISOString().split('T')[0]
-          const timezone = params.timezone || 'America/New_York'
-          const slots = await getFreeSlots(locationId, agent.calendarId, startDate, endDate, timezone)
-          if (!slots || slots.length === 0) return NextResponse.json({ result: 'No available slots in the next few days. Would you like to try a different date?' })
-          // Group by day for natural reading
-          const byDay: Record<string, string[]> = {}
-          for (const s of slots.slice(0, 15)) {
-            const dt = new Date(s.startTime)
-            const dayKey = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-            const time = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-            if (!byDay[dayKey]) byDay[dayKey] = []
-            byDay[dayKey].push(time)
-          }
-          const formatted = Object.entries(byDay).map(([day, times]) => `${day}: ${times.join(', ')}`).join('. ')
-          return NextResponse.json({ result: `Here are the available times. ${formatted}` })
-        }
-
-        case 'book_appointment': {
-          if (!locationId) return NextResponse.json({ result: 'Sorry, I cannot book right now.' })
-          const { bookAppointment, searchContacts: sc } = await import('@/lib/crm-client')
-          const agentForBook = agentId ? await db.agent.findUnique({ where: { id: agentId } }) : null
-          if (!agentForBook?.calendarId) return NextResponse.json({ result: 'No calendar configured.' })
-          let contactId = ''
-          try {
-            const contacts = await sc(locationId, callerPhone)
-            if (contacts && contacts.length > 0) contactId = contacts[0].id
-          } catch {}
-          if (!contactId) return NextResponse.json({ result: 'I could not find your contact record. I will have someone follow up.' })
-          // Calculate endTime (30 min default if not provided)
-          const startTime = params.startTime
-          let endTime = params.endTime || ''
-          if (!endTime && startTime) {
-            const end = new Date(startTime)
-            end.setMinutes(end.getMinutes() + 30)
-            endTime = end.toISOString()
-          }
-          const result = await bookAppointment(locationId, {
-            calendarId: agentForBook.calendarId,
-            contactId,
-            startTime,
-            endTime,
-            title: params.name ? `Call with ${params.name}` : 'Appointment',
-            selectedTimezone: params.timezone || 'America/New_York',
-          })
-          const bookedTime = new Date(startTime).toLocaleString('en-US', {
-            weekday: 'long', month: 'short', day: 'numeric',
-            hour: 'numeric', minute: '2-digit', hour12: true,
-          })
-          return NextResponse.json({ result: `Done! Your appointment is booked for ${bookedTime}. You will receive a confirmation shortly.` })
-        }
-
-        case 'tag_contact': {
-          if (!locationId || !callerPhone) return NextResponse.json({ result: 'Could not tag contact.' })
-          const { searchContacts: sc2, addTagsToContact } = await import('@/lib/crm-client')
-          const contacts = await sc2(locationId, callerPhone)
-          if (contacts && contacts.length > 0) {
-            await addTagsToContact(locationId, contacts[0].id, [params.tag])
-          }
-          return NextResponse.json({ result: 'Done.' })
-        }
-
-        case 'send_sms_followup': {
-          if (!locationId || !callerPhone) return NextResponse.json({ result: 'Could not send SMS.' })
-          const { searchContacts: sc3, sendMessage } = await import('@/lib/crm-client')
-          const contacts = await sc3(locationId, callerPhone)
-          if (contacts && contacts.length > 0) {
-            await sendMessage(locationId, {
-              type: 'SMS',
-              contactId: contacts[0].id,
-              message: params.message,
-            })
-          }
-          return NextResponse.json({ result: 'SMS sent.' })
-        }
-
-        default:
-          return NextResponse.json({ result: 'Function not found.' })
-      }
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      return NextResponse.json({ result: `Error: ${errMsg}` })
-    }
+    const result = await runVoiceTool(functionName, params, { locationId, agentId, callerPhone })
+    return NextResponse.json({ result })
   }
 
   // ── End of call report — save transcript and call log ──
