@@ -33,23 +33,6 @@ interface VapiConfig {
   isActive: boolean
 }
 
-interface ProviderCapabilities {
-  phoneCalls: boolean
-  realtimeBrowser: boolean
-  ttsBatch: boolean
-  voicePreview: boolean
-  widgetVoice: boolean
-}
-
-interface ProviderMeta {
-  id: 'vapi' | 'elevenlabs'
-  name: string
-  description: string
-  envVar: string
-  configured: boolean
-  capabilities: ProviderCapabilities
-}
-
 interface PhoneNumber {
   id: string
   number: string
@@ -124,13 +107,6 @@ export default function VoicePage() {
     voiceTools: null,
     isActive: false,
   })
-  // Provider metadata for all known voice providers + live capability map
-  // for the currently-selected one. Loaded once on mount.
-  const [providers, setProviders] = useState<ProviderMeta[]>([])
-  const currentProvider = providers.find(p => p.id === config.ttsProvider) ?? null
-  const caps = currentProvider?.capabilities ?? {
-    phoneCalls: true, realtimeBrowser: true, ttsBatch: true, voicePreview: true, widgetVoice: true,
-  }
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
   const [voices, setVoices] = useState<Voice[]>([])
   const [voiceSearch, setVoiceSearch] = useState('')
@@ -164,40 +140,28 @@ export default function VoicePage() {
   // Voice picker
   const [showVoicePicker, setShowVoicePicker] = useState(false)
 
-  // Test call state
-  const [testCallActive, setTestCallActive] = useState(false)
-  const [testCallConnecting, setTestCallConnecting] = useState(false)
-  const [testTranscript, setTestTranscript] = useState<{ role: string; text: string }[]>([])
-  const [testVolume, setTestVolume] = useState(0)
-  const [vapiPublicKey, setVapiPublicKey] = useState<string | null>(null)
-  const [testSystemPrompt, setTestSystemPrompt] = useState('')
-  const [agentName, setAgentName] = useState('Agent')
-  const [serverUrl, setServerUrl] = useState('')
   // For VOICE-typed agents we tweak the intro copy (voice is the
   // channel, not a bolt-on). Fetched on mount alongside the rest of
   // the agent metadata; harmless when it stays default.
   const [agentType, setAgentType] = useState<string>('SIMPLE')
-  const vapiInstanceRef = useRef<any>(null)
-  const transcriptRef = useRef<HTMLDivElement>(null)
+
+  // Test call previously lived inline here as a 100-line transient-
+  // assistant block. It was the pre-Round-3 path — different shape,
+  // no query_knowledge tool, no Shopify tools, hardcoded ElevenLabs
+  // provider regardless of engine. The Overview tab's test call
+  // (powered by VoicePhoneCallUI → pre-registered assistant) is the
+  // only one that gets every runtime fix. This page just links to it.
 
   useEffect(() => {
     Promise.all([
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`)
         .then(r => r.json())
-        .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready, vapiError: ve, vapiPublicKey: pk, testSystemPrompt: sp, agentName: an, serverUrl: su }) => {
+        .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready, vapiError: ve }) => {
           if (cfg) setConfig({ ...cfg, ttsProvider: cfg.ttsProvider ?? 'vapi', voiceTools: cfg.voiceTools || null })
           setPhoneNumbers(phones || [])
           setVapiReady(ready)
           setVapiError(ve || null)
-          if (pk) setVapiPublicKey(pk)
-          if (sp) setTestSystemPrompt(sp)
-          if (an) setAgentName(an)
-          if (su) setServerUrl(su)
         }),
-      fetch('/api/voice/providers')
-        .then(r => r.json())
-        .then(({ providers: ps }) => setProviders(ps ?? []))
-        .catch(() => {}),
       // Initial voice list uses whatever provider the stored config has —
       // if it's missing we default to vapi. When the user later switches
       // providers, the provider-picker handler re-fetches.
@@ -227,16 +191,6 @@ export default function VoicePage() {
       .then(({ voices: v }) => setVoices(v || []))
       .catch(() => {})
   }, [config.ttsProvider, loading])
-
-  // Cleanup test call on unmount
-  useEffect(() => {
-    return () => {
-      if (vapiInstanceRef.current) {
-        vapiInstanceRef.current.stop()
-        vapiInstanceRef.current = null
-      }
-    }
-  }, [])
 
   const searchVoices = useCallback((term: string) => {
     fetch(`/api/voices?provider=${config.ttsProvider}&search=${encodeURIComponent(term)}`)
@@ -322,97 +276,6 @@ export default function VoicePage() {
       setAreaCode('')
     } catch (err: any) { setBuyError(err.message) }
     finally { setBuying(false) }
-  }
-
-  // ── Test call handlers ──
-  async function startTestCall() {
-    if (!vapiPublicKey) return
-    setTestCallConnecting(true)
-    setTestTranscript([])
-    setTestVolume(0)
-
-    try {
-      const Vapi = (await import('@vapi-ai/web')).default
-      const vapi = new Vapi(vapiPublicKey)
-      vapiInstanceRef.current = vapi
-
-      vapi.on('call-start', () => {
-        setTestCallConnecting(false)
-        setTestCallActive(true)
-      })
-
-      vapi.on('call-end', () => {
-        setTestCallActive(false)
-        setTestCallConnecting(false)
-        setTestVolume(0)
-        vapiInstanceRef.current = null
-      })
-
-      vapi.on('message', (msg: any) => {
-        if (msg.type === 'transcript') {
-          if (msg.transcriptType === 'final') {
-            setTestTranscript(prev => [...prev, { role: msg.role, text: msg.transcript }])
-            setTimeout(() => transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }), 50)
-          }
-        }
-      })
-
-      vapi.on('volume-level', (level: number) => {
-        setTestVolume(level)
-      })
-
-      vapi.on('error', (err: any) => {
-        console.error('[TestCall] error:', err)
-        setTestCallActive(false)
-        setTestCallConnecting(false)
-        vapiInstanceRef.current = null
-      })
-
-      const builtInTools = [
-        { type: 'function', function: { name: 'get_available_slots', description: 'Get available appointment slots for booking', parameters: { type: 'object', properties: { date: { type: 'string', description: 'Date to check in YYYY-MM-DD format' } }, required: ['date'] } } },
-        { type: 'function', function: { name: 'book_appointment', description: 'Book an appointment for the caller', parameters: { type: 'object', properties: { startTime: { type: 'string', description: 'ISO datetime for the appointment' }, name: { type: 'string', description: 'Caller name for the booking' } }, required: ['startTime'] } } },
-        { type: 'function', function: { name: 'tag_contact', description: 'Tag the caller contact with a label', parameters: { type: 'object', properties: { tag: { type: 'string', description: 'Tag to apply to the contact' } }, required: ['tag'] } } },
-        { type: 'function', function: { name: 'send_sms_followup', description: 'Send an SMS follow-up message to the caller after the call', parameters: { type: 'object', properties: { message: { type: 'string', description: 'The SMS message to send after the call' } }, required: ['message'] } } },
-      ]
-      const customTools = (config.voiceTools || []).map(({ condition, ...rest }: any) => rest)
-
-      await vapi.start({
-        name: agentName,
-        model: {
-          provider: 'anthropic' as any,
-          model: 'claude-sonnet-4-20250514' as any,
-          messages: [{ role: 'system' as any, content: testSystemPrompt + '\n\n## VOICE CALL INSTRUCTIONS\nYou are on a live phone call. Speak naturally and conversationally. Keep responses SHORT — 1-3 sentences max.' }],
-          tools: [...builtInTools, ...customTools] as any,
-        },
-        voice: {
-          provider: '11labs' as any,
-          voiceId: config.voiceId as any,
-          stability: config.stability,
-          similarityBoost: config.similarityBoost,
-          speed: config.speed,
-          style: config.style,
-          ...(config.language ? { language: config.language } : {}),
-        } as any,
-        firstMessage: config.firstMessage || `Hi there! This is ${agentName}. How can I help you today?`,
-        endCallMessage: config.endCallMessage || 'Thanks for calling. Have a great day!',
-        maxDurationSeconds: config.maxDurationSecs,
-        ...(config.backgroundSound ? { backgroundSound: config.backgroundSound } : {}),
-        ...(config.endCallPhrases?.length ? { endCallPhrases: config.endCallPhrases } : {}),
-        server: { url: serverUrl },
-      } as any)
-    } catch (err) {
-      console.error('[TestCall] start error:', err)
-      setTestCallConnecting(false)
-      setTestCallActive(false)
-    }
-  }
-
-  function stopTestCall() {
-    vapiInstanceRef.current?.stop()
-    setTestCallActive(false)
-    setTestCallConnecting(false)
-    setTestVolume(0)
-    vapiInstanceRef.current = null
   }
 
   const filteredVoices = voices.filter(v => {
@@ -898,101 +761,35 @@ export default function VoicePage() {
         )}
       </form>
 
-      {/* Single Vapi-powered test panel — covers both Vapi-native and
-          ElevenLabs engines transparently via the registered assistant. */}
-
-      {/* ── Test Call Panel — Vapi browser SDK powers both engines ── */}
-      {vapiReady && vapiPublicKey && (
-        <div className="mt-6 rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Test Call</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Talk to your voice agent live in the browser. Uses your microphone.</p>
-            </div>
-            {!testCallActive && !testCallConnecting ? (
-              <button type="button" onClick={startTestCall}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                style={{ background: 'var(--accent-emerald)', color: '#fff' }}>
-                <span className="w-2 h-2 rounded-full" style={{ background: '#fff' }} />
-                Start call
-              </button>
-            ) : (
-              <button type="button" onClick={stopTestCall}
-                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-medium transition-colors flex items-center gap-2"
-                style={{ color: '#fff' }}>
-                <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#fff' }} />
-                {testCallConnecting ? 'Connecting…' : 'End call'}
-              </button>
-            )}
-          </div>
-
-          {/* Volume indicator */}
-          {(testCallActive || testCallConnecting) && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <div key={i} className="w-1 rounded-full transition-all duration-75"
-                      style={{
-                        height: `${8 + (i * 1.5)}px`,
-                        background: i / 12 < testVolume ? 'var(--accent-emerald)' : 'var(--surface-tertiary)',
-                      }} />
-                  ))}
-                </div>
-                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                  {testCallConnecting ? 'Connecting…' : testCallActive ? 'Connected' : ''}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Live transcript */}
-          {testTranscript.length > 0 && (
-            <div ref={transcriptRef} className="max-h-64 overflow-y-auto space-y-2 rounded-lg p-3" style={{ background: 'var(--surface-secondary)' }}>
-              {testTranscript.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600/20 text-blue-400 border border-blue-800/30'
-                      : ''
-                  }`}
-                  style={msg.role === 'user' ? undefined : {
-                    background: 'var(--surface-tertiary)',
-                    color: 'var(--text-secondary)',
-                    borderWidth: 1,
-                    borderStyle: 'solid',
-                    borderColor: 'var(--border-secondary)',
-                  }}>
-                    <p className="text-xs mb-0.5" style={{ color: 'var(--text-tertiary)' }}>{msg.role === 'user' ? 'You' : agentName}</p>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!testCallActive && !testCallConnecting && testTranscript.length === 0 && (
-            <div className="text-center py-6">
-              <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'var(--surface-secondary)' }}>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ color: 'var(--text-tertiary)' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                </svg>
-              </div>
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Click Start call to test your agent. You'll need to allow microphone access.</p>
-            </div>
-          )}
+      {/* Test call lives on the Overview tab — one surface, one code path,
+          backed by the pre-registered Vapi assistant. The inline duplicate
+          that used to live here pre-dated Round 3's assistant registration
+          and never picked up query_knowledge or Shopify tool dispatch. */}
+      <div
+        className="mt-6 rounded-xl border p-4 flex items-center justify-between gap-3"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+            Test this agent
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            Browser + outbound dial both live on the Overview tab.
+          </p>
         </div>
-      )}
+        <Link
+          href={
+            agentType === 'VOICE'
+              ? `/dashboard/${workspaceId}/voice/${agentId}`
+              : `/dashboard/${workspaceId}/agents/${agentId}`
+          }
+          className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
+          style={{ background: 'var(--accent-primary)', color: '#fff' }}
+        >
+          Open Overview →
+        </Link>
+      </div>
     </div>
   )
 }
 
-// Small capability chip used in the provider picker cards.
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="text-[10px] font-medium rounded px-1.5 py-0.5"
-      style={{ color: 'var(--text-secondary)', background: 'var(--surface-secondary)', borderColor: 'var(--border)', borderWidth: 1, borderStyle: 'solid' }}>
-      {children}
-    </span>
-  )
-}

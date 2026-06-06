@@ -47,13 +47,89 @@ export default function VoicePhoneCallUI(props: VoicePhoneCallUIProps) {
   const [mode, setMode] = useState<CallMode>('idle')
 
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-    >
+    <PhoneFrame>
       {mode === 'idle' && <IdleScreen {...props} onStartBrowser={() => setMode('browser')} onStartOutbound={() => setMode('outbound')} />}
       {mode === 'browser' && <BrowserCallScreen {...props} onHangUp={() => setMode('idle')} />}
       {mode === 'outbound' && <OutboundCallScreen {...props} onClose={() => setMode('idle')} />}
+    </PhoneFrame>
+  )
+}
+
+/**
+ * iPhone-style chrome around the test-call surface. The inner screens
+ * render unchanged — this is purely visual scaffolding so the test
+ * affordance reads as "a phone you're holding" rather than a generic
+ * card. Width capped at 360 so it doesn't blow out a parent column.
+ */
+function PhoneFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex justify-center">
+      <div
+        className="relative w-full max-w-[360px]"
+        style={{
+          padding: '14px',
+          borderRadius: '52px',
+          background: 'linear-gradient(160deg, #2a2a2e 0%, #1a1a1d 100%)',
+          boxShadow:
+            '0 30px 80px -20px rgba(0,0,0,0.45), 0 0 0 2px #0a0a0c, inset 0 0 0 1px rgba(255,255,255,0.04)',
+        }}
+        aria-hidden={false}
+      >
+        {/* Side buttons — visual only, purely decorative */}
+        <div
+          className="absolute left-[-3px] top-[110px] w-[3px] h-[36px] rounded-l-sm"
+          style={{ background: '#0a0a0c' }}
+          aria-hidden
+        />
+        <div
+          className="absolute left-[-3px] top-[170px] w-[3px] h-[60px] rounded-l-sm"
+          style={{ background: '#0a0a0c' }}
+          aria-hidden
+        />
+        <div
+          className="absolute left-[-3px] top-[244px] w-[3px] h-[60px] rounded-l-sm"
+          style={{ background: '#0a0a0c' }}
+          aria-hidden
+        />
+        <div
+          className="absolute right-[-3px] top-[180px] w-[3px] h-[90px] rounded-r-sm"
+          style={{ background: '#0a0a0c' }}
+          aria-hidden
+        />
+
+        {/* Screen */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            borderRadius: '40px',
+            background: 'var(--surface)',
+            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)',
+          }}
+        >
+          {/* Dynamic-island-style notch */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 z-10 flex items-center justify-center"
+            style={{
+              top: '12px',
+              width: '110px',
+              height: '28px',
+              borderRadius: '16px',
+              background: '#0a0a0c',
+            }}
+            aria-hidden
+          >
+            <div
+              className="absolute right-3 w-[8px] h-[8px] rounded-full"
+              style={{ background: '#1c1c20', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)' }}
+            />
+          </div>
+
+          {/* Screen content — padded to leave room for the notch */}
+          <div style={{ paddingTop: '52px' }}>
+            {children}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
