@@ -138,6 +138,19 @@ export async function POST(req: NextRequest) {
     const agentId: string = call?.assistantOverrides?.variableValues?.agentId
     const callerPhone: string = call?.assistantOverrides?.variableValues?.callerPhone || call?.customer?.number
 
+    // Observability — every voice tool call goes through here. Search
+    // Vercel logs for "[Voice tool]" to confirm whether the model is
+    // actually invoking query_knowledge / search_shopify_products /
+    // etc. If you don't see "[Voice tool]" log entries during a test
+    // call, the model isn't calling any tools at all (system prompt
+    // not strong enough, OR the assistant on Vapi's side lacks the
+    // tools — see ensureVapiAssistant / vapiAssistantId).
+    console.log('[Voice tool] called:', {
+      tool: functionName,
+      agentId,
+      paramsPreview: JSON.stringify(params).slice(0, 300),
+    })
+
     // Shopify tools: dispatch through the existing executeTool
     // pipeline so the voice runtime reuses the text-agent adapter
     // (no duplicated Shopify logic). The voice webhook is now a thin
@@ -178,6 +191,15 @@ export async function POST(req: NextRequest) {
           { id: agentId, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds },
           query,
         )
+        // Observability — log the retrieval outcome. If chunks=0, the
+        // workspace either has no indexed content or the embedding match
+        // scored too low for this query phrasing.
+        console.log('[Voice tool] query_knowledge result:', {
+          query,
+          chunkCount: chunks.length,
+          topTitle: chunks[0]?.sourceMetadata?.page_title ?? chunks[0]?.primaryTopic ?? null,
+          topSimilarity: chunks[0]?.similarity ?? null,
+        })
         if (!chunks || chunks.length === 0) {
           return NextResponse.json({ result: 'No relevant information in the knowledge base. Tell the caller honestly and offer a follow-up.' })
         }

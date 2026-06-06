@@ -60,35 +60,40 @@ async function buildAssistantSystemPrompt(opts: {
 }): Promise<string> {
   const { agent, knowledgeEntries, shopifyConnected } = opts
 
-  let prompt = agent.systemPrompt || 'You are a helpful voice assistant.'
+  // ── TOOL-USE PREAMBLE (top of prompt) ─────────────────────────────
+  // GPT-4.1 on a real-time voice call tends to answer from priors
+  // rather than calling tools. The model that "knows" the answer is
+  // wrong every time — voice agents serve specific businesses with
+  // specific content, and the only source of truth is what's indexed
+  // for THIS workspace. So we put a hard, imperative tool-use rule
+  // at the very top of the prompt, before the user's systemPrompt
+  // (which may say "answer questions" without mentioning tools).
+  //
+  // The same rule repeats at the bottom in VOICE CALL INSTRUCTIONS
+  // — models attend to start + end of long prompts disproportionately.
+  let prompt = '# MANDATORY TOOL USE\n\n'
+  prompt += 'You serve a specific business. You do NOT know its products, prices, releases, policies, or any specifics from your training data — that knowledge is in tools you can call.\n\n'
+  prompt += '**Before answering ANY question** about products, inventory, prices, releases, features, policies, hours, locations, or anything specific to this business, you MUST call `query_knowledge` first with the caller\'s question phrased as a search query. Treat this as non-negotiable.\n\n'
+  prompt += 'If `query_knowledge` returns nothing useful, say so honestly. Do not guess. Do not fall back to general knowledge from your training.\n\n'
+
+  if (shopifyConnected) {
+    prompt += 'When the caller asks about anything purchasable (products, sizes, stock, prices, orders), use the Shopify tools instead: `search_shopify_products`, `check_shopify_inventory`, `lookup_shopify_customer`, `check_shopify_order_status`. Never invent product details.\n\n'
+  }
+
+  prompt += `Knowledge base contents: ${knowledgeEntries.length} indexed items covering this business. Reach them via \`query_knowledge\`.\n\n`
+  prompt += '---\n\n'
+
+  // ── USER-DEFINED SYSTEM PROMPT ─────────────────────────────────────
+  prompt += agent.systemPrompt || 'You are a helpful voice assistant.'
 
   if (agent.instructions) {
     prompt += `\n\n## Additional Instructions\n${agent.instructions}`
   }
 
-  // Ambient knowledge — 5 most-recent entries only. Anything beyond this
-  // gets retrieved on-demand via the query_knowledge tool, which runs
-  // vector search at turn time against the workspace's indexed content.
-  // Previously this slice was 30, which silently dropped 99% of RSS-fed
-  // collections and forced the model to hallucinate.
-  if (knowledgeEntries.length > 0) {
-    const ambient = knowledgeEntries
-      .slice() // don't mutate caller's array
-      .sort((a, b) => {
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return tb - ta // newest first
-      })
-      .slice(0, 5)
-    prompt += '\n\n## Ambient Knowledge\nA few recent items from the knowledge base for general grounding. For anything specific, call **query_knowledge** with the caller\'s question — it searches the full knowledge base by relevance.\n\n'
-    prompt += ambient.map(e => `### ${e.title}\n${e.content}`).join('\n\n')
-  } else {
-    prompt += '\n\n## Knowledge Base\nThe knowledge base is empty right now. If the caller asks a fact-specific question, call **query_knowledge** anyway in case it finds something, then otherwise say you don\'t know and offer to follow up.'
-  }
-
-  // Shopify commerce block — only injected when the workspace has a
-  // store connected. Lists the available Shopify tools so the model
-  // knows it can quote live inventory + prices instead of refusing.
+  // ── COMMERCE BLOCK ─────────────────────────────────────────────────
+  // Shopify-specific tool descriptions (when connected) — listed by
+  // buildVoiceCommerceBlock so the model knows what each Shopify tool
+  // is for and when to call which.
   if (shopifyConnected) {
     try {
       const { buildVoiceCommerceBlock } = await import('@/lib/commerce/shopify/voice-prompt')
@@ -103,13 +108,15 @@ async function buildAssistantSystemPrompt(opts: {
     prompt += `\n\n## Calendar Configuration\nCalendar ID for booking: ${agent.calendarId}\nAlways use get_available_slots before booking.`
   }
 
-  // Persona — short hint to keep the voice agent conversational.
-  prompt += '\n\n## VOICE CALL INSTRUCTIONS\nYou are on a live phone call. Speak naturally and conversationally. Keep responses SHORT — 1-3 sentences max. No bullet points, no markdown.'
+  // ── VOICE CALL INSTRUCTIONS (bottom of prompt — repeats tool rule) ──
+  prompt += '\n\n## VOICE CALL INSTRUCTIONS\n'
+  prompt += 'You are on a live phone call. Speak naturally and conversationally. Keep responses SHORT — 1-3 sentences max. No bullet points, no markdown.\n\n'
+  prompt += '**REMINDER:** Before answering any question with specifics, call `query_knowledge` first (or a Shopify tool when commerce-related). A two-second "let me check" beat sounds natural; silence while a tool runs sounds dead, so always pre-acknowledge ("let me check that for you", "one sec, looking that up").\n'
 
   // Fallback behaviour
   const fb = agent.fallbackBehavior ?? 'message'
   const fm = agent.fallbackMessage
-  prompt += '\n\n## When You Don\'t Know the Answer\nDo NOT guess.'
+  prompt += '\n\n## When Tools Return Nothing\nDo NOT guess. Do NOT invent answers from your training data.'
   if (fb === 'transfer') {
     prompt += ' Tell the caller you\'ll connect them with someone who can help.'
   } else if (fm) {
