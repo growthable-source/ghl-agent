@@ -22,6 +22,13 @@ import { useEffect, useState } from 'react'
 
 interface ShopifyStatus {
   connected: boolean
+  /**
+   * 'connected'       — runtime can call the store
+   * 'needs_reconnect' — row exists but token shape is legacy (no
+   *                     refreshToken/expiresAt) — fresh OAuth required
+   * 'not_connected'   — no row, or soft-uninstalled
+   */
+  status?: 'connected' | 'needs_reconnect' | 'not_connected'
   shop?: string
   scope?: string
   installedAt?: string
@@ -142,20 +149,36 @@ function ShopifyCard({
   onClearBanner: () => void
 }) {
   const connected = !!status?.connected
+  // Needs-reconnect is a SEPARATE state from not-connected: there IS a
+  // row, but the runtime can't use it (legacy non-refreshable token).
+  // Surfaced amber so the operator knows the panel they're looking at
+  // doesn't reflect what the agent can actually do mid-call.
+  const needsReconnect = status?.status === 'needs_reconnect'
 
   return (
     <div
       className="rounded-lg p-4 space-y-3"
       style={{
-        border: connected ? '1px solid rgba(34,197,94,0.35)' : '1px solid var(--border)',
-        background: connected ? 'rgba(34,197,94,0.06)' : 'var(--surface-secondary)',
+        border:
+          connected ? '1px solid rgba(34,197,94,0.35)' :
+          needsReconnect ? '1px solid rgba(245,158,11,0.5)' :
+          '1px solid var(--border)',
+        background:
+          connected ? 'rgba(34,197,94,0.06)' :
+          needsReconnect ? 'rgba(245,158,11,0.08)' :
+          'var(--surface-secondary)',
       }}
     >
       <div className="flex items-start gap-3">
         {/* Shopify mark */}
         <div
           className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
-          style={{ background: connected ? 'rgba(34,197,94,0.18)' : 'var(--surface-tertiary)' }}
+          style={{
+            background:
+              connected ? 'rgba(34,197,94,0.18)' :
+              needsReconnect ? 'rgba(245,158,11,0.2)' :
+              'var(--surface-tertiary)',
+          }}
           aria-hidden
         >
           🛍️
@@ -173,8 +196,16 @@ function ShopifyCard({
                 Connected
               </span>
             )}
+            {needsReconnect && (
+              <span
+                className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded"
+                style={{ background: 'rgba(245,158,11,0.18)', color: '#b45309' }}
+              >
+                Needs reconnect
+              </span>
+            )}
           </div>
-          {connected ? (
+          {(connected || needsReconnect) ? (
             <p className="text-xs mt-0.5 font-mono break-all" style={{ color: 'var(--text-secondary)' }}>
               {status?.shop}
             </p>
@@ -187,6 +218,28 @@ function ShopifyCard({
           )}
         </div>
       </div>
+
+      {needsReconnect && (
+        <div className="pl-12 space-y-3">
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            Your Shopify connection uses a legacy non-refreshing token. Shopify rejects these now, so the
+            agent can&apos;t actually reach your store mid-call. Click <strong>Disconnect</strong> below,
+            then reconnect using the same shop domain — fresh OAuth fills in the new token shape and
+            everything starts working.
+          </p>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onDisconnect}
+              disabled={disconnecting}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+              style={{ background: '#fa4d2e', color: '#ffffff' }}
+            >
+              {disconnecting ? 'Disconnecting…' : 'Disconnect to reconnect'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {connected ? (
         <>
@@ -209,7 +262,7 @@ function ShopifyCard({
             </button>
           </div>
         </>
-      ) : (
+      ) : !needsReconnect ? (
         <div className="pl-12 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <input
@@ -236,7 +289,7 @@ function ShopifyCard({
             inventory, orders, customers, and discounts. You can disconnect any time.
           </p>
         </div>
-      )}
+      ) : null}
 
       {banner && (
         <p

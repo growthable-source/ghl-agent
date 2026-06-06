@@ -29,10 +29,22 @@ import { db } from '@/lib/db'
 type Params = { params: Promise<{ workspaceId: string }> }
 
 /**
- * GET — lightweight connection-status check. Used by the agent
- * Knowledge tab's "Live data sources" panel so it can show a
- * green-connected card with the shop name + capabilities, or a
- * grey "Connect Shopify" CTA. Single row lookup on ShopifyShop.
+ * GET — connection-status check that honours **runtime** reality, not
+ * just the presence of a row. Used by the agent Knowledge tab's "Live
+ * data sources" panel.
+ *
+ * Three states:
+ *   - connected:     row exists, runtime can fetch a valid token
+ *   - needs_reconnect: row exists but the runtime check fails — most
+ *                    often legacy rows created before Shopify's 2026
+ *                    expiring-token rollout (refreshToken / expiresAt
+ *                    are NULL). User must disconnect + reconnect to
+ *                    refill the new columns.
+ *   - not_connected: no row, or row is soft-uninstalled.
+ *
+ * Previously this endpoint reported `connected: true` for legacy rows
+ * (it only checked uninstalledAt) — agents then failed silently at
+ * tool-call time with `shopify_not_connected`. The panel was lying.
  */
 export async function GET(_req: NextRequest, { params }: Params) {
   const { workspaceId } = await params
@@ -44,10 +56,26 @@ export async function GET(_req: NextRequest, { params }: Params) {
     select: { id: true, scope: true, installedAt: true, uninstalledAt: true },
   })
   if (!row || row.uninstalledAt) {
-    return NextResponse.json({ connected: false })
+    return NextResponse.json({ connected: false, status: 'not_connected' })
   }
+
+  // Runtime-truth check — the same getShopifyConnection the executor
+  // uses. Returns null for legacy rows (no refreshToken/expiresAt) or
+  // when a refresh attempt has failed.
+  const { getShopifyConnection } = await import('@/lib/commerce/shopify/token-store')
+  const runtime = await getShopifyConnection(workspaceId)
+  if (!runtime) {
+    return NextResponse.json({
+      connected: false,
+      status: 'needs_reconnect',
+      shop: row.id,
+      installedAt: row.installedAt,
+    })
+  }
+
   return NextResponse.json({
     connected: true,
+    status: 'connected',
     shop: row.id,
     scope: row.scope,
     installedAt: row.installedAt,
