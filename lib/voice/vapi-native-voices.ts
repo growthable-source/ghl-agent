@@ -35,14 +35,13 @@ export const VAPI_NATIVE_VOICE_IDS = [
 export type VapiNativeVoiceId = typeof VAPI_NATIVE_VOICE_IDS[number]
 
 // Per-voice metadata. Labels are best-effort from public Vapi
-// material + general voice-naming conventions. Operators can audit
-// each one with the preview button — wrong-gender or wrong-accent
-// reports get folded back in.
+// material + general voice-naming conventions. Operators audit each
+// one via the Test Call panel (Vapi has no public one-shot TTS endpoint
+// — see the wizard's Voice step copy).
 //
-// `previewUrl` is intentionally NOT set on Vapi-native voices.
-// Vapi doesn't expose a stable public CDN of voice samples; the
-// wizard / config tab falls through to /api/voice/preview which
-// proxies Vapi's TTS endpoint with a short stock phrase.
+// `previewUrl` is null for Vapi-native voices on purpose. ElevenLabs
+// voices ship a static preview URL with their catalogue entry; Vapi
+// voices don't have any equivalent surface.
 const VOICE_META: Record<VapiNativeVoiceId, { gender: 'male' | 'female'; accent: string; age: 'young' | 'middle_aged'; description: string }> = {
   Elliot:    { gender: 'male',   accent: 'american', age: 'middle_aged', description: 'Warm, conversational. The Vapi-demo default.' },
   Cole:      { gender: 'male',   accent: 'american', age: 'young',       description: 'Friendly, engaging.' },

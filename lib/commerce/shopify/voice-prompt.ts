@@ -1,15 +1,17 @@
 /**
  * Voice-call commerce context block.
  *
- * Voice agents can't yet call Shopify tools mid-call (XAI realtime
- * function calling is in flight — see follow-up issue). So instead of
- * pretending tools exist, this block tells the agent honestly:
+ * Injected into voice-agent system prompts when the workspace has a
+ * Shopify store connected. Tells the agent:
  *
- *   - The workspace has a Shopify store connected
- *   - What shop domain it is
- *   - The customer profile (LTV + recent orders) if we recognise the caller
- *   - That live inventory / order lookups aren't possible on this call
- *   - To promise an SMS/email follow-up instead of guessing
+ *   - Which shop is linked
+ *   - The Shopify tools available for live calls (search products,
+ *     check inventory, look up the caller, check order status, mint
+ *     discounts, capture back-in-stock interest, create checkouts)
+ *   - The customer profile (LTV + recent orders) if we recognise the
+ *     caller by email/phone
+ *   - Voice-call etiquette — short answers, no URLs aloud, use
+ *     send_sms_followup for anything URL-shaped
  *
  * Returns empty string when no shop is connected — caller appends
  * unconditionally and gets a no-op when commerce isn't relevant.

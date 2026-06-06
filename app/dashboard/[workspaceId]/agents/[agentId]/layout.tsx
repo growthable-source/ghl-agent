@@ -26,9 +26,9 @@ const HUBS: Hub[] = [
     // /skills, /trigger, /activity respectively.
     //
     // Note: the Voice sub-tab here is for SIMPLE/ADVANCED agents that
-    // bolt voice onto a primarily-text agent. VOICE agents use a
-    // different HUBS layout (VOICE_HUBS below) where Voice is promoted
-    // to its own top-level hub.
+    // bolt voice onto a primarily-text agent. VOICE-typed agents
+    // redirect to /voice/[id]/* before this layout renders — see the
+    // useEffect below — so we don't keep a parallel VOICE_HUBS array.
     key: 'identity',
     label: 'Identity',
     tabs: [
@@ -95,65 +95,7 @@ const HUBS: Hub[] = [
   },
 ]
 
-// VOICE agents get a different IA: Voice is its own top-level hub
-// (because voice IS the channel) and the Identity hub loses its Voice
-// sub-tab to avoid double-listing. Channels in the When-to-run hub
-// still exist but the voice agent only ever deploys to a Voice
-// pseudo-channel, so the operator's day-to-day on this surface is
-// Identity → Voice → Knowledge → Skills → When to run → Activity.
-const VOICE_HUBS: Hub[] = [
-  {
-    key: 'identity',
-    label: 'Identity',
-    tabs: [
-      { key: 'identity', label: 'Overview', path: '/identity' },
-      { key: 'settings', label: 'Settings', path: '' },
-      { key: 'persona',  label: 'Persona',  path: '/persona' },
-    ],
-  },
-  {
-    // Voice is the primary configuration surface for these agents.
-    // Single tab for now — provider / voice picker / phone number /
-    // opening + closing line / tuning all live on /voice. Sub-tabs
-    // can be split out later (Test, Settings, Numbers, etc.) without
-    // changing the URL contract.
-    key: 'voice',
-    label: 'Voice',
-    tabs: [
-      { key: 'voice', label: 'Configuration', path: '/voice' },
-    ],
-  },
-  { key: 'knowledge', label: 'Knowledge', tabs: [
-    { key: 'knowledge-overview', label: 'Overview',   path: '/knowledge/overview' },
-    { key: 'knowledge',          label: 'Entries',    path: '/knowledge' },
-    { key: 'listening',          label: 'Listening',  path: '/listening' },
-    { key: 'qualifying',         label: 'Qualifying', path: '/qualifying' },
-  ] },
-  { key: 'skills', label: 'Skills', tabs: [
-    { key: 'skills',       label: 'Overview',        path: '/skills' },
-    { key: 'tools',        label: 'Tools',           path: '/tools' },
-    { key: 'playbook',     label: 'Playbook',        path: '/playbook' },
-    { key: 'integrations', label: 'Integrations',    path: '/integrations' },
-    { key: 'follow-ups',   label: 'Follow-ups',      path: '/follow-ups' },
-    { key: 'goals',        label: 'Stop conditions', path: '/goals' },
-  ] },
-  { key: 'trigger', label: 'When to run', tabs: [
-    { key: 'overview',      label: 'Triggers',      path: '/trigger' },
-    { key: 'routing',       label: 'Filter rules',  path: '/routing' },
-    { key: 'working-hours', label: 'Working hours', path: '/working-hours' },
-  ] },
-  { key: 'activity', label: 'Activity', tabs: [
-    { key: 'activity',        label: 'Overview',       path: '/activity' },
-    { key: 'replay',          label: 'Replay',         path: '/replay' },
-    { key: 'wins',            label: 'Objectives',     path: '/wins' },
-    { key: 'evaluations',     label: 'Evaluations',    path: '/evaluations' },
-    { key: 'experiments',     label: 'Experiments',    path: '/experiments' },
-    { key: 'prompt-versions', label: 'Prompt history', path: '/prompt-versions' },
-  ] },
-]
-
 const ALL_TABS_TEXT: { hub: Hub; tab: Tab }[] = HUBS.flatMap(h => h.tabs.map(t => ({ hub: h, tab: t })))
-const ALL_TABS_VOICE: { hub: Hub; tab: Tab }[] = VOICE_HUBS.flatMap(h => h.tabs.map(t => ({ hub: h, tab: t })))
 
 // Resolve a URL suffix back to the hub + tab it belongs to. Anything we
 // don't recognise falls through to the first tab of the first hub.
@@ -263,14 +205,10 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   }
 
   const suffix = pathname.replace(base, '')
-  // Pick the right HUBS layout for this agent. Pre-fetch (agent still
-  // null) we render the text layout so the tab strip doesn't flash
-  // empty; once the agent loads we'll re-render with the voice layout
-  // if applicable.
-  const isVoiceAgent = agent?.agentType === 'VOICE'
-  const activeHubs = isVoiceAgent ? VOICE_HUBS : HUBS
-  const candidates = isVoiceAgent ? ALL_TABS_VOICE : ALL_TABS_TEXT
-  const { hub: activeHub, tab: activeTab } = resolveActive(suffix, candidates)
+  // Voice-typed agents redirect to /voice/[id]/* before this point, so
+  // by the time the tab strip renders we only ever have a text agent.
+  const activeHubs = HUBS
+  const { hub: activeHub, tab: activeTab } = resolveActive(suffix, ALL_TABS_TEXT)
 
   // In advanced mode the canvas is the entire surface — the tabbed nav
   // strips below the header are hidden so the /flow page renders edge
@@ -310,13 +248,11 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
       <div className="flex items-center justify-between px-8 pt-6 pb-0 shrink-0">
         <div className="flex items-center gap-3">
           <Link
-            href={isVoiceAgent
-              ? `/dashboard/${workspaceId}/voice`
-              : `/dashboard/${workspaceId}/agents`}
+            href={`/dashboard/${workspaceId}/agents`}
             className="transition-colors text-sm"
             style={{ color: 'var(--text-tertiary)' }}
           >
-            {isVoiceAgent ? '← Voice agents' : '← Agents'}
+            ← Agents
           </Link>
           <span style={{ color: 'var(--text-muted)' }}>/</span>
           {agent ? (

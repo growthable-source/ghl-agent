@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
-  buildElevenLabsVoiceBlock,
   buildVapiVoiceBlock,
   elevenLabsModel,
   ELEVEN_DEFAULT_MODEL,
@@ -135,13 +134,5 @@ describe('buildVapiVoiceBlock — ElevenLabs engine', () => {
   it('honours an explicit model param over the env default', () => {
     const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'x', model: 'eleven_multilingual_v2' })
     expect(block.model).toBe('eleven_multilingual_v2')
-  })
-})
-
-describe('buildElevenLabsVoiceBlock — back-compat alias', () => {
-  it('still produces an ElevenLabs block (engine is forced)', () => {
-    const block = buildElevenLabsVoiceBlock({ voiceId: 'x' })
-    expect(block.provider).toBe('11labs')
-    expect(block.model).toBe('eleven_turbo_v2_5')
   })
 })

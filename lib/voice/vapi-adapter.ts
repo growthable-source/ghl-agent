@@ -1,14 +1,13 @@
 import { searchElevenLabsVoices } from '../vapi-client'
 import { canonicalVapiVoiceId } from './vapi-native-voices'
-import type { VoiceAdapter, VoiceOption, VoiceProviderCapabilities } from './types'
+import type { VoiceOption } from './types'
 
 /**
- * Vapi adapter. Vapi is the ONLY voice-provider abstraction we keep —
- * it owns the phone bridge, owns the @vapi-ai/web browser SDK, and
- * accepts multiple TTS engines (vapi-native, 11labs, openai, cartesia,
- * deepgram, …) on the same assistant config. Engine choice is a
- * property of the assistant config's voice block, NOT a separate
- * provider.
+ * Vapi adapter. Vapi handles the phone bridge + the @vapi-ai/web
+ * browser SDK and accepts multiple TTS engines (vapi-native, 11labs,
+ * openai, cartesia, deepgram, …) on the same assistant config. Engine
+ * choice is a property of the assistant config's voice block, NOT a
+ * separate provider.
  *
  * listVoices() returns the ElevenLabs catalogue (5000+ voices) since
  * that's the engine with the broadest selection. The Vapi-native
@@ -16,16 +15,7 @@ import type { VoiceAdapter, VoiceOption, VoiceProviderCapabilities } from './typ
  * and surfaces in the wizard under its own tab — same Vapi pipeline
  * at runtime.
  */
-export class VapiVoiceAdapter implements VoiceAdapter {
-  provider = 'vapi' as const
-  capabilities: VoiceProviderCapabilities = {
-    phoneCalls: true,
-    realtimeBrowser: true,
-    ttsBatch: true,
-    voicePreview: true,
-    widgetVoice: true,
-  }
-
+export class VapiVoiceAdapter {
   async listVoices(search?: string): Promise<VoiceOption[]> {
     const voices = await searchElevenLabsVoices(search)
     return voices.map(v => ({
@@ -139,15 +129,4 @@ export function buildVapiVoiceBlock(p: VapiVoiceParams): Record<string, unknown>
     voiceId: canonicalVapiVoiceId(p.voiceId),
     ...(p.language && { language: p.language }),
   }
-}
-
-/**
- * Back-compat alias. Old callers (now mostly migrated) referenced
- * buildElevenLabsVoiceBlock directly; new code uses
- * buildVapiVoiceBlock with an explicit engine. Forces 'elevenlabs'.
- *
- * @deprecated use buildVapiVoiceBlock({ engine, ...params }) instead
- */
-export function buildElevenLabsVoiceBlock(p: Omit<VapiVoiceParams, 'engine'>) {
-  return buildVapiVoiceBlock({ ...p, engine: 'elevenlabs' })
 }
