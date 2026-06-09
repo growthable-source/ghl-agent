@@ -93,7 +93,14 @@ export default function VoiceWizardPage() {
   // ─── Step 3: personality ──────────────────────────────────────────
   const [agentName, setAgentName] = useState(() => generateAgentName())
   const [firstMessage, setFirstMessage] = useState('')
+  // Raw system prompt — only edited directly in the power-user "raw mode"
+  // escape hatch. The default flow composes the prompt from the two
+  // plain-language fields below so non-technical operators never face a
+  // blank LLM-instruction textarea.
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [job, setJob] = useState('')              // "What should this agent do on calls?"
+  const [guardrails, setGuardrails] = useState('') // "Anything it must always / never do?"
+  const [rawMode, setRawMode] = useState(false)
   const [endCallMessage, setEndCallMessage] = useState('')
   const [formalityLevel, setFormalityLevel] = useState(50)
 
@@ -101,10 +108,22 @@ export default function VoiceWizardPage() {
   useEffect(() => {
     if (!template || personalityTouched) return
     setFirstMessage(template.firstMessage)
+    // Templates ship a ready-made, plain-language prompt. Seed both the raw
+    // field (for raw mode) and the "job" field (for the default flow) so the
+    // user starts from working copy either way.
     setSystemPrompt(template.systemPrompt)
+    setJob(template.systemPrompt)
     setEndCallMessage(template.endCallMessage)
     setFormalityLevel(template.formalityLevel)
   }, [template, personalityTouched])
+
+  // The system prompt we actually submit. Default flow composes job +
+  // guardrails into instructions; raw mode submits the verbatim textarea.
+  const composedSystemPrompt = rawMode
+    ? systemPrompt
+    : [job.trim(), guardrails.trim() ? `Always keep these rules in mind:\n${guardrails.trim()}` : '']
+        .filter(Boolean)
+        .join('\n\n')
 
   // ─── Step 4: knowledge ────────────────────────────────────────────
   const [knowledgeDomains, setKnowledgeDomains] = useState<KnowledgeDomain[]>([])
@@ -244,7 +263,7 @@ export default function VoiceWizardPage() {
         : knowledgePick
       const body: Record<string, unknown> = {
         name: agentName,
-        systemPrompt,
+        systemPrompt: composedSystemPrompt,
         agentType: 'VOICE',
         formalityLevel,
         ...(knowledgeDomainIds && { knowledgeDomainIds }),
@@ -296,7 +315,7 @@ export default function VoiceWizardPage() {
   const canContinue = (() => {
     if (step === 'use_case') return template !== null
     if (step === 'voice') return selectedVoice !== null
-    if (step === 'personality') return firstMessage.trim().length > 0 && systemPrompt.trim().length > 0
+    if (step === 'personality') return firstMessage.trim().length > 0 && composedSystemPrompt.trim().length > 0
     if (step === 'knowledge') return true
     if (step === 'phone') return phoneMode === 'skip' || phoneMode === 'port' || !!purchasedNumber
     return false
@@ -381,6 +400,12 @@ export default function VoiceWizardPage() {
               onName={(v) => { setAgentName(v); setPersonalityTouched(true) }}
               firstMessage={firstMessage}
               onFirstMessage={(v) => { setFirstMessage(v); setPersonalityTouched(true) }}
+              job={job}
+              onJob={(v) => { setJob(v); setPersonalityTouched(true) }}
+              guardrails={guardrails}
+              onGuardrails={(v) => { setGuardrails(v); setPersonalityTouched(true) }}
+              rawMode={rawMode}
+              onRawMode={setRawMode}
               systemPrompt={systemPrompt}
               onSystemPrompt={(v) => { setSystemPrompt(v); setPersonalityTouched(true) }}
               endCallMessage={endCallMessage}
@@ -530,17 +555,16 @@ function VoiceStep({
         Pick a voice
       </h2>
       <p className="text-sm mb-5" style={{ color: 'var(--text-tertiary)' }}>
-        Built-in is the default — 30 pre-tuned voices that ship with zero
-        phone-codec artefacts. If you need a specific voice, switch to
-        ElevenLabs for the full 5000+ catalogue.
+        Standard voices sound great on the phone and are ready to go. Want a
+        specific voice? Switch to ElevenLabs for a much larger premium catalogue.
       </p>
       <div
         className="inline-flex items-center gap-1 p-1 rounded-lg mb-5"
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
         {([
-          { id: 'vapi' as const,       label: 'Built-in',   count: '30' },
-          { id: 'elevenlabs' as const, label: 'ElevenLabs', count: '5000+' },
+          { id: 'vapi' as const,       label: 'Standard' },
+          { id: 'elevenlabs' as const, label: 'ElevenLabs — premium' },
         ]).map(opt => {
           const active = engine === opt.id
           return (
@@ -556,25 +580,10 @@ function VoiceStep({
               }
             >
               {opt.label}
-              <span className="ml-1.5 opacity-70 font-normal">{opt.count}</span>
             </button>
           )
         })}
       </div>
-      {engine === 'vapi' && (
-        <div
-          className="rounded-lg px-3 py-2 text-xs mb-4"
-          style={{
-            background: 'var(--surface-secondary)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <strong>Heads up:</strong> Built-in voices don&apos;t have one-shot previews — the fastest
-          way to hear a voice is the Test Call panel at the end of the wizard. ElevenLabs voices
-          have inline previews if you need to audition first.
-        </div>
-      )}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <input
           type="text"
@@ -650,11 +659,16 @@ function VoiceStep({
 }
 
 function PersonalityStep({
-  name, onName, firstMessage, onFirstMessage, systemPrompt, onSystemPrompt,
+  name, onName, firstMessage, onFirstMessage,
+  job, onJob, guardrails, onGuardrails, rawMode, onRawMode,
+  systemPrompt, onSystemPrompt,
   endCallMessage, onEndCallMessage, formalityLevel, onFormality,
 }: {
   name: string; onName: (v: string) => void
   firstMessage: string; onFirstMessage: (v: string) => void
+  job: string; onJob: (v: string) => void
+  guardrails: string; onGuardrails: (v: string) => void
+  rawMode: boolean; onRawMode: (v: boolean) => void
   systemPrompt: string; onSystemPrompt: (v: string) => void
   endCallMessage: string; onEndCallMessage: (v: string) => void
   formalityLevel: number; onFormality: (v: number) => void
@@ -665,7 +679,7 @@ function PersonalityStep({
         Personality &amp; opening line
       </h2>
       <p className="text-sm mb-6" style={{ color: 'var(--text-tertiary)' }}>
-        How the agent introduces itself and how it should think.
+        How the agent introduces itself and what it helps callers with.
       </p>
       <div className="space-y-5">
         <div>
@@ -688,8 +702,26 @@ function PersonalityStep({
             style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
           />
         </div>
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>System prompt</label>
+
+        {/* Plain-language prompt builder (default) vs. raw escape hatch.
+            Most operators only ever touch the two friendly fields; the
+            "Edit raw instructions" toggle exposes the full prompt for
+            power users without making it the default surface. */}
+        <div className="flex items-center justify-between">
+          <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            {rawMode ? 'Raw instructions' : 'What should this agent do?'}
+          </label>
+          <button
+            type="button"
+            onClick={() => onRawMode(!rawMode)}
+            className="text-[11px] underline"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            {rawMode ? 'Use simple fields' : 'Edit raw instructions'}
+          </button>
+        </div>
+
+        {rawMode ? (
           <textarea
             value={systemPrompt}
             onChange={e => onSystemPrompt(e.target.value)}
@@ -697,7 +729,34 @@ function PersonalityStep({
             className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none font-mono"
             style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
           />
-        </div>
+        ) : (
+          <>
+            <div>
+              <textarea
+                value={job}
+                onChange={e => onJob(e.target.value)}
+                rows={5}
+                placeholder="e.g. You answer calls for Acme Plumbing. Greet the caller warmly, find out what they need, and book them in for a visit."
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+              />
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Describe the agent&apos;s job in plain English — what it&apos;s for, who it&apos;s talking to, and what a good call looks like.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Anything it should always or never do? <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+              <textarea
+                value={guardrails}
+                onChange={e => onGuardrails(e.target.value)}
+                rows={3}
+                placeholder="e.g. Never quote a price over the phone. Always offer to text a confirmation."
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+              />
+            </div>
+          </>
+        )}
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Closing line (graceful hang-up)</label>
           <input
@@ -712,7 +771,7 @@ function PersonalityStep({
           <label className="block text-xs font-medium mb-1.5 flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
             <span>Formality</span>
             <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-              {formalityLevel < 33 ? 'Casual' : formalityLevel < 67 ? 'Conversational' : 'Formal'}
+              {formalityLevel < 33 ? 'Casual' : formalityLevel < 67 ? 'Conversational' : 'Professional'}
             </span>
           </label>
           <input

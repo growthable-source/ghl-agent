@@ -115,7 +115,7 @@ export default function VoiceAgentOverview() {
   }
 
   const voiceLabel = vapi?.voiceName || vapi?.voiceId || 'No voice selected'
-  const engineLabel = vapi?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Built-in'
+  const engineLabel = vapi?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Standard'
   const phoneNumber = vapi?.phoneNumber
   const hasAssistantSync = !!vapi?.vapiAssistantId
 
@@ -143,14 +143,14 @@ export default function VoiceAgentOverview() {
               This agent isn&apos;t synced with the voice provider yet
             </p>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Open Configuration and click Save to register it. Phone calls and browser test calls won&apos;t work until this succeeds — the save button surfaces the exact error inline.
+              Open Voice &amp; Script and click Save to register it. Phone calls and browser test calls won&apos;t work until this succeeds — the save button surfaces the exact error inline.
             </p>
             <Link
               href={`/dashboard/${workspaceId}/voice/${agentId}/configuration`}
               className="inline-block mt-2 text-xs font-semibold"
               style={{ color: '#ef4444' }}
             >
-              Open Configuration →
+              Open Voice &amp; Script →
             </Link>
           </div>
         </div>
@@ -345,7 +345,7 @@ function VoiceCard({
         </p>
       )}
       <p className="text-[11px] font-semibold mt-3" style={{ color: 'var(--accent-primary)' }}>
-        Edit configuration →
+        Edit voice &amp; script →
       </p>
     </Link>
   )

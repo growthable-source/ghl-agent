@@ -23,18 +23,28 @@ import Link from 'next/link'
 
 type Tab = { key: string; label: string; path: string }
 
-// Voice-only tab strip. Flat (single row, no five-hub IA) because
-// voice agents have a much narrower surface than text agents — the
-// configuration tab is the meaty one, everything else is supporting.
-const TABS: Tab[] = [
-  { key: 'overview',      label: 'Overview',      path: '' },
-  { key: 'configuration', label: 'Configuration', path: '/configuration' },
-  { key: 'knowledge',     label: 'Knowledge',     path: '/knowledge' },
-  { key: 'skills',        label: 'Skills',        path: '/skills' },
-  { key: 'triggers',      label: 'When to run',   path: '/triggers' },
-  { key: 'calls',         label: 'Calls',         path: '/calls' },
-  { key: 'identity',      label: 'Identity',      path: '/identity' },
+// The four things a non-technical operator actually reaches for. Plain
+// language: "Configuration" → "Voice & Script". Everything else lives
+// under the Advanced menu so this row stays focused.
+const PRIMARY_TABS: Tab[] = [
+  { key: 'overview',      label: 'Overview',       path: '' },
+  { key: 'configuration', label: 'Voice & Script', path: '/configuration' },
+  { key: 'knowledge',     label: 'Knowledge',      path: '/knowledge' },
+  { key: 'calls',         label: 'Calls',          path: '/calls' },
 ]
+
+// Power-user surfaces — reachable, just not front-and-centre. These are
+// the same shared re-export pages as before; we only moved where they
+// appear in the strip.
+const ADVANCED_TABS: Tab[] = [
+  { key: 'skills',   label: 'Skills',      path: '/skills' },
+  { key: 'triggers', label: 'When to run', path: '/triggers' },
+  { key: 'identity', label: 'Identity',    path: '/identity' },
+]
+
+// Used by resolveActiveTab — must cover every routable sub-page so
+// active-state highlighting resolves for Advanced pages too.
+const TABS: Tab[] = [...PRIMARY_TABS, ...ADVANCED_TABS]
 
 function resolveActiveTab(suffix: string): Tab {
   const trimmed = suffix === '/' ? '' : suffix
@@ -61,6 +71,7 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
 
   const [agent, setAgent] = useState<{ name: string; isActive: boolean; agentType: string } | null>(null)
   const [toggling, setToggling] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -101,6 +112,7 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
 
   const suffix = pathname.replace(base, '')
   const activeTab = resolveActiveTab(suffix)
+  const activeIsAdvanced = ADVANCED_TABS.some(t => t.key === activeTab.key)
 
   return (
     <div className="flex flex-col h-full">
@@ -168,10 +180,10 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
         </div>
       </div>
 
-      {/* Tab strip — single row, voice-flavoured. */}
+      {/* Tab strip — primary tabs + an Advanced menu for power-user pages. */}
       <div className="flex items-stretch px-8 mt-4 shrink-0">
         <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
-          {TABS.map(t => {
+          {PRIMARY_TABS.map(t => {
             const isActive = activeTab.key === t.key
             return (
               <Link
@@ -193,6 +205,53 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
               </Link>
             )
           })}
+
+          {/* Advanced menu — Skills / When to run / Identity */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen(o => !o)}
+              className="relative px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors inline-flex items-center gap-1"
+              style={activeIsAdvanced
+                ? { color: 'var(--accent-primary)' }
+                : { color: 'var(--text-tertiary)' }
+              }
+            >
+              Advanced
+              <span aria-hidden style={{ fontSize: '0.6rem' }}>▾</span>
+              {activeIsAdvanced && (
+                <span
+                  className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"
+                  style={{ background: 'var(--accent-primary)' }}
+                />
+              )}
+            </button>
+            {advancedOpen && (
+              <>
+                {/* click-away catcher */}
+                <div className="fixed inset-0 z-10" onClick={() => setAdvancedOpen(false)} />
+                <div
+                  className="absolute right-0 mt-1 z-20 rounded-lg border py-1 min-w-[160px] shadow-lg"
+                  style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+                >
+                  {ADVANCED_TABS.map(t => {
+                    const isActive = activeTab.key === t.key
+                    return (
+                      <Link
+                        key={t.key}
+                        href={`${base}${t.path}`}
+                        onClick={() => setAdvancedOpen(false)}
+                        className="block px-3 py-2 text-xs font-medium transition-colors"
+                        style={{ color: isActive ? 'var(--accent-primary)' : 'var(--text-secondary)' }}
+                      >
+                        {t.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
