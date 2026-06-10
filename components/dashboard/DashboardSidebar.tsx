@@ -20,6 +20,7 @@ const FEATURE_SHIP_DATES: Record<string, string> = {
   toolGate:    '2026-05-30', // Phase B3 enforced-tool gate analytics
   gettingStarted: '2026-05-29', // First-run guide for newly-installed workspaces
   voiceAgents: '2026-06-06', // Voice agents promoted to their own top-level section
+  copilot: '2026-06-10', // Real-time screen-share Co-Pilot (v0, behind plan gate)
 }
 
 export default function DashboardSidebar() {
@@ -268,6 +269,22 @@ function SidebarBody() {
                   </svg>,
                   null,
                   FEATURE_SHIP_DATES.voiceAgents,
+                )}
+                {/* Co-Pilot — real-time screen-share + voice advisory
+                    surface. Read-only in v0; behind a per-workspace
+                    plan flag so it's invisible to anyone not on Scale
+                    or the dogfood allowlist. */}
+                {navItemPrimary(
+                  `/dashboard/${workspaceId}/copilot`,
+                  'Co-Pilot',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <rect x="2" y="4" width="20" height="14" rx="2" />
+                    <line x1="8" y1="22" x2="16" y2="22" />
+                    <line x1="12" y1="18" x2="12" y2="22" />
+                    <circle cx="12" cy="11" r="3" />
+                  </svg>,
+                  null,
+                  FEATURE_SHIP_DATES.copilot,
                 )}
                 {navItemPrimary(
                   `/dashboard/${workspaceId}/playground`,

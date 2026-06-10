@@ -31,6 +31,10 @@ export interface PlanFeatures {
    *  Workspace must also set TicketingSettings.enabled to actually
    *  see the UI — the plan flag only governs whether they CAN. */
   ticketing: boolean
+  /** Real-time screen-share Co-Pilot (v0, read-only).
+   *  Scale-tier only at GA. Pre-GA the COPILOT_WORKSPACE_ALLOWLIST env
+   *  var force-enables specific workspaces (dogfood) regardless of plan. */
+  copilotEnabled: boolean
   extraAgentPrice: number     // USD per additional agent per month
   messageOveragePrice: number // USD per message above limit
   voiceOveragePrice: number   // USD per minute above limit
@@ -114,6 +118,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     triggers: true,
     customPersona: true,
     ticketing: false,
+    copilotEnabled: false,
     extraAgentPrice: 0,
     messageOveragePrice: 0,
     voiceOveragePrice: 0,
@@ -139,6 +144,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     triggers: true,
     customPersona: true,
     ticketing: false,
+    copilotEnabled: false,
     extraAgentPrice: 0,
     messageOveragePrice: 0,
     voiceOveragePrice: 0,
@@ -164,6 +170,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     triggers: true,
     customPersona: false,
     ticketing: false,
+    copilotEnabled: false,
     extraAgentPrice: 49,
     messageOveragePrice: 0.04,
     voiceOveragePrice: 0,
@@ -189,6 +196,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     triggers: true,
     customPersona: true,
     ticketing: false,
+    copilotEnabled: false,
     extraAgentPrice: 39,
     messageOveragePrice: 0.04,
     voiceOveragePrice: 0.18,
@@ -214,6 +222,7 @@ export const PLAN_FEATURES: Record<PlanId, PlanFeatures> = {
     triggers: true,
     customPersona: true,
     ticketing: true,
+    copilotEnabled: true,
     extraAgentPrice: 29,
     messageOveragePrice: 0.04,
     voiceOveragePrice: 0.18,
@@ -252,6 +261,21 @@ export function checkMessageUsage(plan: string, currentUsage: number, limit: num
 /** Check if voice is available on this plan */
 export function canUseVoice(plan: string): boolean {
   return getPlanFeatures(plan).voiceEnabled
+}
+
+/**
+ * Co-Pilot v0 access. Plan-gate by default; pre-GA the
+ * COPILOT_WORKSPACE_ALLOWLIST env var (comma-separated workspace ids)
+ * lets us dogfood inside specific workspaces without flipping the
+ * Scale flag for an entire account.
+ */
+export function canUseCopilot(plan: string, workspaceId: string | null | undefined): boolean {
+  if (getPlanFeatures(plan).copilotEnabled) return true
+  const allowlist = (process.env.COPILOT_WORKSPACE_ALLOWLIST || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+  return !!workspaceId && allowlist.includes(workspaceId)
 }
 
 /** Check if a specific tool is available on this plan */

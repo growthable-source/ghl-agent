@@ -160,6 +160,7 @@ model Workspace {
   retrievalEvalSets    RetrievalEvalSet[]    @relation("WorkspaceRetrievalEvalSets")
   tickets              Ticket[]              @relation("WorkspaceTickets")
   ticketingSettings    TicketingSettings?
+  copilotSessions      CopilotSession[]      @relation("WorkspaceCopilotSessions")
 
   // ─── Native (built-in) CRM ───
   // Populated only for workspaces using crmProvider='native' on their
@@ -3912,4 +3913,116 @@ model TicketingSettings {
   signature String? @db.Text
 
   updatedAt DateTime @updatedAt
+}
+
+// ─── Real-time Co-Pilot ─────────────────────────────────────────────
+//
+// Foundation models for the screen-share co-pilot (spec at
+// /Users/ryan/Downloads/vox-ai-realtime-copilot-spec.md). Translated
+// from the spec's brand_id-tenanted shape to workspaceId tenancy +
+// application-layer scoping. v0 is read-only (toolCall.isWrite flag
+// remains false for now); write-path lands in P2 without schema work.
+// All foreign keys app-enforced via workspaceId equality checks in
+// the route handlers — no RLS, matches the rest of the repo.
+
+model CopilotSession {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  startedByUserId String?
+  /// 'in_app_webrtc' (v0) | 'recall_meeting_bot' (P2 seam)
+  channel         String   @default("in_app_webrtc")
+  /// 'active' | 'ended' | 'error'
+  status          String   @default("active")
+  /// 'gemini-live' | 'gpt-realtime' — populated when the RealtimeModelProvider resolves
+  model           String?
+  roomId          String?
+  locale          String   @default("en-AU")
+  workflowKey     String?
+  startedAt       DateTime @default(now())
+  endedAt         DateTime?
+  durationSecs    Int?
+  endedReason     String?
+  // Cost telemetry — written incrementally by the runtime so unit
+  // cost per session is queryable from day one (spec §8).
+  audioInSecs     Decimal  @default(0) @db.Decimal(10, 2)
+  audioOutSecs    Decimal  @default(0) @db.Decimal(10, 2)
+  videoFrames     Int      @default(0)
+  toolCallCount   Int      @default(0)
+  metadata        Json     @default("{}")
+
+  workspace  Workspace               @relation("WorkspaceCopilotSessions", fields: [workspaceId], references: [id], onDelete: Cascade)
+  turns      CopilotTranscriptTurn[]
+  events     CopilotScreenEvent[]
+  toolCalls  CopilotToolCall[]
+  evals      CopilotEvalRecord[]
+
+  @@index([workspaceId, startedAt(sort: Desc)])
+}
+
+model CopilotTranscriptTurn {
+  id          String   @id @default(cuid())
+  sessionId   String
+  workspaceId String
+  /// 'user' | 'agent' | 'system' | 'tool'
+  role        String
+  text        String?  @db.Text
+  tokens      Int?
+  ts          DateTime @default(now())
+
+  session CopilotSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  evals   CopilotEvalRecord[]
+
+  @@index([sessionId, ts])
+}
+
+model CopilotScreenEvent {
+  id              String   @id @default(cuid())
+  sessionId       String
+  workspaceId     String
+  visionSummary   String?  @db.Text
+  detectedContext Json     @default("{}")
+  /// NULL by default — raw-frame retention is off unless explicitly enabled (spec §11)
+  frameRef        String?
+  ts              DateTime @default(now())
+
+  session CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, ts])
+}
+
+model CopilotToolCall {
+  id            String   @id @default(cuid())
+  sessionId     String
+  workspaceId   String
+  toolName      String
+  args          Json     @default("{}")
+  resultSummary String?  @db.Text
+  /// v0 reads only; P2 write-path flips this true and requires confirmedBy
+  isWrite       Boolean  @default(false)
+  confirmedBy   String?
+  latencyMs     Int?
+  ts            DateTime @default(now())
+
+  session CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, ts])
+}
+
+model CopilotEvalRecord {
+  id                    String   @id @default(cuid())
+  sessionId             String
+  workspaceId           String
+  turnId                String?
+  /// 'turn' | 'session'
+  scope                 String
+  /// 'helpful' | 'neutral' | 'harmful' — mirrors RetrievalEvalResult rubric
+  groundingFaithfulness String?
+  taskSuccess           Boolean?
+  notes                 String?  @db.Text
+  ts                    DateTime @default(now())
+
+  session CopilotSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  turn    CopilotTranscriptTurn? @relation(fields: [turnId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
 }
