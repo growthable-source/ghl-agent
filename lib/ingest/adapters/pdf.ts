@@ -81,6 +81,22 @@ export const pdfAdapter: SourceAdapter = {
     const payload = raw.raw as RawPdfPayload
     if (!payload?.buffer) throw new Error('pdf adapter: empty raw payload')
 
+    // Plain-text uploads (.txt / .md) ride this same adapter — the
+    // unified upload flow stores every file kind under sourceType
+    // 'pdf' (display label "File"). Text needs no extraction: decode
+    // and hand it to the shared chunker, which understands markdown
+    // headings natively.
+    if (/\.(txt|md|markdown)$/i.test(payload.filename)) {
+      const text = new TextDecoder('utf-8').decode(payload.buffer).trim()
+      if (!text) throw new Error('file adapter: text file was empty')
+      return {
+        identifier: raw.identifier,
+        sourceUrl: raw.identifier,
+        markdown: text,
+        metadata: { original_filename: payload.filename, file_kind: 'text' },
+      }
+    }
+
     // Dynamic import so a missing dep surfaces only when a PDF source
     // actually ingests — the rest of the pipeline keeps building.
     let extractText: (data: Uint8Array | ArrayBuffer) => Promise<{ totalPages: number; text: string[] }>

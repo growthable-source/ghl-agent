@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import SourcesPanel from '@/components/knowledge/SourcesPanel'
 
 interface Collection {
   id: string
@@ -78,12 +79,23 @@ export default function WorkspaceKnowledgePage() {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-5xl mx-auto p-8">
-        <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Knowledge</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Paste a link or drop a file — your AI learns it in the background and keeps it fresh
+            automatically. Every agent in this workspace can use it straight away.
+          </p>
+        </div>
+
+        {/* The simple path: paste anything → background ingestion →
+            auto re-checking. Backed by the indexing pipeline. */}
+        <SourcesPanel workspaceId={workspaceId} />
+
+        <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Knowledge</h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-              Build named Collections — bundles of FAQs, files, web pages, Notion docs, YouTube transcripts, and live data sources.
-              Stack collections onto agents to give them context.
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Written knowledge</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              Hand-written notes, FAQs and Q&amp;A pairs, organised into collections you can attach per agent.
             </p>
           </div>
           <button
