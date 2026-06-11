@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { COPILOT_DEFAULTS } from '@/lib/copilot/config'
-import { getWorkspaceSetupState } from '@/lib/copilot/setup-state'
-import { getWorkflow } from '@/lib/copilot/workflows'
+import { endCopilotSession } from '@/lib/copilot/session-service'
 
 /**
  * Sweep abandoned Co-Pilot sessions.
@@ -14,13 +13,15 @@ import { getWorkflow } from '@/lib/copilot/workflows'
  * "active sessions" count. This sweep closes sessions that have been
  * running past the max duration plus a grace window.
  *
- * Swept sessions still get the auto task_success eval record (same
- * check the PATCH path runs) so abandoned sessions don't silently
- * drop out of the §12 task-success metric.
+ * Uses the shared endCopilotSession, so swept sessions get the same
+ * post-session treatment as clean ends: workflow-goal eval (staff),
+ * Haiku transcript analysis, and an auto-ticket when the visitor's
+ * issue went unresolved — abandoned sessions are MORE likely to be
+ * unresolved, so skipping them would bias the §12 metric upward.
  */
 
 const GRACE_SECS = 300
-const MAX_PER_RUN = 100
+const MAX_PER_RUN = 25
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
@@ -32,42 +33,18 @@ export async function GET(req: NextRequest) {
   const cutoff = new Date(Date.now() - (COPILOT_DEFAULTS.maxSessionSecs + GRACE_SECS) * 1000)
   const stale = await db.copilotSession.findMany({
     where: { status: 'active', startedAt: { lt: cutoff } },
-    select: { id: true, workspaceId: true, workflowKey: true, startedAt: true },
+    select: { id: true },
     take: MAX_PER_RUN,
   })
 
   let swept = 0
   for (const session of stale) {
-    const endedAt = new Date()
-    await db.copilotSession.update({
-      where: { id: session.id },
-      data: {
-        status: 'ended',
-        endedAt,
-        endedReason: 'stale_sweep',
-        // Cap at the ceiling — the user wasn't actually live for the
-        // whole wall-clock gap, and cost counters already reflect the
-        // real streamed seconds.
-        durationSecs: COPILOT_DEFAULTS.maxSessionSecs,
-      },
-    })
     try {
-      const state = await getWorkspaceSetupState(session.workspaceId)
-      const workflow = getWorkflow(session.workflowKey)
-      const taskSuccess = workflow.goalReached(state)
-      await db.copilotEvalRecord.create({
-        data: {
-          sessionId: session.id,
-          workspaceId: session.workspaceId,
-          scope: 'session',
-          taskSuccess,
-          notes: `auto (stale sweep): workflow=${workflow.key} goal ${taskSuccess ? 'reached' : 'not reached'}`,
-        },
-      })
+      await endCopilotSession(session.id, 'stale_sweep')
+      swept++
     } catch (err) {
-      console.error(`[Copilot sweep] eval failed for ${session.id}:`, err)
+      console.error(`[Copilot sweep] failed for ${session.id}:`, err)
     }
-    swept++
   }
 
   return NextResponse.json({ ok: true, swept })

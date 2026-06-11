@@ -32,6 +32,22 @@ export async function GET(req: NextRequest, { params }: Params) {
     ? renderMergeFields(w.welcomeMessage, { contact: null, agent: null, timezone: null })
     : w.welcomeMessage
 
+  // Live screen-share help (Co-Pilot) — workspace plan gate. The
+  // embed only renders the button when this is true; the session
+  // endpoint re-checks server-side.
+  let liveHelpEnabled = false
+  try {
+    const { db } = await import('@/lib/db')
+    const { canUseCopilot } = await import('@/lib/plans')
+    const workspace = await db.workspace.findUnique({
+      where: { id: w.workspaceId },
+      select: { plan: true },
+    })
+    liveHelpEnabled = !!workspace && canUseCopilot(workspace.plan, w.workspaceId)
+  } catch {
+    liveHelpEnabled = false
+  }
+
   return NextResponse.json({
     id: w.id,
     name: w.name,
@@ -52,5 +68,6 @@ export async function GET(req: NextRequest, { params }: Params) {
     requireEmail: w.requireEmail,
     askForNameEmail: w.askForNameEmail,
     voiceEnabled: w.voiceEnabled || w.type === 'click_to_call',
+    liveHelpEnabled,
   }, { headers })
 }

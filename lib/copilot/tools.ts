@@ -25,6 +25,21 @@ import { getWorkspaceSetupState, describeSetupState } from './setup-state'
 import { getWorkflow, describeWorkflowProgress } from './workflows'
 import type { RealtimeToolDef } from './types'
 
+const QUERY_KNOWLEDGE_DEF: RealtimeToolDef = {
+  name: 'query_knowledge',
+  description:
+    'Search the knowledge base for documented facts — product how-tos, policies, ' +
+    'feature documentation. Call this before answering any question that needs ' +
+    'specifics you have not verified. Returns ranked snippets.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'The question, restated naturally' },
+    },
+    required: ['query'],
+  },
+}
+
 export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
   {
     name: 'get_workspace_setup_state',
@@ -36,21 +51,25 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
       'confirm progress. Never guess at workspace state.',
     parameters: { type: 'object', properties: {} },
   },
-  {
-    name: 'query_knowledge',
-    description:
-      'Search this workspace’s knowledge base for documented facts — product ' +
-      'how-tos, policies, feature documentation. Call this before answering any ' +
-      'question that needs specifics you have not verified. Returns ranked snippets.',
-    parameters: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'The question, restated naturally' },
-      },
-      required: ['query'],
-    },
-  },
+  QUERY_KNOWLEDGE_DEF,
 ]
+
+/**
+ * Visitor-facing widget sessions get knowledge retrieval ONLY. The
+ * setup-state tool reads internal workspace configuration (plans,
+ * channel wiring, CRM status) — operator-facing data that must never
+ * be exposed to an end customer through their own chat widget.
+ */
+export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF]
+
+export interface CopilotToolContext {
+  workspaceId: string
+  workflowKey: string | null
+  /** 'staff' (dashboard) | 'widget' (visitor-facing). Widget mode blocks internal-state tools. */
+  mode: 'staff' | 'widget'
+  /** Knowledge-domain scope for retrieval. Empty/undefined = workspace-wide. */
+  knowledgeDomainIds?: string[]
+}
 
 /**
  * Execute one tool call. Returns a plain-text result the model can
@@ -60,18 +79,27 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
 export async function executeCopilotTool(
   name: string,
   args: Record<string, unknown>,
-  ctx: { workspaceId: string; workflowKey: string | null },
+  ctx: CopilotToolContext,
 ): Promise<string> {
   try {
     switch (name) {
       case 'get_workspace_setup_state': {
+        // Internal workspace config — staff only. A widget session
+        // requesting it (which shouldn't happen; it isn't declared
+        // there) gets a refusal, not data.
+        if (ctx.mode !== 'staff') {
+          return 'That information is not available in this session.'
+        }
         const state = await getWorkspaceSetupState(ctx.workspaceId)
         const workflow = getWorkflow(ctx.workflowKey)
         return `${describeSetupState(state)}\n\n${describeWorkflowProgress(workflow, state)}`
       }
       case 'query_knowledge': {
         const query = typeof args.query === 'string' ? args.query : ''
-        const chunks = await retrieveChunks(ctx.workspaceId, query, { limit: 5 })
+        const chunks = await retrieveChunks(ctx.workspaceId, query, {
+          limit: 5,
+          knowledgeDomainIds: ctx.knowledgeDomainIds,
+        })
         if (chunks.length === 0) {
           return 'No documented answer found in the knowledge base. Say so honestly rather than improvising specifics.'
         }
@@ -81,7 +109,7 @@ export async function executeCopilotTool(
           .slice(0, 6000)
       }
       default:
-        return `Unknown tool "${name}". Available: get_workspace_setup_state, query_knowledge.`
+        return `Unknown tool "${name}".`
     }
   } catch (err) {
     console.error(`[Copilot tool] ${name} failed:`, err)

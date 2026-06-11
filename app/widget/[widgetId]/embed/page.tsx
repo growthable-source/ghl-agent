@@ -18,6 +18,7 @@ interface WidgetConfig {
   requireEmail: boolean
   askForNameEmail: boolean
   voiceEnabled: boolean
+  liveHelpEnabled?: boolean
 }
 
 interface Msg {
@@ -789,6 +790,23 @@ export default function WidgetEmbedPage() {
           <p className="text-sm font-semibold truncate">{config.title}</p>
           <p className="text-[11px] text-zinc-400 truncate">{config.subtitle}</p>
         </div>
+        {config.liveHelpEnabled && (
+          // Live screen-share help opens in a NEW TAB — screen-capture
+          // permission prompts inside the embed iframe depend on each
+          // host site's iframe allow-list; a tab we own always works.
+          <a
+            href={`/widget/${widgetId}/live?pk=${encodeURIComponent(publicKey)}&cid=${encodeURIComponent(getCookieId())}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+            title="Get live help on a screen share"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <rect x="2" y="4" width="20" height="13" rx="2" />
+              <path strokeLinecap="round" d="M8 21h8M12 17v4" />
+            </svg>
+          </a>
+        )}
         {config.voiceEnabled && (
           <button
             onClick={() => setVoiceOpen(true)}
