@@ -19,6 +19,7 @@ const CADENCE_MIN: Record<string, number> = {
   'process-simulations': 1,
   'native-outbox': 1,
   'ingest-queue': 1,
+  'process-copilot-recordings': 1,
   'copilot-stale-sessions': 10,
   'refresh-tokens': 30,
   recrawl: 60,

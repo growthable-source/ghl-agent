@@ -10,10 +10,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { after } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
+
+// after() inherits this budget, so the inline kickoff can finish even
+// a multi-minute video analysis rather than being cut off at the
+// default ~15s and leaving a half-processed row for the cron to mop up.
+export const maxDuration = 300
 
 const MAX_BYTES = 500 * 1024 * 1024 // 500 MB — screen recordings are big
 // Recordings (teach phrasing + on-screen navigation) AND documents
@@ -55,6 +61,27 @@ export async function POST(req: NextRequest, { params }: Params) {
       originalFilename: file.name,
       status: 'queued',
     },
+  })
+
+  // Start processing IMMEDIATELY rather than waiting up to 60s for the
+  // next cron tick — that gap made the row sit at "Waiting to
+  // process…" with no sign of life. after() keeps the function alive
+  // past the response on Vercel; the cron remains the backstop if this
+  // instance is frozen/killed before it finishes (the recording stays
+  // 'queued' and the next tick claims it). claim is compare-and-swap
+  // so the two paths can't double-process.
+  after(async () => {
+    try {
+      const claimed = await db.copilotRecording.updateMany({
+        where: { id: rec.id, status: 'queued' },
+        data: { status: 'processing' },
+      })
+      if (claimed.count === 0) return // cron beat us to it
+      const { processRecording } = await import('@/lib/copilot/recordings')
+      await processRecording(rec.id)
+    } catch (err) {
+      console.error('[recordings] inline processing kickoff failed:', err instanceof Error ? err.message : err)
+    }
   })
 
   return NextResponse.json({ recordingId: rec.id })

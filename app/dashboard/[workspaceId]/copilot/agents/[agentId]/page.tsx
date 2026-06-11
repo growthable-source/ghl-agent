@@ -126,8 +126,8 @@ export default function CopilotAgentEditor() {
   if (!agent) return null
 
   const recStatus = (r: Recording) => {
-    if (r.status === 'queued') return { label: 'Waiting to process…', color: 'var(--text-tertiary)' }
-    if (r.status === 'processing') return { label: 'Reading & learning…', color: 'var(--accent-amber)' }
+    if (r.status === 'queued') return { label: 'Starting…', color: 'var(--accent-amber)' }
+    if (r.status === 'processing') return { label: 'Reading & learning (this can take a minute or two)…', color: 'var(--accent-amber)' }
     if (r.status === 'failed') return { label: r.error || 'Failed', color: 'var(--accent-red)' }
     return { label: r.hasWalkthrough ? 'Learned — incl. screen navigation' : 'Learned', color: 'var(--accent-emerald)' }
   }
