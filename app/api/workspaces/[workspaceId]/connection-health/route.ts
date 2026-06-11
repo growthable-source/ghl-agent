@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const locations = await db.location.findMany({
     where: { workspaceId, crmProvider: { not: 'none' } },
-    select: { id: true, expiresAt: true },
+    select: { id: true, expiresAt: true, tokenRefreshFailedAt: true },
   })
 
   if (locations.length === 0) {
@@ -34,25 +34,33 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   const now = Date.now()
-  const oneHourMs = 60 * 60 * 1000
-  const staleLocations = locations.filter(l => l.expiresAt.getTime() < now)
-  const nearExpiryLocations = locations.filter(l => {
-    const t = l.expiresAt.getTime()
-    return t >= now && t < now + oneHourMs
-  })
+  const NINETY_MIN_MS = 90 * 60 * 1000
 
-  // Customer-friendly status, no internal detail exposed:
-  //   - "healthy"     → nothing to show
-  //   - "needs_attention" → stale tokens detected; suggest reconnect
-  //   - "refreshing"  → tokens near-expiry, refresh cron should handle it
-  if (staleLocations.length > 0) {
+  // The banner should fire ONLY for genuinely-dead connections — a
+  // refresh that returned invalid_grant, which the cron records in
+  // tokenRefreshFailedAt. A token that's merely expired (or near
+  // expiry) self-heals on the next 30-minute refresh tick and must
+  // NOT alarm the user; alarming on every expiry produced stale
+  // "needs refresh" banners that never cleared and trained users to
+  // ignore the warning.
+  const deadLocations = locations.filter(l => l.tokenRefreshFailedAt != null)
+  if (deadLocations.length > 0) {
+    return NextResponse.json({
+      status: 'needs_attention',
+      message: 'Your LeadConnector connection has expired and needs reconnecting. Reconnect from Integrations to get your agents replying again.',
+    })
+  }
+
+  // Belt-and-braces: a token expired for well over a full refresh
+  // cycle (90 min) with NO failure flag means the cron isn't running
+  // or hasn't reached it — still worth a soft nudge.
+  const longStale = locations.filter(l => l.expiresAt.getTime() < now - NINETY_MIN_MS)
+  if (longStale.length > 0) {
     return NextResponse.json({
       status: 'needs_attention',
       message: 'Your LeadConnector connection may need a refresh. If agents stop replying, reconnect from Integrations.',
     })
   }
-  if (nearExpiryLocations.length > 0) {
-    return NextResponse.json({ status: 'refreshing', message: null })
-  }
+
   return NextResponse.json({ status: 'healthy', message: null })
 }

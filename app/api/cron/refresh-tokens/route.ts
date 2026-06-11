@@ -59,14 +59,33 @@ export async function GET(req: NextRequest) {
       const result = await refreshAccessToken(loc.id)
       if (result) {
         refreshed++
+        // Self-healed — clear any prior failure flag so the dashboard
+        // banner drops. Only writes when the flag was set.
+        await db.location
+          .updateMany({ where: { id: loc.id, tokenRefreshFailedAt: { not: null } }, data: { tokenRefreshFailedAt: null } })
+          .catch(err => console.warn(`[refresh-tokens] clear flag failed for ${loc.id}:`, err?.message))
       } else {
         failed++
         failures.push({ id: loc.id, reason: 'refresh returned null — likely invalid_grant, user must reconnect' })
+        // Genuinely dead refresh token. Stamp it so the banner can say
+        // "reconnect required" instead of false-alarming on every
+        // merely-expired token. Stamp once (don't overwrite the
+        // first-failure time on repeat ticks).
+        await db.location
+          .updateMany({ where: { id: loc.id, tokenRefreshFailedAt: null }, data: { tokenRefreshFailedAt: new Date() } })
+          .catch(err => console.warn(`[refresh-tokens] set flag failed for ${loc.id}:`, err?.message))
       }
     } catch (err: any) {
       failed++
       failures.push({ id: loc.id, reason: err?.message ?? 'unknown' })
+      // Transient (timeout/5xx after retries) — do NOT stamp as dead;
+      // a network blip shouldn't tell the user to reconnect. The next
+      // tick retries. Only a clean null return (invalid_grant) stamps.
     }
+  }
+
+  if (failed > 0) {
+    console.error(`[refresh-tokens] ${failed}/${candidates.length} refresh(es) failed this tick:`, JSON.stringify(failures.slice(0, 10)))
   }
 
   return NextResponse.json({

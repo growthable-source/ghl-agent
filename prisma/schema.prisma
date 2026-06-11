@@ -487,6 +487,13 @@ model Location {
   installedAt           DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
   onboardingCompletedAt DateTime?
+  // Set by the refresh-tokens cron when a proactive refresh genuinely
+  // fails (invalid_grant / exhausted retries) — i.e. the refresh token
+  // is dead and only a reconnect fixes it. Cleared on any successful
+  // refresh or fresh OAuth. This is what lets the dashboard banner say
+  // "reconnect required" ONLY for genuinely-dead connections instead of
+  // false-alarming on tokens that are merely expired and self-healing.
+  tokenRefreshFailedAt  DateTime?
 
   agents                   Agent[]
   messageLogs              MessageLog[]

@@ -21,6 +21,10 @@ export interface AgentResponse {
   toolCallTrace: ToolCallEntry[]
   /** When deferSend=true and the agent tried to send something, captures what it wanted to send. */
   deferredCapture?: DeferredSendCapture['captured']
+  /** Set when the run ended without a reply for a non-content reason
+   *  the caller should treat as "leave it for next time", not a hard
+   *  failure. 'model_unavailable' = Anthropic was down after retries. */
+  skipped?: 'model_unavailable'
 }
 
 export interface AgentAttachment {

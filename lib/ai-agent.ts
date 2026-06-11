@@ -796,7 +796,25 @@ export async function runAgent(opts: {
     if (toolChoice) createParams.tool_choice = toolChoice
     if (mcpServersParam.length > 0) createParams.mcp_servers = mcpServersParam
 
-    const response = await client.messages.create(createParams)
+    let response: Awaited<ReturnType<typeof client.messages.create>>
+    try {
+      const { createMessageWithRetry } = await import('./anthropic-resilient')
+      response = await createMessageWithRetry(client, createParams as Parameters<typeof createMessageWithRetry>[1])
+    } catch (err: any) {
+      // Anthropic was unreachable/overloaded after retries. Do NOT
+      // crash the webhook with a 500 (silent to the visitor) — return
+      // a structured "skipped" result so the channel handler can leave
+      // the message unanswered for the next inbound or a human, rather
+      // than dropping it into a void. The conversation stays intact.
+      console.error(`[Agent] Anthropic call failed after retries (status ${err?.status ?? 'network'}):`, err?.message)
+      return {
+        reply: null,
+        actionsPerformed,
+        tokensUsed: totalInputTokens + totalOutputTokens,
+        toolCallTrace,
+        skipped: 'model_unavailable',
+      } as AgentResponse
+    }
 
     // Log MCP tool calls (executed by Anthropic's backend, not our loop)
     try {

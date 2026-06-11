@@ -63,6 +63,10 @@ export async function saveTokens(key: string, data: OAuthTokenResponse): Promise
       refreshTokenId: data.refreshTokenId,
       expiresAt,
       scope: data.scope,
+      // Any successful save (fresh OAuth or a rotated refresh) means the
+      // connection is healthy again — clear the dead-token flag so the
+      // dashboard reconnect banner drops immediately.
+      tokenRefreshFailedAt: null,
     },
   })
 

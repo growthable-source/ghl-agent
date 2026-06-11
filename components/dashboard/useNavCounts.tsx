@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useState } from 'react'
+import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 /**
  * Cross-sidebar nav-badge counts — polls the workspace's attention-
@@ -27,35 +28,34 @@ const POLL_INTERVAL_MS = 30_000
 export function NavCountsProvider({ workspaceId, children }: { workspaceId: string | null; children: React.ReactNode }) {
   const [counts, setCounts] = useState<NavCounts>(EMPTY)
 
-  useEffect(() => {
-    if (!workspaceId || workspaceId === 'undefined') { setCounts(EMPTY); return }
-    let cancelled = false
-
-    async function refresh() {
-      // Parallel fetches — neither blocks the other, a failure on one
-      // endpoint leaves the other's badge intact rather than wiping both.
-      const [needs, approvals, inbox] = await Promise.all([
-        fetch(`/api/workspaces/${workspaceId}/needs-attention`)
-          .then(r => r.ok ? r.json() : null)
-          .then(d => (d?.items?.length ?? null) as number | null)
-          .catch(() => null),
-        fetch(`/api/workspaces/${workspaceId}/approvals?status=pending&count=1`)
-          .then(r => r.ok ? r.json() : null)
-          .then(d => (typeof d?.count === 'number' ? d.count : d?.items?.length ?? null) as number | null)
-          .catch(() => null),
-        fetch(`/api/workspaces/${workspaceId}/inbox/unread-count`)
-          .then(r => r.ok ? r.json() : null)
-          .then(d => (typeof d?.count === 'number' ? d.count : null) as number | null)
-          .catch(() => null),
-      ])
-      if (cancelled) return
-      setCounts({ needsAttention: needs, approvalsPending: approvals, inboxUnread: inbox })
+  const refresh = useCallback(async () => {
+    if (!workspaceId || workspaceId === 'undefined') {
+      setCounts(EMPTY)
+      return
     }
-
-    refresh()
-    const id = setInterval(refresh, POLL_INTERVAL_MS)
-    return () => { cancelled = true; clearInterval(id) }
+    // Parallel fetches — neither blocks the other, a failure on one
+    // endpoint leaves the other's badge intact rather than wiping both.
+    const [needs, approvals, inbox] = await Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/needs-attention`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => (d?.items?.length ?? null) as number | null)
+        .catch(() => null),
+      fetch(`/api/workspaces/${workspaceId}/approvals?status=pending&count=1`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => (typeof d?.count === 'number' ? d.count : (d?.items?.length ?? null)) as number | null)
+        .catch(() => null),
+      fetch(`/api/workspaces/${workspaceId}/inbox/unread-count`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => (typeof d?.count === 'number' ? d.count : null) as number | null)
+        .catch(() => null),
+    ])
+    setCounts({ needsAttention: needs, approvalsPending: approvals, inboxUnread: inbox })
   }, [workspaceId])
+
+  // Visibility-aware: stops polling in backgrounded tabs (this runs on
+  // EVERY dashboard page, so a forever-interval was the single biggest
+  // source of idle API load + battery drain), refreshes on return.
+  useBackgroundPolling(refresh, POLL_INTERVAL_MS, !!workspaceId && workspaceId !== 'undefined')
 
   return <Ctx.Provider value={counts}>{children}</Ctx.Provider>
 }

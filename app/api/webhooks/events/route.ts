@@ -42,14 +42,38 @@ import {
   type WebhookMessagePayload,
 } from '@/types'
 
-// ─── Optional: verify webhook signature ───────────────────────────────────
+// ─── Webhook signature verification ────────────────────────────────────────
+//
+// Same posture as the Resend inbound webhook: WEBHOOK_SECRET unset =
+// accept (local dev / pre-config); SET = enforce a real HMAC-SHA256
+// over the raw body. Previously this function ALWAYS returned true even
+// when a secret was configured — an operator who set the secret got
+// zero protection and the endpoint accepted forged events from anyone
+// who knew the URL. Now setting the secret means the upstream MUST sign
+// `x-webhook-signature` = hex(HMAC_SHA256(rawBody, WEBHOOK_SECRET)),
+// otherwise the event is rejected 401.
+
+import { createHmac, timingSafeEqual } from 'crypto'
 
 function verifySignature(req: NextRequest, rawBody: string): boolean {
   const secret = process.env.WEBHOOK_SECRET
-  if (!secret) return true // Skip if not configured
-  const signature = req.headers.get('x-webhook-signature')
-  // Implement HMAC verification here if your provider sends signatures
-  return true
+  if (!secret) return true // not configured — accept (dev / pre-enforcement)
+
+  const provided = req.headers.get('x-webhook-signature') ?? ''
+  if (!provided) {
+    console.warn('[Webhook] WEBHOOK_SECRET set but request carried no x-webhook-signature — rejecting')
+    return false
+  }
+  // Accept either "sha256=<hex>" or a bare hex digest.
+  const providedHex = provided.replace(/^sha256=/i, '').trim().toLowerCase()
+  const expectedHex = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex')
+  try {
+    const a = Buffer.from(providedHex, 'hex')
+    const b = Buffer.from(expectedHex, 'hex')
+    return a.length === b.length && timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
 }
 
 // ─── Handler ───────────────────────────────────────────────────────────────
