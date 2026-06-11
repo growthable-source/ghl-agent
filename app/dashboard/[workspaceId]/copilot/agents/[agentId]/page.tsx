@@ -160,11 +160,11 @@ export default function CopilotAgentEditor() {
           ← Co-Pilot agents
         </Link>
         <Link
-          href={`/dashboard/${workspaceId}/copilot?agent=${agentId}`}
+          href={`/dashboard/${workspaceId}/copilot/run?agent=${agentId}`}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
           style={{ background: 'var(--accent-primary)' }}
         >
-          Start a session as this agent
+          Start session
         </Link>
       </div>
 

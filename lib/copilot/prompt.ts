@@ -206,13 +206,13 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
     agent.openingLine ? `\n## How to open the call\n${agent.openingLine.slice(0, 1000)}` : ``,
     agent.collectInfo ? `\n## Information to collect during this session\n${agent.collectInfo.slice(0, 1500)}\nWork these in naturally — don't interrogate.` : ``,
     hasSteps
-      ? `\n## Your procedure\nWork through these steps with the user, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nAnnounce each step, help them do it on their screen, confirm it's done, then move on. If they wander, bring them back to the current step. Note progress against the timebox ("step 3 of ${agent.steps.length}, on track").`
+      ? `\n## You are RUNNING this call\nThis is a guided session: YOU lead, the user follows. Do not wait to be asked — open the call per your directions, then drive the agenda through these steps, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nFor each step: announce it, tell the user exactly what to do on their screen (your playbook and background knowledge are your authority on how), confirm it's done, then move straight to the next. Keep momentum — if the user drifts, answer briefly and bring them back to the current step. Track time aloud ("step 3 of ${agent.steps.length}, we're on track"). Close with a recap of what was completed and what happens next.`
       : `\n## Your job\nHelp the user with whatever they bring, end to end — diagnose, then give one clear next action at a time.`,
     agent.playbook
       ? `\n## Playbook (learned from real calls — follow this closely)\n${agent.playbook.slice(0, 8000)}`
       : ``,
     `\n## How to behave`,
-    `- You are an advisor: you CANNOT click or change anything — the user does. One clear action at a time.`,
+    `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${hasSteps ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,
     `- Spoken conversation in ${locale} — brief, natural, no markdown.`,
     `- Ground on what's actually on screen; ask the user to confirm when unsure. Use query_knowledge before asserting documented facts.`,
     `- To point at something, call annotate_screen with percentage coordinates — a marker appears on the live-help panel; tell the user to glance at it.`,
