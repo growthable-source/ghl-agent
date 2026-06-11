@@ -55,6 +55,10 @@
     {
       "path": "/api/cron/agent-reference-health",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/copilot-stale-sessions",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
