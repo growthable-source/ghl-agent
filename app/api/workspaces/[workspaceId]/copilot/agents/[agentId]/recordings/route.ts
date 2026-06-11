@@ -16,7 +16,11 @@ import { db } from '@/lib/db'
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
 const MAX_BYTES = 500 * 1024 * 1024 // 500 MB — screen recordings are big
-const ALLOWED = /\.(mp4|mov|webm|mkv|mp3|m4a|wav|ogg|aac)$/i
+// Recordings (teach phrasing + on-screen navigation) AND documents
+// (an SOP PDF with screenshots teaches the same; md/txt teach the
+// step content). All feed the same playbook distillation — Gemini
+// reads PDF pages incl. embedded screenshots natively.
+const ALLOWED = /\.(mp4|mov|webm|mkv|mp3|m4a|wav|ogg|aac|pdf|md|markdown|txt)$/i
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId, agentId } = await params
@@ -30,7 +34,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const file = form?.get('file')
   if (!(file instanceof File)) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
   if (!ALLOWED.test(file.name)) {
-    return NextResponse.json({ error: 'Unsupported file — upload an audio or video recording (mp4, mov, webm, mp3, m4a, wav…).' }, { status: 400 })
+    return NextResponse.json({ error: 'Unsupported file — upload a recording (mp4, mov, webm, mp3, wav…) or a document (PDF, Markdown, txt).' }, { status: 400 })
   }
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: `Recording is too large (${Math.round(file.size / 1024 / 1024)} MB). The limit is 500 MB.` }, { status: 400 })

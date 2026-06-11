@@ -127,9 +127,9 @@ export default function CopilotAgentEditor() {
 
   const recStatus = (r: Recording) => {
     if (r.status === 'queued') return { label: 'Waiting to process…', color: 'var(--text-tertiary)' }
-    if (r.status === 'processing') return { label: 'Learning from this call…', color: 'var(--accent-amber)' }
+    if (r.status === 'processing') return { label: 'Reading & learning…', color: 'var(--accent-amber)' }
     if (r.status === 'failed') return { label: r.error || 'Failed', color: 'var(--accent-red)' }
-    return { label: r.hasWalkthrough ? 'Learned (audio + screen)' : 'Learned (audio)', color: 'var(--accent-emerald)' }
+    return { label: r.hasWalkthrough ? 'Learned — incl. screen navigation' : 'Learned', color: 'var(--accent-emerald)' }
   }
 
   return (
@@ -193,11 +193,12 @@ export default function CopilotAgentEditor() {
 
         {/* ── Learn from recordings ── */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <h3 className="text-sm font-semibold text-zinc-100 mb-1">Learn from real calls</h3>
+          <h3 className="text-sm font-semibold text-zinc-100 mb-1">Teach it from real material</h3>
           <p className="text-xs text-zinc-400 mb-3">
-            Upload a recording of a human running this procedure — audio, or a screen recording (best). The agent
-            transcribes it, maps where the human took the user on screen, and folds it into its playbook. Upload a
-            few; it gets sharper with each.
+            Upload a <strong>recording</strong> of a human running this procedure (a screen recording is ideal), or a{' '}
+            <strong>document</strong> — an SOP as a PDF with screenshots, or a Markdown/text guide. The agent reads
+            the screens and the steps, maps where to take the user, and folds it into its playbook. Add a few; it
+            sharpens with each.
           </p>
           <button
             type="button"
@@ -205,12 +206,12 @@ export default function CopilotAgentEditor() {
             disabled={uploading}
             className="px-3.5 py-2 rounded-lg text-sm font-medium border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
           >
-            {uploading ? 'Uploading…' : 'Upload a recording'}
+            {uploading ? 'Uploading…' : 'Upload recording or document'}
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept=".mp4,.mov,.webm,.mkv,.mp3,.m4a,.wav,.ogg,.aac"
+            accept=".mp4,.mov,.webm,.mkv,.mp3,.m4a,.wav,.ogg,.aac,.pdf,.md,.markdown,.txt"
             className="hidden"
             onChange={e => {
               const f = e.target.files?.[0]

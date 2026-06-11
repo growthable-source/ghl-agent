@@ -1,5 +1,6 @@
 /**
- * Co-Pilot recording learning — turn a human call into agent behavior.
+ * Co-Pilot source learning — turn a human call OR an SOP document
+ * into agent behavior.
  *
  * The pipeline that makes "feed it recordings of real onboarding calls
  * and it learns" real, WITHOUT any neural training:
@@ -35,7 +36,7 @@ const VIDEO_MODEL = process.env.COPILOT_RECORDING_MODEL || 'gemini-2.5-flash'
 const DISTILL_MODEL = 'claude-haiku-4-5-20251001'
 const FILE_ACTIVE_TIMEOUT_MS = 90_000
 
-const EXTRACT_PROMPT = `You are analysing a recording of a human running an onboarding / support call where they guide a user through a software product, often sharing or directing the user's screen.
+const MEDIA_PROMPT = `You are analysing a recording of a human running an onboarding / support call where they guide a user through a software product, often sharing or directing the user's screen.
 
 Produce STRICT JSON, no markdown fences:
 {
@@ -44,6 +45,16 @@ Produce STRICT JSON, no markdown fences:
 }
 
 Be concise but specific about UI locations (e.g. "Settings > Integrations, the orange Connect button top-right"). The goal is a map another assistant can use to guide a future user through the same flow.`
+
+const DOC_PROMPT = `You are analysing an onboarding / support DOCUMENT (an SOP, guide, or runbook) that explains how to take a user through a software product. It may contain SCREENSHOTS with captions and step-by-step text.
+
+Produce STRICT JSON, no markdown fences:
+{
+  "transcript": "the document's instructional content as clean prose — the steps, explanations, and any tips, in order",
+  "walkthrough": "a navigation map derived from the screenshots + text — each line like '<step> — <page/screen shown> → <action> (<what to click / where it is>)'. Read the screenshots: note which screen each one shows and what UI element it highlights. If there are no screenshots, write 'TEXT ONLY — no screenshots' and leave this empty."
+}
+
+Be specific about UI locations visible in the screenshots (e.g. "the Integrations card, orange Connect button top-right"). The goal is a map another assistant can use to guide a future user through the same flow.`
 
 export async function processRecording(recordingId: string): Promise<void> {
   const rec = await db.copilotRecording.findUnique({ where: { id: recordingId } })
@@ -60,12 +71,32 @@ export async function processRecording(recordingId: string): Promise<void> {
 
   await db.copilotRecording.update({ where: { id: recordingId }, data: { status: 'processing', error: null } })
 
+  const ext = (rec.originalFilename.toLowerCase().split('.').pop() ?? '')
+  const isPlainText = ext === 'md' || ext === 'markdown' || ext === 'txt'
+  const isDocument = isPlainText || ext === 'pdf'
+
   try {
-    // Blob → bytes → Gemini Files API.
     const { head } = await import('@vercel/blob')
     const info = await head(rec.storageKey)
     const fileRes = await fetch(info.url)
-    if (!fileRes.ok) throw new Error(`could not fetch recording blob (${fileRes.status})`)
+    if (!fileRes.ok) throw new Error(`could not fetch blob (${fileRes.status})`)
+
+    // Plain-text docs need no model vision pass — the text IS the
+    // content; there are no screenshots to read.
+    if (isPlainText) {
+      const text = await fileRes.text()
+      await db.copilotRecording.update({
+        where: { id: recordingId },
+        data: { status: 'done', transcript: text.slice(0, 60_000) || null, walkthrough: 'TEXT ONLY — no screenshots' },
+      })
+      await distillPlaybook(rec.agentId).catch(err =>
+        console.warn('[sources] distill after process failed:', err instanceof Error ? err.message : err),
+      )
+      return
+    }
+
+    // PDF + audio + video → Gemini Files API (Gemini reads PDF pages
+    // including embedded screenshots natively).
     const bytes = new Uint8Array(await fileRes.arrayBuffer())
     const mimeType = info.contentType || guessMime(rec.originalFilename)
 
@@ -91,7 +122,7 @@ export async function processRecording(recordingId: string): Promise<void> {
           role: 'user',
           parts: [
             createPartFromUri(file.uri as string, file.mimeType as string),
-            { text: EXTRACT_PROMPT },
+            { text: isDocument ? DOC_PROMPT : MEDIA_PROMPT },
           ],
         },
       ],
@@ -190,6 +221,7 @@ export async function distillPlaybook(agentId: string): Promise<void> {
 function guessMime(filename: string): string {
   const ext = filename.toLowerCase().split('.').pop() ?? ''
   const map: Record<string, string> = {
+    pdf: 'application/pdf',
     mp4: 'video/mp4',
     mov: 'video/quicktime',
     webm: 'video/webm',

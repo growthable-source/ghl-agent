@@ -39,7 +39,6 @@ export default function CopilotPage() {
   const [agents, setAgents] = useState<AgentRow[]>([])
   const [selection, setSelection] = useState<Selection>({ kind: 'general' })
   const [started, setStarted] = useState(false)
-  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     if (!workspaceId) return
@@ -58,24 +57,6 @@ export default function CopilotPage() {
     }
   }, [search, agents])
 
-  const createAgent = useCallback(async () => {
-    const name = prompt('Name your Co-Pilot agent (e.g. "Onboarding Olivia")')?.trim()
-    if (!name || !workspaceId) return
-    setCreating(true)
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, steps: [] }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (res.ok && body.agentId) {
-        window.location.href = `/dashboard/${workspaceId}/copilot/agents/${body.agentId}`
-      }
-    } finally {
-      setCreating(false)
-    }
-  }, [workspaceId])
 
   const transport = useMemo<CopilotTransport>(
     () => ({
@@ -182,15 +163,13 @@ export default function CopilotPage() {
                 href={`/dashboard/${workspaceId}/copilot/agents/${a.id}`}
               />
             ))}
-            <button
-              type="button"
-              onClick={() => void createAgent()}
-              disabled={creating}
-              className="rounded-xl border border-dashed border-zinc-700 p-4 text-left hover:bg-zinc-900/40 transition-colors disabled:opacity-50"
+            <Link
+              href={`/dashboard/${workspaceId}/copilot/new`}
+              className="rounded-xl border border-dashed border-zinc-700 p-4 text-left hover:bg-zinc-900/40 transition-colors block"
             >
               <p className="text-sm font-medium text-zinc-300">+ New Co-Pilot agent</p>
               <p className="text-xs text-zinc-500 mt-0.5">A named persona with its own steps, knowledge, and learned playbook.</p>
-            </button>
+            </Link>
           </div>
         </div>
       )}
