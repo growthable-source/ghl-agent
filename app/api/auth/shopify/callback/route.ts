@@ -153,6 +153,18 @@ export async function GET(req: NextRequest) {
     } catch (err) {
       console.error('[Shopify OAuth] webhook registration threw (non-fatal):', err)
     }
+
+    // Voice assistants bake Shopify capability in at registration —
+    // a connect AFTER registration leaves them without commerce
+    // tools ("I can't access live stock data" despite a healthy
+    // connection). Clear their assistant ids so the next call/save
+    // re-registers with the store wired in.
+    try {
+      const { resyncWorkspaceVoiceAssistants } = await import('@/lib/voice/resync')
+      await resyncWorkspaceVoiceAssistants(verified.workspaceId, 'shopify_connected')
+    } catch (err) {
+      console.error('[Shopify OAuth] voice resync threw (non-fatal):', err)
+    }
   } catch (err) {
     console.error('[Shopify OAuth] token save failed:', err)
     return errRedirect('save_failed')

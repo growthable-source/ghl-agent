@@ -99,5 +99,12 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   await markShopifyUninstalled(row.id)
+
+  // Voice assistants registered WITH commerce tools would keep
+  // offering inventory checks against a dead connection — clear
+  // their assistant ids so they re-register without the store.
+  const { resyncWorkspaceVoiceAssistants } = await import('@/lib/voice/resync')
+  await resyncWorkspaceVoiceAssistants(workspaceId, 'shopify_disconnected')
+
   return NextResponse.json({ ok: true, shop: row.id })
 }

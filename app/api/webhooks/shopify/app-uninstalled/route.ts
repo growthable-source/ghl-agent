@@ -29,8 +29,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Resolve workspace BEFORE marking uninstalled (the row survives —
+    // soft uninstall — but grab it while we're here for the resync).
+    const { db } = await import('@/lib/db')
+    const row = await db.shopifyShop.findUnique({ where: { id: shop }, select: { workspaceId: true } })
+
     await markShopifyUninstalled(shop)
     console.log(`[Shopify webhook] uninstall recorded for ${shop}`)
+
+    if (row?.workspaceId) {
+      const { resyncWorkspaceVoiceAssistants } = await import('@/lib/voice/resync')
+      await resyncWorkspaceVoiceAssistants(row.workspaceId, 'shopify_app_uninstalled')
+    }
   } catch (err: any) {
     console.error(`[Shopify webhook] uninstall: markShopifyUninstalled failed for ${shop}: ${err?.message}`)
   }
