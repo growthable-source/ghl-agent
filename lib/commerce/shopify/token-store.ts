@@ -157,6 +157,42 @@ export async function getShopifyTokenByShop(shop: string): Promise<string> {
   return refreshed.accessToken
 }
 
+/**
+ * Proactive refresh for the cron: refresh any shop whose token expires
+ * within `windowMs`. The runtime path (getShopifyConnection) already
+ * refreshes on demand within its 5-minute buffer, but that puts the
+ * refresh latency on the critical path of a live tool call — and if
+ * the refresh fails mid-conversation, the customer hears "can't check
+ * stock". Refreshing from the 30-minute cron keeps tokens warm so the
+ * conversation path almost never pays it. Returns counts for the
+ * cron's summary. Never throws.
+ */
+export async function refreshExpiringShopifyTokens(windowMs: number): Promise<{ checked: number; refreshed: number; failed: number }> {
+  let checked = 0
+  let refreshed = 0
+  let failed = 0
+  try {
+    const rows = await db.shopifyShop.findMany({
+      where: {
+        uninstalledAt: null,
+        refreshToken: { not: null },
+        expiresAt: { lt: new Date(Date.now() + windowMs) },
+      },
+      select: { id: true, refreshToken: true },
+      take: 100,
+    })
+    checked = rows.length
+    for (const row of rows) {
+      const result = await refreshShopifyToken(row.id, row.refreshToken!)
+      if (result) refreshed++
+      else failed++ // doRefresh logs the cause; 400/401 self-clears the row
+    }
+  } catch (err) {
+    console.error('[Shopify refresh] proactive sweep failed:', err)
+  }
+  return { checked, refreshed, failed }
+}
+
 // ─── Refresh, with single-flight ─────────────────────────────────────
 //
 // If two tool calls hit the same shop while the token is expired, the

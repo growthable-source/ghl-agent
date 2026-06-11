@@ -92,6 +92,17 @@ async function callVoyageWithRetry(apiKey: string, body: VoyageBody): Promise<Vo
       }
       if (!res.ok) {
         const text = await res.text().catch(() => '')
+        // Billing/auth failures get an operator-actionable message —
+        // this string lands in IngestionRun.errorLog and renders
+        // under the failed source row in the Knowledge UI, so it must
+        // say what to actually do (the Firecrawl-402 outage taught us
+        // a bare status code costs a debugging session).
+        if (res.status === 402 || res.status === 401 || res.status === 403) {
+          console.error(`[Voyage] credential/billing failure ${res.status}: ${text.slice(0, 200)}`)
+          throw new Error(
+            `Embedding provider rejected the request (${res.status}) — check the Voyage account's credits/API key. Knowledge indexing is paused until this is fixed.`,
+          )
+        }
         throw new Error(`Voyage ${res.status}: ${text.slice(0, 300)}`)
       }
       return await res.json() as VoyageResponse

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { COPILOT_DEFAULTS } from '@/lib/copilot/config'
 import { endCopilotSession } from '@/lib/copilot/session-service'
+import { recordCronRun } from '@/lib/cron-heartbeat'
 
 /**
  * Sweep abandoned Co-Pilot sessions.
@@ -47,5 +48,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  await recordCronRun('copilot-stale-sessions', true)
   return NextResponse.json({ ok: true, swept })
 }

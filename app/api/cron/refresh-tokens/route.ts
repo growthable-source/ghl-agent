@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { refreshAccessToken } from '@/lib/token-store'
+import { recordCronRun } from '@/lib/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,11 +89,19 @@ export async function GET(req: NextRequest) {
     console.error(`[refresh-tokens] ${failed}/${candidates.length} refresh(es) failed this tick:`, JSON.stringify(failures.slice(0, 10)))
   }
 
+  // Shopify shares this proactive sweep: tokens last 1h, this cron
+  // runs every 30min, so a 35-minute window keeps every active shop's
+  // token warm and off the live-conversation critical path.
+  const { refreshExpiringShopifyTokens } = await import('@/lib/commerce/shopify/token-store')
+  const shopify = await refreshExpiringShopifyTokens(35 * 60 * 1000)
+
+  await recordCronRun('refresh-tokens', true)
   return NextResponse.json({
     ok: true,
     scanned: candidates.length,
     refreshed,
     failed,
+    shopify,
     // Only expose the IDs of failures so an operator can go reconnect
     // specific workspaces. Don't log reasons per-ID here — they're
     // already in the Vercel log from the refresh function.

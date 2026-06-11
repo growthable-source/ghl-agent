@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import HandoffActionModal, { type HandoffAction } from '@/components/dashboard/HandoffActionModal'
 import { humanizePauseReason } from '@/lib/humanize-pause-reason'
+import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 interface AttentionItem {
   type: 'paused' | 'error' | 'fallback' | 'stalled'
@@ -64,10 +65,8 @@ export default function NeedsAttentionPage() {
   }, [workspaceId])
 
   useEffect(() => { fetchData() }, [fetchData])
-  useEffect(() => {
-    const i = setInterval(fetchData, 30000)
-    return () => clearInterval(i)
-  }, [fetchData])
+  // Visibility-aware: stops in backgrounded tabs, refreshes on return.
+  useBackgroundPolling(fetchData, 30000)
 
   function openAction(action: HandoffAction, item: AttentionItem) {
     if (!item.agent) return

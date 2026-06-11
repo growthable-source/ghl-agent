@@ -204,8 +204,21 @@ export async function processDueFollowUps(): Promise<number> {
       }
       processed++
     } catch (err: any) {
-      console.error(`[FollowUp] Job ${job.id} failed for contact ${job.contactId}:`, err.message)
-      await db.followUpJob.update({ where: { id: job.id }, data: { status: 'FAILED' } }).catch(() => {})
+      // Transient CRM/provider blips (rate limit, 5xx, network) should
+      // DELAY the follow-up, not kill the whole sequence — a scheduled
+      // message arriving 10 minutes late beats one silently dropped.
+      // Genuine failures (bad contact, revoked auth) still fail fast.
+      const msg: string = err?.message ?? ''
+      const transient = /\b(429|500|502|503|504)\b|rate limit|too many requests|timeout|timed out|ECONNRESET|ETIMEDOUT|fetch failed|socket hang/i.test(msg)
+      if (transient) {
+        console.warn(`[FollowUp] Job ${job.id} hit a transient error — retrying in 10min: ${msg.slice(0, 200)}`)
+        await db.followUpJob
+          .update({ where: { id: job.id }, data: { scheduledAt: new Date(Date.now() + 10 * 60 * 1000) } })
+          .catch(() => {})
+      } else {
+        console.error(`[FollowUp] Job ${job.id} failed for contact ${job.contactId}:`, msg)
+        await db.followUpJob.update({ where: { id: job.id }, data: { status: 'FAILED' } }).catch(() => {})
+      }
     }
   }
 

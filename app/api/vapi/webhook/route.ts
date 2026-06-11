@@ -34,7 +34,36 @@ interface VoiceToolContext {
  * Errors are caught and stringified so the model gets a coherent
  * response back instead of Vapi seeing "No result returned".
  */
+// Hard ceiling on any single tool's execution. The caller is ON A
+// LIVE PHONE CALL: Vapi blocks waiting for this webhook, and a CRM
+// API that hangs (LeadConnector under load does) used to hang the
+// whole call until Vapi's own ~30s timeout dropped it mid-sentence.
+// Better to give the model an honest "couldn't reach the system"
+// after 8s — it apologises and keeps the conversation alive.
+const VOICE_TOOL_TIMEOUT_MS = 8000
+
 async function runVoiceTool(
+  functionName: string,
+  params: Record<string, unknown>,
+  ctx: VoiceToolContext,
+): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<string>(resolve => {
+    timer = setTimeout(() => {
+      console.warn(`[Voice tool] ${functionName} timed out after ${VOICE_TOOL_TIMEOUT_MS}ms`)
+      resolve(
+        'The system is taking too long to respond right now. Tell the caller you could not check that just now and offer to follow up — do not invent an answer.',
+      )
+    }, VOICE_TOOL_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([runVoiceToolInner(functionName, params, ctx), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function runVoiceToolInner(
   functionName: string,
   params: Record<string, unknown>,
   ctx: VoiceToolContext,

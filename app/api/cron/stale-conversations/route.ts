@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { notify } from '@/lib/notifications'
 import { resolveHandoverLink } from '@/lib/handover-link'
 import { sendQuietCheckIn } from '@/lib/widget-check-in'
+import { recordCronRun } from '@/lib/cron-heartbeat'
 
 /**
  * GET /api/cron/stale-conversations
@@ -107,5 +108,6 @@ export async function GET(req: NextRequest) {
     }).catch(() => {})
   }
 
+  await recordCronRun('stale-conversations', true)
   return NextResponse.json({ scanned: candidates.length, paged, checkedIn })
 }

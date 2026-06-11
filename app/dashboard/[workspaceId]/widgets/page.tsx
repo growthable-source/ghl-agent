@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PlanLimitNotice, { isPlanLimitError, type PlanLimitData } from '@/components/PlanLimitNotice'
+import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 interface Widget {
   id: string
@@ -71,10 +72,8 @@ export default function WidgetsPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
   // Refresh every 15s so the live-conversation counts stay current.
-  useEffect(() => {
-    const i = setInterval(fetchAll, 15000)
-    return () => clearInterval(i)
-  }, [fetchAll])
+  // Visibility-aware: stops in backgrounded tabs, refreshes on return.
+  useBackgroundPolling(fetchAll, 15000)
 
   const filtered = useMemo(() => {
     if (activeFolder === ALL) return widgets

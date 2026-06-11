@@ -24,6 +24,21 @@ interface SendResult {
 
 const SMS_LIKE = new Set(['sms', 'whatsapp'])
 
+// Transient rail errors (rate limits, provider blips, network) get the
+// message RE-QUEUED for the next minute-tick instead of permanently
+// failed — previously one Twilio 429 silently killed a customer
+// message forever. Permanent errors (bad number, auth, validation)
+// still fail immediately. Bounded without a schema change: a message
+// still failing transiently past this age gives up for good.
+const RETRY_WINDOW_MS = 30 * 60 * 1000
+
+function isTransientSendError(error: string | undefined): boolean {
+  if (!error) return false
+  return /\b(429|500|502|503|504)\b|rate limit|too many requests|timeout|timed out|ECONNRESET|ETIMEDOUT|fetch failed|socket hang|temporarily/i.test(
+    error,
+  )
+}
+
 export async function drainNativeOutbox(opts: { workspaceId?: string; limit?: number } = {}) {
   const where: any = { status: 'queued' }
   if (opts.workspaceId) where.workspaceId = opts.workspaceId
@@ -37,6 +52,7 @@ export async function drainNativeOutbox(opts: { workspaceId?: string; limit?: nu
 
   let sent = 0
   let failed = 0
+  let requeued = 0
 
   for (const m of queued) {
     // Claim the row first so a parallel drain can't double-send. updateMany
@@ -68,15 +84,27 @@ export async function drainNativeOutbox(opts: { workspaceId?: string; limit?: nu
       })
       sent++
     } else {
-      await db.nativeMessage.update({
-        where: { id: m.id },
-        data: { status: 'failed', providerError: result.error?.slice(0, 1000) ?? null },
-      })
-      failed++
+      const withinWindow = Date.now() - m.createdAt.getTime() < RETRY_WINDOW_MS
+      if (isTransientSendError(result.error) && withinWindow) {
+        // Back to the queue — the every-minute drain retries it.
+        await db.nativeMessage.update({
+          where: { id: m.id },
+          data: { status: 'queued', providerError: `transient, will retry: ${result.error?.slice(0, 900)}` },
+        })
+        requeued++
+        console.warn(`[native-outbox] transient failure on ${m.id} (${m.channel}) — requeued: ${result.error?.slice(0, 200)}`)
+      } else {
+        await db.nativeMessage.update({
+          where: { id: m.id },
+          data: { status: 'failed', providerError: result.error?.slice(0, 1000) ?? null },
+        })
+        failed++
+        console.error(`[native-outbox] message ${m.id} (${m.channel}) permanently failed: ${result.error?.slice(0, 300)}`)
+      }
     }
   }
 
-  return { picked: queued.length, sent, failed }
+  return { picked: queued.length, sent, failed, requeued }
 }
 
 // ─── Twilio ──────────────────────────────────────────────────────────────

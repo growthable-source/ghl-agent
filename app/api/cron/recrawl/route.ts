@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ingestSource } from '@/lib/ingest/pipeline'
+import { recordCronRun } from '@/lib/cron-heartbeat'
 
 /**
  * GET /api/cron/recrawl
@@ -60,5 +61,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  await recordCronRun('recrawl', true)
   return NextResponse.json({ checked: candidates.length, ranIngest: results.length, results })
 }

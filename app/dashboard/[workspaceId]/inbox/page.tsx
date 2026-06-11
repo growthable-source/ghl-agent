@@ -5,6 +5,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
 import { isNotificationSoundMuted, setNotificationSoundMuted, playNotificationSound } from '@/lib/notification-sound'
+import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 interface AssignedUser {
   id: string
@@ -242,9 +243,9 @@ export default function InboxPage() {
       return () => clearTimeout(t)
     }
     fetchRows()
-    const i = setInterval(fetchRows, 8000)
-    return () => clearInterval(i)
   }, [fetchRows, usingSearch])
+  // Visibility-aware: stops in backgrounded tabs, refreshes on return.
+  useBackgroundPolling(fetchRows, 8000, !usingSearch)
 
   async function togglePresence() {
     const next = !isAvailable

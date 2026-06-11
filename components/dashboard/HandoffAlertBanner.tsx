@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { playNotificationSound } from '@/lib/notification-sound'
+import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 type Severity = 'high' | 'medium' | 'low'
 type ItemType = 'paused' | 'error' | 'fallback' | 'stalled'
@@ -125,9 +126,10 @@ export default function HandoffAlertBanner() {
   useEffect(() => {
     if (!workspaceId || NON_WORKSPACE_SEGMENTS.has(workspaceId)) return
     fetchItems()
-    const id = setInterval(fetchItems, POLL_MS)
-    return () => clearInterval(id)
   }, [workspaceId, fetchItems])
+  // Visibility-aware polling; the existing focus listener below already
+  // covers the refresh-on-return case for older browsers.
+  useBackgroundPolling(fetchItems, POLL_MS, !!workspaceId && !NON_WORKSPACE_SEGMENTS.has(workspaceId))
 
   // Refocus → immediate refresh so an operator who alt-tabs back sees
   // truth instantly instead of waiting for the next 12s tick.

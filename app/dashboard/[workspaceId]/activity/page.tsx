@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 interface Event {
   id: string
@@ -39,29 +40,34 @@ export default function ActivityPage() {
   const seenIds = useRef(new Set<string>())
 
   const fetchEvents = useCallback(async () => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/activity`)
-    const data = await res.json()
-    const incoming: Event[] = data.events || []
-    if (seenIds.current.size === 0) {
-      incoming.forEach(e => seenIds.current.add(e.id))
-      setEvents(incoming)
-    } else {
-      // Only prepend new events
-      const fresh = incoming.filter(e => !seenIds.current.has(e.id))
-      fresh.forEach(e => seenIds.current.add(e.id))
-      if (fresh.length > 0) {
-        setEvents(prev => [...fresh, ...prev].slice(0, 300))
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/activity`)
+      if (!res.ok) return
+      const data = await res.json()
+      const incoming: Event[] = data.events || []
+      if (seenIds.current.size === 0) {
+        incoming.forEach(e => seenIds.current.add(e.id))
+        setEvents(incoming)
+      } else {
+        // Only prepend new events
+        const fresh = incoming.filter(e => !seenIds.current.has(e.id))
+        fresh.forEach(e => seenIds.current.add(e.id))
+        if (fresh.length > 0) {
+          setEvents(prev => [...fresh, ...prev].slice(0, 300))
+        }
       }
+    } catch {
+      // Transient fetch failure — keep showing what we have; the next
+      // poll retries. The finally below guarantees the spinner can't
+      // get stuck (it used to spin forever on the first failed fetch).
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [workspaceId])
 
   useEffect(() => { fetchEvents() }, [fetchEvents])
-  useEffect(() => {
-    if (!live) return
-    const i = setInterval(fetchEvents, 5000) // 5 second polling when live
-    return () => clearInterval(i)
-  }, [live, fetchEvents])
+  // Visibility-aware: stops in backgrounded tabs, refreshes on return.
+  useBackgroundPolling(fetchEvents, 5000, live)
 
   const filtered = filter === 'all' ? events : events.filter(e => e.type === filter)
 

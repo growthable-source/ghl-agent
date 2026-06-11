@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { drainNativeOutbox } from '@/lib/native-outbox'
+import { recordCronRun } from '@/lib/cron-heartbeat'
 
 // Vercel cron triggers this every minute (configured in vercel.json). The
 // function pulls a small batch (50 messages) per run, which is plenty for
@@ -17,5 +18,6 @@ export async function GET(req: NextRequest) {
   if (!allowed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const result = await drainNativeOutbox({ limit: 50 })
+  await recordCronRun('native-outbox', true)
   return NextResponse.json(result)
 }

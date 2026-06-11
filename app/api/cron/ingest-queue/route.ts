@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ingestSource } from '@/lib/ingest/pipeline'
+import { recordCronRun } from '@/lib/cron-heartbeat'
 
 /**
  * Background worker for queued knowledge ingestion.
@@ -79,5 +80,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  await recordCronRun('ingest-queue', true)
   return NextResponse.json({ ok: true, processed: results })
 }

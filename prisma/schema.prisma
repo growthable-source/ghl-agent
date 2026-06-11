@@ -4033,3 +4033,17 @@ model CopilotEvalRecord {
 
   @@index([sessionId])
 }
+
+// ─── Cron heartbeats ────────────────────────────────────────────────
+// One row per cron job, upserted on every run (lib/cron-heartbeat).
+// The /api/admin/cron-health endpoint reads these to answer "which
+// background jobs are stale or failing" — token refresh, outbox
+// drains, ingestion. Without it a dead cron was invisible until
+// customers noticed the symptoms.
+model CronHeartbeat {
+  name                String    @id
+  lastRunAt           DateTime
+  lastSuccessAt       DateTime?
+  lastError           String?   @db.Text
+  consecutiveFailures Int       @default(0)
+}
