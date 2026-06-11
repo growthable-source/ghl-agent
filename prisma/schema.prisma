@@ -4080,11 +4080,24 @@ model CopilotAgent {
   workspaceId        String
   workspace          Workspace @relation("WorkspaceCopilotAgents", fields: [workspaceId], references: [id], onDelete: Cascade)
   name               String
+  /// 'support' | 'onboarding' | 'other' — chosen at creation
+  type               String   @default("support")
   persona            String?  @db.Text
+  /// How to open the call (the agent's first line / greeting intent)
+  openingLine        String?  @db.Text
+  /// What information to ask the user for during the session
+  collectInfo        String?  @db.Text
   knowledgeDomainIds String[] @default([])
   steps              Json     @default("[]")
   timeboxMinutes     Int      @default(30)
   playbook           String?  @db.Text
+  /// Public key for embed/link launches (mirror ChatWidget.publicKey).
+  /// Null until the agent is published.
+  publicKey          String?  @unique
+  published          Boolean  @default(false)
+  /// Origins allowed to embed the launch (empty = any; same posture as
+  /// the dashboard CSP — agencies resell on countless domains).
+  allowedDomains     String[] @default([])
   createdAt          DateTime @default(now())
   recordings         CopilotRecording[]
 

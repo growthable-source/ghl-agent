@@ -178,8 +178,11 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
 
 export interface AgentForPrompt {
   name: string
+  type?: string
   persona: string | null
   goal: string | null
+  openingLine?: string | null
+  collectInfo?: string | null
   steps: string[]
   timeboxMinutes: number
   playbook: string | null
@@ -198,8 +201,10 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
   const stepsBlock = hasSteps ? agent.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : ''
 
   return [
-    `You are "${agent.name}", a live screen-share co-pilot for the workspace "${input.workspaceName}". A user is sharing their screen and talking to you in real time.`,
+    `You are "${agent.name}", a live screen-share co-pilot${agent.type === 'onboarding' ? ' running an onboarding call' : ''} for "${input.workspaceName}". A user is sharing their screen and talking to you in real time. Run this call the way the humans in your playbook ran theirs — replicate their approach.`,
     agent.persona ? `\n## Who you are\n${agent.persona.slice(0, 2000)}` : ``,
+    agent.openingLine ? `\n## How to open the call\n${agent.openingLine.slice(0, 1000)}` : ``,
+    agent.collectInfo ? `\n## Information to collect during this session\n${agent.collectInfo.slice(0, 1500)}\nWork these in naturally — don't interrogate.` : ``,
     hasSteps
       ? `\n## Your procedure\nWork through these steps with the user, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nAnnounce each step, help them do it on their screen, confirm it's done, then move on. If they wander, bring them back to the current step. Note progress against the timebox ("step 3 of ${agent.steps.length}, on track").`
       : `\n## Your job\nHelp the user with whatever they bring, end to end — diagnose, then give one clear next action at a time.`,

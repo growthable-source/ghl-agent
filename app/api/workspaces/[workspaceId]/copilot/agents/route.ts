@@ -25,6 +25,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     agents: agents.map(a => ({
       id: a.id,
       name: a.name,
+      type: a.type,
+      published: a.published,
       persona: a.persona,
       steps: Array.isArray(a.steps) ? a.steps : [],
       timeboxMinutes: a.timeboxMinutes,
@@ -59,11 +61,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     .filter((d): d is string => typeof d === 'string')
     .slice(0, 50)
 
+  const b = body as Record<string, unknown>
+  const type = b.type === 'onboarding' || b.type === 'other' ? (b.type as string) : 'support'
   const agent = await db.copilotAgent.create({
     data: {
       workspaceId,
       name,
+      type,
       persona: typeof body.persona === 'string' ? body.persona.slice(0, 4000) : null,
+      openingLine: typeof b.openingLine === 'string' ? (b.openingLine as string).slice(0, 1000) : null,
+      collectInfo: typeof b.collectInfo === 'string' ? (b.collectInfo as string).slice(0, 1500) : null,
       steps,
       knowledgeDomainIds,
       timeboxMinutes: Math.max(5, Math.min(120, Math.round(Number(body.timeboxMinutes) || 30))),

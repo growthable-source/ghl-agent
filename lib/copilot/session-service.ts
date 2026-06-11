@@ -195,7 +195,7 @@ export async function createStaffSession(opts: {
     const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
-      agent: { name: agent.name, persona: agent.persona, goal: null, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
+      agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
@@ -527,4 +527,69 @@ export async function endCopilotSession(sessionId: string, endedReason: string):
   if (taskSuccess === null && analysis) taskSuccess = analysis.issueResolved
 
   return { alreadyEnded: false, durationSecs, taskSuccess, analysis }
+}
+
+
+// ─── Create: public launch (link / button / JS snippet) ─────────────
+//
+// No NextAuth — the agent's publicKey IS the credential, same trust
+// model as ChatWidget.publicKey. Only published agents launch; tools
+// are the visitor set (query_knowledge scoped to the agent's domains
+// + annotate_screen) — never internal workspace state.
+export async function createPublicAgentSession(publicKey: string, opts: { locale?: string } = {}) {
+  const agent = await db.copilotAgent.findFirst({
+    where: { publicKey, published: true },
+  })
+  if (!agent) throw new CopilotSopNotFoundError('agent not found or unpublished')
+
+  const workspace = await db.workspace.findUnique({ where: { id: agent.workspaceId }, select: { plan: true, name: true } })
+  const { canUseCopilot } = await import('@/lib/plans')
+  if (!workspace || !canUseCopilot(workspace.plan, agent.workspaceId)) {
+    throw new CopilotNotConfiguredError('copilot not enabled for this workspace')
+  }
+
+  const locale = normalizeLocale(opts.locale)
+  const steps = Array.isArray(agent.steps) ? (agent.steps as string[]).filter(s => typeof s === 'string') : []
+  const domainIds = agent.knowledgeDomainIds ?? []
+  const ragChunks = await retrieveChunks(agent.workspaceId, `${agent.name} ${steps.join(' ')}`.slice(0, 400) || agent.name, {
+    limit: 4,
+    knowledgeDomainIds: domainIds.length ? domainIds : undefined,
+  })
+  const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+  const { buildAgentPrompt } = await import('./prompt')
+  const systemPrompt = buildAgentPrompt({
+    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
+    workspaceName: workspace.name ?? 'this workspace',
+    ragContext,
+    locale,
+  })
+
+  const maxSecs = steps.length > 0 ? (agent.timeboxMinutes + 5) * 60 : undefined
+  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, WIDGET_TOOL_DEFS, maxSecs)
+
+  const created = await db.copilotSession.create({
+    data: {
+      workspaceId: agent.workspaceId,
+      channel: 'in_app_webrtc',
+      locale,
+      workflowKey: null,
+      model: 'gemini-live',
+      metadata: {
+        mode: 'widget', // visitor-grade tool gating in runSessionTool
+        copilotMode: 'public-agent',
+        copilotAgentId: agent.id,
+        publicKey,
+        knowledgeDomainIds: domainIds,
+        vendorModelId: realtime.vendorModelId,
+      },
+    },
+  })
+
+  return {
+    session: toCopilotSessionDTO(created),
+    realtime,
+    liveConfig,
+    tools: WIDGET_TOOL_DEFS,
+    agent: { name: agent.name, type: agent.type },
+  }
 }

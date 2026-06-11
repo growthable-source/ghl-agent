@@ -121,8 +121,8 @@ export default function CopilotPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-semibold text-zinc-100 mb-2">Co-Pilot</h1>
         <p className="text-zinc-400 leading-relaxed max-w-2xl">
-          Live screen-share help. Pick a co-pilot, share your screen, and talk — it watches what you&rsquo;re doing
-          and walks you through it. It guides, you click.
+          Build live screen-share agents — support, onboarding, or anything else — teach them from recordings and
+          SOPs, then deploy them via link, button, or JavaScript snippet. Pick one below to run a session right here.
         </p>
       </div>
 

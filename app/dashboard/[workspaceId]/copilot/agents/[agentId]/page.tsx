@@ -26,6 +26,11 @@ interface Recording {
 interface AgentDetail {
   id: string
   name: string
+  type: string
+  openingLine: string | null
+  collectInfo: string | null
+  publicKey: string | null
+  published: boolean
   persona: string | null
   steps: string[]
   timeboxMinutes: number
@@ -42,6 +47,8 @@ export default function CopilotAgentEditor() {
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [name, setName] = useState('')
   const [persona, setPersona] = useState('')
+  const [openingLine, setOpeningLine] = useState('')
+  const [collectInfo, setCollectInfo] = useState('')
   const [stepsText, setStepsText] = useState('')
   const [minutes, setMinutes] = useState('30')
   const [playbook, setPlaybook] = useState('')
@@ -58,6 +65,8 @@ export default function CopilotAgentEditor() {
     setAgent(a)
     setName(a.name)
     setPersona(a.persona ?? '')
+    setOpeningLine(a.openingLine ?? '')
+    setCollectInfo(a.collectInfo ?? '')
     setStepsText(a.steps.join('\n'))
     setMinutes(String(a.timeboxMinutes))
     setPlaybook(a.playbook ?? '')
@@ -85,6 +94,8 @@ export default function CopilotAgentEditor() {
         body: JSON.stringify({
           name,
           persona,
+          openingLine,
+          collectInfo,
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
           playbook,
@@ -95,7 +106,7 @@ export default function CopilotAgentEditor() {
     } finally {
       setSaving(false)
     }
-  }, [workspaceId, agentId, name, persona, stepsText, minutes, playbook])
+  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, playbook])
 
   const upload = useCallback(
     async (file: File) => {
@@ -114,6 +125,16 @@ export default function CopilotAgentEditor() {
     },
     [workspaceId, agentId, load],
   )
+
+  const togglePublish = useCallback(async () => {
+    if (!agent) return
+    const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ publish: !agent.published }),
+    })
+    if (res.ok) void load()
+  }, [workspaceId, agentId, agent, load])
 
   const deleteRecording = useCallback(
     async (id: string) => {
@@ -168,6 +189,26 @@ export default function CopilotAgentEditor() {
           />
         </div>
 
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">How to start the call</label>
+          <textarea
+            value={openingLine}
+            onChange={e => setOpeningLine(e.target.value)}
+            rows={2}
+            placeholder="e.g. Welcome them, introduce yourself by name, set expectations, then begin."
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Information to ask the user for</label>
+          <textarea
+            value={collectInfo}
+            onChange={e => setCollectInfo(e.target.value)}
+            rows={2}
+            placeholder="e.g. Their name and role; the business name; their main goal."
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+          />
+        </div>
         <div className="flex gap-3 flex-wrap">
           <div className="flex-1 min-w-[240px]">
             <label className="block text-xs font-medium text-zinc-400 mb-1">
@@ -271,6 +312,66 @@ export default function CopilotAgentEditor() {
           </button>
           {saved && <span className="text-sm" style={{ color: 'var(--accent-emerald)' }}>✓ Saved</span>}
         </div>
+
+        {/* ── Deploy ── */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+            <h3 className="text-sm font-semibold text-zinc-100">Deploy</h3>
+            <button
+              type="button"
+              onClick={() => void togglePublish()}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white"
+              style={{ background: agent.published ? 'var(--accent-red)' : 'var(--accent-emerald)' }}
+            >
+              {agent.published ? 'Unpublish' : 'Publish'}
+            </button>
+          </div>
+          <p className="text-xs text-zinc-400 mb-3">
+            Publish to launch this agent from a shareable link, a button on any site, or a JavaScript snippet inside
+            your app. Unpublishing disables all of them instantly (the key is kept, so re-publishing restores them).
+          </p>
+          {agent.published && agent.publicKey && (
+            <div className="space-y-3">
+              <DeployField label="Shareable link" value={`${window.location.origin}/copilot/live/${agent.publicKey}`} />
+              <DeployField
+                label="Button (HTML)"
+                value={`<a href="${window.location.origin}/copilot/live/${agent.publicKey}" target="_blank" rel="noopener">Get live help</a>`}
+              />
+              <DeployField
+                label="JavaScript snippet (floating button + window.VoxilityCopilot.launch())"
+                value={`<script src="${window.location.origin}/copilot.js" data-copilot-key="${agent.publicKey}" async></script>`}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DeployField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div>
+      <p className="text-[11px] font-medium text-zinc-500 mb-1">{label}</p>
+      <div className="flex gap-2">
+        <input
+          readOnly
+          value={value}
+          onFocus={e => e.target.select()}
+          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-300 font-mono focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(value)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          }}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+        >
+          {copied ? '✓' : 'Copy'}
+        </button>
       </div>
     </div>
   )

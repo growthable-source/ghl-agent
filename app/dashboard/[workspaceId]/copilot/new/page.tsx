@@ -17,19 +17,36 @@ import Link from 'next/link'
 
 interface Template {
   key: string
+  type: 'support' | 'onboarding' | 'other'
   name: string
   blurb: string
   steps: string[]
   persona: string
+  openingLine: string
+  collectInfo: string
   timebox: number
 }
 
 const TEMPLATES: Template[] = [
   {
+    key: 'support',
+    type: 'support',
+    name: 'Support',
+    blurb: 'Fixes anything — diagnoses and solves whatever the user brings.',
+    persona: 'Calm, sharp, and practical. Diagnoses before prescribing. Gives one clear next action at a time.',
+    openingLine: 'Greet the user warmly, introduce yourself by name, confirm you can see their screen, and ask what they need help with today.',
+    collectInfo: '',
+    timebox: 30,
+    steps: [],
+  },
+  {
     key: 'onboarding',
-    name: 'Onboarding guide',
-    blurb: 'Walks a new user through setup, step by step, inside a timebox.',
+    type: 'onboarding',
+    name: 'Onboarding',
+    blurb: 'Runs a structured onboarding call: directions, SOP steps, timebox.',
     persona: 'Warm, patient, and encouraging. Explains the why, not just the click. Never rushes — confirms each step landed before moving on.',
+    openingLine: 'Welcome them to their onboarding session, introduce yourself by name, set expectations for what you will cover and roughly how long it takes, then begin step 1.',
+    collectInfo: 'Their name and role; the business name; what outcome matters most to them from this product.',
     timebox: 30,
     steps: [
       'Welcome the user and confirm what they want to achieve today',
@@ -41,18 +58,13 @@ const TEMPLATES: Template[] = [
     ],
   },
   {
-    key: 'support',
-    name: 'General support expert',
-    blurb: 'No fixed steps — diagnoses and fixes whatever the user brings.',
-    persona: 'Calm, sharp, and practical. Diagnoses before prescribing. Gives one clear next action at a time.',
-    timebox: 30,
-    steps: [],
-  },
-  {
-    key: 'custom',
-    name: 'Start from scratch',
+    key: 'other',
+    type: 'other',
+    name: 'Other',
     blurb: 'A blank agent you shape yourself.',
     persona: '',
+    openingLine: '',
+    collectInfo: '',
     timebox: 30,
     steps: [],
   },
@@ -66,6 +78,8 @@ export default function NewCopilotAgentPage() {
   const [template, setTemplate] = useState<Template>(TEMPLATES[0])
   const [name, setName] = useState('')
   const [persona, setPersona] = useState(TEMPLATES[0].persona)
+  const [openingLine, setOpeningLine] = useState(TEMPLATES[0].openingLine)
+  const [collectInfo, setCollectInfo] = useState(TEMPLATES[0].collectInfo)
   const [stepsText, setStepsText] = useState(TEMPLATES[0].steps.join('\n'))
   const [minutes, setMinutes] = useState('30')
   const [submitting, setSubmitting] = useState(false)
@@ -74,6 +88,8 @@ export default function NewCopilotAgentPage() {
   const pickTemplate = useCallback((t: Template) => {
     setTemplate(t)
     setPersona(t.persona)
+    setOpeningLine(t.openingLine)
+    setCollectInfo(t.collectInfo)
     setStepsText(t.steps.join('\n'))
     setMinutes(String(t.timebox))
   }, [])
@@ -91,7 +107,10 @@ export default function NewCopilotAgentPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
+          type: template.type,
           persona,
+          openingLine,
+          collectInfo,
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
         }),
@@ -105,7 +124,7 @@ export default function NewCopilotAgentPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [workspaceId, name, persona, stepsText, minutes, router])
+  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, router])
 
   if (!workspaceId) return null
 
@@ -116,8 +135,7 @@ export default function NewCopilotAgentPage() {
       </Link>
       <h1 className="text-3xl font-semibold text-zinc-100 mt-3 mb-1">New Co-Pilot agent</h1>
       <p className="text-zinc-400 mb-6 max-w-2xl">
-        A live screen-share guide with its own persona, procedure, and knowledge. After you create it, you can teach
-        it from recordings or SOP documents.
+        Pick the agent type, give it directions, then teach it from recordings and SOP documents. Once published, launch it from a link, a button, or a JavaScript snippet in any app.
       </p>
 
       {/* Template choice */}
@@ -156,6 +174,26 @@ export default function NewCopilotAgentPage() {
             value={persona}
             onChange={e => setPersona(e.target.value)}
             rows={3}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">How to start the call</label>
+          <textarea
+            value={openingLine}
+            onChange={e => setOpeningLine(e.target.value)}
+            rows={2}
+            placeholder="e.g. Welcome them, introduce yourself, set expectations, then begin."
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Information to ask the user for</label>
+          <textarea
+            value={collectInfo}
+            onChange={e => setCollectInfo(e.target.value)}
+            rows={2}
+            placeholder="e.g. Their name and role; the business name; their main goal."
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
           />
         </div>
