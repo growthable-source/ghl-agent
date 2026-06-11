@@ -1,43 +1,45 @@
 /**
  * Real-time screen-share Co-Pilot — shared types.
  *
- * Two purposes:
+ * Architecture note (v0): there is NO server-side media worker. The
+ * browser connects directly to the realtime model over WebSocket
+ * using a short-lived ephemeral token minted by our backend. The
+ * backend locks the model id + full session config (system prompt,
+ * tools, transcription, compression) INSIDE the token via
+ * liveConnectConstraints, so the client cannot tamper with
+ * instructions even though it holds the connection. This replaces
+ * the spec's LiveKit SFU + Agents-worker design for v0 — Voxility
+ * deploys to Vercel only, which can't host a long-running worker,
+ * and browser-direct removes a media hop (helps the 800 ms
+ * no-dead-air constraint). The P2 meeting-bot channel
+ * ('recall_meeting_bot') is where a server-side worker genuinely
+ * becomes necessary; the seam for it is the `channel` column.
  *
- * 1.  Declare the `RealtimeModelProvider` interface — the vendor-swap
- *     seam between our session orchestrator and whichever native-audio
- *     model is answering this session (Gemini Live or GPT-Realtime).
- *     We deliberately ship no implementation in this PR; the interface
- *     is the contract that lets us land the API + UI shell now and
- *     plug a provider in next PR without reshaping anything.
- *
- * 2.  Expose strongly-typed DTOs for the session API so the
- *     route-handler and the UI agree on shape without re-deriving it
- *     from the Prisma row twice.
- *
- * Naming: deliberately brand-neutral. No `gemini`, `openai`, or
- * `livekit` references leak through this surface — callers see a
- * `model: 'gemini-live' | 'gpt-realtime'` string and that's it. Keeps
- * the swap cheap when we decide which to anchor on.
+ * `RealtimeModelProvider` is the vendor-swap seam (spec §6): the
+ * session UI depends on this interface, never a vendor SDK directly.
+ * v0 ships GeminiLiveProvider (lib/copilot/providers/gemini-live.ts);
+ * gpt-realtime is the documented fallback — OpenAI's realtime API
+ * also supports browser-direct connections with ephemeral client
+ * keys, so it fits this same client-side interface.
  */
 
 // ─── Channel + lifecycle ────────────────────────────────────────────
 
 /**
  * Where the realtime stream is being produced.
- *  - 'in_app_webrtc' — the in-app screen-share + mic via LiveKit room
- *                      (v0; the only value the runtime currently sets).
- *  - 'recall_meeting_bot' — Recall.ai bot dialed into a Zoom/Meet call
- *                          on the user's behalf (spec §9, P2). Schema
- *                          carries it now so we don't migrate later.
+ *  - 'in_app_webrtc' — in-app screen-share + mic (v0; the only value
+ *                      the runtime currently sets).
+ *  - 'recall_meeting_bot' — Recall.ai bot dialed into a Zoom/Meet
+ *                          call (spec §9, P2). Schema carries it now
+ *                          so we don't migrate later.
  */
 export type CopilotChannel = 'in_app_webrtc' | 'recall_meeting_bot'
 
 export type CopilotStatus = 'active' | 'ended' | 'error'
 
 /**
- * Realtime model the session is bound to. The orchestrator picks one
- * provider per session and sticks with it for the whole call —
- * switching mid-session would lose context.
+ * Realtime model family the session is bound to. One provider per
+ * session — switching mid-session would lose context.
  */
 export type CopilotModel = 'gemini-live' | 'gpt-realtime'
 
@@ -69,50 +71,88 @@ export interface CreateCopilotSessionInput {
   preferredModel?: CopilotModel
 }
 
-// ─── RealtimeModelProvider — the vendor-swap seam ──────────────────
+/**
+ * Realtime connection material returned alongside the session DTO.
+ * The token is single-use and expires within minutes; the model id
+ * and config are ALSO locked inside the token server-side — they're
+ * echoed here because the vendor SDK requires them at connect time
+ * and they must match the constraint exactly.
+ */
+export interface RealtimeConnectionInfo {
+  /** Ephemeral token. Never the real API key. */
+  token: string
+  /** Vendor model id the token is locked to (e.g. 'gemini-3.1-flash-live-preview'). */
+  vendorModelId: string
+  /** Provider family — selects which RealtimeModelProvider implementation to instantiate. */
+  provider: CopilotModel
+  /** Max session duration in seconds; the client enforces a hard timer. */
+  maxSessionSecs: number
+  /** Frame throttle: hard cap in frames/sec (change-detection runs under this). */
+  frameFpsCap: number
+}
+
+// ─── RealtimeModelProvider — the vendor-swap seam (spec §6) ────────
 
 /**
- * What the session orchestrator needs from whichever realtime model
- * answers the call. Implementations live behind this interface so the
- * orchestrator stays vendor-agnostic.
- *
- * No implementation ships in this PR. We declare it now so:
- *  (a) the foundation API can reference the type in `model:` columns,
- *  (b) the next PR adds `lib/copilot/providers/gemini-live.ts` and
- *      `lib/copilot/providers/gpt-realtime.ts` without API churn,
- *  (c) it's a contract reviewers can react to before we sink time
- *      into either side of the swap.
+ * Client-side contract between the session UI and whichever realtime
+ * model answers the call. Mirrors spec §6: connect / sendAudio /
+ * sendVideoFrame / injectContext / interrupt / close + event
+ * callbacks. The UI never imports a vendor SDK.
  */
 export interface RealtimeModelProvider {
-  /** Stable id used in the `CopilotSession.model` column. */
+  /** Provider family id, stored in CopilotSession.model. */
   readonly name: CopilotModel
 
+  /** Open the realtime connection. Resolves once the session is live. */
+  connect(cfg: RealtimeProviderConfig): Promise<void>
+
+  /** Push a chunk of user mic audio (base64 PCM16 @ 16 kHz mono). */
+  sendAudioChunk(base64Pcm16: string): void
+
+  /** Push one throttled screen frame (base64 JPEG). */
+  sendVideoFrame(base64Jpeg: string): void
+
   /**
-   * Open a session with the realtime model and return a handle the
-   * orchestrator can stream into and out of. Implementations are
-   * responsible for any auth handshake + transport setup the vendor
-   * requires.
+   * Async grounding update — inject fresh context (e.g. re-retrieved
+   * RAG text after a screen-context change) without blocking the
+   * model's speech (P0-5).
    */
-  openSession(input: OpenRealtimeSessionInput): Promise<RealtimeSessionHandle>
+  injectContext(text: string): void
+
+  /** Barge-in: stop current model speech immediately (P0-3). */
+  interrupt(): void
+
+  /** Hang up cleanly + release the vendor session. */
+  close(): Promise<void>
+
+  // Event callbacks — set before connect().
+  onAudioOutput?: (base64Pcm: string) => void
+  onTranscript?: (turn: { role: 'user' | 'agent'; text: string; final: boolean }) => void
+  /** Model requested a tool. Resolve with the JSON result; the provider feeds it back. */
+  onToolCall?: (call: { id: string; name: string; args: Record<string, unknown> }) => Promise<Record<string, unknown>>
+  /** Model speech was interrupted by the user (flush playback queues). */
+  onInterrupted?: () => void
+  onError?: (message: string) => void
+  /** Connection ended (vendor-side close, goAway exhaustion, or close()). */
+  onEnded?: (reason: string) => void
 }
 
-export interface OpenRealtimeSessionInput {
-  sessionId: string
-  workspaceId: string
-  locale: string
-  /** Initial system instructions for the realtime model. Subset of the agent prompt — co-pilot's persona, not a CRM agent's. */
-  systemPrompt: string
-  /** Tool definitions the model may call mid-session (read-only in v0). */
+export interface RealtimeProviderConfig {
+  connection: RealtimeConnectionInfo
+  /** Tool declarations — must match what the server locked into the token. */
   tools: RealtimeToolDef[]
-  /** Optional caller-supplied hints (workflow key, prior context summary). */
-  metadata?: Record<string, unknown>
+  /**
+   * Vendor-shaped session config echoed by the server. Passed
+   * verbatim to the vendor SDK at connect — it must match the config
+   * locked inside the ephemeral token byte-for-byte, so the client
+   * never constructs (or edits) it locally.
+   */
+  vendorConfig?: Record<string, unknown>
 }
 
 /**
- * One read-only tool the realtime model can invoke. Schema matches
- * the JSON-Schema subset the existing voice/agent runtimes already
- * accept so we can reuse `lib/agent/tool-catalog.ts` shapes without
- * a converter.
+ * One read-only tool the realtime model can invoke. JSON-Schema
+ * subset shared with the existing agent runtimes.
  */
 export interface RealtimeToolDef {
   name: string
@@ -123,25 +163,3 @@ export interface RealtimeToolDef {
     required?: string[]
   }
 }
-
-/**
- * What the orchestrator gets back. Returned only — we don't model
- * the vendor's raw transport object here; implementations keep that
- * private and expose the verbs the orchestrator actually uses.
- */
-export interface RealtimeSessionHandle {
-  /** Push an audio frame into the model. */
-  sendAudio(frame: ArrayBuffer): Promise<void>
-  /** Push a video frame (or a vision-summary text) into the model. */
-  sendVideo(frame: ArrayBuffer | { kind: 'summary'; text: string }): Promise<void>
-  /** Hang up cleanly + release the vendor session. */
-  close(reason?: string): Promise<void>
-  /** Event hook the orchestrator subscribes to; emits transcript turns + tool calls. */
-  on(event: RealtimeEvent['kind'], handler: (e: RealtimeEvent) => void): void
-}
-
-export type RealtimeEvent =
-  | { kind: 'transcript_turn'; role: 'user' | 'agent'; text: string; tokens?: number }
-  | { kind: 'tool_call'; name: string; args: Record<string, unknown>; toolCallId: string }
-  | { kind: 'session_ended'; reason: string }
-  | { kind: 'error'; message: string }
