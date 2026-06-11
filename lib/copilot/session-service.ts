@@ -89,12 +89,17 @@ function toGeminiFunctionDeclarations(defs: RealtimeToolDef[]) {
 
 export class CopilotNotConfiguredError extends Error {}
 export class CopilotTokenMintError extends Error {}
+export class CopilotSopNotFoundError extends Error {}
 
-async function mintEphemeralToken(systemPrompt: string, toolDefs: RealtimeToolDef[]) {
+async function mintEphemeralToken(systemPrompt: string, toolDefs: RealtimeToolDef[], maxSessionSecsOverride?: number) {
   const geminiKey = process.env.GEMINI_API_KEY
   if (!geminiKey) throw new CopilotNotConfiguredError('missing GEMINI_API_KEY')
 
-  const { vendorModelId, maxSessionSecs, frameFpsCap } = COPILOT_DEFAULTS
+  const { vendorModelId, frameFpsCap } = COPILOT_DEFAULTS
+  const maxSessionSecs = Math.min(
+    COPILOT_DEFAULTS.maxSessionSecs,
+    maxSessionSecsOverride && maxSessionSecsOverride > 60 ? maxSessionSecsOverride : COPILOT_DEFAULTS.maxSessionSecs,
+  )
 
   // Optional voice override (e.g. 'Puck', 'Kore') — without it Gemini
   // uses its default native voice. Locale still steers the accent.
@@ -151,25 +156,60 @@ function normalizeLocale(locale: unknown): string {
 
 // ─── Create: staff (dashboard) ──────────────────────────────────────
 
+export type StaffCopilotMode = 'onboarding' | 'general' | 'sop'
+
 export async function createStaffSession(opts: {
   workspaceId: string
   userId: string
   locale?: string
   workflowKey?: string | null
+  /** 'onboarding' (default, built-in workflow), 'general' (fix
+   *  anything), or 'sop' (run a workspace-authored procedure). */
+  mode?: StaffCopilotMode
+  sopId?: string | null
 }) {
   const locale = normalizeLocale(opts.locale)
-  const workflowKey =
-    typeof opts.workflowKey === 'string' ? opts.workflowKey.slice(0, 64) : DEFAULT_WORKFLOW_KEY
-  const workflow = getWorkflow(workflowKey)
+  const mode: StaffCopilotMode = opts.mode === 'general' || opts.mode === 'sop' ? opts.mode : 'onboarding'
 
-  const [setupState, ragChunks] = await Promise.all([
-    getWorkspaceSetupState(opts.workspaceId),
-    retrieveChunks(opts.workspaceId, `${workflow.title} — how to set up agents, channels and knowledge`, { limit: 4 }),
-  ])
-  const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
-  const systemPrompt = buildCopilotSystemPrompt({ setupState, workflow, ragContext, locale })
+  const setupState = await getWorkspaceSetupState(opts.workspaceId)
 
-  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, COPILOT_TOOL_DEFS)
+  let systemPrompt: string
+  let workflowKey: string | null = null
+  let maxSecsOverride: number | undefined
+
+  if (mode === 'sop') {
+    const sop = opts.sopId
+      ? await db.copilotSop.findFirst({
+          where: { id: opts.sopId, workspaceId: opts.workspaceId },
+        })
+      : null
+    if (!sop) throw new CopilotSopNotFoundError('SOP not found')
+    const steps = Array.isArray(sop.steps) ? (sop.steps as string[]).filter(s => typeof s === 'string') : []
+    const ragChunks = await retrieveChunks(opts.workspaceId, `${sop.title} — ${sop.goal}`, { limit: 4 })
+    const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+    const { buildSopPrompt } = await import('./prompt')
+    systemPrompt = buildSopPrompt({
+      sop: { title: sop.title, goal: sop.goal, timeboxMinutes: sop.timeboxMinutes, steps },
+      workspaceName: setupState.workspaceName,
+      ragContext,
+      locale,
+    })
+    // The timebox IS the session ceiling (+5 min of grace to wrap up).
+    maxSecsOverride = (sop.timeboxMinutes + 5) * 60
+  } else if (mode === 'general') {
+    const ragChunks = await retrieveChunks(opts.workspaceId, 'product overview, common problems, troubleshooting and setup how-tos', { limit: 4 })
+    const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+    const { buildGeneralStaffPrompt } = await import('./prompt')
+    systemPrompt = buildGeneralStaffPrompt({ workspaceName: setupState.workspaceName, ragContext, locale })
+  } else {
+    workflowKey = typeof opts.workflowKey === 'string' ? opts.workflowKey.slice(0, 64) : DEFAULT_WORKFLOW_KEY
+    const workflow = getWorkflow(workflowKey)
+    const ragChunks = await retrieveChunks(opts.workspaceId, `${workflow.title} — how to set up agents, channels and knowledge`, { limit: 4 })
+    const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+    systemPrompt = buildCopilotSystemPrompt({ setupState, workflow, ragContext, locale })
+  }
+
+  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, COPILOT_TOOL_DEFS, maxSecsOverride)
 
   const created = await db.copilotSession.create({
     data: {
@@ -179,7 +219,7 @@ export async function createStaffSession(opts: {
       locale,
       workflowKey,
       model: 'gemini-live',
-      metadata: { mode: 'staff', vendorModelId: realtime.vendorModelId },
+      metadata: { mode: 'staff', copilotMode: mode, sopId: opts.sopId ?? null, vendorModelId: realtime.vendorModelId },
     },
   })
 
@@ -440,7 +480,7 @@ export async function endCopilotSession(sessionId: string, endedReason: string):
   // have no workflow — their resolution signal comes from the Haiku
   // analysis below.
   let taskSuccess: boolean | null = null
-  if (mode === 'staff') {
+  if (mode === 'staff' && session.workflowKey) {
     try {
       const state = await getWorkspaceSetupState(session.workspaceId)
       const workflow = getWorkflow(session.workflowKey)

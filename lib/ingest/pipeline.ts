@@ -42,6 +42,10 @@ export interface IngestResult {
   pagesSucceeded: number
   chunksCreated: number
   chunksSuperseded: number
+  /** True when the run stopped at the soft deadline with pages left —
+   *  the caller should queue a continuation run. Hash-matching makes
+   *  the re-walk cheap: already-ingested pages skip embedding. */
+  deadlineExhausted?: boolean
 }
 
 export interface IngestOptions {
@@ -50,6 +54,13 @@ export interface IngestOptions {
    *  /run handler so the client has something to poll from the moment
    *  the request returns. */
   runId?: string
+  /** Soft wall-clock deadline (epoch ms). When the per-page loop
+   *  crosses it, the run finishes gracefully as 'partial' with
+   *  deadlineExhausted=true instead of being killed mid-page by the
+   *  serverless maxDuration. The cron queues a continuation, so big
+   *  sites complete across ticks rather than truncating at one
+   *  function budget. */
+  deadlineAt?: number
 }
 
 interface ErrorEntry {
@@ -101,6 +112,7 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
 
   const errors: ErrorEntry[] = []
   let pagesAttempted = 0
+  let deadlineExhausted = false
   let pagesSucceeded = 0
   let chunksCreated = 0
   let chunksSuperseded = 0
@@ -119,6 +131,11 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     }).catch(() => {})
 
     for (const item of discovered) {
+      if (opts.deadlineAt && Date.now() > opts.deadlineAt) {
+        deadlineExhausted = true
+        console.log(`[ingest] soft deadline hit after ${pagesAttempted}/${discovered.length} pages — continuation will resume`)
+        break
+      }
       pagesAttempted++
       try {
         const raw = await adapter.fetch(ctx, item).catch(err => {
@@ -162,7 +179,7 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
   }
 
   const status: IngestResult['status'] = errors.length === 0
-    ? 'success'
+    ? (deadlineExhausted ? 'partial' : 'success')
     : pagesSucceeded > 0 ? 'partial' : 'failed'
 
   await (db as any).ingestionRun.update({
@@ -189,6 +206,7 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     pagesSucceeded,
     chunksCreated,
     chunksSuperseded,
+    deadlineExhausted,
   }
 }
 

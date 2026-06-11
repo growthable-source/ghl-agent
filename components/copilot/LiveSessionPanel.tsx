@@ -77,6 +77,16 @@ export default function LiveSessionPanel({
   const [partial, setPartial] = useState<{ user: string; agent: string }>({ user: '', agent: '' })
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [annotation, setAnnotation] = useState<{
+    id: number
+    x: number
+    y: number
+    kind: 'circle' | 'box'
+    width: number
+    height: number
+    label: string | null
+  } | null>(null)
+  const annotationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const sessionIdRef = useRef<string | null>(null)
   const providerRef = useRef<RealtimeModelProvider | null>(null)
@@ -239,6 +249,27 @@ export default function LiveSessionPanel({
         }
       }
       provider.onToolCall = async call => {
+        // annotate_screen never leaves the browser: draw the marker on
+        // the preview and answer the model immediately.
+        if (call.name === 'annotate_screen') {
+          const a = call.args as Record<string, unknown>
+          const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
+            const n = Number(v)
+            return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt
+          }
+          setAnnotation({
+            id: Date.now(),
+            x: clamp(a.x, 0, 100, 50),
+            y: clamp(a.y, 0, 100, 50),
+            kind: a.kind === 'box' ? 'box' : 'circle',
+            width: clamp(a.width, 2, 90, 12),
+            height: clamp(a.height, 2, 90, 6),
+            label: typeof a.label === 'string' ? a.label.slice(0, 60) : null,
+          })
+          if (annotationTimerRef.current) clearTimeout(annotationTimerRef.current)
+          annotationTimerRef.current = setTimeout(() => setAnnotation(null), 8000)
+          return { result: 'Marker shown on the live-help preview. Remind the user to glance at it.' }
+        }
         pushFeed('tool', call.name === 'query_knowledge' ? 'Searching the knowledge base…' : 'Checking…')
         turnBufferRef.current.push({
           role: 'tool',
@@ -398,8 +429,54 @@ export default function LiveSessionPanel({
           <div className="lg:col-span-2 space-y-4">
             {/* True black, not bg-black — that class is remapped to the
                 theme background; a video letterbox should stay black. */}
-            <div className="rounded-xl border border-zinc-800 overflow-hidden" style={{ background: '#000' }}>
+            <div className="relative rounded-xl border border-zinc-800 overflow-hidden" style={{ background: '#000' }}>
               <video ref={previewVideoRef} muted playsInline className="w-full aspect-video object-contain" />
+              {annotation && (
+                <div
+                  key={annotation.id}
+                  className="absolute pointer-events-none"
+                  style={
+                    annotation.kind === 'circle'
+                      ? {
+                          left: `${annotation.x}%`,
+                          top: `${annotation.y}%`,
+                          width: '14%',
+                          aspectRatio: '1 / 1',
+                          transform: 'translate(-50%, -50%)',
+                          border: `3px solid ${accent}`,
+                          borderRadius: '9999px',
+                          boxShadow: `0 0 0 3px ${accent}44, 0 0 18px ${accent}88`,
+                          animation: 'copilot-pulse 1.2s ease-in-out infinite',
+                        }
+                      : {
+                          left: `${annotation.x}%`,
+                          top: `${annotation.y}%`,
+                          width: `${annotation.width}%`,
+                          height: `${annotation.height}%`,
+                          transform: 'translate(-50%, -50%)',
+                          border: `3px solid ${accent}`,
+                          borderRadius: 8,
+                          boxShadow: `0 0 0 3px ${accent}44, 0 0 18px ${accent}88`,
+                          animation: 'copilot-pulse 1.2s ease-in-out infinite',
+                        }
+                  }
+                >
+                  {annotation.label && (
+                    <span
+                      className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold px-2 py-0.5 rounded-full text-white"
+                      style={{ top: '100%', marginTop: 6, background: accent }}
+                    >
+                      {annotation.label}
+                    </span>
+                  )}
+                </div>
+              )}
+              <style jsx global>{`
+                @keyframes copilot-pulse {
+                  0%, 100% { opacity: 1; }
+                  50% { opacity: 0.45; }
+                }
+              `}</style>
             </div>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
               <div className="flex items-center justify-between mb-3">

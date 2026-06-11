@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
     },
   })
 
+  const tickStart = Date.now()
   const results: Array<{ runId: string; status: string }> = []
 
   for (let i = 0; i < RUNS_PER_TICK; i++) {
@@ -62,8 +63,18 @@ export async function GET(req: NextRequest) {
     if (claimed.count === 0) continue
 
     try {
-      const result = await ingestSource(next.sourceId, { runId: next.id })
+      // Soft deadline: leave ~60s of the 300s budget for the second
+      // run slot + bookkeeping. Big sites finish across ticks: a
+      // deadline-cut run queues a continuation, and hash-matching
+      // makes re-walked pages nearly free (no re-embed).
+      const result = await ingestSource(next.sourceId, { runId: next.id, deadlineAt: tickStart + 240_000 })
       results.push({ runId: next.id, status: result.status })
+      if (result.deadlineExhausted) {
+        await db.ingestionRun
+          .create({ data: { sourceId: next.sourceId, status: 'queued' } })
+          .catch(() => undefined)
+        console.log(`[ingest-queue] queued continuation for source ${next.sourceId}`)
+      }
     } catch (err) {
       console.error(`[ingest-queue] run ${next.id} threw:`, err)
       await db.ingestionRun

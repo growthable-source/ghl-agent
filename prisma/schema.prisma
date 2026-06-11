@@ -161,6 +161,7 @@ model Workspace {
   tickets              Ticket[]              @relation("WorkspaceTickets")
   ticketingSettings    TicketingSettings?
   copilotSessions      CopilotSession[]      @relation("WorkspaceCopilotSessions")
+  copilotSops          CopilotSop[]          @relation("WorkspaceCopilotSops")
 
   // ─── Native (built-in) CRM ───
   // Populated only for workspaces using crmProvider='native' on their
@@ -4046,4 +4047,23 @@ model CronHeartbeat {
   lastSuccessAt       DateTime?
   lastError           String?   @db.Text
   consecutiveFailures Int       @default(0)
+}
+
+// Workspace-authored SOPs the Co-Pilot can run in 'sop' mode: a named
+// series of steps walked with the user inside a timebox (e.g. a
+// 20-minute client-onboarding procedure). Steps are a JSON string
+// array — progress tracking is conversational (the model checks steps
+// off with the user), unlike the machine-predicated built-in
+// onboarding workflow.
+model CopilotSop {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace @relation("WorkspaceCopilotSops", fields: [workspaceId], references: [id], onDelete: Cascade)
+  title          String
+  goal           String   @db.Text
+  timeboxMinutes Int      @default(20)
+  steps          Json     @default("[]")
+  createdAt      DateTime @default(now())
+
+  @@index([workspaceId])
 }

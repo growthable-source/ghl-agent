@@ -19,21 +19,21 @@
  *     recrawlIntervalDays: number   (default 7)
  *     includeSubpaths:     string[] (extra URLs to seed)
  *     excludePatterns:     string[] (regex; matching URLs dropped)
- *     maxPages:            number   (default 150, hard cap 500)
+ *     maxPages:            number   (default 500, hard cap 2000)
  *     recursive:           boolean  (default true)
  *   }
  *
- * Page caps are lower than the Firecrawl-era 2000: every page now
- * costs a fetch + chunk + classify + embed inside one 300s function
- * budget, and 150 pages comfortably fits. Bigger sites finish across
- * recrawl ticks (hash-matching makes re-runs cheap).
+ * Page caps: 500 default / 2000 hard. Runs that can't finish inside
+ * one function budget stop at the pipeline's soft deadline and the
+ * ingest-queue cron queues a continuation — big sites complete across
+ * ticks, with hash-matching making re-walked pages nearly free.
  */
 
 import type { SourceAdapter, DiscoveredItem, RawContent, NormalizedContent, AdapterContext } from './types'
 import { fetchPage, extractMarkdownFromHtml, extractTitle, discoverSiteUrls } from '../native-web'
 
-const DEFAULT_MAX_PAGES = 150
-const HARD_MAX_PAGES = 500
+const DEFAULT_MAX_PAGES = 500
+const HARD_MAX_PAGES = 2000
 
 interface DocsCrawlConfig {
   recrawlIntervalDays?: number

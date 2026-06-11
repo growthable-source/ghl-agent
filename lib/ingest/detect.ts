@@ -91,7 +91,7 @@ export function detectionFor(rawUrl: string, kind: DetectedKind): Detection {
         sourceType: 'docs',
         label: isSitemap ? 'sitemap' : 'website',
         recrawlIntervalDays: 7,
-        crawlConfig: { recrawlIntervalDays: 7, recursive: true, maxPages: 200 },
+        crawlConfig: { recrawlIntervalDays: 7, recursive: true, maxPages: 500 },
       }
     }
   }

@@ -40,6 +40,31 @@ const QUERY_KNOWLEDGE_DEF: RealtimeToolDef = {
   },
 }
 
+// annotate_screen is CLIENT-executed — the session panel draws the
+// overlay and answers the model directly, no server round-trip. The
+// definition lives here because tool defs are locked into the
+// ephemeral token at mint time.
+const ANNOTATE_SCREEN_DEF: RealtimeToolDef = {
+  name: 'annotate_screen',
+  description:
+    'Draw a visual marker on the live screen preview to point at something — use it whenever ' +
+    'you say things like "see that button" or "click here". Coordinates are PERCENTAGES of the ' +
+    'shared screen as you last saw it (x: 0 = left edge, 100 = right edge; y: 0 = top, 100 = ' +
+    'bottom). The user sees the marker on the live-help panel, so tell them to glance at it.',
+  parameters: {
+    type: 'object',
+    properties: {
+      x: { type: 'number', description: 'Horizontal center of the target, 0-100 (% of screen width)' },
+      y: { type: 'number', description: 'Vertical center of the target, 0-100 (% of screen height)' },
+      kind: { type: 'string', enum: ['circle', 'box'], description: 'circle = ring around a point; box = rectangle highlight' },
+      width: { type: 'number', description: 'Box width as % of screen (box only, default 12)' },
+      height: { type: 'number', description: 'Box height as % of screen (box only, default 6)' },
+      label: { type: 'string', description: 'Short caption shown next to the marker (e.g. "Click here")' },
+    },
+    required: ['x', 'y', 'kind'],
+  },
+}
+
 export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
   {
     name: 'get_workspace_setup_state',
@@ -52,6 +77,7 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
     parameters: { type: 'object', properties: {} },
   },
   QUERY_KNOWLEDGE_DEF,
+  ANNOTATE_SCREEN_DEF,
 ]
 
 /**
@@ -60,7 +86,7 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
  * channel wiring, CRM status) — operator-facing data that must never
  * be exposed to an end customer through their own chat widget.
  */
-export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF]
+export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF, ANNOTATE_SCREEN_DEF]
 
 export interface CopilotToolContext {
   workspaceId: string
@@ -108,6 +134,9 @@ export async function executeCopilotTool(
           .join('\n\n')
           .slice(0, 6000)
       }
+      case 'annotate_screen':
+        // Client-executed; reaching the server means an old client.
+        return 'Annotation displayed.'
       default:
         return `Unknown tool "${name}".`
     }

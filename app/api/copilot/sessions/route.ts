@@ -18,6 +18,7 @@ import {
   toCopilotSessionDTO,
   CopilotNotConfiguredError,
   CopilotTokenMintError,
+  CopilotSopNotFoundError,
 } from '@/lib/copilot/session-service'
 import type { CreateCopilotSessionInput } from '@/lib/copilot/types'
 
@@ -44,11 +45,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const extra = body as unknown as { mode?: 'onboarding' | 'general' | 'sop'; sopId?: string }
     const result = await createStaffSession({
       workspaceId,
       userId: access.session.user.id,
       locale: body.locale,
       workflowKey: body.workflowKey,
+      mode: extra.mode,
+      sopId: extra.sopId ?? null,
     })
     return NextResponse.json(result)
   } catch (err) {
@@ -57,6 +61,9 @@ export async function POST(req: NextRequest) {
         { error: 'Co-Pilot is not configured on this deployment (missing realtime model credentials).', code: 'COPILOT_NOT_CONFIGURED' },
         { status: 503 },
       )
+    }
+    if (err instanceof CopilotSopNotFoundError) {
+      return NextResponse.json({ error: 'That procedure no longer exists.', code: 'SOP_NOT_FOUND' }, { status: 404 })
     }
     if (err instanceof CopilotTokenMintError) {
       return NextResponse.json(

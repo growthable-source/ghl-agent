@@ -246,8 +246,8 @@ export async function discoverSiteUrls(
   opts: { maxPages: number; maxDepth?: number; budgetMs?: number },
 ): Promise<string[]> {
   const rootUrl = new URL(root)
-  const maxDepth = opts.maxDepth ?? 3
-  const deadline = Date.now() + (opts.budgetMs ?? 90_000)
+  const maxDepth = opts.maxDepth ?? 4
+  const deadline = Date.now() + (opts.budgetMs ?? 150_000)
 
   const fromSitemap = await urlsFromSitemap(rootUrl, opts.maxPages)
   if (fromSitemap.length > 1) {
@@ -262,26 +262,37 @@ export async function discoverSiteUrls(
     if (sameHost.length > 1) return sameHost.slice(0, opts.maxPages)
   }
 
-  // BFS crawl.
+  // BFS crawl, 8 fetches in flight — sequential discovery couldn't
+  // walk more than a few dozen pages inside its budget, which is why
+  // "give it a root URL and it follows all the links" under-delivered.
   const seen = new Set<string>([rootUrl.toString()])
   const queue: Array<{ url: string; depth: number }> = [{ url: rootUrl.toString(), depth: 0 }]
   const found: string[] = [rootUrl.toString()]
+  const CONCURRENCY = 8
 
   while (queue.length > 0 && found.length < opts.maxPages && Date.now() < deadline) {
-    const { url, depth } = queue.shift()!
-    if (depth >= maxDepth) continue
-    let page: FetchedPage
-    try {
-      page = await fetchPage(url)
-    } catch {
-      continue
-    }
-    if (page.status !== 200 || !page.contentType.includes('html')) continue
-    for (const link of extractLinks(page.html, page.finalUrl, rootUrl.hostname)) {
-      if (seen.has(link)) continue
-      seen.add(link)
-      found.push(link)
-      queue.push({ url: link, depth: depth + 1 })
+    const batch = queue.splice(0, CONCURRENCY).filter(e => e.depth < maxDepth)
+    if (batch.length === 0) continue
+    const pages = await Promise.all(
+      batch.map(async e => {
+        try {
+          return { entry: e, page: await fetchPage(e.url) }
+        } catch {
+          return null
+        }
+      }),
+    )
+    for (const item of pages) {
+      if (!item) continue
+      const { entry, page } = item
+      if (page.status !== 200 || !page.contentType.includes('html')) continue
+      for (const link of extractLinks(page.html, page.finalUrl, rootUrl.hostname)) {
+        if (seen.has(link)) continue
+        seen.add(link)
+        found.push(link)
+        queue.push({ url: link, depth: entry.depth + 1 })
+        if (found.length >= opts.maxPages) break
+      }
       if (found.length >= opts.maxPages) break
     }
   }
