@@ -101,15 +101,15 @@ export default function WidgetLivePage({ params }: { params: Promise<{ widgetId:
 
   if (configError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6">
-        <p className="text-sm text-gray-500">This live-help link is invalid or has expired.</p>
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <p className="text-sm text-zinc-500">This live-help link is invalid or has expired.</p>
       </div>
     )
   }
   if (!config) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-zinc-700 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -117,7 +117,7 @@ export default function WidgetLivePage({ params }: { params: Promise<{ widgetId:
   const accent = config.primaryColor || '#fa4d2e'
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center gap-3 mb-6">
           {config.logoUrl ? (
@@ -132,8 +132,8 @@ export default function WidgetLivePage({ params }: { params: Promise<{ widgetId:
             </div>
           )}
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">{config.title} — Live help</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl font-semibold text-zinc-100">{config.title} — Live help</h1>
+            <p className="text-sm text-zinc-500">
               Share your screen and talk it through with our expert assistant.
             </p>
           </div>

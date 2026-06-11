@@ -56,7 +56,7 @@ const FLUSH_INTERVAL_MS = 5000
 
 export default function LiveSessionPanel({
   transport,
-  accent = '#f97316',
+  accent = '#e84425',
   idleTitle = 'Start a live help session',
   idleBody = 'You’ll be asked to share your screen and microphone. Sessions are capped at 30 minutes; your screen is never recorded — only the conversation transcript is kept.',
   startLabel = 'Share screen & start talking',
@@ -324,15 +324,15 @@ export default function LiveSessionPanel({
   return (
     <div className="w-full">
       {phase.kind === 'idle' && (
-        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
           <div className="mx-auto mb-4 w-14 h-14 rounded-full flex items-center justify-center" style={{ background: `${accent}1f` }}>
             <svg viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.7" className="w-7 h-7">
               <rect x="2" y="4" width="20" height="14" rx="2" />
               <circle cx="12" cy="11" r="3" />
             </svg>
           </div>
-          <h2 className="text-lg font-medium text-gray-900 mb-1">{idleTitle}</h2>
-          <p className="text-sm text-gray-600 mb-5 max-w-md mx-auto">{idleBody}</p>
+          <h2 className="text-lg font-medium text-zinc-100 mb-1">{idleTitle}</h2>
+          <p className="text-sm text-zinc-400 mb-5 max-w-md mx-auto">{idleBody}</p>
           <button
             type="button"
             onClick={() => void start()}
@@ -345,30 +345,30 @@ export default function LiveSessionPanel({
       )}
 
       {phase.kind === 'starting' && (
-        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
           <div
             className="mx-auto mb-4 w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
             style={{ borderColor: accent, borderTopColor: 'transparent' }}
           />
-          <p className="text-sm text-gray-600">{phase.step}</p>
+          <p className="text-sm text-zinc-400">{phase.step}</p>
         </div>
       )}
 
       {phase.kind === 'gated' && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+        <div className="rounded-xl border border-zinc-800 bg-accent-amber-bg px-5 py-4 text-sm text-accent-amber">
           <div className="font-medium mb-0.5">Not available right now</div>
           <div>{phase.message}</div>
         </div>
       )}
 
       {phase.kind === 'error' && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900">
+        <div className="rounded-xl border border-zinc-800 bg-accent-red-bg px-5 py-4 text-sm text-accent-red">
           <div className="font-medium mb-0.5">Something went wrong</div>
           <div className="mb-3">{phase.message}</div>
           <button
             type="button"
             onClick={() => setPhase({ kind: 'idle' })}
-            className="px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700 text-sm font-medium hover:bg-red-100 transition"
+            className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-accent-red text-sm font-medium hover:bg-zinc-800 transition"
           >
             Try again
           </button>
@@ -376,12 +376,12 @@ export default function LiveSessionPanel({
       )}
 
       {phase.kind === 'ended' && (
-        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
-          <h2 className="text-lg font-medium text-gray-900 mb-1">Session ended</h2>
-          <p className="text-sm text-gray-600 mb-1">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
+          <h2 className="text-lg font-medium text-zinc-100 mb-1">Session ended</h2>
+          <p className="text-sm text-zinc-400 mb-1">
             {mmss(phase.durationSecs)} · {phase.reason.replace(/_/g, ' ')}
           </p>
-          {goalCopy && <p className="text-sm font-medium mb-4 text-gray-700">{goalCopy}</p>}
+          {goalCopy && <p className="text-sm font-medium mb-4 text-zinc-300">{goalCopy}</p>}
           <button
             type="button"
             onClick={() => setPhase({ kind: 'idle' })}
@@ -396,13 +396,15 @@ export default function LiveSessionPanel({
       {phase.kind === 'live' && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <div className="lg:col-span-2 space-y-4">
-            <div className="rounded-xl border border-gray-200 bg-gray-900 overflow-hidden">
+            {/* True black, not bg-black — that class is remapped to the
+                theme background; a video letterbox should stay black. */}
+            <div className="rounded-xl border border-zinc-800 overflow-hidden" style={{ background: '#000' }}>
               <video ref={previewVideoRef} muted playsInline className="w-full aspect-video object-contain" />
             </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-900">Session</span>
-                <span className="font-mono text-sm text-gray-600">
+                <span className="text-sm font-medium text-zinc-100">Session</span>
+                <span className="font-mono text-sm text-zinc-400">
                   {mmss(elapsed)} / {mmss(maxSecsRef.current)}
                 </span>
               </div>
@@ -412,8 +414,8 @@ export default function LiveSessionPanel({
                   onClick={toggleMute}
                   className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition ${
                     muted
-                      ? 'bg-amber-50 border-amber-300 text-amber-800'
-                      : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                      ? 'bg-accent-amber-bg border-accent-amber text-accent-amber'
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:bg-zinc-800'
                   }`}
                 >
                   {muted ? 'Unmute mic' : 'Mute mic'}
@@ -421,7 +423,7 @@ export default function LiveSessionPanel({
                 <button
                   type="button"
                   onClick={() => void endSession('user_ended')}
-                  className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition"
+                  className="flex-1 px-3 py-2 rounded-lg bg-accent-red text-white text-sm font-medium hover:opacity-90 transition"
                 >
                   End session
                 </button>
@@ -432,29 +434,29 @@ export default function LiveSessionPanel({
                 <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: accent }}>
                   Co-pilot says
                 </div>
-                <p className="text-sm text-gray-900 leading-relaxed">{suggestion}</p>
+                <p className="text-sm text-zinc-100 leading-relaxed">{suggestion}</p>
               </div>
             )}
           </div>
 
-          <div className="lg:col-span-3 rounded-xl border border-gray-200 bg-white flex flex-col" style={{ maxHeight: '34rem' }}>
-            <div className="px-4 py-3 border-b border-gray-100 text-sm font-medium text-gray-900">
+          <div className="lg:col-span-3 rounded-xl border border-zinc-800 bg-zinc-900 flex flex-col" style={{ maxHeight: '34rem' }}>
+            <div className="px-4 py-3 border-b border-zinc-800 text-sm font-medium text-zinc-100">
               Live transcript
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {feed.length === 0 && !partial.user && !partial.agent && (
-                <p className="text-sm text-gray-400 text-center py-8">
+                <p className="text-sm text-zinc-500 text-center py-8">
                   Say hello — the co-pilot is listening and can see your screen.
                 </p>
               )}
               {feed.map(item => (
                 <div key={item.id} className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {item.role === 'tool' ? (
-                    <span className="text-xs text-gray-400 italic">{item.text}</span>
+                    <span className="text-xs text-zinc-500 italic">{item.text}</span>
                   ) : (
                     <div
                       className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
-                        item.role === 'user' ? 'text-white' : 'bg-gray-100 text-gray-900'
+                        item.role === 'user' ? 'text-white' : 'bg-zinc-800 text-zinc-100'
                       }`}
                       style={item.role === 'user' ? { background: accent } : undefined}
                     >
@@ -472,7 +474,7 @@ export default function LiveSessionPanel({
               )}
               {partial.agent && (
                 <div className="flex justify-start">
-                  <div className="max-w-[85%] rounded-2xl px-3.5 py-2 text-sm bg-gray-50 text-gray-600 border border-gray-100">
+                  <div className="max-w-[85%] rounded-2xl px-3.5 py-2 text-sm bg-zinc-800/60 text-zinc-400 border border-zinc-800">
                     {partial.agent}
                   </div>
                 </div>

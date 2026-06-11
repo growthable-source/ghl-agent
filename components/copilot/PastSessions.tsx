@@ -94,14 +94,14 @@ export default function PastSessions({ workspaceId, refreshKey }: { workspaceId:
 
   return (
     <div className="mt-8">
-      <h2 className="text-lg font-medium text-gray-900 mb-3">Past sessions</h2>
-      <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
+      <h2 className="text-lg font-medium text-zinc-100 mb-3">Past sessions</h2>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800 overflow-hidden">
         {rows.map(row => (
           <div key={row.id}>
             <button
               type="button"
               onClick={() => void toggle(row.id)}
-              className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50 transition"
+              className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-zinc-800 transition"
             >
               <span
                 className={`shrink-0 w-2 h-2 rounded-full ${
@@ -109,14 +109,14 @@ export default function PastSessions({ workspaceId, refreshKey }: { workspaceId:
                     ? 'bg-emerald-500 animate-pulse'
                     : row.issueResolved === false
                       ? 'bg-amber-500'
-                      : 'bg-gray-300'
+                      : 'bg-zinc-600'
                 }`}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-900 truncate">
+                <p className="text-sm text-zinc-100 truncate">
                   {row.summary || (row.status === 'active' ? 'Live now' : 'No analysis yet')}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-zinc-500">
                   {new Date(row.startedAt).toLocaleString()} · {mmss(row.durationSecs)} ·{' '}
                   {row.mode === 'widget' ? 'visitor' : 'staff'} · {row.toolCallCount} tool call
                   {row.toolCallCount === 1 ? '' : 's'}
@@ -125,14 +125,14 @@ export default function PastSessions({ workspaceId, refreshKey }: { workspaceId:
               {row.issueResolved !== null && (
                 <span
                   className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                    row.issueResolved ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                    row.issueResolved ? 'bg-accent-emerald-bg text-accent-emerald' : 'bg-accent-amber-bg text-accent-amber'
                   }`}
                 >
                   {row.issueResolved ? 'resolved' : 'unresolved'}
                 </span>
               )}
               {row.ticketNumber !== null && (
-                <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-orange-50 text-orange-700">
+                <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-accent-primary-bg text-accent-primary">
                   ticket #{row.ticketNumber}
                 </span>
               )}
@@ -141,60 +141,60 @@ export default function PastSessions({ workspaceId, refreshKey }: { workspaceId:
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
-                className={`shrink-0 w-4 h-4 text-gray-400 transition-transform ${openId === row.id ? 'rotate-180' : ''}`}
+                className={`shrink-0 w-4 h-4 text-zinc-500 transition-transform ${openId === row.id ? 'rotate-180' : ''}`}
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
 
             {openId === row.id && (
-              <div className="px-4 pb-4 bg-gray-50/60 border-t border-gray-100">
-                {detailLoading && <p className="text-xs text-gray-400 py-3">Loading replay…</p>}
+              <div className="px-4 pb-4 bg-zinc-950 border-t border-zinc-800">
+                {detailLoading && <p className="text-xs text-zinc-500 py-3">Loading replay…</p>}
                 {!detailLoading && detail && (
                   <div className="pt-3 space-y-3">
                     {detail.analysis?.summary && (
-                      <div className="text-sm text-gray-700">
-                        <span className="font-medium text-gray-900">Analysis: </span>
+                      <div className="text-sm text-zinc-300">
+                        <span className="font-medium text-zinc-100">Analysis: </span>
                         {detail.analysis.summary}
                         {detail.analysis.sentiment && (
-                          <span className="text-xs text-gray-500"> · sentiment: {detail.analysis.sentiment}</span>
+                          <span className="text-xs text-zinc-500"> · sentiment: {detail.analysis.sentiment}</span>
                         )}
                       </div>
                     )}
                     {(detail.analysis?.topics?.length ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-1.5">
                         {detail.analysis!.topics!.map(t => (
-                          <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                          <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
                             {t}
                           </span>
                         ))}
                       </div>
                     )}
-                    <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+                    <div className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 p-3 space-y-2">
                       {detail.turns.length === 0 && (
-                        <p className="text-xs text-gray-400">No transcript captured.</p>
+                        <p className="text-xs text-zinc-500">No transcript captured.</p>
                       )}
                       {detail.turns.map(t => (
                         <p key={t.id} className="text-sm leading-relaxed">
                           <span
                             className={`font-medium ${
                               t.role === 'user'
-                                ? 'text-orange-700'
+                                ? 'text-accent-primary'
                                 : t.role === 'agent'
-                                  ? 'text-gray-900'
-                                  : 'text-gray-400'
+                                  ? 'text-zinc-100'
+                                  : 'text-zinc-500'
                             }`}
                           >
                             {t.role === 'user' ? 'User' : t.role === 'agent' ? 'Co-pilot' : t.role}:
                           </span>{' '}
-                          <span className={t.role === 'tool' ? 'text-gray-400 text-xs' : 'text-gray-700'}>
+                          <span className={t.role === 'tool' ? 'text-zinc-500 text-xs' : 'text-zinc-300'}>
                             {t.text}
                           </span>
                         </p>
                       ))}
                     </div>
                     {detail.toolCalls.length > 0 && (
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-zinc-500">
                         Tools: {detail.toolCalls.map(c => `${c.toolName} (${c.latencyMs ?? '?'}ms)`).join(' · ')}
                       </div>
                     )}

@@ -72,8 +72,8 @@ export default function CopilotPage() {
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 w-full">
       <div className="mb-6">
-        <h1 className="text-3xl font-semibold text-gray-900 mb-2">Co-Pilot</h1>
-        <p className="text-gray-600 leading-relaxed max-w-2xl">
+        <h1 className="text-3xl font-semibold text-zinc-100 mb-2">Co-Pilot</h1>
+        <p className="text-zinc-400 leading-relaxed max-w-2xl">
           Share your screen and talk — the co-pilot watches what you&rsquo;re doing and walks you
           through setup in real time. It guides, you click: it can&rsquo;t change anything itself.
         </p>
