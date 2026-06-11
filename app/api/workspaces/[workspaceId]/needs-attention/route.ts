@@ -32,6 +32,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
     where: {
       locationId: { in: locationIds },
       state: 'PAUSED',
+      // Bound to the same 7-day window as errors/fallbacks/stalls.
+      // Without this, a conversation paused weeks ago and never
+      // resumed showed as a loud, sound-pinging emergency banner
+      // forever — training operators to ignore the banner entirely
+      // (the "15-day-old needs-takeover" alert). Genuinely abandoned
+      // pauses still live in the Queue; they just stop screaming.
+      updatedAt: { gte: since },
     },
     include: {
       agent: { select: { id: true, name: true } },

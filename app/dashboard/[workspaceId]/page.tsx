@@ -42,9 +42,12 @@ export default async function WorkspaceDashboardPage({
     console.warn('[WorkspaceDashboard] agent-count check failed:', err?.message)
   }
 
-  if (agentCount === 0) {
-    redirect(`/dashboard/${workspaceId}/agents/new`)
-  }
+  // Previously a zero-agent workspace was bounced straight into the
+  // agent-creation form — no context, no "what is this", no way to
+  // look around first. Now the dashboard renders with a first-run
+  // setup checklist as its hero (SetupChecklist in the client view),
+  // which explains each step and links into the wizard. The user gets
+  // oriented instead of ambushed.
 
   return <WorkspaceDashboardView />
 }

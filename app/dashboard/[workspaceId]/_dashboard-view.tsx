@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import SetupChecklist from '@/components/dashboard/SetupChecklist'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -192,10 +193,30 @@ export default function WorkspaceDashboardView() {
   }
 
   const kpi = data?.kpi
-  if (!kpi) return null
+
+  // Brand-new / empty workspace: no analytics yet, but the user still
+  // needs orientation. Render the setup checklist on its own rather
+  // than a blank screen (this is the page a first-time user lands on).
+  if (!kpi) {
+    return (
+      <div className="p-6 max-w-[1200px] mx-auto">
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Welcome to Voxility</h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            Your AI agents, knowledge, and conversations — all in one place. Start here.
+          </p>
+        </div>
+        <SetupChecklist workspaceId={workspaceId} />
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto">
+      {/* First-run checklist — hides itself once the workspace is fully
+          set up, so established workspaces never see it. */}
+      <SetupChecklist workspaceId={workspaceId} />
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

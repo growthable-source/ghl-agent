@@ -11,6 +11,33 @@ import CannyChangelogButton from '@/components/CannyChangelogButton'
 import NewBadge from '@/components/NewBadge'
 import { useEmbedded } from '@/lib/embedded-context'
 
+// Plain-language hover hints for nav entries whose label is a product
+// term a first-time user wouldn't recognise. Keyed by href suffix
+// (matched with endsWith), so they apply wherever the route renders.
+// This is the no-risk half of the learning-curve work: explain the
+// jargon without renaming routes. Primary-nav labels stay self-evident.
+const NAV_HINTS: Record<string, string> = {
+  '/csat': 'Customer satisfaction — how people rated their conversations',
+  '/tool-gate': 'Which agent actions were allowed, blocked, or needed approval',
+  '/decisions': 'Why the agent chose each reply or action — its reasoning trail',
+  '/insights': 'How your agents are performing overall',
+  '/insights/retrieval': 'Test what your agent knows — ask it a question and see what it retrieves',
+  '/performance': 'Response times, resolution rates, and volume over time',
+  '/digest': 'A weekly email-style summary of agent activity',
+  '/simulations': 'Stress-test an agent against many synthetic customers at once',
+  '/playground': 'Chat with an agent live to try it out',
+  '/knowledge': 'Everything your agents have learned — websites, files, feeds, notes',
+  '/knowledge-sources': 'Advanced: organise knowledge into topics and review indexing',
+  '/consent': 'Opt-in / opt-out records for messaging compliance',
+  '/audit-log': 'A record of who changed what in this workspace',
+  '/settings/data-sources': 'Live data the agent can look up mid-conversation (Sheets, Airtable, APIs)',
+  '/settings/integrations': 'Channels shared across your workspaces',
+  '/integrations': 'Connect your CRM, Shopify, Meta, and other tools',
+  '/funnels': 'Multi-step sequences that qualify and route leads',
+  '/brands': 'Per-brand voice, colours, and styling for whitelabel clients',
+  '/settings/brand-groups': 'Group brands so agents prioritise the right knowledge',
+}
+
 // Ship dates for the "NEW" badges on recently-added nav items. Add
 // entries here when a new feature links off the sidebar; the badge
 // auto-expires 90 days after the ship date.
@@ -124,11 +151,17 @@ function SidebarBody() {
 
   if (isOnboarding) return null
 
+  // `hint` becomes a native hover tooltip — the cheapest way to retire
+  // jargon debt (CSAT, Tool gate, Decisions, Consent…) without renaming
+  // routes. NAV_HINTS below maps href-suffix → plain-language meaning.
   function navLink(href: string, label: string, badgeCount?: number | null, newSince?: string) {
     const active = pathname === href || (href !== `/dashboard/${workspaceId}` && pathname.startsWith(href))
+    const hintKey = Object.keys(NAV_HINTS).find(k => href.endsWith(k))
+    const hint = hintKey ? NAV_HINTS[hintKey] : undefined
     return (
       <Link
         href={href}
+        title={hint}
         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
           active
             ? 'text-white'
@@ -393,7 +426,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
                     {navLink(`/dashboard/${workspaceId}/insights/retrieval`, '↳ Test your AI')}
                     {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
-                    {navLink(`/dashboard/${workspaceId}/csat`, 'CSAT')}
+                    {navLink(`/dashboard/${workspaceId}/csat`, 'Satisfaction')}
                     {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
                     {navLink(`/dashboard/${workspaceId}/tool-gate`, 'Tool gate', null, FEATURE_SHIP_DATES.toolGate)}
                     {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
@@ -418,7 +451,7 @@ function SidebarBody() {
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Library</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
-                    {navLink(`/dashboard/${workspaceId}/knowledge-sources`, '↳ Sources & ingestion')}
+                    {navLink(`/dashboard/${workspaceId}/knowledge-sources`, '↳ Topics & indexing')}
                     {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                     {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
                     {navLink(`/dashboard/${workspaceId}/settings/brand-groups`, '↳ Priority groups')}
