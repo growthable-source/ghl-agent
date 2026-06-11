@@ -102,8 +102,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
 
   // Re-adding the same URL re-checks it instead of duplicating the
   // source — pasting twice is "check it again", not "two copies".
+  // Deduped across ALL the workspace's domains, not just the default
+  // one: sources created on the advanced surface live in other
+  // domains and must not get a doppelgänger here.
   const existing = await db.knowledgeSource.findFirst({
-    where: { knowledgeDomainId: domain.id, urlOrIdentifier: normalizedUrl },
+    where: { domain: { workspaceId }, urlOrIdentifier: normalizedUrl },
     select: { id: true },
   })
   const source =

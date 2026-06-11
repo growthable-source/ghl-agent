@@ -59,6 +59,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
               pagesSucceeded: run.pagesSucceeded,
               chunksCreated: run.chunksCreated,
               errorCount: Array.isArray(run.errorLog) ? run.errorLog.length : 0,
+              // First real error message — failures must be
+              // self-explanatory in the UI, not "check Vercel logs".
+              firstError:
+                Array.isArray(run.errorLog) && run.errorLog.length > 0
+                  ? String((run.errorLog[0] as { message?: string })?.message ?? '').slice(0, 300) || null
+                  : null,
             }
           : null,
       }

@@ -29,6 +29,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Reclaim zombies first: a run stuck 'running' for 20+ minutes
+  // means its function got killed mid-flight (maxDuration, OOM,
+  // deploy). Without this, the row spins "Learning…" forever and the
+  // user's retry can't help.
+  await db.ingestionRun.updateMany({
+    where: { status: 'running', startedAt: { lt: new Date(Date.now() - 20 * 60 * 1000) } },
+    data: {
+      status: 'failed',
+      completedAt: new Date(),
+      errorLog: [{ stage: 'worker', message: 'Run was interrupted (timed out) — re-check to resume; already-read pages are skipped via hash match.' }],
+    },
+  })
+
   const results: Array<{ runId: string; status: string }> = []
 
   for (let i = 0; i < RUNS_PER_TICK; i++) {

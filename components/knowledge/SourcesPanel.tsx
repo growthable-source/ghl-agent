@@ -34,6 +34,7 @@ interface SourceRow {
     chunksCreated: number | null
     errorCount: number
     completedAt: string | null
+    firstError: string | null
   } | null
 }
 
@@ -70,8 +71,8 @@ function statusOf(s: SourceRow): { label: string; tone: 'busy' | 'ok' | 'warn' |
       run.pagesAttempted && run.pagesAttempted > 0 ? ` ${run.pagesSucceeded ?? 0}/${run.pagesAttempted}` : ''
     return { label: `Learning…${progress}`, tone: 'busy' }
   }
-  if (run.status === 'failed') return { label: 'Couldn’t read this — tap to retry', tone: 'warn' }
-  if (run.status === 'partial') return { label: `Mostly read (${run.errorCount} pages failed)`, tone: 'warn' }
+  if (run.status === 'failed') return { label: 'Couldn’t read this — retry', tone: 'warn' }
+  if (run.status === 'partial') return { label: `Mostly read (${run.errorCount} pages failed) — retry`, tone: 'warn' }
   return {
     label: s.lastCrawledAt ? `Up to date · checked ${relTime(s.lastCrawledAt)}` : 'Up to date',
     tone: 'ok',
@@ -281,26 +282,38 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
                   <p className="text-sm text-zinc-100 truncate" title={s.url}>
                     {s.displayName}
                   </p>
-                  <p className="text-xs flex items-center gap-1.5">
+                  <p className="text-xs flex items-center gap-1.5 flex-wrap">
                     {status.tone === 'busy' && (
                       <span className="inline-block w-3 h-3 border-[1.5px] border-zinc-500 border-t-transparent rounded-full animate-spin" />
                     )}
-                    <span
-                      style={{
-                        color:
-                          status.tone === 'ok'
-                            ? 'var(--accent-emerald)'
-                            : status.tone === 'warn'
-                              ? 'var(--accent-amber)'
-                              : 'var(--text-tertiary)',
-                      }}
-                    >
-                      {status.label}
-                    </span>
+                    {status.tone === 'warn' ? (
+                      // Failure label IS the retry button — the copy
+                      // promises it, the handler delivers it.
+                      <button
+                        onClick={() => void act(s.id, { action: 'recheck' })}
+                        className="font-medium underline decoration-dotted underline-offset-2 hover:opacity-80 transition-opacity"
+                        style={{ color: 'var(--accent-amber)' }}
+                      >
+                        {status.label}
+                      </button>
+                    ) : (
+                      <span
+                        style={{
+                          color: status.tone === 'ok' ? 'var(--accent-emerald)' : 'var(--text-tertiary)',
+                        }}
+                      >
+                        {status.label}
+                      </span>
+                    )}
                     {s.chunkCount > 0 && (
                       <span className="text-zinc-500">· {s.chunkCount} snippets learned</span>
                     )}
                   </p>
+                  {status.tone === 'warn' && s.latestRun?.firstError && (
+                    <p className="text-[11px] text-zinc-500 mt-0.5 truncate" title={s.latestRun.firstError}>
+                      {s.latestRun.firstError}
+                    </p>
+                  )}
                 </div>
 
                 {s.sourceType !== 'pdf' && (

@@ -19,7 +19,7 @@
 
 import crypto from 'crypto'
 import { db } from '@/lib/db'
-import { docsFirecrawlAdapter } from './adapters/docs-firecrawl'
+import { docsAdapter } from './adapters/docs'
 import { pdfAdapter } from './adapters/pdf'
 import { youtubeAdapter } from './adapters/youtube'
 import { rssAdapter } from './adapters/rss'
@@ -29,7 +29,7 @@ import { classifyChunk, type TaxonomyRow } from './classify'
 import { embedTexts, EMBEDDING_MODEL } from './embed'
 
 const ADAPTERS: Record<string, SourceAdapter> = {
-  docs:    docsFirecrawlAdapter,
+  docs:    docsAdapter,
   pdf:     pdfAdapter,
   youtube: youtubeAdapter,
   rss:     rssAdapter,

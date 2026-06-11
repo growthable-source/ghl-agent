@@ -77,52 +77,58 @@ export const rssAdapter: SourceAdapter = {
   },
 
   async fetch(_ctx: AdapterContext, item: DiscoveredItem): Promise<RawContent> {
-    const apiKey = process.env.FIRECRAWL_API_KEY
-    if (!apiKey) {
-      throw new Error('FIRECRAWL_API_KEY env var not set — rss adapter shares the docs scraper.')
-    }
-
-    const res = await fetch(`${FIRECRAWL_BASE}/scrape`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: item.identifier,
-        formats: ['markdown'],
-        onlyMainContent: true,
-      }),
-    })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`Firecrawl ${res.status}: ${text.slice(0, 300)}`)
-    }
-    const json = await res.json() as FirecrawlScrapeResponse
-    if (!json.success || !json.data?.markdown) {
-      throw new Error(`rss adapter: Firecrawl returned no markdown for ${item.identifier}`)
-    }
+    // Native fetch — same outage-driven move as the docs adapter:
+    // feed posts are almost always server-rendered articles, the
+    // easiest case for the native extractor. Firecrawl remains a
+    // thin-page fallback inside normalize().
+    const { fetchPage } = await import('../native-web')
+    const page = await fetchPage(item.identifier)
+    if (page.status >= 400) throw new Error(`fetch ${page.status} for ${item.identifier}`)
     return {
       identifier: item.identifier,
-      raw: json.data,
+      raw: { html: page.html, finalUrl: page.finalUrl },
       fetchedAt: new Date(),
     }
   },
 
   async normalize(_ctx: AdapterContext, raw: RawContent): Promise<NormalizedContent> {
-    const data = raw.raw as FirecrawlScrapeResponse['data']
-    if (!data) throw new Error('rss adapter: empty raw payload')
+    const payload = raw.raw as { html?: string; finalUrl?: string }
+    if (!payload?.html) throw new Error('rss adapter: empty raw payload')
 
-    const markdown = (data.markdown ?? '').trim()
-    if (!markdown) throw new Error('rss adapter: empty markdown after extraction')
+    const { extractMarkdownFromHtml, extractTitle } = await import('../native-web')
+    let markdown = extractMarkdownFromHtml(payload.html)
+    let title = extractTitle(payload.html)
 
-    const sourceUrl = data.metadata?.sourceURL || raw.identifier
-    const title = data.metadata?.title || data.metadata?.ogTitle || sourceUrl
+    if (markdown.length < 200) {
+      const apiKey = process.env.FIRECRAWL_API_KEY
+      if (apiKey) {
+        try {
+          const res = await fetch(`${FIRECRAWL_BASE}/scrape`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: payload.finalUrl || raw.identifier, formats: ['markdown'], onlyMainContent: true }),
+          })
+          if (res.ok) {
+            const json = (await res.json()) as FirecrawlScrapeResponse
+            if (json.success && json.data?.markdown) {
+              markdown = json.data.markdown.trim()
+              title = json.data.metadata?.title ?? title
+            }
+          }
+        } catch {
+          /* fallback only — native error below is the honest signal */
+        }
+      }
+    }
 
+    if (!markdown.trim() || markdown.length < 80) {
+      throw new Error('rss adapter: post had no extractable text')
+    }
+
+    const sourceUrl = payload.finalUrl || raw.identifier
     let breadcrumbPath: string[] = []
     try {
-      const u = new URL(sourceUrl)
-      breadcrumbPath = u.pathname.split('/').filter(Boolean)
+      breadcrumbPath = new URL(sourceUrl).pathname.split('/').filter(Boolean)
     } catch { /* ignore */ }
 
     return {
@@ -130,9 +136,8 @@ export const rssAdapter: SourceAdapter = {
       sourceUrl,
       markdown,
       metadata: {
-        page_title: title,
+        page_title: title || sourceUrl,
         breadcrumb_path: breadcrumbPath,
-        page_last_updated: data.metadata?.modifiedTime || data.metadata?.publishedTime || null,
       },
     }
   },
