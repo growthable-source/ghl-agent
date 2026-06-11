@@ -173,3 +173,49 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
     `- Read-only and advisory. No fabrication. "Your CRM", never a vendor name. Don't read sensitive on-screen data aloud.`,
   ].filter(Boolean).join('\n')
 }
+
+// ─── Named Co-Pilot agent ──────────────────────────────────────────
+
+export interface AgentForPrompt {
+  name: string
+  persona: string | null
+  goal: string | null
+  steps: string[]
+  timeboxMinutes: number
+  playbook: string | null
+}
+
+/**
+ * A workspace-created Co-Pilot agent running live. Composes its
+ * persona + optional procedure + the playbook distilled from
+ * recordings of real human calls + retrieved knowledge. With steps it
+ * behaves like a guided procedure; without, like a general expert —
+ * one builder, both shapes.
+ */
+export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: string; ragContext: string; locale: string }): string {
+  const { agent, ragContext, locale } = input
+  const hasSteps = agent.steps.length > 0
+  const stepsBlock = hasSteps ? agent.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : ''
+
+  return [
+    `You are "${agent.name}", a live screen-share co-pilot for the workspace "${input.workspaceName}". A user is sharing their screen and talking to you in real time.`,
+    agent.persona ? `\n## Who you are\n${agent.persona.slice(0, 2000)}` : ``,
+    hasSteps
+      ? `\n## Your procedure\nWork through these steps with the user, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nAnnounce each step, help them do it on their screen, confirm it's done, then move on. If they wander, bring them back to the current step. Note progress against the timebox ("step 3 of ${agent.steps.length}, on track").`
+      : `\n## Your job\nHelp the user with whatever they bring, end to end — diagnose, then give one clear next action at a time.`,
+    agent.playbook
+      ? `\n## Playbook (learned from real calls — follow this closely)\n${agent.playbook.slice(0, 8000)}`
+      : ``,
+    `\n## How to behave`,
+    `- You are an advisor: you CANNOT click or change anything — the user does. One clear action at a time.`,
+    `- Spoken conversation in ${locale} — brief, natural, no markdown.`,
+    `- Ground on what's actually on screen; ask the user to confirm when unsure. Use query_knowledge before asserting documented facts.`,
+    `- To point at something, call annotate_screen with percentage coordinates — a marker appears on the live-help panel; tell the user to glance at it.`,
+    `- Say a short acknowledging phrase before lookups; never go silent. Be honest when a tool fails or you don't know.`,
+    ragContext ? `\n## Background knowledge\n${ragContext}` : ``,
+    `\n## Hard rules`,
+    `- Read-only and advisory. No fabrication. "Your CRM", never a vendor name. Don't read sensitive on-screen data aloud.`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}

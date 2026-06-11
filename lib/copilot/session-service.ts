@@ -167,6 +167,8 @@ export async function createStaffSession(opts: {
    *  anything), or 'sop' (run a workspace-authored procedure). */
   mode?: StaffCopilotMode
   sopId?: string | null
+  /** Run AS a workspace-created Co-Pilot agent (overrides mode). */
+  agentId?: string | null
 }) {
   const locale = normalizeLocale(opts.locale)
   const mode: StaffCopilotMode = opts.mode === 'general' || opts.mode === 'sop' ? opts.mode : 'onboarding'
@@ -176,8 +178,30 @@ export async function createStaffSession(opts: {
   let systemPrompt: string
   let workflowKey: string | null = null
   let maxSecsOverride: number | undefined
+  let copilotAgentId: string | null = null
 
-  if (mode === 'sop') {
+  if (opts.agentId) {
+    // Run as a workspace-created Co-Pilot agent: persona + optional
+    // procedure + recording-distilled playbook + scoped knowledge.
+    const agent = await db.copilotAgent.findFirst({ where: { id: opts.agentId, workspaceId: opts.workspaceId } })
+    if (!agent) throw new CopilotSopNotFoundError('Co-Pilot agent not found')
+    copilotAgentId = agent.id
+    const steps = Array.isArray(agent.steps) ? (agent.steps as string[]).filter(s => typeof s === 'string') : []
+    const domainIds = agent.knowledgeDomainIds ?? []
+    const ragChunks = await retrieveChunks(opts.workspaceId, `${agent.name} ${steps.join(' ')}`.slice(0, 400) || agent.name, {
+      limit: 4,
+      knowledgeDomainIds: domainIds.length ? domainIds : undefined,
+    })
+    const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+    const { buildAgentPrompt } = await import('./prompt')
+    systemPrompt = buildAgentPrompt({
+      agent: { name: agent.name, persona: agent.persona, goal: null, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
+      workspaceName: setupState.workspaceName,
+      ragContext,
+      locale,
+    })
+    if (steps.length > 0) maxSecsOverride = (agent.timeboxMinutes + 5) * 60
+  } else if (mode === 'sop') {
     const sop = opts.sopId
       ? await db.copilotSop.findFirst({
           where: { id: opts.sopId, workspaceId: opts.workspaceId },
@@ -219,7 +243,7 @@ export async function createStaffSession(opts: {
       locale,
       workflowKey,
       model: 'gemini-live',
-      metadata: { mode: 'staff', copilotMode: mode, sopId: opts.sopId ?? null, vendorModelId: realtime.vendorModelId },
+      metadata: { mode: 'staff', copilotMode: copilotAgentId ? 'agent' : mode, sopId: opts.sopId ?? null, copilotAgentId, vendorModelId: realtime.vendorModelId },
     },
   })
 

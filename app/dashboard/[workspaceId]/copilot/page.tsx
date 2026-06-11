@@ -3,61 +3,90 @@
 /**
  * Co-Pilot — dashboard surface (staff).
  *
- * Thin host around the shared LiveSessionPanel: supplies the
- * staff-route transport (NextAuth-cookie'd /api/copilot/* endpoints)
- * plus the session history below. The widget visitor surface reuses
- * the same panel with its own transport — see
- * app/widget/[widgetId]/live/page.tsx.
+ * Two layers:
+ *   - a picker: built-in quick-starts (General support, Guided
+ *     onboarding) + the workspace's own Co-Pilot AGENTS (named
+ *     personas with procedures + recording-distilled playbooks).
+ *   - the live session, run as whichever was chosen.
+ *
+ * Choosing an agent (or ?agent=<id>) starts the session AS that
+ * agent; the shared LiveSessionPanel + transport are unchanged.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import LiveSessionPanel, { type CopilotTransport } from '@/components/copilot/LiveSessionPanel'
 import PastSessions from '@/components/copilot/PastSessions'
 
+interface AgentRow {
+  id: string
+  name: string
+  steps: string[]
+  timeboxMinutes: number
+  hasPlaybook: boolean
+  recordingCount: number
+  recordingsProcessing: number
+}
+
+type Selection = { kind: 'general' } | { kind: 'onboarding' } | { kind: 'agent'; agentId: string; name: string }
+
 export default function CopilotPage() {
   const params = useParams<{ workspaceId: string }>()
+  const search = useSearchParams()
   const workspaceId = params?.workspaceId
   const [refreshKey, setRefreshKey] = useState(0)
-  const [mode, setMode] = useState<'general' | 'onboarding' | 'sop'>('general')
-  const [sops, setSops] = useState<Array<{ id: string; title: string; timeboxMinutes: number }>>([])
-  const [sopId, setSopId] = useState<string>('')
-  const [showSopForm, setShowSopForm] = useState(false)
-  const [sopDraft, setSopDraft] = useState({ title: '', minutes: '20', steps: '' })
+  const [agents, setAgents] = useState<AgentRow[]>([])
+  const [selection, setSelection] = useState<Selection>({ kind: 'general' })
+  const [started, setStarted] = useState(false)
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     if (!workspaceId) return
-    void fetch(`/api/workspaces/${workspaceId}/copilot/sops`)
-      .then(r => (r.ok ? r.json() : { sops: [] }))
-      .then(d => setSops(Array.isArray(d.sops) ? d.sops : []))
-      .catch(() => setSops([]))
+    void fetch(`/api/workspaces/${workspaceId}/copilot/agents`)
+      .then(r => (r.ok ? r.json() : { agents: [] }))
+      .then(d => setAgents(Array.isArray(d.agents) ? d.agents : []))
+      .catch(() => setAgents([]))
   }, [workspaceId, refreshKey])
 
-  const createSop = useCallback(async () => {
-    const steps = sopDraft.steps.split('\n').map(s => s.trim()).filter(Boolean)
-    if (!sopDraft.title.trim() || steps.length === 0) return
-    const res = await fetch(`/api/workspaces/${workspaceId}/copilot/sops`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: sopDraft.title, goal: sopDraft.title, timeboxMinutes: Number(sopDraft.minutes) || 20, steps }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (res.ok && body.sop) {
-      setSops(prev => [body.sop, ...prev])
-      setSopId(body.sop.id)
-      setMode('sop')
-      setShowSopForm(false)
-      setSopDraft({ title: '', minutes: '20', steps: '' })
+  // Deep-link from the editor's "Start a session as this agent".
+  useEffect(() => {
+    const a = search?.get('agent')
+    if (a && agents.length) {
+      const found = agents.find(x => x.id === a)
+      if (found) setSelection({ kind: 'agent', agentId: found.id, name: found.name })
     }
-  }, [workspaceId, sopDraft])
+  }, [search, agents])
+
+  const createAgent = useCallback(async () => {
+    const name = prompt('Name your Co-Pilot agent (e.g. "Onboarding Olivia")')?.trim()
+    if (!name || !workspaceId) return
+    setCreating(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, steps: [] }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok && body.agentId) {
+        window.location.href = `/dashboard/${workspaceId}/copilot/agents/${body.agentId}`
+      }
+    } finally {
+      setCreating(false)
+    }
+  }, [workspaceId])
 
   const transport = useMemo<CopilotTransport>(
     () => ({
       async create(locale) {
+        const payload: Record<string, unknown> = { workspaceId, locale }
+        if (selection.kind === 'agent') payload.agentId = selection.agentId
+        else payload.mode = selection.kind
         const res = await fetch('/api/copilot/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspaceId, locale, mode, sopId: mode === 'sop' ? sopId : undefined }),
+          body: JSON.stringify(payload),
         })
         const body = await res.json().catch(() => ({}))
         return { ok: res.ok, status: res.status, ...body }
@@ -93,118 +122,150 @@ export default function CopilotPage() {
         }
       },
     }),
-    [workspaceId, mode, sopId],
+    [workspaceId, selection],
   )
 
-  const onSessionEnded = useCallback(() => setRefreshKey(k => k + 1), [])
+  const onSessionEnded = useCallback(() => {
+    setRefreshKey(k => k + 1)
+    setStarted(false)
+  }, [])
 
   if (!workspaceId) return null
+
+  const selLabel =
+    selection.kind === 'agent' ? selection.name : selection.kind === 'onboarding' ? 'Guided onboarding' : 'General support'
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 w-full">
       <div className="mb-6">
         <h1 className="text-3xl font-semibold text-zinc-100 mb-2">Co-Pilot</h1>
         <p className="text-zinc-400 leading-relaxed max-w-2xl">
-          Share your screen and talk — the co-pilot watches what you&rsquo;re doing and walks you
-          through setup in real time. It guides, you click: it can&rsquo;t change anything itself.
+          Live screen-share help. Pick a co-pilot, share your screen, and talk — it watches what you&rsquo;re doing
+          and walks you through it. It guides, you click.
         </p>
       </div>
 
-      {/* Session type — what kind of co-pilot answers this session. */}
-      <div className="mb-4 flex items-center gap-2 flex-wrap">
-        {([
-          { key: 'general', label: 'General support', hint: 'Fix anything — diagnose and solve whatever comes up' },
-          { key: 'onboarding', label: 'Guided onboarding', hint: 'Walks the built-in publish-your-first-agent workflow' },
-          { key: 'sop', label: 'Run a procedure', hint: 'Follow one of your SOPs step-by-step inside a timebox' },
-        ] as const).map(m => (
-          <button
-            key={m.key}
-            type="button"
-            title={m.hint}
-            onClick={() => setMode(m.key)}
-            className={`px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              mode === m.key
-                ? 'border-transparent text-white'
-                : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'
-            }`}
-            style={mode === m.key ? { background: 'var(--accent-primary)' } : undefined}
-          >
-            {m.label}
-          </button>
-        ))}
-        {mode === 'sop' && (
-          <>
-            <select
-              value={sopId}
-              onChange={e => setSopId(e.target.value)}
-              className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-2 text-sm text-zinc-300 focus:outline-none"
-            >
-              <option value="">Pick a procedure…</option>
-              {sops.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.title} ({s.timeboxMinutes} min)
-                </option>
-              ))}
-            </select>
+      {/* Picker — hidden once a session starts. */}
+      {!started && (
+        <div className="mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <PickTile
+              active={selection.kind === 'general'}
+              onClick={() => setSelection({ kind: 'general' })}
+              title="General support"
+              body="Fix anything — diagnose and solve whatever comes up."
+            />
+            <PickTile
+              active={selection.kind === 'onboarding'}
+              onClick={() => setSelection({ kind: 'onboarding' })}
+              title="Guided onboarding"
+              body="Walk the built-in publish-your-first-agent workflow."
+            />
+            {agents.map(a => (
+              <PickTile
+                key={a.id}
+                active={selection.kind === 'agent' && selection.agentId === a.id}
+                onClick={() => setSelection({ kind: 'agent', agentId: a.id, name: a.name })}
+                title={a.name}
+                body={
+                  a.steps.length
+                    ? `${a.steps.length}-step procedure · ${a.timeboxMinutes} min`
+                    : 'General expert'
+                }
+                badge={
+                  a.recordingsProcessing > 0
+                    ? 'learning…'
+                    : a.hasPlaybook
+                      ? `trained · ${a.recordingCount} call${a.recordingCount === 1 ? '' : 's'}`
+                      : undefined
+                }
+                href={`/dashboard/${workspaceId}/copilot/agents/${a.id}`}
+              />
+            ))}
             <button
               type="button"
-              onClick={() => setShowSopForm(v => !v)}
-              className="px-3 py-2 rounded-lg text-sm text-zinc-400 border border-zinc-700 hover:bg-zinc-800 transition-colors"
+              onClick={() => void createAgent()}
+              disabled={creating}
+              className="rounded-xl border border-dashed border-zinc-700 p-4 text-left hover:bg-zinc-900/40 transition-colors disabled:opacity-50"
             >
-              + New procedure
+              <p className="text-sm font-medium text-zinc-300">+ New Co-Pilot agent</p>
+              <p className="text-xs text-zinc-500 mt-0.5">A named persona with its own steps, knowledge, and learned playbook.</p>
             </button>
-          </>
-        )}
-      </div>
-
-      {mode === 'sop' && showSopForm && (
-        <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-2">
-          <div className="flex gap-2 flex-wrap">
-            <input
-              value={sopDraft.title}
-              onChange={e => setSopDraft(d => ({ ...d, title: e.target.value }))}
-              placeholder="Procedure name (e.g. New client onboarding)"
-              className="flex-1 min-w-[220px] bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
-            />
-            <input
-              value={sopDraft.minutes}
-              onChange={e => setSopDraft(d => ({ ...d, minutes: e.target.value }))}
-              placeholder="Minutes"
-              className="w-24 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
-            />
           </div>
-          <textarea
-            value={sopDraft.steps}
-            onChange={e => setSopDraft(d => ({ ...d, steps: e.target.value }))}
-            placeholder={'One step per line, e.g.\nConnect the CRM location\nImport the contact list\nDeploy the SMS channel'}
-            rows={5}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={() => void createSop()}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition hover:opacity-90"
-            style={{ background: 'var(--accent-primary)' }}
-          >
-            Save procedure
-          </button>
         </div>
       )}
 
+      {/* When idle, LiveSessionPanel shows its own start button; we just
+          tell the user which co-pilot will answer. */}
+      {!started && (
+        <p className="text-xs text-zinc-500 mb-2">
+          Starting as <span className="text-zinc-300 font-medium">{selLabel}</span>.
+        </p>
+      )}
+
       <LiveSessionPanel
-        key={`${mode}:${sopId}`}
+        key={selection.kind === 'agent' ? selection.agentId : selection.kind}
         transport={transport}
         endedGoalCopy={goal =>
           goal === null
             ? null
             : goal
-              ? '✓ Setup goal reached during this session'
-              : 'Setup goal not reached yet — pick up where you left off any time'
+              ? '✓ Goal reached during this session'
+              : 'Not fully resolved — pick up where you left off any time'
         }
         onSessionEnded={onSessionEnded}
+        onSessionStarted={() => setStarted(true)}
       />
 
       <PastSessions workspaceId={workspaceId} refreshKey={refreshKey} />
+    </div>
+  )
+}
+
+function PickTile({
+  active,
+  onClick,
+  title,
+  body,
+  badge,
+  href,
+}: {
+  active: boolean
+  onClick: () => void
+  title: string
+  body: string
+  badge?: string
+  href?: string
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className="rounded-xl border p-4 cursor-pointer transition-colors"
+      style={
+        active
+          ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+          : { borderColor: 'var(--border-secondary)', background: 'var(--surface)' }
+      }
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-100">{title}</p>
+        {badge && (
+          <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent-emerald-bg text-accent-emerald">
+            {badge}
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-zinc-400 mt-1">{body}</p>
+      {href && (
+        <Link
+          href={href}
+          onClick={e => e.stopPropagation()}
+          className="inline-block mt-2 text-xs font-medium"
+          style={{ color: 'var(--accent-primary)' }}
+        >
+          Edit / teach →
+        </Link>
+      )}
     </div>
   )
 }

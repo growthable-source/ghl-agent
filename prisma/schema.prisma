@@ -162,6 +162,7 @@ model Workspace {
   ticketingSettings    TicketingSettings?
   copilotSessions      CopilotSession[]      @relation("WorkspaceCopilotSessions")
   copilotSops          CopilotSop[]          @relation("WorkspaceCopilotSops")
+  copilotAgents        CopilotAgent[]        @relation("WorkspaceCopilotAgents")
 
   // ─── Native (built-in) CRM ───
   // Populated only for workspaces using crmProvider='native' on their
@@ -4066,4 +4067,46 @@ model CopilotSop {
   createdAt      DateTime @default(now())
 
   @@index([workspaceId])
+}
+
+// First-class Co-Pilot agents: named personas a workspace creates.
+// Each has its own knowledge scope, an optional procedure (steps; empty
+// = general support), and a PLAYBOOK distilled from uploaded recordings
+// of human calls — phrasings, objection handling, screen navigation
+// anchors. No neural training: behavior = persona + steps + playbook +
+// retrieved knowledge, all inspectable text.
+model CopilotAgent {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace @relation("WorkspaceCopilotAgents", fields: [workspaceId], references: [id], onDelete: Cascade)
+  name               String
+  persona            String?  @db.Text
+  knowledgeDomainIds String[] @default([])
+  steps              Json     @default("[]")
+  timeboxMinutes     Int      @default(30)
+  playbook           String?  @db.Text
+  createdAt          DateTime @default(now())
+  recordings         CopilotRecording[]
+
+  @@index([workspaceId])
+}
+
+// Uploaded recordings of human calls (audio or screen video). Processed
+// in the background: Gemini transcribes the dialogue AND extracts a
+// timestamped screen walkthrough from the video track, then the
+// distiller folds every processed recording into the agent's playbook.
+model CopilotRecording {
+  id               String   @id @default(cuid())
+  agentId          String
+  agent            CopilotAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspaceId      String
+  storageKey       String
+  originalFilename String
+  status           String   @default("queued") // queued | processing | done | failed
+  transcript       String?  @db.Text
+  walkthrough      String?  @db.Text
+  error            String?
+  createdAt        DateTime @default(now())
+
+  @@index([agentId])
 }

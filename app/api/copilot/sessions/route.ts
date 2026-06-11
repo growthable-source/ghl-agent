@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const extra = body as unknown as { mode?: 'onboarding' | 'general' | 'sop'; sopId?: string }
+    const extra = body as unknown as { mode?: 'onboarding' | 'general' | 'sop'; sopId?: string; agentId?: string }
     const result = await createStaffSession({
       workspaceId,
       userId: access.session.user.id,
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
       workflowKey: body.workflowKey,
       mode: extra.mode,
       sopId: extra.sopId ?? null,
+      agentId: extra.agentId ?? null,
     })
     return NextResponse.json(result)
   } catch (err) {

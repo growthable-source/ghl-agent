@@ -62,6 +62,7 @@ export default function LiveSessionPanel({
   startLabel = 'Share screen & start talking',
   endedGoalCopy,
   onSessionEnded,
+  onSessionStarted,
 }: {
   transport: CopilotTransport
   accent?: string
@@ -71,6 +72,7 @@ export default function LiveSessionPanel({
   /** Custom copy for the ended card per goal state; defaults provided. */
   endedGoalCopy?: (goalReached: boolean | null) => string | null
   onSessionEnded?: () => void
+  onSessionStarted?: () => void
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [feed, setFeed] = useState<FeedItem[]>([])
@@ -315,6 +317,7 @@ export default function LiveSessionPanel({
       }, 1000)
 
       setPhase({ kind: 'live' })
+      onSessionStarted?.()
     } catch (err) {
       displayStreamRef.current?.getTracks().forEach(t => t.stop())
       micRef.current?.stop()
@@ -326,7 +329,7 @@ export default function LiveSessionPanel({
         setPhase({ kind: 'error', message })
       }
     }
-  }, [transport, endSession, flushEvents, pushFeed])
+  }, [transport, endSession, flushEvents, pushFeed, onSessionStarted])
 
   const toggleMute = useCallback(() => {
     setMuted(prev => {
