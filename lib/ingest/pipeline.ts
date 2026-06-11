@@ -199,6 +199,20 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     data: { lastCrawledAt: new Date() },
   })
 
+  // Auto-organise topics for anything the classifier couldn't place —
+  // the "Needs a topic" queue clears itself instead of waiting for an
+  // operator to rubber-stamp AI suggestions. Skipped mid-continuation
+  // (deadline-cut runs) so one full crawl organises once at the end;
+  // best-effort, never fails the run.
+  if (!deadlineExhausted && chunksCreated > 0) {
+    try {
+      const { autoOrganizeTopics } = await import('./auto-topics')
+      await autoOrganizeTopics(source.knowledgeDomainId)
+    } catch (err: any) {
+      console.warn('[ingest] auto-topics skipped:', err?.message)
+    }
+  }
+
   return {
     runId: run.id,
     status,

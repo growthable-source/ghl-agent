@@ -91,6 +91,28 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Idle backstop: when there's no ingest work, clear one domain's
+  // "needs a topic" backlog per tick. This is what retro-organises
+  // chunks that piled up before auto-topics existed — without it,
+  // the backlog only clears when that domain next ingests something.
+  if (results.length === 0) {
+    try {
+      const orphan = await db.knowledgeChunk.groupBy({
+        by: ['knowledgeDomainId'],
+        where: { supersededAt: null, taxonomyTags: { isEmpty: true } },
+        _count: { _all: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 1,
+      })
+      if (orphan.length > 0 && orphan[0]._count._all >= 10) {
+        const { autoOrganizeTopics } = await import('@/lib/ingest/auto-topics')
+        await autoOrganizeTopics(orphan[0].knowledgeDomainId)
+      }
+    } catch (err) {
+      console.warn('[ingest-queue] auto-topics backstop skipped:', err instanceof Error ? err.message : err)
+    }
+  }
+
   await recordCronRun('ingest-queue', true)
   return NextResponse.json({ ok: true, processed: results })
 }
