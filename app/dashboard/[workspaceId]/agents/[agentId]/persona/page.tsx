@@ -5,12 +5,17 @@ import { useParams } from 'next/navigation'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 import SaveBar from '@/components/dashboard/SaveBar'
 
+interface VocabRow {
+  never: string
+  sayInstead: string
+}
+
 interface PersonaData {
   agentPersonaName: string
   responseLength: string
   formalityLevel: string
   useEmojis: boolean
-  neverSayList: string[]
+  vocabularyRules: VocabRow[]
   simulateTypos: boolean
   typingDelayEnabled: boolean
   typingDelayMinMs: number
@@ -33,12 +38,26 @@ export default function PersonaPage() {
 
   const [loading, setLoading] = useState(true)
   const [initial, setInitial] = useState<PersonaData | null>(null)
-  const [neverSayInput, setNeverSayInput] = useState('')
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
       .then(r => r.json())
       .then(({ agent }) => {
+        // Vocabulary rows = saved rules + any legacy never-say terms
+        // that haven't been upgraded to a rule yet (shown with an empty
+        // replacement). Saving writes both fields, so once the operator
+        // touches this page the data converges.
+        const rules: VocabRow[] = Array.isArray(agent.vocabularyRules)
+          ? agent.vocabularyRules
+              .filter((r: any) => r && typeof r.never === 'string' && r.never.trim())
+              .map((r: any) => ({ never: r.never, sayInstead: typeof r.sayInstead === 'string' ? r.sayInstead : '' }))
+          : []
+        const known = new Set(rules.map(r => r.never.toLowerCase()))
+        for (const term of (agent.neverSayList ?? []) as string[]) {
+          if (typeof term === 'string' && term.trim() && !known.has(term.trim().toLowerCase())) {
+            rules.push({ never: term.trim(), sayInstead: '' })
+          }
+        }
         setInitial({
           agentPersonaName: agent.agentPersonaName ?? '',
           responseLength: agent.responseLength ?? 'MODERATE',
@@ -48,7 +67,7 @@ export default function PersonaPage() {
           typingDelayEnabled: agent.typingDelayEnabled ?? false,
           typingDelayMinMs: agent.typingDelayMinMs ?? 500,
           typingDelayMaxMs: agent.typingDelayMaxMs ?? 3000,
-          neverSayList: agent.neverSayList ?? [],
+          vocabularyRules: rules,
           languages: agent.languages ?? ['en'],
           enableQuietCheckIn: agent.enableQuietCheckIn ?? true,
         })
@@ -71,7 +90,15 @@ export default function PersonaPage() {
           typingDelayEnabled: d.typingDelayEnabled,
           typingDelayMinMs: d.typingDelayMinMs,
           typingDelayMaxMs: d.typingDelayMaxMs,
-          neverSayList: d.neverSayList,
+          // vocabularyRules is the source of truth; the legacy
+          // neverSayList keeps carrying the replacement-less terms so
+          // the persona prompt line on older code paths still works.
+          vocabularyRules: d.vocabularyRules
+            .filter(r => r.never.trim())
+            .map(r => ({ never: r.never.trim(), sayInstead: r.sayInstead.trim() || null })),
+          neverSayList: d.vocabularyRules
+            .filter(r => r.never.trim() && !r.sayInstead.trim())
+            .map(r => r.never.trim()),
           languages: d.languages,
           enableQuietCheckIn: d.enableQuietCheckIn,
         }),
@@ -80,14 +107,15 @@ export default function PersonaPage() {
     },
   })
 
-  function addNeverSay(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && neverSayInput.trim()) {
-      e.preventDefault()
-      if (!draft.neverSayList.includes(neverSayInput.trim())) {
-        set({ neverSayList: [...draft.neverSayList, neverSayInput.trim()] })
-      }
-      setNeverSayInput('')
-    }
+  function setRule(idx: number, patch: Partial<VocabRow>) {
+    set({ vocabularyRules: draft.vocabularyRules.map((r, i) => i === idx ? { ...r, ...patch } : r) })
+  }
+  function removeRule(idx: number) {
+    set({ vocabularyRules: draft.vocabularyRules.filter((_, i) => i !== idx) })
+  }
+  function addRule(row: VocabRow = { never: '', sayInstead: '' }) {
+    if (row.never && draft.vocabularyRules.some(r => r.never.toLowerCase() === row.never.toLowerCase())) return
+    set({ vocabularyRules: [...draft.vocabularyRules, row] })
   }
 
   function toggleLanguage(code: string) {
@@ -278,37 +306,75 @@ export default function PersonaPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Never Say List</label>
-            <input
-              type="text"
-              value={neverSayInput}
-              onChange={e => setNeverSayInput(e.target.value)}
-              onKeyDown={addNeverSay}
-              placeholder="Type a word or phrase and press Enter"
-              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none"
-              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
-            />
-            {draft.neverSayList.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {draft.neverSayList.map(word => (
-                  <span
-                    key={word}
-                    className="inline-flex items-center gap-1 text-xs rounded-full px-3 py-1"
-                    style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
-                  >
-                    {word}
+            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Vocabulary — never say / say instead</label>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
+              Terms the agent must never use — even when its knowledge sources use them word-for-word.
+              Add a replacement and it&apos;s <span className="font-semibold">enforced on every reply</span>, not just suggested:
+              if the term slips through, it&apos;s swapped automatically before the customer sees it.
+              Leave &ldquo;say instead&rdquo; empty to simply forbid a phrase.
+            </p>
+            <div className="space-y-2">
+              {draft.vocabularyRules.map((rule, idx) => (
+                <div key={idx}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={rule.never}
+                      onChange={e => setRule(idx, { never: e.target.value })}
+                      placeholder="Never say…"
+                      className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+                    />
+                    <span className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>→</span>
+                    <input
+                      type="text"
+                      value={rule.sayInstead}
+                      onChange={e => setRule(idx, { sayInstead: e.target.value })}
+                      placeholder="Say instead (optional)"
+                      className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+                    />
                     <button
                       type="button"
-                      onClick={() => set({ neverSayList: draft.neverSayList.filter(w => w !== word) })}
-                      className="hover:text-red-400"
+                      onClick={() => removeRule(idx)}
+                      title="Remove rule"
+                      className="w-8 h-8 shrink-0 rounded-lg hover:text-red-400 transition-colors"
                       style={{ color: 'var(--text-tertiary)' }}
                     >
                       ×
                     </button>
-                  </span>
-                ))}
-              </div>
-            )}
+                  </div>
+                  {/* Live example so the operator sees exactly what the
+                      agent is told — same wording as the prompt block. */}
+                  {rule.never.trim() && rule.sayInstead.trim() && (
+                    <p className="text-[11px] mt-1 ml-1" style={{ color: 'var(--text-muted)' }}>
+                      ❌ &ldquo;You can do this in {rule.never.trim()}.&rdquo; → ✅ &ldquo;You can do this in {rule.sayInstead.trim()}.&rdquo;
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => addRule()}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors hover:bg-zinc-900"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                + Add rule
+              </button>
+              {/* One-click for the most common whitelabel ask. */}
+              {!draft.vocabularyRules.some(r => r.never.toLowerCase() === 'highlevel') && (
+                <button
+                  type="button"
+                  onClick={() => { addRule({ never: 'HighLevel', sayInstead: 'your CRM' }); addRule({ never: 'GHL', sayInstead: 'your CRM' }) }}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-dashed transition-colors hover:bg-zinc-900"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}
+                >
+                  + Whitelabel preset (HighLevel/GHL → your CRM)
+                </button>
+              )}
+            </div>
           </div>
 
           <div>

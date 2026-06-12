@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { isMissingColumn } from '@/lib/migration-error'
 import { resolveLocationForProvider, type RequestedProvider } from '@/lib/crm/resolve-location'
+import { parseVocabularyRules } from '@/lib/agent/vocabulary'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -93,6 +94,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.formalityLevel !== undefined && { formalityLevel: body.formalityLevel }),
       ...(body.useEmojis !== undefined && { useEmojis: body.useEmojis }),
       ...(body.neverSayList !== undefined && { neverSayList: body.neverSayList }),
+      // Vocabulary rules are validated/normalised server-side so the
+      // runtime never has to defend against malformed rows. Send [] to
+      // clear. (lib/agent/vocabulary.ts is the single parser.)
+      ...(body.vocabularyRules !== undefined && { vocabularyRules: parseVocabularyRules(body.vocabularyRules) as any }),
       ...(body.simulateTypos !== undefined && { simulateTypos: body.simulateTypos }),
       ...(body.typingDelayEnabled !== undefined && { typingDelayEnabled: body.typingDelayEnabled }),
       ...(body.typingDelayMinMs !== undefined && { typingDelayMinMs: body.typingDelayMinMs }),

@@ -172,5 +172,16 @@ Note: This conversation is happening on a website chat widget. When booking, use
     prompt += `\n\n${channelInfoBlock}`
   }
 
+  // Vocabulary rules LAST so they sit closest to generation and read as
+  // the final word — they explicitly override the knowledge passages
+  // above (whose verbatim wording is exactly what leaked banned brand
+  // names into replies). Rules with replacements are ALSO hard-enforced
+  // on the output by the runners; this block is the model-level half.
+  {
+    const { parseVocabularyRules, buildVocabularyBlock } = await import('./vocabulary')
+    const rules = parseVocabularyRules((agent as any).vocabularyRules, (agent as any).neverSayList)
+    prompt += buildVocabularyBlock(rules)
+  }
+
   return prompt
 }

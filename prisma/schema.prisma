@@ -549,6 +549,14 @@ model Agent {
   name         String
   systemPrompt String     @db.Text
   instructions String?    @db.Text
+  // Vocabulary rules — Array<{never: string; sayInstead?: string|null}>.
+  // "never" terms are banned from replies; rules WITH sayInstead are
+  // additionally HARD-ENFORCED by find-and-replace on the agent's
+  // output (lib/agent/vocabulary.ts), because prompt-only bans lose to
+  // knowledge passages quoting the term verbatim (the whitelabel
+  // "agent keeps saying HighLevel" bug). Supersedes the plain
+  // neverSayList; both are merged at runtime for back-compat.
+  vocabularyRules Json?
   isActive     Boolean    @default(true)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt

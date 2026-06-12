@@ -33,6 +33,7 @@ export interface AgentSnapshot {
   formalityLevel: string
   useEmojis: boolean
   neverSayList: string[]
+  vocabularyRules: unknown
   simulateTypos: boolean
   typingDelayEnabled: boolean
   typingDelayMinMs: number
@@ -104,6 +105,7 @@ export async function snapshotAgent(agentId: string): Promise<AgentSnapshot> {
     formalityLevel: a.formalityLevel,
     useEmojis: a.useEmojis,
     neverSayList: a.neverSayList,
+    vocabularyRules: (a as any).vocabularyRules ?? null,
     simulateTypos: a.simulateTypos,
     typingDelayEnabled: a.typingDelayEnabled,
     typingDelayMinMs: a.typingDelayMinMs,
@@ -185,6 +187,7 @@ export async function restoreAgent(params: {
       formalityLevel: s.formalityLevel as any,
       useEmojis: s.useEmojis,
       neverSayList: s.neverSayList,
+      vocabularyRules: ((s as any).vocabularyRules ?? undefined) as any,
       simulateTypos: s.simulateTypos,
       typingDelayEnabled: s.typingDelayEnabled,
       typingDelayMinMs: s.typingDelayMinMs,

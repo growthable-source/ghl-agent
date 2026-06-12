@@ -248,6 +248,28 @@ Never apologise for the language or mention translation — just speak naturally
     inner,
   })
 
+  // HARD vocabulary enforcement — the prompt block alone demonstrably
+  // fails when knowledge passages contain a banned term verbatim (the
+  // agent quoted "HighLevel" straight out of crawled docs on a
+  // whitelabel widget). Every visitor-visible string the agent loop
+  // produces flows through adapter.sendMessage, so wrapping it here
+  // guarantees rules WITH a replacement can never leak, no matter what
+  // the model generated.
+  try {
+    const { parseVocabularyRules, applyVocabularyRules } = await import('./agent/vocabulary')
+    const vocabRules = parseVocabularyRules((agent as any).vocabularyRules, agent.neverSayList)
+    if (vocabRules.some(r => r.sayInstead)) {
+      const origSend = adapter.sendMessage.bind(adapter)
+      ;(adapter as any).sendMessage = (args: any) => origSend(
+        args && typeof args.message === 'string'
+          ? { ...args, message: applyVocabularyRules(args.message, vocabRules) }
+          : args,
+      )
+    }
+  } catch (err: any) {
+    console.warn('[widget] vocabulary enforcement setup failed:', err?.message)
+  }
+
   // state + widgetLocationId / widgetContactId already resolved above
   // for the pause-gate. Just bump the message counter here.
   await incrementMessageCount(agent.id, widgetContactId).catch(() => null)
