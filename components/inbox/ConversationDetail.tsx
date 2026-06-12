@@ -14,6 +14,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
+import ChatMarkdown from '@/components/ChatMarkdown'
 import AISummarySection from './AISummarySection'
 import UserInfoSection from './UserInfoSection'
 import VisitorTimelineSection from './VisitorTimelineSection'
@@ -1339,12 +1340,16 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
     <div className={`flex ${isVisitor ? 'justify-start' : 'justify-end'}`}>
       <div className="max-w-[70%]">
         <div
-          className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${
-            isVisitor ? 'rounded-tl-sm bg-zinc-800 text-zinc-100' : 'rounded-tr-sm'
+          className={`px-4 py-2.5 rounded-2xl text-sm ${
+            isVisitor ? 'rounded-tl-sm bg-zinc-800 text-zinc-100 whitespace-pre-wrap' : 'rounded-tr-sm'
           }`}
           style={!isVisitor ? { background: accent, color: agentFg } : undefined}
         >
-          {msg.content}
+          {/* Agent/operator replies are markdown — render bold, bullets,
+              and links the same way the visitor's widget does, so what
+              the operator reviews matches what the visitor saw. Visitor
+              messages stay verbatim plain text. */}
+          {isVisitor ? msg.content : <ChatMarkdown text={msg.content} />}
         </div>
         {showTranslation && (
           <div className={`mt-1.5 ${isVisitor ? 'pl-3' : 'pr-3'}`}>

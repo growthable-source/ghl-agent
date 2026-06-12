@@ -77,6 +77,20 @@ function hasBookingTool(agent: AgentForPrompt): boolean {
   return tools.includes('get_available_slots') || tools.includes('book_appointment')
 }
 
+// The widget renders replies as markdown (see components/ChatMarkdown),
+// so the model can use real structure — but a chat bubble is ~320px
+// wide, so this steers toward compact shapes: bold lead-ins over big
+// headings, short bullet runs over walls of text.
+const WIDGET_FORMATTING_INSTRUCTIONS = `
+
+## Formatting (web widget)
+Your replies render as markdown in a small chat window. Make them easy to scan:
+- Keep paragraphs to 1–3 short sentences, with a blank line between paragraphs.
+- Use hyphen bullets for lists, steps, or options — each item on its OWN line, with a blank line before the list starts. Never run bullets together on one line.
+- Use **bold** for short lead-ins and key terms. Don't use # headings — they render too large in a chat bubble.
+- No tables, no horizontal rules, no nested lists.
+- Lead with the answer, then supporting detail. For a long topic, give the short version and offer to go deeper.`
+
 /**
  * The widget-only "quick replies" instructions. Tells the model how to
  * mark up choice chips so the renderer can surface them as buttons.
@@ -147,6 +161,7 @@ Note: This conversation is happening on a website chat widget. When booking, use
   }
 
   if (channel === 'widget') {
+    prompt += WIDGET_FORMATTING_INSTRUCTIONS
     prompt += QUICK_REPLY_INSTRUCTIONS
   }
 

@@ -131,14 +131,19 @@ export async function retrieveChunks(
  * Format retrieved chunks as a system-prompt block. Empty string
  * when no chunks — the prompt builder appends safely.
  *
- * Each chunk is numbered [1]..[N] with a citable source URL and
- * page title. The agent is instructed to cite by number when
- * referencing — operators trace back through the inbox sidebar.
+ * The block deliberately does NOT number the passages or ask the
+ * model to cite them. This is customer-facing material: an earlier
+ * version instructed "cite by number — 'according to [2]…'" and
+ * visitors saw literal [1]/[2] reference markers in their chat
+ * bubbles. Operators trace what the agent read through the inbox
+ * sidebar's knowledge-used panel (summariseRetrievedChunks), which
+ * carries the source URLs — the reply itself should read like a
+ * human wrote it.
  */
 export function buildRetrievedKnowledgeBlock(chunks: RetrievedChunk[]): string {
   if (chunks.length === 0) return ''
 
-  const formatted = chunks.map((c, i) => {
+  const formatted = chunks.map(c => {
     const meta = c.sourceMetadata
     const title = (meta?.page_title as string)
       || (meta?.section_heading as string)
@@ -148,7 +153,7 @@ export function buildRetrievedKnowledgeBlock(chunks: RetrievedChunk[]): string {
     // Truncate per-chunk to keep token usage bounded. 1500 chars
     // ≈ ~400 tokens; 6 chunks × 400 = ~2400 tokens of context.
     const body = c.content.trim().slice(0, 1500)
-    return `### [${i + 1}] ${title}${tags}
+    return `### ${title}${tags}
 Source: ${c.sourceUrl}
 
 ${body}`
@@ -160,7 +165,7 @@ ${body}`
 The passages below were retrieved from the operator's knowledge base based on the visitor's question. Use them as your primary source of truth.
 
 Rules:
-- Cite by number when referencing — "according to [2]..." or "[1] says...".
+- Answer in your own words, as if this is knowledge you simply have. NEVER use bracketed reference markers like [1] or [2], never say "according to passage/source N", and never mention that you're reading from retrieved passages or a knowledge base.
 - If the passages don't answer the visitor's question, SAY SO. Don't invent specifics.
 - Prefer passage facts over your prior knowledge when they conflict.
 

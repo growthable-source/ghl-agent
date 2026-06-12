@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
 import { resolveVisitorCookieId } from '@/lib/widget-iframe-cookie'
+import ChatMarkdown from '@/components/ChatMarkdown'
 
 interface WidgetConfig {
   id: string
@@ -1538,12 +1539,17 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
   return (
     <div className={`flex ${isVisitor ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
-          isVisitor ? 'rounded-tr-sm' : 'rounded-tl-sm bg-zinc-800 text-zinc-100'
+        className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
+          isVisitor
+            ? 'rounded-tr-sm whitespace-pre-wrap'
+            : 'rounded-tl-sm bg-zinc-800 text-zinc-100'
         }`}
         style={isVisitor ? { background: accent, color: visitorFg } : undefined}
       >
-        {msg.content}
+        {/* Agent replies are markdown (bold, bullets, links) — render
+            them properly instead of showing literal ** and collapsed
+            lists. Visitor messages stay verbatim plain text. */}
+        {isVisitor ? msg.content : <ChatMarkdown text={msg.content} />}
       </div>
     </div>
   )
