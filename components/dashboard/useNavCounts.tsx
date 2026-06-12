@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useState } from 'react'
 import { useBackgroundPolling } from '@/lib/use-background-polling'
+import { fetchHeartbeat } from '@/lib/heartbeat-client'
 
 /**
  * Cross-sidebar nav-badge counts — polls the workspace's attention-
@@ -33,22 +34,15 @@ export function NavCountsProvider({ workspaceId, children }: { workspaceId: stri
       setCounts(EMPTY)
       return
     }
-    // Parallel fetches — neither blocks the other, a failure on one
-    // endpoint leaves the other's badge intact rather than wiping both.
-    const [needs, approvals, inbox] = await Promise.all([
-      fetch(`/api/workspaces/${workspaceId}/needs-attention`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => (d?.items?.length ?? null) as number | null)
-        .catch(() => null),
-      fetch(`/api/workspaces/${workspaceId}/approvals?status=pending&count=1`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => (typeof d?.count === 'number' ? d.count : (d?.items?.length ?? null)) as number | null)
-        .catch(() => null),
-      fetch(`/api/workspaces/${workspaceId}/inbox/unread-count`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => (typeof d?.count === 'number' ? d.count : null) as number | null)
-        .catch(() => null),
-    ])
+    // One consolidated heartbeat instead of three endpoints — shared
+    // (and request-deduped) with HandoffAlertBanner + NewChatAlert via
+    // lib/heartbeat-client. Sub-payload parsing matches what the
+    // individual endpoints returned.
+    const hb = await fetchHeartbeat(workspaceId)
+    const needs = (hb?.attention?.items?.length ?? null) as number | null
+    const a = hb?.approvals
+    const approvals = (typeof a?.count === 'number' ? a.count : (a?.items?.length ?? null)) as number | null
+    const inbox = (typeof hb?.unread?.count === 'number' ? hb.unread.count : null) as number | null
     setCounts({ needsAttention: needs, approvalsPending: approvals, inboxUnread: inbox })
   }, [workspaceId])
 

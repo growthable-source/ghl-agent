@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // last 7 days
 
   // 1. Paused conversations (stop condition hit)
-  const pausedStates = await db.conversationStateRecord.findMany({
+  const pausedStatesP = db.conversationStateRecord.findMany({
     where: {
       locationId: { in: locationIds },
       state: 'PAUSED',
@@ -49,7 +49,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   })
 
   // 2. Recent errors
-  const errors = await db.messageLog.findMany({
+  const errorsP = db.messageLog.findMany({
     where: {
       locationId: { in: locationIds },
       status: 'ERROR',
@@ -65,7 +65,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // 3. Agents that used fallback — heuristic: outboundReply contains fallback signals
   const fallbackKeywords = ['not sure', "i don't know", "i'm not able to", "let me connect you", "checking on that"]
-  const recentLogs = await db.messageLog.findMany({
+  const recentLogsP = db.messageLog.findMany({
     where: {
       locationId: { in: locationIds },
       status: 'SUCCESS',
@@ -79,14 +79,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     orderBy: { createdAt: 'desc' },
     take: 200,
   })
-  const fallbacks = recentLogs.filter(log =>
-    log.outboundReply && fallbackKeywords.some(kw =>
-      log.outboundReply!.toLowerCase().includes(kw)
-    )
-  ).slice(0, 30)
 
   // 4. Stalled conversations — >10 agent turns in the last 7 days, not paused
-  const stalledStates = await db.conversationStateRecord.findMany({
+  const stalledStatesP = db.conversationStateRecord.findMany({
     where: {
       locationId: { in: locationIds },
       state: 'ACTIVE',
@@ -100,6 +95,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     orderBy: { messageCount: 'desc' },
     take: 20,
   })
+
+  // The four sources are independent — run them concurrently. They used
+  // to execute serially, which made this the slowest sub-call of the
+  // consolidated /heartbeat poll.
+  const [pausedStates, errors, recentLogs, stalledStates] = await Promise.all([
+    pausedStatesP, errorsP, recentLogsP, stalledStatesP,
+  ])
+  const fallbacks = recentLogs.filter(log =>
+    log.outboundReply && fallbackKeywords.some(kw =>
+      log.outboundReply!.toLowerCase().includes(kw)
+    )
+  ).slice(0, 30)
 
   // Compose items — dedupe by contactId (prefer paused > error > fallback > stalled)
   const seen = new Set<string>()

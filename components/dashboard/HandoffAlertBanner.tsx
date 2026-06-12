@@ -28,6 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { playNotificationSound } from '@/lib/notification-sound'
 import { useBackgroundPolling } from '@/lib/use-background-polling'
+import { fetchHeartbeat } from '@/lib/heartbeat-client'
 
 type Severity = 'high' | 'medium' | 'low'
 type ItemType = 'paused' | 'error' | 'fallback' | 'stalled'
@@ -99,12 +100,12 @@ export default function HandoffAlertBanner() {
   const fetchItems = useCallback(async () => {
     if (!workspaceId || NON_WORKSPACE_SEGMENTS.has(workspaceId)) return
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/needs-attention`, {
-        cache: 'no-store',
-      })
-      if (!res.ok) return
-      const data = await res.json()
-      const all: AttentionItem[] = Array.isArray(data?.items) ? data.items : []
+      // Consolidated heartbeat (shared + deduped with useNavCounts and
+      // NewChatAlert) — the attention sub-payload is the exact
+      // needs-attention response shape.
+      const hb = await fetchHeartbeat(workspaceId)
+      if (!hb) return
+      const all: AttentionItem[] = Array.isArray(hb.attention?.items) ? (hb.attention!.items as AttentionItem[]) : []
       const loud = all.filter(i => LOUD_TYPES.has(i.type))
       setItems(loud)
 

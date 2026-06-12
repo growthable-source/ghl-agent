@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { playNotificationSound } from '@/lib/notification-sound'
 import { useBackgroundPolling } from '@/lib/use-background-polling'
+import { fetchHeartbeat } from '@/lib/heartbeat-client'
 
 interface RecentChat {
   id: string
@@ -67,10 +68,11 @@ export default function NewChatAlert() {
   const fetchRecent = useCallback(async () => {
     if (!workspaceId || NON_WORKSPACE_SEGMENTS.has(workspaceId)) return
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/recent`, { cache: 'no-store' })
-      if (!res.ok) return
-      const data = await res.json()
-      const chats: RecentChat[] = Array.isArray(data?.chats) ? data.chats : []
+      // Consolidated heartbeat (shared + deduped with the banner and
+      // nav counts) — recent sub-payload matches the old endpoint.
+      const hb = await fetchHeartbeat(workspaceId)
+      if (!hb) return
+      const chats: RecentChat[] = Array.isArray(hb.recent?.chats) ? (hb.recent!.chats as RecentChat[]) : []
 
       if (!seededRef.current) {
         // First poll after mount / workspace switch — remember what's
