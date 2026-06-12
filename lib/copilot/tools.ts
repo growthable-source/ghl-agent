@@ -40,17 +40,29 @@ const QUERY_KNOWLEDGE_DEF: RealtimeToolDef = {
   },
 }
 
-// annotate_screen is CLIENT-executed — the session panel draws the
-// overlay and answers the model directly, no server round-trip. The
-// definition lives here because tool defs are locked into the
-// ephemeral token at mint time.
+// annotate_screen and take_a_closer_look are CLIENT-executed — the
+// session panel handles them and answers the model directly, no
+// server round-trip. The definitions live here because tool defs are
+// locked into the ephemeral token at mint time.
+const TAKE_CLOSER_LOOK_DEF: RealtimeToolDef = {
+  name: 'take_a_closer_look',
+  description:
+    'Capture and send yourself a fresh FULL-RESOLUTION screenshot of the shared screen, right now. ' +
+    'Call this before answering any question about what is on screen, before reading labels, field ' +
+    'values, or small text, and before placing an annotate_screen marker — your streamed view is ' +
+    'low-detail and may be several seconds stale. The result confirms the frame was sent; the new ' +
+    'image arrives as your next video frame.',
+  parameters: { type: 'object', properties: {} },
+}
+
 const ANNOTATE_SCREEN_DEF: RealtimeToolDef = {
   name: 'annotate_screen',
   description:
-    'Draw a visual marker on the live screen preview to point at something — use it whenever ' +
-    'you say things like "see that button" or "click here". Coordinates are PERCENTAGES of the ' +
-    'shared screen as you last saw it (x: 0 = left edge, 100 = right edge; y: 0 = top, 100 = ' +
-    'bottom). The user sees the marker on the live-help panel, so tell them to glance at it.',
+    'Draw a visual marker on the live screen preview to point at something. Calling this tool IS the ' +
+    'act of marking — saying "I\'m marking it" out loud does nothing. Use it whenever you say things ' +
+    'like "see that button" or "click here". Coordinates are PERCENTAGES of the shared screen as you ' +
+    'last saw it (x: 0 = left edge, 100 = right edge; y: 0 = top, 100 = bottom). The user sees the ' +
+    'marker on the live-help panel (or its pop-out window), so tell them to glance at it.',
   parameters: {
     type: 'object',
     properties: {
@@ -78,6 +90,7 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
   },
   QUERY_KNOWLEDGE_DEF,
   ANNOTATE_SCREEN_DEF,
+  TAKE_CLOSER_LOOK_DEF,
 ]
 
 /**
@@ -86,7 +99,7 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
  * channel wiring, CRM status) — operator-facing data that must never
  * be exposed to an end customer through their own chat widget.
  */
-export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF, ANNOTATE_SCREEN_DEF]
+export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF, ANNOTATE_SCREEN_DEF, TAKE_CLOSER_LOOK_DEF]
 
 export interface CopilotToolContext {
   workspaceId: string
@@ -137,6 +150,9 @@ export async function executeCopilotTool(
       case 'annotate_screen':
         // Client-executed; reaching the server means an old client.
         return 'Annotation displayed.'
+      case 'take_a_closer_look':
+        // Client-executed; reaching the server means an old client.
+        return 'A fresh frame was requested.'
       default:
         return `Unknown tool "${name}".`
     }

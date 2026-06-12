@@ -89,6 +89,15 @@ export default function LiveSessionPanel({
     label: string | null
   } | null>(null)
   const annotationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Mirror of `annotation` for the PiP canvas loop — rAF closures
+  // would otherwise capture a stale state value.
+  const annotationRef = useRef<typeof annotation>(null)
+  const [pipActive, setPipActive] = useState(false)
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null)
+  const pipCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pipRafRef = useRef<number | null>(null)
+  const pipStreamRef = useRef<MediaStream | null>(null)
+  const userSpeakingRef = useRef(false)
 
   const sessionIdRef = useRef<string | null>(null)
   const providerRef = useRef<RealtimeModelProvider | null>(null)
@@ -114,6 +123,110 @@ export default function LiveSessionPanel({
   useEffect(() => {
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [feed, partial])
+
+  useEffect(() => {
+    annotationRef.current = annotation
+  }, [annotation])
+
+  // ─── Picture-in-picture pop-out ──────────────────────────────────
+  // The annotation overlay lives on the preview INSIDE this panel —
+  // but during a session the user is working in another window, so a
+  // marker here is invisible to them. The pop-out composites preview
+  // + marker onto a canvas and floats it always-on-top via the video
+  // PiP API, so "look at the marker" works wherever they are.
+
+  const stopPip = useCallback(() => {
+    if (pipRafRef.current !== null) cancelAnimationFrame(pipRafRef.current)
+    pipRafRef.current = null
+    pipStreamRef.current?.getTracks().forEach(t => t.stop())
+    pipStreamRef.current = null
+    if (document.pictureInPictureElement) {
+      void document.exitPictureInPicture().catch(() => undefined)
+    }
+    setPipActive(false)
+  }, [])
+
+  const startPip = useCallback(async () => {
+    const source = previewVideoRef.current
+    const pipVideo = pipVideoRef.current
+    if (!source || !pipVideo) return
+
+    if (!pipCanvasRef.current) pipCanvasRef.current = document.createElement('canvas')
+    const canvas = pipCanvasRef.current
+
+    const draw = () => {
+      const vw = source.videoWidth
+      const vh = source.videoHeight
+      if (vw && vh) {
+        // Cap at 1280 wide — the PiP window is small; full-res burns CPU.
+        const scale = Math.min(1, 1280 / vw)
+        const w = Math.round(vw * scale)
+        const h = Math.round(vh * scale)
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w
+          canvas.height = h
+        }
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(source, 0, 0, w, h)
+          const a = annotationRef.current
+          if (a) {
+            const pulse = 0.55 + 0.45 * Math.abs(Math.sin(Date.now() / 380))
+            ctx.save()
+            ctx.globalAlpha = pulse
+            ctx.strokeStyle = accent
+            ctx.lineWidth = Math.max(3, w * 0.004)
+            ctx.shadowColor = accent
+            ctx.shadowBlur = 16
+            const cx = (a.x / 100) * w
+            const cy = (a.y / 100) * h
+            if (a.kind === 'circle') {
+              ctx.beginPath()
+              ctx.arc(cx, cy, w * 0.07, 0, Math.PI * 2)
+              ctx.stroke()
+            } else {
+              const bw = (a.width / 100) * w
+              const bh = (a.height / 100) * h
+              ctx.strokeRect(cx - bw / 2, cy - bh / 2, bw, bh)
+            }
+            if (a.label) {
+              ctx.globalAlpha = 1
+              ctx.shadowBlur = 0
+              const fontPx = Math.max(13, Math.round(w * 0.016))
+              ctx.font = `600 ${fontPx}px system-ui, sans-serif`
+              const tw = ctx.measureText(a.label).width
+              const pad = fontPx * 0.5
+              const ly = cy + (a.kind === 'circle' ? w * 0.07 : ((a.height / 100) * h) / 2) + pad
+              ctx.fillStyle = accent
+              ctx.beginPath()
+              ctx.roundRect(cx - tw / 2 - pad, ly, tw + pad * 2, fontPx + pad, fontPx)
+              ctx.fill()
+              ctx.fillStyle = '#fff'
+              ctx.textBaseline = 'middle'
+              ctx.textAlign = 'center'
+              ctx.fillText(a.label, cx, ly + (fontPx + pad) / 2)
+            }
+            ctx.restore()
+          }
+        }
+      }
+      pipRafRef.current = requestAnimationFrame(draw)
+    }
+    draw()
+
+    try {
+      const stream = canvas.captureStream(15)
+      pipStreamRef.current = stream
+      pipVideo.srcObject = stream
+      await pipVideo.play()
+      await pipVideo.requestPictureInPicture()
+      pipVideo.addEventListener('leavepictureinpicture', stopPip, { once: true })
+      setPipActive(true)
+    } catch (err) {
+      console.warn('[Copilot] picture-in-picture failed:', err)
+      stopPip()
+    }
+  }, [accent, stopPip])
 
   const flushEvents = useCallback(
     async (final = false) => {
@@ -159,6 +272,7 @@ export default function LiveSessionPanel({
       flushTimerRef.current = null
       tickTimerRef.current = null
 
+      stopPip()
       framesRef.current?.stop()
       micRef.current?.stop()
       playerRef.current?.stop()
@@ -183,7 +297,7 @@ export default function LiveSessionPanel({
       setPhase({ kind: 'ended', reason, goalReached, durationSecs })
       onSessionEnded?.()
     },
-    [flushEvents, transport, onSessionEnded],
+    [flushEvents, transport, onSessionEnded, stopPip],
   )
 
   useEffect(() => {
@@ -243,14 +357,32 @@ export default function LiveSessionPanel({
       provider.onInterrupted = () => player.flush()
       provider.onTranscript = turn => {
         if (turn.final) {
+          if (turn.role === 'user') userSpeakingRef.current = false
           setPartial(p => ({ ...p, [turn.role === 'user' ? 'user' : 'agent']: '' }))
           pushFeed(turn.role, turn.text)
           turnBufferRef.current.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
         } else {
+          // First fragment of a new user utterance → ship a fresh frame
+          // immediately, so the model answers "what am I looking at?"
+          // from the current screen, not a stale heartbeat frame.
+          if (turn.role === 'user' && !userSpeakingRef.current) {
+            userSpeakingRef.current = true
+            framesRef.current?.captureNow('user_speech')
+          }
           setPartial(p => ({ ...p, [turn.role === 'user' ? 'user' : 'agent']: turn.text }))
         }
       }
       provider.onToolCall = async call => {
+        // EVERY tool call gets logged into the event stream — including
+        // the client-executed ones. Without this we cannot distinguish
+        // "the model never called the tool" from "the call happened but
+        // the user missed it" when sessions go wrong.
+        turnBufferRef.current.push({
+          role: 'tool',
+          text: `${call.name}(${JSON.stringify(call.args)})`,
+          ts: new Date().toISOString(),
+        })
+
         // annotate_screen never leaves the browser: draw the marker on
         // the preview and answer the model immediately.
         if (call.name === 'annotate_screen') {
@@ -259,6 +391,7 @@ export default function LiveSessionPanel({
             const n = Number(v)
             return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt
           }
+          pushFeed('tool', 'Marking the screen…')
           setAnnotation({
             id: Date.now(),
             x: clamp(a.x, 0, 100, 50),
@@ -272,12 +405,20 @@ export default function LiveSessionPanel({
           annotationTimerRef.current = setTimeout(() => setAnnotation(null), 8000)
           return { result: 'Marker shown on the live-help preview. Remind the user to glance at it.' }
         }
+
+        // take_a_closer_look is also client-only: force an immediate
+        // full-resolution frame so the model can read fine UI detail.
+        if (call.name === 'take_a_closer_look') {
+          pushFeed('tool', 'Taking a closer look…')
+          const sent = framesRef.current?.captureNow('closer_look') ?? false
+          return {
+            result: sent
+              ? 'Fresh full-resolution frame sent — it shows the screen as of right now. Ground your next statement in it.'
+              : 'Could not capture a frame right now (screen share may be paused). Ask the user what they see instead of guessing.',
+          }
+        }
+
         pushFeed('tool', call.name === 'query_knowledge' ? 'Searching the knowledge base…' : 'Checking…')
-        turnBufferRef.current.push({
-          role: 'tool',
-          text: `${call.name}(${JSON.stringify(call.args)})`,
-          ts: new Date().toISOString(),
-        })
         const result = await transport.tool(sessionIdRef.current!, call.name, call.args)
         return { result }
       }
@@ -434,6 +575,14 @@ export default function LiveSessionPanel({
                 theme background; a video letterbox should stay black. */}
             <div className="relative rounded-xl border border-zinc-800 overflow-hidden" style={{ background: '#000' }}>
               <video ref={previewVideoRef} muted playsInline className="w-full aspect-video object-contain" />
+              {/* Off-screen sink for the PiP composite stream — kept in
+                  the DOM (not display:none) so playback isn't throttled. */}
+              <video
+                ref={pipVideoRef}
+                muted
+                playsInline
+                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+              />
               {annotation && (
                 <div
                   key={annotation.id}
@@ -488,6 +637,19 @@ export default function LiveSessionPanel({
                   {mmss(elapsed)} / {mmss(maxSecsRef.current)}
                 </span>
               </div>
+              {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
+                <button
+                  type="button"
+                  onClick={() => (pipActive ? stopPip() : void startPip())}
+                  className={`w-full mb-2 px-3 py-2 rounded-lg border text-sm font-medium transition ${
+                    pipActive
+                      ? 'bg-zinc-800 border-zinc-700 text-zinc-300'
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                >
+                  {pipActive ? 'Close floating preview' : 'Pop out preview (stays on top while you work)'}
+                </button>
+              )}
               <div className="flex gap-2">
                 <button
                   type="button"

@@ -35,9 +35,20 @@ const HEARTBEAT_MS = 10_000
 export interface CapturedFrame {
   base64Jpeg: string
   /** Why this frame was sent. */
-  trigger: 'change' | 'heartbeat' | 'first'
+  trigger: 'change' | 'heartbeat' | 'first' | 'user_speech' | 'closer_look'
   diffScore: number
 }
+
+/** Regular frames: dense dashboard UIs need more pixels than the old
+ *  1024/0.6 setting gave — the model's per-frame token budget is fixed
+ *  by mediaResolution, so a sharper source costs only bandwidth. */
+const FRAME_MAX_SIDE = 1536
+const FRAME_JPEG_QUALITY = 0.8
+/** closer-look frames: full detail for reading small text. */
+const HIGHRES_MAX_SIDE = 2048
+const HIGHRES_JPEG_QUALITY = 0.92
+/** Floor between forced captures so speech-triggered sends can't spam. */
+const FORCED_MIN_INTERVAL_MS = 1500
 
 export class ScreenFrameCapture {
   private video: HTMLVideoElement | null = null
@@ -96,22 +107,47 @@ export class ScreenFrameCapture {
     }
     this.lastThumb = gray
 
-    // Full frame, longest side capped at 1024 — the model downscales
-    // anyway; sending more is pure token burn.
-    const scale = Math.min(1, 1024 / Math.max(vw, vh))
+    this.emitFrame(isFirst ? 'first' : diff >= CHANGE_THRESHOLD ? 'change' : 'heartbeat', diff)
+  }
+
+  /**
+   * Force an immediate frame, bypassing change detection — used when
+   * the user starts speaking (so the model never answers off a stale
+   * heartbeat frame) and by the take_a_closer_look tool (full-res so
+   * small UI text is legible). Rate-floored so speech events can't
+   * flood the channel. Returns whether a frame was actually sent.
+   */
+  captureNow(trigger: 'user_speech' | 'closer_look'): boolean {
+    if (!this.video || !this.canvas) return false
+    // closer_look is an explicit model request — always honor it.
+    if (trigger === 'user_speech' && Date.now() - this.lastSentAt < FORCED_MIN_INTERVAL_MS) return false
+    if (!this.video.videoWidth || !this.video.videoHeight) return false
+    this.emitFrame(trigger, 255)
+    return true
+  }
+
+  private emitFrame(trigger: CapturedFrame['trigger'], diff: number) {
+    if (!this.video || !this.canvas) return
+    const vw = this.video.videoWidth
+    const vh = this.video.videoHeight
+    const highRes = trigger === 'closer_look'
+    const maxSide = highRes ? HIGHRES_MAX_SIDE : FRAME_MAX_SIDE
+    const quality = highRes ? HIGHRES_JPEG_QUALITY : FRAME_JPEG_QUALITY
+
+    const scale = Math.min(1, maxSide / Math.max(vw, vh))
     this.canvas.width = Math.round(vw * scale)
     this.canvas.height = Math.round(vh * scale)
     const ctx = this.canvas.getContext('2d')
     if (!ctx) return
     ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height)
-    const dataUrl = this.canvas.toDataURL('image/jpeg', 0.6)
+    const dataUrl = this.canvas.toDataURL('image/jpeg', quality)
     const base64Jpeg = dataUrl.slice(dataUrl.indexOf(',') + 1)
 
     this.lastSentAt = Date.now()
     this.sentFrames++
     this.onFrame({
       base64Jpeg,
-      trigger: isFirst ? 'first' : diff >= CHANGE_THRESHOLD ? 'change' : 'heartbeat',
+      trigger,
       diffScore: Math.round(diff * 100) / 100,
     })
   }

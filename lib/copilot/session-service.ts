@@ -12,7 +12,7 @@
  * can't drift.
  */
 
-import { GoogleGenAI, Modality, Behavior, Type } from '@google/genai'
+import { GoogleGenAI, Modality, Behavior, Type, MediaResolution } from '@google/genai'
 import { db } from '@/lib/db'
 import { retrieveChunks } from '@/lib/ingest/retrieve'
 import { COPILOT_DEFAULTS } from './config'
@@ -109,6 +109,12 @@ async function mintEphemeralToken(systemPrompt: string, toolDefs: RealtimeToolDe
     responseModalities: [Modality.AUDIO],
     systemInstruction: systemPrompt,
     tools: [{ functionDeclarations: toGeminiFunctionDeclarations(toolDefs) }],
+    // Without this the Live API defaults to LOW (64 tokens/frame) and
+    // the model cannot read UI text — it "sees" an impressionist blur
+    // and answers from the playbook instead of the screen.
+    mediaResolution:
+      (MediaResolution as Record<string, MediaResolution>)[COPILOT_DEFAULTS.mediaResolution] ??
+      MediaResolution.MEDIA_RESOLUTION_MEDIUM,
     inputAudioTranscription: {},
     outputAudioTranscription: {},
     contextWindowCompression: { slidingWindow: {} },
