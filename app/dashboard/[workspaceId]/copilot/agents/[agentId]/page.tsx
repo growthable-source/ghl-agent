@@ -55,6 +55,8 @@ export default function CopilotAgentEditor() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const load = useCallback(async () => {
@@ -111,16 +113,38 @@ export default function CopilotAgentEditor() {
   const upload = useCallback(
     async (file: File) => {
       setUploading(true)
+      setUploadPct(0)
+      setUploadError(null)
       try {
-        const form = new FormData()
-        form.append('file', file)
+        // Upload the file DIRECTLY to Vercel Blob from the browser —
+        // videos are far bigger than the ~4.5MB serverless body limit,
+        // so they can't be POSTed through our function. The token route
+        // authorises it; we then register the resulting key.
+        const { upload: blobUpload } = await import('@vercel/blob/client')
+        const safe = file.name.replace(/[^\w.\- ]+/g, '_')
+        const pathname = `copilot-recordings/${workspaceId}/${crypto.randomUUID()}-${safe}`
+        const blob = await blobUpload(pathname, file, {
+          access: 'public',
+          handleUploadUrl: `/api/workspaces/${workspaceId}/copilot/agents/${agentId}/recordings/upload-url`,
+          onUploadProgress: ({ percentage }) => setUploadPct(Math.round(percentage)),
+        })
+
         const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}/recordings`, {
           method: 'POST',
-          body: form,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storageKey: blob.pathname, originalFilename: file.name }),
         })
-        if (res.ok) void load()
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          setUploadError(body.error || 'Could not register the upload.')
+          return
+        }
+        void load()
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Upload failed.')
       } finally {
         setUploading(false)
+        setUploadPct(null)
       }
     },
     [workspaceId, agentId, load],
@@ -269,7 +293,11 @@ export default function CopilotAgentEditor() {
               disabled={uploading}
               className="px-3.5 py-2 rounded-lg text-sm font-medium border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
             >
-              {uploading ? 'Uploading…' : 'Upload recording or document'}
+              {uploading
+                ? uploadPct !== null && uploadPct < 100
+                  ? `Uploading… ${uploadPct}%`
+                  : 'Finishing upload…'
+                : 'Upload recording or document'}
             </button>
             {agent.recordings.some(r => r.status === 'done') && (
               <button
@@ -294,6 +322,15 @@ export default function CopilotAgentEditor() {
               e.target.value = ''
             }}
           />
+
+          {uploadPct !== null && uploadPct < 100 && (
+            <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-tertiary)' }}>
+              <div className="h-full rounded-full transition-all" style={{ width: `${uploadPct}%`, background: 'var(--accent-primary)' }} />
+            </div>
+          )}
+          {uploadError && (
+            <p className="mt-2 text-xs" style={{ color: 'var(--accent-red)' }}>{uploadError}</p>
+          )}
 
           {agent.recordings.length > 0 && (
             <div className="mt-3 divide-y divide-zinc-800 border-t border-zinc-800">
