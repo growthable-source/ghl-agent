@@ -30,6 +30,19 @@ import type { NextConfig } from "next";
 const FRAME_ANCESTORS_DIRECTIVE = "frame-ancestors *;"
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Client router cache for visited page segments. Next 15+ defaults
+    // dynamic to 0s, so EVERY navigation refetched the page's RSC
+    // payload from the server — combined with the function↔DB distance
+    // this made each sidebar click feel like ~1s. Dashboard pages are
+    // client components that fetch their own data on mount, so the
+    // cached payload is just the page shell — serving it instantly for
+    // 60s carries no content-staleness risk (data still refetches).
+    staleTimes: {
+      dynamic: 60,
+      static: 300,
+    },
+  },
   async headers() {
     // Split into explicit per-prefix rules. Next.js's headers config
     // uses path-to-regexp, which supports regex *only* after a named
