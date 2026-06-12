@@ -51,12 +51,15 @@ interface Convo {
   // from widget.brand in the API response — we expose it on the top
   // level so the visitor panel doesn't have to reach into widget.*.
   brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null } | null
-  widget: { id: string; name: string; primaryColor: string; brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null } | null }
+  widget: { id: string; name: string; primaryColor: string; agencyUrl?: string | null; brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null } | null }
   // Page the visitor was on when they first opened this chat. Frozen
   // at create-time. Distinct from the visitor's currentUrl in the
   // timeline (which keeps moving as they browse).
   initiatedUrl?: string | null
   initiatedTitle?: string | null
+  // Set when this thread was merged INTO another — we point the operator
+  // at the survivor instead of showing the now-emptied husk.
+  mergedIntoId?: string | null
   visitor: { id: string; name: string | null; email: string | null; phone?: string | null; firstSeenAt: string; lastSeenAt?: string; crmContactId?: string | null }
   messages: Message[]
   assignedUserId?: string | null
@@ -76,6 +79,20 @@ const EMOJI_GRID = ['👍', '🙏', '😀', '😅', '🎉', '💯', '🔥', '✅
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// Compact, human-readable URL for the inbox side panel — drop the
+// protocol + trailing slash, keep host + path so a rep can tell which
+// page/brand a chat came from at a glance. Falls back to the raw string
+// if it isn't a parseable URL.
+function prettyUrl(raw: string): string {
+  try {
+    const u = new URL(raw)
+    const path = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '')
+    return (u.host + path).replace(/^www\./, '')
+  } catch {
+    return raw.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  }
 }
 
 // ISO 639-1 → human-readable label for the translation badge.
@@ -141,6 +158,16 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const [ticketingActive, setTicketingActive] = useState<boolean>(false)
   const [linkedTicket, setLinkedTicket] = useState<{ id: string; ticketNumber: number } | null>(null)
   const [promoting, setPromoting] = useState(false)
+
+  // Merge — pull another (often abandoned) thread from the same visitor
+  // into this one so a returning customer's split history reads as one
+  // conversation. Candidates load lazily when the dropdown opens.
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeLoading, setMergeLoading] = useState(false)
+  const [merging, setMerging] = useState(false)
+  const [mergeCandidates, setMergeCandidates] = useState<Array<{
+    id: string; status: string; createdAt: string; lastMessageAt: string; messageCount: number; preview: string
+  }>>([])
   useEffect(() => {
     let cancelled = false
     fetch(`/api/workspaces/${workspaceId}/settings/ticketing`)
@@ -167,6 +194,37 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
       if (!res.ok) { alert(data.error || 'Promote failed.'); return }
       setLinkedTicket({ id: data.ticket.id, ticketNumber: data.ticket.ticketNumber })
     } finally { setPromoting(false) }
+  }
+
+  async function toggleMerge() {
+    const next = !mergeOpen
+    setMergeOpen(next)
+    if (!next) return
+    setMergeLoading(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/merge`)
+      const data = await res.json()
+      setMergeCandidates(Array.isArray(data.candidates) ? data.candidates : [])
+    } catch {
+      setMergeCandidates([])
+    } finally { setMergeLoading(false) }
+  }
+
+  async function mergeIn(sourceId: string) {
+    if (merging) return
+    if (!confirm('Merge that conversation into this one? Its messages move here and it gets marked ended. This can’t be undone.')) return
+    setMerging(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceConversationId: sourceId }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error || 'Merge failed.'); return }
+      setMergeOpen(false)
+      await fetchConvo()
+    } finally { setMerging(false) }
   }
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -500,8 +558,13 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden">
-      <div className="flex-1 flex flex-col overflow-hidden">
+    // h-full + min-h-0 throughout: without an explicit height the flex
+    // children grow to fit their content, which pushed the composer below
+    // the fold so operators had to scroll the whole pane to reach the
+    // reply box. Constraining height here lets the message list be the
+    // only thing that scrolls, pinning the composer to the bottom.
+    <div className="flex-1 flex overflow-hidden h-full min-h-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* Header */}
         <div className="px-6 py-3 border-b border-zinc-800 flex items-center gap-3 flex-shrink-0 bg-zinc-950">
           {onClose ? (
@@ -674,6 +737,57 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
               )}
             </div>
 
+            {/* Merge — fold another thread from this visitor into the
+                current one. Hidden once the chat is ended (merge target
+                should be the live thread). */}
+            {!isEnded && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={toggleMerge}
+                  disabled={merging}
+                  className="flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors disabled:opacity-40"
+                  title="Combine another conversation from this visitor into this one"
+                >
+                  ⤵ Merge
+                </button>
+                {mergeOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setMergeOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-40 w-72 max-h-80 overflow-y-auto bg-zinc-950 border border-zinc-700 rounded-lg shadow-xl">
+                      <div className="px-3 py-2 border-b border-zinc-800 sticky top-0 bg-zinc-950">
+                        <p className="text-[11px] font-semibold text-zinc-200">Merge a chat into this one</p>
+                        <p className="text-[10px] text-zinc-500">Its messages move here; it’s marked ended.</p>
+                      </div>
+                      {mergeLoading ? (
+                        <div className="px-3 py-3 text-xs text-zinc-500">Loading…</div>
+                      ) : mergeCandidates.length === 0 ? (
+                        <div className="px-3 py-3 text-xs text-zinc-500">No other conversations from this visitor to merge.</div>
+                      ) : (
+                        mergeCandidates.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => mergeIn(c.id)}
+                            disabled={merging}
+                            className="w-full text-left px-3 py-2 hover:bg-zinc-900 border-b border-zinc-900 last:border-0 disabled:opacity-50"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-zinc-300 truncate">{c.preview}</span>
+                              <span className="text-[9px] text-zinc-600 whitespace-nowrap">{relTime(c.lastMessageAt)}</span>
+                            </div>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">
+                              {c.messageCount} msg{c.messageCount === 1 ? '' : 's'} · {c.status === 'ended' ? 'ended' : c.status === 'handed_off' ? 'taken over' : 'active'}
+                            </p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Resume AI: only visible when the operator has taken
                 over (status=handed_off). Flips status back to 'active'
                 so the agent runner stops gating on the takeover and
@@ -713,6 +827,18 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           </div>
         </div>
 
+        {convo.mergedIntoId && (
+          <div className="px-6 py-2 bg-zinc-800/60 border-b border-zinc-700 text-[11px] text-zinc-300 flex items-center justify-between">
+            <span>This chat was merged into another conversation.</span>
+            <Link
+              href={`/dashboard/${workspaceId}/inbox?conversation=${convo.mergedIntoId}`}
+              className="font-semibold text-orange-400 hover:text-orange-300 transition-colors"
+            >
+              Open merged thread →
+            </Link>
+          </div>
+        )}
+
         {networkOffline && (
           <div className="px-6 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[11px] text-amber-300 flex items-center justify-between">
             <span>Live updates paused — you appear to be offline.</span>
@@ -728,7 +854,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
             indexes still map to the same MessageBubble + lastAgentIdx
             indices so quick replies and other index-dependent behaviour
             keeps working. */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-3">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-3">
           {(() => {
             const total = convo.messages.length
             const visibleStart = Math.max(0, total - messageWindow)
@@ -951,6 +1077,47 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
               <p className="text-zinc-200">{convo.visitorConversationCount ?? 1}</p>
             </div>
           </div>
+
+          {/* Origin + quick links. "Came from" is the page the visitor
+              actually opened the chat on (their site), so a rep working
+              many whitelabel brands can tell at a glance which client
+              this is. "Client site" is the operator-set agency URL — a
+              one-click shortcut to the brand's dashboard/site. Either
+              renders only when present. */}
+          {(convo.initiatedUrl || convo.widget?.agencyUrl) && (
+            <div className="mt-3 space-y-2">
+              {convo.initiatedUrl && (
+                <a
+                  href={convo.initiatedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors group"
+                  title={convo.initiatedUrl}
+                >
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Came from ↗</p>
+                  <p className="text-xs text-zinc-200 truncate font-mono group-hover:text-white">{prettyUrl(convo.initiatedUrl)}</p>
+                  {convo.initiatedTitle && (
+                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">{convo.initiatedTitle}</p>
+                  )}
+                </a>
+              )}
+              {convo.widget?.agencyUrl && (
+                <a
+                  href={convo.widget.agencyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 p-2.5 rounded-lg border border-dashed border-zinc-700 hover:border-orange-500/60 transition-colors group"
+                  title={convo.widget.agencyUrl}
+                >
+                  <span className="text-sm">🔗</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Client site</p>
+                    <p className="text-xs text-orange-400 truncate group-hover:text-orange-300">{prettyUrl(convo.widget.agencyUrl)}</p>
+                  </div>
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Operator-editable name / email / phone for the visitor.

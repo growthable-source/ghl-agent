@@ -99,6 +99,19 @@
       search: location.search || null,
     }
   }
+  // Parent-page context to hand the iframe. The chat/call pages run on
+  // the Voxility origin INSIDE an iframe, so their own window.location is
+  // the embed URL — useless for "which page/site did this chat come
+  // from?". We pass the host page's real URL + title through the query
+  // string so the embed can record it as the conversation's origin
+  // (initiatedUrl). Empty fragment when we somehow have no URL.
+  function parentContextQuery() {
+    try {
+      var q = '&purl=' + encodeURIComponent(location.href)
+      if (document.title) q += '&ptitle=' + encodeURIComponent(document.title.slice(0, 300))
+      return q
+    } catch (_) { return '' }
+  }
   function startVisitorTracking() {
     // Fire once on load.
     sendEvent('page_view', currentPageData())
@@ -149,7 +162,12 @@
     btn.innerHTML = svgChat()
     btn.onmouseenter = function () { btn.style.transform = 'scale(1.05)' }
     btn.onmouseleave = function () { btn.style.transform = 'scale(1)' }
-    btn.onclick = function () { toggleIframe(btn, true) }
+    btn.onclick = function () {
+      // Swallow the click that ends a drag so dragging the launcher
+      // doesn't also open/close the panel.
+      if (btn.__voxDragged) { btn.__voxDragged = false; return }
+      toggleIframe(btn, true)
+    }
     document.body.appendChild(btn)
     state.launcher = btn
 
@@ -161,9 +179,11 @@
     var cid = getCookieId() || ''
     var embedUrl = hostUrl + '/widget/' + widgetId + '/embed?pk=' + encodeURIComponent(publicKey)
       + (cid ? '&cid=' + encodeURIComponent(cid) : '')
+      + parentContextQuery()
     var wrap = buildIframe(embedUrl, cfg.title || 'Chat', position, false)
     document.body.appendChild(wrap)
     state.iframeWrap = wrap
+    makeDraggable(btn, wrap, position)
   }
 
   // ─── Click-to-call: button (floating or inline) + voice iframe ──────
@@ -203,7 +223,10 @@
     btn.innerHTML = iconHtml + '<span>' + escapeHtml(cfg.buttonLabel || 'Talk to us') + '</span>'
     btn.onmouseenter = function () { btn.style.transform = 'translateY(-1px)'; btn.style.boxShadow = '0 6px 18px rgba(0,0,0,0.22)' }
     btn.onmouseleave = function () { btn.style.transform = 'translateY(0)'; btn.style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)' }
-    btn.onclick = function () { toggleIframe(btn, false) }
+    btn.onclick = function () {
+      if (btn.__voxDragged) { btn.__voxDragged = false; return }
+      toggleIframe(btn, false)
+    }
 
     if (floating) {
       document.body.appendChild(btn)
@@ -223,9 +246,13 @@
     var ccid = getCookieId() || ''
     var callUrl = hostUrl + '/widget/' + widgetId + '/call?pk=' + encodeURIComponent(publicKey)
       + (ccid ? '&cid=' + encodeURIComponent(ccid) : '')
+      + parentContextQuery()
     var wrap = buildIframe(callUrl, cfg.buttonLabel || 'Call', position, true)
     document.body.appendChild(wrap)
     state.iframeWrap = wrap
+    // Only the FLOATING launcher is position:fixed and drag-repositionable;
+    // an inline in-page button stays where the host put it.
+    if (floating) makeDraggable(btn, wrap, position)
   }
 
   function buildIframe(src, title, position, isCall) {
@@ -268,6 +295,84 @@
       setTimeout(function () { if (!state.open) state.iframeWrap.style.display = 'none' }, 220)
       if (swapIcon && launcher) launcher.innerHTML = svgChat()
     }
+  }
+
+  // ─── Draggable launcher ─────────────────────────────────────────────
+  // Let the visitor reposition the floating widget so it stops covering
+  // a "Buy" button / chat input / cookie banner. We drag the LAUNCHER
+  // (the iframe is cross-origin so we can't grab its insides) and move
+  // the panel with it, keeping their 70px gap. Position persists per
+  // widget in localStorage. A movement threshold distinguishes a drag
+  // from a plain click so opening the widget still works.
+  var POS_KEY = 'voxility_widget_pos_' + widgetId
+  function loadPos() {
+    try { return JSON.parse(localStorage.getItem(POS_KEY) || 'null') } catch (_) { return null }
+  }
+  function savePos(p) {
+    try { localStorage.setItem(POS_KEY, JSON.stringify(p)) } catch (_) {}
+  }
+  function applyPos(el, side, sidePx, bottomPx) {
+    if (!el) return
+    el.style.bottom = bottomPx + 'px'
+    el.style[side] = sidePx + 'px'
+    el.style[side === 'left' ? 'right' : 'left'] = 'auto'
+  }
+  function makeDraggable(launcher, wrap, side) {
+    var WRAP_GAP = 70 // panel sits this far above the launcher
+    var saved = loadPos()
+    var cur = saved && typeof saved.sidePx === 'number'
+      ? { side: saved.side || side, sidePx: saved.sidePx, bottomPx: saved.bottomPx }
+      : { side: side, sidePx: 20, bottomPx: 20 }
+    function paint() {
+      applyPos(launcher, cur.side, cur.sidePx, cur.bottomPx)
+      applyPos(wrap, cur.side, cur.sidePx, cur.bottomPx + WRAP_GAP)
+    }
+    paint()
+    // Re-clamp on resize so the widget never ends up off-screen after a
+    // viewport change (rotate phone, shrink window).
+    window.addEventListener('resize', function () {
+      var w = launcher.offsetWidth || 56, h = launcher.offsetHeight || 56
+      cur.sidePx = Math.min(Math.max(8, window.innerWidth - w - 8), Math.max(8, cur.sidePx))
+      cur.bottomPx = Math.min(Math.max(8, window.innerHeight - h - 8), Math.max(8, cur.bottomPx))
+      paint()
+    })
+
+    var dragging = false, moved = false, startX = 0, startY = 0, startSide = 0, startBottom = 0
+    var THRESH = 5
+    launcher.style.touchAction = 'none' // stop the page scrolling while dragging on touch
+    launcher.addEventListener('pointerdown', function (e) {
+      if (typeof e.button === 'number' && e.button !== 0) return
+      dragging = true; moved = false
+      startX = e.clientX; startY = e.clientY
+      startSide = cur.sidePx; startBottom = cur.bottomPx
+      try { launcher.setPointerCapture(e.pointerId) } catch (_) {}
+    })
+    launcher.addEventListener('pointermove', function (e) {
+      if (!dragging) return
+      var dx = e.clientX - startX, dy = e.clientY - startY
+      if (!moved && Math.abs(dx) + Math.abs(dy) > THRESH) moved = true
+      if (!moved) return
+      var w = launcher.offsetWidth || 56, h = launcher.offsetHeight || 56
+      var maxSide = Math.max(8, window.innerWidth - w - 8)
+      var maxBottom = Math.max(8, window.innerHeight - h - 8)
+      var ns = cur.side === 'right' ? startSide - dx : startSide + dx
+      var nb = startBottom - dy
+      cur.sidePx = Math.min(maxSide, Math.max(8, ns))
+      cur.bottomPx = Math.min(maxBottom, Math.max(8, nb))
+      paint()
+    })
+    function endDrag(e) {
+      if (!dragging) return
+      dragging = false
+      try { launcher.releasePointerCapture(e.pointerId) } catch (_) {}
+      if (moved) {
+        // Mark so the click handler that fires next swallows the toggle.
+        launcher.__voxDragged = true
+        savePos({ side: cur.side, sidePx: cur.sidePx, bottomPx: cur.bottomPx })
+      }
+    }
+    launcher.addEventListener('pointerup', endDrag)
+    launcher.addEventListener('pointercancel', endDrag)
   }
 
   function escapeHtml(s) {

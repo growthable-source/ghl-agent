@@ -39,11 +39,20 @@ interface CandidateMember {
   user: { name: string | null; email: string | null }
 }
 
+// Roles that can NOT work a live chat — never auto-route to them even
+// if an operator accidentally added them to routingTargetUserIds.
+// Viewers are read-only; routing a chat to one would strand it with
+// nobody able to reply. (Mirrors the viewer exclusion in the widget
+// editor's eligible-teammates picker.)
+const NON_CHAT_ROLES = new Set(['viewer'])
+
 /**
  * Candidate list = workspace members whose userId is in
  * widget.routingTargetUserIds (or all members if that array is empty).
  * Doesn't filter on availability — that's the picker's job, since
- * we want manual flows to see *everyone* even if they're away.
+ * we want manual flows to see *everyone* even if they're away. DOES
+ * filter out roles that can't reply (viewer) so the router never lands
+ * a chat on someone the product won't let answer it.
  */
 async function loadCandidates(workspaceId: string, targetUserIds: string[]): Promise<CandidateMember[]> {
   const where: any = { workspaceId }
@@ -55,6 +64,7 @@ async function loadCandidates(workspaceId: string, targetUserIds: string[]): Pro
       select: {
         userId: true,
         isAvailable: true,
+        role: true,
         user: { select: { name: true, email: true } },
       },
     })
@@ -66,7 +76,7 @@ async function loadCandidates(workspaceId: string, targetUserIds: string[]): Pro
     throw err
   }
   return rows
-    .filter(r => r.user)
+    .filter(r => r.user && !NON_CHAT_ROLES.has(r.role))
     .map(r => ({ userId: r.userId, isAvailable: r.isAvailable !== false, user: r.user }))
 }
 

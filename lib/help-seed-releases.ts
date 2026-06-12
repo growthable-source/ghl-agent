@@ -15,6 +15,66 @@ export const RELEASES_CATEGORY = {
 
 export const RELEASES_ARTICLES = [
   // ───────────────────────────────────────────────────────────────────
+  // Live chat, inbox & ticketing improvements
+  // ───────────────────────────────────────────────────────────────────
+  {
+    slug: 'live-chat-inbox-ticketing-improvements',
+    title: 'Live chat & inbox: merge chats, draggable widget, new-chat popups, and more',
+    summary: 'Eight fixes and upgrades to the live chat widget, inbox, and ticketing — sticky reply box, a movable widget, on-screen new-chat alerts, conversation merging, the page a chat came from, an agency link, a Tickets tab for support agents, and viewer-aware routing.',
+    order: 1,
+    body: `This release works through a batch of real feedback from teams running
+live chat day to day. Eight changes across the widget, the inbox, and
+ticketing.
+
+## Live chat widget
+
+- **Move the widget anywhere.** Visitors can now drag the floating chat
+  button (and its panel) out of the way — handy when it covers a "Buy"
+  button, a form field, or a cookie banner. Where they drop it is
+  remembered on that device, so it stays put on the next page.
+- **We capture which page a chat started on.** Every conversation now
+  records the visitor's actual page URL + title at the moment they opened
+  the chat (previously this quietly logged an internal URL). You'll see it
+  in the inbox as **"Came from ↗"** — one click opens that page. Especially
+  useful when you run chat across many whitelabel sites and need to know
+  instantly which client a chat belongs to.
+
+## Inbox
+
+- **The reply box stays put.** The composer is now pinned to the bottom of
+  the conversation — no more scrolling down through a long thread to find
+  where to type.
+- **On-screen alert for new chats.** In addition to the notification
+  sound, a popup now appears (bottom-right) the moment a new chat comes in,
+  even when you're on another page — with the visitor's name, the first
+  message, and a one-click **Open chat**. Easy to miss the chime; hard to
+  miss the card.
+- **Merge conversations.** When a customer goes quiet and comes back later
+  in a fresh chat with the same issue, you can now fold the two threads
+  into one. Open the live chat, click **⤵ Merge**, and pick the earlier
+  conversation — its messages move across in chronological order and the
+  old thread is closed and linked to the survivor.
+- **Quick agency link.** Each widget now has a **Whitelabel / agency URL**
+  field (Widgets → your widget → Routing). Set it to the client's site or
+  dashboard and it shows up in the inbox conversation panel as a one-click
+  shortcut — a fast way to jump to the right brand when you support many.
+
+## Ticketing & roles
+
+- **Tickets tab for support agents.** Support-agent teammates (the
+  inbox-only role) now see a **Tickets** tab alongside their Inbox, instead
+  of only the inbox, wherever ticketing is enabled.
+- **Routing skips viewers.** Viewers are read-only and can't reply, so
+  they no longer appear in a widget's "Eligible teammates" picker and are
+  never auto-routed a chat. The reply and merge actions are enforced
+  server-side too, so a read-only role can't accidentally take over a chat.
+
+Nothing here changes how your existing widgets are installed — current
+embed snippets keep working as-is and pick up the new behaviour
+automatically.`,
+  },
+
+  // ───────────────────────────────────────────────────────────────────
   // Native CRM (rolling out)
   // ───────────────────────────────────────────────────────────────────
   {

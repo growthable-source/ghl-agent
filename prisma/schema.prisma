@@ -2108,6 +2108,13 @@ model ChatWidget {
   // in the rotation, not the same person every time.
   routingLastAssignedUserId String?
   allowedDomains            String[]             @default([])
+  // Operator-facing whitelabel / agency URL. Surfaced in the inbox
+  // conversation panel as a quick "open the client's site" link so a
+  // support rep working many whitelabel brands can jump to the right
+  // place. NOT sent to visitors — purely an internal convenience. The
+  // page a visitor actually started the chat on is captured separately
+  // on WidgetConversation.initiatedUrl.
+  agencyUrl                 String?
   isActive                  Boolean              @default(true)
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
@@ -2230,6 +2237,14 @@ model WidgetConversation {
   // conversation has grown materially since aiSummaryAt.
   aiSummary        String?           @db.Text
   aiSummaryAt      DateTime?
+  // Set when this conversation was merged INTO another one (the visitor
+  // returned in a new session with the same issue and an operator
+  // combined the threads). Points at the surviving target conversation.
+  // The source's messages are moved onto the target and the source is
+  // marked status='ended' + mergedIntoId set, so the inbox can quietly
+  // redirect anyone who opens it to the merged thread instead of
+  // showing a now-empty husk.
+  mergedIntoId     String?
   createdAt        DateTime          @default(now())
   messages         WidgetMessage[]
   voiceCalls       WidgetVoiceCall[]

@@ -5,6 +5,7 @@ import TrialBanner from '@/components/dashboard/TrialBanner'
 import PauseBanner from '@/components/dashboard/PauseBanner'
 import ConnectionHealthBanner from '@/components/dashboard/ConnectionHealthBanner'
 import HandoffAlertBanner from '@/components/dashboard/HandoffAlertBanner'
+import NewChatAlert from '@/components/dashboard/NewChatAlert'
 import EmbeddedWorkspaceBanner from '@/components/dashboard/EmbeddedWorkspaceBanner'
 import MobileNav from '@/components/dashboard/MobileNav'
 
@@ -90,6 +91,10 @@ export default async function WorkspaceLayout({
       <HandoffAlertBanner />
       <ConnectionHealthBanner workspaceId={workspaceId} />
       <div className="pb-16 md:pb-0">{children}</div>
+      {/* Friendly on-screen popup when a NEW live chat comes in — pairs
+          with the notification ping so an incoming chat is hard to miss
+          even when the operator is on another page. */}
+      <NewChatAlert />
       <MobileNav />
     </>
   )

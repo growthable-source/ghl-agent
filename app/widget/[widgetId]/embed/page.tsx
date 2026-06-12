@@ -233,8 +233,17 @@ export default function WidgetEmbedPage() {
     // Capture WHERE the visitor started this chat. Frozen on the server
     // at conversation-create time so operators see the original landing
     // page even after the visitor has navigated elsewhere mid-chat.
-    const initiatedUrl = typeof window !== 'undefined' ? window.location.href : null
-    const initiatedTitle = typeof document !== 'undefined' ? (document.title || null) : null
+    //
+    // This page runs INSIDE the embed iframe, so window.location is the
+    // Voxility embed URL — not the host site. widget.js passes the host
+    // page's real URL + title through `purl`/`ptitle`; prefer those so
+    // the inbox shows the customer's page. Fall back to our own location
+    // only when there's no parent context (hosted /c page, direct embed
+    // link), where our URL IS the relevant one.
+    const parentUrl = searchParams.get('purl')
+    const parentTitle = searchParams.get('ptitle')
+    const initiatedUrl = parentUrl || (typeof window !== 'undefined' ? window.location.href : null)
+    const initiatedTitle = parentTitle || (typeof document !== 'undefined' ? (document.title || null) : null)
     fetch(`/api/widget/${widgetId}/conversations?pk=${publicKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

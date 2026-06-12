@@ -270,6 +270,20 @@ function SidebarBody() {
                   </svg>,
                   counts.inboxUnread,
                 )}
+                {/* Tickets — inbox-only support agents need this too. The
+                    full nav (below the isInboxOnly guard) already lists
+                    Tickets under Native CRM; this surfaces it as a primary
+                    item for agents who otherwise see ONLY the Inbox. Gated
+                    on the same ticketingActive flag so it stays hidden
+                    where ticketing isn't enabled. */}
+                {isInboxOnly && ticketingActive && navItemPrimary(
+                  `/dashboard/${workspaceId}/tickets`,
+                  'Tickets',
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                    <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4z" />
+                    <path d="M13 7v2M13 15v2M13 11v2" />
+                  </svg>,
+                )}
                 {!isInboxOnly && (<>
                 {navItemPrimary(
                   `/dashboard/${workspaceId}/contacts`,

@@ -35,10 +35,12 @@ interface Widget {
   routingMode?: 'manual' | 'round_robin' | 'first_available'
   routingTargetUserIds?: string[]
   brandId?: string | null
+  agencyUrl?: string | null
 }
 
 interface MemberOption {
   id: string
+  role?: string
   user: { id: string; name: string | null; email: string | null; image: string | null }
 }
 
@@ -297,6 +299,18 @@ export default function WidgetEditorPage() {
                 </div>
               </Field>
               <Field
+                label="Whitelabel / agency URL"
+                helper="The client's site or dashboard. Shown to your team in the inbox as a one-click 'open client site' link next to each chat — handy when you support many whitelabel brands. Not shown to visitors."
+              >
+                <input
+                  type="url"
+                  value={widget.agencyUrl || ''}
+                  onChange={e => update('agencyUrl', (e.target.value || null) as any)}
+                  placeholder="https://client-brand.com"
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+                />
+              </Field>
+              <Field
                 label={isCallType ? 'Voice agent' : 'Default agent'}
                 helper={
                   isCallType
@@ -377,13 +391,18 @@ export default function WidgetEditorPage() {
                   {(widget.routingMode === 'round_robin' || widget.routingMode === 'first_available') && (
                     <Field
                       label="Eligible teammates"
-                      helper="Pick who can be auto-routed to. Leave all unchecked to include everyone in the workspace."
+                      helper="Pick who can be auto-routed to. Leave all unchecked to include everyone who can work chat. Viewers are excluded — they can't reply, so the router never sends chats to them."
                     >
-                      {members.length === 0 ? (
-                        <p className="text-xs text-zinc-500">No teammates yet — invite from Members.</p>
+                      {(() => {
+                        // Only roles that can actually reply are eligible.
+                        // Viewers are read-only, so routing a chat to one
+                        // would strand it. Owners/admins/members/agents stay.
+                        const eligible = members.filter(m => m.role !== 'viewer')
+                        return eligible.length === 0 ? (
+                        <p className="text-xs text-zinc-500">No eligible teammates yet — invite a member or support agent from Members.</p>
                       ) : (
                         <div className="space-y-1.5 border border-zinc-800 rounded-lg p-2 max-h-48 overflow-y-auto bg-zinc-950">
-                          {members.map(m => {
+                          {eligible.map(m => {
                             const targetIds = widget.routingTargetUserIds || []
                             const checked = targetIds.includes(m.user.id)
                             return (
@@ -414,7 +433,8 @@ export default function WidgetEditorPage() {
                             )
                           })}
                         </div>
-                      )}
+                      )
+                      })()}
                     </Field>
                   )}
                 </>

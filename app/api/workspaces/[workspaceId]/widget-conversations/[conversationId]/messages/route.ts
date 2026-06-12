@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { can } from '@/lib/permissions'
 import { broadcast } from '@/lib/widget-sse'
 
 // Background work (auto-routing, CRM sync, self-assign) runs via after()
@@ -25,6 +26,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
         widget: {
           select: {
             id: true, name: true, primaryColor: true,
+            // Operator-facing whitelabel link, surfaced in the panel as a
+            // quick "open the client's site" shortcut. Nullable.
+            agencyUrl: true,
             // Brand is shown as a chip in the visitor sidebar; nullable
             // because not every workspace has brands defined.
             brand: { select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true } },
@@ -96,6 +100,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { workspaceId, conversationId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
+  // Changing status (take over / resolve / reopen) is a conversation
+  // mutation — viewers are read-only and must not be able to do it.
+  if (!can(access.role, 'conversations.reply')) {
+    return NextResponse.json({ error: 'Your role is read-only — you can view conversations but not change them.' }, { status: 403 })
+  }
 
   let body: any = {}
   try { body = await req.json() } catch {
@@ -186,6 +195,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId, conversationId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
+  // Replying takes over the chat from the AI — viewers can't. Only roles
+  // with conversations.reply (owner/admin/member/support-agent) may post.
+  if (!can(access.role, 'conversations.reply')) {
+    return NextResponse.json({ error: 'Your role is read-only — you can read this chat but not reply.' }, { status: 403 })
+  }
 
   let body: any = {}
   try { body = await req.json() } catch {
