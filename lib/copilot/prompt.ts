@@ -209,7 +209,10 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
       ? `\n## You are RUNNING this call\nThis is a guided session: YOU lead, the user follows. Do not wait to be asked — open the call per your directions, then drive the agenda through these steps, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nFor each step: announce it, tell the user exactly what to do on their screen (your playbook and background knowledge are your authority on how), confirm it's done, then move straight to the next. Keep momentum — if the user drifts, answer briefly and bring them back to the current step. Track time aloud ("step 3 of ${agent.steps.length}, we're on track"). Close with a recap of what was completed and what happens next.`
       : `\n## Your job\nHelp the user with whatever they bring, end to end — diagnose, then give one clear next action at a time.`,
     agent.playbook
-      ? `\n## Playbook (learned from real calls — follow this closely)\n${agent.playbook.slice(0, 8000)}`
+      ? `\n## Playbook — your authority on HOW to run each step\nThis is distilled from the SOP and real calls. For each step above, it tells you exactly what to say, where things are on screen, and how to handle confusion. Follow it closely; prefer its specifics over your own assumptions.\n${agent.playbook.slice(0, 14000)}`
+      : ``,
+    hasSteps
+      ? `\n## Non-negotiable\nThe numbered steps are a CHECKLIST you must walk in order — do not skip, reorder, or invent steps. Finish the current step (or get the user's explicit OK to defer it) before starting the next. If something on screen doesn't match the playbook, ask the user what they see rather than guessing.`
       : ``,
     `\n## How to behave`,
     `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${hasSteps ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,

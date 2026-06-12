@@ -163,17 +163,38 @@ export async function processRecording(recordingId: string): Promise<void> {
   }
 }
 
-const DISTILL_SYSTEM = `You write the PLAYBOOK for a live AI co-pilot that guides users through a procedure in real time while watching their screen.
+const DISTILL_SYSTEM = `You turn real onboarding/support materials (SOP documents and recordings of human-run calls) into the operating instructions a live AI co-pilot follows while it watches a user's screen.
 
-You are given: the agent's name, its current ordered steps, and transcripts + screen-walkthroughs of real human-run calls of the same procedure.
+You are given: the agent's name, any ordered steps the operator already wrote, and the transcripts + screen-walkthroughs of the source material.
 
-Write the playbook as clear instructions the co-pilot will follow. Cover:
-- The real step order humans use (correct or refine the given steps if the recordings show a better flow).
-- For each step: where it happens on screen (page + the target element and roughly where it sits), and the exact kind of phrasing that worked.
-- Common objections / points of confusion that came up, and how the human handled them.
-- Known stall points — where users get lost — and how to pre-empt or recover.
+Produce STRICT JSON, no markdown fences:
+{
+  "steps": ["a clean, ordered list of the CONCRETE steps the user must complete, phrased as short imperative actions — e.g. 'Connect your CRM under Settings > Integrations'. This is the checklist the agent walks IN ORDER. Pull these from the SOP / recordings faithfully; do not invent steps that aren't there. 3-30 items."],
+  "playbook": "A per-step RUNBOOK in markdown. For EACH step above, write a short block with: exactly what to tell the user to do, WHERE it is on screen (page + the target element and roughly where it sits), the phrasing that works, and any confusion/stall point at that step and how to handle it. Preserve the literal detail from the source — this is the agent's authority on HOW to do each step, so be specific, not generic. End with any objections that came up across the call and how they were handled."
+}
 
-Be specific and practical. Output plain prose/markdown the co-pilot reads as guidance — NOT JSON. Keep it under 600 words. Do not invent details that aren't supported by the recordings or steps.`
+Rules: Follow the source material closely — if the SOP says to do X before Y, keep that order. Don't summarise away the specifics (exact menu names, button locations, field values). If the operator already wrote steps, reconcile them with the source rather than discarding them. Do not invent anything not supported by the material.`
+
+interface DistillResult {
+  steps: string[]
+  playbook: string
+}
+
+function parseDistill(raw: string): DistillResult | null {
+  const m = raw.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim().match(/\{[\s\S]*\}/)
+  if (!m) return null
+  try {
+    const obj = JSON.parse(m[0]) as { steps?: unknown; playbook?: unknown }
+    const steps = Array.isArray(obj.steps)
+      ? obj.steps.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).map(s => s.trim().slice(0, 500)).slice(0, 40)
+      : []
+    const playbook = typeof obj.playbook === 'string' ? obj.playbook.trim() : ''
+    if (!playbook && steps.length === 0) return null
+    return { steps, playbook }
+  } catch {
+    return null
+  }
+}
 
 export async function distillPlaybook(agentId: string): Promise<void> {
   const agent = await db.copilotAgent.findUnique({
@@ -182,36 +203,50 @@ export async function distillPlaybook(agentId: string): Promise<void> {
   })
   if (!agent || agent.recordings.length === 0) return
 
-  const steps = Array.isArray(agent.steps) ? (agent.steps as string[]).filter(s => typeof s === 'string') : []
-  const stepsBlock = steps.length ? steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : '(no explicit steps yet — infer them from the recordings)'
+  const existingSteps = Array.isArray(agent.steps) ? (agent.steps as string[]).filter(s => typeof s === 'string') : []
+  const stepsBlock = existingSteps.length
+    ? existingSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')
+    : '(none yet — extract them from the material)'
 
   const recordingsBlock = agent.recordings
     .map((r, i) => {
-      const t = (r.transcript ?? '').slice(0, 6000)
-      const w = (r.walkthrough ?? '').slice(0, 4000)
-      return `--- Recording ${i + 1} (${r.originalFilename}) ---\nTRANSCRIPT:\n${t}\n\nSCREEN WALKTHROUGH:\n${w || '(audio only)'}`
+      const t = (r.transcript ?? '').slice(0, 8000)
+      const w = (r.walkthrough ?? '').slice(0, 5000)
+      return `--- Source ${i + 1} (${r.originalFilename}) ---\nCONTENT:\n${t}\n\nSCREEN WALKTHROUGH:\n${w || '(no screen track)'}`
     })
     .join('\n\n')
-    .slice(0, 40_000)
+    .slice(0, 48_000)
 
   try {
     const client = new Anthropic()
     const completion = await client.messages.create({
       model: DISTILL_MODEL,
-      max_tokens: 1500,
+      max_tokens: 4000,
       system: DISTILL_SYSTEM,
       messages: [
         {
           role: 'user',
-          content: `Agent: ${agent.name}\n\nCurrent steps:\n${stepsBlock}\n\nReal calls to learn from:\n\n${recordingsBlock}`,
+          content: `Agent: ${agent.name}\n\nOperator's current steps:\n${stepsBlock}\n\nSource material to learn from:\n\n${recordingsBlock}`,
         },
       ],
     })
     const block = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
-    const playbook = (block?.text ?? '').trim()
-    if (playbook) {
-      await db.copilotAgent.update({ where: { id: agentId }, data: { playbook: playbook.slice(0, 12_000) } })
-      console.log(`[recordings] distilled playbook for agent ${agentId} from ${agent.recordings.length} recording(s)`)
+    const parsed = block ? parseDistill(block.text) : null
+    if (!parsed) {
+      console.warn(`[recordings] distill produced no usable result for agent ${agentId}`)
+      return
+    }
+
+    const data: Record<string, unknown> = {}
+    if (parsed.playbook) data.playbook = parsed.playbook.slice(0, 16_000)
+    // Only auto-fill steps when the operator hasn't authored any — never
+    // clobber hand-written steps; the playbook still reconciles to them.
+    if (existingSteps.length === 0 && parsed.steps.length > 0) data.steps = parsed.steps
+    if (Object.keys(data).length > 0) {
+      await db.copilotAgent.update({ where: { id: agentId }, data })
+      console.log(
+        `[recordings] distilled agent ${agentId} from ${agent.recordings.length} source(s): ${parsed.steps.length} step(s)${existingSteps.length === 0 ? ' auto-filled' : ' (kept operator steps)'}, playbook ${parsed.playbook.length} chars`,
+      )
     }
   } catch (err) {
     console.error(`[recordings] distillPlaybook ${agentId} failed:`, err)

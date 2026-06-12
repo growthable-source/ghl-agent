@@ -126,6 +126,21 @@ export default function CopilotAgentEditor() {
     [workspaceId, agentId, load],
   )
 
+  const [relearning, setRelearning] = useState(false)
+  const relearn = useCallback(async () => {
+    setRelearning(true)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}/relearn`, { method: 'POST' })
+      if (res.ok) {
+        // Give the background distill a moment, then reload to show the
+        // refreshed steps + playbook.
+        setTimeout(() => void load(), 4000)
+      }
+    } finally {
+      setTimeout(() => setRelearning(false), 4000)
+    }
+  }, [workspaceId, agentId, load])
+
   const togglePublish = useCallback(async () => {
     if (!agent) return
     const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}`, {
@@ -212,7 +227,7 @@ export default function CopilotAgentEditor() {
         <div className="flex gap-3 flex-wrap">
           <div className="flex-1 min-w-[240px]">
             <label className="block text-xs font-medium text-zinc-400 mb-1">
-              Procedure steps <span className="text-zinc-600">(one per line — leave blank for general support)</span>
+              Procedure steps <span className="text-zinc-600">(one per line — the exact checklist the agent walks, in order)</span>
             </label>
             <textarea
               value={stepsText}
@@ -221,6 +236,11 @@ export default function CopilotAgentEditor() {
               placeholder={'Connect the CRM location\nImport the contact list\nDeploy the first channel\nSend a test message'}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
             />
+            <p className="text-[11px] text-zinc-500 mt-1">
+              This is the agent&rsquo;s authoritative checklist — it walks these in order and won&rsquo;t skip them.
+              Leave blank and it&rsquo;s auto-filled from your uploaded SOP/recordings; edit any time. Blank with no
+              uploads = open-ended support.
+            </p>
           </div>
           <div className="w-32">
             <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
@@ -237,18 +257,32 @@ export default function CopilotAgentEditor() {
           <h3 className="text-sm font-semibold text-zinc-100 mb-1">Teach it from real material</h3>
           <p className="text-xs text-zinc-400 mb-3">
             Upload a <strong>recording</strong> of a human running this procedure (a screen recording is ideal), or a{' '}
-            <strong>document</strong> — an SOP as a PDF with screenshots, or a Markdown/text guide. The agent reads
-            the screens and the steps, maps where to take the user, and folds it into its playbook. Add a few; it
-            sharpens with each.
+            <strong>document</strong> — an SOP as a PDF with screenshots, or a Markdown/text guide. The agent reads the
+            screens and the steps, <strong>extracts the step-by-step checklist above</strong> (when it&rsquo;s blank),
+            and writes a per-step playbook of exactly what to tell the user and where things are on screen. Add a few;
+            it sharpens with each.
           </p>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="px-3.5 py-2 rounded-lg text-sm font-medium border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
-          >
-            {uploading ? 'Uploading…' : 'Upload recording or document'}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="px-3.5 py-2 rounded-lg text-sm font-medium border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+            >
+              {uploading ? 'Uploading…' : 'Upload recording or document'}
+            </button>
+            {agent.recordings.some(r => r.status === 'done') && (
+              <button
+                type="button"
+                onClick={() => void relearn()}
+                disabled={relearning}
+                className="px-3.5 py-2 rounded-lg text-sm font-medium border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                title="Re-extract steps + playbook from your existing sources"
+              >
+                {relearning ? 'Rebuilding…' : 'Rebuild steps & playbook'}
+              </button>
+            )}
+          </div>
           <input
             ref={fileRef}
             type="file"
