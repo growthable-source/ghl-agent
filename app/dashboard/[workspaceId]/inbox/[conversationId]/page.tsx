@@ -8,20 +8,18 @@ import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
  * notifications and shared URLs. The router picks widget vs Meta
  * based on the id prefix; both share this entry point.
  *
- * The `flex-1 flex h-full` wrapper is load-bearing: the inner
- * ConversationDetail uses flex-1 chains throughout to size its message
- * list + composer so the composer stays glued to the viewport bottom
- * and only the message list scrolls. Without an explicit height parent
- * here, those flex-1s had nothing to size against and the whole page
- * grew past the viewport — operators had to scroll all the way to the
- * bottom to find the composer, exactly the QA bug filed.
+ * The `flex-1 min-h-0 flex overflow-hidden` wrapper is load-bearing:
+ * the workspace layout passes the bounded viewport height down as a
+ * flex column; flex-1 fills it and min-h-0 + overflow-hidden let this
+ * box shrink to fit, so ConversationDetail's message list scrolls
+ * internally and the composer stays glued to the viewport bottom.
  */
 export default function InboxDetailPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
   const conversationId = decodeURIComponent(params.conversationId as string)
   return (
-    <div className="flex-1 flex h-full overflow-hidden">
+    <div className="flex-1 min-h-0 flex overflow-hidden">
       <InboxConversationPanel workspaceId={workspaceId} conversationId={conversationId} />
     </div>
   )

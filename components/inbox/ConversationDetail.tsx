@@ -95,6 +95,15 @@ function prettyUrl(raw: string): string {
   }
 }
 
+// Conversations recorded before the purl fix have OUR embed iframe URL
+// stored as their origin ("…/widget/<id>/embed?pk=widget_pub_…") — the
+// embed page used to fall back to its own window.location when the
+// parent didn't pass one. Showing that to an operator is worse than
+// showing nothing, so the panel treats those rows as having no origin.
+function isInternalEmbedUrl(raw: string): boolean {
+  return /\/widget\/[^/]+\/(embed|call|live)\b/.test(raw) || raw.includes('pk=widget_pub_')
+}
+
 // ISO 639-1 → human-readable label for the translation badge.
 // Covers the languages the detector accepts; falls back to the raw
 // code for anything else.
@@ -547,6 +556,9 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   if (!convo) return <div className="p-8 text-zinc-500">Conversation not found</div>
 
   const accent = convo.widget.primaryColor || '#fa4d2e'
+  // Origin link for the side panel — drop legacy rows that recorded our
+  // own embed iframe URL instead of the customer's page.
+  const originUrl = convo.initiatedUrl && !isInternalEmbedUrl(convo.initiatedUrl) ? convo.initiatedUrl : null
   const visitorLabel = convo.visitor.name || convo.visitor.email || 'Anonymous visitor'
   const visitorInitial = (convo.visitor.name || convo.visitor.email || 'V').charAt(0).toUpperCase()
   const isLive = convo.status === 'active'
@@ -1084,18 +1096,18 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
               this is. "Client site" is the operator-set agency URL — a
               one-click shortcut to the brand's dashboard/site. Either
               renders only when present. */}
-          {(convo.initiatedUrl || convo.widget?.agencyUrl) && (
+          {(originUrl || convo.widget?.agencyUrl) && (
             <div className="mt-3 space-y-2">
-              {convo.initiatedUrl && (
+              {originUrl && (
                 <a
-                  href={convo.initiatedUrl}
+                  href={originUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors group"
-                  title={convo.initiatedUrl}
+                  title={originUrl}
                 >
                   <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Came from ↗</p>
-                  <p className="text-xs text-zinc-200 truncate font-mono group-hover:text-white">{prettyUrl(convo.initiatedUrl)}</p>
+                  <p className="text-xs text-zinc-200 truncate font-mono group-hover:text-white">{prettyUrl(originUrl)}</p>
                   {convo.initiatedTitle && (
                     <p className="text-[10px] text-zinc-500 truncate mt-0.5">{convo.initiatedTitle}</p>
                   )}

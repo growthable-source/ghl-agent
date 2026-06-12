@@ -28,10 +28,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const visitorId = typeof body.visitorId === 'string' ? body.visitorId : null
   if (!visitorId) return NextResponse.json({ error: 'visitorId required' }, { status: 400, headers })
 
+  // currentUrl/Title come from the parent page's page_view events — the
+  // best origin we have for the fresh thread (the embed iframe can't see
+  // the host page's URL itself).
   const visitor = await db.widgetVisitor.findFirst({
     where: { id: visitorId, widgetId },
-    select: { id: true },
-  })
+    select: { id: true, currentUrl: true, currentTitle: true } as any,
+  }) as any
   if (!visitor) return NextResponse.json({ error: 'Visitor not found' }, { status: 404, headers })
 
   // Close any currently-active conversations for this visitor.
@@ -40,10 +43,26 @@ export async function POST(req: NextRequest, { params }: Params) {
     data: { status: 'closed' },
   })
 
-  // Open a new one.
-  const conv = await db.widgetConversation.create({
-    data: { widgetId, visitorId, agentId: v.widget.defaultAgentId },
-  })
+  // Open a new one, stamped with where the visitor is right now.
+  let conv
+  try {
+    conv = await db.widgetConversation.create({
+      data: {
+        widgetId,
+        visitorId,
+        agentId: v.widget.defaultAgentId,
+        initiatedUrl: visitor.currentUrl ?? null,
+        initiatedTitle: visitor.currentTitle ?? null,
+      } as any,
+    })
+  } catch (err: any) {
+    // Pre-migration tolerance — same degrade as the main create route.
+    if (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')) {
+      conv = await db.widgetConversation.create({
+        data: { widgetId, visitorId, agentId: v.widget.defaultAgentId },
+      })
+    } else { throw err }
+  }
 
   return NextResponse.json({ conversationId: conv.id, messages: [] }, { headers })
 }

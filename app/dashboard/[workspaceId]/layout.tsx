@@ -90,7 +90,19 @@ export default async function WorkspaceLayout({
           appears so operators on another tab/page actually hear it. */}
       <HandoffAlertBanner />
       <ConnectionHealthBanner workspaceId={workspaceId} />
-      <div className="pb-16 md:pb-0">{children}</div>
+      {/* This wrapper must PASS THROUGH the bounded-height flex chain the
+          dashboard layout sets up (h-screen main → scrolling children
+          wrapper), or full-viewport pages like the inbox can't pin their
+          composer — as a plain block it was the missing link that let the
+          inbox grow past the viewport, forcing operators to scroll down to
+          find the reply box.
+          flex-1 + flex-col: pages whose root is overflow-hidden (inbox)
+          collapse to exactly the space left under any banners and scroll
+          internally. Deliberately NO min-h-0: ordinary content pages keep
+          their natural height, so they still scroll in the outer wrapper
+          and the mobile pb-16 stays after the content (MobileNav
+          clearance), not at the viewport edge. */}
+      <div className="pb-16 md:pb-0 flex-1 flex flex-col">{children}</div>
       {/* Friendly on-screen popup when a NEW live chat comes in — pairs
           with the notification ping so an incoming chat is hard to miss
           even when the operator is on another page. */}

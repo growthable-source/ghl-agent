@@ -332,7 +332,13 @@ export default function InboxPage() {
   const hot = rows.filter(r => isHot(r.lastMessageAt) && r.status !== 'ended').length
 
   return (
-    <div className="flex-1 flex h-full overflow-hidden">
+    // min-h-0 (not h-full) — the workspace layout wrapper is a flex
+    // column passing down the bounded viewport height; flex-1 fills it
+    // and min-h-0 lets this box shrink to fit, so the panes scroll
+    // INTERNALLY and the composer stays pinned. h-full was dead weight:
+    // it resolved against an auto-height parent (= no constraint) and
+    // the page grew past the fold.
+    <div className="flex-1 min-h-0 flex overflow-hidden">
       {/* LEFT PANE — list, filters, search. Fixed width on md+; full
           width on mobile (right pane is hidden via md:flex). */}
       <div

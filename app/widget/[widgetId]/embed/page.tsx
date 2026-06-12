@@ -237,13 +237,19 @@ export default function WidgetEmbedPage() {
     // This page runs INSIDE the embed iframe, so window.location is the
     // Voxility embed URL — not the host site. widget.js passes the host
     // page's real URL + title through `purl`/`ptitle`; prefer those so
-    // the inbox shows the customer's page. Fall back to our own location
-    // only when there's no parent context (hosted /c page, direct embed
-    // link), where our URL IS the relevant one.
+    // the inbox shows the customer's page. When purl is absent AND we're
+    // framed (visitor's browser still running a cached pre-purl
+    // widget.js), send NOTHING — the server then falls back to
+    // visitor.currentUrl, which the parent page's page_view events keep
+    // pointed at the real host URL. Falling back to our own location
+    // here recorded "…/widget/<id>/embed?pk=…" as the chat origin in
+    // the inbox. Our own URL is only meaningful when we ARE the
+    // top-level page (hosted /c page, direct embed link in a tab).
     const parentUrl = searchParams.get('purl')
     const parentTitle = searchParams.get('ptitle')
-    const initiatedUrl = parentUrl || (typeof window !== 'undefined' ? window.location.href : null)
-    const initiatedTitle = parentTitle || (typeof document !== 'undefined' ? (document.title || null) : null)
+    const isTopLevel = typeof window !== 'undefined' && window.self === window.top
+    const initiatedUrl = parentUrl || (isTopLevel ? window.location.href : null)
+    const initiatedTitle = parentTitle || (isTopLevel ? (document.title || null) : null)
     fetch(`/api/widget/${widgetId}/conversations?pk=${publicKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
