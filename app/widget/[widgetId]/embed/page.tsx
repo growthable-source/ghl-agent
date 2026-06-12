@@ -249,7 +249,20 @@ export default function WidgetEmbedPage() {
     const parentUrl = searchParams.get('purl')
     const parentTitle = searchParams.get('ptitle')
     const isTopLevel = typeof window !== 'undefined' && window.self === window.top
-    const initiatedUrl = parentUrl || (isTopLevel ? window.location.href : null)
+    // Framed without purl — the host page is running a STALE cached
+    // widget.js (or framed us directly without widget.js at all).
+    // document.referrer is the framing page's URL: under the default
+    // Referrer-Policy it's at least the host ORIGIN
+    // ("https://customersite.com/"), full URL under laxer policies.
+    // Far better than recording nothing. Guard against our own origin
+    // (in-iframe navigation makes referrer self-referential).
+    const framedReferrer = (() => {
+      if (isTopLevel || typeof document === 'undefined' || !document.referrer) return null
+      try {
+        return new URL(document.referrer).origin === window.location.origin ? null : document.referrer
+      } catch { return null }
+    })()
+    const initiatedUrl = parentUrl || (isTopLevel ? window.location.href : framedReferrer)
     const initiatedTitle = parentTitle || (isTopLevel ? (document.title || null) : null)
     fetch(`/api/widget/${widgetId}/conversations?pk=${publicKey}`, {
       method: 'POST',

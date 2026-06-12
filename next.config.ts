@@ -41,6 +41,15 @@ const nextConfig: NextConfig = {
       { source: "/dashboard/:path*", headers: [cspHeader] },
       { source: "/embedded/:path*", headers: [cspHeader] },
       { source: "/api/auth/leadconnector-iframe-handshake", headers: [cspHeader] },
+      // The embed loader runs on customer sites where browsers (and WP
+      // caching/optimizer plugins) hold on to whatever copy they first
+      // fetched — a stale widget.js kept shipping iframes without the
+      // purl origin param long after the fix deployed. A short explicit
+      // TTL caps how long any cached copy can lag behind a deploy.
+      {
+        source: "/widget.js",
+        headers: [{ key: "Cache-Control", value: "public, max-age=300, must-revalidate" }],
+      },
     ]
   },
 }

@@ -79,14 +79,18 @@
     try {
       var url = hostUrl + '/api/widget/' + widgetId + '/visitor/events?pk=' + encodeURIComponent(publicKey)
       var body = JSON.stringify({ cookieId: cookieId, kind: kind, data: data || {} })
-      // sendBeacon is fire-and-forget and survives page unload — perfect
-      // for the "user navigated away" case. Falls back to fetch when
-      // unsupported (older Safari) or when the body type fails.
-      if (navigator.sendBeacon) {
-        var blob = new Blob([body], { type: 'application/json' })
-        if (navigator.sendBeacon(url, blob)) return
-      }
-      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true })
+      // CRITICAL: the body must go as text/plain, NOT application/json.
+      // A cross-origin request with a JSON content type needs a CORS
+      // preflight, and beacons can't preflight — so the old
+      // sendBeacon(new Blob([body], {type:'application/json'})) version
+      // was SILENTLY DROPPED by the browser on every real customer site
+      // (sendBeacon still returned true, so the fetch fallback never ran
+      // either). Result: zero page_view events ever recorded from any
+      // host page. A plain STRING beacon goes out as
+      // text/plain;charset=UTF-8 — CORS-safelisted, no preflight — and
+      // the server JSON-parses the text body.
+      if (navigator.sendBeacon && navigator.sendBeacon(url, body)) return
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: body, keepalive: true })
         .catch(function () {})
     } catch (_) {}
   }

@@ -36,8 +36,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   const headers = widgetCorsHeaders(req.headers.get('origin'))
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: v.status, headers })
 
+  // The widget sends the JSON body as text/plain — a beacon with an
+  // application/json content type needs a CORS preflight that beacons
+  // can't perform, so browsers silently dropped every cross-origin
+  // event (= every real customer site) until the transport switched.
+  // req.text() + JSON.parse handles both content types.
   let body: any = {}
-  try { body = await req.json() } catch {}
+  try { body = JSON.parse(await req.text()) } catch {}
   const cookieId = typeof body.cookieId === 'string' ? body.cookieId.slice(0, 64) : null
   const kind = typeof body.kind === 'string' ? body.kind : ''
   if (!cookieId) return NextResponse.json({ error: 'cookieId required' }, { status: 400, headers })
