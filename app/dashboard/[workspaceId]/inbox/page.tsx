@@ -814,7 +814,15 @@ export default function InboxPage() {
           </div>
         ) : (
           <div
-            className="rounded-xl border overflow-hidden divide-y divide-zinc-800"
+            // flex-shrink-0 is load-bearing: this card's overflow-hidden
+            // (there to clip the rounded corners) zeroes its flex
+            // automatic minimum, so once the pane became height-bounded
+            // it shrank to the leftover space and CLIPPED the rows —
+            // measured live: 548px card holding 7,534px of conversations,
+            // pane scrollHeight == clientHeight, nothing scrollable.
+            // shrink-0 keeps the card at natural height so the pane's
+            // own overflow-y-auto scrolls the list like before.
+            className="flex-shrink-0 rounded-xl border overflow-hidden divide-y divide-zinc-800"
             style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
           >
             {filtered.map((r, idx) => {
