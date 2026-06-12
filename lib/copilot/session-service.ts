@@ -684,6 +684,9 @@ export async function createMeetingSession(opts: {
         meetingUrl,
         knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
         maxSessionSecs,
+        // Self-learning loop: after the call, the cron pulls Recall's
+        // recording into the agent's learn-from-recordings pipeline.
+        recordingPending: true,
       },
     },
   })
@@ -706,6 +709,7 @@ export async function createMeetingSession(opts: {
           meetingUrl,
           knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
           maxSessionSecs,
+          recordingPending: true,
           botId: bot.id,
         },
       },

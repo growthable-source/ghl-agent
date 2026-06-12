@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { processRecording } from '@/lib/copilot/recordings'
+import { ingestNextMeetingRecording } from '@/lib/copilot/meeting-ingest'
 import { recordCronRun } from '@/lib/cron-heartbeat'
 
 /**
@@ -12,6 +13,10 @@ import { recordCronRun } from '@/lib/cron-heartbeat'
  * screen-walkthrough extraction, and re-distills the agent's playbook.
  * One per tick — media analysis is heavy and the maxDuration budget
  * is for a single long video.
+ *
+ * On idle ticks it instead pulls ONE finished meeting-bot recording
+ * down from Recall into the same queue (the self-learning loop) —
+ * never both in one tick, since each can be a multi-hundred-MB job.
  */
 
 export const maxDuration = 300
@@ -49,6 +54,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let ingested: string | null = null
+  if (!processed) {
+    try {
+      ingested = await ingestNextMeetingRecording()
+    } catch (err) {
+      console.error('[Cron] meeting recording ingest failed:', err)
+    }
+  }
+
   await recordCronRun('process-copilot-recordings', true)
-  return NextResponse.json({ ok: true, processed })
+  return NextResponse.json({ ok: true, processed, ingested })
 }

@@ -70,6 +70,11 @@ export interface RecallBot {
 interface RecallBotResponse {
   id?: string
   status_changes?: Array<{ code?: string }>
+  recordings?: Array<{
+    media_shortcuts?: {
+      video_mixed?: { data?: { download_url?: string } }
+    }
+  }>
 }
 
 function toBot(body: RecallBotResponse): RecallBot {
@@ -114,6 +119,22 @@ export async function getMeetingBot(botId: string): Promise<RecallBot> {
   const body = (await res.json().catch(() => ({}))) as RecallBotResponse
   if (!res.ok) throw new RecallApiError(`bot fetch failed (${res.status})`, res.status)
   return toBot(body)
+}
+
+/**
+ * Bot status + the call recording's mp4 download URL once Recall has
+ * finished processing it (mixed video is recorded by default for all
+ * bots; the URL appears minutes after the call ends and is
+ * short-lived — download promptly, don't store it).
+ */
+export async function getMeetingBotRecording(botId: string): Promise<RecallBot & { recordingUrl: string | null }> {
+  const res = await recallFetch(`/api/v1/bot/${encodeURIComponent(botId)}/`)
+  const body = (await res.json().catch(() => ({}))) as RecallBotResponse
+  if (!res.ok) throw new RecallApiError(`bot fetch failed (${res.status})`, res.status)
+  const recordingUrl =
+    body.recordings?.find(r => r.media_shortcuts?.video_mixed?.data?.download_url)?.media_shortcuts
+      ?.video_mixed?.data?.download_url ?? null
+  return { ...toBot(body), recordingUrl }
 }
 
 /** Tell the bot to hang up. Idempotent from our perspective — a bot
