@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import NewBadge from '@/components/NewBadge'
 
 interface Recording {
   id: string
@@ -58,6 +59,10 @@ export default function CopilotAgentEditor() {
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const [meetingUrl, setMeetingUrl] = useState('')
+  const [meetingSending, setMeetingSending] = useState(false)
+  const [meetingError, setMeetingError] = useState<string | null>(null)
+  const [meeting, setMeeting] = useState<{ sessionId: string; statusLabel: string; active: boolean } | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}`)
@@ -182,6 +187,57 @@ export default function CopilotAgentEditor() {
     },
     [workspaceId, agentId, load],
   )
+
+  const sendToMeeting = useCallback(async () => {
+    if (!meetingUrl.trim()) return
+    setMeetingSending(true)
+    setMeetingError(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}/meeting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meetingUrl: meetingUrl.trim() }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMeetingError(body.error || `Could not send the agent (HTTP ${res.status})`)
+        return
+      }
+      setMeeting({ sessionId: body.sessionId, statusLabel: body.statusLabel || 'Joining the meeting…', active: true })
+    } finally {
+      setMeetingSending(false)
+    }
+  }, [workspaceId, agentId, meetingUrl])
+
+  const removeFromMeeting = useCallback(async () => {
+    if (!meeting) return
+    await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}/meeting?sessionId=${meeting.sessionId}`, {
+      method: 'DELETE',
+    }).catch(() => undefined)
+    setMeeting(m => (m ? { ...m, statusLabel: 'Removed from the call', active: false } : m))
+  }, [workspaceId, agentId, meeting])
+
+  // Poll bot status while a dispatched meeting session is live.
+  useEffect(() => {
+    if (!meeting?.active) return
+    const i = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/workspaces/${workspaceId}/copilot/agents/${agentId}/meeting?sessionId=${meeting.sessionId}`,
+        )
+        if (!res.ok) return
+        const body = await res.json()
+        setMeeting(m =>
+          m && m.sessionId === meeting.sessionId
+            ? { ...m, statusLabel: body.statusLabel, active: body.sessionStatus === 'active' }
+            : m,
+        )
+      } catch {
+        // transient poll failure — keep the last status
+      }
+    }, 5000)
+    return () => clearInterval(i)
+  }, [meeting?.active, meeting?.sessionId, workspaceId, agentId])
 
   if (!agent) return null
 
@@ -412,6 +468,57 @@ export default function CopilotAgentEditor() {
                 label="JavaScript snippet (floating button + window.VoxilityCopilot.launch())"
                 value={`<script src="${window.location.origin}/copilot.js" data-copilot-key="${agent.publicKey}" async></script>`}
               />
+            </div>
+          )}
+        </div>
+
+        {/* ── Send to a meeting ── */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <h3 className="text-sm font-semibold text-zinc-100 mb-1">
+            Send to a live meeting <NewBadge since="2026-06-12" className="ml-1" />
+          </h3>
+          <p className="text-xs text-zinc-400 mb-3">
+            Paste a Zoom, Google Meet, or Teams invite link and this agent joins the call as a participant — it
+            introduces itself, runs its steps, and answers from its knowledge. It hears everyone but can&rsquo;t see
+            shared screens. Admit it from the waiting room if your meeting has one.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              value={meetingUrl}
+              onChange={e => setMeetingUrl(e.target.value)}
+              placeholder="https://meet.google.com/abc-defg-hij or https://zoom.us/j/…"
+              className="flex-1 min-w-[260px] bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => void sendToMeeting()}
+              disabled={meetingSending || !meetingUrl.trim() || Boolean(meeting?.active)}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--accent-primary)' }}
+            >
+              {meetingSending ? 'Sending…' : 'Send agent to meeting'}
+            </button>
+          </div>
+          {meetingError && (
+            <p className="mt-2 text-xs" style={{ color: 'var(--accent-red)' }}>{meetingError}</p>
+          )}
+          {meeting && (
+            <div className="mt-3 flex items-center gap-3 flex-wrap">
+              <span className="inline-flex items-center gap-2 text-xs text-zinc-300">
+                {meeting.active && (
+                  <span className="inline-block w-3 h-3 border-[1.5px] border-zinc-500 border-t-transparent rounded-full animate-spin" />
+                )}
+                {meeting.statusLabel}
+              </span>
+              {meeting.active && (
+                <button
+                  type="button"
+                  onClick={() => void removeFromMeeting()}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                >
+                  Remove from call
+                </button>
+              )}
             </div>
           )}
         </div>

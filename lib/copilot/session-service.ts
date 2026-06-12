@@ -91,14 +91,22 @@ export class CopilotNotConfiguredError extends Error {}
 export class CopilotTokenMintError extends Error {}
 export class CopilotSopNotFoundError extends Error {}
 
-async function mintEphemeralToken(systemPrompt: string, toolDefs: RealtimeToolDef[], maxSessionSecsOverride?: number) {
+async function mintEphemeralToken(
+  systemPrompt: string,
+  toolDefs: RealtimeToolDef[],
+  maxSessionSecsOverride?: number,
+  /** Hard ceiling for this session class. Defaults to the in-app cap;
+   *  meeting-bot sessions pass a higher one (meetings run long). */
+  ceilingSecs?: number,
+) {
   const geminiKey = process.env.GEMINI_API_KEY
   if (!geminiKey) throw new CopilotNotConfiguredError('missing GEMINI_API_KEY')
 
   const { vendorModelId, frameFpsCap } = COPILOT_DEFAULTS
+  const ceiling = ceilingSecs && ceilingSecs > 60 ? ceilingSecs : COPILOT_DEFAULTS.maxSessionSecs
   const maxSessionSecs = Math.min(
-    COPILOT_DEFAULTS.maxSessionSecs,
-    maxSessionSecsOverride && maxSessionSecsOverride > 60 ? maxSessionSecsOverride : COPILOT_DEFAULTS.maxSessionSecs,
+    ceiling,
+    maxSessionSecsOverride && maxSessionSecsOverride > 60 ? maxSessionSecsOverride : ceiling,
   )
 
   // Optional voice override (e.g. 'Puck', 'Kore') — without it Gemini
@@ -346,8 +354,13 @@ export async function loadActiveSession(sessionId: string): Promise<LoadResult> 
   if (!row) return { ok: false, reason: 'not_found' }
   if (row.status !== 'active') return { ok: false, reason: 'ended' }
 
+  // Per-session ceiling: meeting-bot sessions store their own budget
+  // in metadata (meetings outlive the 30-min in-app cap).
+  const metaMax = Number((row.metadata as Record<string, unknown> | null)?.maxSessionSecs)
+  const sessionMaxSecs = Number.isFinite(metaMax) && metaMax > 60 ? metaMax : COPILOT_DEFAULTS.maxSessionSecs
+
   const ageSecs = (Date.now() - row.startedAt.getTime()) / 1000
-  if (ageSecs > COPILOT_DEFAULTS.maxSessionSecs) {
+  if (ageSecs > sessionMaxSecs) {
     await db.copilotSession.update({
       where: { id: row.id },
       data: { status: 'ended', endedAt: new Date(), endedReason: 'max_duration', durationSecs: Math.round(ageSecs) },
@@ -597,5 +610,181 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
     liveConfig,
     tools: WIDGET_TOOL_DEFS,
     agent: { name: agent.name, type: agent.type },
+  }
+}
+
+// ─── Create: meeting bot (Zoom / Meet / Teams via Recall) ───────────
+//
+// Two-phase lifecycle, because the bot may sit in a waiting room for
+// minutes before anyone admits it:
+//
+//   createMeetingSession — staff action. Creates the session row
+//     (channel 'recall_meeting_bot', Recall bot id in roomId, a random
+//     capability token in metadata.botToken) and dispatches the Recall
+//     bot, whose camera is our /copilot/bot/[botToken] page.
+//
+//   connectMeetingSession — called BY that page when the bot's browser
+//     loads it inside the call. Only then do we build the prompt and
+//     mint the Gemini ephemeral token, so waiting-room time doesn't
+//     burn the token's validity window.
+
+const MEETING_CEILING_SECS = Number(process.env.COPILOT_MEETING_MAX_SECS) || 3600
+
+function appOrigin(): string {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL
+  if (explicit) return explicit.replace(/\/$/, '')
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  if (vercel) return `https://${vercel}`
+  return 'http://localhost:3000'
+}
+
+export async function createMeetingSession(opts: {
+  workspaceId: string
+  userId: string
+  agentId: string
+  meetingUrl: string
+  locale?: string
+}) {
+  const { isRecallConfigured, createMeetingBot } = await import('./recall')
+  if (!isRecallConfigured()) {
+    throw new CopilotNotConfiguredError('Meeting bots are not configured yet (missing RECALL_API_KEY).')
+  }
+
+  const agent = await db.copilotAgent.findFirst({ where: { id: opts.agentId, workspaceId: opts.workspaceId } })
+  if (!agent) throw new CopilotSopNotFoundError('Co-Pilot agent not found')
+
+  let meetingUrl: string
+  try {
+    const parsed = new URL(opts.meetingUrl)
+    if (parsed.protocol !== 'https:') throw new Error('not https')
+    meetingUrl = parsed.toString()
+  } catch {
+    throw new CopilotSopNotFoundError('That does not look like a meeting link — paste the full https:// invite URL.')
+  }
+
+  // Budget = timebox + waiting-room/teardown slack, never under 30 min
+  // (the clock starts at dispatch, not admission).
+  const maxSessionSecs = Math.min(MEETING_CEILING_SECS, Math.max(1800, (agent.timeboxMinutes + 10) * 60))
+  const { randomBytes } = await import('crypto')
+  const botToken = randomBytes(24).toString('base64url')
+
+  const created = await db.copilotSession.create({
+    data: {
+      workspaceId: opts.workspaceId,
+      startedByUserId: opts.userId,
+      channel: 'recall_meeting_bot',
+      locale: normalizeLocale(opts.locale),
+      workflowKey: null,
+      model: 'gemini-live',
+      metadata: {
+        mode: 'widget', // visitor-grade tool gating — the bot page is token-auth, not staff-auth
+        copilotMode: 'meeting',
+        copilotAgentId: agent.id,
+        botToken,
+        meetingUrl,
+        knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
+        maxSessionSecs,
+      },
+    },
+  })
+
+  try {
+    const bot = await createMeetingBot({
+      meetingUrl,
+      botName: agent.name,
+      webpageUrl: `${appOrigin()}/copilot/bot/${botToken}`,
+    })
+    const updated = await db.copilotSession.update({
+      where: { id: created.id },
+      data: {
+        roomId: bot.id,
+        metadata: {
+          mode: 'widget',
+          copilotMode: 'meeting',
+          copilotAgentId: agent.id,
+          botToken,
+          meetingUrl,
+          knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
+          maxSessionSecs,
+          botId: bot.id,
+        },
+      },
+    })
+    return { session: toCopilotSessionDTO(updated), bot }
+  } catch (err) {
+    await db.copilotSession.update({
+      where: { id: created.id },
+      data: { status: 'error', endedAt: new Date(), durationSecs: 0, endedReason: 'bot_create_failed' },
+    })
+    throw err
+  }
+}
+
+/** Locate an active meeting session by its bot capability token. */
+export async function findMeetingSessionByToken(botToken: string): Promise<LoadResult> {
+  if (!botToken || botToken.length < 16) return { ok: false, reason: 'not_found' }
+  const row = await db.copilotSession.findFirst({
+    where: {
+      channel: 'recall_meeting_bot',
+      status: 'active',
+      metadata: { path: ['botToken'], equals: botToken },
+    },
+    select: { id: true },
+  })
+  if (!row) return { ok: false, reason: 'not_found' }
+  return loadActiveSession(row.id)
+}
+
+export async function connectMeetingSession(botToken: string) {
+  const loaded = await findMeetingSessionByToken(botToken)
+  if (!loaded.ok) throw new CopilotSopNotFoundError(`meeting session ${loaded.reason}`)
+  const session = loaded.session
+  const meta = session.metadata
+
+  const agentId = typeof meta.copilotAgentId === 'string' ? meta.copilotAgentId : ''
+  const agent = await db.copilotAgent.findFirst({ where: { id: agentId, workspaceId: session.workspaceId } })
+  if (!agent) throw new CopilotSopNotFoundError('agent no longer exists')
+  const workspace = await db.workspace.findUnique({ where: { id: session.workspaceId }, select: { name: true } })
+
+  const row = await db.copilotSession.findUnique({ where: { id: session.id }, select: { locale: true } })
+  const locale = normalizeLocale(row?.locale)
+
+  const steps = Array.isArray(agent.steps) ? (agent.steps as string[]).filter(s => typeof s === 'string') : []
+  const domainIds = agent.knowledgeDomainIds ?? []
+  const ragChunks = await retrieveChunks(session.workspaceId, `${agent.name} ${steps.join(' ')}`.slice(0, 400) || agent.name, {
+    limit: 4,
+    knowledgeDomainIds: domainIds.length ? domainIds : undefined,
+  })
+  const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+
+  const { buildMeetingPrompt } = await import('./prompt')
+  const systemPrompt = buildMeetingPrompt({
+    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
+    workspaceName: workspace?.name ?? 'this workspace',
+    ragContext,
+    locale,
+  })
+
+  // Remaining budget after waiting-room time; refuse a connect with
+  // almost nothing left rather than minting a token that dies mid-greeting.
+  const sessionMax = Number(meta.maxSessionSecs) > 60 ? Number(meta.maxSessionSecs) : COPILOT_DEFAULTS.maxSessionSecs
+  const ageSecs = Math.round((Date.now() - session.startedAt.getTime()) / 1000)
+  const remaining = sessionMax - ageSecs
+  if (remaining < 120) throw new CopilotSopNotFoundError('meeting session expired')
+
+  const { MEETING_TOOL_DEFS } = await import('./tools')
+  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, MEETING_TOOL_DEFS, remaining, remaining)
+
+  await db.copilotSession.update({
+    where: { id: session.id },
+    data: { metadata: { ...meta, vendorModelId: realtime.vendorModelId, connectedAt: new Date().toISOString() } },
+  })
+
+  return {
+    sessionId: session.id,
+    realtime,
+    liveConfig,
+    tools: MEETING_TOOL_DEFS,
+    display: { agentName: agent.name, workspaceName: workspace?.name ?? '' },
   }
 }

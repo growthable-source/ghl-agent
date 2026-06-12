@@ -34,12 +34,18 @@ export async function GET(req: NextRequest) {
   const cutoff = new Date(Date.now() - (COPILOT_DEFAULTS.maxSessionSecs + GRACE_SECS) * 1000)
   const stale = await db.copilotSession.findMany({
     where: { status: 'active', startedAt: { lt: cutoff } },
-    select: { id: true },
+    select: { id: true, startedAt: true, metadata: true },
     take: MAX_PER_RUN,
   })
 
   let swept = 0
   for (const session of stale) {
+    // Sessions can carry their own budget (meeting bots run past the
+    // in-app default) — only sweep once THEIR ceiling + grace is blown.
+    const metaMax = Number((session.metadata as Record<string, unknown> | null)?.maxSessionSecs)
+    const ceiling = Number.isFinite(metaMax) && metaMax > 60 ? metaMax : COPILOT_DEFAULTS.maxSessionSecs
+    const ageSecs = (Date.now() - session.startedAt.getTime()) / 1000
+    if (ageSecs < ceiling + GRACE_SECS) continue
     try {
       await endCopilotSession(session.id, 'stale_sweep')
       swept++

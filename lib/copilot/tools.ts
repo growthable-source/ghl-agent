@@ -101,6 +101,13 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
  */
 export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF, ANNOTATE_SCREEN_DEF, TAKE_CLOSER_LOOK_DEF]
 
+/**
+ * Meeting-bot sessions (Zoom/Meet via Recall) hear audio but see
+ * nothing — declaring the screen tools would invite the model to
+ * "mark" screens it cannot see. Knowledge retrieval only.
+ */
+export const MEETING_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF]
+
 export interface CopilotToolContext {
   workspaceId: string
   workflowKey: string | null
