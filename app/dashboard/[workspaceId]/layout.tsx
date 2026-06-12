@@ -96,13 +96,17 @@ export default async function WorkspaceLayout({
           composer — as a plain block it was the missing link that let the
           inbox grow past the viewport, forcing operators to scroll down to
           find the reply box.
-          flex-1 + flex-col: pages whose root is overflow-hidden (inbox)
-          collapse to exactly the space left under any banners and scroll
-          internally. Deliberately NO min-h-0: ordinary content pages keep
-          their natural height, so they still scroll in the outer wrapper
-          and the mobile pb-16 stays after the content (MobileNav
-          clearance), not at the viewport edge. */}
-      <div className="pb-16 md:pb-0 flex-1 flex flex-col">{children}</div>
+          md:min-h-0 is the load-bearing piece: a flex item's automatic
+          minimum height is its CONTENT height, so without it this wrapper
+          measured 7,737px tall on a long conversation (verified with
+          live DOM inspection) and flex-1 could never shrink it — the
+          composer sat thousands of px below the fold. With min-h-0 the
+          wrapper clamps to the space left under the banners; the inbox
+          (overflow-hidden root) scrolls internally, and ordinary content
+          pages simply overflow into the outer scroller as before.
+          Mobile keeps natural height (no min-h-0 below md) so the pb-16
+          MobileNav clearance stays after the content. */}
+      <div className="pb-16 md:pb-0 flex-1 flex flex-col md:min-h-0">{children}</div>
       {/* Friendly on-screen popup when a NEW live chat comes in — pairs
           with the notification ping so an incoming chat is hard to miss
           even when the operator is on another page. */}
