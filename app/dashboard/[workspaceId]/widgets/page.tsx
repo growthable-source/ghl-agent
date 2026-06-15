@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PlanLimitNotice, { isPlanLimitError, type PlanLimitData } from '@/components/PlanLimitNotice'
@@ -47,6 +47,11 @@ export default function WidgetsPage() {
 
   // Folder + selection state
   const [activeFolder, setActiveFolder] = useState<string>(ALL)
+  // Grid ⇄ list view. Honors the operator's saved choice; if they haven't
+  // chosen, auto-switches to the compact list once there are enough
+  // widgets that the card grid gets unwieldy.
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const viewSeeded = useRef(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [folderDialogOpen, setFolderDialogOpen] = useState(false)
@@ -82,6 +87,24 @@ export default function WidgetsPage() {
   }, [widgets, activeFolder])
 
   const totalLive = widgets.reduce((s, w) => s + (w.activeConversationsCount || 0), 0)
+
+  // Seed the view once widgets have loaded: saved preference wins;
+  // otherwise default to list for big collections (a full grid of cards
+  // is hard to scan past ~9).
+  const MANY_WIDGETS = 9
+  useEffect(() => {
+    if (viewSeeded.current || loading) return
+    viewSeeded.current = true
+    let stored: string | null = null
+    try { stored = localStorage.getItem('widgets-view') } catch {}
+    if (stored === 'grid' || stored === 'list') setViewMode(stored)
+    else if (widgets.length > MANY_WIDGETS) setViewMode('list')
+  }, [loading, widgets.length])
+
+  const chooseView = useCallback((v: 'grid' | 'list') => {
+    setViewMode(v)
+    try { localStorage.setItem('widgets-view', v) } catch {}
+  }, [])
 
   function toggleSelect(id: string) {
     setSelected(prev => {
@@ -243,6 +266,40 @@ export default function WidgetsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {widgets.length > 0 && !selectMode && (
+              <div className="flex items-center rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border-secondary)' }}>
+                <button
+                  onClick={() => chooseView('grid')}
+                  title="Grid view"
+                  aria-label="Grid view"
+                  className="px-2 py-1.5 transition-colors"
+                  style={{
+                    background: viewMode === 'grid' ? 'var(--surface-tertiary)' : 'transparent',
+                    color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => chooseView('list')}
+                  title="List view"
+                  aria-label="List view"
+                  className="px-2 py-1.5 transition-colors"
+                  style={{
+                    background: viewMode === 'list' ? 'var(--surface-tertiary)' : 'transparent',
+                    color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            )}
             {selectMode && (
               <button
                 onClick={clearSelection}
@@ -341,6 +398,22 @@ export default function WidgetsPage() {
                     {creating ? 'Creating…' : 'Create first widget'}
                   </button>
                 )}
+              </div>
+            ) : viewMode === 'list' ? (
+              <div className="rounded-xl border overflow-hidden divide-y divide-zinc-800" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+                {filtered.map(w => (
+                  <WidgetRow
+                    key={w.id}
+                    widget={w}
+                    isCall={w.type === 'click_to_call'}
+                    isLive={w.activeConversationsCount > 0}
+                    isSelected={selected.has(w.id)}
+                    selectMode={selectMode}
+                    workspaceId={workspaceId}
+                    onToggleSelect={() => toggleSelect(w.id)}
+                    onDelete={() => openSingleConfirm(w)}
+                  />
+                ))}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -634,6 +707,109 @@ function WidgetCard({
       <button
         onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete() }}
         className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 hover:text-red-400 w-7 h-7 rounded flex items-center justify-center transition-colors"
+        style={{ color: 'var(--text-tertiary)' }}
+        title="Delete widget"
+        aria-label="Delete widget"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+/** Compact single-line row used by the list view — far easier to scan
+ *  than a card grid once a workspace has many widgets. Mirrors WidgetCard's
+ *  data + select/delete behaviour. */
+function WidgetRow({
+  widget: w, isCall, isLive, isSelected, selectMode, workspaceId, onToggleSelect, onDelete,
+}: {
+  widget: Widget
+  isCall: boolean
+  isLive: boolean
+  isSelected: boolean
+  selectMode: boolean
+  workspaceId: string
+  onToggleSelect: () => void
+  onDelete: () => void
+}) {
+  const inner = (
+    <>
+      <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: w.primaryColor, color: '#fff' }}>
+        {isCall ? (
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
+        ) : (
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{w.name}</p>
+          {isLive && (
+            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded inline-flex items-center gap-1 shrink-0" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-emerald)' }} />
+              {w.activeConversationsCount} live
+            </span>
+          )}
+          {!w.isActive && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>paused</span>
+          )}
+        </div>
+        <p className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+          {w.allowedDomains.length > 0 ? w.allowedDomains.join(', ') : 'any domain'}
+        </p>
+      </div>
+      <span className="hidden sm:inline text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>
+        {isCall ? 'call' : 'chat'}
+      </span>
+      <div className="w-14 text-right shrink-0">
+        <p className="text-sm font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>{w._count.visitors}</p>
+        <p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Visitors</p>
+      </div>
+      <div className="w-20 text-right shrink-0">
+        <p className="text-sm font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>{w._count.conversations}</p>
+        <p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>{isCall ? 'Calls' : 'Conversations'}</p>
+      </div>
+    </>
+  )
+
+  if (selectMode) {
+    return (
+      <button
+        onClick={onToggleSelect}
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
+        style={isSelected ? { background: 'var(--accent-primary-bg)' } : undefined}
+      >
+        <span
+          className="flex items-center justify-center w-5 h-5 rounded border-2 shrink-0"
+          style={isSelected
+            ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary)' }
+            : { borderColor: 'var(--border-secondary)', background: 'var(--surface-secondary)' }}
+        >
+          {isSelected && (
+            <svg className="w-3 h-3" style={{ color: 'var(--btn-primary-text)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </span>
+        {inner}
+      </button>
+    )
+  }
+
+  return (
+    <div className="group flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--surface-secondary)]">
+      <Link href={`/dashboard/${workspaceId}/widgets/${w.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+        {inner}
+      </Link>
+      <button
+        onClick={e => { e.preventDefault(); e.stopPropagation(); onDelete() }}
+        className="opacity-0 group-hover:opacity-100 hover:text-red-400 w-7 h-7 rounded flex items-center justify-center transition-colors shrink-0"
         style={{ color: 'var(--text-tertiary)' }}
         title="Delete widget"
         aria-label="Delete widget"
