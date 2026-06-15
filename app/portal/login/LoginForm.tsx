@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-export default function LoginForm() {
+export default function LoginForm({ accent = null }: { accent?: string | null }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -61,7 +61,10 @@ export default function LoginForm() {
       <button
         type="submit"
         disabled={submitting || !email || !password}
-        className="w-full px-3 py-2 rounded bg-amber-400 text-zinc-950 text-sm font-medium hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="w-full px-3 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        style={accent
+          ? { background: accent, color: '#fff' }
+          : { background: '#fbbf24', color: '#18181b' }}
       >
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
