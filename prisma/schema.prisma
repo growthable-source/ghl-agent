@@ -2181,6 +2181,13 @@ model WidgetVisitor {
   crmContactId  String?
   userAgent     String?
   ipAddress     String?
+  // Coarse geolocation captured from Vercel's edge headers at identify
+  // time (city-level, not the raw IP). Powers the portal's global
+  // telemetry map. Nullable — backfilled on the visitor's next visit.
+  country       String?              // ISO-3166-1 alpha-2 (e.g. "US")
+  city          String?
+  latitude      Float?
+  longitude     Float?
   // Convenience: most-recent page the visitor was seen on. Updated by
   // the page_view event ingest. Operators see this in the inbox to
   // know "where on my site is the visitor right now?" without having

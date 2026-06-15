@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
 import { relTime } from '@/components/inbox/conversation-helpers'
+import TelemetryMap, { type GeoPoint } from '@/components/portal/TelemetryMap'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,6 +86,32 @@ export default async function PortalOverview() {
     if (grid[d][h] > maxCell) maxCell = grid[d][h]
   }
 
+  // Geo telemetry — visitor locations (Vercel edge geo), aggregated by
+  // country with average coordinates. Real data; empty until visitors
+  // arrive post-migration.
+  let geoPoints: GeoPoint[] = []
+  if (widgetIds.length > 0) {
+    try {
+      const geoRows = await db.widgetConversation.findMany({
+        where: { ...base, createdAt: { gte: since30d }, visitor: { is: { country: { not: null }, latitude: { not: null } } } },
+        select: { visitor: { select: { country: true, latitude: true, longitude: true } } },
+        take: 5000,
+      })
+      const byCountry = new Map<string, { count: number; lat: number; lng: number }>()
+      for (const g of geoRows) {
+        const v = g.visitor
+        if (!v.country || v.latitude == null || v.longitude == null) continue
+        const e = byCountry.get(v.country) ?? { count: 0, lat: 0, lng: 0 }
+        e.count++; e.lat += v.latitude; e.lng += v.longitude
+        byCountry.set(v.country, e)
+      }
+      geoPoints = Array.from(byCountry.entries())
+        .map(([country, e]) => ({ country, count: e.count, lat: e.lat / e.count, lng: e.lng / e.count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 40)
+    } catch { /* geo columns missing pre-migration — empty map */ }
+  }
+
   // Top agents → names
   const agentIds = topAgentGroups.map(g => g.assignedUserId).filter(Boolean) as string[]
   const agentUsers = agentIds.length ? await db.user.findMany({ where: { id: { in: agentIds } }, select: { id: true, name: true, email: true } }) : []
@@ -113,16 +140,9 @@ export default async function PortalOverview() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
         {/* LEFT 2/3: telemetry + heatmap */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Global telemetry — geo data deferred (no IP→country enrichment yet) */}
-          <Panel title="Global Telemetry" right={<span className="text-[10px] text-zinc-500">by visitor location</span>}>
-            <div className="relative rounded-lg overflow-hidden h-56" style={{ background: 'var(--surface-secondary)' }}>
-              <div className="absolute inset-0 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(circle, var(--portal-accent) 1px, transparent 1px)', backgroundSize: '18px 18px' }} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-                <svg className="w-8 h-8 mb-2 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" /></svg>
-                <p className="text-xs text-zinc-400">Visitor map lights up once IP→geo enrichment is enabled.</p>
-                <p className="text-[10px] text-zinc-600 mt-1">We capture visitor IPs today; country/coords need a geo lookup — a quick follow-up.</p>
-              </div>
-            </div>
+          {/* Global telemetry — real visitor locations (Vercel edge geo) */}
+          <Panel title="Global Telemetry" right={<span className="text-[10px] text-zinc-500">by visitor location · 30d</span>}>
+            <TelemetryMap points={geoPoints} />
           </Panel>
 
           {/* Operational density heatmap */}

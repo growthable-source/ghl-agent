@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { sendVisitorRecoveryEmail } from '@/lib/widget-recovery-email'
+import { getRequestGeo, hasGeo } from '@/lib/request-geo'
 
 type Params = { params: Promise<{ widgetId: string }> }
 
@@ -36,6 +37,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Hash the IP for privacy; we just need it for abuse signals, not identity
   const rawIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null
   const ipAddress = rawIp ? await hashIp(rawIp) : null
+  // Coarse geo from Vercel's edge headers (city-level, not the raw IP) —
+  // powers the portal's global telemetry map. Only written when present.
+  const geo = getRequestGeo(req.headers)
+  const geoData = hasGeo(geo)
+    ? { country: geo.country, city: geo.city, latitude: geo.latitude, longitude: geo.longitude }
+    : {}
 
   const visitor = await db.widgetVisitor.upsert({
     where: { widgetId_cookieId: { widgetId, cookieId } },
@@ -47,12 +54,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       phone: body.phone || null,
       userAgent,
       ipAddress,
+      ...geoData,
     },
     update: {
       lastSeenAt: new Date(),
       ...(body.email ? { email: body.email } : {}),
       ...(body.name ? { name: body.name } : {}),
       ...(body.phone ? { phone: body.phone } : {}),
+      // Backfill geo on return visits if we have it.
+      ...geoData,
     },
   })
 
