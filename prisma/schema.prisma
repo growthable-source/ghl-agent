@@ -2787,6 +2787,11 @@ model Portal {
   // shows the right branding when ?p=<slug> is set, and the slug is the
   // human-friendly handle in the admin list). Lowercase letters/digits/dashes.
   slug         String         @unique
+  // Whitelabel host (e.g. "support.acme.com"). When set, requests on
+  // this host are routed to the portal and branded as it. Null = the
+  // portal is reached via the primary app host only. Manual domain ops:
+  // the operator adds the domain to Vercel; the customer points a CNAME.
+  customDomain String?        @unique
   // Optional branding override for the portal login + header. When unset
   // we fall back to plain "Customer Portal" styling.
   logoUrl      String?
