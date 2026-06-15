@@ -71,6 +71,40 @@ export async function GET(_req: NextRequest, { params }: Params) {
       }))
   } catch { /* ignore */ }
 
+  // Previous context for a returning visitor (#5 prior-interactions):
+  // summaries of this visitor's earlier ENDED chats so the operator sees
+  // what was discussed last time, without opening old threads. Uses the
+  // auto-generated aiSummary; CRM-linked contacts also get their
+  // cross-channel ContactMemory summary. Best-effort + tolerant.
+  let priorContext: Array<{ id: string; summary: string; at: string }> = []
+  let contactMemory: string | null = null
+  try {
+    const prior = await (db as any).widgetConversation.findMany({
+      where: {
+        visitorId: convo.visitor.id,
+        id: { not: conversationId },
+        status: 'ended',
+        aiSummary: { not: null },
+      },
+      select: { id: true, aiSummary: true, lastMessageAt: true },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 3,
+    })
+    priorContext = prior
+      .filter((c: any) => c.aiSummary)
+      .map((c: any) => ({ id: c.id, summary: c.aiSummary as string, at: c.lastMessageAt.toISOString() }))
+  } catch { /* aiSummary column missing pre-migration — skip */ }
+  try {
+    const crmContactId = (convo.visitor as any).crmContactId
+    if (crmContactId && (convo as any).agentId) {
+      const mem = await (db as any).contactMemory.findUnique({
+        where: { agentId_contactId: { agentId: (convo as any).agentId, contactId: crmContactId } },
+        select: { summary: true },
+      })
+      contactMemory = mem?.summary ?? null
+    }
+  } catch { /* table/relation missing — skip */ }
+
   // Probe for a linked ticket so the inbox can show "🎫 Ticket #N"
   // without a second client round-trip. Pre-migration workspaces don't
   // have the Ticket table — silently degrade to null.
@@ -115,6 +149,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ...convo,
       visitorConversationCount,
       csatHistory,
+      priorContext,
+      contactMemory,
       ticket,
     },
   })

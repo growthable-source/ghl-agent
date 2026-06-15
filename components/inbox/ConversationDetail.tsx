@@ -52,6 +52,10 @@ interface Convo {
   csatSubmittedAt?: string | null
   visitorConversationCount?: number
   csatHistory?: Array<{ rating: number; submittedAt: string | null }>
+  // Returning-visitor context: summaries of this visitor's earlier ended
+  // chats (#5 prior-interactions) + optional CRM cross-channel memory.
+  priorContext?: Array<{ id: string; summary: string; at: string }>
+  contactMemory?: string | null
   // Whitelabel brand the widget is tagged to. Null when the workspace
   // isn't running multi-brand or the widget hasn't been tagged. Comes
   // from widget.brand in the API response — we expose it on the top
@@ -1268,6 +1272,26 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
             "Refresh" forces a regenerate. Operators scanning a busy
             inbox can get the gist without reading the full transcript. */}
         <AISummarySection workspaceId={workspaceId} conversationId={conversationId} />
+
+        {/* Previous context — a returning visitor's earlier chats, so the
+            operator knows the history without opening old threads. */}
+        {((convo.priorContext && convo.priorContext.length > 0) || convo.contactMemory) && (
+          <div className="p-5 border-b border-zinc-800">
+            <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-2">Previous context</p>
+            {convo.contactMemory && (
+              <div className="mb-2.5">
+                <p className="text-[9px] uppercase tracking-wide text-zinc-600 mb-0.5">What we know</p>
+                <p className="text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">{convo.contactMemory}</p>
+              </div>
+            )}
+            {convo.priorContext?.map(p => (
+              <div key={p.id} className="mb-2.5 last:mb-0">
+                <p className="text-[9px] uppercase tracking-wide text-zinc-600 mb-0.5">{relTime(p.at)}</p>
+                <p className="text-xs text-zinc-400 whitespace-pre-wrap leading-relaxed">{p.summary}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Export menu — download THIS single conversation in the
             operator's chosen format. Bulk export lives on the inbox
