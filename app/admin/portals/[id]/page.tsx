@@ -22,12 +22,7 @@ export default async function PortalDetailPage({ params }: Params) {
   const portal = await db.portal.findUnique({
     where: { id },
     include: {
-      workspace: {
-        select: {
-          id: true, name: true,
-          brands: { select: { id: true, name: true, slug: true } },
-        },
-      },
+      portalBrands: { include: { brand: { select: { id: true, name: true, slug: true } } } },
       users: {
         orderBy: { createdAt: 'asc' },
         include: { brandAssignments: { select: { brandId: true } } },
@@ -40,7 +35,13 @@ export default async function PortalDetailPage({ params }: Params) {
   })
   if (!portal) notFound()
 
-  const brands = portal.workspace.brands
+  // All brands across workspaces, for the catalog picker.
+  const allBrands = await db.brand.findMany({
+    orderBy: [{ workspace: { name: 'asc' } }, { name: 'asc' }],
+    select: { id: true, name: true, slug: true, workspace: { select: { id: true, name: true } } },
+  })
+
+  const brands = portal.portalBrands.map(pb => pb.brand)
   const users = portal.users.map(u => ({
     id: u.id,
     email: u.email,
@@ -74,27 +75,16 @@ export default async function PortalDetailPage({ params }: Params) {
           )}
         </div>
         <p className="text-sm text-zinc-400 mt-1">
-          Workspace:{' '}
-          <Link href={`/admin/workspaces/${portal.workspace.id}`} className="text-zinc-300 hover:text-amber-400">
-            {portal.workspace.name}
-          </Link>
+          {brands.length} {brands.length === 1 ? 'brand' : 'brands'}
           <span className="mx-2 text-zinc-700">·</span>
           <span className="font-mono text-xs text-zinc-500">{portal.slug}</span>
         </p>
       </div>
 
-      {brands.length === 0 ? (
-        <div className="border border-amber-900/50 bg-amber-950/20 rounded-lg p-4 mb-6">
-          <p className="text-sm text-amber-300">
-            This workspace has no brands yet. Add brands to the workspace before inviting customers —
-            portal users only see conversations for assigned brands.
-          </p>
-        </div>
-      ) : null}
-
       <PortalDetailClient
         portalId={portal.id}
         brands={brands}
+        allBrands={allBrands}
         users={users}
         invites={invites}
       />

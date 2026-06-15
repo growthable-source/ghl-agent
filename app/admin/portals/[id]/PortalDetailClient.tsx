@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 interface Brand { id: string; name: string; slug: string }
+interface BrandWithWorkspace { id: string; name: string; slug: string; workspace: { id: string; name: string } }
 interface PortalUser {
   id: string
   email: string
@@ -23,10 +24,11 @@ interface PortalInvite {
 }
 
 export default function PortalDetailClient({
-  portalId, brands, users, invites,
+  portalId, brands, allBrands, users, invites,
 }: {
   portalId: string
   brands: Brand[]
+  allBrands: BrandWithWorkspace[]
   users: PortalUser[]
   invites: PortalInvite[]
 }) {
@@ -92,6 +94,13 @@ export default function PortalDetailClient({
 
   return (
     <div className="space-y-10">
+      <BrandCatalogSection
+        portalId={portalId}
+        catalog={brands}
+        allBrands={allBrands}
+        onChanged={() => router.refresh()}
+      />
+
       {/* ─── Invite form ─── */}
       <section>
         <h2 className="text-lg font-semibold text-white mb-3">Invite a customer</h2>
@@ -110,7 +119,7 @@ export default function PortalDetailClient({
           <div>
             <label className="block text-sm text-zinc-300 mb-1.5">Assign brands</label>
             {brands.length === 0 ? (
-              <p className="text-xs text-zinc-500">No brands available. Add brands to the workspace first.</p>
+              <p className="text-xs text-zinc-500">No brands in this portal yet. Add some under “Brands in this portal” above.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {brands.map(b => {
@@ -360,5 +369,150 @@ function UserCard({
         )}
       </div>
     </div>
+  )
+}
+
+function BrandCatalogSection({
+  portalId, catalog, allBrands, onChanged,
+}: {
+  portalId: string
+  catalog: Brand[]
+  allBrands: BrandWithWorkspace[]
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set(catalog.map(b => b.id)))
+  const [query, setQuery] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const q = query.trim().toLowerCase()
+  const visible = q
+    ? allBrands.filter(b => b.name.toLowerCase().includes(q) || b.workspace.name.toLowerCase().includes(q))
+    : allBrands
+  const groups = new Map<string, BrandWithWorkspace[]>()
+  for (const b of visible) {
+    const arr = groups.get(b.workspace.name) ?? []
+    arr.push(b)
+    groups.set(b.workspace.name, arr)
+  }
+
+  async function save() {
+    setError(null)
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/admin/portals/${portalId}/brands`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandIds: Array.from(selected) }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body?.error ?? `Error ${res.status}`)
+        setSaving(false)
+        return
+      }
+      setEditing(false)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-white">Brands in this portal</h2>
+        {!editing && (
+          <button
+            onClick={() => { setSelected(new Set(catalog.map(b => b.id))); setEditing(true) }}
+            className="text-xs text-zinc-400 hover:text-amber-400"
+          >
+            Edit brands
+          </button>
+        )}
+      </div>
+      <div className="border border-zinc-800 rounded-lg p-5 bg-zinc-900/30">
+        {!editing ? (
+          catalog.length === 0 ? (
+            <p className="text-sm text-zinc-500">
+              No brands yet. Click “Edit brands” to choose the brands this portal exposes — then invite customers.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {catalog.map(b => (
+                <span key={b.id} className="px-2 py-0.5 rounded text-xs bg-zinc-900 text-zinc-300 border border-zinc-800">
+                  {b.name}
+                </span>
+              ))}
+            </div>
+          )
+        ) : (
+          <>
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search brands or workspaces…"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:border-amber-400 outline-none mb-3"
+            />
+            <div className="max-h-80 overflow-y-auto space-y-4">
+              {Array.from(groups.entries()).map(([wsName, list]) => (
+                <div key={wsName}>
+                  <p className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5">{wsName}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {list.map(b => {
+                      const on = selected.has(b.id)
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => toggle(b.id)}
+                          className={
+                            'px-2.5 py-1 rounded text-xs border transition-colors ' +
+                            (on
+                              ? 'bg-amber-400 text-zinc-950 border-amber-400'
+                              : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-600')
+                          }
+                        >
+                          {b.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+              {visible.length === 0 && <p className="text-xs text-zinc-500">No brands match “{query}”.</p>}
+            </div>
+            {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+            <div className="flex items-center gap-2 mt-4">
+              <button
+                onClick={save}
+                disabled={saving}
+                className="px-2.5 py-1 rounded bg-amber-400 text-zinc-950 text-xs font-medium hover:bg-amber-300 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : `Save ${selected.size} brand${selected.size === 1 ? '' : 's'}`}
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                className="px-2.5 py-1 rounded border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   )
 }
