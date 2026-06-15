@@ -129,7 +129,7 @@ function Message({
             'inline-block px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ' +
             (isVisitor
               ? 'bg-zinc-800 text-zinc-100'
-              : 'bg-amber-400/10 text-zinc-100 border border-amber-400/20')
+              : 'bg-[color-mix(in_srgb,var(--portal-accent)_12%,transparent)] text-zinc-100 border border-[color-mix(in_srgb,var(--portal-accent)_25%,transparent)]')
           }
         >
           {message.content}

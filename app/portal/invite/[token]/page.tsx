@@ -23,17 +23,27 @@ export default async function AcceptInvitePage({ params }: Params) {
     where: { tokenHash },
     select: {
       id: true, email: true, expiresAt: true, acceptedAt: true,
-      portal: { select: { id: true, name: true, primaryColor: true } },
+      portal: { select: { id: true, name: true, primaryColor: true, logoUrl: true } },
     },
   })
 
+  const accent = invite?.portal.primaryColor?.trim() || '#fbbf24'
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12">
+    <div
+      className="min-h-screen flex items-center justify-center px-6 py-12"
+      style={{ ['--portal-accent']: accent } as React.CSSProperties}
+    >
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-400/90">
-            Voxility
-          </p>
+          {invite?.portal.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={invite.portal.logoUrl} alt={invite.portal.name} className="h-9 mx-auto mb-3" />
+          ) : (
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--portal-accent)]">
+              {invite ? invite.portal.name : 'Voxility'}
+            </p>
+          )}
           <h1 className="text-2xl font-semibold text-white mt-2">
             {invite ? invite.portal.name : 'Customer Portal'}
           </h1>
@@ -45,7 +55,7 @@ export default async function AcceptInvitePage({ params }: Params) {
           </Notice>
         ) : invite.acceptedAt ? (
           <Notice>
-            This invitation has already been accepted. <a href="/portal/login" className="text-amber-400 hover:text-amber-300">Sign in →</a>
+            This invitation has already been accepted. <a href="/portal/login" className="text-[var(--portal-accent)] hover:opacity-80">Sign in →</a>
           </Notice>
         ) : invite.expiresAt < new Date() ? (
           <Notice>

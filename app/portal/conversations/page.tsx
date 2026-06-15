@@ -124,7 +124,7 @@ export default async function PortalConversationsPage({
                       <td className="px-4 py-3">
                         <Link
                           href={`/portal/conversations/${c.id}`}
-                          className="text-zinc-100 hover:text-amber-400 font-medium"
+                          className="text-zinc-100 hover:text-[var(--portal-accent)] font-medium"
                         >
                           {c.visitor.name ?? c.visitor.email ?? 'Anonymous visitor'}
                         </Link>
@@ -217,7 +217,7 @@ function FilterChip({ href, label, active }: { href: string; label: string; acti
       className={
         'px-2.5 py-1 rounded text-xs border transition-colors ' +
         (active
-          ? 'bg-amber-400 text-zinc-950 border-amber-400'
+          ? 'bg-[var(--portal-accent)] text-zinc-950 border-[var(--portal-accent)]'
           : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-600')
       }
     >

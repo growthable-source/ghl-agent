@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getPortalSession } from '@/lib/portal-auth'
+import { getPortalBranding } from '@/lib/portal-branding'
 import { db } from '@/lib/db'
 
 export const metadata = {
@@ -16,6 +17,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const h = await headers()
+  const host = h.get('host')
   const pathname = h.get('x-invoke-path') ?? h.get('x-matched-path') ?? h.get('next-url') ?? ''
   // Login + invite-acceptance are the only routes reachable without
   // a session. Everything else under /portal/* bounces to /portal/login.
@@ -29,7 +31,16 @@ export default async function PortalLayout({ children }: { children: React.React
   }
 
   if (!session) {
-    return <div className="min-h-screen bg-zinc-950 text-zinc-100">{children}</div>
+    // Pre-login (login / invite pages): brand the accent by custom domain.
+    const branding = await getPortalBranding(host)
+    return (
+      <div
+        className="min-h-screen bg-zinc-950 text-zinc-100"
+        style={{ ['--portal-accent']: branding?.primaryColor || '#fbbf24' } as React.CSSProperties}
+      >
+        {children}
+      </div>
+    )
   }
 
   // Pull the portal name + the user's brands for the sidebar.
@@ -46,13 +57,17 @@ export default async function PortalLayout({ children }: { children: React.React
     : []
 
   return (
-    <div className="min-h-screen flex bg-zinc-950 text-zinc-100">
+    <div
+      className="min-h-screen flex bg-zinc-950 text-zinc-100"
+      style={{ ['--portal-accent']: portal?.primaryColor || '#fbbf24' } as React.CSSProperties}
+    >
       <aside className="w-60 shrink-0 border-r border-zinc-800 flex flex-col">
         <div className="px-4 py-4 border-b border-zinc-800">
           {portal?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={portal.logoUrl} alt={portal.name} className="h-8 mb-2" />
           ) : null}
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--portal-accent)]">
             Customer Portal
           </p>
           <p className="text-sm font-medium text-zinc-100 truncate">{portal?.name ?? 'Portal'}</p>
