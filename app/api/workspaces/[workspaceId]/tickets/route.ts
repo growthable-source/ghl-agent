@@ -180,6 +180,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         subject: subject.slice(0, 255),
         priority,
         status: 'open',
+        // Auto-assign a manually-created ticket to whoever created it,
+        // and record them as the creator.
+        createdByUserId: access.session.user!.id,
+        assignedUserId: access.session.user!.id,
+        assignedAt: new Date(),
       },
     })
   })

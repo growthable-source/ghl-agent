@@ -26,6 +26,7 @@ model User {
   assignedConversations     WidgetConversation[] @relation("ConversationAssignee")
   assignedMetaConversations MetaConversation[]   @relation("MetaConversationAssignee")
   assignedTickets           Ticket[]             @relation("TicketAssignee")
+  createdTickets            Ticket[]             @relation("TicketCreator")
   authoredTicketMessages    TicketMessage[]      @relation("TicketMessageAuthor")
   sentMetaMessages          MetaMessage[]        @relation("MetaMessageAuthor")
   createdAt                 DateTime             @default(now())
@@ -3873,6 +3874,12 @@ model Ticket {
   assignedUserId String?
   assignedUser   User?    @relation("TicketAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
   assignedAt     DateTime?
+
+  // Who created this ticket (manual entry or the operator who promoted
+  // a conversation). Nullable — system-created tickets have no creator.
+  // SetNull so deleting a user doesn't cascade-delete their tickets.
+  createdByUserId String?
+  createdByUser   User?   @relation("TicketCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   // Activity bookkeeping for auto-close + reopen + sort.
   // - lastActivityAt: any change (message, status, assignment) bumps this.

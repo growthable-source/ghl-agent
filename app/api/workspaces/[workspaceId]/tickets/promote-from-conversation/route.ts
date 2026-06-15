@@ -108,6 +108,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         status: 'open',
         assignedUserId,
         assignedAt,
+        createdByUserId: access.session.user!.id,
         lastActivityAt: new Date(),
       },
     })
