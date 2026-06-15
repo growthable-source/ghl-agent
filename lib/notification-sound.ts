@@ -21,7 +21,7 @@
 const THROTTLE_MS = 600
 
 let ctx: AudioContext | null = null
-let lastPlayedAtByScope = new Map<string, number>()
+const lastPlayedAtByScope = new Map<string, number>()
 let gestureRegistered = false
 
 type AudioContextCtor = typeof AudioContext
@@ -108,6 +108,37 @@ export function setNotificationSoundMuted(scope: 'widget' | 'inbox', muted: bool
   }
 }
 
+/** Persisted volume on a 0–1 scale (default 0.8). Scales the tone peak. */
+export function getNotificationVolume(scope: 'widget' | 'inbox'): number {
+  if (typeof window === 'undefined') return 0.8
+  try {
+    const raw = localStorage.getItem(`${scope}-sound-volume`)
+    if (raw === null) return 0.8
+    const n = Number(raw)
+    return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.8
+  } catch {
+    return 0.8
+  }
+}
+
+export function setNotificationVolume(scope: 'widget' | 'inbox', volume: number): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`${scope}-sound-volume`, String(Math.min(1, Math.max(0, volume))))
+  } catch {
+    /* localStorage disabled — quietly accept */
+  }
+}
+
+/**
+ * 'message' — the soft two-tone ding for an arriving message.
+ * 'assignment' — a louder, distinct rising three-note motif for "a chat
+ * was just assigned to you", so it cuts through and means something
+ * different from a normal message.
+ */
+export type SoundVariant = 'message' | 'assignment'
+const BASE_PEAK: Record<SoundVariant, number> = { message: 0.26, assignment: 0.45 }
+
 /**
  * Play the notification ping. Returns true if the sound played, false
  * if it was throttled, muted, or audio is unavailable.
@@ -116,13 +147,20 @@ export function setNotificationSoundMuted(scope: 'widget' | 'inbox', muted: bool
  * a perfect-fifth interval that reads as "complete / arrived" rather
  * than "warning / wrong."
  */
-export function playNotificationSound(scope: 'widget' | 'inbox'): boolean {
+export function playNotificationSound(
+  scope: 'widget' | 'inbox',
+  opts: { variant?: SoundVariant } = {},
+): boolean {
   if (isNotificationSoundMuted(scope)) return false
 
+  const variant = opts.variant ?? 'message'
+  // Throttle per variant so an assignment ping isn't swallowed by a
+  // message ping that fired moments earlier (and vice versa).
+  const throttleKey = `${scope}:${variant}`
   const now = Date.now()
-  const last = lastPlayedAtByScope.get(scope) ?? 0
+  const last = lastPlayedAtByScope.get(throttleKey) ?? 0
   if (now - last < THROTTLE_MS) return false
-  lastPlayedAtByScope.set(scope, now)
+  lastPlayedAtByScope.set(throttleKey, now)
 
   const audio = getOrCreateAudioContext()
   if (!audio) return false
@@ -137,22 +175,32 @@ export function playNotificationSound(scope: 'widget' | 'inbox'): boolean {
     audio.resume().catch(() => { /* ignore */ })
   }
 
-  const now0 = audio.currentTime
-  playTone(audio, 880, now0, 0.12)
-  playTone(audio, 1320, now0 + 0.08, 0.10)
+  // Scale the peak by the user's volume (floored so a non-muted, very
+  // low setting is still faintly audible rather than silent).
+  const peak = BASE_PEAK[variant] * (0.25 + 0.75 * getNotificationVolume(scope))
+  const t = audio.currentTime
+  if (variant === 'assignment') {
+    // Rising three-note motif — unmistakably "assigned to you".
+    playTone(audio, 660, t, 0.13, peak)
+    playTone(audio, 880, t + 0.11, 0.13, peak)
+    playTone(audio, 1320, t + 0.23, 0.2, peak)
+  } else {
+    playTone(audio, 880, t, 0.12, peak)
+    playTone(audio, 1320, t + 0.08, 0.1, peak)
+  }
   return true
 }
 
-function playTone(audio: AudioContext, freq: number, startAt: number, duration: number) {
+function playTone(audio: AudioContext, freq: number, startAt: number, duration: number, peak = 0.18) {
   const osc = audio.createOscillator()
   const gain = audio.createGain()
   osc.type = 'sine'
   osc.frequency.value = freq
   // Quick attack + exponential decay — sounds like a "ping" rather
-  // than a sustained beep. Cap peak at 0.18 so it's noticeable
-  // without being startling.
+  // than a sustained beep. `peak` is caller-controlled (variant +
+  // volume) so it's noticeable without being startling.
   gain.gain.setValueAtTime(0, startAt)
-  gain.gain.linearRampToValueAtTime(0.18, startAt + 0.01)
+  gain.gain.linearRampToValueAtTime(peak, startAt + 0.01)
   gain.gain.exponentialRampToValueAtTime(0.001, startAt + duration)
   osc.connect(gain).connect(audio.destination)
   osc.start(startAt)

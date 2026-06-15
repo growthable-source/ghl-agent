@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback, Fragment, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef, Fragment, type ReactNode } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
-import { isNotificationSoundMuted, setNotificationSoundMuted, playNotificationSound } from '@/lib/notification-sound'
+import { isNotificationSoundMuted, setNotificationSoundMuted, playNotificationSound, getNotificationVolume, setNotificationVolume } from '@/lib/notification-sound'
 import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 interface AssignedUser {
@@ -116,6 +116,13 @@ export default function InboxPage() {
   const [search, setSearch] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
   const [isAvailable, setIsAvailable] = useState<boolean>(true)
+  // Assignment-sound detection. We diff each feed refresh against the
+  // previous assignee map; when a conversation flips to "mine" that
+  // wasn't before, a distinct assignment ping fires. Refs (not state)
+  // so fetchRows doesn't need meId in its deps and re-subscribe.
+  const meIdRef = useRef<string | null>(null)
+  const prevAssignedRef = useRef<Map<string, string | null>>(new Map())
+  const assignSeededRef = useRef(false)
   // Brand filter — value is the brand *slug*. 'all' = no filter,
   // 'untagged' = conversations on widgets that aren't tagged to any
   // brand. Initial value comes from ?brand=<slug> on the URL so the
@@ -194,7 +201,27 @@ export default function InboxPage() {
     // `source` / `channel` fields on each row drive the channel pill.
     const res = await fetch(`/api/workspaces/${workspaceId}/inbox`)
     const data = await res.json()
-    setRows(data.conversations || [])
+    const newRows: Row[] = data.conversations || []
+
+    // Assignment ping: when a chat flips to "assigned to me" since the
+    // last refresh, play the distinct assignment sound. Seeded on the
+    // first load so existing assignments don't all ping at once.
+    const me = meIdRef.current
+    const prev = prevAssignedRef.current
+    if (assignSeededRef.current && me) {
+      for (const r of newRows) {
+        if (r.assignedUserId === me && prev.get(r.id) !== me) {
+          playNotificationSound('inbox', { variant: 'assignment' })
+          break
+        }
+      }
+    }
+    const nextMap = new Map<string, string | null>()
+    for (const r of newRows) nextMap.set(r.id, r.assignedUserId)
+    prevAssignedRef.current = nextMap
+    assignSeededRef.current = true
+
+    setRows(newRows)
     setNotMigrated(!!data.notMigrated)
     setLoading(false)
   }, [workspaceId, usingSearch, search, brandSlug])
@@ -213,7 +240,7 @@ export default function InboxPage() {
         const p = await presenceRes.json()
         const b = await brandsRes.json()
         const mem = await membersRes.json()
-        if (me?.user?.id) setMeId(me.user.id)
+        if (me?.user?.id) { setMeId(me.user.id); meIdRef.current = me.user.id }
         if (typeof p?.isAvailable === 'boolean') setIsAvailable(p.isAvailable)
         if (Array.isArray(b?.brands)) setBrands(b.brands)
         if (Array.isArray(mem?.members)) setMembers(mem.members)
@@ -1204,36 +1231,60 @@ function Highlight({ text, term }: { text: string; term: string }) {
  */
 function SoundToggle() {
   const [muted, setMuted] = useState(false)
-  useEffect(() => { setMuted(isNotificationSoundMuted('inbox')) }, [])
+  const [volume, setVolume] = useState(0.8)
+  useEffect(() => {
+    setMuted(isNotificationSoundMuted('inbox'))
+    setVolume(getNotificationVolume('inbox'))
+  }, [])
   return (
-    <button
-      type="button"
-      onClick={() => {
-        const next = !muted
-        setNotificationSoundMuted('inbox', next)
-        setMuted(next)
-        // Test ping on unmute so the operator hears it work + the
-        // browser's audio context gets the gesture it needs.
-        if (!next) playNotificationSound('inbox')
-      }}
-      className="group flex items-center justify-center text-[11px] font-medium w-7 h-7 rounded-full border transition-colors border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white"
-      title={muted ? 'Notification sound is muted — click to enable' : 'Notification sound on — click to mute'}
-      aria-label={muted ? 'Unmute notification sound' : 'Mute notification sound'}
-    >
-      {muted ? (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-          <line x1="23" y1="9" x2="17" y2="15" />
-          <line x1="17" y1="9" x2="23" y2="15" />
-        </svg>
-      ) : (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-        </svg>
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => {
+          const next = !muted
+          setNotificationSoundMuted('inbox', next)
+          setMuted(next)
+          // Test ping on unmute so the operator hears it work + the
+          // browser's audio context gets the gesture it needs.
+          if (!next) playNotificationSound('inbox', { variant: 'assignment' })
+        }}
+        className="group flex items-center justify-center text-[11px] font-medium w-7 h-7 rounded-full border transition-colors border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white"
+        title={muted ? 'Notification sound is muted — click to enable' : 'Notification sound on — click to mute'}
+        aria-label={muted ? 'Unmute notification sound' : 'Mute notification sound'}
+      >
+        {muted ? (
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+          </svg>
+        )}
+      </button>
+      {!muted && (
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.1}
+          value={volume}
+          onChange={e => {
+            const v = Number(e.target.value)
+            setVolume(v)
+            setNotificationVolume('inbox', v)
+          }}
+          onMouseUp={() => playNotificationSound('inbox', { variant: 'assignment' })}
+          className="w-16 accent-orange-500 cursor-pointer"
+          title="Notification volume"
+          aria-label="Notification volume"
+        />
       )}
-    </button>
+    </div>
   )
 }
 
