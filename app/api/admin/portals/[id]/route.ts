@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
+import { normalizeCustomDomain } from '@/lib/portal-branding'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,21 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (body.logoUrl === null || typeof body.logoUrl === 'string') data.logoUrl = body.logoUrl || null
   if (body.primaryColor === null || typeof body.primaryColor === 'string') data.primaryColor = body.primaryColor || null
   if (typeof body.isActive === 'boolean') data.isActive = body.isActive
+  // Custom domain: blank clears it; otherwise normalize + validate. A
+  // non-empty string that fails validation is rejected rather than
+  // silently dropped, so the operator knows it didn't take.
+  if (body.customDomain === null || typeof body.customDomain === 'string') {
+    const raw = typeof body.customDomain === 'string' ? body.customDomain.trim() : ''
+    if (!raw) {
+      data.customDomain = null
+    } else {
+      const normalized = normalizeCustomDomain(raw)
+      if (!normalized) {
+        return NextResponse.json({ error: 'That domain looks invalid. Use a hostname like support.acme.com.' }, { status: 400 })
+      }
+      data.customDomain = normalized
+    }
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No mutable fields' }, { status: 400 })
@@ -33,7 +49,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     })
     logAdminActionAfter({ admin: session, action: 'update_portal', target: id, meta: data })
     return NextResponse.json({ portal })
-  } catch {
+  } catch (err) {
+    // Unique-constraint violation = the domain is taken by another portal.
+    if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
+      return NextResponse.json({ error: 'That domain is already used by another portal.' }, { status: 409 })
+    }
     return NextResponse.json({ error: 'Portal not found' }, { status: 404 })
   }
 }

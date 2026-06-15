@@ -23,14 +23,22 @@ interface PortalInvite {
   brandIds: string[]
 }
 
+interface PortalBrandingInfo {
+  slug: string
+  customDomain: string | null
+  logoUrl: string | null
+  primaryColor: string | null
+}
+
 export default function PortalDetailClient({
-  portalId, brands, allBrands, users, invites,
+  portalId, brands, allBrands, users, invites, branding,
 }: {
   portalId: string
   brands: Brand[]
   allBrands: BrandWithWorkspace[]
   users: PortalUser[]
   invites: PortalInvite[]
+  branding: PortalBrandingInfo
 }) {
   const router = useRouter()
   const brandLabel = (id: string) => brands.find(b => b.id === id)?.name ?? id
@@ -98,6 +106,12 @@ export default function PortalDetailClient({
         portalId={portalId}
         catalog={brands}
         allBrands={allBrands}
+        onChanged={() => router.refresh()}
+      />
+
+      <WhitelabelSection
+        portalId={portalId}
+        branding={branding}
         onChanged={() => router.refresh()}
       />
 
@@ -369,6 +383,118 @@ function UserCard({
         )}
       </div>
     </div>
+  )
+}
+
+function WhitelabelSection({
+  portalId, branding, onChanged,
+}: {
+  portalId: string
+  branding: PortalBrandingInfo
+  onChanged: () => void
+}) {
+  const [customDomain, setCustomDomain] = useState(branding.customDomain ?? '')
+  const [logoUrl, setLogoUrl] = useState(branding.logoUrl ?? '')
+  const [primaryColor, setPrimaryColor] = useState(branding.primaryColor ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const dirty =
+    customDomain !== (branding.customDomain ?? '') ||
+    logoUrl !== (branding.logoUrl ?? '') ||
+    primaryColor !== (branding.primaryColor ?? '')
+
+  async function save() {
+    setError(null)
+    setSaved(false)
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/admin/portals/${portalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customDomain: customDomain.trim() || null,
+          logoUrl: logoUrl.trim() || null,
+          primaryColor: primaryColor.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body?.error ?? `Error ${res.status}`)
+        setSaving(false)
+        return
+      }
+      setSaved(true)
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const swatch = primaryColor.trim() || '#fbbf24'
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold text-white mb-3">Whitelabel &amp; branding</h2>
+      <div className="border border-zinc-800 rounded-lg p-5 bg-zinc-900/30 space-y-4">
+        <div>
+          <label className="block text-sm text-zinc-300 mb-1.5">Custom domain</label>
+          <input
+            value={customDomain}
+            onChange={e => setCustomDomain(e.target.value)}
+            placeholder="support.theirbrand.com"
+            className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 font-mono focus:border-amber-400 outline-none"
+          />
+          <p className="text-xs text-zinc-500 mt-1.5">
+            The customer points a <span className="font-mono text-zinc-400">CNAME</span> for this host at{' '}
+            <span className="font-mono text-zinc-400">cname.vercel-dns.com</span>, and you add the domain to the
+            Vercel project. Until then it won&rsquo;t resolve. Leave blank to use the default URL{' '}
+            <span className="font-mono text-zinc-400">/portal</span> (slug: {branding.slug}).
+          </p>
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          <div className="flex-1 min-w-[240px]">
+            <label className="block text-sm text-zinc-300 mb-1.5">Logo URL</label>
+            <input
+              value={logoUrl}
+              onChange={e => setLogoUrl(e.target.value)}
+              placeholder="https://theirbrand.com/logo.svg"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:border-amber-400 outline-none"
+            />
+          </div>
+          <div className="w-44">
+            <label className="block text-sm text-zinc-300 mb-1.5">Primary color</label>
+            <div className="flex items-center gap-2">
+              <span className="w-9 h-9 rounded border border-zinc-700 shrink-0" style={{ background: swatch }} />
+              <input
+                value={primaryColor}
+                onChange={e => setPrimaryColor(e.target.value)}
+                placeholder="#2563eb"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 font-mono focus:border-amber-400 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+        {logoUrl.trim() && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logoUrl} alt="Logo preview" className="h-8" />
+        )}
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={save}
+            disabled={saving || !dirty}
+            className="px-3 py-1.5 rounded bg-amber-400 text-zinc-950 text-sm font-medium hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? 'Saving…' : 'Save branding'}
+          </button>
+          {saved && !dirty && <span className="text-sm text-emerald-400">✓ Saved</span>}
+        </div>
+      </div>
+    </section>
   )
 }
 

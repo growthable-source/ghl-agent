@@ -87,6 +87,12 @@ export default async function PortalDetailPage({ params }: Params) {
         allBrands={allBrands}
         users={users}
         invites={invites}
+        branding={{
+          slug: portal.slug,
+          customDomain: portal.customDomain,
+          logoUrl: portal.logoUrl,
+          primaryColor: portal.primaryColor,
+        }}
       />
     </div>
   )
