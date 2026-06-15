@@ -6,6 +6,7 @@ import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
 import { resolveVisitorCookieId } from '@/lib/widget-iframe-cookie'
 import ChatMarkdown from '@/components/ChatMarkdown'
+import QueueGame from '@/components/widget/QueueGame'
 
 interface WidgetConfig {
   id: string
@@ -20,6 +21,12 @@ interface WidgetConfig {
   askForNameEmail: boolean
   voiceEnabled: boolean
   liveHelpEnabled?: boolean
+  queue?: {
+    enabled: boolean
+    gameEnabled: boolean
+    emailTicketEnabled: boolean
+    message: string | null
+  }
 }
 
 interface Msg {
@@ -62,6 +69,12 @@ export default function WidgetEmbedPage() {
   // header whenever this is set, and inject a system message on the
   // SSE event so the chat history reads naturally.
   const [assignedHuman, setAssignedHuman] = useState<{ name: string; image: string | null } | null>(null)
+  // Set while the visitor is waiting in the human queue (team at
+  // capacity). Cleared once an operator picks up or the chat ends.
+  const [queueInfo, setQueueInfo] = useState<{ position: number; estimatedWaitSecs: number } | null>(null)
+  const [gameOpen, setGameOpen] = useState(false)
+  const [followupEmail, setFollowupEmail] = useState('')
+  const [followupState, setFollowupState] = useState<'idle' | 'sending' | 'done'>('idle')
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -383,6 +396,8 @@ export default function WidgetEmbedPage() {
           // so the SSE-driven banner and the reload-driven banner show
           // the same thing.
           const display = rawName.split(/\s+/)[0]
+          setQueueInfo(null) // a human picked up — no longer waiting
+          setGameOpen(false)
           setAssignedHuman(prev => {
             if (prev && prev.name === display) return prev
             // Only inject a system message when the name actually
@@ -399,6 +414,15 @@ export default function WidgetEmbedPage() {
           // we don't message the visitor about it — the chat just
           // returns to the AI / queue without UX noise.
           setAssignedHuman(null)
+        }
+      } else if (data.type === 'queue_update') {
+        // Team is at capacity — the visitor is waiting in line. Server
+        // sends { position, estimatedWaitSecs, max }. Drives the queue
+        // banner; the AI keeps replying in the meantime.
+        const position = Number((data as { position?: number }).position)
+        const estimatedWaitSecs = Number((data as { estimatedWaitSecs?: number }).estimatedWaitSecs)
+        if (Number.isFinite(position) && position > 0 && !assignedHuman) {
+          setQueueInfo({ position, estimatedWaitSecs: Number.isFinite(estimatedWaitSecs) ? estimatedWaitSecs : 0 })
         }
       } else if (data.type === 'ticket_created') {
         // Operator promoted this chat to a ticket. Stash the ticket
@@ -421,6 +445,7 @@ export default function WidgetEmbedPage() {
         // → resume normal mode (operator resumed AI after takeover).
         const next = data.status as 'active' | 'handed_off' | 'ended'
         setConversationStatus(next)
+        if (next === 'ended') { setQueueInfo(null); setGameOpen(false) }
         if (next === 'ended') {
           setMessages(m => [...m, {
             id: 'sys-ended-' + Date.now(),
@@ -926,6 +951,79 @@ export default function WidgetEmbedPage() {
           <span className="text-[10px] text-emerald-300 font-medium inline-flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> live
           </span>
+        </div>
+      )}
+
+      {/* Queue banner — team is at capacity, the visitor is waiting in
+          line. The AI keeps replying meanwhile; optional game + leave-
+          email actions appear when enabled in settings. */}
+      {queueInfo && !assignedHuman && conversationStatus !== 'ended' && (
+        <div className="px-4 py-2.5 border-b border-zinc-800" style={{ background: `linear-gradient(90deg, ${accent}1f, ${accent}0a)` }}>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ background: accent }} />
+            <p className="text-[11px] flex-1 min-w-0">
+              <span className="font-semibold text-zinc-100">You&rsquo;re #{queueInfo.position} in line</span>
+              {queueInfo.estimatedWaitSecs > 0 && (
+                <span className="text-zinc-400"> · ~{Math.max(1, Math.ceil(queueInfo.estimatedWaitSecs / 60))} min</span>
+              )}
+            </p>
+          </div>
+          <p className="text-[10px] text-zinc-400 mt-1">
+            {config.queue?.message || 'Our assistant can keep helping while you wait.'}
+          </p>
+          {(config.queue?.gameEnabled || config.queue?.emailTicketEnabled) && (
+            <div className="flex items-center gap-2 mt-2">
+              {config.queue?.gameEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setGameOpen(o => !o)}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-zinc-700 text-zinc-200 hover:bg-zinc-800 transition-colors"
+                >
+                  {gameOpen ? 'Hide game' : '🎮 Play while you wait'}
+                </button>
+              )}
+              {config.queue?.emailTicketEnabled && followupState !== 'done' && (
+                <form
+                  onSubmit={async e => {
+                    e.preventDefault()
+                    if (!followupEmail.trim() || followupState === 'sending') return
+                    setFollowupState('sending')
+                    try {
+                      await fetch(`/api/widget/${widgetId}/conversations/${conversationId}/request-followup?pk=${encodeURIComponent(publicKey)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: followupEmail.trim() }),
+                      })
+                      setFollowupState('done')
+                    } catch {
+                      setFollowupState('idle')
+                    }
+                  }}
+                  className="flex items-center gap-1.5 flex-1 min-w-0"
+                >
+                  <input
+                    type="email"
+                    required
+                    value={followupEmail}
+                    onChange={e => setFollowupEmail(e.target.value)}
+                    placeholder="Email me a follow-up"
+                    className="flex-1 min-w-0 text-[11px] rounded-full px-2.5 py-1 bg-zinc-900 border border-zinc-700 text-zinc-100 outline-none"
+                  />
+                  <button type="submit" disabled={followupState === 'sending'} className="text-[11px] font-medium px-2 py-1 rounded-full text-white disabled:opacity-50" style={{ background: accent }}>
+                    {followupState === 'sending' ? '…' : 'Send'}
+                  </button>
+                </form>
+              )}
+              {followupState === 'done' && (
+                <span className="text-[10px] text-emerald-300">✓ We&rsquo;ll follow up by email.</span>
+              )}
+            </div>
+          )}
+          {gameOpen && config.queue?.gameEnabled && (
+            <div className="mt-2.5">
+              <QueueGame accent={accent} />
+            </div>
+          )}
         </div>
       )}
 
