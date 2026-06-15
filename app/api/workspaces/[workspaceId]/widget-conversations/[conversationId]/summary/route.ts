@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { generateConversationSummary } from '@/lib/conversation-summary'
 
 type Params = { params: Promise<{ workspaceId: string; conversationId: string }> }
-
-const client = new Anthropic()
-const MODEL = 'claude-haiku-4-5-20251001'
 
 /**
  * GET /api/workspaces/:ws/widget-conversations/:cid/summary
@@ -59,73 +56,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
   if (!convo) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Reuse the cached summary if it's <2 min old, unless forced.
-  if (!force) {
-    try {
-      const existing = await (db as any).widgetConversation.findUnique({
-        where: { id: conversationId },
-        select: { aiSummary: true, aiSummaryAt: true },
-      })
-      if (existing?.aiSummary && existing?.aiSummaryAt) {
-        const ageMs = Date.now() - new Date(existing.aiSummaryAt).getTime()
-        if (ageMs < 2 * 60_000) {
-          return NextResponse.json({
-            summary: existing.aiSummary,
-            summaryAt: existing.aiSummaryAt.toISOString(),
-            fromCache: true,
-          })
-        }
-      }
-    } catch { /* columns missing — fall through to generate */ }
-  }
-
-  const messages = await db.widgetMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'asc' },
-    take: 200,
-    select: { role: true, content: true, kind: true, createdAt: true },
-  })
-  if (messages.length === 0) {
-    return NextResponse.json({ summary: null, summaryAt: null, empty: true })
-  }
-
-  const transcript = messages
-    .filter(m => m.kind === 'text' || !m.kind)
-    .map(m => `${m.role === 'agent' ? 'Agent' : m.role === 'visitor' ? 'Visitor' : 'System'}: ${m.content}`)
-    .join('\n')
-    .slice(0, 12_000)
-
-  let summary = ''
-  try {
-    const completion = await client.messages.create({
-      model: MODEL,
-      max_tokens: 220,
-      system:
-        'Summarise this live-chat transcript for an operator scanning the inbox. ' +
-        'Three short bullets max, each <15 words: (1) what the visitor wanted, ' +
-        '(2) what was answered or attempted, (3) the current status / open question. ' +
-        'Use plain text. No "Bullet:" prefixes. No preamble. If there is nothing yet, ' +
-        'output a single line saying so.',
-      messages: [{ role: 'user', content: transcript }],
-    })
-    const block = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
-    summary = (block?.text || '').trim()
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Summary generation failed' }, { status: 500 })
-  }
-
-  const now = new Date()
-  try {
-    await (db as any).widgetConversation.update({
-      where: { id: conversationId },
-      data: { aiSummary: summary, aiSummaryAt: now },
-    })
-  } catch (err: any) {
-    // Persistence is best-effort — if the columns don't exist yet,
-    // return the summary anyway so the inbox can show it inline.
-    if (err?.code !== 'P2022' && !/column .* does not exist/i.test(err?.message ?? '')) {
-      throw err
-    }
-  }
-  return NextResponse.json({ summary, summaryAt: now.toISOString() })
+  const result = await generateConversationSummary(conversationId, { force })
+  if (!result) return NextResponse.json({ summary: null, summaryAt: null, empty: true })
+  return NextResponse.json({ summary: result.summary, summaryAt: result.summaryAt.toISOString() })
 }

@@ -183,6 +183,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         console.warn('[widget] CRM resolve sync failed:', err?.message)
       }
     })
+    // Auto-generate the operator summary when a chat ends so it's ready
+    // the next time anyone opens or promotes it — no manual "Generate".
+    after(async () => {
+      try {
+        const { generateConversationSummary } = await import('@/lib/conversation-summary')
+        await generateConversationSummary(conversationId, { force: true })
+      } catch (err: any) {
+        console.warn('[widget] end-of-chat summary failed:', err?.message)
+      }
+    })
   }
   return NextResponse.json({ ok: true, status: next })
 }

@@ -77,6 +77,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     crmContactId = contact?.id ?? null
   } catch { /* table missing pre-migration */ }
 
+  // Operator summary for the top of the ticket. Uses the chat's cached
+  // summary when present (instant — ended chats already have one);
+  // otherwise generates one now. Best-effort; never blocks promotion.
+  let chatSummary: string | null = null
+  try {
+    const { generateConversationSummary } = await import('@/lib/conversation-summary')
+    chatSummary = (await generateConversationSummary(conversationId))?.summary ?? null
+  } catch { /* best-effort */ }
+
   const ticket = await db.$transaction(async (tx) => {
     const last = await tx.ticket.findFirst({
       where: { workspaceId },
@@ -109,6 +118,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         assignedUserId,
         assignedAt,
         createdByUserId: access.session.user!.id,
+        summary: chatSummary,
         lastActivityAt: new Date(),
       },
     })

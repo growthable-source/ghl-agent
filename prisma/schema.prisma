@@ -3886,6 +3886,11 @@ model Ticket {
   createdByUserId String?
   createdByUser   User?   @relation("TicketCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
+  // Operator-facing summary of the source chat, stamped at promote time
+  // so the agent sees the gist at the top of the ticket without opening
+  // the transcript. Null for manually-created tickets (no source chat).
+  summary String? @db.Text
+
   // Activity bookkeeping for auto-close + reopen + sort.
   // - lastActivityAt: any change (message, status, assignment) bumps this.
   // - lastInboundAt:  last reply FROM the customer. Auto-close uses this.

@@ -26,6 +26,7 @@ interface TicketDetail {
   id: string
   ticketNumber: number
   subject: string
+  summary: string | null
   status: 'open' | 'pending' | 'on_hold' | 'resolved' | 'closed'
   priority: 'low' | 'normal' | 'high' | 'urgent'
   contactEmail: string
@@ -197,6 +198,17 @@ export default function TicketDetailPage() {
             </select>
           </div>
         </div>
+
+        {ticket.summary && (
+          <div className="rounded-xl border p-4 mb-6" style={{ borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-emerald)' }}>
+              Chat summary
+            </p>
+            <p className="text-xs whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {ticket.summary}
+            </p>
+          </div>
+        )}
 
         <div className="rounded-xl border overflow-hidden mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           {ticket.messages.map(m => (
