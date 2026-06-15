@@ -17,8 +17,7 @@ export default async function AdminPortalsPage() {
   const portals = await db.portal.findMany({
     orderBy: { createdAt: 'desc' },
     include: {
-      workspace: { select: { id: true, name: true, slug: true } },
-      _count: { select: { users: true, invites: true } },
+      _count: { select: { users: true, invites: true, portalBrands: true } },
     },
   })
 
@@ -55,7 +54,7 @@ export default async function AdminPortalsPage() {
             <thead className="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Portal</th>
-                <th className="text-left px-4 py-2 font-medium">Workspace</th>
+                <th className="text-left px-4 py-2 font-medium">Brands</th>
                 <th className="text-left px-4 py-2 font-medium">Users</th>
                 <th className="text-left px-4 py-2 font-medium">Pending invites</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
@@ -71,11 +70,7 @@ export default async function AdminPortalsPage() {
                     </Link>
                     <p className="text-xs text-zinc-500 font-mono mt-0.5">{p.slug}</p>
                   </td>
-                  <td className="px-4 py-3 text-zinc-300">
-                    <Link href={`/admin/workspaces/${p.workspace.id}`} className="hover:text-amber-400">
-                      {p.workspace.name}
-                    </Link>
-                  </td>
+                  <td className="px-4 py-3 text-zinc-300">{p._count.portalBrands}</td>
                   <td className="px-4 py-3 text-zinc-300">{p._count.users}</td>
                   <td className="px-4 py-3 text-zinc-300">{p._count.invites}</td>
                   <td className="px-4 py-3">
