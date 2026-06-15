@@ -2120,6 +2120,11 @@ model ChatWidget {
   // Cursor for round-robin so we hand the next chat to the *next* person
   // in the rotation, not the same person every time.
   routingLastAssignedUserId String?
+  // Fallback owner for explicit human handoffs. When the customer asks
+  // for a human and normal routing finds nobody (manual mode, or
+  // everyone is away), the chat force-assigns here so it's never left
+  // ownerless. Null = fall back to the workspace owner.
+  routingFallbackUserId     String?
   allowedDomains            String[]             @default([])
   // Operator-facing whitelabel / agency URL. Surfaced in the inbox
   // conversation panel as a quick "open the client's site" link so a

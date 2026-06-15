@@ -34,6 +34,7 @@ interface Widget {
   isActive: boolean
   routingMode?: 'manual' | 'round_robin' | 'first_available'
   routingTargetUserIds?: string[]
+  routingFallbackUserId?: string | null
   brandId?: string | null
   agencyUrl?: string | null
 }
@@ -437,6 +438,24 @@ export default function WidgetEditorPage() {
                       })()}
                     </Field>
                   )}
+
+                  <Field
+                    label="Fallback owner"
+                    helper="When a customer explicitly asks for a human but routing finds nobody (manual mode, or everyone's away), the chat is force-assigned here so it's never left unassigned. Defaults to the workspace owner."
+                  >
+                    <select
+                      value={widget.routingFallbackUserId || ''}
+                      onChange={e => update('routingFallbackUserId', e.target.value || null)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+                    >
+                      <option value="">Workspace owner (default)</option>
+                      {members.filter(m => m.role !== 'viewer').map(m => (
+                        <option key={m.id} value={m.user.id}>
+                          {m.user.name || m.user.email || 'Unnamed'}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 </>
               )}
             </Section>

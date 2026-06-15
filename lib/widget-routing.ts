@@ -263,3 +263,68 @@ export async function autoRouteIfUnassigned(params: {
   })
   return { assigned: true, userId: pick.userId }
 }
+
+/**
+ * Resolve the human a chat should fall back to when normal routing
+ * finds nobody (manual mode, or everyone away): the widget's configured
+ * fallback owner if it's still a valid non-viewer member, else the
+ * workspace owner. Returns null only when the workspace has no usable
+ * owner at all.
+ */
+async function resolveFallbackAssignee(workspaceId: string, fallbackUserId: string | null): Promise<string | null> {
+  if (fallbackUserId) {
+    const m = await db.workspaceMember.findFirst({
+      where: { workspaceId, userId: fallbackUserId },
+      select: { userId: true, role: true },
+    }).catch(() => null)
+    if (m && !NON_CHAT_ROLES.has(m.role)) return m.userId
+  }
+  const owner = await db.workspaceMember.findFirst({
+    where: { workspaceId, role: 'owner' },
+    select: { userId: true },
+    orderBy: { createdAt: 'asc' },
+  }).catch(() => null)
+  return owner?.userId ?? null
+}
+
+/**
+ * Force a conversation onto a human — used when the customer EXPLICITLY
+ * asks for one (the AI's transfer_to_human). Unlike autoRouteIfUnassigned,
+ * this never leaves the chat ownerless: if routing picks nobody (manual
+ * mode or all away), it force-assigns the fallback owner. No-op if the
+ * chat is already assigned.
+ */
+export async function forceAssignToHuman(params: {
+  workspaceId: string
+  conversationId: string
+}): Promise<{ assigned: boolean; userId?: string; viaFallback?: boolean }> {
+  const convo = await db.widgetConversation.findFirst({
+    where: { id: params.conversationId, widget: { workspaceId: params.workspaceId } },
+    select: {
+      id: true, widgetId: true, assignedUserId: true,
+      widget: { select: { routingFallbackUserId: true } },
+    },
+  })
+  if (!convo) return { assigned: false }
+  if (convo.assignedUserId) return { assigned: true, userId: convo.assignedUserId }
+
+  // Normal routing first (respects round-robin / first-available).
+  const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
+  let userId = pick?.userId ?? null
+  let viaFallback = false
+
+  // Nobody from routing → fallback owner so it's never left ownerless.
+  if (!userId) {
+    userId = await resolveFallbackAssignee(params.workspaceId, convo.widget.routingFallbackUserId ?? null)
+    viaFallback = true
+  }
+  if (!userId) return { assigned: false }
+
+  await assignConversation({
+    workspaceId: params.workspaceId,
+    conversationId: convo.id,
+    userId,
+    reason: pick?.reason ?? 'handover',
+  })
+  return { assigned: true, userId, viaFallback }
+}

@@ -1193,16 +1193,18 @@ export async function runAgent(opts: {
           severity: 'warning',
         })
 
-        // Widget chat handover → auto-route per the widget's config so a
-        // specific operator gets the personal "assigned to you" ping in
-        // addition to the workspace-wide handover notification. Other
+        // Widget chat handover → the customer explicitly asked for a
+        // human (this is the transfer_to_human path), so FORCE-assign:
+        // normal routing first, but if that picks nobody (manual mode or
+        // everyone away) fall back to the widget's fallback owner / the
+        // workspace owner. The chat is never left ownerless. Other
         // channels (SMS / web phone) don't have an inbox queue concept yet.
         if (channel === 'Live_Chat' && conversationId) {
           try {
-            const { autoRouteIfUnassigned } = await import('./widget-routing')
-            await autoRouteIfUnassigned({ workspaceId: agentRow.workspaceId, conversationId })
+            const { forceAssignToHuman } = await import('./widget-routing')
+            await forceAssignToHuman({ workspaceId: agentRow.workspaceId, conversationId })
           } catch (err: any) {
-            console.warn('[Handover] auto-route failed:', err?.message)
+            console.warn('[Handover] force-assign failed:', err?.message)
           }
         }
       } catch (err: any) {

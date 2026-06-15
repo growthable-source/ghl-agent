@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'hostedPageHeadline', 'hostedPageSubtext',
     'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
     'defaultAgentId', 'allowedDomains', 'isActive',
-    'routingMode', 'routingTargetUserIds',
+    'routingMode', 'routingTargetUserIds', 'routingFallbackUserId',
     'brandId', 'agencyUrl',
   ]
   const data: Record<string, unknown> = {}
@@ -61,7 +61,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // separate migrations, so they're handled together as "newish columns
   // that we're tolerant about" — the legacy fields still save either way.
   const ctcKeys = ['type', 'slug', 'embedMode', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor', 'hostedPageHeadline', 'hostedPageSubtext']
-  const routingKeys = ['routingMode', 'routingTargetUserIds']
+  const routingKeys = ['routingMode', 'routingTargetUserIds', 'routingFallbackUserId']
   const brandKeys = ['brandId']
   // agencyUrl ships in its own migration — tolerate it being absent so
   // the rest of the form still saves on a pre-migration DB.
