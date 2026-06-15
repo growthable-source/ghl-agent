@@ -3,19 +3,14 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-interface Workspace { id: string; name: string; slug: string; brandCount: number }
-
-export default function NewPortalForm({ workspaces }: { workspaces: Workspace[] }) {
+export default function NewPortalForm() {
   const router = useRouter()
-  const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '')
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-
-  // Auto-derive slug from the name as the operator types, but only if
-  // they haven't manually edited the slug field.
   const [slugTouched, setSlugTouched] = useState(false)
+
   function onName(v: string) {
     setName(v)
     if (!slugTouched) {
@@ -31,7 +26,7 @@ export default function NewPortalForm({ workspaces }: { workspaces: Workspace[] 
       const res = await fetch('/api/admin/portals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, name, slug }),
+        body: JSON.stringify({ name, slug }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -46,31 +41,8 @@ export default function NewPortalForm({ workspaces }: { workspaces: Workspace[] 
     }
   }
 
-  if (workspaces.length === 0) {
-    return (
-      <div className="border border-zinc-800 rounded-lg p-6 bg-zinc-900/40">
-        <p className="text-sm text-zinc-400">
-          No workspaces exist yet. A portal needs a workspace whose brands it can expose.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <form onSubmit={onSubmit} className="space-y-5">
-      <Field label="Workspace" hint="The portal will be scoped to brands inside this workspace.">
-        <select
-          value={workspaceId}
-          onChange={e => setWorkspaceId(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:border-amber-400 outline-none"
-        >
-          {workspaces.map(w => (
-            <option key={w.id} value={w.id}>
-              {w.name} ({w.brandCount} {w.brandCount === 1 ? 'brand' : 'brands'})
-            </option>
-          ))}
-        </select>
-      </Field>
       <Field label="Portal name" hint="Shown to customers on the login page and in invite emails.">
         <input
           required

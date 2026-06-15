@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     select: {
       id: true, portalId: true, email: true, brandIds: true,
       acceptedAt: true, expiresAt: true,
-      portal: { select: { isActive: true, workspace: { select: { brands: { select: { id: true } } } } } },
+      portal: { select: { isActive: true, portalBrands: { select: { brandId: true } } } },
     },
   })
   if (!invite) {
@@ -52,10 +52,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: 'This portal is disabled' }, { status: 400 })
   }
 
-  // Validate the invite's stored brand IDs against the workspace's
-  // current brand list — a brand the admin selected at invite time may
-  // have been deleted before the user accepted. Drop the dead ones.
-  const validBrandIds = new Set(invite.portal.workspace.brands.map(b => b.id))
+  // Validate the invite's stored brand IDs against the portal's current
+  // catalog — a brand the admin selected at invite time may have been
+  // removed from the portal before the user accepted. Drop the dead ones.
+  const validBrandIds = new Set(invite.portal.portalBrands.map(pb => pb.brandId))
   const brandIds = invite.brandIds.filter(id => validBrandIds.has(id))
 
   const passwordHash = await hashPortalPassword(password)

@@ -155,7 +155,6 @@ model Workspace {
   knowledgeCollections KnowledgeCollection[] @relation("WorkspaceKnowledgeCollections")
   brands               Brand[]               @relation("WorkspaceBrands")
   brandGroups          BrandGroup[]          @relation("WorkspaceBrandGroups")
-  portals              Portal[]              @relation("WorkspacePortals")
   knowledgeDomains     KnowledgeDomain[]     @relation("WorkspaceKnowledgeDomains")
   retrievalEvalSets    RetrievalEvalSet[]    @relation("WorkspaceRetrievalEvalSets")
   tickets              Ticket[]              @relation("WorkspaceTickets")
@@ -2780,11 +2779,9 @@ model MetaMessage {
 
 model Portal {
   id           String         @id @default(cuid())
-  // Each portal exposes data from exactly one workspace. Cascade so a
-  // workspace deletion takes its portals with it (otherwise orphan rows
-  // expose stale invite tokens).
-  workspaceId  String
-  workspace    Workspace      @relation("WorkspacePortals", fields: [workspaceId], references: [id], onDelete: Cascade)
+  // A portal is a named set of brands (PortalBrand) + its users. It is
+  // NOT scoped to a workspace — brands carry their own workspace, and a
+  // portal may expose brands from any of them.
   name         String
   // URL-safe identifier for the portal-facing pages (e.g. /portal/login
   // shows the right branding when ?p=<slug> is set, and the slug is the
@@ -2800,8 +2797,6 @@ model Portal {
   users        PortalUser[]
   invites      PortalInvite[]
   portalBrands PortalBrand[]
-
-  @@index([workspaceId])
 }
 
 model PortalBrand {
