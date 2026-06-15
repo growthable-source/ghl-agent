@@ -2,10 +2,17 @@
  * Self-contained global telemetry map for the portal Overview.
  *
  * Real data only — each marker is a location we actually saw visitors
- * from (Vercel edge geo, aggregated by country). Positions use a plain
- * equirectangular projection over a dotted world surface (matches the
- * design's dotted-map aesthetic, no external map asset / expiring CDN).
+ * from (Vercel edge geo, aggregated by country). The backdrop is a dotted
+ * world map: a real equirectangular land mask (Natural Earth 110m, public
+ * domain — see world-dots.ts) rendered as dots so markers land on actual
+ * continents. No external map asset / expiring CDN; the mask is vendored.
+ *
+ * Alignment: both the land dots and the markers use the same full-bleed
+ * equirectangular projection (lng [-180,180] → x%, lat [90,-90] → y%), so
+ * a marker sits exactly where its country is on the dotted landmass.
  */
+
+import { WORLD_COLS, WORLD_ROWS, WORLD_MASK } from './world-dots'
 
 export interface GeoPoint {
   country: string   // ISO-2
@@ -19,25 +26,23 @@ function project(lat: number, lng: number) {
   return { x: ((lng + 180) / 360) * 100, y: ((90 - lat) / 180) * 100 }
 }
 
-export default function TelemetryMap({ points }: { points: GeoPoint[] }) {
-  if (points.length === 0) {
-    return (
-      <div className="relative rounded-lg overflow-hidden h-64 flex items-center justify-center text-center px-6" style={{ background: 'var(--surface-secondary)' }}>
-        <DotField />
-        <div className="relative">
-          <p className="text-xs text-zinc-400">No visitor locations yet.</p>
-          <p className="text-[10px] text-zinc-600 mt-1">The map lights up as visitors open a chat — location is captured automatically.</p>
-        </div>
-      </div>
-    )
+// Land cells parsed once at module load → [col, row] pairs.
+const LAND_CELLS: Array<[number, number]> = (() => {
+  const cells: Array<[number, number]> = []
+  for (let i = 0; i < WORLD_MASK.length; i++) {
+    if (WORLD_MASK[i] === '1') cells.push([i % WORLD_COLS, Math.floor(i / WORLD_COLS)])
   }
+  return cells
+})()
 
-  const max = Math.max(...points.map(p => p.count))
+export default function TelemetryMap({ points }: { points: GeoPoint[] }) {
+  const max = points.length ? Math.max(...points.map(p => p.count)) : 1
   const top = [...points].sort((a, b) => b.count - a.count)
 
   return (
     <div className="relative rounded-lg overflow-hidden h-64" style={{ background: 'var(--surface-secondary)' }}>
-      <DotField />
+      <WorldDots />
+
       <div className="absolute inset-0">
         {top.map((p, i) => {
           const { x, y } = project(p.lat, p.lng)
@@ -63,20 +68,41 @@ export default function TelemetryMap({ points }: { points: GeoPoint[] }) {
           )
         })}
       </div>
-      <div className="absolute bottom-2 left-3 text-[9px] text-zinc-500">
-        {points.length} {points.length === 1 ? 'country' : 'countries'} · {points.reduce((s, p) => s + p.count, 0).toLocaleString()} chats
-      </div>
+
+      {points.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center text-center px-6">
+          <div className="rounded-lg px-3 py-2" style={{ background: 'color-mix(in srgb, var(--surface) 80%, transparent)' }}>
+            <p className="text-xs text-zinc-400">No visitor locations yet.</p>
+            <p className="text-[10px] text-zinc-600 mt-1">The map lights up as visitors open a chat — location is captured automatically.</p>
+          </div>
+        </div>
+      )}
+
+      {points.length > 0 && (
+        <div className="absolute bottom-2 left-3 text-[9px] text-zinc-500">
+          {points.length} {points.length === 1 ? 'country' : 'countries'} · {points.reduce((s, p) => s + p.count, 0).toLocaleString()} chats
+        </div>
+      )}
     </div>
   )
 }
 
-// Dotted equirectangular surface — purely decorative texture.
-function DotField() {
+// Dotted equirectangular world map. Full-bleed (preserveAspectRatio=none)
+// so the land grid stretches to fill and stays aligned with the markers'
+// percentage projection. viewBox units = grid cells.
+function WorldDots() {
   return (
-    <div
-      className="absolute inset-0 opacity-[0.18]"
-      style={{ backgroundImage: 'radial-gradient(circle, var(--text-tertiary) 1px, transparent 1px)', backgroundSize: '14px 14px' }}
+    <svg
+      className="absolute inset-0 w-full h-full"
+      viewBox={`0 0 ${WORLD_COLS} ${WORLD_ROWS}`}
+      preserveAspectRatio="none"
       aria-hidden="true"
-    />
+    >
+      <g fill="var(--text-tertiary)" opacity={0.35}>
+        {LAND_CELLS.map(([c, r]) => (
+          <circle key={`${c}-${r}`} cx={c + 0.5} cy={r + 0.5} r={0.3} />
+        ))}
+      </g>
+    </svg>
   )
 }
