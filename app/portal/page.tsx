@@ -5,7 +5,8 @@ import { getPortalSession } from '@/lib/portal-auth'
 import { relTime } from '@/components/inbox/conversation-helpers'
 import TelemetryMap, { type GeoPoint } from '@/components/portal/TelemetryMap'
 import WordCloud from '@/components/portal/WordCloud'
-import { topTerms, type Term } from '@/lib/word-cloud'
+import TopTopics from '@/components/portal/TopTopics'
+import { getOverviewInsights } from '@/lib/portal/overview-insights'
 
 export const dynamic = 'force-dynamic'
 
@@ -114,39 +115,9 @@ export default async function PortalOverview() {
     } catch { /* geo columns missing pre-migration — empty map */ }
   }
 
-  // Word cloud — top words/phrases visitors are asking for help with,
-  // straight from their own messages (last 30d, capped). Tokenization +
-  // stopword/n-gram counting in lib/word-cloud.ts.
-  let cloudTerms: Term[] = []
-  if (widgetIds.length > 0) {
-    try {
-      const visitorMsgs = await db.widgetMessage.findMany({
-        where: { role: 'visitor', createdAt: { gte: since30d }, conversation: { is: { widgetId: { in: widgetIds } } } },
-        select: { content: true },
-        orderBy: { createdAt: 'desc' },
-        take: 4000,
-      })
-      cloudTerms = topTerms(visitorMsgs.map(m => m.content), { limit: 36, minCount: 2 })
-    } catch { /* ignore — best-effort visual */ }
-  }
-
-  // Top topics — the knowledge collections the AI actually matched against
-  // to answer visitor questions (ConversationTopic telemetry). Count =
-  // distinct conversations per topic. Forward-looking: only conversations
-  // after this shipped carry topic rows, so it's empty on older data.
-  let topTopics: { topic: string; count: number }[] = []
-  if (widgetIds.length > 0) {
-    try {
-      const groups = await db.conversationTopic.groupBy({
-        by: ['topic'],
-        where: { widgetId: { in: widgetIds }, createdAt: { gte: since30d } },
-        _count: { _all: true },
-        orderBy: { _count: { topic: 'desc' } },
-        take: 8,
-      })
-      topTopics = groups.map(g => ({ topic: g.topic, count: g._count._all }))
-    } catch { /* ConversationTopic table missing pre-migration — empty */ }
-  }
+  // Insight panels — word cloud (what visitors ask about) + top topics
+  // (knowledge the AI matched). Both best-effort; see overview-insights.ts.
+  const { cloudTerms, topTopics } = await getOverviewInsights({ widgetIds, since: since30d })
 
   // Top agents → names
   const agentIds = topAgentGroups.map(g => g.assignedUserId).filter(Boolean) as string[]
@@ -270,27 +241,7 @@ export default async function PortalOverview() {
 
           {/* Top topics — knowledge the AI matched to answer */}
           <Panel title="Top Topics" right={<span className="text-[10px] text-zinc-500">knowledge used · 30d</span>}>
-            {topTopics.length === 0 ? (
-              <p className="text-xs text-zinc-500 py-2">No topic matches yet. As the AI answers from your knowledge base, the collections it draws on appear here.</p>
-            ) : (
-              <div className="space-y-2">
-                {topTopics.map((t, i) => {
-                  const w = Math.round((t.count / topTopics[0].count) * 100)
-                  return (
-                    <div key={t.topic}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-zinc-600 w-3">{i + 1}</span>
-                        <span className="text-xs text-zinc-200 flex-1 truncate" title={t.topic}>{t.topic}</span>
-                        <span className="text-xs font-semibold text-zinc-400">{t.count.toLocaleString()}</span>
-                      </div>
-                      <div className="h-1 rounded-full mt-1 ml-5 overflow-hidden" style={{ background: 'var(--surface-tertiary)' }}>
-                        <div className="h-full rounded-full" style={{ width: `${w}%`, background: 'var(--portal-accent)' }} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <TopTopics topics={topTopics} />
           </Panel>
         </div>
       </div>

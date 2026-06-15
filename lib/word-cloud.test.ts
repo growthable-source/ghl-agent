@@ -39,6 +39,16 @@ describe('topTerms', () => {
     expect(out[0].count).toBeGreaterThanOrEqual(out[1].count)
   })
 
+  it('drops common profanity so the cloud stays clean', () => {
+    const out = topTerms(['ass ass ass delivery', 'shit shit happens here'], { minCount: 1 })
+    const terms = out.map(t => t.term)
+    expect(terms).not.toContain('ass')
+    expect(terms).not.toContain('shit')
+    // and the bigram built off them never appears either
+    expect(terms).not.toContain('ass delivery')
+    expect(terms).toContain('delivery')
+  })
+
   it('is case-insensitive and strips punctuation', () => {
     const out = topTerms(['Refund!', 'REFUND?', 'refund.'], { minCount: 3 })
     expect(out.find(t => t.term === 'refund')?.count).toBe(3)

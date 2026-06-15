@@ -23,6 +23,16 @@ const STOPWORDS = new Set([
   'now', 'one', 'want', 'need', 'know', 'like', 'help', 'see', 'go', 'going', 'still', 'back', 'good', 'much', 'well',
 ])
 
+// Common profanity, dropped so the customer-facing cloud never renders a
+// crude word large just because a visitor typed it a few times. Not
+// exhaustive — covers the everyday cases; the cloud is a summary, not a
+// moderation tool.
+const PROFANITY = new Set([
+  'ass', 'asshole', 'arse', 'shit', 'shitty', 'bullshit', 'fuck', 'fucking', 'fucked', 'fuckin',
+  'bitch', 'damn', 'damned', 'crap', 'crappy', 'dick', 'piss', 'pissed', 'cunt', 'bastard',
+  'bollocks', 'wtf', 'stfu', 'slut', 'whore', 'twat', 'wanker', 'prick', 'cock',
+])
+
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
@@ -30,7 +40,7 @@ function tokenize(text: string): string[] {
     .replace(/[^a-z0-9\s'-]/g, ' ')         // keep letters/digits/apostrophe/hyphen
     .replace(/['-]/g, '')                   // collapse contractions/hyphens
     .split(/\s+/)
-    .filter(t => t.length >= 3 && t.length <= 24 && !/^\d+$/.test(t) && !STOPWORDS.has(t))
+    .filter(t => t.length >= 3 && t.length <= 24 && !/^\d+$/.test(t) && !STOPWORDS.has(t) && !PROFANITY.has(t))
 }
 
 export function topTerms(texts: string[], opts: { limit?: number; minCount?: number } = {}): Term[] {
