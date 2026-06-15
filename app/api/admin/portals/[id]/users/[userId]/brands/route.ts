@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
+import { filterToAllowedBrands } from '@/lib/portal-brands'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,15 +26,14 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     where: { id: userId },
     select: {
       id: true, portalId: true, email: true,
-      portal: { select: { workspace: { select: { brands: { select: { id: true } } } } } },
+      portal: { select: { portalBrands: { select: { brandId: true } } } },
     },
   })
   if (!user || user.portalId !== portalId) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 })
   }
 
-  const validBrandIds = new Set(user.portal.workspace.brands.map(b => b.id))
-  const filtered = Array.from(new Set(incoming.filter(id => validBrandIds.has(id))))
+  const filtered = filterToAllowedBrands(incoming, new Set(user.portal.portalBrands.map(pb => pb.brandId)))
 
   // Replace-set semantics: delete all, then insert the new set, in a
   // transaction so we never leave the user with a half-updated ACL.

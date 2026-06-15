@@ -3,6 +3,7 @@ import { randomBytes, createHash } from 'node:crypto'
 import { db } from '@/lib/db'
 import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
 import { sendPortalInviteEmail } from '@/lib/portal-email'
+import { filterToAllowedBrands } from '@/lib/portal-brands'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,16 +42,15 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     where: { id: portalId },
     select: {
       id: true, name: true, primaryColor: true,
-      workspace: { select: { brands: { select: { id: true } } } },
+      portalBrands: { select: { brandId: true } },
     },
   })
   if (!portal) return NextResponse.json({ error: 'Portal not found' }, { status: 404 })
 
-  // Reject brand IDs that don't belong to this portal's workspace.
-  // Otherwise an admin (or a forged client request) could grant
-  // visibility to a brand outside the portal's scope.
-  const validBrandIds = new Set(portal.workspace.brands.map(b => b.id))
-  const filtered = brandIds.filter(id => validBrandIds.has(id))
+  // Reject brand IDs outside this portal's catalog. Otherwise an admin
+  // (or a forged client request) could grant visibility to a brand the
+  // portal doesn't expose.
+  const filtered = filterToAllowedBrands(brandIds, new Set(portal.portalBrands.map(pb => pb.brandId)))
   if (filtered.length === 0) {
     return NextResponse.json({ error: 'No valid brand IDs for this portal' }, { status: 400 })
   }
