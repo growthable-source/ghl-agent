@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 interface Brand { id: string; name: string; slug: string }
 interface BrandWithWorkspace { id: string; name: string; slug: string; workspace: { id: string; name: string } }
@@ -399,6 +399,28 @@ function WhitelabelSection({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement | null>(null)
+
+  async function uploadLogo(file: File) {
+    setError(null)
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/admin/portals/${portalId}/logo`, { method: 'POST', body: fd })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(body?.error ?? `Upload failed (${res.status})`)
+        return
+      }
+      setLogoUrl(body.logoUrl) // fills the field + marks dirty; persisted on Save
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const dirty =
     customDomain !== (branding.customDomain ?? '') ||
@@ -457,13 +479,35 @@ function WhitelabelSection({
         </div>
         <div className="flex gap-3 flex-wrap">
           <div className="flex-1 min-w-[240px]">
-            <label className="block text-sm text-zinc-300 mb-1.5">Logo URL</label>
+            <label className="block text-sm text-zinc-300 mb-1.5">Logo</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="shrink-0 px-3 py-2 rounded text-sm font-medium border border-zinc-700 text-zinc-200 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              >
+                {uploading ? 'Uploading…' : 'Upload file'}
+              </button>
+              <input
+                value={logoUrl}
+                onChange={e => setLogoUrl(e.target.value)}
+                placeholder="…or paste an image URL"
+                className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:border-amber-400 outline-none"
+              />
+            </div>
             <input
-              value={logoUrl}
-              onChange={e => setLogoUrl(e.target.value)}
-              placeholder="https://theirbrand.com/logo.svg"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:border-amber-400 outline-none"
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0]
+                if (f) void uploadLogo(f)
+                e.target.value = ''
+              }}
             />
+            <p className="text-xs text-zinc-500 mt-1.5">PNG, JPEG, WebP, SVG, or GIF — up to 2 MB.</p>
           </div>
           <div className="w-44">
             <label className="block text-sm text-zinc-300 mb-1.5">Primary color</label>
