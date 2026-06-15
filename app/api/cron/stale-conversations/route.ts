@@ -108,6 +108,32 @@ export async function GET(req: NextRequest) {
     }).catch(() => {})
   }
 
+  // Queue backstop: the event-driven advance (chat-end / agent-online)
+  // covers the common case; this re-evaluates any workspace with chats
+  // still waiting, so nothing stalls in the queue if an event was missed.
+  let queueAdvanced = 0
+  try {
+    const queuedRows = await db.widgetConversation.findMany({
+      where: { queuedAt: { not: null }, assignedUserId: null, status: { not: 'ended' } },
+      select: { widget: { select: { workspaceId: true } } },
+      take: 500,
+    })
+    const workspaceIds = Array.from(new Set(queuedRows.map(r => r.widget?.workspaceId).filter(Boolean) as string[]))
+    if (workspaceIds.length > 0) {
+      const { advanceQueue } = await import('@/lib/widget-routing')
+      for (const wsId of workspaceIds) {
+        try {
+          const res = await advanceQueue(wsId)
+          queueAdvanced += res.assigned
+        } catch (err: any) {
+          console.warn('[stale-cron] advanceQueue failed for', wsId, err?.message)
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[stale-cron] queue backstop failed:', err?.message)
+  }
+
   await recordCronRun('stale-conversations', true)
-  return NextResponse.json({ scanned: candidates.length, paged, checkedIn })
+  return NextResponse.json({ scanned: candidates.length, paged, checkedIn, queueAdvanced })
 }

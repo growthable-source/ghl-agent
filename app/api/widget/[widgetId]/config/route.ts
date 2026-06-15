@@ -48,6 +48,25 @@ export async function GET(req: NextRequest, { params }: Params) {
     liveHelpEnabled = false
   }
 
+  // Queue / while-you-wait settings (workspace-global). The widget uses
+  // these to decide what to offer a queued visitor. Ticketing must also
+  // be active for the leave-email→ticket option to actually create one.
+  let queue = { enabled: false, gameEnabled: false, emailTicketEnabled: false, message: null as string | null }
+  try {
+    const { getLiveChatSettings } = await import('@/lib/livechat-settings')
+    const { getTicketingStatus } = await import('@/lib/ticketing-access')
+    const s = await getLiveChatSettings(w.workspaceId)
+    const ticketing = await getTicketingStatus(w.workspaceId)
+    queue = {
+      enabled: s.queueEnabled,
+      gameEnabled: s.queueEnabled && s.queueGameEnabled,
+      emailTicketEnabled: s.queueEnabled && s.queueEmailTicketEnabled && ticketing.active,
+      message: s.queueMessage,
+    }
+  } catch {
+    /* defaults = queue off */
+  }
+
   return NextResponse.json({
     id: w.id,
     name: w.name,
@@ -69,5 +88,6 @@ export async function GET(req: NextRequest, { params }: Params) {
     askForNameEmail: w.askForNameEmail,
     voiceEnabled: w.voiceEnabled || w.type === 'click_to_call',
     liveHelpEnabled,
+    queue,
   }, { headers })
 }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 
@@ -82,6 +82,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     } catch (err: any) {
       console.warn('[presence] event log failed:', err?.message)
     }
+  }
+
+  // Coming online may free up the queue (a now-available agent can take
+  // waiting chats). Best-effort, after the response.
+  if (body.isAvailable) {
+    after(async () => {
+      try {
+        const { advanceQueue } = await import('@/lib/widget-routing')
+        await advanceQueue(workspaceId)
+      } catch (err: any) {
+        console.warn('[presence] advanceQueue failed:', err?.message)
+      }
+    })
   }
 
   return NextResponse.json({ ok: true, isAvailable: body.isAvailable })

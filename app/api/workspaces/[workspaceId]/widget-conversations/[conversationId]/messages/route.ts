@@ -221,6 +221,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         console.warn('[widget] end-of-chat summary failed:', err?.message)
       }
     })
+    // A live human chat just ended → a queue slot may have freed up.
+    after(async () => {
+      try {
+        const { advanceQueue } = await import('@/lib/widget-routing')
+        await advanceQueue(workspaceId)
+      } catch (err: any) {
+        console.warn('[widget] advanceQueue on end failed:', err?.message)
+      }
+    })
   }
   return NextResponse.json({ ok: true, status: next })
 }

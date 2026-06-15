@@ -161,6 +161,7 @@ model Workspace {
   retrievalEvalSets    RetrievalEvalSet[]    @relation("WorkspaceRetrievalEvalSets")
   tickets              Ticket[]              @relation("WorkspaceTickets")
   ticketingSettings    TicketingSettings?
+  liveChatSettings     LiveChatSettings?
   copilotSessions      CopilotSession[]      @relation("WorkspaceCopilotSessions")
   copilotSops          CopilotSop[]          @relation("WorkspaceCopilotSops")
   copilotAgents        CopilotAgent[]        @relation("WorkspaceCopilotAgents")
@@ -2243,6 +2244,11 @@ model WidgetConversation {
   // by replying), "round_robin", "first_available". Useful in the inbox
   // and for debugging routing.
   assignmentReason String?
+  // Set when the chat is waiting in the human queue (team at capacity).
+  // "In the queue" = queuedAt != null AND assignedUserId == null AND
+  // status != 'ended'. Cleared when a human is assigned. Queue order is
+  // queuedAt ascending. See lib/widget-routing.ts advanceQueue().
+  queuedAt         DateTime?
   // Where on the host site the visitor first opened this chat. Captured
   // at conversation-create time from the widget's window.location, then
   // never updated — distinct from WidgetVisitor.currentUrl, which tracks
@@ -2277,6 +2283,7 @@ model WidgetConversation {
   @@index([visitorId])
   @@index([agentId, status])
   @@index([assignedUserId, status])
+  @@index([queuedAt])
 }
 
 /// Internal operator note on a live-chat conversation. Deliberately a
@@ -4000,6 +4007,31 @@ model TicketingSettings {
   // Appended to every outbound reply. Operators paste their team's
   // standard sign-off / hours / disclaimer.
   signature String? @db.Text
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Workspace-global live-chat / queue settings (mirrors TicketingSettings
+/// — one row per workspace). Capacity is a single workspace-total number
+/// per Ryan's decision: when this many human chats are live at once, new
+/// human requests wait in the queue.
+model LiveChatSettings {
+  workspaceId String    @id
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Master toggle for the queue. Off = exactly the wave-1 behaviour
+  // (no capacity cap, handoffs assign or fall back immediately).
+  queueEnabled Boolean @default(false)
+  // Workspace-total ceiling on LIVE human chats (assigned + not ended).
+  // AI-only chats don't count. New human requests past this queue.
+  maxConcurrentHumanChats Int @default(5)
+  // Show the optional built-in mini-game to waiting visitors.
+  queueGameEnabled Boolean @default(false)
+  // Offer waiting visitors a "leave your email" action that opens a
+  // support ticket (requires ticketing to be active).
+  queueEmailTicketEnabled Boolean @default(false)
+  // Operator-authored copy shown in the visitor's queue banner.
+  queueMessage String? @db.Text
 
   updatedAt DateTime @updatedAt
 }

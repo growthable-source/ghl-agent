@@ -29,6 +29,8 @@ import { db } from './db'
 import { broadcast } from './widget-sse'
 import { notify } from './notifications'
 import { resolveHandoverLink } from './handover-link'
+import { getLiveChatSettings } from './livechat-settings'
+import { estimateWaitSecs } from './queue-estimate'
 
 export type RoutingMode = 'manual' | 'round_robin' | 'first_available'
 export type AssignmentReason = 'manual' | 'self' | 'round_robin' | 'first_available' | 'handover'
@@ -162,7 +164,7 @@ export async function assignConversation(params: {
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widget: { workspaceId } },
     select: {
-      id: true, widgetId: true, assignedUserId: true,
+      id: true, widgetId: true, assignedUserId: true, queuedAt: true,
       widget: { select: { name: true } },
     },
   })
@@ -175,8 +177,16 @@ export async function assignConversation(params: {
       assignedUserId: userId,
       assignedAt: userId ? new Date() : null,
       assignmentReason: userId ? reason : null,
+      // A human now owns it — it leaves the queue.
+      ...(userId ? { queuedAt: null } : {}),
     },
   })
+
+  // If this chat was waiting in the queue, the line just shifted — push
+  // fresh positions to everyone still queued.
+  if (userId && convo.queuedAt) {
+    await broadcastQueuePositions(workspaceId).catch(() => {})
+  }
 
   // Round-robin cursor update so the *next* call hands off to whoever
   // comes after this user in the rotation.
@@ -244,13 +254,29 @@ function reasonBody(reason: AssignmentReason): string {
 export async function autoRouteIfUnassigned(params: {
   workspaceId: string
   conversationId: string
-}): Promise<{ assigned: boolean; userId?: string }> {
+}): Promise<{ assigned: boolean; userId?: string; queued?: boolean }> {
   const convo = await db.widgetConversation.findFirst({
     where: { id: params.conversationId, widget: { workspaceId: params.workspaceId } },
     select: { id: true, widgetId: true, assignedUserId: true },
   })
   if (!convo) return { assigned: false }
   if (convo.assignedUserId) return { assigned: true, userId: convo.assignedUserId }
+
+  // Capacity/queue gate (when enabled). Full team or nobody available →
+  // wait in the queue rather than sitting silently unassigned.
+  const settings = await getLiveChatSettings(params.workspaceId)
+  if (settings.queueEnabled) {
+    const live = await countLiveHumanChats(params.workspaceId)
+    if (live < settings.maxConcurrentHumanChats) {
+      const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
+      if (pick) {
+        await assignConversation({ workspaceId: params.workspaceId, conversationId: convo.id, userId: pick.userId, reason: pick.reason })
+        return { assigned: true, userId: pick.userId }
+      }
+    }
+    await enqueueConversation(params.workspaceId, convo.id)
+    return { assigned: false, queued: true }
+  }
 
   const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
   if (!pick) return { assigned: false }
@@ -297,7 +323,7 @@ async function resolveFallbackAssignee(workspaceId: string, fallbackUserId: stri
 export async function forceAssignToHuman(params: {
   workspaceId: string
   conversationId: string
-}): Promise<{ assigned: boolean; userId?: string; viaFallback?: boolean }> {
+}): Promise<{ assigned: boolean; userId?: string; viaFallback?: boolean; queued?: boolean }> {
   const convo = await db.widgetConversation.findFirst({
     where: { id: params.conversationId, widget: { workspaceId: params.workspaceId } },
     select: {
@@ -308,7 +334,25 @@ export async function forceAssignToHuman(params: {
   if (!convo) return { assigned: false }
   if (convo.assignedUserId) return { assigned: true, userId: convo.assignedUserId }
 
-  // Normal routing first (respects round-robin / first-available).
+  // Capacity/queue gate (when enabled). At capacity (or nobody available)
+  // the chat WAITS in the queue instead of force-assigning the fallback
+  // owner — and the AI keeps helping in the meantime.
+  const settings = await getLiveChatSettings(params.workspaceId)
+  if (settings.queueEnabled) {
+    const live = await countLiveHumanChats(params.workspaceId)
+    if (live < settings.maxConcurrentHumanChats) {
+      const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
+      if (pick) {
+        await assignConversation({ workspaceId: params.workspaceId, conversationId: convo.id, userId: pick.userId, reason: pick.reason })
+        return { assigned: true, userId: pick.userId }
+      }
+    }
+    await enqueueConversation(params.workspaceId, convo.id)
+    return { assigned: false, queued: true }
+  }
+
+  // Queue off — wave-1 behaviour: normal routing first (respects
+  // round-robin / first-available).
   const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
   let userId = pick?.userId ?? null
   let viaFallback = false
@@ -327,4 +371,118 @@ export async function forceAssignToHuman(params: {
     reason: pick?.reason ?? 'handover',
   })
   return { assigned: true, userId, viaFallback }
+}
+
+// ─── Queue (workspace-total capacity) ───────────────────────────────
+
+const QUEUE_STATUSES_OPEN = ['active', 'handed_off'] as const
+/** Bounds for the data-derived average handle time (seconds). */
+const HANDLE_SECS_MIN = 60
+const HANDLE_SECS_MAX = 1800
+const HANDLE_SECS_DEFAULT = 240
+
+/** Live HUMAN chats across the workspace right now (assigned + not ended).
+ *  AI-only chats don't consume human capacity. */
+export async function countLiveHumanChats(workspaceId: string): Promise<number> {
+  return db.widgetConversation.count({
+    where: {
+      widget: { workspaceId },
+      assignedUserId: { not: null },
+      status: { in: QUEUE_STATUSES_OPEN as unknown as string[] },
+    },
+  }).catch(() => 0)
+}
+
+/** Average human handle time from recent ended, human-handled chats —
+ *  (lastMessageAt − assignedAt), clamped, with a sane default when there
+ *  isn't enough history yet. Feeds the visitor wait estimate. */
+async function getAvgHandleSecs(workspaceId: string): Promise<number> {
+  try {
+    const recent = await db.widgetConversation.findMany({
+      where: { widget: { workspaceId }, status: 'ended', assignedUserId: { not: null }, assignedAt: { not: null } },
+      select: { assignedAt: true, lastMessageAt: true },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 30,
+    })
+    const durs = recent
+      .map(c => (c.assignedAt ? (c.lastMessageAt.getTime() - c.assignedAt.getTime()) / 1000 : 0))
+      .filter(s => s > 0)
+    if (durs.length === 0) return HANDLE_SECS_DEFAULT
+    const avg = durs.reduce((a, b) => a + b, 0) / durs.length
+    return Math.min(HANDLE_SECS_MAX, Math.max(HANDLE_SECS_MIN, Math.round(avg)))
+  } catch {
+    return HANDLE_SECS_DEFAULT
+  }
+}
+
+/** All conversations waiting in the human queue, oldest first. */
+async function listQueued(workspaceId: string): Promise<Array<{ id: string; widgetId: string }>> {
+  return db.widgetConversation.findMany({
+    where: { widget: { workspaceId }, queuedAt: { not: null }, assignedUserId: null, status: { not: 'ended' } },
+    select: { id: true, widgetId: true },
+    orderBy: { queuedAt: 'asc' },
+  }).catch(() => [])
+}
+
+/** Push fresh queue positions + wait estimates to every waiting visitor. */
+async function broadcastQueuePositions(workspaceId: string): Promise<void> {
+  const [settings, queued, avg] = await Promise.all([
+    getLiveChatSettings(workspaceId),
+    listQueued(workspaceId),
+    getAvgHandleSecs(workspaceId),
+  ])
+  for (let i = 0; i < queued.length; i++) {
+    const position = i + 1
+    await broadcast(queued[i].id, {
+      type: 'queue_update',
+      position,
+      estimatedWaitSecs: estimateWaitSecs(position, settings.maxConcurrentHumanChats, avg),
+      max: settings.maxConcurrentHumanChats,
+    }).catch(() => {})
+  }
+}
+
+/** Put a conversation into the queue (idempotent), keep the AI helping
+ *  while it waits, and refresh everyone's position. */
+async function enqueueConversation(workspaceId: string, conversationId: string): Promise<void> {
+  const existing = await db.widgetConversation.findUnique({
+    where: { id: conversationId },
+    select: { queuedAt: true },
+  }).catch(() => null)
+  if (!existing?.queuedAt) {
+    await db.widgetConversation.update({ where: { id: conversationId }, data: { queuedAt: new Date() } }).catch(() => {})
+  }
+  // AI keeps helping while queued — undo any handoff pause for this chat.
+  await db.conversationStateRecord.updateMany({
+    where: { conversationId, state: 'PAUSED' },
+    data: { state: 'ACTIVE', pauseReason: null, resumedAt: new Date() },
+  }).catch(() => {})
+  await broadcastQueuePositions(workspaceId)
+}
+
+/** Pull from the front of the queue while the workspace has human
+ *  capacity AND an available agent. Called when a slot frees (a chat
+ *  ends) or an agent comes online, plus a cron backstop. */
+export async function advanceQueue(workspaceId: string): Promise<{ assigned: number }> {
+  const settings = await getLiveChatSettings(workspaceId)
+  if (!settings.queueEnabled) return { assigned: 0 }
+
+  let assigned = 0
+  let guard = 50
+  while (guard-- > 0) {
+    const live = await countLiveHumanChats(workspaceId)
+    if (live >= settings.maxConcurrentHumanChats) break
+    const next = await db.widgetConversation.findFirst({
+      where: { widget: { workspaceId }, queuedAt: { not: null }, assignedUserId: null, status: { not: 'ended' } },
+      select: { id: true, widgetId: true },
+      orderBy: { queuedAt: 'asc' },
+    }).catch(() => null)
+    if (!next) break
+    const pick = await pickAssignee({ workspaceId, widgetId: next.widgetId })
+    if (!pick) break // headroom but nobody available — leave it queued
+    await assignConversation({ workspaceId, conversationId: next.id, userId: pick.userId, reason: pick.reason })
+    assigned++
+  }
+  await broadcastQueuePositions(workspaceId)
+  return { assigned }
 }
