@@ -2049,6 +2049,7 @@ model Brand {
   widgets      ChatWidget[]
   collections  KnowledgeCollection[]
   portalAccess PortalUserBrand[]     @relation("BrandPortalAccess")
+  portalCatalog PortalBrand[]        @relation("BrandPortalCatalog")
   evalQueries  RetrievalEvalQuery[]  @relation("BrandEvalQueries")
   tickets      Ticket[]              @relation("TicketBrand")
 
@@ -2798,8 +2799,21 @@ model Portal {
   updatedAt    DateTime       @updatedAt
   users        PortalUser[]
   invites      PortalInvite[]
+  portalBrands PortalBrand[]
 
   @@index([workspaceId])
+}
+
+model PortalBrand {
+  id        String   @id @default(cuid())
+  portalId  String
+  portal    Portal   @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  brandId   String
+  brand     Brand    @relation("BrandPortalCatalog", fields: [brandId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([portalId, brandId])
+  @@index([brandId])
 }
 
 model PortalUser {
