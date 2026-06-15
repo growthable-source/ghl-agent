@@ -123,6 +123,11 @@ export default function InboxPage() {
   const meIdRef = useRef<string | null>(null)
   const prevAssignedRef = useRef<Map<string, string | null>>(new Map())
   const assignSeededRef = useRef(false)
+  // Bulk select + close (widget conversations only — Meta rows aren't
+  // closable through the widget bulk endpoint).
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkClosing, setBulkClosing] = useState(false)
   // Brand filter — value is the brand *slug*. 'all' = no filter,
   // 'untagged' = conversations on widgets that aren't tagged to any
   // brand. Initial value comes from ?brand=<slug> on the URL so the
@@ -225,6 +230,36 @@ export default function InboxPage() {
     setNotMigrated(!!data.notMigrated)
     setLoading(false)
   }, [workspaceId, usingSearch, search, brandSlug])
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }, [])
+
+  const bulkClose = useCallback(async () => {
+    if (selectedIds.size === 0) return
+    setBulkClosing(true)
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/widget-conversations/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds), status: 'ended' }),
+      })
+      await fetchRows()
+      exitSelectMode()
+    } finally {
+      setBulkClosing(false)
+    }
+  }, [workspaceId, selectedIds, fetchRows, exitSelectMode])
 
   // Bootstrap: load current user + presence flag + brands in parallel.
   useEffect(() => {
@@ -387,6 +422,18 @@ export default function InboxPage() {
           </h1>
           <div className="flex items-center gap-2">
             <SoundToggle />
+            <button
+              type="button"
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              className={`text-[11px] font-medium px-2 py-1 rounded-full border transition-colors ${
+                selectMode
+                  ? 'border-orange-500/40 bg-orange-500/10 text-orange-300'
+                  : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white'
+              }`}
+              title="Select multiple conversations to close at once"
+            >
+              {selectMode ? 'Done' : 'Select'}
+            </button>
             <button
               type="button"
               onClick={togglePresence}
@@ -809,6 +856,38 @@ export default function InboxPage() {
           )
         })()}
 
+        {selectMode && (
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg border border-orange-500/30 bg-orange-500/5">
+            <button
+              type="button"
+              onClick={() => {
+                const ids = filtered.filter(r => r.channel === 'widget' && r.status !== 'ended').map(r => r.id)
+                const allOn = ids.length > 0 && ids.every(id => selectedIds.has(id))
+                setSelectedIds(allOn ? new Set() : new Set(ids))
+              }}
+              className="text-[11px] font-medium text-zinc-300 hover:text-white"
+            >
+              Select all
+            </button>
+            <span className="text-xs text-zinc-400">{selectedIds.size} selected</span>
+            <div className="ml-auto flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <button type="button" onClick={() => setSelectedIds(new Set())} className="text-[11px] text-zinc-400 hover:text-white">
+                  Clear
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void bulkClose()}
+                disabled={selectedIds.size === 0 || bulkClosing}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded bg-orange-500 text-white hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {bulkClosing ? 'Closing…' : `Close ${selectedIds.size || ''}`.trim()}
+              </button>
+            </div>
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div
             className="text-center py-16 border border-dashed rounded-xl"
@@ -889,13 +968,32 @@ export default function InboxPage() {
               const lastReadAt = readAtMap[r.id] ?? 0
               const lastMessageMs = new Date(r.lastMessageAt).getTime()
               const isUnread = r.status !== 'ended' && lastMessageMs > lastReadAt
+              const selectable = selectMode && r.channel === 'widget' && r.status !== 'ended'
               return (
                 <Fragment key={r.id}>
                   {closedDivider}
+                <div className="flex items-stretch">
+                {selectMode && (
+                  <label
+                    className={`flex items-center pl-3 ${selectable ? 'cursor-pointer' : 'opacity-30 cursor-not-allowed'}`}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={!selectable}
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => toggleSelect(r.id)}
+                      className="w-4 h-4 accent-orange-500"
+                    />
+                  </label>
+                )}
                 <button
                   type="button"
-                  onClick={() => { setSelectedId(r.id); markConversationOpened(r.id) }}
-                  className={`w-full text-left flex items-start gap-3 p-4 transition-colors border-l-2 ${
+                  onClick={() => {
+                    if (selectable) { toggleSelect(r.id); return }
+                    setSelectedId(r.id); markConversationOpened(r.id)
+                  }}
+                  className={`flex-1 min-w-0 text-left flex items-start gap-3 p-4 transition-colors border-l-2 ${
                     isSelected ? '' : 'hover:bg-zinc-900/60'
                   } ${isEnded && !isSelected ? 'opacity-60' : ''}`}
                   style={
@@ -1123,6 +1221,7 @@ export default function InboxPage() {
                     </div>
                   </div>
                 </button>
+                </div>
                 </Fragment>
               )
             })}
