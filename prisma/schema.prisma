@@ -27,6 +27,7 @@ model User {
   assignedMetaConversations MetaConversation[]   @relation("MetaConversationAssignee")
   assignedTickets           Ticket[]             @relation("TicketAssignee")
   createdTickets            Ticket[]             @relation("TicketCreator")
+  conversationNotes         ConversationNote[]   @relation("ConversationNoteAuthor")
   authoredTicketMessages    TicketMessage[]      @relation("TicketMessageAuthor")
   sentMetaMessages          MetaMessage[]        @relation("MetaMessageAuthor")
   createdAt                 DateTime             @default(now())
@@ -2265,6 +2266,7 @@ model WidgetConversation {
   mergedIntoId     String?
   createdAt        DateTime          @default(now())
   messages         WidgetMessage[]
+  notes            ConversationNote[]
   voiceCalls       WidgetVoiceCall[]
   // Conversation promoted into a ticket (1:0..1). Back-relation for
   // Ticket.conversation. SetNull on the Ticket side means the ticket
@@ -2275,6 +2277,26 @@ model WidgetConversation {
   @@index([visitorId])
   @@index([agentId, status])
   @@index([assignedUserId, status])
+}
+
+/// Internal operator note on a live-chat conversation. Deliberately a
+/// SEPARATE table from WidgetMessage so the visitor can NEVER receive
+/// one through any message-read path (history load, SSE backfill, email
+/// transcript all query WidgetMessage only). The operator inbox merges
+/// notes into the thread by timestamp; the live SSE event is gated out
+/// of the visitor stream.
+model ConversationNote {
+  id             String             @id @default(cuid())
+  conversationId String
+  conversation   WidgetConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorUserId   String?
+  author         User?              @relation("ConversationNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  body           String             @db.Text
+  // Workspace member user IDs @mentioned in this note; each is notified.
+  mentionedUserIds String[]         @default([])
+  createdAt      DateTime           @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 model WidgetMessage {

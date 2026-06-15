@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { formatSSE, buildResumeId, parseResumeId } from '@/lib/widget-sse'
 import { subscribe } from '@/lib/widget-pubsub'
+import { isOperatorOnlyEvent } from '@/lib/widget-visitor-events'
 
 // SSE stream stays open until client disconnect or this cap. Vercel Pro
 // allows up to 300s; the widget client reconnects on close so this just
@@ -119,6 +120,12 @@ export async function GET(req: NextRequest, { params }: Params) {
       const enqueueLive = (msg: any) => {
         if (msg && typeof msg === 'object') {
           const t = msg.type
+          // SECURITY: operator-only events (internal notes) are broadcast
+          // on the shared conversation channel (the operator inbox needs
+          // them live), so the visitor stream MUST drop them here. Notes
+          // are also a separate table, so no backfill/history path can
+          // leak them — this live gate is the only visitor-facing path.
+          if (isOperatorOnlyEvent(t)) return
           if (t === 'agent_message' || t === 'visitor_message') {
             const id = msg.id && msg.createdAt ? buildResumeId(msg.createdAt, msg.id) : undefined
             try { controller.enqueue(formatSSE(msg, id ? { id } : undefined)) } catch {}

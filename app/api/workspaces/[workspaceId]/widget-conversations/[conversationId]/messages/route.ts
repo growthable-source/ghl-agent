@@ -82,6 +82,34 @@ export async function GET(_req: NextRequest, { params }: Params) {
     })
   } catch { /* table missing */ }
 
+  // Merge internal notes into the thread (operator-only — notes are a
+  // separate table the visitor never queries). Rendered inline as
+  // kind='note' pseudo-messages, ordered with the real messages.
+  try {
+    const notes = await db.conversationNote.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      include: { author: { select: { name: true, email: true } } },
+    })
+    if (notes.length > 0) {
+      const noteMessages = notes.map(n => ({
+        id: n.id,
+        conversationId,
+        role: 'agent',
+        content: n.body,
+        kind: 'note',
+        language: null,
+        translationEn: null,
+        mentionedUserIds: n.mentionedUserIds,
+        authorName: n.author?.name ?? n.author?.email ?? 'A teammate',
+        createdAt: n.createdAt,
+      }))
+      convo.messages = [...convo.messages, ...noteMessages].sort(
+        (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      )
+    }
+  } catch { /* table missing pre-migration — skip notes */ }
+
   return NextResponse.json({
     conversation: {
       ...convo,

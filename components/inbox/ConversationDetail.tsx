@@ -35,6 +35,11 @@ interface Message {
    *  below the original in a muted style so monolingual operators can
    *  follow non-English chats. */
   translationEn?: string | null
+  /** Internal-note fields (kind === 'note'). Author label + @mentioned
+   *  teammate user IDs. Notes are operator-only; the visitor never gets
+   *  them. */
+  authorName?: string | null
+  mentionedUserIds?: string[]
 }
 
 interface Convo {
@@ -149,6 +154,11 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const lastSeenAtRef = useRef<number>(Date.now())
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
+  // Internal-note composer mode (#7). When on, the box posts a private
+  // note to teammates instead of a customer-facing reply; the visitor
+  // never receives it. `noteMentions` = teammates to notify.
+  const [noteMode, setNoteMode] = useState(false)
+  const [noteMentions, setNoteMentions] = useState<Set<string>>(new Set())
   const [statusBusy, setStatusBusy] = useState(false)
   const [assigneeOpen, setAssigneeOpen] = useState(false)
   const [assigning, setAssigning] = useState(false)
@@ -348,6 +358,14 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           createdAt: data.createdAt,
         }) } : c)
         setVisitorTyping(false)
+      } else if (data.type === 'internal_note') {
+        // Operator-only note (the visitor stream drops this type). Append
+        // it inline as a kind='note' message.
+        setConvo(c => c ? { ...c, messages: appendOrReplace(c.messages, {
+          id: data.id, role: 'agent', content: data.body, kind: 'note',
+          createdAt: data.createdAt, authorName: data.authorName,
+          mentionedUserIds: Array.isArray(data.mentionedUserIds) ? data.mentionedUserIds : [],
+        }) } : c)
       } else if (data.type === 'agent_typing') {
         setAgentTyping({ active: !!data.isTyping, fromHuman: !!data.fromHuman })
       } else if (data.type === 'visitor_typing') {
@@ -534,6 +552,19 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
         method: 'POST', body: form,
       })
     } finally { setUploading(false) }
+  }
+
+  async function sendNote() {
+    if (!reply.trim() || sending) return
+    setSending(true)
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/notes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: reply.trim(), mentionedUserIds: Array.from(noteMentions) }),
+      })
+      setReply('')
+      setNoteMentions(new Set())
+    } finally { setSending(false) }
   }
 
   async function setStatus(next: 'active' | 'handed_off' | 'ended') {
@@ -926,12 +957,66 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
         {!isEnded ? (
           <div className="p-4 border-t flex-shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="max-w-3xl mx-auto">
-              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                {isHandedOff
-                  ? "You've taken over — replying as yourself"
-                  : 'Jump in — sending here pauses the AI and takes over'}
-              </p>
-              <div className="flex items-end gap-2">
+              {/* Reply ⇄ Note toggle. A note is private to the team — the
+                  visitor never receives it. */}
+              <div className="flex items-center gap-1 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setNoteMode(false)}
+                  className="text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded transition-colors"
+                  style={noteMode
+                    ? { color: 'var(--text-tertiary)' }
+                    : { color: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }}
+                >
+                  Reply
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNoteMode(true)}
+                  className="text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded transition-colors"
+                  style={noteMode
+                    ? { color: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }
+                    : { color: 'var(--text-tertiary)' }}
+                >
+                  Note
+                </button>
+                <span className="text-[10px] ml-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                  {noteMode
+                    ? 'Private to your team — the customer never sees this.'
+                    : isHandedOff
+                      ? "You've taken over — replying as yourself"
+                      : 'Jump in — sending here pauses the AI and takes over'}
+                </span>
+              </div>
+              {noteMode && members.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                  <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Notify:</span>
+                  {members.filter(m => m.user.id !== meId).map(m => {
+                    const on = noteMentions.has(m.user.id)
+                    return (
+                      <button
+                        key={m.user.id}
+                        type="button"
+                        onClick={() => setNoteMentions(prev => {
+                          const next = new Set(prev)
+                          if (next.has(m.user.id)) next.delete(m.user.id); else next.add(m.user.id)
+                          return next
+                        })}
+                        className="text-[11px] px-2 py-0.5 rounded-full border transition-colors"
+                        style={on
+                          ? { background: 'var(--accent-amber-bg)', borderColor: 'var(--accent-amber)', color: 'var(--accent-amber)' }
+                          : { background: 'var(--surface)', borderColor: 'var(--border-secondary)', color: 'var(--text-tertiary)' }}
+                      >
+                        @{m.user.name || m.user.email}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              <div
+                className="flex items-end gap-2 rounded-lg"
+                style={noteMode ? { background: 'var(--accent-amber-bg)', padding: '6px', margin: '-6px' } : undefined}
+              >
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -984,27 +1069,30 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                 </div>
                 <textarea
                   value={reply}
-                  onChange={e => { setReply(e.target.value); pingTyping() }}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+                  onChange={e => { setReply(e.target.value); if (!noteMode) pingTyping() }}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); noteMode ? sendNote() : send() } }}
                   onPaste={e => {
                     // Paste a screenshot straight into the box — no need to save it
                     // locally first. Upload any image in the clipboard via the same
                     // path as the attach button; let text paste through normally.
+                    // Notes are text-only (separate table), so skip in note mode.
+                    if (noteMode) return
                     const imageFiles = Array.from(e.clipboardData.files).filter(f => f.type.startsWith('image/'))
                     if (imageFiles.length > 0) {
                       e.preventDefault()
                       imageFiles.forEach(f => void uploadFile(f))
                     }
                   }}
-                  onDragOver={e => { e.preventDefault() }}
+                  onDragOver={e => { if (!noteMode) e.preventDefault() }}
                   onDrop={e => {
+                    if (noteMode) return
                     const files = Array.from(e.dataTransfer.files)
                     if (files.length > 0) {
                       e.preventDefault()
                       files.forEach(f => void uploadFile(f))
                     }
                   }}
-                  placeholder="Type your reply…  (paste or drop a screenshot to attach)"
+                  placeholder={noteMode ? 'Write a private note for your team…' : 'Type your reply…  (paste or drop a screenshot to attach)'}
                   rows={2}
                   className="flex-1 resize-none rounded-lg px-3 py-2 text-sm focus:outline-none max-h-32"
                   style={{
@@ -1014,16 +1102,18 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                   }}
                 />
                 <button
-                  onClick={send}
+                  onClick={() => (noteMode ? sendNote() : send())}
                   disabled={!reply.trim() || sending}
                   className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
                   style={
                     !reply.trim() || sending
                       ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
-                      : { background: accent, color: '#fff' }
+                      : noteMode
+                        ? { background: 'var(--accent-amber)', color: '#fff' }
+                        : { background: accent, color: '#fff' }
                   }
                 >
-                  {sending ? '…' : 'Send'}
+                  {sending ? '…' : noteMode ? 'Add note' : 'Send'}
                 </button>
               </div>
               {uploading && <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>Uploading…</p>}
@@ -1312,6 +1402,28 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
       </div>
     )
   }
+  // Internal note — operator-only, never sent to the visitor. Rendered
+  // full-width with a distinct amber treatment so it can't be mistaken
+  // for a customer-facing message.
+  if (msg.kind === 'note') {
+    return (
+      <div
+        className="rounded-lg px-3 py-2 text-sm"
+        style={{ background: 'var(--accent-amber-bg)', border: '1px solid var(--accent-amber)' }}
+      >
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[9px] uppercase tracking-wider font-bold" style={{ color: 'var(--accent-amber)' }}>
+            Internal note
+          </span>
+          {msg.authorName && (
+            <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>· {msg.authorName}</span>
+          )}
+        </div>
+        <p className="whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{msg.content}</p>
+      </div>
+    )
+  }
+
   const isVisitor = msg.role === 'visitor'
   // Pick a legible foreground for the agent bubble based on the
   // workspace's brand colour. Hardcoded `text-white` was unreadable on

@@ -49,6 +49,12 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     defaultUserChannels: ['email', 'web_push'],
   },
   {
+    id: 'widget.conversation_mention',
+    label: 'Mentioned in a chat note',
+    description: 'A teammate @mentioned you in an internal note on a live chat.',
+    defaultUserChannels: ['email', 'web_push'],
+  },
+  {
     id: 'agent_error',
     label: 'Agent error',
     description: 'An agent ran into a problem processing an inbound message.',
