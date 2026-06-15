@@ -382,6 +382,20 @@ Never apologise for the language or mention translation — just speak naturally
     } catch (err: any) {
       console.warn('[widget] memory summary refresh failed:', err?.message)
     }
+
+    // Topic telemetry — record which knowledge domains/topics this
+    // visitor question matched, for the portal Overview's "Top topics"
+    // panel. Fire-and-forget, off the reply path: re-runs retrieval and
+    // persists matched domains; failures are swallowed inside the helper.
+    try {
+      const { captureConversationTopics } = await import('./agent/capture-topics')
+      captureConversationTopics({
+        agent: { workspaceId: widget.workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds },
+        conversationId: convo.id,
+        widgetId: convo.widgetId,
+        message: content,
+      }).catch(() => {})
+    } catch { /* dynamic import failed — skip telemetry */ }
   } finally {
     await broadcast(convo.id, { type: 'agent_typing', isTyping: false }).catch(() => {})
   }

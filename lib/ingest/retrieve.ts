@@ -32,6 +32,11 @@ export interface RetrievedChunk {
   primaryTopic: string | null
   taxonomyTags: string[]
   sourceMetadata: Record<string, unknown>
+  /** The KnowledgeDomain (collection) this chunk lives in. Carried so the
+   *  agent runner can record which topics a visitor question matched —
+   *  powers the portal Overview's "Top topics" panel. */
+  knowledgeDomainId: string | null
+  domainName: string | null
   /** 0-1, higher is better. 1 - cosine distance. */
   similarity: number
 }
@@ -205,6 +210,8 @@ interface VectorRow {
   primaryTopic: string | null
   taxonomyTags: string[]
   sourceMetadata: Record<string, unknown> | null
+  knowledgeDomainId: string | null
+  domainName: string | null
   distance: number | string
 }
 
@@ -225,6 +232,8 @@ async function runVectorTopK(
       c."primaryTopic",
       c."taxonomyTags",
       c."sourceMetadata",
+      c."knowledgeDomainId",
+      d.name AS "domainName",
       (c.embedding <=> ${literal}::vector) AS distance
     FROM "KnowledgeChunk" c
     INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
@@ -247,6 +256,8 @@ function rowToChunk(r: VectorRow): RetrievedChunk {
     primaryTopic: r.primaryTopic,
     taxonomyTags: r.taxonomyTags ?? [],
     sourceMetadata: (r.sourceMetadata ?? {}) as Record<string, unknown>,
+    knowledgeDomainId: r.knowledgeDomainId ?? null,
+    domainName: r.domainName ?? null,
     similarity: clamp01(1 - Number(r.distance)),
   }
 }

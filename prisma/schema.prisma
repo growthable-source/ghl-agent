@@ -1174,6 +1174,30 @@ model KnowledgeChunkEvalRef {
   @@index([chunkId])
 }
 
+// ─── Topic telemetry ───────────────────────────────────────────────────────
+// One row per (conversation, topic) the AI agent actually answered from —
+// the matched KnowledgeDomain (collection) for a visitor question. Written
+// fire-and-forget by the widget runner (lib/agent/capture-topics.ts) and
+// aggregated by the customer portal Overview into the "Top topics" panel.
+// Standalone (no FK relations) so it can be pruned/backfilled freely and
+// never blocks a conversation write.
+model ConversationTopic {
+  id             String   @id @default(cuid())
+  conversationId String
+  widgetId       String
+  workspaceId    String
+  domainId       String? // KnowledgeDomain.id when the match carried one
+  topic          String // human-meaningful label (domain name, else primaryTopic)
+  createdAt      DateTime @default(now())
+
+  // One row per topic per conversation — repeated hits in the same chat
+  // are no-ops (createMany skipDuplicates), so counts = distinct
+  // conversations per topic.
+  @@unique([conversationId, topic])
+  @@index([widgetId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
 // ─── Recurring crawl schedule ──────────────────────────────────────────────
 model CrawlSchedule {
   id         String    @id @default(cuid())
