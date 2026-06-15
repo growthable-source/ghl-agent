@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             agencyUrl: true,
             // Brand is shown as a chip in the visitor sidebar; nullable
             // because not every workspace has brands defined.
-            brand: { select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true } },
+            brand: { select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true, loginUrl: true } },
           },
         },
         visitor: { select: { id: true, name: true, email: true, phone: true, crmContactId: true, firstSeenAt: true, lastSeenAt: true } },

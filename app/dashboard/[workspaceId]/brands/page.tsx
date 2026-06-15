@@ -11,6 +11,7 @@ interface Brand {
   description: string | null
   logoUrl: string | null
   primaryColor: string | null
+  loginUrl: string | null
   aiEnabled: boolean
   brandGroupId: string | null
   widgetCount: number
@@ -254,6 +255,7 @@ function BrandEditorModal({
   const [description, setDescription] = useState(brand?.description ?? '')
   const [logoUrl, setLogoUrl] = useState(brand?.logoUrl ?? '')
   const [color, setColor] = useState(brand?.primaryColor ?? PRESET_COLORS[0])
+  const [loginUrl, setLoginUrl] = useState(brand?.loginUrl ?? '')
   const [aiEnabled, setAiEnabled] = useState(brand?.aiEnabled !== false)
   const [brandGroupId, setBrandGroupId] = useState<string | null>(brand?.brandGroupId ?? null)
   const [saving, setSaving] = useState(false)
@@ -388,6 +390,7 @@ function BrandEditorModal({
         description: description.trim() || null,
         logoUrl: persistableLogoUrl,
         primaryColor: color,
+        loginUrl: loginUrl.trim() || null,
         aiEnabled,
         brandGroupId,
       }
@@ -452,6 +455,19 @@ function BrandEditorModal({
               placeholder="What does this brand do?"
               rows={2}
               className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+            />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+              Login URL (optional)
+              <span className="ml-2 normal-case font-normal" style={{ color: 'var(--text-muted)' }}>agents get a quick &ldquo;Open login&rdquo; button in the inbox</span>
+            </label>
+            <input
+              value={loginUrl}
+              onChange={e => setLoginUrl(e.target.value)}
+              placeholder="https://app.theirplatform.com/login"
+              className="w-full rounded-lg px-3 py-2 text-sm font-mono focus:outline-none"
               style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
             />
           </div>

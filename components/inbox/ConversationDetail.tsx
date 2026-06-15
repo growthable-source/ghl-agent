@@ -51,8 +51,8 @@ interface Convo {
   // isn't running multi-brand or the widget hasn't been tagged. Comes
   // from widget.brand in the API response — we expose it on the top
   // level so the visitor panel doesn't have to reach into widget.*.
-  brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null } | null
-  widget: { id: string; name: string; primaryColor: string; agencyUrl?: string | null; brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null } | null }
+  brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null; loginUrl?: string | null } | null
+  widget: { id: string; name: string; primaryColor: string; agencyUrl?: string | null; brand?: { id: string; name: string; slug: string; logoUrl: string | null; primaryColor: string | null; loginUrl?: string | null } | null }
   // Page the visitor was on when they first opened this chat. Frozen
   // at create-time. Distinct from the visitor's currentUrl in the
   // timeline (which keeps moving as they browse).
@@ -986,7 +986,25 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                   value={reply}
                   onChange={e => { setReply(e.target.value); pingTyping() }}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                  placeholder="Type your reply…"
+                  onPaste={e => {
+                    // Paste a screenshot straight into the box — no need to save it
+                    // locally first. Upload any image in the clipboard via the same
+                    // path as the attach button; let text paste through normally.
+                    const imageFiles = Array.from(e.clipboardData.files).filter(f => f.type.startsWith('image/'))
+                    if (imageFiles.length > 0) {
+                      e.preventDefault()
+                      imageFiles.forEach(f => void uploadFile(f))
+                    }
+                  }}
+                  onDragOver={e => { e.preventDefault() }}
+                  onDrop={e => {
+                    const files = Array.from(e.dataTransfer.files)
+                    if (files.length > 0) {
+                      e.preventDefault()
+                      files.forEach(f => void uploadFile(f))
+                    }
+                  }}
+                  placeholder="Type your reply…  (paste or drop a screenshot to attach)"
                   rows={2}
                   className="flex-1 resize-none rounded-lg px-3 py-2 text-sm focus:outline-none max-h-32"
                   style={{
@@ -1069,6 +1087,17 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                 <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Brand</p>
                 <p className="text-xs text-zinc-100 truncate">{convo.widget.brand.name}</p>
               </div>
+              {convo.widget.brand.loginUrl && (
+                <a
+                  href={convo.widget.brand.loginUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 px-2 py-1 rounded text-[11px] font-medium border border-zinc-700 text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  title={convo.widget.brand.loginUrl}
+                >
+                  Open login ↗
+                </a>
+              )}
             </div>
           )}
 

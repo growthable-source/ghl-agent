@@ -47,6 +47,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       description: b.description,
       logoUrl: b.logoUrl,
       primaryColor: b.primaryColor,
+      loginUrl: b.loginUrl ?? null,
       // Defaults to true for pre-migration rows where the column
       // doesn't exist on the returned object — keeps existing brands
       // behaving exactly as they did before this feature shipped.
@@ -92,6 +93,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         description: typeof body.description === 'string' ? body.description.trim() || null : null,
         logoUrl: typeof body.logoUrl === 'string' ? body.logoUrl.trim() || null : null,
         primaryColor: typeof body.primaryColor === 'string' ? body.primaryColor.trim() || null : null,
+        loginUrl: typeof body.loginUrl === 'string' && /^https?:\/\//i.test(body.loginUrl.trim())
+          ? body.loginUrl.trim().slice(0, 500)
+          : null,
       },
     })
     return NextResponse.json({ brand }, { status: 201 })

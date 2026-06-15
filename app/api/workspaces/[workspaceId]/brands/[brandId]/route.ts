@@ -42,6 +42,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       description: brand.description,
       logoUrl: brand.logoUrl,
       primaryColor: brand.primaryColor,
+      loginUrl: brand.loginUrl,
       createdAt: brand.createdAt.toISOString(),
       updatedAt: brand.updatedAt.toISOString(),
       widgets: brand.widgets,
@@ -86,6 +87,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (body.primaryColor !== undefined) {
     data.primaryColor = typeof body.primaryColor === 'string' && body.primaryColor.trim() ? body.primaryColor.trim() : null
+  }
+  // loginUrl: must be an http(s) URL or null. Reject anything else so
+  // the inbox "Open login" button can't point somewhere unsafe.
+  if (body.loginUrl !== undefined) {
+    const raw = typeof body.loginUrl === 'string' ? body.loginUrl.trim() : ''
+    if (!raw) {
+      data.loginUrl = null
+    } else if (/^https?:\/\//i.test(raw)) {
+      data.loginUrl = raw.slice(0, 500)
+    } else {
+      return NextResponse.json({ error: 'Login URL must start with http:// or https://' }, { status: 400 })
+    }
   }
   // aiEnabled is a boolean toggle for human-only mode. Explicit boolean
   // check so other falsy values (null, "", undefined) don't accidentally

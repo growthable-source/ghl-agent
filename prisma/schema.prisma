@@ -2043,6 +2043,10 @@ model Brand {
   // + the brand logo on each conversation row makes routing obvious.
   logoUrl      String?
   primaryColor String?
+  // Optional login URL for this brand's own platform (CRM, dashboard,
+  // etc.). Surfaced in the inbox as a quick "Open login" button so
+  // agents can jump to the right place fast. Generic — no vendor brand.
+  loginUrl     String?
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
   widgets      ChatWidget[]
