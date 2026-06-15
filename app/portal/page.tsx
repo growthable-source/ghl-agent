@@ -2,158 +2,241 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
+import { relTime } from '@/components/inbox/conversation-helpers'
 
 export const dynamic = 'force-dynamic'
 
-export default async function PortalHome() {
+export const metadata = {
+  title: 'Operations Overview · Customer Portal',
+  robots: { index: false, follow: false },
+}
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i)
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+export default async function PortalOverview() {
   const session = await getPortalSession()
   if (!session) redirect('/portal/login')
 
-  // Empty assignment set = nothing to show. Friendly state instead of
-  // a broken page.
   if (session.brandIds.length === 0) {
     return (
-      <div className="p-10 max-w-3xl">
-        <h1 className="text-2xl font-semibold text-white">Welcome</h1>
-        <p className="text-sm text-zinc-400 mt-2">
-          Your account doesn't have any brands assigned yet. Once your account contact assigns
-          brands to you, conversations and CSAT data will appear here.
-        </p>
+      <div className="p-8 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-semibold text-white">Operations Overview</h1>
+        <p className="text-sm text-zinc-400 mt-2">No brands are assigned to your account yet — metrics will appear here once they are.</p>
       </div>
     )
   }
 
-  // Resolve the widgets attached to the user's brands. We need widgetIds
-  // for the conversation count query below, and (brandId → widgetIds)
-  // for the per-brand breakdown.
-  const widgets = await db.chatWidget.findMany({
-    where: { brandId: { in: session.brandIds } },
-    select: { id: true, brandId: true },
-  })
-  const widgetIds = widgets.map(w => w.id)
-  const widgetIdsByBrand = new Map<string, string[]>()
-  for (const w of widgets) {
-    if (!w.brandId) continue
-    const arr = widgetIdsByBrand.get(w.brandId) ?? []
-    arr.push(w.id)
-    widgetIdsByBrand.set(w.brandId, arr)
-  }
-
-  const since30d = new Date(Date.now() - 30 * 86_400_000)
-
   const brands = await db.brand.findMany({
     where: { id: { in: session.brandIds } },
-    select: { id: true, name: true, slug: true, logoUrl: true, primaryColor: true },
-    orderBy: { name: 'asc' },
+    select: { id: true, workspaceId: true },
   })
+  const workspaceIds = Array.from(new Set(brands.map(b => b.workspaceId)))
+  const widgets = await db.chatWidget.findMany({
+    where: { brandId: { in: session.brandIds } },
+    select: { id: true },
+  })
+  const widgetIds = widgets.map(w => w.id)
+  const since30d = new Date(Date.now() - 30 * 86_400_000)
+  const base = { widgetId: { in: widgetIds } }
 
-  // Per-brand stats for the dashboard cards. Run in parallel — even
-  // with many brands this is cheap.
-  const stats = await Promise.all(
-    brands.map(async b => {
-      const ids = widgetIdsByBrand.get(b.id) ?? []
-      if (ids.length === 0) {
-        return { brand: b, total: 0, recent: 0, csatAvg: null as number | null, csatCount: 0 }
-      }
-      const [total, recent, csat] = await Promise.all([
-        db.widgetConversation.count({ where: { widgetId: { in: ids } } }),
-        db.widgetConversation.count({ where: { widgetId: { in: ids }, lastMessageAt: { gte: since30d } } }),
-        db.widgetConversation.aggregate({
-          where: { widgetId: { in: ids }, csatRating: { not: null } },
-          _avg: { csatRating: true },
-          _count: { csatRating: true },
+  const [
+    activeCount, endedRecent, csatAgg, agentsOnline, agentsTotal,
+    heatRows, liveFeed, topAgentGroups, voiceCount, ended30, total30,
+  ] = widgetIds.length === 0
+    ? [0, [], { _avg: { csatRating: null }, _count: { csatRating: 0 } }, 0, 0, [], [], [], 0, 0, 0]
+    : await Promise.all([
+        db.widgetConversation.count({ where: { ...base, status: 'active' } }),
+        db.widgetConversation.findMany({
+          where: { ...base, status: 'ended', assignedAt: { not: null } },
+          select: { assignedAt: true, lastMessageAt: true },
+          orderBy: { lastMessageAt: 'desc' }, take: 200,
         }),
+        db.widgetConversation.aggregate({ where: base, _avg: { csatRating: true }, _count: { csatRating: true } }),
+        db.workspaceMember.count({ where: { workspaceId: { in: workspaceIds }, isAvailable: true, role: { not: 'viewer' } } }),
+        db.workspaceMember.count({ where: { workspaceId: { in: workspaceIds }, role: { not: 'viewer' } } }),
+        db.widgetConversation.findMany({ where: { ...base, createdAt: { gte: since30d } }, select: { createdAt: true }, take: 6000 }),
+        db.widgetConversation.findMany({
+          where: { ...base, status: 'active' },
+          orderBy: { lastMessageAt: 'desc' }, take: 9,
+          select: { id: true, lastMessageAt: true, assignedUserId: true, visitor: { select: { name: true, email: true } }, _count: { select: { messages: true } } },
+        }),
+        db.widgetConversation.groupBy({ by: ['assignedUserId'], where: { ...base, assignedUserId: { not: null } }, _count: { _all: true }, orderBy: { _count: { assignedUserId: 'desc' } }, take: 5 }),
+        db.widgetConversation.count({ where: { ...base, voiceCalls: { some: {} } } }),
+        db.widgetConversation.count({ where: { ...base, status: 'ended', createdAt: { gte: since30d } } }),
+        db.widgetConversation.count({ where: { ...base, createdAt: { gte: since30d } } }),
       ])
-      return {
-        brand: b,
-        total,
-        recent,
-        csatAvg: csat._avg.csatRating,
-        csatCount: csat._count.csatRating,
-      }
-    }),
-  )
 
-  // Workspace-wide totals for the top strip.
-  const [totalConvs, totalCsat] = await Promise.all([
-    db.widgetConversation.count({ where: { widgetId: { in: widgetIds } } }),
-    db.widgetConversation.aggregate({
-      where: { widgetId: { in: widgetIds }, csatRating: { not: null } },
-      _avg: { csatRating: true },
-      _count: { csatRating: true },
-    }),
-  ])
+  // KPIs
+  const avgResSecs = endedRecent.length
+    ? endedRecent.reduce((s, c) => s + Math.max(0, (c.lastMessageAt.getTime() - (c.assignedAt as Date).getTime()) / 1000), 0) / endedRecent.length
+    : 0
+  const csatPct = csatAgg._avg.csatRating ? Math.round((csatAgg._avg.csatRating / 5) * 1000) / 10 : null
+  const resolutionRate = total30 > 0 ? Math.round((ended30 / total30) * 100) : 0
+  const voicePct = total30 > 0 ? Math.round((voiceCount / Math.max(total30, voiceCount)) * 100) : 0
+
+  // Density heatmap (day × hour)
+  const grid = DAYS.map(() => new Array(24).fill(0))
+  let maxCell = 1
+  for (const r of heatRows) {
+    const d = (r.createdAt.getDay() + 6) % 7 // Mon=0
+    const h = r.createdAt.getHours()
+    grid[d][h]++
+    if (grid[d][h] > maxCell) maxCell = grid[d][h]
+  }
+
+  // Top agents → names
+  const agentIds = topAgentGroups.map(g => g.assignedUserId).filter(Boolean) as string[]
+  const agentUsers = agentIds.length ? await db.user.findMany({ where: { id: { in: agentIds } }, select: { id: true, name: true, email: true } }) : []
+  const agentName = new Map(agentUsers.map(u => [u.id, u.name ?? u.email ?? 'Agent']))
 
   return (
-    <div className="p-8 max-w-5xl">
-      <h1 className="text-2xl font-semibold text-white">Overview</h1>
-      <p className="text-sm text-zinc-400 mt-1">
-        Conversations and CSAT for your assigned brands.
-      </p>
-
-      <div className="grid grid-cols-3 gap-3 mt-6">
-        <Stat label="Total conversations" value={totalConvs.toLocaleString()} />
-        <Stat
-          label="Avg CSAT"
-          value={totalCsat._avg.csatRating ? totalCsat._avg.csatRating.toFixed(2) + ' / 5' : '—'}
-          hint={`${totalCsat._count.csatRating} ratings`}
-        />
-        <Stat label="Brands" value={String(brands.length)} />
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Operations Overview</h1>
+          <p className="text-sm text-zinc-400 mt-1">Live support metrics across your brands · last 30 days.</p>
+        </div>
+        <Link href="/portal/conversations" className="px-3.5 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: 'var(--portal-accent)' }}>
+          View all conversations →
+        </Link>
       </div>
 
-      <h2 className="text-sm font-semibold text-zinc-300 mt-10 mb-3 uppercase tracking-wider">
-        Brands
-      </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {stats.map(s => (
-          <Link
-            key={s.brand.id}
-            href={`/portal/conversations?brand=${s.brand.slug}`}
-            className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/30 hover:border-zinc-700 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              {s.brand.logoUrl ? (
-                <img src={s.brand.logoUrl} alt="" className="h-8 w-8 rounded object-cover" />
-              ) : (
-                <div
-                  className="h-8 w-8 rounded"
-                  style={{ background: s.brand.primaryColor || '#3f3f46' }}
-                />
-              )}
-              <p className="text-zinc-100 font-medium">{s.brand.name}</p>
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+        <Kpi label="Active Chats" value={activeCount.toLocaleString()} tone="accent" />
+        <Kpi label="Avg Resolution" value={avgResSecs ? fmtDuration(avgResSecs) : '—'} />
+        <Kpi label="CSAT Score" value={csatPct != null ? `${csatPct}%` : '—'} tone="emerald" sub={`${csatAgg._count.csatRating.toLocaleString()} ratings`} />
+        <Kpi label="Agents Online" value={`${agentsOnline}`} sub={`of ${agentsTotal} on the team`} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+        {/* LEFT 2/3: telemetry + heatmap */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Global telemetry — geo data deferred (no IP→country enrichment yet) */}
+          <Panel title="Global Telemetry" right={<span className="text-[10px] text-zinc-500">by visitor location</span>}>
+            <div className="relative rounded-lg overflow-hidden h-56" style={{ background: 'var(--surface-secondary)' }}>
+              <div className="absolute inset-0 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(circle, var(--portal-accent) 1px, transparent 1px)', backgroundSize: '18px 18px' }} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+                <svg className="w-8 h-8 mb-2 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" /></svg>
+                <p className="text-xs text-zinc-400">Visitor map lights up once IP→geo enrichment is enabled.</p>
+                <p className="text-[10px] text-zinc-600 mt-1">We capture visitor IPs today; country/coords need a geo lookup — a quick follow-up.</p>
+              </div>
             </div>
-            <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
-              <Mini label="Total" value={s.total.toLocaleString()} />
-              <Mini label="Last 30d" value={s.recent.toLocaleString()} />
-              <Mini
-                label="CSAT"
-                value={s.csatAvg ? s.csatAvg.toFixed(2) : '—'}
-                hint={`${s.csatCount} ratings`}
-              />
+          </Panel>
+
+          {/* Operational density heatmap */}
+          <Panel title="Operational Density" right={<span className="text-[10px] text-zinc-500">conversations · day × hour</span>}>
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                <div className="flex">
+                  <div className="w-8" />
+                  {HOURS.map(h => (
+                    <div key={h} className="flex-1 text-center text-[8px] text-zinc-600">{h % 6 === 0 ? `${h}` : ''}</div>
+                  ))}
+                </div>
+                {grid.map((row, d) => (
+                  <div key={d} className="flex items-center">
+                    <div className="w-8 text-[9px] text-zinc-500">{DAYS[d]}</div>
+                    {row.map((v, h) => (
+                      <div key={h} className="flex-1 aspect-square m-[1px] rounded-[2px]" title={`${DAYS[d]} ${h}:00 — ${v}`}
+                        style={{ background: v === 0 ? 'var(--surface-tertiary)' : `color-mix(in srgb, var(--portal-accent) ${Math.round((v / maxCell) * 85) + 15}%, transparent)` }} />
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
-          </Link>
-        ))}
+          </Panel>
+
+          {/* Channel + SLA cards */}
+          <div className="grid grid-cols-2 gap-4">
+            <Panel title="Top Channel">
+              <p className="text-xl font-bold text-white">Live Chat</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">{voicePct > 0 ? `Voice handles ${voicePct}% of volume` : 'Primary support channel'}</p>
+            </Panel>
+            <Panel title="Resolution Rate" right={<span className="text-[10px] text-zinc-500">last 30d</span>}>
+              <p className="text-xl font-bold" style={{ color: 'var(--accent-emerald)' }}>{resolutionRate}%</p>
+              <div className="h-1.5 rounded-full mt-2 overflow-hidden" style={{ background: 'var(--surface-tertiary)' }}>
+                <div className="h-full rounded-full" style={{ width: `${resolutionRate}%`, background: 'var(--accent-emerald)' }} />
+              </div>
+            </Panel>
+          </div>
+        </div>
+
+        {/* RIGHT 1/3: live feed + top agents */}
+        <div className="space-y-4">
+          <Panel title="Active Chats" right={<span className="inline-flex items-center gap-1 text-[10px] text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />live</span>}>
+            {liveFeed.length === 0 ? (
+              <p className="text-xs text-zinc-500 py-4 text-center">No active chats right now.</p>
+            ) : (
+              <div className="space-y-1 -mx-1">
+                {liveFeed.map(c => (
+                  <Link key={c.id} href={`/portal/conversations/${c.id}`} className="flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg hover:bg-[var(--surface-secondary)] transition-colors">
+                    <span className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-[11px] font-semibold text-white" style={{ background: 'var(--portal-accent)' }}>
+                      {(c.visitor.name || c.visitor.email || 'V').charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-zinc-100 truncate">{c.visitor.name || c.visitor.email || 'Anonymous'}</p>
+                      <p className="text-[10px] text-zinc-500">{c._count.messages} msgs · {relTime(c.lastMessageAt.toISOString())}</p>
+                    </div>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0" style={c.assignedUserId ? { background: 'var(--accent-blue-bg)', color: 'var(--accent-blue)' } : { background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>
+                      {c.assignedUserId ? 'human' : 'AI'}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Top Agents — now">
+            {topAgentGroups.length === 0 ? (
+              <p className="text-xs text-zinc-500 py-2">No human-handled chats yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {topAgentGroups.map((g, i) => (
+                  <div key={g.assignedUserId} className="flex items-center gap-2.5">
+                    <span className="text-[10px] text-zinc-600 w-3">{i + 1}</span>
+                    <span className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold text-white" style={{ background: 'var(--accent-blue)' }}>
+                      {(agentName.get(g.assignedUserId!) || 'A').charAt(0).toUpperCase()}
+                    </span>
+                    <span className="text-xs text-zinc-200 flex-1 truncate">{agentName.get(g.assignedUserId!)}</span>
+                    <span className="text-xs font-semibold text-zinc-400">{g._count._all}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
       </div>
     </div>
   )
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function fmtDuration(secs: number): string {
+  const m = Math.floor(secs / 60)
+  const s = Math.round(secs % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function Kpi({ label, value, sub, tone = 'default' }: { label: string; value: string; sub?: string; tone?: 'default' | 'emerald' | 'accent' }) {
+  const color = tone === 'emerald' ? 'var(--accent-emerald)' : tone === 'accent' ? 'var(--portal-accent)' : 'var(--text-primary)'
   return (
-    <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/30">
-      <p className="text-[11px] text-zinc-500 uppercase tracking-wider">{label}</p>
-      <p className="text-2xl text-zinc-100 mt-1">{value}</p>
-      {hint && <p className="text-[11px] text-zinc-600 mt-0.5">{hint}</p>}
+    <div className="rounded-xl border border-zinc-800 p-4" style={{ background: 'var(--surface)' }}>
+      <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">{label}</p>
+      <p className="text-2xl font-bold mt-1" style={{ color }}>{value}</p>
+      {sub && <p className="text-[10px] text-zinc-500 mt-0.5">{sub}</p>}
     </div>
   )
 }
 
-function Mini({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Panel({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{label}</p>
-      <p className="text-sm text-zinc-200">{value}</p>
-      {hint && <p className="text-[10px] text-zinc-600">{hint}</p>}
+    <div className="rounded-xl border border-zinc-800 p-4" style={{ background: 'var(--surface)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">{title}</p>
+        {right}
+      </div>
+      {children}
     </div>
   )
 }

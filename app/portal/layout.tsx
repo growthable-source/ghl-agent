@@ -73,8 +73,11 @@ export default async function PortalLayout({ children }: { children: React.React
           <p className="text-sm font-medium text-zinc-100 truncate">{portal?.name ?? 'Portal'}</p>
         </div>
         <nav className="flex-1 p-2 space-y-0.5 text-sm">
-          <NavLink href="/portal" label="Overview" />
-          <NavLink href="/portal/conversations" label="Conversations" />
+          <NavLink href="/portal" label="Overview" icon="grid" />
+          <NavLink href="/portal/conversations" label="Live Chats" icon="chat" />
+          <NavLink href="/portal/tickets" label="Tickets" icon="ticket" />
+          <NavLink href="/portal/reports" label="Reports" icon="chart" />
+          <NavLink href="/portal/settings" label="Settings" icon="gear" />
           {brands.length > 0 && (
             <div className="pt-3 mt-2 border-t border-zinc-800">
               <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -108,12 +111,25 @@ export default async function PortalLayout({ children }: { children: React.React
   )
 }
 
-function NavLink({ href, label }: { href: string; label: string }) {
+const NAV_ICONS: Record<string, React.ReactNode> = {
+  grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+  chat: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+  ticket: <><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z" /><path d="M13 5v14" strokeDasharray="2 2" /></>,
+  chart: <><path d="M3 3v18h18" /><path d="M7 14l3-4 3 3 4-6" /></>,
+  gear: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
+}
+
+function NavLink({ href, label, icon }: { href: string; label: string; icon?: string }) {
   return (
     <Link
       href={href}
-      className="block px-3 py-1.5 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
     >
+      {icon && (
+        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {NAV_ICONS[icon]}
+        </svg>
+      )}
       {label}
     </Link>
   )
