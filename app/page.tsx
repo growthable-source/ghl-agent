@@ -1,8 +1,16 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import VoxilityLogo from '@/components/VoxilityLogo'
+import AnnouncementBar from '@/components/landing/AnnouncementBar'
+import EmailCaptureForm from '@/components/landing/EmailCaptureForm'
+import MeetingDemoModal from '@/components/landing/MeetingDemoModal'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+
+// Public demo agent ("Harry") — drives the Co-Pilot "try it" CTAs. Its
+// publicKey gates the screen-share link (/copilot/live/<key>) and the demo
+// meeting endpoint (/api/copilot/public/<key>/meeting).
+const DEMO_PUBLIC_KEY = 'cpa_eULDA-kRF2FPObVnzdRQNS49'
 
 // ────────────────────────────────────────────────────────────────────────
 // JSON-LD structured data
@@ -46,8 +54,11 @@ const SOFTWARE_SCHEMA = {
   },
   featureList: [
     'Voice AI for inbound and outbound calls',
+    'Co-Pilot: screen-aware AI that joins live Google Meet, Zoom, and Teams calls',
     'SMS, email, WhatsApp, Instagram, Facebook, Google Business, and live chat',
+    'Live chat with human handoff, wait estimates, and a queue',
     'Native LeadConnector and HubSpot CRM integration',
+    'Shopify commerce: product search and checkout inside the conversation',
     'Real-time appointment booking',
     'Simulation Swarm testing against 7 customer personas',
     'Auto-applied prompt improvements from every conversation',
@@ -227,40 +238,42 @@ function ChevronIcon({ className = 'w-4 h-4' }: { className?: string }) {
 /* ─── FAQ Accordion (pure CSS) ─── */
 function FAQItem({ q, a }: { q: string; a: string }) {
   return (
-    <details className="group border-b border-[#121a2b] last:border-0">
-      <summary className="flex items-center justify-between cursor-pointer py-5 text-[#f8fafc] font-semibold text-[0.9375rem] list-none [&::-webkit-details-marker]:hidden">
+    <details className="group border-b border-[var(--border)] last:border-0">
+      <summary className="flex items-center justify-between cursor-pointer py-5 text-[var(--text-primary)] font-semibold text-[0.9375rem] list-none [&::-webkit-details-marker]:hidden">
         {q}
-        <ChevronIcon className="w-4 h-4 text-[#94a3b8] transition-transform group-open:rotate-180" />
+        <ChevronIcon className="w-4 h-4 text-[var(--text-secondary)] transition-transform group-open:rotate-180" />
       </summary>
-      <p className="pb-5 text-[#94a3b8] text-[0.9375rem] leading-[1.65]">{a}</p>
+      <p className="pb-5 text-[var(--text-secondary)] text-[0.9375rem] leading-[1.65]">{a}</p>
     </details>
   )
 }
 
 export default function LandingPage() {
-  // data-theme="midnight" pins this subtree to the dark CSS-variable
-  // values (--gradient-card, --text-primary, etc.) so .vox-card and
-  // friends render correctly regardless of the global theme. Without
-  // this the landing page's white text rendered onto cream cards from
-  // the soft-light :root defaults — invisible.
+  // data-theme="soft-light" pins this subtree to the LIGHT palette so the
+  // page renders consistently regardless of the visitor's global theme.
+  // Every color below uses a theme token (var(--…)) — never hardcoded hex —
+  // so contrast stays correct on the cream background. The .vox-card /
+  // .btn-* / .icon-box classes already resolve their own per-theme values.
   return (
-    <div data-theme="midnight" className="min-h-screen overflow-hidden" style={{ background: '#05080f', color: '#f8fafc' }}>
+    <div data-theme="soft-light" className="min-h-screen overflow-hidden" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
+
+      <AnnouncementBar />
 
       {/* ═══ Sticky Nav ═══ */}
-      <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(5,8,15,0.92)', borderColor: 'rgba(18,26,43,0.8)' }}>
+      <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(248,247,244,0.85)', borderColor: 'var(--border)' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between px-6 h-16">
           <Link href="/" className="flex items-center">
             <VoxilityLogo height={28} />
           </Link>
           <div className="hidden md:flex items-center gap-8">
-            <a href="#learning-loop" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>The loop</a>
-            <a href="#features" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>Features</a>
-            <a href="#how-it-works" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>How it works</a>
-            <a href="#use-cases" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>Use cases</a>
-            <a href="#faq" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>FAQ</a>
+            <a href="#learning-loop" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>The loop</a>
+            <a href="#features" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>Features</a>
+            <a href="#how-it-works" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>How it works</a>
+            <a href="#use-cases" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>Use cases</a>
+            <a href="#faq" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>FAQ</a>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/login" className="text-sm font-medium transition-colors hover:text-white" style={{ color: '#94a3b8' }}>Log in</Link>
+            <Link href="/login" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>Log in</Link>
             <Link href="/login?mode=signup" className="btn-primary text-sm py-2 px-5">Get started</Link>
           </div>
         </div>
@@ -277,7 +290,7 @@ export default function LandingPage() {
             <h1 className="font-extrabold tracking-tight leading-[1.05] mb-6" style={{ fontSize: 'clamp(2.25rem, 5.5vw, 4rem)' }}>
               Every lead, answered. Every demo, <span className="text-gradient">booked</span>.
             </h1>
-            <p className="mb-10 leading-[1.65]" style={{ color: '#94a3b8', fontSize: '1.125rem' }}>
+            <p className="mb-10 leading-[1.65]" style={{ color: 'var(--text-secondary)', fontSize: '1.125rem' }}>
               Your team shouldn&apos;t be answering the same questions at 11pm. Voxility runs AI agents that handle inbound calls, texts, and chats end-to-end — qualifying every lead, booking demos mid-conversation, and getting measurably smarter from every interaction. Plugs into your existing tools in one click. Live in five minutes.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-4">
@@ -289,7 +302,7 @@ export default function LandingPage() {
                 See how it learns
               </a>
             </div>
-            <p className="mt-6 text-xs" style={{ color: '#64748b' }}>
+            <p className="mt-6 text-xs" style={{ color: 'var(--text-tertiary)' }}>
               One-click install · Live in under 5 minutes · Free while in beta
             </p>
           </div>
@@ -298,7 +311,7 @@ export default function LandingPage() {
               primary keyword weight — decorative images on landing
               pages are a missed-signal. Describe what the image is about
               AND reinforce the page's main topic. */}
-          <div className="relative aspect-square w-full max-w-[520px] mx-auto md:ml-auto">
+          <div className="relative aspect-square w-full max-w-[520px] mx-auto md:ml-auto rounded-3xl overflow-hidden" style={{ border: '1px solid var(--border)', boxShadow: '0 24px 60px -24px rgba(0,0,0,0.18)' }}>
             <Image
               src="/landing/hero-network.png"
               alt="Voxility — conversational AI agent platform for sales and marketing teams"
@@ -312,7 +325,7 @@ export default function LandingPage() {
       </section>
 
       {/* ═══ Stats strip ═══ */}
-      <section className="border-y py-14 px-6" style={{ borderColor: '#121a2b' }}>
+      <section className="border-y py-14 px-6" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-[1280px] mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {[
             { value: '7', label: 'Personas tested per swarm' },
@@ -322,9 +335,47 @@ export default function LandingPage() {
           ].map((s) => (
             <div key={s.label}>
               <div className="stat-value mb-2">{s.value}</div>
-              <div className="text-xs font-medium" style={{ color: '#64748b' }}>{s.label}</div>
+              <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>{s.label}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ═══ Co-Pilot — marquee new feature ═══ */}
+      <section id="copilot" className="py-24 px-6 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(232,68,37,0.07), transparent 60%)' }} />
+        <div className="relative z-10 max-w-[1280px] mx-auto">
+          <div className="text-center mb-12">
+            <span className="section-label inline-block mb-4">New — Co-Pilot</span>
+            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">Your AI, right there on the call.</h2>
+            <p className="max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
+              Co-Pilot watches a shared screen and talks your customer through it in real time — and it can join your Google
+              Meet, Zoom, or Teams call as a participant. Onboarding, support, and live demos, handled.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-4 max-w-4xl mx-auto mb-10">
+            {[
+              { icon: <SparkIcon className="w-4 h-4" />, title: 'Sees the screen', body: 'Guides the user through your product live, step by step.' },
+              { icon: <PhoneIcon className="w-4 h-4" />, title: 'Joins the meeting', body: 'Drop it into a Meet, Zoom, or Teams call as a real participant.' },
+              { icon: <BoltIcon className="w-4 h-4" />, title: 'Learns each call', body: 'Every session can teach the agent to handle the next one better.' },
+            ].map((k) => (
+              <div key={k.title} className="vox-card p-6">
+                <div className="icon-box mb-4">{k.icon}</div>
+                <h3 className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{k.title}</h3>
+                <p className="text-sm leading-[1.6]" style={{ color: 'var(--text-secondary)' }}>{k.body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link href={`/copilot/live/${DEMO_PUBLIC_KEY}`} className="btn-primary">
+              Try the live demo
+              <ArrowIcon />
+            </Link>
+            <MeetingDemoModal publicKey={DEMO_PUBLIC_KEY} />
+          </div>
+          <p className="text-center mt-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            No signup · Capped at 10 minutes · Share your screen or drop it into a meeting
+          </p>
         </div>
       </section>
 
@@ -334,46 +385,46 @@ export default function LandingPage() {
           <span className="section-label inline-block mb-3">A real call</span>
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight">This is what a Voxility agent sounds like.</h2>
         </div>
-        <div className="vox-card overflow-hidden" style={{ boxShadow: '0 4px 40px rgba(0,0,0,0.4)' }}>
-          <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: '#121a2b' }}>
+        <div className="vox-card overflow-hidden" style={{ boxShadow: '0 4px 40px rgba(0,0,0,0.08)' }}>
+          <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
             <div className="flex gap-1.5">
-              <div className="w-3 h-3 rounded-full" style={{ background: '#1a2540' }} />
-              <div className="w-3 h-3 rounded-full" style={{ background: '#1a2540' }} />
-              <div className="w-3 h-3 rounded-full" style={{ background: '#1a2540' }} />
+              <div className="w-3 h-3 rounded-full" style={{ background: 'var(--surface-tertiary)' }} />
+              <div className="w-3 h-3 rounded-full" style={{ background: 'var(--surface-tertiary)' }} />
+              <div className="w-3 h-3 rounded-full" style={{ background: 'var(--surface-tertiary)' }} />
             </div>
-            <div className="flex items-center gap-2 text-xs" style={{ color: '#64748b' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
               <WaveformIcon className="w-4 h-4" />
               <span>Live call — Sarah (Inbound)</span>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#16a249' }} />
-              <span className="text-xs" style={{ color: '#16a249' }}>Recording</span>
+              <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--accent-emerald)' }} />
+              <span className="text-xs" style={{ color: 'var(--accent-emerald)' }}>Recording</span>
             </div>
           </div>
           <div className="p-6 space-y-5 text-sm" style={{ fontFamily: 'var(--font-dm-mono), monospace' }}>
             <div className="flex gap-3">
-              <span className="shrink-0 w-16 text-right font-medium" style={{ color: '#60a5fa' }}>Caller</span>
-              <span style={{ color: '#94a3b8' }}>Hi, I saw your ad about the kitchen remodel special. Is that still going on?</span>
+              <span className="shrink-0 w-16 text-right font-medium" style={{ color: 'var(--accent-blue)' }}>Caller</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Hi, I saw your ad about the kitchen remodel special. Is that still going on?</span>
             </div>
             <div className="flex gap-3">
-              <span className="shrink-0 w-16 text-right font-medium" style={{ color: '#fa4d2e' }}>Agent</span>
-              <span style={{ color: '#f8fafc' }}>Absolutely. The spring special runs through April — 15% off full kitchen remodels. Mind if I ask a couple of questions to see what we can do for you?</span>
+              <span className="shrink-0 w-16 text-right font-medium" style={{ color: 'var(--accent-primary)' }}>Agent</span>
+              <span style={{ color: 'var(--text-primary)' }}>Absolutely. The spring special runs through April — 15% off full kitchen remodels. Mind if I ask a couple of questions to see what we can do for you?</span>
             </div>
             <div className="flex gap-3">
-              <span className="shrink-0 w-16 text-right font-medium" style={{ color: '#60a5fa' }}>Caller</span>
-              <span style={{ color: '#94a3b8' }}>Sure, go ahead.</span>
+              <span className="shrink-0 w-16 text-right font-medium" style={{ color: 'var(--accent-blue)' }}>Caller</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Sure, go ahead.</span>
             </div>
             <div className="flex gap-3">
-              <span className="shrink-0 w-16 text-right font-medium" style={{ color: '#fa4d2e' }}>Agent</span>
-              <span style={{ color: '#f8fafc' }}>What&apos;s your timeline looking like — hoping to start in the next month or two?</span>
+              <span className="shrink-0 w-16 text-right font-medium" style={{ color: 'var(--accent-primary)' }}>Agent</span>
+              <span style={{ color: 'var(--text-primary)' }}>What&apos;s your timeline looking like — hoping to start in the next month or two?</span>
             </div>
             <div className="flex gap-3">
-              <span className="shrink-0 w-16 text-right font-medium" style={{ color: '#60a5fa' }}>Caller</span>
-              <span style={{ color: '#94a3b8' }}>Yeah, ideally next month. We already have a design in mind.</span>
+              <span className="shrink-0 w-16 text-right font-medium" style={{ color: 'var(--accent-blue)' }}>Caller</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Yeah, ideally next month. We already have a design in mind.</span>
             </div>
             <div className="flex gap-3">
-              <span className="shrink-0 w-16 text-right font-medium" style={{ color: '#fa4d2e' }}>Agent</span>
-              <span style={{ color: '#f8fafc' }}>
+              <span className="shrink-0 w-16 text-right font-medium" style={{ color: 'var(--accent-primary)' }}>Agent</span>
+              <span style={{ color: 'var(--text-primary)' }}>
                 Perfect. I have availability this Thursday at 2 PM or Friday at 10 AM for a consultation. Which works better?
               </span>
             </div>
@@ -394,14 +445,14 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <span className="section-label inline-block mb-4">The learning loop</span>
             <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">It starts good. It gets better. Automatically.</h2>
-            <p className="max-w-2xl mx-auto" style={{ color: '#94a3b8', fontSize: '1.0625rem' }}>
+            <p className="max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
               Every AI agent claims it&apos;s &ldquo;powered by GPT-X.&rdquo; Ours actually improves. Here&apos;s how.
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-10 items-center">
             {/* Left: generated loop illustration */}
-            <div className="relative aspect-square w-full max-w-[480px] mx-auto md:mx-0">
+            <div className="relative aspect-square w-full max-w-[480px] mx-auto md:mx-0 rounded-3xl overflow-hidden" style={{ border: '1px solid var(--border)', boxShadow: '0 24px 60px -24px rgba(0,0,0,0.18)' }}>
               <Image
                 src="/landing/learning-loop.png"
                 alt="Self-improving AI agent feedback loop — review, refine, apply, repeat"
@@ -436,12 +487,12 @@ export default function LandingPage() {
                 },
               ].map((item) => (
                 <div key={item.step} className="flex gap-4">
-                  <div className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold" style={{ background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' }}>
+                  <div className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold" style={{ background: 'rgba(250,77,46,0.12)', color: 'var(--accent-primary)' }}>
                     {item.step}
                   </div>
                   <div>
-                    <h3 className="font-semibold mb-1" style={{ color: '#f8fafc' }}>{item.title}</h3>
-                    <p className="text-sm leading-[1.65]" style={{ color: '#94a3b8' }}>{item.body}</p>
+                    <h3 className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{item.title}</h3>
+                    <p className="text-sm leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>{item.body}</p>
                   </div>
                 </div>
               ))}
@@ -453,7 +504,7 @@ export default function LandingPage() {
       {/* ═══ Simulation Swarm callout ═══ */}
       <section className="py-20 px-6">
         <div className="max-w-[1280px] mx-auto">
-          <div className="vox-card p-10 md:p-14 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #090d15 0%, #0f1524 100%)' }}>
+          <div className="vox-card p-10 md:p-14 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, var(--surface) 0%, var(--surface-secondary) 100%)' }}>
             <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(250,77,46,0.12), transparent 70%)' }} />
             <div className="relative z-10 max-w-3xl">
               <span className="inline-flex items-center gap-2 section-label mb-4">
@@ -463,8 +514,8 @@ export default function LandingPage() {
               <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-5">
                 Test your agent against <span className="text-gradient">every personality type</span> — in one click.
               </h2>
-              <p className="text-[0.9375rem] md:text-base leading-[1.65] mb-8" style={{ color: '#94a3b8' }}>
-                <strong style={{ color: '#f8fafc' }}>Simulation Swarm</strong> spins up seven parallel conversations against your agent, each with a different persona — friendly, aggressive, passive, skeptical, confused, ready-to-buy, price-shopper. Each one reacts to the same scenario in their own style. Your agent has to handle all of them.
+              <p className="text-[0.9375rem] md:text-base leading-[1.65] mb-8" style={{ color: 'var(--text-secondary)' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>Simulation Swarm</strong> spins up seven parallel conversations against your agent, each with a different persona — friendly, aggressive, passive, skeptical, confused, ready-to-buy, price-shopper. Each one reacts to the same scenario in their own style. Your agent has to handle all of them.
               </p>
               <div className="grid sm:grid-cols-3 gap-6 mb-8">
                 {[
@@ -476,7 +527,7 @@ export default function LandingPage() {
                     <div className="icon-box shrink-0" style={{ width: '2rem', height: '2rem' }}>
                       {k.icon}
                     </div>
-                    <span className="text-sm pt-1" style={{ color: '#94a3b8' }}>{k.label}</span>
+                    <span className="text-sm pt-1" style={{ color: 'var(--text-secondary)' }}>{k.label}</span>
                   </div>
                 ))}
               </div>
@@ -495,105 +546,170 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <span className="section-label inline-block mb-4">Features</span>
             <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Everything the agent does</h2>
-            <p style={{ color: '#94a3b8', fontSize: '1.0625rem' }}>One platform replacing a team of SDRs, receptionists, and follow-up assistants — and it gets better at the job over time.</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>One platform replacing a team of SDRs, receptionists, and follow-up assistants — and it gets better at the job over time.</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="vox-card p-7">
+              <div className="icon-box mb-5"><SparkIcon /></div>
+              <h3 className="text-lg font-semibold mb-2">Co-Pilot on live calls</h3>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
+                A screen-aware AI that guides customers in real time and joins your Google Meet, Zoom, or Teams calls as a participant — for onboarding, support, and live demos.
+              </p>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Shared-screen guidance</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Joins live meetings</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Learns from each session</li>
+              </ul>
+            </div>
+
+            <div className="vox-card p-7">
+              <div className="icon-box mb-5"><MessageIcon /></div>
+              <h3 className="text-lg font-semibold mb-2">Live chat + human queue</h3>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
+                The AI handles chat, then hands off to your team with routing, a real wait estimate, and a while-you-wait mini-game — so nobody bounces while they hold.
+              </p>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Smart handoff + routing</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Position + wait estimate</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />AI keeps helping in queue</li>
+              </ul>
+            </div>
+
+            <div className="vox-card p-7">
+              <div className="icon-box mb-5"><BoltIcon /></div>
+              <h3 className="text-lg font-semibold mb-2">Commerce, in the conversation</h3>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
+                Connect your store and the agent searches your live catalog, checks stock, tracks orders, and sends a one-tap checkout link — right inside the chat.
+              </p>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Live product + stock lookup</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Order tracking + checkout</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />On-the-fly discount codes</li>
+              </ul>
+            </div>
+
+            <div className="vox-card p-7">
+              <div className="icon-box mb-5"><BeakerIcon /></div>
+              <h3 className="text-lg font-semibold mb-2">Knows your business</h3>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
+                Feed it your website, documents, and live data sources. The agent answers from what you taught it — and stays grounded instead of guessing.
+              </p>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Sites, docs + live feeds</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Grounded, cited answers</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Test what it retrieves</li>
+              </ul>
+            </div>
+
+            <div className="vox-card p-7">
+              <div className="icon-box mb-5"><CrmIcon /></div>
+              <h3 className="text-lg font-semibold mb-2">White-label portals</h3>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
+                Give every client their own branded portal on a custom domain — your logo, your colors. Built for agencies reselling under their own name.
+              </p>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Custom domains</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Per-brand logo + colors</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Agency-ready</li>
+              </ul>
+            </div>
+
+            <div className="vox-card p-7">
               <div className="icon-box mb-5"><PhoneIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Voice AI</h3>
-              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
                 Answers inbound calls and places outbound ones through your CRM workflows. Handles objections, qualifies in plain English, books during the call.
               </p>
-              <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />100+ ElevenLabs voices</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />In-browser test calls</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Full transcript + recording</li>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />100+ ElevenLabs voices</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />In-browser test calls</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Full transcript + recording</li>
               </ul>
             </div>
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><MessageIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Multi-channel messaging</h3>
-              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
                 SMS, email, Instagram, Facebook, Google Business, WhatsApp, and live chat. One agent brain, full conversation memory across channels.
               </p>
-              <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />7 channels, single agent</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Conversations sync to CRM</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Auto follow-ups + drips</li>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />7 channels, single agent</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Conversations sync to CRM</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Auto follow-ups + drips</li>
               </ul>
             </div>
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><BeakerIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Simulations + swarms</h3>
-              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
                 Pressure-test every new agent configuration against synthetic customers before a real one calls. Run a single persona or a full swarm.
               </p>
-              <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />7 persona styles built-in</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Auto-review after each run</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Findings apply to your prompt</li>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />7 persona styles built-in</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Auto-review after each run</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Findings apply to your prompt</li>
               </ul>
             </div>
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><ChartIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Lead qualification + scoring</h3>
-              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
                 Define qualifying questions in plain English. Answers map to CRM fields and lead scores. Hot leads get tagged, moved through pipelines, and flagged.
               </p>
-              <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Custom questions per agent</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Automatic scoring + tagging</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Pipeline stage changes</li>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Custom questions per agent</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Automatic scoring + tagging</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Pipeline stage changes</li>
               </ul>
             </div>
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><CalendarIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Appointment booking</h3>
-              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
                 Checks real-time availability and books mid-conversation. Works with your CRM calendar. Confirmations and reminders go out automatically.
               </p>
-              <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Live availability checking</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Books during calls or texts</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Timezone-aware scheduling</li>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Live availability checking</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Books during calls or texts</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Timezone-aware scheduling</li>
               </ul>
             </div>
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><CrmIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Plugs into your existing stack</h3>
-              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
                 Install from the LeadConnector marketplace or connect HubSpot in one click. Agents read and write your CRM natively — tag contacts, update custom fields, move pipeline stages, enroll in workflows, log every interaction. No Zapier glue, no engineering ticket.
               </p>
-              <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />LeadConnector marketplace install</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Native HubSpot integration</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Full audit trail</li>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />LeadConnector marketplace install</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Native HubSpot integration</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Full audit trail</li>
               </ul>
             </div>
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><SparkIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Inline feedback</h3>
-              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
                 See a reply you don&apos;t like in the playground? Thumbs down, add a note — the agent&apos;s prompt updates before the next turn. The fastest feedback loop in conversational AI.
               </p>
-              <ul className="space-y-2 text-sm" style={{ color: '#94a3b8' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Per-reply thumbs</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Narrative → learning</li>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: '#16a249' }} />Retire if it misses</li>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Per-reply thumbs</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Narrative → learning</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Retire if it misses</li>
               </ul>
             </div>
 
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><BoltIcon /></div>
               <h3 className="text-lg font-semibold mb-2">26+ CRM-native tools</h3>
-              <p className="text-[0.9375rem] leading-[1.65]" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
                 Agents don&apos;t just talk — they act. Book appointments, check calendars, tag contacts, update pipelines, enroll in workflows, create tasks, transfer to a human, schedule follow-ups. All mid-conversation.
               </p>
             </div>
@@ -601,7 +717,7 @@ export default function LandingPage() {
             <div className="vox-card p-7">
               <div className="icon-box mb-5"><WaveformIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Approval + audit, built-in</h3>
-              <p className="text-[0.9375rem] leading-[1.65]" style={{ color: '#94a3b8' }}>
+              <p className="text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
                 Optional human-approval queue for sensitive replies. Every action the agent takes is logged. Every prompt change is versioned. You&apos;re always in control.
               </p>
             </div>
@@ -618,7 +734,7 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <span className="section-label inline-block mb-4">How it works</span>
             <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Four steps. One afternoon.</h2>
-            <p style={{ color: '#94a3b8', fontSize: '1.0625rem' }}>No developers. No month-long setup. No integration fees.</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>No developers. No month-long setup. No integration fees.</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -631,7 +747,7 @@ export default function LandingPage() {
               <div key={item.step} className="vox-card p-7">
                 <div className="stat-value mb-4" style={{ fontSize: '1.75rem' }}>{item.step}</div>
                 <h3 className="text-[0.9375rem] font-semibold mb-2">{item.title}</h3>
-                <p className="text-sm leading-[1.65]" style={{ color: '#94a3b8' }}>{item.desc}</p>
+                <p className="text-sm leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>{item.desc}</p>
               </div>
             ))}
           </div>
@@ -641,24 +757,24 @@ export default function LandingPage() {
       {/* ═══ Why Voxility ═══ */}
       <section className="py-8 px-6">
         <div className="max-w-[1280px] mx-auto">
-          <div className="vox-card p-10 md:p-16" style={{ background: 'linear-gradient(135deg, #090d15 0%, #0f1524 100%)' }}>
+          <div className="vox-card p-10 md:p-16" style={{ background: 'linear-gradient(135deg, var(--surface) 0%, var(--surface-secondary) 100%)' }}>
             <div className="max-w-3xl">
               <span className="section-label inline-block mb-4">Why Voxility</span>
               <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">
                 This isn&apos;t a chatbot with a phone number.
               </h2>
-              <div className="space-y-4 text-[0.9375rem] leading-[1.65]" style={{ color: '#94a3b8' }}>
+              <div className="space-y-4 text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
                 <p>
                   Most &ldquo;AI voice&rdquo; products give you a script reader that falls apart the moment a customer asks a real question. The fix has always been the same: stop the agent, edit the prompt, redeploy, pray.
                 </p>
                 <p>
-                  Voxility agents are different. They know your business because you teach them — with a knowledge base, qualifying questions, and a persona that matches your brand. They have <strong style={{ color: '#f8fafc' }}>26+ CRM-native tools</strong> to actually do things: check calendars, book appointments, tag leads, send texts, update pipelines.
+                  Voxility agents are different. They know your business because you teach them — with a knowledge base, qualifying questions, and a persona that matches your brand. They have <strong style={{ color: 'var(--text-primary)' }}>26+ CRM-native tools</strong> to actually do things: check calendars, book appointments, tag leads, send texts, update pipelines.
                 </p>
                 <p>
                   And every single conversation makes them better. A dedicated AI reviewer audits every call, every text exchange, and every simulation — proposing concrete prompt improvements that apply to the live agent in about thirty seconds. Tomorrow&apos;s agent is measurably sharper than today&apos;s, without you opening a single settings page.
                 </p>
                 <p>
-                  That&apos;s the bet. Agents that start good. Get better. <span className="font-semibold" style={{ color: '#f8fafc' }}>Every single day.</span>
+                  That&apos;s the bet. Agents that start good. Get better. <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>Every single day.</span>
                 </p>
               </div>
             </div>
@@ -671,7 +787,7 @@ export default function LandingPage() {
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 50% 50%, rgba(250,77,46,0.06), transparent 70%)' }} />
         <div className="relative z-10 max-w-3xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-4">Ready to stop missing calls?</h2>
-          <p className="mb-8 text-[0.9375rem]" style={{ color: '#94a3b8' }}>Build your first AI agent in under 5 minutes. Free while in beta.</p>
+          <p className="mb-8 text-[0.9375rem]" style={{ color: 'var(--text-secondary)' }}>Build your first AI agent in under 5 minutes. Free while in beta.</p>
           <Link href="/login?mode=signup" className="btn-primary">
             Start building free
             <ArrowIcon />
@@ -697,7 +813,7 @@ export default function LandingPage() {
             ].map((uc) => (
               <div key={uc.title} className="vox-card p-7">
                 <h3 className="text-[0.9375rem] font-semibold mb-2">{uc.title}</h3>
-                <p className="text-sm leading-[1.65]" style={{ color: '#94a3b8' }}>{uc.desc}</p>
+                <p className="text-sm leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>{uc.desc}</p>
               </div>
             ))}
           </div>
@@ -752,6 +868,20 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ═══ Email capture — launch updates ═══ */}
+      <section className="py-16 px-6">
+        <div className="max-w-3xl mx-auto vox-card p-8 md:p-12 text-center">
+          <span className="section-label inline-block mb-3">Stay in the loop</span>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">Get product updates as we ship them.</h2>
+          <p className="mb-6 text-[0.9375rem] max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
+            New features land every week. Drop your email and we&apos;ll keep you posted — no spam, unsubscribe anytime.
+          </p>
+          <div className="flex justify-center">
+            <EmailCaptureForm source="homepage_band" cta="Keep me posted" />
+          </div>
+        </div>
+      </section>
+
       {/* ═══ Final CTA ═══ */}
       <section className="relative py-32 px-6">
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 50% 40%, rgba(250,77,46,0.1), transparent 60%)' }} />
@@ -761,7 +891,7 @@ export default function LandingPage() {
             Your agents should be smarter in a month.<br />
             <span className="text-gradient">Ours actually are.</span>
           </h2>
-          <p className="mb-10 text-[1.0625rem] leading-[1.65]" style={{ color: '#94a3b8' }}>
+          <p className="mb-10 text-[1.0625rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
             Build your first AI agent in under 5 minutes. Free while in beta.
           </p>
           <Link href="/login?mode=signup" className="btn-primary text-base py-3 px-8">
@@ -772,12 +902,21 @@ export default function LandingPage() {
       </section>
 
       {/* ═══ Footer ═══ */}
-      <footer className="border-t py-8 px-6" style={{ borderColor: '#121a2b' }}>
-        <div className="max-w-[1280px] mx-auto flex items-center justify-between text-xs" style={{ color: '#475569' }}>
-          <VoxilityLogo height={16} />
-          <div className="flex items-center gap-6">
-            <a href="https://voxility.canny.io" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Feedback</a>
-            <Link href="/login" className="hover:text-white transition-colors">Log in</Link>
+      <footer className="border-t py-10 px-6" style={{ borderColor: 'var(--border)' }}>
+        <div className="max-w-[1280px] mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 pb-8 mb-8 border-b" style={{ borderColor: 'var(--border)' }}>
+            <div>
+              <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Get launch updates</p>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>One short email when something worth knowing ships.</p>
+            </div>
+            <EmailCaptureForm source="footer" cta="Subscribe" />
+          </div>
+          <div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+            <VoxilityLogo height={16} />
+            <div className="flex items-center gap-6">
+              <a href="https://voxility.canny.io" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--text-primary)] transition-colors">Feedback</a>
+              <Link href="/login" className="hover:text-[var(--text-primary)] transition-colors">Log in</Link>
+            </div>
           </div>
         </div>
       </footer>

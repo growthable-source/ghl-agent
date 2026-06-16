@@ -4297,3 +4297,19 @@ model CopilotRecording {
 
   @@index([agentId])
 }
+
+/// Homepage / marketing-site email capture (launch updates, newsletter).
+/// Deliberately standalone — NOT tied to a Workspace or NativeContact, so
+/// the public marketing site never couples to a tenant. Written only by
+/// the unauthenticated POST /api/public/marketing-lead route.
+model MarketingLead {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String   @default("homepage")
+  utm       Json?
+  referrer  String?
+  ipHash    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

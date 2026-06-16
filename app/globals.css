@@ -288,7 +288,7 @@ body {
 
 /* Secondary / ghost button */
 .btn-secondary {
-  color: #f8fafc;
+  color: var(--text-primary, #f8fafc);
   cursor: pointer;
   background: transparent;
   border: 1px solid var(--border-secondary, #1f2b47);
