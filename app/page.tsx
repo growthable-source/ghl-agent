@@ -1,9 +1,14 @@
 import Image from 'next/image'
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
-import AnnouncementBar from '@/components/landing/AnnouncementBar'
+import MarketingNav from '@/components/landing/MarketingNav'
+import MarketingFooter from '@/components/landing/MarketingFooter'
 import EmailCaptureForm from '@/components/landing/EmailCaptureForm'
 import MeetingDemoModal from '@/components/landing/MeetingDemoModal'
+import DemoVideoDrawer from '@/components/landing/DemoVideoDrawer'
+import {
+  GoHighLevelIcon, HubSpotIcon, ShopifyIcon, VapiIcon, TwilioIcon, CalendlyIcon,
+  CalcomIcon, StripeIcon, FacebookIcon, InstagramIcon, GoogleIcon, WhatsAppIcon,
+} from '@/components/icons/brand-icons'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
 
@@ -11,6 +16,24 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
 // publicKey gates the screen-share link (/copilot/live/<key>) and the demo
 // meeting endpoint (/api/copilot/public/<key>/meeting).
 const DEMO_PUBLIC_KEY = 'cpa_eULDA-kRF2FPObVnzdRQNS49'
+
+// Demo video for the slide-out drawer. Paste a YouTube / Vimeo / Loom URL
+// (or a self-hosted .mp4). Empty = the drawer shows a "coming soon" poster.
+const DEMO_VIDEO_URL = ''
+
+// GoHighLevel Marketplace listing — the Sponsored Partner badge links here.
+const MARKETPLACE_URL = 'https://marketplace.gohighlevel.com/'
+
+// Integrations shown in the "works with your stack" grid. WaveformIcon is a
+// local glyph (no brand mark for ElevenLabs); the rest are real brand logos.
+const INTEGRATION_GROUPS: { title: string; items: { label: string; Icon: React.ComponentType<{ className?: string }> }[] }[] = [
+  { title: 'CRM', items: [{ label: 'GoHighLevel', Icon: GoHighLevelIcon }, { label: 'HubSpot', Icon: HubSpotIcon }] },
+  { title: 'Voice', items: [{ label: 'Vapi', Icon: VapiIcon }, { label: 'ElevenLabs', Icon: WaveformIcon }, { label: 'Twilio', Icon: TwilioIcon }] },
+  { title: 'Commerce', items: [{ label: 'Shopify', Icon: ShopifyIcon }] },
+  { title: 'Scheduling', items: [{ label: 'Calendly', Icon: CalendlyIcon }, { label: 'Cal.com', Icon: CalcomIcon }] },
+  { title: 'Social channels', items: [{ label: 'WhatsApp', Icon: WhatsAppIcon }, { label: 'Instagram', Icon: InstagramIcon }, { label: 'Facebook', Icon: FacebookIcon }] },
+  { title: 'Ads & payments', items: [{ label: 'Meta Ads', Icon: FacebookIcon }, { label: 'Google Ads', Icon: GoogleIcon }, { label: 'Stripe', Icon: StripeIcon }] },
+]
 
 // ────────────────────────────────────────────────────────────────────────
 // JSON-LD structured data
@@ -257,27 +280,15 @@ export default function LandingPage() {
   return (
     <div data-theme="soft-light" className="min-h-screen overflow-hidden" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
 
-      <AnnouncementBar />
-
-      {/* ═══ Sticky Nav ═══ */}
-      <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(248,247,244,0.85)', borderColor: 'var(--border)' }}>
-        <div className="max-w-[1280px] mx-auto flex items-center justify-between px-6 h-16">
-          <Link href="/" className="flex items-center">
-            <VoxilityLogo height={28} />
-          </Link>
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#learning-loop" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>The loop</a>
-            <a href="#features" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>Features</a>
-            <a href="#how-it-works" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>How it works</a>
-            <a href="#use-cases" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>Use cases</a>
-            <a href="#faq" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>FAQ</a>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/login" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>Log in</Link>
-            <Link href="/login?mode=signup" className="btn-primary text-sm py-2 px-5">Get started</Link>
-          </div>
-        </div>
-      </nav>
+      <MarketingNav
+        links={[
+          { href: '#features', label: 'Features' },
+          { href: '#copilot', label: 'Co-Pilot' },
+          { href: '#integrations', label: 'Integrations' },
+          { href: '#learning-loop', label: 'The loop' },
+          { href: '#faq', label: 'FAQ' },
+        ]}
+      />
 
       {/* ═══ Hero — split: copy left, generated network visual right ═══ */}
       <section className="relative pt-20 pb-24 overflow-hidden">
@@ -298,11 +309,19 @@ export default function LandingPage() {
                 Start building free
                 <ArrowIcon />
               </Link>
-              <a href="#learning-loop" className="btn-secondary">
-                See how it learns
-              </a>
+              <DemoVideoDrawer videoUrl={DEMO_VIDEO_URL} triggerLabel="▶ Watch the 2-min demo" />
             </div>
-            <p className="mt-6 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            <a
+              href={MARKETPLACE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 mt-6 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors hover:bg-[var(--surface-secondary)]"
+              style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)', border: '1px solid var(--border)' }}
+            >
+              <GoHighLevelIcon className="w-4 h-4" />
+              GoHighLevel Sponsored Partner
+            </a>
+            <p className="mt-5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
               One-click install · Live in under 5 minutes · Free while in beta
             </p>
           </div>
@@ -728,6 +747,59 @@ export default function LandingPage() {
       {/* ═══ Orange divider ═══ */}
       <div className="max-w-[1280px] mx-auto px-6"><hr className="orange-rule" /></div>
 
+      {/* ═══ Integrations + Sponsored Partner ═══ */}
+      <section id="integrations" className="py-24 px-6">
+        <div className="max-w-[1100px] mx-auto">
+          <div className="text-center mb-10">
+            <span className="section-label inline-block mb-4">Integrations</span>
+            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Works with the stack you already run</h2>
+            <p className="max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
+              A first-class GoHighLevel Marketplace app — and a Sponsored Partner — with native HubSpot, Shopify, voice, scheduling, and ad-platform connections. The agent acts inside the tools you already use.
+            </p>
+          </div>
+
+          {/* Sponsored Partner banner */}
+          <a
+            href={MARKETPLACE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="vox-card p-6 md:p-7 flex items-center gap-5 mb-8 transition-colors hover:border-[var(--accent-primary)]"
+          >
+            <div className="icon-box shrink-0" style={{ width: '3rem', height: '3rem' }}>
+              <GoHighLevelIcon className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>GoHighLevel Sponsored Partner</h3>
+                <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>Marketplace app</span>
+              </div>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Install Voxility from the GoHighLevel Marketplace in one click — the agent reads and writes your CRM natively.</p>
+            </div>
+            <span className="ml-auto shrink-0 hidden sm:inline text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>Install →</span>
+          </a>
+
+          {/* Logo grid by category */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {INTEGRATION_GROUPS.map((g) => (
+              <div key={g.title} className="vox-card p-6">
+                <div className="text-xs uppercase tracking-wider font-semibold mb-4" style={{ color: 'var(--text-tertiary)' }}>{g.title}</div>
+                <div className="flex flex-wrap gap-x-5 gap-y-4">
+                  {g.items.map((it) => (
+                    <div key={it.label} className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                      <span style={{ color: 'var(--text-primary)' }}><it.Icon className="w-5 h-5" /></span>
+                      <span className="text-sm font-medium">{it.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs mt-6" style={{ color: 'var(--text-tertiary)' }}>
+            Plus Google Sheets, Airtable, REST data sources, Slack &amp; Discord alerts, and meeting bots for Zoom, Google Meet &amp; Teams.
+          </p>
+        </div>
+      </section>
+
       {/* ═══ How it works ═══ */}
       <section id="how-it-works" className="py-24 px-6">
         <div className="max-w-[1280px] mx-auto">
@@ -902,24 +974,7 @@ export default function LandingPage() {
       </section>
 
       {/* ═══ Footer ═══ */}
-      <footer className="border-t py-10 px-6" style={{ borderColor: 'var(--border)' }}>
-        <div className="max-w-[1280px] mx-auto">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 pb-8 mb-8 border-b" style={{ borderColor: 'var(--border)' }}>
-            <div>
-              <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Get launch updates</p>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>One short email when something worth knowing ships.</p>
-            </div>
-            <EmailCaptureForm source="footer" cta="Subscribe" />
-          </div>
-          <div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
-            <VoxilityLogo height={16} />
-            <div className="flex items-center gap-6">
-              <a href="https://voxility.canny.io" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--text-primary)] transition-colors">Feedback</a>
-              <Link href="/login" className="hover:text-[var(--text-primary)] transition-colors">Log in</Link>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter />
 
       {/* ═══ JSON-LD structured data ═══
           Three schemas inlined for rich-result eligibility. Google, Bing,

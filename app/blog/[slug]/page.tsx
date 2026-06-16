@@ -98,18 +98,18 @@ export default async function BlogPostPage({ params }: Params) {
   return (
     <article className="max-w-[760px] mx-auto px-6 py-16">
       {/* Breadcrumb */}
-      <nav className="text-xs mb-8" style={{ color: '#64748b' }}>
-        <Link href="/" className="hover:text-white transition-colors">Home</Link>
+      <nav className="text-xs mb-8" style={{ color: 'var(--text-tertiary)' }}>
+        <Link href="/" className="hover:text-[var(--text-primary)] transition-colors">Home</Link>
         <span className="mx-2">/</span>
-        <Link href="/blog" className="hover:text-white transition-colors">Blog</Link>
+        <Link href="/blog" className="hover:text-[var(--text-primary)] transition-colors">Blog</Link>
         <span className="mx-2">/</span>
-        <span style={{ color: '#94a3b8' }}>{post.category}</span>
+        <span style={{ color: 'var(--text-secondary)' }}>{post.category}</span>
       </nav>
 
       {/* Title block */}
       <header className="mb-10">
-        <div className="flex items-center gap-2 mb-4 text-xs" style={{ color: '#64748b' }}>
-          <span className="uppercase tracking-wider font-semibold" style={{ color: '#fa4d2e' }}>{post.category}</span>
+        <div className="flex items-center gap-2 mb-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          <span className="uppercase tracking-wider font-semibold" style={{ color: 'var(--accent-primary)' }}>{post.category}</span>
           <span>·</span>
           <time dateTime={post.publishedAt}>
             {new Date(post.publishedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -117,10 +117,10 @@ export default async function BlogPostPage({ params }: Params) {
           <span>·</span>
           <span>{post.readingTimeMinutes} min read</span>
         </div>
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.1] mb-5" style={{ color: '#f8fafc' }}>
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.1] mb-5" style={{ color: 'var(--text-primary)' }}>
           {post.title}
         </h1>
-        <p className="text-lg leading-[1.6]" style={{ color: '#94a3b8' }}>
+        <p className="text-lg leading-[1.6]" style={{ color: 'var(--text-secondary)' }}>
           {post.description}
         </p>
       </header>
@@ -129,13 +129,13 @@ export default async function BlogPostPage({ params }: Params) {
       <Body />
 
       {/* Footer meta + tags */}
-      <div className="mt-16 pt-8 border-t flex items-center justify-between text-sm" style={{ borderColor: '#121a2b', color: '#94a3b8' }}>
+      <div className="mt-16 pt-8 border-t flex items-center justify-between text-sm" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
         <div>
-          Written by <span style={{ color: '#f8fafc' }}>{post.author}</span>
+          Written by <span style={{ color: 'var(--text-primary)' }}>{post.author}</span>
         </div>
         <div className="flex flex-wrap gap-2">
           {post.tags.map(t => (
-            <span key={t} className="text-[11px] uppercase tracking-wider rounded px-1.5 py-0.5" style={{ background: 'rgba(250,77,46,0.08)', color: '#fb8e6a' }}>
+            <span key={t} className="text-[11px] uppercase tracking-wider rounded px-1.5 py-0.5" style={{ background: 'rgba(250,77,46,0.08)', color: 'var(--accent-primary)' }}>
               {t}
             </span>
           ))}
@@ -145,7 +145,7 @@ export default async function BlogPostPage({ params }: Params) {
       {/* Related posts */}
       {related.length > 0 && (
         <section className="mt-16">
-          <h2 className="text-xs font-semibold uppercase tracking-wider mb-5" style={{ color: '#64748b' }}>Related reading</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider mb-5" style={{ color: 'var(--text-tertiary)' }}>Related reading</h2>
           <div className="grid sm:grid-cols-3 gap-4">
             {related.map(r => (
               <Link
@@ -153,10 +153,10 @@ export default async function BlogPostPage({ params }: Params) {
                 href={`/blog/${r.slug}`}
                 className="vox-card p-5 hover:border-zinc-600 transition-colors"
               >
-                <div className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: '#fa4d2e' }}>
+                <div className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
                   {r.category}
                 </div>
-                <h3 className="text-sm font-semibold leading-snug" style={{ color: '#f8fafc' }}>{r.title}</h3>
+                <h3 className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-primary)' }}>{r.title}</h3>
               </Link>
             ))}
           </div>
@@ -164,11 +164,11 @@ export default async function BlogPostPage({ params }: Params) {
       )}
 
       {/* CTA */}
-      <section className="mt-20 rounded-lg p-8 md:p-10 text-center" style={{ background: 'linear-gradient(135deg, #090d15 0%, #0f1524 100%)', border: '1px solid #121a2b' }}>
-        <h2 className="text-2xl font-bold mb-3" style={{ color: '#f8fafc' }}>
+      <section className="mt-20 rounded-lg p-8 md:p-10 text-center" style={{ background: 'linear-gradient(135deg, var(--surface) 0%, var(--surface-secondary) 100%)', border: '1px solid var(--border)' }}>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: 'var(--text-primary)' }}>
           Ready to see it in action?
         </h2>
-        <p className="mb-6" style={{ color: '#94a3b8' }}>
+        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
           Build your first AI agent in under 5 minutes. Free while in beta.
         </p>
         <Link href="/login?mode=signup" className="btn-primary">

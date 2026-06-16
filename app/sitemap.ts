@@ -1,6 +1,8 @@
 import type { MetadataRoute } from 'next'
 import { POSTS } from '@/lib/blog-posts'
 import { COMPARISONS } from '@/lib/compare-data'
+import { ALTERNATIVES } from '@/lib/alternatives-data'
+import { SOLUTIONS } from '@/lib/solutions-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
 
@@ -48,6 +50,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.9,
     },
+    {
+      url: `${SITE_URL}/alternatives`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.9,
+    },
   ]
 
   const postEntries: MetadataRoute.Sitemap = POSTS.map(p => ({
@@ -64,5 +72,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.8,
   }))
 
-  return [...staticEntries, ...postEntries, ...compareEntries]
+  // Keyword-exact marketing pages (e.g. /intercom-alternative, /ai-customer-service).
+  const marketingEntries: MetadataRoute.Sitemap = [...ALTERNATIVES, ...SOLUTIONS].map(m => ({
+    url: `${SITE_URL}/${m.slug}`,
+    lastModified: new Date(m.updatedAt),
+    changeFrequency: 'monthly' as const,
+    priority: 0.8,
+  }))
+
+  return [...staticEntries, ...postEntries, ...compareEntries, ...marketingEntries]
 }

@@ -419,6 +419,22 @@ body {
   animation: 4s ease-in-out infinite glowPulse;
 }
 
+/* Slide-out drawer (demo video) + backdrop fade */
+@keyframes voxSlideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.vox-slide-in-right {
+  animation: 0.28s cubic-bezier(0.16, 1, 0.3, 1) both voxSlideInRight;
+}
+@keyframes voxBackdropFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.vox-backdrop-fade {
+  animation: 0.2s ease-out both voxBackdropFade;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Hardcoded Tailwind class overrides for Soft Light theme
    ═══════════════════════════════════════════════════════════════════════ */
