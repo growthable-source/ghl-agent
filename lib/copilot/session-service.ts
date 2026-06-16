@@ -738,10 +738,14 @@ export async function createMeetingSession(opts: {
 
 /** Hard wall-clock cap for a public demo bot, seconds (from dispatch). */
 export const DEMO_MAX_SECS = Number(process.env.COPILOT_DEMO_MAX_SECS) || 600
-/** Max demo bots running across ALL visitors at once — the cost ceiling. */
-const DEMO_MAX_CONCURRENT = Number(process.env.COPILOT_DEMO_MAX_CONCURRENT) || 3
-/** One demo per IP per this many seconds. */
-const DEMO_IP_COOLDOWN_SECS = Number(process.env.COPILOT_DEMO_COOLDOWN_SECS) || 1800
+/** Max demo bots running across ALL visitors at once — the cost ceiling.
+ *  Sized so a social/email burst rarely hits "busy"; worst-case spend is
+ *  still bounded (this many bots × DEMO_MAX_SECS). */
+const DEMO_MAX_CONCURRENT = Number(process.env.COPILOT_DEMO_MAX_CONCURRENT) || 15
+/** Short anti-double-click window, seconds. NOT a long lockout — combined
+ *  with the one-live-demo-per-IP rule below, a visitor whose demo just
+ *  ended can start another right away. */
+const DEMO_IP_COOLDOWN_SECS = Number(process.env.COPILOT_DEMO_COOLDOWN_SECS) || 120
 
 /** A demo launch was refused by a rate/concurrency guard (→ HTTP 429). */
 export class CopilotDemoLimitError extends Error {
@@ -796,14 +800,21 @@ export async function createPublicMeetingSession(publicKey: string, opts: {
     throw new CopilotDemoLimitError('Our live demo is busy right now — please try again in a few minutes.', 'busy')
   }
 
-  // Per-IP cooldown so one visitor can't relaunch on a loop.
+  // Per-IP guard: one demo per IP at a time. Blocks while this IP already
+  // has a LIVE demo (no stacking — the real per-source cost risk) plus a
+  // short anti-double-click window. Deliberately NOT a long lockout, so a
+  // genuine evaluator whose demo just ended can start another immediately.
   if (opts.ip) {
     const since = new Date(Date.now() - DEMO_IP_COOLDOWN_SECS * 1000)
-    const recent = await db.copilotSession.count({
-      where: { channel: 'recall_meeting_bot', startedAt: { gt: since }, metadata: { path: ['demoIp'], equals: opts.ip } },
+    const fromIp = await db.copilotSession.count({
+      where: {
+        channel: 'recall_meeting_bot',
+        metadata: { path: ['demoIp'], equals: opts.ip },
+        OR: [{ status: 'active' }, { startedAt: { gt: since } }],
+      },
     })
-    if (recent > 0) {
-      throw new CopilotDemoLimitError('You just started a demo — give it a few minutes before launching another.', 'cooldown')
+    if (fromIp > 0) {
+      throw new CopilotDemoLimitError('You already have a demo running — it’ll wrap up shortly, then you can start another.', 'cooldown')
     }
   }
 
