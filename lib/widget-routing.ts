@@ -83,6 +83,25 @@ async function loadCandidates(workspaceId: string, targetUserIds: string[]): Pro
 }
 
 /**
+ * How many eligible agents are currently AVAILABLE for this widget
+ * (in routingTargetUserIds — or everyone — , non-viewer, isAvailable=true).
+ * Zero means "nobody is online to take a live chat right now," which is the
+ * signal to show the visitor the wait experience (queue banner + ETA +
+ * game) even when the capacity queue is turned off. Distinct from
+ * pickAssignee returning null, which ALSO happens in manual mode while
+ * operators are online — there we must NOT show the wait experience.
+ */
+export async function countAvailableAgents(workspaceId: string, widgetId: string): Promise<number> {
+  const widget = await db.chatWidget.findUnique({
+    where: { id: widgetId },
+    select: { routingTargetUserIds: true },
+  }).catch(() => null)
+  if (!widget) return 0
+  const candidates = await loadCandidates(workspaceId, widget.routingTargetUserIds || [])
+  return candidates.filter(c => c.isAvailable).length
+}
+
+/**
  * Decide which user (if any) should get the chat.
  * Returns null if mode is manual or no eligible/available candidate.
  */
@@ -278,6 +297,18 @@ export async function autoRouteIfUnassigned(params: {
     return { assigned: false, queued: true }
   }
 
+  // Queue off: assign if routing picks someone. But if NOBODY is online to
+  // take it, fall into the queue anyway so the visitor gets the wait
+  // experience (position + ETA + while-you-wait game) instead of silence —
+  // the AI keeps helping meanwhile. Manual mode with operators online is
+  // unaffected: pickAssignee returns null there, but availableCount > 0, so
+  // the chat just sits in the unassigned inbox as before.
+  const available = await countAvailableAgents(params.workspaceId, convo.widgetId)
+  if (available === 0) {
+    await enqueueConversation(params.workspaceId, convo.id)
+    return { assigned: false, queued: true }
+  }
+
   const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
   if (!pick) return { assigned: false }
 
@@ -351,13 +382,23 @@ export async function forceAssignToHuman(params: {
     return { assigned: false, queued: true }
   }
 
-  // Queue off — wave-1 behaviour: normal routing first (respects
-  // round-robin / first-available).
+  // Queue off — but if NOBODY is online, don't force the chat onto an
+  // offline owner: let the visitor wait with the queue experience (the AI
+  // keeps helping) until someone comes online or the cron advances it.
+  const available = await countAvailableAgents(params.workspaceId, convo.widgetId)
+  if (available === 0) {
+    await enqueueConversation(params.workspaceId, convo.id)
+    return { assigned: false, queued: true }
+  }
+
+  // Someone IS available — wave-1 behaviour: normal routing first (respects
+  // round-robin / first-available), then fallback owner so an explicit
+  // human request is never left ownerless.
   const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
   let userId = pick?.userId ?? null
   let viaFallback = false
 
-  // Nobody from routing → fallback owner so it's never left ownerless.
+  // Nobody from routing (manual mode) → fallback owner.
   if (!userId) {
     userId = await resolveFallbackAssignee(params.workspaceId, convo.widget.routingFallbackUserId ?? null)
     viaFallback = true

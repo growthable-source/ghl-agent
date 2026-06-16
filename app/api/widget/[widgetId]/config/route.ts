@@ -49,8 +49,14 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   // Queue / while-you-wait settings (workspace-global). The widget uses
-  // these to decide what to offer a queued visitor. Ticketing must also
-  // be active for the leave-email→ticket option to actually create one.
+  // these to decide what to offer a *waiting* visitor. A visitor waits in
+  // two situations: (a) the capacity queue is on and the team is at its
+  // concurrent cap, or (b) nobody is online at all — in which case we show
+  // the wait experience regardless of the `queueEnabled` toggle. The
+  // game / leave-email options are therefore gated on their OWN switches,
+  // not on `queueEnabled`, so they appear in either waiting situation.
+  // Ticketing must also be active for the leave-email→ticket option to
+  // actually create one.
   let queue = { enabled: false, gameEnabled: false, emailTicketEnabled: false, message: null as string | null }
   try {
     const { getLiveChatSettings } = await import('@/lib/livechat-settings')
@@ -59,8 +65,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     const ticketing = await getTicketingStatus(w.workspaceId)
     queue = {
       enabled: s.queueEnabled,
-      gameEnabled: s.queueEnabled && s.queueGameEnabled,
-      emailTicketEnabled: s.queueEnabled && s.queueEmailTicketEnabled && ticketing.active,
+      gameEnabled: s.queueGameEnabled,
+      emailTicketEnabled: s.queueEmailTicketEnabled && ticketing.active,
       message: s.queueMessage,
     }
   } catch {
