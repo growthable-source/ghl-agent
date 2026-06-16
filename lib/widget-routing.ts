@@ -182,10 +182,7 @@ export async function assignConversation(params: {
 
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widget: { workspaceId } },
-    select: {
-      id: true, widgetId: true, assignedUserId: true, queuedAt: true,
-      widget: { select: { name: true } },
-    },
+    select: { id: true, widgetId: true, assignedUserId: true, queuedAt: true },
   })
   if (!convo) return
   if (convo.assignedUserId === userId) return
@@ -201,9 +198,39 @@ export async function assignConversation(params: {
     },
   })
 
+  await emitAssignmentEffects({
+    workspaceId,
+    conversationId,
+    widgetId: convo.widgetId,
+    userId,
+    reason,
+    wasQueued: !!convo.queuedAt,
+    notifyAssignee: params.notifyAssignee,
+  })
+}
+
+/**
+ * SSE + notification + bookkeeping that follow an assignment WRITE once it's
+ * committed. Split out from the write itself so the capacity-gated path can
+ * do its write inside a short advisory-locked transaction (see
+ * claimSlotIfCapacity) and then run these slower, network-bound effects
+ * off the lock — never pinning one of the few pooled connections while
+ * broadcasting or notifying.
+ */
+async function emitAssignmentEffects(params: {
+  workspaceId: string
+  conversationId: string
+  widgetId: string
+  userId: string | null
+  reason: AssignmentReason
+  wasQueued: boolean
+  notifyAssignee?: boolean
+}): Promise<void> {
+  const { workspaceId, conversationId, widgetId, userId, reason, wasQueued } = params
+
   // If this chat was waiting in the queue, the line just shifted — push
   // fresh positions to everyone still queued.
-  if (userId && convo.queuedAt) {
+  if (userId && wasQueued) {
     await broadcastQueuePositions(workspaceId).catch(() => {})
   }
 
@@ -211,7 +238,7 @@ export async function assignConversation(params: {
   // comes after this user in the rotation.
   if (userId && (reason === 'round_robin' || reason === 'first_available')) {
     await db.chatWidget.update({
-      where: { id: convo.widgetId },
+      where: { id: widgetId },
       data: { routingLastAssignedUserId: userId },
     }).catch(() => {})
   }
@@ -235,23 +262,27 @@ export async function assignConversation(params: {
 
   if (userId && params.notifyAssignee !== false) {
     try {
+      const widget = await db.chatWidget.findUnique({
+        where: { id: widgetId },
+        select: { name: true },
+      }).catch(() => null)
       const link = resolveHandoverLink({
         workspaceId,
-        locationId: `widget:${convo.widgetId}`,
+        locationId: `widget:${widgetId}`,
         conversationId,
         channel: 'Live_Chat',
       })
       await notify({
         workspaceId,
         event: 'widget.conversation_assigned',
-        title: `New chat assigned to you on ${convo.widget.name || 'your widget'}`,
+        title: `New chat assigned to you on ${widget?.name || 'your widget'}`,
         body: reasonBody(reason),
         link,
         severity: 'info',
         targetUserId: userId,
       })
-    } catch (err: any) {
-      console.warn('[widget-routing] assignment notify failed:', err.message)
+    } catch (err) {
+      console.warn('[widget-routing] assignment notify failed:', err instanceof Error ? err.message : String(err))
     }
   }
 }
@@ -282,17 +313,18 @@ export async function autoRouteIfUnassigned(params: {
   if (convo.assignedUserId) return { assigned: true, userId: convo.assignedUserId }
 
   // Capacity/queue gate (when enabled). Full team or nobody available →
-  // wait in the queue rather than sitting silently unassigned.
+  // wait in the queue rather than sitting silently unassigned. The
+  // capacity check + assignment are atomic (see assignWithinCapacity), so
+  // concurrent handoffs can't push the workspace over its cap.
   const settings = await getLiveChatSettings(params.workspaceId)
   if (settings.queueEnabled) {
-    const live = await countLiveHumanChats(params.workspaceId)
-    if (live < settings.maxConcurrentHumanChats) {
-      const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
-      if (pick) {
-        await assignConversation({ workspaceId: params.workspaceId, conversationId: convo.id, userId: pick.userId, reason: pick.reason })
-        return { assigned: true, userId: pick.userId }
-      }
-    }
+    const assignedTo = await assignWithinCapacity({
+      workspaceId: params.workspaceId,
+      conversationId: convo.id,
+      widgetId: convo.widgetId,
+      max: settings.maxConcurrentHumanChats,
+    })
+    if (assignedTo) return { assigned: true, userId: assignedTo.userId }
     await enqueueConversation(params.workspaceId, convo.id)
     return { assigned: false, queued: true }
   }
@@ -367,17 +399,18 @@ export async function forceAssignToHuman(params: {
 
   // Capacity/queue gate (when enabled). At capacity (or nobody available)
   // the chat WAITS in the queue instead of force-assigning the fallback
-  // owner — and the AI keeps helping in the meantime.
+  // owner — and the AI keeps helping in the meantime. The capacity check +
+  // assignment are atomic (see assignWithinCapacity), so concurrent
+  // handoffs can't push the workspace over its cap.
   const settings = await getLiveChatSettings(params.workspaceId)
   if (settings.queueEnabled) {
-    const live = await countLiveHumanChats(params.workspaceId)
-    if (live < settings.maxConcurrentHumanChats) {
-      const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: convo.widgetId })
-      if (pick) {
-        await assignConversation({ workspaceId: params.workspaceId, conversationId: convo.id, userId: pick.userId, reason: pick.reason })
-        return { assigned: true, userId: pick.userId }
-      }
-    }
+    const assignedTo = await assignWithinCapacity({
+      workspaceId: params.workspaceId,
+      conversationId: convo.id,
+      widgetId: convo.widgetId,
+      max: settings.maxConcurrentHumanChats,
+    })
+    if (assignedTo) return { assigned: true, userId: assignedTo.userId }
     await enqueueConversation(params.workspaceId, convo.id)
     return { assigned: false, queued: true }
   }
@@ -422,6 +455,11 @@ const HANDLE_SECS_MIN = 60
 const HANDLE_SECS_MAX = 1800
 const HANDLE_SECS_DEFAULT = 240
 
+// Namespace key for our per-workspace Postgres advisory locks (the first of
+// the two int4 args to pg_advisory_xact_lock), chosen so it won't collide
+// with advisory locks taken anywhere else. ASCII 'lvch'.
+const QUEUE_LOCK_CLASS = 0x6c766368
+
 /** Live HUMAN chats across the workspace right now (assigned + not ended).
  *  AI-only chats don't consume human capacity. */
 export async function countLiveHumanChats(workspaceId: string): Promise<number> {
@@ -432,6 +470,104 @@ export async function countLiveHumanChats(workspaceId: string): Promise<number> 
       status: { in: QUEUE_STATUSES_OPEN as unknown as string[] },
     },
   }).catch(() => 0)
+}
+
+/**
+ * Atomically claim a human-capacity slot for `conversationId` and assign it
+ * to `userId` — but ONLY if the workspace is below `max` live human chats and
+ * the chat isn't already taken. This is the race-safe core of the capacity
+ * gate: the count + the write run on a single connection inside a per-
+ * workspace transaction advisory lock, so two concurrent callers (a handoff,
+ * a presence toggle, the cron) can't both read `live < max` and both assign,
+ * landing the workspace over cap. SSE/notify are deliberately NOT done here —
+ * the caller runs them via emitAssignmentEffects once this returns, off the
+ * lock. `SET LOCAL lock_timeout` means heavy same-workspace contention
+ * degrades to "couldn't claim now" (caller queues / the cron retries) rather
+ * than pinning one of the few pooled connections (lib/db.ts caps at 5).
+ *
+ * Returns whether the slot was claimed, plus whether the chat had been
+ * sitting in the queue (so the caller knows to refresh queue positions).
+ */
+async function claimSlotIfCapacity(params: {
+  workspaceId: string
+  conversationId: string
+  userId: string
+  reason: AssignmentReason
+  max: number
+}): Promise<{ claimed: boolean; wasQueued: boolean }> {
+  try {
+    return await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL lock_timeout = '3000ms'`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${QUEUE_LOCK_CLASS}::int4, hashtext(${params.workspaceId})::int4)`
+
+      const live = await tx.widgetConversation.count({
+        where: {
+          widget: { workspaceId: params.workspaceId },
+          assignedUserId: { not: null },
+          status: { in: QUEUE_STATUSES_OPEN as unknown as string[] },
+        },
+      })
+      if (live >= params.max) return { claimed: false, wasQueued: false }
+
+      // Re-read under the lock so we never steal a chat another caller just
+      // claimed (and so re-assignment is a clean no-op, not a takeover).
+      const convo = await tx.widgetConversation.findUnique({
+        where: { id: params.conversationId },
+        select: { assignedUserId: true, queuedAt: true },
+      })
+      if (!convo || convo.assignedUserId) return { claimed: false, wasQueued: false }
+
+      await tx.widgetConversation.update({
+        where: { id: params.conversationId },
+        data: {
+          assignedUserId: params.userId,
+          assignedAt: new Date(),
+          assignmentReason: params.reason,
+          queuedAt: null,
+        },
+      })
+      return { claimed: true, wasQueued: !!convo.queuedAt }
+    })
+  } catch (err) {
+    console.warn('[widget-routing] capacity slot claim failed:', err instanceof Error ? err.message : String(err))
+    return { claimed: false, wasQueued: false }
+  }
+}
+
+/**
+ * Capacity-gated assignment: pick an available assignee and atomically claim
+ * a slot for them, then fire the SSE/notify side effects. Returns the
+ * assignee on success, or null when there's no capacity, nobody available,
+ * or the chat was taken concurrently — in every null case the caller should
+ * fall back to the queue (or stop advancing it).
+ */
+async function assignWithinCapacity(params: {
+  workspaceId: string
+  conversationId: string
+  widgetId: string
+  max: number
+}): Promise<{ userId: string } | null> {
+  const pick = await pickAssignee({ workspaceId: params.workspaceId, widgetId: params.widgetId })
+  if (!pick) return null
+
+  const claim = await claimSlotIfCapacity({
+    workspaceId: params.workspaceId,
+    conversationId: params.conversationId,
+    userId: pick.userId,
+    reason: pick.reason,
+    max: params.max,
+  })
+  if (!claim.claimed) return null
+
+  await emitAssignmentEffects({
+    workspaceId: params.workspaceId,
+    conversationId: params.conversationId,
+    widgetId: params.widgetId,
+    userId: pick.userId,
+    reason: pick.reason,
+    wasQueued: claim.wasQueued,
+  })
+  return { userId: pick.userId }
 }
 
 /** Average human handle time from recent ended, human-handled chats —
@@ -511,17 +647,24 @@ export async function advanceQueue(workspaceId: string): Promise<{ assigned: num
   let assigned = 0
   let guard = 50
   while (guard-- > 0) {
-    const live = await countLiveHumanChats(workspaceId)
-    if (live >= settings.maxConcurrentHumanChats) break
     const next = await db.widgetConversation.findFirst({
       where: { widget: { workspaceId }, queuedAt: { not: null }, assignedUserId: null, status: { not: 'ended' } },
       select: { id: true, widgetId: true },
       orderBy: { queuedAt: 'asc' },
     }).catch(() => null)
     if (!next) break
-    const pick = await pickAssignee({ workspaceId, widgetId: next.widgetId })
-    if (!pick) break // headroom but nobody available — leave it queued
-    await assignConversation({ workspaceId, conversationId: next.id, userId: pick.userId, reason: pick.reason })
+    // assignWithinCapacity re-checks the cap atomically under the per-
+    // workspace lock, so concurrent advanceQueue calls (chat-end, presence,
+    // cron) can't collectively over-fill. null = no capacity / nobody
+    // available / taken concurrently → stop; the next trigger picks up where
+    // this left off.
+    const assignedTo = await assignWithinCapacity({
+      workspaceId,
+      conversationId: next.id,
+      widgetId: next.widgetId,
+      max: settings.maxConcurrentHumanChats,
+    })
+    if (!assignedTo) break
     assigned++
   }
   await broadcastQueuePositions(workspaceId)
