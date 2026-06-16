@@ -33,6 +33,7 @@
   "exclude": [
     "node_modules",
     "vitest.config.ts",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "recall-video-worker"
   ]
 }

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone Fly.io service — own tooling, deployed separately.
+    "recall-video-worker/**",
   ]),
 ]);
 
