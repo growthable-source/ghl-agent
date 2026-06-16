@@ -235,9 +235,9 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     })
   }
 
-  sendVideoFrame(base64Jpeg: string): void {
+  sendVideoFrame(base64Image: string, mimeType: string = 'image/jpeg'): void {
     this.session?.sendRealtimeInput({
-      video: { data: base64Jpeg, mimeType: 'image/jpeg' },
+      video: { data: base64Image, mimeType },
     })
   }
 

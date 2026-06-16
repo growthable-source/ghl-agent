@@ -84,15 +84,30 @@ function toBot(body: RecallBotResponse): RecallBot {
 }
 
 /**
+ * Real-time video endpoint so the bot streams the shared screen to our
+ * relay worker (recall-video-worker). Returns [] when
+ * RECALL_VIDEO_WORKER_WS_HOST is unset — the bot then runs audio-only and
+ * the feature is simply off (graceful default / kill switch).
+ */
+export function buildMeetingRealtimeEndpoints(botToken: string): Array<Record<string, unknown>> {
+  const host = process.env.RECALL_VIDEO_WORKER_WS_HOST
+  if (!host) return []
+  return [{ type: 'websocket', url: `wss://${host}/recall/${botToken}`, events: ['video_separate_png.data'] }]
+}
+
+/**
  * Create a bot and send it to a meeting. `webpageUrl` is the page the
- * bot streams as its camera — our Gemini Live bot page.
+ * bot streams as its camera — our Gemini Live bot page. `botToken` keys
+ * the real-time screenshare stream back to this session's relay room.
  */
 export async function createMeetingBot(opts: {
   meetingUrl: string
   botName: string
   webpageUrl: string
+  botToken: string
 }): Promise<RecallBot> {
   const variant = process.env.RECALL_BOT_VARIANT || 'web_4_core'
+  const realtimeEndpoints = buildMeetingRealtimeEndpoints(opts.botToken)
   const res = await recallFetch('/api/v1/bot/', {
     method: 'POST',
     body: JSON.stringify({
@@ -102,6 +117,7 @@ export async function createMeetingBot(opts: {
         camera: { kind: 'webpage', config: { url: opts.webpageUrl } },
       },
       variant: { zoom: variant, google_meet: variant, microsoft_teams: variant },
+      ...(realtimeEndpoints.length ? { recording_config: { realtime_endpoints: realtimeEndpoints } } : {}),
     }),
   })
   const body = (await res.json().catch(() => ({}))) as RecallBotResponse & { detail?: string }

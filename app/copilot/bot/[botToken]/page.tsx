@@ -43,6 +43,7 @@ export default function MeetingBotPage() {
   const providerRef = useRef<RealtimeModelProvider | null>(null)
   const micRef = useRef<MicCapture | null>(null)
   const playerRef = useRef<PcmPlayer | null>(null)
+  const videoSocketRef = useRef<WebSocket | null>(null)
   const turnBufferRef = useRef<Array<{ role: string; text: string; ts: string }>>([])
   const flushedRef = useRef({ audioIn: 0, audioOut: 0 })
   const lastAudioAtRef = useRef(0)
@@ -83,6 +84,7 @@ export default function MeetingBotPage() {
       endedRef.current = true
       micRef.current?.stop()
       playerRef.current?.stop()
+      videoSocketRef.current?.close()
       void providerRef.current?.close().catch(() => undefined)
       void flushEvents()
       try {
@@ -109,6 +111,7 @@ export default function MeetingBotPage() {
 
     let flushTimer: ReturnType<typeof setInterval> | null = null
     let speakTimer: ReturnType<typeof setInterval> | null = null
+    let videoReconnectTimer: ReturnType<typeof setTimeout> | null = null
 
     const start = async () => {
       try {
@@ -120,6 +123,7 @@ export default function MeetingBotPage() {
           liveConfig?: Record<string, unknown>
           tools?: RealtimeToolDef[]
           display?: { agentName?: string; workspaceName?: string }
+          videoRelayUrl?: string | null
         }
         if (!res.ok || !body.ok || !body.realtime) {
           setPhase('error')
@@ -176,6 +180,46 @@ export default function MeetingBotPage() {
           vendorConfig: body.liveConfig,
         })
 
+        // Screen vision: the relay worker (recall-video-worker) forwards the
+        // meeting's shared-screen frames here over a websocket; feed each to
+        // Gemini as a video frame. No videoRelayUrl (worker not configured) →
+        // audio-only, exactly as before. Reconnects with capped backoff.
+        if (body.videoRelayUrl) {
+          const relayUrl = body.videoRelayUrl
+          let relayBackoff = 1000
+          const openRelay = () => {
+            if (endedRef.current) return
+            const ws = new WebSocket(relayUrl)
+            videoSocketRef.current = ws
+            ws.onopen = () => {
+              relayBackoff = 1000
+            }
+            ws.onmessage = ev => {
+              try {
+                const m = JSON.parse(typeof ev.data === 'string' ? ev.data : '') as {
+                  type?: string
+                  mime?: string
+                  data?: string
+                }
+                if (m.type === 'frame' && typeof m.data === 'string') {
+                  providerRef.current?.sendVideoFrame(m.data, m.mime || 'image/png')
+                }
+              } catch {
+                // ignore malformed relay frames
+              }
+            }
+            ws.onclose = () => {
+              videoSocketRef.current = null
+              if (!endedRef.current) {
+                relayBackoff = Math.min(relayBackoff * 2, 15000)
+                videoReconnectTimer = setTimeout(openRelay, relayBackoff)
+              }
+            }
+            ws.onerror = () => ws.close()
+          }
+          openRelay()
+        }
+
         flushTimer = setInterval(() => void flushEvents(), FLUSH_INTERVAL_MS)
         speakTimer = setInterval(() => {
           setSpeaking(Date.now() - lastAudioAtRef.current < SPEAKING_HOLD_MS)
@@ -198,6 +242,9 @@ export default function MeetingBotPage() {
       window.removeEventListener('pagehide', onPageHide)
       if (flushTimer) clearInterval(flushTimer)
       if (speakTimer) clearInterval(speakTimer)
+      if (videoReconnectTimer) clearTimeout(videoReconnectTimer)
+      videoSocketRef.current?.close()
+      videoSocketRef.current = null
     }
   }, [botToken, api, endSession, flushEvents])
 

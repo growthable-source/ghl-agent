@@ -109,8 +109,8 @@ export interface RealtimeModelProvider {
   /** Push a chunk of user mic audio (base64 PCM16 @ 16 kHz mono). */
   sendAudioChunk(base64Pcm16: string): void
 
-  /** Push one throttled screen frame (base64 JPEG). */
-  sendVideoFrame(base64Jpeg: string): void
+  /** Push one screen frame (base64 image). mimeType defaults to JPEG; the meeting relay sends PNG. */
+  sendVideoFrame(base64Image: string, mimeType?: string): void
 
   /**
    * Async grounding update — inject fresh context (e.g. re-retrieved

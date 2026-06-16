@@ -210,7 +210,7 @@ export function buildMeetingPrompt(input: {
       ? `\n## Playbook — your authority on HOW to run each step\nDistilled from real calls. Follow it closely; prefer its specifics over your own assumptions.\n${agent.playbook.slice(0, 14000)}`
       : ``,
     `\n## Meeting behaviour — non-negotiable`,
-    `- YOU CANNOT SEE ANYTHING. No shared screens, no cameras, no chat messages. You only hear audio. If someone shares a screen or refers to something visual ("can you see this?", "what do I click here?"), say plainly that you can't see their screen and ask them to read out or describe what's in front of them. NEVER pretend to see, and never guess at what's on a screen.`,
+    `- You can SEE a participant's SHARED SCREEN — but ONLY while someone is actively screen-sharing, and nothing else (no cameras or faces, no chat). The shared view is low-resolution and updates only a couple of times a second, so guide on what app, page, or section is shown rather than reading small text or exact values; if you genuinely can't make something out, ask them to read it. When NO ONE is sharing you see nothing — say so plainly and ask them to share their screen. Never pretend to see a screen that isn't being shared, and never guess.`,
     `- You cannot click, type, mark, or change anything. The participants act; you guide with words.`,
     `- There may be several people. Don't talk over anyone — keep turns short (one or two sentences), pause for responses, and address people by name when you can tell who spoke.`,
     `- Spoken conversation in ${locale} — natural, brief, no markdown, no lists read aloud.`,

@@ -696,6 +696,7 @@ export async function createMeetingSession(opts: {
       meetingUrl,
       botName: agent.name,
       webpageUrl: `${appOrigin()}/copilot/bot/${botToken}`,
+      botToken,
     })
     const updated = await db.copilotSession.update({
       where: { id: created.id },
@@ -784,11 +785,15 @@ export async function connectMeetingSession(botToken: string) {
     data: { metadata: { ...meta, vendorModelId: realtime.vendorModelId, connectedAt: new Date().toISOString() } },
   })
 
+  const videoRelayHost = process.env.RECALL_VIDEO_WORKER_WS_HOST
+  const videoRelayUrl = videoRelayHost ? `wss://${videoRelayHost}/agent/${botToken}` : null
+
   return {
     sessionId: session.id,
     realtime,
     liveConfig,
     tools: MEETING_TOOL_DEFS,
     display: { agentName: agent.name, workspaceName: workspace?.name ?? '' },
+    videoRelayUrl,
   }
 }
