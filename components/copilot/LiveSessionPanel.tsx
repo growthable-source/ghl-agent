@@ -54,12 +54,31 @@ interface FeedItem {
 
 const FLUSH_INTERVAL_MS = 5000
 
+// ─── Proactive turn engine (opt-in via `proactive`) ─────────────────
+// Gemini Live only speaks on user voice or a tool result; nothing turns
+// "screen changed" into "say something". These cues + the nudge() turn
+// are what let the copilot LEAD instead of wait. Guarded so it never
+// talks over the user or natters: debounced, suppressed while the user
+// speaks and just after the model speaks, and every cue lets the model
+// stay silent.
+const NUDGE_MIN_INTERVAL_MS = 6000 // debounce between any two proactive turns
+const MODEL_SPEAK_COOLDOWN_MS = 2000 // quiet window after the model's last audio
+const PROACTIVE_TICK_MS = 22_000 // idle cadence: check progress / re-orient
+
+const CUE_KICKOFF =
+  '[The session just started and the user is now sharing their screen. Greet them briefly, say you will walk them through setup, take a look at where they are, and give them the very first step.]'
+const CUE_SCREEN_CHANGED =
+  '[The screen just changed — the user navigated to a new view. Take a closer look, then if this is the next step or a wrong turn, guide them in one or two sentences. If nothing needs saying, stay silent.]'
+const CUE_IDLE_TICK =
+  '[The user has gone quiet. Take a quick look at where they are. If they have finished the current step, confirm it with get_workspace_setup_state and move them to the next one; if they seem stuck, offer one specific nudge. If they are clearly mid-task and fine, stay silent.]'
+
 export default function LiveSessionPanel({
   transport,
   accent = '#e84425',
   idleTitle = 'Start a live help session',
   idleBody = 'You’ll be asked to share your screen and microphone. Sessions are capped at 30 minutes; your screen is never recorded — only the conversation transcript is kept.',
   startLabel = 'Share screen & start talking',
+  proactive = false,
   endedGoalCopy,
   onSessionEnded,
   onSessionStarted,
@@ -69,6 +88,13 @@ export default function LiveSessionPanel({
   idleTitle?: string
   idleBody?: string
   startLabel?: string
+  /**
+   * Let the copilot LEAD: greet on connect, speak up on navigation, and
+   * advance the agenda on idle ticks. Onboarding/staff only — the prompt
+   * must explain the bracketed screen cues (buildCopilotSystemPrompt
+   * does). Off for visitor/widget and agent modes.
+   */
+  proactive?: boolean
   /** Custom copy for the ended card per goal state; defaults provided. */
   endedGoalCopy?: (goalReached: boolean | null) => string | null
   onSessionEnded?: () => void
@@ -98,6 +124,10 @@ export default function LiveSessionPanel({
   const pipRafRef = useRef<number | null>(null)
   const pipStreamRef = useRef<MediaStream | null>(null)
   const userSpeakingRef = useRef(false)
+  // Proactive turn engine bookkeeping.
+  const lastNudgeAtRef = useRef(0)
+  const lastModelSpokeAtRef = useRef(0)
+  const proactiveTickRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const sessionIdRef = useRef<string | null>(null)
   const providerRef = useRef<RealtimeModelProvider | null>(null)
@@ -269,8 +299,10 @@ export default function LiveSessionPanel({
 
       if (flushTimerRef.current) clearInterval(flushTimerRef.current)
       if (tickTimerRef.current) clearInterval(tickTimerRef.current)
+      if (proactiveTickRef.current) clearInterval(proactiveTickRef.current)
       flushTimerRef.current = null
       tickTimerRef.current = null
+      proactiveTickRef.current = null
 
       stopPip()
       framesRef.current?.stop()
@@ -353,7 +385,13 @@ export default function LiveSessionPanel({
       await mic.start()
       micRef.current = mic
 
-      provider.onAudioOutput = b64 => player.enqueue(b64)
+      provider.onAudioOutput = b64 => {
+        // Track the model's speech so proactive nudges never talk over it
+        // or crowd it the instant it finishes. Audio chunks stream while
+        // speaking, so "last chunk < cooldown ago" covers both cases.
+        lastModelSpokeAtRef.current = Date.now()
+        player.enqueue(b64)
+      }
       provider.onInterrupted = () => player.flush()
       provider.onTranscript = turn => {
         if (turn.final) {
@@ -432,15 +470,46 @@ export default function LiveSessionPanel({
         vendorConfig: created.liveConfig,
       })
 
+      // Fire a proactive turn unless it would talk over the user, crowd
+      // the model's last utterance, or arrive on the heels of another
+      // nudge. Returns whether it actually fired.
+      const maybeNudge = (cue: string): boolean => {
+        if (!proactive) return false
+        const now = Date.now()
+        if (userSpeakingRef.current) return false
+        if (now - lastModelSpokeAtRef.current < MODEL_SPEAK_COOLDOWN_MS) return false
+        if (now - lastNudgeAtRef.current < NUDGE_MIN_INTERVAL_MS) return false
+        lastNudgeAtRef.current = now
+        provider.nudge(cue)
+        return true
+      }
+
       const frames = new ScreenFrameCapture(displayStream, created.realtime.frameFpsCap, frame => {
         provider.sendVideoFrame(frame.base64Jpeg)
         screenBufferRef.current.push({
           detectedContext: { trigger: frame.trigger, diffScore: frame.diffScore },
           ts: new Date().toISOString(),
         })
+        // A navigation-scale change just shipped (and as a high-res frame).
+        // Prompt the model to look and orient — this is the main thing
+        // that makes the copilot tell the user where to go next.
+        if (frame.trigger === 'change' && frame.diffScore >= NAV_CHANGE_THRESHOLD) {
+          maybeNudge(CUE_SCREEN_CHANGED)
+        }
       })
       await frames.start()
       framesRef.current = frames
+
+      if (proactive) {
+        // Greet + give the first step instead of sitting silent until the
+        // user speaks. The model takes its own closer look if the first
+        // streamed frame hasn't landed yet. Bypass the debounce — this is
+        // the opening turn, and nothing has spoken yet.
+        lastNudgeAtRef.current = Date.now()
+        provider.nudge(CUE_KICKOFF)
+        // Keep the agenda moving when the user goes quiet mid-step.
+        proactiveTickRef.current = setInterval(() => maybeNudge(CUE_IDLE_TICK), PROACTIVE_TICK_MS)
+      }
 
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = displayStream
@@ -470,7 +539,7 @@ export default function LiveSessionPanel({
         setPhase({ kind: 'error', message })
       }
     }
-  }, [transport, endSession, flushEvents, pushFeed, onSessionStarted])
+  }, [transport, endSession, flushEvents, pushFeed, onSessionStarted, proactive])
 
   const toggleMute = useCallback(() => {
     setMuted(prev => {
