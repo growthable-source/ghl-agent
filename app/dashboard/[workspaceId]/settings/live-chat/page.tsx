@@ -70,14 +70,14 @@ export default function LiveChatSettingsPage() {
         Live chat queue <NewBadge since="2026-06-15" className="ml-1" />
       </h1>
       <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-        Cap how many human chats run at once. When the team is full, new human requests wait in a queue and can keep
-        chatting with the AI, play a game, or leave an email while they wait.
+        Visitors wait in a queue whenever the team is at capacity <em>or</em> no one is online — they keep a visible
+        position and estimate, can keep chatting with the AI, and (below) play a game or leave an email while they wait.
       </p>
 
       <div className="rounded-xl border p-5 space-y-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
         <Toggle
-          label="Enable the queue"
-          help="When off, behaviour is unchanged — handoffs assign immediately. When on, chats wait once you hit the cap below."
+          label="Enable the capacity queue"
+          help="When on, handoffs wait once you hit the cap below. When off, an online agent is assigned immediately. Either way, if nobody is online the visitor still sees the wait experience."
           checked={s.queueEnabled}
           disabled={saving}
           onChange={v => patch({ queueEnabled: v })}
@@ -105,29 +105,32 @@ export default function LiveChatSettingsPage() {
 
         <div className="pt-2 border-t space-y-5" style={{ borderColor: 'var(--border)' }}>
           <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>While they wait</p>
+          <p className="text-xs -mt-3" style={{ color: 'var(--text-tertiary)' }}>
+            These apply whenever a visitor is waiting — at capacity or with nobody online — independent of the capacity queue above.
+          </p>
           <Toggle
             label="Offer a mini-game"
             help="Show waiting visitors an optional game in the widget. Runs entirely offline."
             checked={s.queueGameEnabled}
-            disabled={saving || !s.queueEnabled}
+            disabled={saving}
             onChange={v => patch({ queueGameEnabled: v })}
           />
           <Toggle
             label="Offer “leave your email”"
             help="A waiting visitor can leave their email — it opens a support ticket. Requires ticketing to be active."
             checked={s.queueEmailTicketEnabled}
-            disabled={saving || !s.queueEnabled}
+            disabled={saving}
             onChange={v => patch({ queueEmailTicketEnabled: v })}
           />
         </div>
 
-        <div className={s.queueEnabled ? '' : 'opacity-40 pointer-events-none'}>
+        <div>
           <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
             Queue message <span className="font-normal" style={{ color: 'var(--text-tertiary)' }}>(optional)</span>
           </label>
           <input
             value={s.queueMessage ?? ''}
-            disabled={saving || !s.queueEnabled}
+            disabled={saving}
             placeholder="Thanks for your patience — an agent will be with you shortly."
             onChange={e => setSettings({ ...s, queueMessage: e.target.value })}
             onBlur={e => patch({ queueMessage: e.target.value || null })}
