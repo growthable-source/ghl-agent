@@ -231,6 +231,31 @@ model UsageRecord {
   @@index([workspaceId, type, createdAt])
 }
 
+// ─── LLM cost telemetry ────────────────────────────────────────────────────
+// Daily rollup of model calls so realized inference cost (and DeepSeek
+// savings vs Claude) is provable per workspace/surface/model. Written
+// best-effort, fire-and-forget, by lib/llm/createMessage — never blocks a
+// reply. workspaceId '' = unattributed. modelKey = the model actually USED
+// (after capability/reliability escalation); fellBackCalls counts how often
+// a cheaper model escalated to Claude.
+model LlmUsageDaily {
+  id            String   @id @default(cuid())
+  day           String // 'YYYY-MM-DD' UTC
+  workspaceId   String   @default("")
+  surface       String // 'agent' | 'summary' | 'ad-generator' | …
+  modelKey      String // model actually used, e.g. 'deepseek-flash'
+  provider      String // 'anthropic' | 'openai-compat'
+  calls         Int      @default(0)
+  fellBackCalls Int      @default(0)
+  inputTokens   BigInt   @default(0)
+  outputTokens  BigInt   @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([day, workspaceId, surface, modelKey])
+  @@index([day])
+  @@index([workspaceId, day])
+}
+
 /// Snapshot of a marketplace install at the moment it happened.
 /// Powers the admin backend's lead-tracking view: "who installed this
 /// week, what agency are they part of, what's their email." Separate

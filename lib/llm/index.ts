@@ -12,11 +12,18 @@
  * (`content` / `stop_reason` / `usage`), so callers barely change.
  */
 
-import type { LlmCreateParams, LlmMessageParam, LlmModelKey, LlmResponse } from './types'
+import type { LlmCreateParams, LlmMessageParam, LlmModelKey, LlmResponse, ProviderKind } from './types'
 import { resolveKey, getModel, CLAUDE_FALLBACK_KEY } from './registry'
 import { callAnthropic, callOpenAICompat } from './providers'
 
 export type { LlmCreateParams, LlmResponse } from './types'
+
+/** Optional attribution so cost can be rolled up per workspace/surface. */
+export interface LlmCallMeta {
+  surface: string
+  workspaceId?: string | null
+  agentId?: string | null
+}
 
 function hasImages(messages: LlmMessageParam[]): boolean {
   return messages.some(m => Array.isArray(m.content) && m.content.some(b => b.type === 'image'))
@@ -30,9 +37,41 @@ function logCost(requested: string, used: string, usage: { input_tokens: number;
   console.info(`[llm] requested=${requested} used=${used} in=${usage.input_tokens} out=${usage.output_tokens}${reason ? ` fellBack=${reason}` : ''}`)
 }
 
+/**
+ * Best-effort daily cost rollup. Fire-and-forget — never awaited on the
+ * reply path, never throws (missing table pre-migration is swallowed).
+ */
+function recordUsage(
+  usedKey: string,
+  provider: ProviderKind,
+  usage: { input_tokens: number; output_tokens: number },
+  fellBack: boolean,
+  meta?: LlmCallMeta,
+): void {
+  if (!meta) return
+  const day = new Date().toISOString().slice(0, 10)
+  import('@/lib/db')
+    .then(({ db }) => db.llmUsageDaily.upsert({
+      where: { day_workspaceId_surface_modelKey: { day, workspaceId: meta.workspaceId ?? '', surface: meta.surface, modelKey: usedKey } },
+      create: {
+        day, workspaceId: meta.workspaceId ?? '', surface: meta.surface, modelKey: usedKey, provider,
+        calls: 1, fellBackCalls: fellBack ? 1 : 0,
+        inputTokens: BigInt(usage.input_tokens || 0), outputTokens: BigInt(usage.output_tokens || 0),
+      },
+      update: {
+        provider,
+        calls: { increment: 1 }, fellBackCalls: { increment: fellBack ? 1 : 0 },
+        inputTokens: { increment: BigInt(usage.input_tokens || 0) },
+        outputTokens: { increment: BigInt(usage.output_tokens || 0) },
+      },
+    }))
+    .catch(() => { /* telemetry only — never affects the call */ })
+}
+
 export async function createMessage(
   modelKey: LlmModelKey | string | null | undefined,
   params: LlmCreateParams,
+  meta?: LlmCallMeta,
 ): Promise<LlmResponse> {
   const requested = resolveKey(modelKey)
   let model = getModel(requested)
@@ -50,6 +89,7 @@ export async function createMessage(
   try {
     const res = await dispatch(model, params)
     logCost(requested, model.key, res.usage, reason)
+    recordUsage(model.key, model.provider, res.usage, !!reason, meta)
     return res
   } catch (err) {
     // Reliability escalation: a DeepSeek call failed after its own retries →
@@ -59,6 +99,7 @@ export async function createMessage(
       const claude = getModel(CLAUDE_FALLBACK_KEY)
       const res = await dispatch(claude, params)
       logCost(requested, claude.key, res.usage, 'error')
+      recordUsage(claude.key, claude.provider, res.usage, true, meta)
       return res
     }
     throw err

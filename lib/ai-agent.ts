@@ -809,7 +809,7 @@ export async function runAgent(opts: {
       // (Claude / DeepSeek), escalating to Claude for vision / MCP /
       // failure. Returns the Anthropic-shaped message this loop reads.
       const { createMessage: llmCreateMessage } = await import('./llm')
-      response = await llmCreateMessage(agentModelKey ?? 'auto', createParams) as unknown as Anthropic.Messages.Message
+      response = await llmCreateMessage(agentModelKey ?? 'auto', createParams, { surface: 'agent', workspaceId, agentId }) as unknown as Anthropic.Messages.Message
     } catch (err: any) {
       // Anthropic was unreachable/overloaded after retries. Do NOT
       // crash the webhook with a 500 (silent to the visitor) — return
