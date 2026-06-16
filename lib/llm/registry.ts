@@ -26,6 +26,13 @@ const DEEPSEEK_PRO = process.env.DEEPSEEK_MODEL_PRO || 'deepseek-v4-pro'
 export const CLAUDE_FALLBACK_KEY: ResolvedKey = 'claude-sonnet'
 
 export const REGISTRY: Record<ResolvedKey, ResolvedModel> = {
+  'claude-opus': {
+    key: 'claude-opus',
+    provider: 'anthropic',
+    vendorModelId: process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-7',
+    apiKeyEnv: 'ANTHROPIC_API_KEY',
+    capabilities: { vision: true, mcpServers: true, toolReliability: 'high' },
+  },
   'claude-sonnet': {
     key: 'claude-sonnet',
     provider: 'anthropic',

@@ -15,6 +15,7 @@
 /** Logical model the caller asks for. `auto` resolves to DEFAULT_AGENT_MODEL. */
 export type LlmModelKey =
   | 'auto'
+  | 'claude-opus'
   | 'claude-sonnet'
   | 'claude-haiku'
   | 'deepseek-flash'
