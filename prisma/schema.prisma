@@ -642,6 +642,12 @@ model Agent {
   judgeAutoBlock    Boolean @default(false)
   judgeInstructions String? @db.Text
 
+  // Which LLM serves THIS agent's replies (lib/llm registry key):
+  // 'auto' (→ DEFAULT_AGENT_MODEL), 'claude-sonnet', 'deepseek-flash', etc.
+  // 'auto' default keeps every existing agent on the platform default
+  // (Claude) until an operator opts in or the fleet switch is flipped.
+  model             String  @default("auto")
+
   // ─── Agent context level ───
   // SIMPLE = minimal system prompt (name + tags only).
   // ADVANCED = also loads opportunities (last 2 quarters) + contact custom

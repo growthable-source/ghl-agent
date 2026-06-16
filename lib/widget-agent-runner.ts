@@ -279,6 +279,7 @@ Never apologise for the language or mention translation — just speak naturally
     result = await runAgent({
       locationId: widgetLocationId,
       agentId: agent.id,
+      model: (agent as any).model,
       contactId: widgetContactId,
       conversationId: convo.id,
       channel: 'Live_Chat',

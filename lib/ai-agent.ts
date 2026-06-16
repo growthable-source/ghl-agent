@@ -85,6 +85,13 @@ function renderShopifyCustomerBlock(c: {
 export async function runAgent(opts: {
   locationId: string
   agentId?: string
+  /**
+   * Logical model key for this agent (lib/llm registry): 'auto' (default →
+   * DEFAULT_AGENT_MODEL), 'claude-sonnet', 'deepseek-flash', etc. Callers
+   * that have the agent row pass `agent.model`; everyone else defaults to
+   * 'auto'. The llm layer escalates to Claude for vision / MCP / failure.
+   */
+  model?: string
   contactId: string
   conversationId?: string
   conversationProviderId?: string
@@ -129,7 +136,7 @@ export async function runAgent(opts: {
     removeFrom?: Array<{ id: string; name: string }>
   }
 }): Promise<AgentResponse> {
-  const { locationId, agentId, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend, workflowPicks } = opts
+  const { locationId, agentId, model: agentModelKey, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend, workflowPicks } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Resolve CRM adapter: explicit override > sandbox-null > default lookup
@@ -798,8 +805,11 @@ export async function runAgent(opts: {
 
     let response: Awaited<ReturnType<typeof client.messages.create>>
     try {
-      const { createMessageWithRetry } = await import('./anthropic-resilient')
-      response = await createMessageWithRetry(client, createParams as Parameters<typeof createMessageWithRetry>[1])
+      // Provider-agnostic call: routes to the agent's selected model
+      // (Claude / DeepSeek), escalating to Claude for vision / MCP /
+      // failure. Returns the Anthropic-shaped message this loop reads.
+      const { createMessage: llmCreateMessage } = await import('./llm')
+      response = await llmCreateMessage(agentModelKey ?? 'auto', createParams) as unknown as Anthropic.Messages.Message
     } catch (err: any) {
       // Anthropic was unreachable/overloaded after retries. Do NOT
       // crash the webhook with a 500 (silent to the visitor) — return
