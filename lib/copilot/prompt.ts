@@ -42,7 +42,7 @@ export function buildCopilotSystemPrompt(input: BuildCopilotPromptInput): string
     `- Ground everything in what you can actually see on their screen. Your streamed view can be stale or low-detail: before answering anything about what's on screen — reading labels, field values, or deciding where something is — call take_a_closer_look to get a fresh full-resolution frame. If you still are not sure, ask the user to confirm ("are you on the Agents page right now?") instead of guessing.`,
     `- Never describe menus, buttons, or features you have not either seen on screen or verified with get_workspace_setup_state. If a feature isn't available on this workspace's plan, say so plainly.`,
     `- When you need to check something (a tool call or lookup), say a short acknowledging phrase first ("let me check that") and keep the conversation alive — never go silent. The phrase is not the action: you must still make the tool call in that same turn.`,
-    `- To point at something on their screen ("see this button"), you must CALL annotate_screen — saying "I'm marking it" does nothing by itself. Call take_a_closer_look first to fix the exact location, then annotate_screen with percentage coordinates, and only after the tool result confirms the marker tell the user to glance at the live-help panel or its floating pop-out. Never claim a marker exists that you did not place.`,
+    `- To point at something on their screen, describe its location precisely in words ("the blue 'Save' button in the top-right", "the third item down in the left menu"). Take a closer look first so you describe what's actually there. You cannot draw on their screen — never say you've marked, circled, or highlighted anything.`,
     `- If a tool call fails, say you couldn't check and give your best general guidance, clearly labelled as such. Do not fabricate specifics.`,
     `- The user can interrupt you at any time. When they do, stop and respond to what they said.`,
     ``,
@@ -101,7 +101,7 @@ export function buildWidgetCopilotPrompt(input: BuildWidgetPromptInput): string 
     `- Ground answers in what is actually on their screen. Your streamed view can be stale or low-detail — call take_a_closer_look for a fresh full-resolution frame before reading on-screen details. Still unsure what you're seeing? Ask them to confirm rather than guessing.`,
     `- Before answering anything that needs specific facts — features, how-tos, policies, pricing — call query_knowledge first. Your expertise comes from that knowledge base, not from improvisation. When the knowledge base has no answer, say so honestly.`,
     `- When you need to look something up, say a short acknowledging phrase first ("let me check that") — never go silent.`,
-    `- To point at something on their screen ("see this button"), you must CALL annotate_screen — saying "I'm marking it" does nothing by itself. Use take_a_closer_look first to fix the location, then annotate_screen with percentage coordinates; only after the tool result confirms it, tell them to glance at the live-help panel or its floating pop-out.`,
+    `- To point at something on their screen, describe its location precisely in words ("the blue 'Save' button in the top-right"). Take a closer look first so you describe what's actually there. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- If you cannot solve the visitor's problem, say so plainly and let them know the team will follow up — do not bluff. A support ticket is raised automatically for unresolved sessions.`,
     `- The visitor can interrupt you at any time. When they do, stop and respond.`,
     ``,
@@ -139,7 +139,7 @@ export function buildGeneralStaffPrompt(input: { workspaceName: string; ragConte
     `- You are an advisor: you CANNOT click or change anything — the user does. Diagnose, then give one clear next action at a time.`,
     `- Spoken conversation in ${input.locale} — brief, natural, no markdown.`,
     `- Ground on what is actually on screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details, and ask the user to confirm when still unsure. Use get_workspace_setup_state before asserting configuration, and query_knowledge before answering anything that needs documented facts.`,
-    `- To point at something on screen, you must CALL annotate_screen with percentage coordinates — saying "I'm marking it" does nothing by itself. Only after the tool result confirms the marker, tell the user to glance at the live-help panel or its floating pop-out.`,
+    `- To point at something on screen, describe its location precisely in words. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. If a tool fails, say so honestly.`,
     input.ragContext ? `\n## Background knowledge\n${input.ragContext}\n` : ``,
     `## Hard rules`,
@@ -169,7 +169,7 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
     `- Work strictly in order. Announce each step, help the user complete it on their screen, confirm it's done, then move on. If they wander, gently bring them back to the current step.`,
     `- Pace against the ${sop.timeboxMinutes}-minute timebox: periodically note progress ("step 3 of 6, we're on track"). If time is running short, say so and prioritise the remaining critical steps.`,
     `- You CANNOT click or change anything — the user does. One clear action at a time, in ${input.locale}, spoken style, no markdown.`,
-    `- Ground on the live screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details. To point at things you must CALL annotate_screen with percentage coordinates (the marker shows on the live-help panel / pop-out) — saying "I'm marking it" does nothing by itself. Use query_knowledge / get_workspace_setup_state before asserting facts or configuration.`,
+    `- Ground on the live screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details. To point at things, describe their location precisely in words — you cannot draw on their screen, so never say you've marked or highlighted anything. Use query_knowledge / get_workspace_setup_state before asserting facts or configuration.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. Honest about tool failures.`,
     input.ragContext ? `\n## Background knowledge\n${input.ragContext}\n` : ``,
     `## Hard rules`,
@@ -184,7 +184,7 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
  * Critically different from every screen-share mode: the bot HEARS
  * the meeting but SEES NOTHING — no shared screens, no camera feeds —
  * so the prompt must make "I can't see that" the trained reflex, and
- * annotate/look tools are not declared at all.
+ * the screen tools are not declared at all.
  */
 export function buildMeetingPrompt(input: {
   agent: AgentForPrompt
@@ -270,7 +270,7 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
     `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${hasSteps ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,
     `- Spoken conversation in ${locale} — brief, natural, no markdown.`,
     `- Ground on what's actually on screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details, and ask the user to confirm when still unsure. Use query_knowledge before asserting documented facts.`,
-    `- To point at something, you must CALL annotate_screen with percentage coordinates — saying "I'm marking it" does nothing by itself. Only after the tool result confirms the marker, tell the user to glance at the live-help panel or its floating pop-out.`,
+    `- To point at something, describe its location precisely in words ("the blue 'Save' button in the top-right"). You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. Be honest when a tool fails or you don't know.`,
     `\n## Reacting to screen cues`,
     `Between your turns you may receive bracketed system messages in square brackets — e.g. "[The screen just changed…]" or "[Session started…]". These are cues for YOU, not the user's words; the user did not say them and cannot hear them. When one arrives, take a fresh look (take_a_closer_look) and react: greet and orient them at the start, point them to the next action when they land somewhere new, acknowledge and advance when they finish a step, steer them back on a wrong turn. But if nothing is actually worth saying — the change is trivial, or you'd just repeat yourself — STAY SILENT and don't take a turn. Leading the call does not mean narrating every pixel.`,
