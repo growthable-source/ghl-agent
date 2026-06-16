@@ -250,6 +250,19 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     })
   }
 
+  nudge(text: string): void {
+    // turnComplete:true forces the model to take a turn now — this is
+    // the proactive trigger that turns a screen-change or idle tick
+    // into speech. The model still chooses to stay silent when the
+    // cue says nothing is worth saying. The newest video frame has
+    // already been pushed over the same socket, so the model grounds
+    // this turn on the current screen.
+    this.session?.sendClientContent({
+      turns: [{ role: 'user', parts: [{ text }] }],
+      turnComplete: true,
+    })
+  }
+
   interrupt(): void {
     // Gemini Live runs server-side VAD on the mic stream, so true
     // barge-in happens automatically when the user speaks. A manual

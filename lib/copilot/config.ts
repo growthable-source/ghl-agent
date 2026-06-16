@@ -9,8 +9,14 @@ export const COPILOT_DEFAULTS = {
   vendorModelId: process.env.COPILOT_MODEL_PRIMARY || 'gemini-3.1-flash-live-preview',
   /** Hard session ceiling (P0-11). Client enforces a timer; server rejects writes past it. */
   maxSessionSecs: Number(process.env.COPILOT_MAX_SESSION_SECS) || 1800,
-  /** Frame throttle hard cap, frames/sec. Change detection runs under this (P0-4). */
-  frameFpsCap: Number(process.env.COPILOT_FRAME_FPS_CAP) || 1,
+  /**
+   * Frame throttle hard cap, frames/sec. Change detection runs under
+   * this (P0-4), so idle screens still send only a heartbeat — the cap
+   * just sets how fast the model's view refreshes while the screen is
+   * moving. 2 fps keeps a proactive guide grounded on motion without
+   * meaningfully raising idle cost.
+   */
+  frameFpsCap: Number(process.env.COPILOT_FRAME_FPS_CAP) || 2,
   /**
    * Token budget per video frame. The Live API default is LOW
    * (64 tokens/frame) — at that resolution dashboard UI text is

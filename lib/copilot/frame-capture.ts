@@ -30,7 +30,14 @@ export const CHANGE_THRESHOLD = 3
 
 const THUMB_W = 32
 const THUMB_H = 18
-const HEARTBEAT_MS = 10_000
+const HEARTBEAT_MS = 5_000
+
+/** A change this large is a page navigation, not a tweak (the diff
+ *  scale puts nav at 30–80, typing at 2–4). Navigations are exactly
+ *  when the user needs legible guidance on a new screen, so we send
+ *  these through the full-resolution path automatically instead of
+ *  waiting for the model to call take_a_closer_look. */
+export const NAV_CHANGE_THRESHOLD = 20
 
 export interface CapturedFrame {
   base64Jpeg: string
@@ -130,7 +137,9 @@ export class ScreenFrameCapture {
     if (!this.video || !this.canvas) return
     const vw = this.video.videoWidth
     const vh = this.video.videoHeight
-    const highRes = trigger === 'closer_look'
+    // Full detail for explicit closer-looks AND for page navigations —
+    // both are moments where the model must read a fresh, unfamiliar screen.
+    const highRes = trigger === 'closer_look' || (trigger === 'change' && diff >= NAV_CHANGE_THRESHOLD)
     const maxSide = highRes ? HIGHRES_MAX_SIDE : FRAME_MAX_SIDE
     const quality = highRes ? HIGHRES_JPEG_QUALITY : FRAME_JPEG_QUALITY
 

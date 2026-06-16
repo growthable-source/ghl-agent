@@ -119,6 +119,15 @@ export interface RealtimeModelProvider {
    */
   injectContext(text: string): void
 
+  /**
+   * Proactive trigger — force the model to take a turn now in response
+   * to an environment event (screen change, idle progress tick, or
+   * session start), not user speech. Unlike injectContext, this
+   * completes the turn so the model evaluates and speaks (or elects to
+   * stay silent). The text is an instruction-style cue, not user words.
+   */
+  nudge(text: string): void
+
   /** Barge-in: stop current model speech immediately (P0-3). */
   interrupt(): void
 

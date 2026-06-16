@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RealtimeModelProvider, RealtimeToolDef, RealtimeConnectionInfo } from '@/lib/copilot/types'
 import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
 import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
-import { ScreenFrameCapture } from '@/lib/copilot/frame-capture'
+import { ScreenFrameCapture, NAV_CHANGE_THRESHOLD } from '@/lib/copilot/frame-capture'
 
 export interface CopilotCreateResult {
   ok: boolean
