@@ -859,39 +859,20 @@ git commit -m "feat(copilot): meeting bot can see shared screens (prompt)"
 
 ---
 
-## Phase 3 — Deploy + end-to-end (Ryan-run; needs Fly + Vercel auth + a live Meet)
+## Phase 3 — Going live (operator-run)
 
-### Task 11: Deploy the worker, wire the env, verify on a real Meet
+This phase is intentionally **non-technical and lives in its own runbook** so a non-engineer can
+follow it: **`docs/superpowers/plans/2026-06-16-meet-screenshare-GOLIVE-runbook.md`**. It covers, in
+plain English with copy-paste commands and what-you-should-see after each: (A) deploy the worker to
+Fly.io, (B) set `RECALL_VIDEO_WORKER_WS_HOST=voxility-recall-worker.fly.dev` in Vercel (Prod + Dev)
+and redeploy, (C) test on a real Google Meet.
 
-- [ ] **Step 1: Deploy the worker to Fly**
-
-```bash
-cd recall-video-worker
-fly launch --no-deploy   # first run: confirm app name "voxility-recall-worker", region sjc, no Postgres/Redis
-fly deploy
-fly status               # confirm 1 machine running
-curl https://voxility-recall-worker.fly.dev/healthz   # expect: ok rooms=0
-```
-
-- [ ] **Step 2: Set the app env (note: `printf`, never `echo`)**
-
-```bash
-printf '%s' 'voxility-recall-worker.fly.dev' | vercel env add RECALL_VIDEO_WORKER_WS_HOST production
-printf '%s' 'voxility-recall-worker.fly.dev' | vercel env add RECALL_VIDEO_WORKER_WS_HOST development
-```
-
-- [ ] **Step 3: Redeploy `ghl-agent`** (env bakes at deploy time) and alias to production, as per the existing deploy flow.
-
-- [ ] **Step 4: E2E on a throwaway Google Meet**
-  1. Start a Meet; from the dashboard send the meeting bot to it; admit it.
-  2. Share a screen (e.g. a browser tab). Watch the worker: `fly logs` should show "first recall payload …" then steady frames.
-  3. Confirm the bot verbally references what's on the shared screen ("you're on the … page").
-  4. Stop sharing → the bot should fall back to audio-only and, if asked, say it can't see a screen.
-  5. Confirm audio/voice/turn-taking are unaffected throughout.
-
-- [ ] **Step 5: Confirm the first raw payload matches the parser.** From `fly logs`, inspect the logged "first recall payload" JSON. If the field nesting differs from `data.data.buffer` / `data.data.type`, update `recall-video-worker/src/recall-events.ts` + its test fixture to match, redeploy, and re-test. (Most likely outcome: it matches; this is the verification gate the spec called out.)
-
-- [ ] **Step 6 (optional hardening): higher resolution.** If 360p proves too coarse even for general awareness, check Recall's video config for a resolution option on the `video_separate_png` endpoint and raise it; otherwise accept v1 as-is.
+**Engineer note (the one verification gate):** during the first live Meet, `fly logs` prints the
+first raw Recall payload (`first recall payload …`). Confirm its nesting matches the parser's
+assumption (`data.data.buffer` / `data.data.type`). If it differs, update
+`recall-video-worker/src/recall-events.ts` + its test fixture, `fly deploy` again, and re-test.
+Optional later hardening: if 360p is too coarse, check Recall for a higher-resolution `video_separate_png`
+option; otherwise accept v1.
 
 ---
 
