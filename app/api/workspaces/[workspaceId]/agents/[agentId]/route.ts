@@ -74,7 +74,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const judgeKeys = ['judgeEnabled', 'judgeModel', 'judgeAutoSend', 'judgeAutoBlock', 'judgeInstructions']
-  const buildData = (includeJudge: boolean): Record<string, unknown> => ({
+  const MODEL_KEYS = ['auto', 'claude-sonnet', 'claude-haiku', 'deepseek-flash', 'deepseek-pro']
+  const buildData = (includeJudge: boolean, includeModel: boolean): Record<string, unknown> => ({
       ...(resolvedLocationId !== null && { locationId: resolvedLocationId }),
       ...(body.name !== undefined && { name: body.name }),
       ...(body.systemPrompt !== undefined && { systemPrompt: body.systemPrompt }),
@@ -148,6 +149,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(typeof body.viewMode === 'string' && (body.viewMode === 'simple' || body.viewMode === 'advanced') && {
         viewMode: body.viewMode,
       }),
+      // Which LLM serves this agent (lib/llm registry key). Gated like the
+      // judge config so a DB without the `model` column degrades gracefully.
+      ...(includeModel && typeof body.model === 'string' && {
+        model: MODEL_KEYS.includes(body.model) ? body.model : 'auto',
+      }),
   })
 
   // Validate every referenced CRM resource immediately so the UI can show
@@ -177,19 +183,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // without them so the rest of the PATCH still goes through and the UI
   // gets clear signal that the AI Judge migration is pending.
   const wantsJudge = judgeKeys.some(k => body[k] !== undefined)
+  const wantsModel = body.model !== undefined
   try {
-    const agent = await db.agent.update({ where: { id: agentId }, data: buildData(true) as any })
+    const agent = await db.agent.update({ where: { id: agentId }, data: buildData(true, true) as any })
     const referenceHealth = await loadReferenceHealth()
     return NextResponse.json({ agent, referenceHealth })
   } catch (err: any) {
-    if (isMissingColumn(err) && wantsJudge) {
+    if (isMissingColumn(err) && (wantsJudge || wantsModel)) {
       try {
-        const agent = await db.agent.update({ where: { id: agentId }, data: buildData(false) as any })
+        const agent = await db.agent.update({ where: { id: agentId }, data: buildData(false, false) as any })
         const referenceHealth = await loadReferenceHealth()
         return NextResponse.json({
           agent,
           referenceHealth,
-          warning: 'Judge config skipped — run prisma/migrations-legacy/manual_ai_judge.sql to enable it.',
+          warning: 'Some optional fields (AI Judge / model selection) were skipped — a column migration is pending.',
           code: 'JUDGE_MIGRATION_PENDING',
         })
       } catch (err2: any) {

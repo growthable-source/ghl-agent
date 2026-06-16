@@ -11,6 +11,7 @@ interface VocabRow {
 }
 
 interface PersonaData {
+  model: string
   agentPersonaName: string
   responseLength: string
   formalityLevel: string
@@ -59,6 +60,7 @@ export default function PersonaPage() {
           }
         }
         setInitial({
+          model: agent.model ?? 'auto',
           agentPersonaName: agent.agentPersonaName ?? '',
           responseLength: agent.responseLength ?? 'MODERATE',
           formalityLevel: agent.formalityLevel ?? 'NEUTRAL',
@@ -82,6 +84,7 @@ export default function PersonaPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          model: d.model,
           agentPersonaName: d.agentPersonaName || null,
           responseLength: d.responseLength,
           formalityLevel: d.formalityLevel,
@@ -136,6 +139,36 @@ export default function PersonaPage() {
     <div className="p-8">
       <div className="max-w-2xl pb-24">
         <div className="space-y-8">
+          <div>
+            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Model</label>
+            <div className="space-y-2">
+              {[
+                { value: 'auto', label: 'Auto (platform default)', desc: 'Uses the platform default model — recommended.' },
+                { value: 'claude-sonnet', label: 'Claude Sonnet 4', desc: 'Best tool use + vision. Highest cost.' },
+                { value: 'deepseek-flash', label: 'DeepSeek V4-Flash', desc: 'Lowest cost. Strong for most chats.' },
+                { value: 'deepseek-pro', label: 'DeepSeek V4-Pro', desc: 'Cheaper frontier; better on deep tool loops.' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="model"
+                    value={opt.value}
+                    checked={draft.model === opt.value}
+                    onChange={() => set({ model: opt.value })}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{opt.label}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+              DeepSeek is a lower-cost frontier model. Image messages and tools it can&apos;t run fall back to Claude automatically, so quality is protected.
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Agent Persona Name</label>
             <input
