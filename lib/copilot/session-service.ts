@@ -542,7 +542,10 @@ export async function endCopilotSession(sessionId: string, endedReason: string):
     }
   }
 
-  const analysis = await analyzeSessionAndFollowUp(session.id)
+  // Public "Try Now" demos are throwaway: skip the Haiku analysis +
+  // auto-ticket/follow-up so a random visitor's call never spends tokens or
+  // drops a ticket into the workspace.
+  const analysis = meta.demo === true ? null : await analyzeSessionAndFollowUp(session.id)
   if (taskSuccess === null && analysis) taskSuccess = analysis.issueResolved
 
   return { alreadyEnded: false, durationSecs, taskSuccess, analysis }
@@ -716,6 +719,131 @@ export async function createMeetingSession(opts: {
       },
     })
     return { session: toCopilotSessionDTO(updated), bot }
+  } catch (err) {
+    await db.copilotSession.update({
+      where: { id: created.id },
+      data: { status: 'error', endedAt: new Date(), durationSecs: 0, endedReason: 'bot_create_failed' },
+    })
+    throw err
+  }
+}
+
+// ─── Public "Try Now" demo meeting bot ──────────────────────────────
+//
+// Unauthenticated: the agent's publicKey is the only credential (same
+// trust model as the screen-share launch). Because every dispatch spends
+// real Recall minutes, three guards bound the cost: a hard time cap
+// (DEMO_MAX_SECS, also enforced by the per-minute copilot-demo-reaper
+// cron), a global concurrency cap, and a per-IP cooldown.
+
+/** Hard wall-clock cap for a public demo bot, seconds (from dispatch). */
+export const DEMO_MAX_SECS = Number(process.env.COPILOT_DEMO_MAX_SECS) || 600
+/** Max demo bots running across ALL visitors at once — the cost ceiling. */
+const DEMO_MAX_CONCURRENT = Number(process.env.COPILOT_DEMO_MAX_CONCURRENT) || 3
+/** One demo per IP per this many seconds. */
+const DEMO_IP_COOLDOWN_SECS = Number(process.env.COPILOT_DEMO_COOLDOWN_SECS) || 1800
+
+/** A demo launch was refused by a rate/concurrency guard (→ HTTP 429). */
+export class CopilotDemoLimitError extends Error {
+  constructor(message: string, readonly kind: 'busy' | 'cooldown') {
+    super(message)
+  }
+}
+
+const DEMO_MEETING_HOST = /(^|\.)(meet\.google\.com|zoom\.us|teams\.microsoft\.com|teams\.live\.com)$/i
+
+/**
+ * Dispatch the published demo agent (resolved by publicKey) into a visitor's
+ * meeting, capped + rate-limited for public use. Mirrors createMeetingSession
+ * but: no workspace auth / no userId, a 10-minute budget, demo-tagged
+ * metadata (so the reaper + analysis-skip treat it as throwaway), and
+ * recordingPending:false (never self-learn from random public calls).
+ */
+export async function createPublicMeetingSession(publicKey: string, opts: {
+  meetingUrl: string
+  ip: string | null
+  locale?: string
+}) {
+  const { isRecallConfigured, createMeetingBot } = await import('./recall')
+  if (!isRecallConfigured()) {
+    throw new CopilotNotConfiguredError('Live demos are not available right now.')
+  }
+
+  const agent = await db.copilotAgent.findFirst({ where: { publicKey, published: true } })
+  if (!agent) throw new CopilotSopNotFoundError('This demo link is invalid or unpublished.')
+
+  const workspace = await db.workspace.findUnique({ where: { id: agent.workspaceId }, select: { plan: true, name: true } })
+  const { canUseCopilot } = await import('@/lib/plans')
+  if (!workspace || !canUseCopilot(workspace.plan, agent.workspaceId)) {
+    throw new CopilotNotConfiguredError('Live demos are not available right now.')
+  }
+
+  // Only real, https meeting links from the supported platforms.
+  let meetingUrl: string
+  try {
+    const parsed = new URL(opts.meetingUrl)
+    if (parsed.protocol !== 'https:' || !DEMO_MEETING_HOST.test(parsed.hostname)) throw new Error('bad url')
+    meetingUrl = parsed.toString()
+  } catch {
+    throw new CopilotSopNotFoundError('Paste a full Google Meet, Zoom, or Teams link (https://…).')
+  }
+
+  // Concurrency cap = the hard cost ceiling, independent of who's calling.
+  const liveDemos = await db.copilotSession.count({
+    where: { channel: 'recall_meeting_bot', status: 'active', metadata: { path: ['demo'], equals: true } },
+  })
+  if (liveDemos >= DEMO_MAX_CONCURRENT) {
+    throw new CopilotDemoLimitError('Our live demo is busy right now — please try again in a few minutes.', 'busy')
+  }
+
+  // Per-IP cooldown so one visitor can't relaunch on a loop.
+  if (opts.ip) {
+    const since = new Date(Date.now() - DEMO_IP_COOLDOWN_SECS * 1000)
+    const recent = await db.copilotSession.count({
+      where: { channel: 'recall_meeting_bot', startedAt: { gt: since }, metadata: { path: ['demoIp'], equals: opts.ip } },
+    })
+    if (recent > 0) {
+      throw new CopilotDemoLimitError('You just started a demo — give it a few minutes before launching another.', 'cooldown')
+    }
+  }
+
+  const { randomBytes } = await import('crypto')
+  const botToken = randomBytes(24).toString('base64url')
+  const baseMeta = {
+    mode: 'widget', // visitor-grade tool gating — the bot page is token-auth
+    copilotMode: 'meeting',
+    copilotAgentId: agent.id,
+    botToken,
+    meetingUrl,
+    knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
+    maxSessionSecs: DEMO_MAX_SECS, // drives the token cap in connectMeetingSession
+    demo: true,
+    demoIp: opts.ip ?? null,
+    recordingPending: false, // never train on random public demos
+  }
+
+  const created = await db.copilotSession.create({
+    data: {
+      workspaceId: agent.workspaceId,
+      channel: 'recall_meeting_bot',
+      locale: normalizeLocale(opts.locale),
+      model: 'gemini-live',
+      metadata: baseMeta,
+    },
+  })
+
+  try {
+    const bot = await createMeetingBot({
+      meetingUrl,
+      botName: `${agent.name} (demo)`,
+      webpageUrl: `${appOrigin()}/copilot/bot/${botToken}`,
+      botToken,
+    })
+    await db.copilotSession.update({
+      where: { id: created.id },
+      data: { roomId: bot.id, metadata: { ...baseMeta, botId: bot.id } },
+    })
+    return { sessionId: created.id, botId: bot.id, status: bot.status }
   } catch (err) {
     await db.copilotSession.update({
       where: { id: created.id },

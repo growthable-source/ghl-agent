@@ -64,6 +64,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/copilot-demo-reaper",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/ingest-queue",
       "schedule": "* * * * *"
     },
