@@ -17,7 +17,15 @@ import type {
 } from './ad-google-types'
 
 const client = new Anthropic()
-const MODEL = 'claude-opus-4-7'
+// Was pinned to Opus; now routed through the provider layer (lib/llm) so it
+// defaults to cheaper Claude Sonnet and can move to DeepSeek via
+// LLM_GENERATOR_MODEL. Parsing below is unchanged (layer returns the
+// Anthropic-shaped message).
+const MODEL = process.env.LLM_GENERATOR_MODEL || 'claude-sonnet'
+const msg = async (params: Parameters<typeof client.messages.create>[0]) => {
+  const { createMessage } = await import('@/lib/llm')
+  return createMessage(MODEL, params as never, { surface: 'ad-google' }) as unknown as Anthropic.Messages.Message
+}
 
 const SYSTEM_PROMPT = `You are a senior Google Ads strategist who has spent $50M+ across Search, Performance Max, Display, and YouTube. You build campaigns that convert at the lowest possible CPA without wasting spend on low-intent traffic.
 
@@ -189,7 +197,7 @@ export async function generateGoogleCampaign(input: {
     throw new Error('daily_budget_cents must be at least 100 (Google min ~$1/day)')
   }
 
-  const response = await client.messages.create({
+  const response = await msg({
     model: MODEL,
     max_tokens: 12000,
     system: [

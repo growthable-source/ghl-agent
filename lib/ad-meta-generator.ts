@@ -23,7 +23,15 @@ import type {
 } from './ad-meta-types'
 
 const client = new Anthropic()
-const MODEL = 'claude-opus-4-7'
+// Was pinned to Opus; now routed through the provider layer (lib/llm) so it
+// defaults to cheaper Claude Sonnet and can move to DeepSeek via
+// LLM_GENERATOR_MODEL. Parsing below is unchanged (layer returns the
+// Anthropic-shaped message).
+const MODEL = process.env.LLM_GENERATOR_MODEL || 'claude-sonnet'
+const msg = async (params: Parameters<typeof client.messages.create>[0]) => {
+  const { createMessage } = await import('@/lib/llm')
+  return createMessage(MODEL, params as never, { surface: 'ad-meta' }) as unknown as Anthropic.Messages.Message
+}
 
 const SYSTEM_PROMPT = `You are a senior performance media buyer who has spent $50M+ on Meta Ads across health, wealth, education, and B2B services. You build campaigns that generate qualified leads at the lowest possible CPA.
 
@@ -211,7 +219,7 @@ export async function generateMetaCampaign(input: {
     throw new Error('daily_budget_cents must be at least 100 (Meta minimum is $1/day)')
   }
 
-  const response = await client.messages.create({
+  const response = await msg({
     model: MODEL,
     max_tokens: 12000,
     system: [

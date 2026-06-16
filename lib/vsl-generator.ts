@@ -20,7 +20,15 @@ function pickAllowedIconOrNull(value: unknown): string | null {
 }
 
 const client = new Anthropic()
-const MODEL = 'claude-opus-4-7'
+// Was pinned to Opus; now routed through the provider layer (lib/llm) so it
+// defaults to cheaper Claude Sonnet and can move to DeepSeek via
+// LLM_GENERATOR_MODEL. Parsing below is unchanged (layer returns the
+// Anthropic-shaped message).
+const MODEL = process.env.LLM_GENERATOR_MODEL || 'claude-sonnet'
+const msg = async (params: Parameters<typeof client.messages.create>[0]) => {
+  const { createMessage } = await import('@/lib/llm')
+  return createMessage(MODEL, params as never, { surface: 'vsl' }) as unknown as Anthropic.Messages.Message
+}
 
 export interface CampaignIntake {
   business_name: string
@@ -720,7 +728,7 @@ export async function generateVslPage(input: {
   // tool — Anthropic returns 400. For structured-output generation that's
   // fine: forcing the tool call is what we need, and the model doesn't
   // benefit from extended thinking to fill a typed schema.
-  const response = await client.messages.create({
+  const response = await msg({
     model: MODEL,
     max_tokens: 16000,
     system: [

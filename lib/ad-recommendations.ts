@@ -19,7 +19,15 @@ import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db'
 
 const client = new Anthropic()
-const MODEL = 'claude-opus-4-7'
+// Was pinned to Opus; now routed through the provider layer (lib/llm) so it
+// defaults to cheaper Claude Sonnet and can move to DeepSeek via
+// LLM_GENERATOR_MODEL. Parsing below is unchanged (layer returns the
+// Anthropic-shaped message).
+const MODEL = process.env.LLM_GENERATOR_MODEL || 'claude-sonnet'
+const msg = async (params: Parameters<typeof client.messages.create>[0]) => {
+  const { createMessage } = await import('@/lib/llm')
+  return createMessage(MODEL, params as never, { surface: 'ad-recommendations' }) as unknown as Anthropic.Messages.Message
+}
 
 export type RecommendationCategory =
   | 'budget'
@@ -308,7 +316,7 @@ export async function generateAccountRecommendations(args: {
     }]
   }
   const prompt = buildPrompt(snap)
-  const response = await client.messages.create({
+  const response = await msg({
     model: MODEL,
     max_tokens: 8000,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
