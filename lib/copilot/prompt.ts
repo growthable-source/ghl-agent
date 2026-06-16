@@ -272,6 +272,8 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
     `- Ground on what's actually on screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details, and ask the user to confirm when still unsure. Use query_knowledge before asserting documented facts.`,
     `- To point at something, you must CALL annotate_screen with percentage coordinates — saying "I'm marking it" does nothing by itself. Only after the tool result confirms the marker, tell the user to glance at the live-help panel or its floating pop-out.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. Be honest when a tool fails or you don't know.`,
+    `\n## Reacting to screen cues`,
+    `Between your turns you may receive bracketed system messages in square brackets — e.g. "[The screen just changed…]" or "[Session started…]". These are cues for YOU, not the user's words; the user did not say them and cannot hear them. When one arrives, take a fresh look (take_a_closer_look) and react: greet and orient them at the start, point them to the next action when they land somewhere new, acknowledge and advance when they finish a step, steer them back on a wrong turn. But if nothing is actually worth saying — the change is trivial, or you'd just repeat yourself — STAY SILENT and don't take a turn. Leading the call does not mean narrating every pixel.`,
     ragContext ? `\n## Background knowledge\n${ragContext}` : ``,
     `\n## Hard rules`,
     `- Read-only and advisory. No fabrication. "Your CRM", never a vendor name. Don't read sensitive on-screen data aloud.`,

@@ -65,12 +65,16 @@ const NUDGE_MIN_INTERVAL_MS = 6000 // debounce between any two proactive turns
 const MODEL_SPEAK_COOLDOWN_MS = 2000 // quiet window after the model's last audio
 const PROACTIVE_TICK_MS = 22_000 // idle cadence: check progress / re-orient
 
+// Cues are shared by the onboarding host AND public-agent links, so they
+// stay generic — no tool names (public agents don't have
+// get_workspace_setup_state), no "setup" framing. Each prompt explains
+// how to act on them; each cue permits silence.
 const CUE_KICKOFF =
-  '[The session just started and the user is now sharing their screen. Greet them briefly, say you will walk them through setup, take a look at where they are, and give them the very first step.]'
+  '[The session just started and the user is now sharing their screen. Greet them briefly, tell them what you can help with, take a look at where they are, and give them a clear first thing to do.]'
 const CUE_SCREEN_CHANGED =
   '[The screen just changed — the user navigated to a new view. Take a closer look, then if this is the next step or a wrong turn, guide them in one or two sentences. If nothing needs saying, stay silent.]'
 const CUE_IDLE_TICK =
-  '[The user has gone quiet. Take a quick look at where they are. If they have finished the current step, confirm it with get_workspace_setup_state and move them to the next one; if they seem stuck, offer one specific nudge. If they are clearly mid-task and fine, stay silent.]'
+  '[The user has gone quiet. Take a quick look at where they are. If they have finished the current step, acknowledge it and move them to the next one; if they seem stuck, offer one specific nudge. If they are clearly mid-task and fine, stay silent.]'
 
 export default function LiveSessionPanel({
   transport,

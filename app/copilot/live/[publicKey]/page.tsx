@@ -96,6 +96,10 @@ export default function PublicCopilotPage({ params }: { params: Promise<{ public
         </div>
         <LiveSessionPanel
           transport={transport}
+          // Published agents lead the call: greet on connect and speak up
+          // on navigation, not just when asked. buildAgentPrompt explains
+          // the screen cues; the silence valve keeps it from over-talking.
+          proactive
           idleTitle={`Start your session with ${agent.name}`}
           idleBody="You'll be asked to share your screen and microphone. Your screen is never recorded — only the conversation transcript is kept."
           startLabel="Share screen & start talking"
