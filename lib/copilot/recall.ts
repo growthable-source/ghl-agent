@@ -84,21 +84,34 @@ function toBot(body: RecallBotResponse): RecallBot {
 }
 
 /**
- * Real-time video endpoint so the bot streams the shared screen to our
- * relay worker (recall-video-worker). Returns [] when
- * RECALL_VIDEO_WORKER_WS_HOST is unset — the bot then runs audio-only and
- * the feature is simply off (graceful default / kill switch).
+ * recording_config that turns on per-participant PNG capture and streams it
+ * to our relay worker (recall-video-worker). Recall requires the recording
+ * itself to be enabled (`video_separate_png` + a `video_mixed_layout`)
+ * alongside the realtime endpoint — sending just `realtime_endpoints` is
+ * rejected with a 400. `video_mixed_layout` also keeps the post-call mixed
+ * mp4 (the self-learning loop reads it). Returns null when
+ * RECALL_VIDEO_WORKER_WS_HOST is unset — the bot then runs audio-only.
  */
-export function buildMeetingRealtimeEndpoints(botToken: string): Array<Record<string, unknown>> {
+export function buildMeetingRecordingConfig(botToken: string): Record<string, unknown> | null {
   const host = process.env.RECALL_VIDEO_WORKER_WS_HOST
-  if (!host) return []
-  return [{ type: 'websocket', url: `wss://${host}/recall/${botToken}`, events: ['video_separate_png.data'] }]
+  if (!host) return null
+  return {
+    video_mixed_layout: 'gallery_view_v2',
+    video_separate_png: {},
+    realtime_endpoints: [
+      { type: 'websocket', url: `wss://${host}/recall/${botToken}`, events: ['video_separate_png.data'] },
+    ],
+  }
 }
 
 /**
  * Create a bot and send it to a meeting. `webpageUrl` is the page the
  * bot streams as its camera — our Gemini Live bot page. `botToken` keys
  * the real-time screenshare stream back to this session's relay room.
+ *
+ * Resilient: if the screen-vision recording_config is rejected (any 4xx),
+ * we retry once WITHOUT it so the meeting still gets a bot (audio-only),
+ * and log Recall's full error body so the video config can be corrected.
  */
 export async function createMeetingBot(opts: {
   meetingUrl: string
@@ -107,27 +120,40 @@ export async function createMeetingBot(opts: {
   botToken: string
 }): Promise<RecallBot> {
   const variant = process.env.RECALL_BOT_VARIANT || 'web_4_core'
-  const realtimeEndpoints = buildMeetingRealtimeEndpoints(opts.botToken)
-  const res = await recallFetch('/api/v1/bot/', {
-    method: 'POST',
-    body: JSON.stringify({
-      meeting_url: opts.meetingUrl,
-      bot_name: opts.botName.slice(0, 64),
-      output_media: {
-        camera: { kind: 'webpage', config: { url: opts.webpageUrl } },
-      },
-      variant: { zoom: variant, google_meet: variant, microsoft_teams: variant },
-      ...(realtimeEndpoints.length ? { recording_config: { realtime_endpoints: realtimeEndpoints } } : {}),
-    }),
-  })
-  const body = (await res.json().catch(() => ({}))) as RecallBotResponse & { detail?: string }
-  if (!res.ok || !body.id) {
-    throw new RecallApiError(
-      `bot create failed (${res.status})${body.detail ? `: ${body.detail}` : ''}`,
-      res.status,
-    )
+  const base: Record<string, unknown> = {
+    meeting_url: opts.meetingUrl,
+    bot_name: opts.botName.slice(0, 64),
+    output_media: { camera: { kind: 'webpage', config: { url: opts.webpageUrl } } },
+    variant: { zoom: variant, google_meet: variant, microsoft_teams: variant },
   }
-  return toBot(body)
+  const recordingConfig = buildMeetingRecordingConfig(opts.botToken)
+
+  const attempt = async (payload: Record<string, unknown>) => {
+    const res = await recallFetch('/api/v1/bot/', { method: 'POST', body: JSON.stringify(payload) })
+    const raw = await res.text().catch(() => '')
+    let body: (RecallBotResponse & { detail?: string }) | null = null
+    try {
+      body = raw ? (JSON.parse(raw) as RecallBotResponse) : null
+    } catch {
+      body = null
+    }
+    return { ok: res.ok, status: res.status, body, raw }
+  }
+
+  if (recordingConfig) {
+    const withVideo = await attempt({ ...base, recording_config: recordingConfig })
+    if (withVideo.ok && withVideo.body?.id) return toBot(withVideo.body)
+    console.warn(
+      `[Recall] bot create with screen-vision rejected (${withVideo.status}); retrying audio-only. Body: ${withVideo.raw.slice(0, 600)}`,
+    )
+    const audioOnly = await attempt(base)
+    if (audioOnly.ok && audioOnly.body?.id) return toBot(audioOnly.body)
+    throw new RecallApiError(`bot create failed (${audioOnly.status}): ${audioOnly.raw.slice(0, 300)}`, audioOnly.status)
+  }
+
+  const res = await attempt(base)
+  if (res.ok && res.body?.id) return toBot(res.body)
+  throw new RecallApiError(`bot create failed (${res.status}): ${res.raw.slice(0, 300)}`, res.status)
 }
 
 export async function getMeetingBot(botId: string): Promise<RecallBot> {
