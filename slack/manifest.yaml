@@ -1,0 +1,34 @@
+# Voxility Slack app manifest.
+# Create the app at https://api.slack.com/apps → "From an app manifest",
+# paste this, then replace <APP_DOMAIN> with the deployment host
+# (e.g. app.voxility.example). Scopes here must match SCOPES in
+# app/api/integrations/slack/install/route.ts.
+display_information:
+  name: Voxility
+  description: Bridge website chats into Slack and reply from a thread.
+  background_color: "#4A154B"
+features:
+  bot_user:
+    display_name: Voxility
+    always_online: true
+oauth_config:
+  redirect_urls:
+    - https://<APP_DOMAIN>/api/integrations/slack/callback
+  scopes:
+    bot:
+      - chat:write
+      - channels:read
+      - channels:history
+      - groups:history
+      - team:read
+      - users:read
+      - users:read.email
+settings:
+  event_subscriptions:
+    request_url: https://<APP_DOMAIN>/api/integrations/slack/events
+    bot_events:
+      - message.channels
+      - message.groups
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
