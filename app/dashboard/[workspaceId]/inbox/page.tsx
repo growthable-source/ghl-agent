@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef, Fragment, type React
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
+import KioskSwitchChip from '@/components/inbox/KioskSwitchChip'
 import { isNotificationSoundMuted, setNotificationSoundMuted, playNotificationSound, getNotificationVolume, setNotificationVolume } from '@/lib/notification-sound'
 import { useBackgroundPolling } from '@/lib/use-background-polling'
 
@@ -449,6 +450,7 @@ export default function InboxPage() {
               <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
               {isAvailable ? 'Available' : 'Away'}
             </button>
+            <KioskSwitchChip />
           </div>
         </div>
 
