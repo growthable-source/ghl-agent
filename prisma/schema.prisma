@@ -31,6 +31,7 @@ model User {
   authoredTicketMessages    TicketMessage[]      @relation("TicketMessageAuthor")
   sentMetaMessages          MetaMessage[]        @relation("MetaMessageAuthor")
   sentWidgetMessages        WidgetMessage[]      @relation("WidgetMessageAuthor")
+  slackConnections          SlackConnection[]    @relation("SlackConnectionInstaller")
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
 }
@@ -95,6 +96,9 @@ model Workspace {
   // so broken external URLs just render as a broken image.
   logoUrl String?
   domain  String? // e.g. "acmecorp.com" — for same-domain invite gating
+
+  // Slack bridge install for this workspace (one app install per workspace).
+  slackConnection SlackConnection? @relation("WorkspaceSlackConnection")
 
   // ─── Plan & Limits ───
   plan                    String    @default("trial") // "trial" | "starter" | "growth" | "scale"
@@ -624,6 +628,17 @@ model Agent {
   typingDelayMinMs   Int            @default(500)
   typingDelayMaxMs   Int            @default(3000)
   languages          String[]       @default(["en"])
+
+  // ─── Slack bridge ───
+  // "off" (default) — normal AI behaviour, no Slack involvement.
+  // "ai_with_handoff" — AI answers AND the conversation is mirrored into
+  //   a Slack thread; a human can take over by replying there.
+  // "slack_only" — every incoming chat is bridged from the first message
+  //   and the AI never runs; a human in Slack is the agent.
+  // slackChannelId overrides the workspace SlackConnection.defaultChannelId
+  // for this agent's conversations.
+  slackBridgeMode String  @default("off")
+  slackChannelId  String?
 
   // ─── Knowledge scope (Phase 2 retrieval) ───
   // Which KnowledgeDomain ids this agent retrieves from. Empty array =
@@ -2287,6 +2302,12 @@ model WidgetConversation {
   visitor          WidgetVisitor     @relation(fields: [visitorId], references: [id], onDelete: Cascade)
   agentId          String?
   status           String            @default("active")
+  // Slack bridge: when this conversation is mirrored into a Slack
+  // channel, slackThreadTs is the parent message ts (the thread root)
+  // and slackChannelId the channel it lives in. Both null until the
+  // outbox cron posts the parent message and writes them back.
+  slackChannelId   String?
+  slackThreadTs    String?
   lastMessageAt    DateTime          @default(now())
   // Cron debounce for conversation.stale — set when we've already paged
   // about this thread so we don't notify again until the visitor replies.
@@ -4318,6 +4339,60 @@ model MarketingLead {
   utm       Json?
   referrer  String?
   ipHash    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// ─── Slack bridge ───────────────────────────────────────────────────
+// A workspace installs the shared Voxility Slack app once. The bot token
+// is AES-256-GCM encrypted via lib/secrets.ts (never stored plaintext).
+model SlackConnection {
+  id                 String    @id @default(cuid())
+  workspaceId        String    @unique
+  workspace          Workspace @relation("WorkspaceSlackConnection", fields: [workspaceId], references: [id], onDelete: Cascade)
+  teamId             String
+  teamName           String?
+  botToken           String // encrypted (lib/secrets.ts)
+  botUserId          String
+  appId              String?
+  scopes             String?
+  defaultChannelId   String?
+  defaultChannelName String?
+  installedByUserId  String?
+  installedByUser    User?     @relation("SlackConnectionInstaller", fields: [installedByUserId], references: [id], onDelete: SetNull)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([teamId])
+}
+
+// Outbound delivery queue (widget → Slack). Drained every minute by the
+// slack-outbox cron, mirroring lib/native-outbox.ts atomic-claim pattern.
+model SlackOutbox {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  channelId      String
+  threadTs       String? // null on a kind='parent' row (creates the thread root)
+  kind           String // "parent" | "reply"
+  text           String   @db.Text
+  blocks         Json?
+  status         String   @default("queued") // queued | sending | sent | failed
+  attempts       Int      @default(0)
+  lastError      String?  @db.Text
+  slackTs        String? // ts Slack returned on success
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([conversationId])
+}
+
+// Inbound dedup (Slack Events API is at-least-once + retries). Pruned by
+// a maintenance cron after 24h.
+model ProcessedSlackEvent {
+  eventId   String   @id
   createdAt DateTime @default(now())
 
   @@index([createdAt])
