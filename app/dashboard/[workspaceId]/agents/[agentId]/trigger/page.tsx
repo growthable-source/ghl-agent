@@ -36,6 +36,7 @@ import ChannelFilterBuilder from '@/components/dashboard/ChannelFilterBuilder'
 import CrmEventsEditor from '@/components/dashboard/CrmEventsEditor'
 import { useDirtyForm } from '@/lib/use-dirty-form'
 import SaveBar from '@/components/dashboard/SaveBar'
+import SlackBridgeSection from '@/components/agents/SlackBridgeSection'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -255,6 +256,9 @@ export default function TriggerEditorPage() {
         </p>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{banner.body}</p>
       </div>
+
+      {/* ─── Slack bridging ─────────────────────────────────────────── */}
+      <SlackBridgeSection workspaceId={workspaceId} agentId={agentId} />
 
       {/* ─── Section 1: Channels ────────────────────────────────────── */}
       <section className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>

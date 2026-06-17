@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import {
   LeadConnectorIcon, VapiIcon, TwilioIcon, HubSpotIcon,
@@ -1116,6 +1117,33 @@ export default function IntegrationsPage() {
               {shopifyBanner.text}
             </p>
           )}
+        </div>
+
+        {/* Slack — live-chat bridge */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-base font-semibold"
+                style={{ background: '#4A154B', color: '#fff' }}
+                aria-label="Slack"
+              >S</div>
+              <div>
+                <p className="text-sm font-medium text-zinc-200">
+                  Slack <NewBadge since="2026-06-17" className="ml-1" />
+                </p>
+                <p className="text-xs text-zinc-500">
+                  Bridge live-chat conversations into a Slack channel — reply from a thread, the visitor never knows
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/dashboard/${workspaceId}/integrations/slack`}
+              className="text-xs px-4 py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors shrink-0"
+            >
+              Manage
+            </Link>
+          </div>
         </div>
 
         {/* Vapi Voice */}

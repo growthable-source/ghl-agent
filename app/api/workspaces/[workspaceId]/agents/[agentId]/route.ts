@@ -154,6 +154,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(includeModel && typeof body.model === 'string' && {
         model: MODEL_KEYS.includes(body.model) ? body.model : 'auto',
       }),
+      // Slack bridge: route this agent's widget conversations into a Slack
+      // thread (ai_with_handoff) or hand them entirely to a human in Slack
+      // (slack_only). Unknown values are ignored rather than erroring.
+      ...(typeof body.slackBridgeMode === 'string' &&
+        ['off', 'ai_with_handoff', 'slack_only'].includes(body.slackBridgeMode) && {
+          slackBridgeMode: body.slackBridgeMode,
+        }),
+      ...(body.slackChannelId !== undefined && {
+        slackChannelId: body.slackChannelId ? String(body.slackChannelId) : null,
+      }),
   })
 
   // Validate every referenced CRM resource immediately so the UI can show
