@@ -24,9 +24,26 @@ export async function POST(req: NextRequest) {
   })
   if (!ok) return NextResponse.json({ error: 'bad signature' }, { status: 401 })
 
-  let payload: any
+  interface SlackEventEnvelope {
+    type?: string
+    challenge?: string
+    event_id?: string
+    team_id?: string
+    event?: {
+      type?: string
+      subtype?: string
+      bot_id?: string
+      user?: string
+      text?: string
+      channel?: string
+      thread_ts?: string
+      ts?: string
+    }
+  }
+
+  let payload: SlackEventEnvelope
   try {
-    payload = JSON.parse(raw)
+    payload = JSON.parse(raw) as SlackEventEnvelope
   } catch {
     return NextResponse.json({ error: 'bad json' }, { status: 400 })
   }
@@ -47,18 +64,32 @@ export async function POST(req: NextRequest) {
   }
 
   const event = payload.event
-  const isThreadReply =
-    event?.type === 'message' && event.thread_ts && event.thread_ts !== event.ts
-  const isHuman = !event?.bot_id && !event?.subtype
+  const teamId = payload.team_id
 
-  if (isThreadReply && isHuman) {
+  // Only human text replies inside a thread, with all the fields we need.
+  if (
+    event?.type === 'message' &&
+    event.thread_ts &&
+    event.thread_ts !== event.ts &&
+    event.channel &&
+    event.user &&
+    !event.bot_id &&
+    !event.subtype &&
+    teamId
+  ) {
+    // Capture narrowed primitives so the async closure stays well-typed.
+    const channel = event.channel
+    const threadTs = event.thread_ts
+    const slackUserId = event.user
+    const text = event.text ?? ''
+
     after(async () => {
       try {
-        const conn = await getConnectionByTeam(payload.team_id)
-        if (!conn || event.user === conn.botUserId) return // ignore our own posts
+        const conn = await getConnectionByTeam(teamId)
+        if (!conn || slackUserId === conn.botUserId) return // ignore our own posts
 
         const convo = await db.widgetConversation.findFirst({
-          where: { slackChannelId: event.channel, slackThreadTs: event.thread_ts },
+          where: { slackChannelId: channel, slackThreadTs: threadTs },
           select: { id: true },
         })
         if (!convo) return
@@ -66,12 +97,7 @@ export async function POST(req: NextRequest) {
         const botToken = await getDecryptedBotToken(conn.workspaceId)
         if (!botToken) return
 
-        await applySlackReply({
-          conversationId: convo.id,
-          slackUserId: event.user,
-          botToken,
-          rawText: event.text ?? '',
-        })
+        await applySlackReply({ conversationId: convo.id, slackUserId, botToken, rawText: text })
       } catch (e: unknown) {
         console.error('[slack] event processing failed:', e instanceof Error ? e.message : e)
       }

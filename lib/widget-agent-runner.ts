@@ -152,8 +152,8 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     },
     agent: { slackBridgeMode: agent.slackBridgeMode, slackChannelId: agent.slackChannelId },
     content,
-  }).catch((e: any) => {
-    console.warn('[slack] bridge inbound failed:', e?.message)
+  }).catch((e: unknown) => {
+    console.warn('[slack] bridge inbound failed:', e instanceof Error ? e.message : e)
     return { suppressAi: false }
   })
   if (slackBridge.suppressAi) {
