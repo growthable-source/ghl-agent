@@ -66,7 +66,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     ? blob.url
     : JSON.stringify({ url: blob.url, name: file.name, mime, size: file.size })
   const msg = await db.widgetMessage.create({
-    data: { conversationId, role: 'agent', content, kind: isImage ? 'image' : 'file' },
+    // Human operator upload — stamp the author so it's attributable as a
+    // human reply (AI uploads don't exist; AI replies leave this null).
+    data: { conversationId, role: 'agent', content, kind: isImage ? 'image' : 'file', sentByUserId: access.session.user?.id ?? null },
   })
   await db.widgetConversation.update({
     where: { id: conversationId },

@@ -304,7 +304,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const wasUnassigned = (convo as any).assignedUserId == null
 
   const msg = await db.widgetMessage.create({
-    data: { conversationId, role: 'agent', content, kind: 'text' },
+    // Stamp the operator so this reply is permanently attributable to a
+    // human (vs the AI, which leaves sentByUserId null) in every view.
+    data: { conversationId, role: 'agent', content, kind: 'text', sentByUserId: access.session.user?.id ?? null },
   })
   await db.widgetConversation.update({
     where: { id: conversationId },

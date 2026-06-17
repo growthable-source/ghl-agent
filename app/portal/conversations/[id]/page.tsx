@@ -18,18 +18,33 @@ export default async function PortalConversationPage({ params }: Params) {
 
   const { id } = await params
 
-  const c = await db.widgetConversation.findUnique({
+  const selectBase = {
+    id: true, status: true, csatRating: true, csatComment: true,
+    lastMessageAt: true, createdAt: true, initiatedUrl: true, initiatedTitle: true,
+    assignedUserId: true,
+    assignedUser: { select: { name: true, email: true } },
+    visitor: { select: { name: true, email: true, phone: true, firstSeenAt: true } },
+    widget: { select: { name: true, brandId: true, brand: { select: { name: true, primaryColor: true } } } },
+  }
+  // `sentByUserId` distinguishes human-typed replies from AI ones. It may
+  // not exist pre-migration — query with it, and fall back to the bare
+  // message select if the column isn't there yet so the portal never 500s.
+  let c = await db.widgetConversation.findUnique({
     where: { id },
     select: {
-      id: true, status: true, csatRating: true, csatComment: true,
-      lastMessageAt: true, createdAt: true, initiatedUrl: true, initiatedTitle: true,
-      assignedUserId: true,
-      assignedUser: { select: { name: true, email: true } },
-      visitor: { select: { name: true, email: true, phone: true, firstSeenAt: true } },
-      widget: { select: { name: true, brandId: true, brand: { select: { name: true, primaryColor: true } } } },
-      messages: { orderBy: { createdAt: 'asc' }, select: { id: true, role: true, content: true, createdAt: true, kind: true } },
+      ...selectBase,
+      messages: { orderBy: { createdAt: 'asc' }, select: { id: true, role: true, content: true, createdAt: true, kind: true, sentByUserId: true, sentByUser: { select: { name: true } } } },
     },
-  })
+  }).catch(() => null)
+  if (c === null) {
+    c = await db.widgetConversation.findUnique({
+      where: { id },
+      select: {
+        ...selectBase,
+        messages: { orderBy: { createdAt: 'asc' }, select: { id: true, role: true, content: true, createdAt: true, kind: true } },
+      },
+    }) as typeof c
+  }
   if (!c) notFound()
   const brandId = c.widget.brandId
   if (!brandId || !session.brandIds.includes(brandId)) notFound()
@@ -209,17 +224,48 @@ function Involve({ color, label, detail }: { color: string; label: string; detai
   )
 }
 
-function Bubble({ message, accent }: { message: { role: string; content: string; createdAt: Date; kind: string }; accent: string }) {
+// Small inline glyphs (lucide "bot" / "user" paths) so the transcript can
+// flag at a glance whether a support message came from the AI or a human.
+function BotGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
+    </svg>
+  )
+}
+function UserGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+    </svg>
+  )
+}
+
+function Bubble({ message, accent }: { message: { role: string; content: string; createdAt: Date; kind: string; sentByUserId?: string | null; sentByUser?: { name: string | null } | null }; accent: string }) {
   if (message.role === 'system') {
     return <div className="text-center"><span className="text-[10px] text-zinc-500 italic">{message.content}</span></div>
   }
   const isVisitor = message.role === 'visitor' || message.role === 'user'
+  // A support message is human-sent when an operator is stamped on it;
+  // otherwise the AI agent produced it. (sentByUserId is undefined on
+  // pre-migration rows → treated as AI, which is correct for the vast
+  // majority of historical agent replies.)
+  const isHuman = !isVisitor && !!message.sentByUserId
+  const time = new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return (
     <div className={'flex ' + (isVisitor ? 'justify-start' : 'justify-end')}>
       <div className={'max-w-[78%] ' + (isVisitor ? '' : 'text-right')}>
-        <p className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">
-          {isVisitor ? 'Customer' : 'Support'} · {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </p>
+        <div className={'flex items-center gap-1.5 mb-1 ' + (isVisitor ? '' : 'justify-end')}>
+          {!isVisitor && (
+            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold"
+              style={{ color: isHuman ? 'var(--accent-blue)' : accent }}>
+              {isHuman ? <UserGlyph /> : <BotGlyph />}
+              {isHuman ? (message.sentByUser?.name || 'Support') : 'AI'}
+            </span>
+          )}
+          {isVisitor && <span className="text-[10px] uppercase tracking-wider text-zinc-600">Customer</span>}
+          <span className="text-[10px] uppercase tracking-wider text-zinc-600">· {time}</span>
+        </div>
         {message.kind === 'image' ? (
           // eslint-disable-next-line @next/next/no-img-element
           <a href={message.content} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg overflow-hidden border border-zinc-700 max-w-[60%]"><img src={message.content} alt="attachment" className="block w-full" /></a>

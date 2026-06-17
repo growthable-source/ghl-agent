@@ -27,7 +27,12 @@ interface Message {
   content: string
   kind: string
   createdAt: string
+  /** Live SSE flag — set on realtime broadcasts only. For history loaded
+   *  from the DB, authorship comes from `sentByUserId` instead. */
   fromHuman?: boolean
+  /** Persisted operator id when a human typed this reply; null = AI. Drives
+   *  the AI/human badge on historical messages (the GET returns it). */
+  sentByUserId?: string | null
   quickReplies?: string[]
   /** Detected ISO 639-1 language code. Null on legacy messages. */
   language?: string | null
@@ -89,6 +94,20 @@ const EMOJI_GRID = ['👍', '🙏', '😀', '😅', '🎉', '💯', '🔥', '✅
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// Tiny inline glyph for the AI/human sender badge — lucide "bot" / "user"
+// paths so the icon matches the brand portal transcript.
+function SenderGlyph({ human = false }: { human?: boolean }) {
+  return human ? (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+    </svg>
+  ) : (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
+    </svg>
+  )
 }
 
 // Compact, human-readable URL for the inbox side panel — drop the
@@ -1531,13 +1550,19 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
           </div>
         )}
         <div className={`flex items-center gap-1.5 mt-1 ${isVisitor ? 'justify-start' : 'justify-end'}`}>
-          {!isVisitor && msg.fromHuman !== undefined && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-              msg.fromHuman ? 'bg-orange-500/10 text-orange-400' : 'bg-zinc-800 text-zinc-500'
-            }`}>
-              {msg.fromHuman ? '👤 you' : '🤖 AI'}
-            </span>
-          )}
+          {!isVisitor && (msg.fromHuman !== undefined || msg.sentByUserId !== undefined) && (() => {
+            // Prefer the live SSE flag; fall back to the persisted author id
+            // so historical messages get the badge too, not just realtime ones.
+            const human = msg.fromHuman ?? (msg.sentByUserId != null)
+            return (
+              <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
+                human ? 'bg-orange-500/10 text-orange-400' : 'bg-zinc-800 text-zinc-500'
+              }`}>
+                {human ? <SenderGlyph human /> : <SenderGlyph />}
+                {human ? 'you' : 'AI'}
+              </span>
+            )
+          })()}
           <p className="text-[10px] text-zinc-600">{formatTime(msg.createdAt)}</p>
         </div>
         {showQuickReplies && msg.quickReplies && msg.quickReplies.length > 0 && (
