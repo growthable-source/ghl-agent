@@ -6,8 +6,9 @@ import EmailCaptureForm from '@/components/landing/EmailCaptureForm'
 import MeetingDemoModal from '@/components/landing/MeetingDemoModal'
 import DemoVideoDrawer from '@/components/landing/DemoVideoDrawer'
 import {
-  GoHighLevelIcon, HubSpotIcon, ShopifyIcon, VapiIcon, TwilioIcon, CalendlyIcon,
-  CalcomIcon, StripeIcon, FacebookIcon, InstagramIcon, GoogleIcon, WhatsAppIcon,
+  GoHighLevelIcon, HubSpotIcon, ShopifyIcon, VapiIcon, CalendlyIcon, CalcomIcon,
+  StripeIcon, FacebookIcon, InstagramIcon, GoogleIcon, WhatsAppIcon, SmsIcon,
+  LiveChatIcon, SlackIcon, ZapierIcon, MessengerIcon, VideoMeetingIcon,
 } from '@/components/icons/brand-icons'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
@@ -24,15 +25,34 @@ const DEMO_VIDEO_URL = ''
 // GoHighLevel Marketplace listing — the Sponsored Partner badge links here.
 const MARKETPLACE_URL = 'https://marketplace.gohighlevel.com/'
 
-// Integrations shown in the "works with your stack" grid. WaveformIcon is a
-// local glyph (no brand mark for ElevenLabs); the rest are real brand logos.
-const INTEGRATION_GROUPS: { title: string; items: { label: string; Icon: React.ComponentType<{ className?: string }> }[] }[] = [
-  { title: 'CRM', items: [{ label: 'GoHighLevel', Icon: GoHighLevelIcon }, { label: 'HubSpot', Icon: HubSpotIcon }] },
-  { title: 'Voice', items: [{ label: 'Vapi', Icon: VapiIcon }, { label: 'ElevenLabs', Icon: WaveformIcon }, { label: 'Twilio', Icon: TwilioIcon }] },
-  { title: 'Commerce', items: [{ label: 'Shopify', Icon: ShopifyIcon }] },
-  { title: 'Scheduling', items: [{ label: 'Calendly', Icon: CalendlyIcon }, { label: 'Cal.com', Icon: CalcomIcon }] },
-  { title: 'Social channels', items: [{ label: 'WhatsApp', Icon: WhatsAppIcon }, { label: 'Instagram', Icon: InstagramIcon }, { label: 'Facebook', Icon: FacebookIcon }] },
-  { title: 'Ads & payments', items: [{ label: 'Meta Ads', Icon: FacebookIcon }, { label: 'Google Ads', Icon: GoogleIcon }, { label: 'Stripe', Icon: StripeIcon }] },
+type LogoItem = { label: string; Icon: React.ComponentType<{ className?: string }> }
+
+// Tools Voxility integrates with (logos in the integrations row).
+const INTEGRATIONS: LogoItem[] = [
+  { label: 'GoHighLevel', Icon: GoHighLevelIcon },
+  { label: 'HubSpot', Icon: HubSpotIcon },
+  { label: 'Shopify', Icon: ShopifyIcon },
+  { label: 'Facebook', Icon: FacebookIcon },
+  { label: 'Instagram', Icon: InstagramIcon },
+  { label: 'Zapier', Icon: ZapierIcon },
+  { label: 'Slack', Icon: SlackIcon },
+  { label: 'Stripe', Icon: StripeIcon },
+  { label: 'Calendly', Icon: CalendlyIcon },
+  { label: 'Cal.com', Icon: CalcomIcon },
+  { label: 'Vapi', Icon: VapiIcon },
+  { label: 'Google', Icon: GoogleIcon },
+]
+
+// Channels the agent shows up on (PhoneIcon is the local glyph defined below).
+const CHANNELS: LogoItem[] = [
+  { label: 'Zoom & Google Meet', Icon: VideoMeetingIcon },
+  { label: 'Voice calls', Icon: PhoneIcon },
+  { label: 'SMS', Icon: SmsIcon },
+  { label: 'WhatsApp', Icon: WhatsAppIcon },
+  { label: 'Facebook Messenger', Icon: MessengerIcon },
+  { label: 'Instagram DMs', Icon: InstagramIcon },
+  { label: 'Live chat widget', Icon: LiveChatIcon },
+  { label: 'Slack', Icon: SlackIcon },
 ]
 
 // ────────────────────────────────────────────────────────────────────────
@@ -751,19 +771,19 @@ export default function LandingPage() {
       <section id="integrations" className="py-24 px-6">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-center mb-10">
-            <span className="section-label inline-block mb-4">Integrations</span>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Works with the stack you already run</h2>
+            <span className="section-label inline-block mb-4">Integrations &amp; channels</span>
+            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Plugs into your stack. Shows up on every channel.</h2>
             <p className="max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
-              A first-class GoHighLevel Marketplace app — and a Sponsored Partner — with native HubSpot, Shopify, voice, scheduling, and ad-platform connections. The agent acts inside the tools you already use.
+              A first-class GoHighLevel Marketplace app and Sponsored Partner — with native connections to the tools you run and the channels your customers actually use.
             </p>
           </div>
 
-          {/* Sponsored Partner banner */}
+          {/* HighLevel Sponsored Partner banner */}
           <a
             href={MARKETPLACE_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="vox-card p-6 md:p-7 flex items-center gap-5 mb-8 transition-colors hover:border-[var(--accent-primary)]"
+            className="vox-card p-6 md:p-7 flex items-center gap-5 mb-10 transition-colors hover:border-[var(--accent-primary)]"
           >
             <div className="icon-box shrink-0" style={{ width: '3rem', height: '3rem' }}>
               <GoHighLevelIcon className="w-6 h-6" />
@@ -778,25 +798,33 @@ export default function LandingPage() {
             <span className="ml-auto shrink-0 hidden sm:inline text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>Install →</span>
           </a>
 
-          {/* Logo grid by category */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {INTEGRATION_GROUPS.map((g) => (
-              <div key={g.title} className="vox-card p-6">
-                <div className="text-xs uppercase tracking-wider font-semibold mb-4" style={{ color: 'var(--text-tertiary)' }}>{g.title}</div>
-                <div className="flex flex-wrap gap-x-5 gap-y-4">
-                  {g.items.map((it) => (
-                    <div key={it.label} className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
-                      <span style={{ color: 'var(--text-primary)' }}><it.Icon className="w-5 h-5" /></span>
-                      <span className="text-sm font-medium">{it.label}</span>
-                    </div>
-                  ))}
+          {/* Integrations row */}
+          <div className="mb-10">
+            <div className="text-xs uppercase tracking-wider font-semibold mb-4 text-center" style={{ color: 'var(--text-tertiary)' }}>Integrates with</div>
+            <div className="flex flex-wrap justify-center gap-3">
+              {INTEGRATIONS.map((it) => (
+                <div key={it.label} className="vox-card flex items-center gap-2.5 px-4 py-2.5" style={{ color: 'var(--text-secondary)' }}>
+                  <span style={{ color: 'var(--text-primary)' }}><it.Icon className="w-5 h-5" /></span>
+                  <span className="text-sm font-medium">{it.label}</span>
                 </div>
-              </div>
-            ))}
+              ))}
+              <div className="vox-card flex items-center px-4 py-2.5 text-sm font-medium" style={{ color: 'var(--text-tertiary)' }}>+ many more</div>
+            </div>
           </div>
-          <p className="text-center text-xs mt-6" style={{ color: 'var(--text-tertiary)' }}>
-            Plus Google Sheets, Airtable, REST data sources, Slack &amp; Discord alerts, and meeting bots for Zoom, Google Meet &amp; Teams.
-          </p>
+
+          {/* Channels row */}
+          <div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-4 text-center" style={{ color: 'var(--text-tertiary)' }}>Operates across</div>
+            <div className="flex flex-wrap justify-center gap-3">
+              {CHANNELS.map((c) => (
+                <div key={c.label} className="flex items-center gap-2.5 px-4 py-2.5 rounded-full" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>
+                  <c.Icon className="w-5 h-5" />
+                  <span className="text-sm font-semibold">{c.label}</span>
+                </div>
+              ))}
+              <div className="flex items-center px-4 py-2.5 rounded-full text-sm font-semibold" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>+ more</div>
+            </div>
+          </div>
         </div>
       </section>
 
