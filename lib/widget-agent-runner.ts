@@ -22,6 +22,7 @@ import { notify } from './notifications'
 import { resolveHandoverLink } from './handover-link'
 import { broadcast } from './widget-sse'
 import { WidgetAdapter } from './widget-adapter'
+import { bridgeInboundVisitorMessage } from './slack/bridge'
 
 /**
  * Pure decision: should the AI agent generate a reply on this turn?
@@ -131,6 +132,32 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
       type: 'agent_error',
       message: 'No agent is configured to handle this widget. Add a default agent in the widget settings.',
     })
+    return
+  }
+
+  // ─── Slack bridge ───────────────────────────────────────────────
+  // Mirror the visitor message into Slack (opening the thread lazily on
+  // the first message) BEFORE the human-takeover gate, so that once a
+  // human is replying from Slack — which marks the conversation
+  // handed_off — subsequent visitor messages still reach the thread. In
+  // slack_only mode we suppress the AI for this turn entirely. Never let
+  // a Slack hiccup break the agent path.
+  const slackBridge = await bridgeInboundVisitorMessage({
+    convo: {
+      id: convo.id,
+      workspaceId: widget.workspaceId,
+      slackThreadTs: convo.slackThreadTs ?? null,
+      visitorName: convo.visitor?.name ?? null,
+      pageUrl: convo.pageUrl ?? null,
+    },
+    agent: { slackBridgeMode: agent.slackBridgeMode, slackChannelId: agent.slackChannelId },
+    content,
+  }).catch((e: any) => {
+    console.warn('[slack] bridge inbound failed:', e?.message)
+    return { suppressAi: false }
+  })
+  if (slackBridge.suppressAi) {
+    // slack_only: a human in Slack is the agent; the AI never runs.
     return
   }
 

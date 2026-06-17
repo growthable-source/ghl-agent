@@ -19,6 +19,7 @@ import type {
 } from '@/types'
 import { db } from './db'
 import { broadcast } from './widget-sse'
+import { mirrorAgentMessage } from './slack/bridge'
 
 export class WidgetAdapter implements CrmAdapter {
   provider: CrmProvider = 'ghl'   // pretend to be GHL so tool gating behaves normally
@@ -88,6 +89,13 @@ export class WidgetAdapter implements CrmAdapter {
       createdAt: msg.createdAt.toISOString(),
       ...(quickReplies && quickReplies.length > 0 ? { quickReplies } : {}),
     })
+
+    // Mirror the AI reply into the conversation's Slack thread for
+    // operator context. No-op unless this conversation is bridged
+    // (ai_with_handoff), and never allowed to block the reply path.
+    mirrorAgentMessage(this.conversationId, finalMessage).catch(err =>
+      console.warn('[slack] mirror agent message failed:', err?.message),
+    )
 
     // Detect-and-translate AFTER the broadcast so the visitor sees
     // the original reply without waiting on Haiku. Awaited so the
