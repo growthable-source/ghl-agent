@@ -1,6 +1,6 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import MarketingNav from '@/components/landing/MarketingNav'
+import { DashboardStatsMockup, MeetingMockup, AgentBuilderMockup } from '@/components/landing/LandingMockups'
 import MarketingFooter from '@/components/landing/MarketingFooter'
 import EmailCaptureForm from '@/components/landing/EmailCaptureForm'
 import MeetingDemoModal from '@/components/landing/MeetingDemoModal'
@@ -346,19 +346,11 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Right-side generated hero illustration. Alt text carries
-              primary keyword weight — decorative images on landing
-              pages are a missed-signal. Describe what the image is about
-              AND reinforce the page's main topic. */}
-          <div className="relative aspect-square w-full max-w-[520px] mx-auto md:ml-auto rounded-3xl overflow-hidden" style={{ border: '1px solid var(--border)', boxShadow: '0 24px 60px -24px rgba(0,0,0,0.18)' }}>
-            <Image
-              src="/landing/hero-network.png"
-              alt="Voxility — conversational AI agent platform for sales and marketing teams"
-              fill
-              priority
-              sizes="(max-width: 768px) 90vw, 520px"
-              style={{ objectFit: 'contain' }}
-            />
+          {/* Right-side hero visual — a code-built dashboard mockup (theme
+              tokens, no static asset) that shows the outcome the copy
+              promises: conversations handled, demos booked, live activity. */}
+          <div className="relative w-full max-w-[520px] mx-auto md:ml-auto">
+            <DashboardStatsMockup />
           </div>
         </div>
       </section>
@@ -391,6 +383,11 @@ export default function LandingPage() {
               Co-Pilot watches a shared screen and talks your customer through it in real time — and it can join your Google
               Meet, Zoom, or Teams call as a participant. Onboarding, support, and live demos, handled.
             </p>
+          </div>
+          {/* Code-built meeting mockup — themed recreation of a video call
+              with the AI Agent tile writing a live summary. No stock photo. */}
+          <div className="max-w-2xl mx-auto mb-12">
+            <MeetingMockup />
           </div>
           <div className="grid sm:grid-cols-3 gap-4 max-w-4xl mx-auto mb-10">
             {[
@@ -490,15 +487,11 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-10 items-center">
-            {/* Left: generated loop illustration */}
-            <div className="relative aspect-square w-full max-w-[480px] mx-auto md:mx-0 rounded-3xl overflow-hidden" style={{ border: '1px solid var(--border)', boxShadow: '0 24px 60px -24px rgba(0,0,0,0.18)' }}>
-              <Image
-                src="/landing/learning-loop.png"
-                alt="Self-improving AI agent feedback loop — review, refine, apply, repeat"
-                fill
-                sizes="(max-width: 768px) 90vw, 480px"
-                style={{ objectFit: 'contain' }}
-              />
+            {/* Left: code-built agent-builder mockup showing the auditor's
+                proposed fix being applied to the live prompt — the exact
+                moment the four steps on the right describe. */}
+            <div className="relative w-full max-w-[480px] mx-auto md:mx-0">
+              <AgentBuilderMockup />
             </div>
 
             {/* Right: the four steps */}
