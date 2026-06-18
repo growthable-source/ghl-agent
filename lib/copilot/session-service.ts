@@ -19,6 +19,7 @@ import { COPILOT_DEFAULTS } from './config'
 import { getWorkspaceSetupState } from './setup-state'
 import { getWorkflow, DEFAULT_WORKFLOW_KEY } from './workflows'
 import { buildCopilotSystemPrompt, buildWidgetCopilotPrompt } from './prompt'
+import { resolveCopilotVoice } from './voices'
 import { COPILOT_TOOL_DEFS, WIDGET_TOOL_DEFS, executeCopilotTool } from './tools'
 import { analyzeSessionAndFollowUp, type SessionAnalysis } from './analyze'
 import type { CopilotSessionDTO, RealtimeToolDef } from './types'
@@ -98,6 +99,10 @@ async function mintEphemeralToken(
   /** Hard ceiling for this session class. Defaults to the in-app cap;
    *  meeting-bot sessions pass a higher one (meetings run long). */
   ceilingSecs?: number,
+  /** Per-session voice (already resolved from the agent's setting /
+   *  rotation). Falls back to the COPILOT_VOICE env, then Gemini's
+   *  default. Pinning any value stops the accent from drifting. */
+  voiceOverride?: string | null,
 ) {
   const geminiKey = process.env.GEMINI_API_KEY
   if (!geminiKey) throw new CopilotNotConfiguredError('missing GEMINI_API_KEY')
@@ -109,9 +114,10 @@ async function mintEphemeralToken(
     maxSessionSecsOverride && maxSessionSecsOverride > 60 ? maxSessionSecsOverride : ceiling,
   )
 
-  // Optional voice override (e.g. 'Puck', 'Kore') — without it Gemini
-  // uses its default native voice. Locale still steers the accent.
-  const voiceName = process.env.COPILOT_VOICE || null
+  // Voice: an explicit per-session choice wins (pins the voice, so the
+  // accent can't drift), then the COPILOT_VOICE env, else null = Gemini's
+  // own default. Locale still steers the accent.
+  const voiceName = voiceOverride || process.env.COPILOT_VOICE || null
 
   const liveConfig = {
     responseModalities: [Modality.AUDIO],
@@ -193,6 +199,7 @@ export async function createStaffSession(opts: {
   let workflowKey: string | null = null
   let maxSecsOverride: number | undefined
   let copilotAgentId: string | null = null
+  let voiceOverride: string | null = null
 
   if (opts.agentId) {
     // Run as a workspace-created Co-Pilot agent: persona + optional
@@ -207,9 +214,11 @@ export async function createStaffSession(opts: {
       knowledgeDomainIds: domainIds.length ? domainIds : undefined,
     })
     const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+    const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
+    voiceOverride = voiceName
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
-      agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
+      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
@@ -247,7 +256,7 @@ export async function createStaffSession(opts: {
     systemPrompt = buildCopilotSystemPrompt({ setupState, workflow, ragContext, locale })
   }
 
-  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, COPILOT_TOOL_DEFS, maxSecsOverride)
+  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, COPILOT_TOOL_DEFS, maxSecsOverride, undefined, voiceOverride)
 
   const created = await db.copilotSession.create({
     data: {
@@ -578,16 +587,17 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
     knowledgeDomainIds: domainIds.length ? domainIds : undefined,
   })
   const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
+  const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
   const { buildAgentPrompt } = await import('./prompt')
   const systemPrompt = buildAgentPrompt({
-    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
     workspaceName: workspace.name ?? 'this workspace',
     ragContext,
     locale,
   })
 
   const maxSecs = steps.length > 0 ? (agent.timeboxMinutes + 5) * 60 : undefined
-  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, WIDGET_TOOL_DEFS, maxSecs)
+  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, WIDGET_TOOL_DEFS, maxSecs, undefined, voiceName)
 
   const created = await db.copilotSession.create({
     data: {
@@ -901,9 +911,10 @@ export async function connectMeetingSession(botToken: string) {
   })
   const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
 
+  const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
   const { buildMeetingPrompt } = await import('./prompt')
   const systemPrompt = buildMeetingPrompt({
-    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
     workspaceName: workspace?.name ?? 'this workspace',
     ragContext,
     locale,
@@ -917,7 +928,7 @@ export async function connectMeetingSession(botToken: string) {
   if (remaining < 120) throw new CopilotSopNotFoundError('meeting session expired')
 
   const { MEETING_TOOL_DEFS } = await import('./tools')
-  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, MEETING_TOOL_DEFS, remaining, remaining)
+  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, MEETING_TOOL_DEFS, remaining, remaining, voiceName)
 
   await db.copilotSession.update({
     where: { id: session.id },

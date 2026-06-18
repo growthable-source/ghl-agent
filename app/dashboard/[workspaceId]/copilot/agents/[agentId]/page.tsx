@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
+import { COPILOT_VOICES, ROTATE_VOICE } from '@/lib/copilot/voices'
 
 interface Recording {
   id: string
@@ -36,6 +37,7 @@ interface AgentDetail {
   steps: string[]
   timeboxMinutes: number
   knowledgeDomainIds: string[]
+  voice: string | null
   playbook: string | null
   recordings: Recording[]
 }
@@ -58,6 +60,7 @@ export default function CopilotAgentEditor() {
   const [collectInfo, setCollectInfo] = useState('')
   const [stepsText, setStepsText] = useState('')
   const [minutes, setMinutes] = useState('30')
+  const [voice, setVoice] = useState('')
   const [playbook, setPlaybook] = useState('')
   // Knowledge scope — connect this co-pilot to the workspace's indexed
   // knowledge domains (the same RAG corpus text/voice agents use). Empty
@@ -90,6 +93,7 @@ export default function CopilotAgentEditor() {
     setCollectInfo(a.collectInfo ?? '')
     setStepsText(a.steps.join('\n'))
     setMinutes(String(a.timeboxMinutes))
+    setVoice(a.voice ?? '')
     setPlaybook(a.playbook ?? '')
     setDomains(domRes.domains ?? [])
     setDomainPick(a.knowledgeDomainIds ?? [])
@@ -125,6 +129,7 @@ export default function CopilotAgentEditor() {
           collectInfo,
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
+          voice,
           playbook,
           knowledgeDomainIds: domainPick,
         }),
@@ -134,7 +139,7 @@ export default function CopilotAgentEditor() {
     } finally {
       setSaving(false)
     }
-  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, playbook, domainPick])
+  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, voice, playbook, domainPick])
 
   const upload = useCallback(
     async (file: File) => {
@@ -303,6 +308,26 @@ export default function CopilotAgentEditor() {
             placeholder="e.g. Warm and patient. Explains the why, not just the click. Never rushes the user."
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
           />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Voice</label>
+          <select
+            value={voice}
+            onChange={e => setVoice(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+          >
+            <option value="">Default voice</option>
+            <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
+            {COPILOT_VOICES.map(v => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            Pick one voice and the agent keeps it every call (this stops the accent drifting). Choose{' '}
+            <strong>Rotate</strong> and each session opens with a different voice and a different human name — so a
+            stream of sessions feels like a real team rather than one bot.
+          </p>
         </div>
 
         <div>

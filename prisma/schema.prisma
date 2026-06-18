@@ -4334,6 +4334,11 @@ model CopilotAgent {
   /// bridge from recordings to educated UI guesses. Markdown prose,
   /// operator-inspectable; distilled alongside `playbook`.
   uiMap              String?            @db.Text
+  /// Voice selection. A Gemini prebuilt voice name (pinned, kills accent
+  /// drift), or 'rotate' = a different voice + human intro name each
+  /// session (team-of-humans). Null = Gemini's default voice. See
+  /// lib/copilot/voices.ts.
+  voice              String?
   /// Public key for embed/link launches (mirror ChatWidget.publicKey).
   /// Null until the agent is published.
   publicKey          String?            @unique
