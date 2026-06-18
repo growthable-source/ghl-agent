@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
@@ -130,6 +130,98 @@ export default function WidgetEmbedPage() {
   const esRef = useRef<EventSource | null>(null)
   const vapiRef = useRef<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Gemini native-voice runtime (browser-direct, reuses the Copilot
+  // provider). Dynamic-import the types so the heavy audio modules only
+  // load when voice is actually used. ──
+  const geminiRef = useRef<import('@/lib/copilot/providers/gemini-live').GeminiLiveProvider | null>(null)
+  const geminiMicRef = useRef<import('@/lib/copilot/audio-client').MicCapture | null>(null)
+  const geminiPlayerRef = useRef<import('@/lib/copilot/audio-client').PcmPlayer | null>(null)
+  const geminiTurnsRef = useRef<Array<{ role: 'user' | 'agent'; text: string }>>([])
+  const geminiStartedAtRef = useRef<number>(0)
+
+  const stopGeminiVoice = useCallback(async () => {
+    const durationSecs = geminiStartedAtRef.current ? (Date.now() - geminiStartedAtRef.current) / 1000 : 0
+    try { await geminiRef.current?.close() } catch {}
+    geminiMicRef.current?.stop()
+    geminiPlayerRef.current?.stop()
+    geminiRef.current = null
+    geminiMicRef.current = null
+    geminiPlayerRef.current = null
+    setVoiceState('idle')
+    if (voiceCallId && geminiTurnsRef.current.length) {
+      void fetch(`/api/voice/gemini/transcript?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ widgetId, callId: voiceCallId, durationSecs, turns: geminiTurnsRef.current }),
+      }).catch(() => {})
+    }
+    geminiTurnsRef.current = []
+    setVoiceCallId(null)
+  }, [voiceCallId, widgetId, publicKey])
+
+  /**
+   * Try to start a Gemini native-voice call. Returns:
+   *   'ok'       — Gemini connected (or is connecting); caller stops here.
+   *   'fallback' — this agent isn't a Gemini agent; caller runs the Vapi path.
+   *   'error'    — Gemini agent but the call failed; error state already set.
+   */
+  const startGeminiVoice = useCallback(async (conversationId: string): Promise<'ok' | 'fallback' | 'error'> => {
+    try {
+      const res = await fetch(`/api/widget/${widgetId}/gemini-voice/token?pk=${publicKey}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ conversationId }),
+      })
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}))
+        if (e.code === 'NOT_GEMINI' || e.code === 'GEMINI_INACTIVE') return 'fallback'
+        setVoiceError(e.error || 'Could not start the call')
+        setVoiceState('error')
+        return 'error'
+      }
+      const { callId, agentId, connection, tools, vendorConfig } = await res.json()
+      setVoiceCallId(callId)
+      geminiTurnsRef.current = []
+
+      const { GeminiLiveProvider } = await import('@/lib/copilot/providers/gemini-live')
+      const { MicCapture, PcmPlayer } = await import('@/lib/copilot/audio-client')
+
+      const provider = new GeminiLiveProvider()
+      const player = new PcmPlayer()
+      await player.start()
+      const mic = new MicCapture(chunk => provider.sendAudioChunk(chunk))
+
+      provider.onAudioOutput = pcm => player.enqueue(pcm)
+      provider.onInterrupted = () => player.flush()
+      provider.onTranscript = turn => { if (turn.final) geminiTurnsRef.current.push({ role: turn.role, text: turn.text }) }
+      provider.onToolCall = async call => {
+        const r = await fetch(`/api/voice/gemini/tool?pk=${publicKey}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ agentId, name: call.name, args: call.args, widgetId }),
+        })
+        return await r.json().catch(() => ({ error: 'tool failed' }))
+      }
+      provider.onError = msg => { setVoiceError(msg); setVoiceState('error') }
+      provider.onEnded = () => { void stopGeminiVoice() }
+
+      await provider.connect({ connection, tools, vendorConfig })
+      await mic.start()
+      geminiRef.current = provider
+      geminiMicRef.current = mic
+      geminiPlayerRef.current = player
+      geminiStartedAtRef.current = Date.now()
+      setVoiceState('live')
+      return 'ok'
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : 'Voice call failed')
+      setVoiceState('error')
+      geminiMicRef.current?.stop()
+      geminiPlayerRef.current?.stop()
+      return 'error'
+    }
+  }, [widgetId, publicKey, stopGeminiVoice])
   // Resume cursor — the SSE `id:` of the last persisted message we
   // received. We pass it as `?since=` on manual reconnects since the
   // browser only auto-attaches Last-Event-ID on its OWN retries, not
@@ -1303,6 +1395,10 @@ export default function WidgetEmbedPage() {
           onStart={async () => {
             if (!conversationId) return
             setVoiceState('connecting'); setVoiceError(null)
+            // Native Gemini voice runs browser-direct. Non-Gemini agents
+            // return 'fallback' so the existing Vapi path below handles them.
+            const gemini = await startGeminiVoice(conversationId)
+            if (gemini !== 'fallback') return
             try {
               const res = await fetch(`/api/widget/${widgetId}/voice/start?pk=${publicKey}`, {
                 method: 'POST',
@@ -1341,12 +1437,14 @@ export default function WidgetEmbedPage() {
             }
           }}
           onHangup={() => {
+            if (geminiRef.current) { void stopGeminiVoice() }
             if (vapiRef.current) {
               try { vapiRef.current.stop() } catch {}
             }
             setVoiceState('idle')
           }}
           onClose={() => {
+            if (geminiRef.current) { void stopGeminiVoice() }
             if (voiceState === 'live' && vapiRef.current) {
               try { vapiRef.current.stop() } catch {}
             }
