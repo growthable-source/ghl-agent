@@ -64,6 +64,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const b = body as Record<string, unknown>
   const type = b.type === 'onboarding' || b.type === 'other' ? (b.type as string) : 'support'
   const voice = typeof b.voice === 'string' ? (b.voice as string).slice(0, 40) || null : null
+  const appContext = typeof b.appContext === 'string' ? (b.appContext as string).slice(0, 600) || null : null
   const agent = await db.copilotAgent.create({
     data: {
       workspaceId,
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       steps,
       knowledgeDomainIds,
       voice,
+      appContext,
       timeboxMinutes: Math.max(5, Math.min(120, Math.round(Number(body.timeboxMinutes) || 30))),
     },
   })

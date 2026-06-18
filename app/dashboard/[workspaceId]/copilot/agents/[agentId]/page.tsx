@@ -38,6 +38,7 @@ interface AgentDetail {
   timeboxMinutes: number
   knowledgeDomainIds: string[]
   voice: string | null
+  appContext: string | null
   playbook: string | null
   recordings: Recording[]
 }
@@ -61,6 +62,7 @@ export default function CopilotAgentEditor() {
   const [stepsText, setStepsText] = useState('')
   const [minutes, setMinutes] = useState('30')
   const [voice, setVoice] = useState('')
+  const [appContext, setAppContext] = useState('')
   const [playbook, setPlaybook] = useState('')
   // Knowledge scope — connect this co-pilot to the workspace's indexed
   // knowledge domains (the same RAG corpus text/voice agents use). Empty
@@ -94,6 +96,7 @@ export default function CopilotAgentEditor() {
     setStepsText(a.steps.join('\n'))
     setMinutes(String(a.timeboxMinutes))
     setVoice(a.voice ?? '')
+    setAppContext(a.appContext ?? '')
     setPlaybook(a.playbook ?? '')
     setDomains(domRes.domains ?? [])
     setDomainPick(a.knowledgeDomainIds ?? [])
@@ -130,6 +133,7 @@ export default function CopilotAgentEditor() {
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
           voice,
+          appContext,
           playbook,
           knowledgeDomainIds: domainPick,
         }),
@@ -139,7 +143,7 @@ export default function CopilotAgentEditor() {
     } finally {
       setSaving(false)
     }
-  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, voice, playbook, domainPick])
+  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, voice, appContext, playbook, domainPick])
 
   const upload = useCallback(
     async (file: File) => {
@@ -297,6 +301,21 @@ export default function CopilotAgentEditor() {
             onChange={e => setName(e.target.value)}
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
           />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Application focus</label>
+          <input
+            value={appContext}
+            onChange={e => setAppContext(e.target.value)}
+            placeholder="e.g. the GoHighLevel dashboard / our billing portal at app.acme.com"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+          />
+          <p className="text-[11px] text-zinc-500 mt-1">
+            The one app this agent works inside. It boxes the agent to that product — it grounds every instruction in
+            that app&rsquo;s real screens instead of guessing across whatever is on screen, and steers the user back if
+            they wander off into something else. Leave blank for a general assistant.
+          </p>
         </div>
 
         <div>

@@ -4371,6 +4371,10 @@ model CopilotAgent {
   /// session (team-of-humans). Null = Gemini's default voice. See
   /// lib/copilot/voices.ts.
   voice              String?
+  /// The one application/product this agent operates inside (e.g. "the
+  /// Acme CRM dashboard"). Boxes the agent to that app so it grounds in
+  /// the real UI instead of guessing across arbitrary screens.
+  appContext         String?            @db.Text
   /// Public key for embed/link launches (mirror ChatWidget.publicKey).
   /// Null until the agent is published.
   publicKey          String?            @unique

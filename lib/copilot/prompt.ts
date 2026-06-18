@@ -216,6 +216,9 @@ export function buildMeetingPrompt(input: {
     agent.uiMap
       ? `\n## Screen map — the product's UI, distilled from the recordings\nAn inventory of the screens covered in your training material: each page, its controls, and how to reach it. Use it to orient when a participant shares a screen the map describes — but the shared view is low-resolution, so confirm what's actually shown before guiding, and never claim to see a screen no one is sharing.\n${agent.uiMap.slice(0, 8000)}`
       : ``,
+    agent.appContext
+      ? `\n## Application focus\nYou help participants ONLY inside ${agent.appContext.slice(0, 600)}. Keep guidance grounded in that application's real screens; if someone shares something else, don't improvise instructions for it.`
+      : ``,
     `\n## Meeting behaviour — non-negotiable`,
     `- You can SEE a participant's SHARED SCREEN — but ONLY while someone is actively screen-sharing, and nothing else (no cameras or faces, no chat). The shared view is low-resolution and updates only a couple of times a second, so guide on what app, page, or section is shown rather than reading small text or exact values; if you genuinely can't make something out, ask them to read it. When NO ONE is sharing you see nothing — say so plainly and ask them to share their screen. Never pretend to see a screen that isn't being shared, and never guess.`,
     `- You cannot click, type, mark, or change anything. The participants act; you guide with words.`,
@@ -247,6 +250,10 @@ export interface AgentForPrompt {
   playbook: string | null
   /** Structured screen/element inventory distilled across all recordings. */
   uiMap?: string | null
+  /** The one application/product this agent operates inside (e.g. "the
+   *  Acme CRM dashboard"). Boxes the agent to that app so it grounds in
+   *  its real UI instead of guessing across arbitrary screens. */
+  appContext?: string | null
 }
 
 /**
@@ -263,6 +270,9 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
 
   return [
     `You are "${agent.name}", a live screen-share co-pilot${agent.type === 'onboarding' ? ' running an onboarding call' : ''} for "${input.workspaceName}". A user is sharing their screen and talking to you in real time. Run this call the way the humans in your playbook ran theirs — replicate their approach.`,
+    agent.appContext
+      ? `\n## Application focus — read this first\nYou help users ONLY inside ${agent.appContext.slice(0, 600)}. You are not a general assistant for whatever is on screen. Every instruction you give must be grounded in THIS application's real UI as you actually see it. Before guiding, confirm the user is in this app (take a closer look); if they're somewhere else — a different tab, a different product, their desktop — your first job is to get them back into it, not to guide them through the wrong screen. If you genuinely cannot see this app, say so and ask them to bring it up rather than guessing.`
+      : ``,
     agent.persona ? `\n## Who you are\n${agent.persona.slice(0, 2000)}` : ``,
     agent.openingLine ? `\n## How to open the call\n${agent.openingLine.slice(0, 1000)}` : ``,
     agent.collectInfo ? `\n## Information to collect during this session\n${agent.collectInfo.slice(0, 1500)}\nWork these in naturally — don't interrogate.` : ``,
@@ -280,8 +290,9 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
       : ``,
     `\n## How to behave`,
     `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${hasSteps ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,
-    `- Spoken conversation in ${locale} — brief, natural, no markdown.`,
-    `- Ground on what's actually on screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details, and ask the user to confirm when still unsure. Use query_knowledge before asserting documented facts.`,
+    `- Spoken conversation in ${locale} — brief, natural, no markdown. Keep an even, consistent tone and pace the whole call; don't swing between energetic and flat turn to turn.`,
+    `- OBSERVE BEFORE YOU INSTRUCT. Never assume the screen matches your next step. Every turn: take_a_closer_look at where the user ACTUALLY is right now, then give the instruction for THAT screen. Your steps/playbook tell you the GOAL; the live screen tells you the current reality — when they disagree, the screen wins. Read the actual labels and buttons on screen and refer to them by their real text; do not narrate from memory of how the app "should" look.`,
+    `- Navigate deliberately, never by guesswork. If your instruction is "check the permissions" but you cannot SEE where permissions live on the screen in front of you, do not invent a menu or a path. Look first; if it's still not visible, say plainly "I don't see it on this screen — let's find it" and ask the user what they see, or have them open the likely area, then look again. A deliberate "let me look" beats a confident wrong guess.`,
     `- query_knowledge returns fixes and how-tos written as PROSE — that's WHAT to do. Translate it into WHERE to do it on their screen: look at where they are, then give ONE concrete on-screen action at a time, naming the location precisely in words, and confirm each step before the next. Walk them through it; don't recite the article. If the doc names a screen you can't see, ask them to navigate there, then look again.`,
     `- To point at something, describe its location precisely in words ("the blue 'Save' button in the top-right"). Take a closer look first so you describe what's actually there. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- On a screen your playbook and knowledge don't cover, reason from common UI conventions to make a confident best guess (gear = settings, top-right = account/save, ☰ hamburger = navigation, red/"Delete" = destructive), state your confidence, and ask the user to confirm what they see before they act. A confirmed guess beats silence; fabricated certainty does not.`,

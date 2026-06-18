@@ -91,6 +91,7 @@ export default function NewCopilotAgentPage() {
   const [stepsText, setStepsText] = useState(TEMPLATES[0].steps.join('\n'))
   const [minutes, setMinutes] = useState('30')
   const [voice, setVoice] = useState('')
+  const [appContext, setAppContext] = useState('')
   const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
   const [domainPick, setDomainPick] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -137,6 +138,7 @@ export default function NewCopilotAgentPage() {
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
           voice,
+          appContext,
           knowledgeDomainIds: domainPick,
         }),
       })
@@ -149,7 +151,7 @@ export default function NewCopilotAgentPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, voice, domainPick, router])
+  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, voice, appContext, domainPick, router])
 
   if (!workspaceId) return null
 
@@ -192,6 +194,19 @@ export default function NewCopilotAgentPage() {
             placeholder="e.g. Onboarding Olivia"
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
           />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Application focus</label>
+          <input
+            value={appContext}
+            onChange={e => setAppContext(e.target.value)}
+            placeholder="e.g. the GoHighLevel dashboard / our billing portal at app.acme.com"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+          />
+          <p className="text-[11px] text-zinc-500 mt-1">
+            The one app this agent works inside — it grounds instructions in that product&rsquo;s real screens instead
+            of guessing, and steers the user back if they wander off. Leave blank for a general assistant.
+          </p>
         </div>
         <div>
           <label className="block text-xs font-medium text-zinc-400 mb-1">Persona / tone</label>

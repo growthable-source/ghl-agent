@@ -38,6 +38,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       timeboxMinutes: agent.timeboxMinutes,
       knowledgeDomainIds: agent.knowledgeDomainIds,
       voice: agent.voice,
+      appContext: agent.appContext,
       playbook: agent.playbook,
       recordings: agent.recordings.map(r => ({
         id: r.id,
@@ -80,6 +81,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Voice: a Gemini voice name, 'rotate', or '' to clear (= default).
   // Validated against the catalog at resolve time, so store as-is.
   if (typeof body.voice === 'string') data.voice = body.voice.slice(0, 40) || null
+  if (typeof body.appContext === 'string') data.appContext = body.appContext.slice(0, 600) || null
 
   // Publish: mint the publicKey server-side (never client-supplied).
   // Unpublish keeps the key so re-publishing doesn't break existing

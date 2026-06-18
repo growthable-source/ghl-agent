@@ -218,7 +218,7 @@ export async function createStaffSession(opts: {
     voiceOverride = voiceName
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
-      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
+      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
@@ -590,7 +590,7 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
   const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
   const { buildAgentPrompt } = await import('./prompt')
   const systemPrompt = buildAgentPrompt({
-    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace.name ?? 'this workspace',
     ragContext,
     locale,
@@ -914,7 +914,7 @@ export async function connectMeetingSession(botToken: string) {
   const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
   const { buildMeetingPrompt } = await import('./prompt')
   const systemPrompt = buildMeetingPrompt({
-    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace?.name ?? 'this workspace',
     ragContext,
     locale,
