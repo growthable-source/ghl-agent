@@ -40,47 +40,18 @@ const QUERY_KNOWLEDGE_DEF: RealtimeToolDef = {
   },
 }
 
-// annotate_screen and take_a_closer_look are CLIENT-executed — the
-// session panel handles them and answers the model directly, no server
-// round-trip. The definitions live here because tool defs are locked
-// into the ephemeral token at mint time.
+// take_a_closer_look is CLIENT-executed — the session panel handles it
+// and answers the model directly, no server round-trip. The definition
+// lives here because tool defs are locked into the ephemeral token at
+// mint time.
 const TAKE_CLOSER_LOOK_DEF: RealtimeToolDef = {
   name: 'take_a_closer_look',
   description:
     'Capture and send yourself a fresh FULL-RESOLUTION screenshot of the shared screen, right now. ' +
     'Call this before answering any question about what is on screen, before reading labels, field ' +
-    'values, or small text, and before placing an annotate_screen marker — your streamed view is ' +
-    'low-detail and may be several seconds stale. The result confirms the frame was sent; the new ' +
-    'image arrives as your next video frame.',
+    'values, or small text — your streamed view is low-detail and may be several seconds stale. ' +
+    'The result confirms the frame was sent; the new image arrives as your next video frame.',
   parameters: { type: 'object', properties: {} },
-}
-
-// Visual pointing. The marker is drawn in the browser on the floating
-// live-help preview (picture-in-picture), so the user sees it even
-// while working in their own product in another tab. Coordinates are
-// PERCENTAGES of the shared frame as the model last saw it, so a fresh
-// take_a_closer_look beforehand keeps them accurate.
-const ANNOTATE_SCREEN_DEF: RealtimeToolDef = {
-  name: 'annotate_screen',
-  description:
-    'Draw a visual marker on the live-help preview to point at something on the shared screen. ' +
-    'Calling this tool IS the act of pointing — saying "I\'m marking it" out loud does nothing on its ' +
-    'own. Use it whenever you say "see this button" or "click here". FIRST call take_a_closer_look so ' +
-    'your coordinates match the current screen, THEN call this. Coordinates are PERCENTAGES of the ' +
-    'shared screen as you last saw it (x: 0 = left edge, 100 = right edge; y: 0 = top, 100 = bottom). ' +
-    'The user sees the marker on the floating preview window, so remind them to glance at it.',
-  parameters: {
-    type: 'object',
-    properties: {
-      x: { type: 'number', description: 'Horizontal center of the target, 0-100 (% of screen width)' },
-      y: { type: 'number', description: 'Vertical center of the target, 0-100 (% of screen height)' },
-      kind: { type: 'string', enum: ['circle', 'box'], description: 'circle = ring around a point; box = rectangle highlight' },
-      width: { type: 'number', description: 'Box width as % of screen (box only, default 12)' },
-      height: { type: 'number', description: 'Box height as % of screen (box only, default 6)' },
-      label: { type: 'string', description: 'Short caption shown next to the marker (e.g. "Click here")' },
-    },
-    required: ['x', 'y', 'kind'],
-  },
 }
 
 export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
@@ -95,7 +66,6 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
     parameters: { type: 'object', properties: {} },
   },
   QUERY_KNOWLEDGE_DEF,
-  ANNOTATE_SCREEN_DEF,
   TAKE_CLOSER_LOOK_DEF,
 ]
 
@@ -105,7 +75,7 @@ export const COPILOT_TOOL_DEFS: RealtimeToolDef[] = [
  * channel wiring, CRM status) — operator-facing data that must never
  * be exposed to an end customer through their own chat widget.
  */
-export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF, ANNOTATE_SCREEN_DEF, TAKE_CLOSER_LOOK_DEF]
+export const WIDGET_TOOL_DEFS: RealtimeToolDef[] = [QUERY_KNOWLEDGE_DEF, TAKE_CLOSER_LOOK_DEF]
 
 /**
  * Meeting-bot sessions (Zoom/Meet via Recall) hear audio but see
@@ -160,12 +130,6 @@ export async function executeCopilotTool(
           .join('\n\n')
           .slice(0, 6000)
       }
-      case 'annotate_screen':
-        // Client-executed; reaching the server means an OLD client that
-        // can't draw. Never report success here — that fake "displayed"
-        // string is exactly what made the model insist "I'm marking it"
-        // when nothing appeared. Tell it to fall back to words instead.
-        return 'No marker could be drawn (this session can\'t display one). Point by describing the location in words instead — do not claim a marker is on screen.'
       case 'take_a_closer_look':
         // Client-executed; reaching the server means an old client.
         return 'A fresh frame was requested.'

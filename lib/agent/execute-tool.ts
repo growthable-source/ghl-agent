@@ -343,6 +343,14 @@ export async function executeTool(
    * call sites — the gate skips when not provided.
    */
   messageHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+  /**
+   * Pre-computed enforced-tool gate decision. When the caller has already
+   * gated this tool (e.g. runAgent batches all enforced tools of an
+   * iteration into one Haiku call), it passes the decision here and the
+   * inline per-tool gate below is skipped — no second LLM call, no second
+   * ToolGateDecision row. Absent → the inline gate runs as before.
+   */
+  precomputedGate?: import('./tool-gate').GateDecision,
 ): Promise<string> {
   // In sandbox, allow read-only tools to hit the real CRM so the agent
   // sees actual data. Writes (send_reply, book_appointment, update_*,
@@ -363,40 +371,38 @@ export async function executeTool(
   //   - agent is in autonomous mode
   //   - resolved useWhen is empty (no rule = nothing to enforce)
   // Fail-open on any error so a gate failure can't break the agent.
-  if (!sandbox && agentId) {
+  const gateBlockedResult = (reason: string) => JSON.stringify({
+    success: false,
+    blocked: true,
+    reason,
+    hint: 'The current conversation does not satisfy the rule for this tool. Continue gathering what is missing before retrying, or choose a different action that matches the situation.',
+  })
+  if (precomputedGate !== undefined) {
+    // Caller already gated this tool (batched). Honour the decision; the
+    // batched path has already written its ToolGateDecision row.
+    if (!precomputedGate.allowed) return gateBlockedResult(precomputedGate.reason)
+  } else if (!sandbox && agentId) {
     try {
-      const { AGENT_TOOLS: catalog } = await import('./tool-catalog')
-      const catalogEntry = (catalog as any[]).find((t: any) => t.name === toolName)
-      if (catalogEntry?.enforcement === 'enforced') {
-        const { resolveOneToolConfig } = await import('./tool-config')
-        const cfg = await resolveOneToolConfig(agentId, toolName)
-        const { db: dbClient } = await import('@/lib/db')
-        const agentRow = await dbClient.agent.findUnique({
-          where: { id: agentId },
-          select: { toolAutonomyMode: true } as any,
+      const { resolveEnforcedGate } = await import('./tool-gate')
+      const { db: dbClient } = await import('@/lib/db')
+      const agentRow = await dbClient.agent.findUnique({
+        where: { id: agentId },
+        select: { toolAutonomyMode: true } as any,
+      })
+      const autonomyMode = (agentRow as any)?.toolAutonomyMode ?? 'guided'
+      const { shouldGate, useWhen } = await resolveEnforcedGate(agentId, toolName, autonomyMode)
+      if (shouldGate) {
+        const { runToolGate } = await import('./tool-gate')
+        const decision = await runToolGate({
+          agentId,
+          conversationId: conversationId ?? null,
+          contactId: contactId ?? null,
+          toolName,
+          useWhen,
+          toolInput: input,
+          recentMessages: messageHistory ?? [],
         })
-        const autonomyMode = (agentRow as any)?.toolAutonomyMode ?? 'guided'
-        const shouldGate = autonomyMode === 'guided' && cfg.useWhen && cfg.useWhen.length > 0
-        if (shouldGate) {
-          const { runToolGate } = await import('./tool-gate')
-          const decision = await runToolGate({
-            agentId,
-            conversationId: conversationId ?? null,
-            contactId: contactId ?? null,
-            toolName,
-            useWhen: cfg.useWhen,
-            toolInput: input,
-            recentMessages: messageHistory ?? [],
-          })
-          if (!decision.allowed) {
-            return JSON.stringify({
-              success: false,
-              blocked: true,
-              reason: decision.reason,
-              hint: 'The current conversation does not satisfy the rule for this tool. Continue gathering what is missing before retrying, or choose a different action that matches the situation.',
-            })
-          }
-        }
+        if (!decision.allowed) return gateBlockedResult(decision.reason)
       }
     } catch (err: any) {
       // Fail-open — gating failure shouldn't break the runtime.

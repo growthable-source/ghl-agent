@@ -28,6 +28,7 @@ import { AGENT_TOOLS, constrainWorkflowTool } from './agent/tool-catalog'
 import { REQUIRED_TOOL_KEYS } from './agent-tools-catalog'
 import { executeTool } from './agent/execute-tool'
 import { buildSystemPromptParts } from './agent/build-prompt'
+import type { GateDecision } from './agent/tool-gate'
 import type {
   AgentAttachment,
   AgentResponse,
@@ -1080,6 +1081,51 @@ export async function runAgent(opts: {
       break
     }
 
+    // ─── Batched enforced-tool gate (Phase B3) ───
+    // Pre-evaluate every enforced tool in THIS iteration with ONE Haiku
+    // call instead of one per tool, re-sending the shared conversation
+    // context only once. Decisions are keyed by tool_use id and handed to
+    // executeTool, which then skips its own inline gate. Fail-open: any
+    // error here leaves the map empty and executeTool gates inline.
+    const gateDecisionsById = new Map<string, GateDecision>()
+    if (!isSandbox && agentId && toolUseBlocks.length > 0) {
+      try {
+        const { db: gateDb } = await import('./db')
+        const agentRow = await gateDb.agent.findUnique({
+          where: { id: agentId },
+          select: { toolAutonomyMode: true } as any,
+        })
+        const autonomyMode = (agentRow as any)?.toolAutonomyMode ?? 'guided'
+        const { resolveEnforcedGate, runToolGateBatch } = await import('./agent/tool-gate')
+        const gateItems: Array<{ id: string; toolName: string; useWhen: string; toolInput: Record<string, unknown> }> = []
+        for (const block of toolUseBlocks) {
+          const tb = block as Anthropic.ToolUseBlock
+          const g = await resolveEnforcedGate(agentId, tb.name, autonomyMode)
+          if (g.shouldGate) {
+            gateItems.push({ id: tb.id, toolName: tb.name, useWhen: g.useWhen, toolInput: tb.input as Record<string, unknown> })
+          }
+        }
+        if (gateItems.length > 0) {
+          const gateHistory = (messageHistory ?? [])
+            .filter(m => (m.direction === 'inbound' || m.direction === 'outbound') && typeof m.body === 'string')
+            .map(m => ({
+              role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+              content: m.body,
+            }))
+          const decisions = await runToolGateBatch({
+            agentId,
+            conversationId: conversationId ?? null,
+            contactId: contactId ?? null,
+            recentMessages: gateHistory,
+            items: gateItems,
+          })
+          for (const [id, d] of decisions) gateDecisionsById.set(id, d)
+        }
+      } catch (err: any) {
+        console.warn('[Agent] batched tool-gate failed, falling open:', err?.message)
+      }
+    }
+
     // Execute all tool calls
     const toolResults: Anthropic.ToolResultBlockParam[] = []
     for (const block of toolUseBlocks) {
@@ -1141,6 +1187,8 @@ export async function runAgent(opts: {
             role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
             content: m.body,
           })),
+        // Batched gate decision for this tool (undefined → executeTool gates inline).
+        gateDecisionsById.get(toolBlock.id),
       )
       toolCallTrace.push({
         tool: toolBlock.name,

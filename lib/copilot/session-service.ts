@@ -566,7 +566,7 @@ export async function endCopilotSession(sessionId: string, endedReason: string):
 // No NextAuth — the agent's publicKey IS the credential, same trust
 // model as ChatWidget.publicKey. Only published agents launch; tools
 // are the visitor set (query_knowledge scoped to the agent's domains
-// + annotate_screen + take_a_closer_look) — never internal workspace state.
+// + take_a_closer_look) — never internal workspace state.
 export async function createPublicAgentSession(publicKey: string, opts: { locale?: string } = {}) {
   const agent = await db.copilotAgent.findFirst({
     where: { publicKey, published: true },
