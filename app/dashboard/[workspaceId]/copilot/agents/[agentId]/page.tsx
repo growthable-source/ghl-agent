@@ -39,6 +39,12 @@ interface AgentDetail {
   playbook: string | null
   recordings: Recording[]
 }
+interface KnowledgeDomainLite {
+  id: string
+  name: string
+  description: string | null
+  chunkCount: number
+}
 
 export default function CopilotAgentEditor() {
   const params = useParams<{ workspaceId: string; agentId: string }>()
@@ -53,6 +59,11 @@ export default function CopilotAgentEditor() {
   const [stepsText, setStepsText] = useState('')
   const [minutes, setMinutes] = useState('30')
   const [playbook, setPlaybook] = useState('')
+  // Knowledge scope — connect this co-pilot to the workspace's indexed
+  // knowledge domains (the same RAG corpus text/voice agents use). Empty
+  // = read from ALL domains (workspace-wide), matching the runtime default.
+  const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
+  const [domainPick, setDomainPick] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -65,7 +76,10 @@ export default function CopilotAgentEditor() {
   const [meeting, setMeeting] = useState<{ sessionId: string; statusLabel: string; active: boolean } | null>(null)
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}`)
+    const [res, domRes] = await Promise.all([
+      fetch(`/api/workspaces/${workspaceId}/copilot/agents/${agentId}`),
+      fetch(`/api/admin/knowledge-domains?workspaceId=${workspaceId}`).then(r => r.json()).catch(() => ({})),
+    ])
     if (!res.ok) return
     const body = await res.json()
     const a: AgentDetail = body.agent
@@ -77,7 +91,13 @@ export default function CopilotAgentEditor() {
     setStepsText(a.steps.join('\n'))
     setMinutes(String(a.timeboxMinutes))
     setPlaybook(a.playbook ?? '')
+    setDomains(domRes.domains ?? [])
+    setDomainPick(a.knowledgeDomainIds ?? [])
   }, [workspaceId, agentId])
+
+  const toggleDomain = useCallback((id: string) => {
+    setDomainPick(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
+  }, [])
 
   useEffect(() => {
     void load()
@@ -106,6 +126,7 @@ export default function CopilotAgentEditor() {
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
           playbook,
+          knowledgeDomainIds: domainPick,
         }),
       })
       setSaved(true)
@@ -113,7 +134,7 @@ export default function CopilotAgentEditor() {
     } finally {
       setSaving(false)
     }
-  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, playbook])
+  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, playbook, domainPick])
 
   const upload = useCallback(
     async (file: File) => {
@@ -330,6 +351,57 @@ export default function CopilotAgentEditor() {
               className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
             />
           </div>
+        </div>
+
+        {/* ── Connect knowledge ── */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <h3 className="text-sm font-semibold text-zinc-100 mb-1">
+            Knowledge <NewBadge since="2026-06-18" className="ml-1" />
+          </h3>
+          <p className="text-xs text-zinc-400 mb-3">
+            Connect this co-pilot to your indexed <strong>knowledge</strong> — the same articles, docs, and videos your
+            text and voice agents use. During a live session it searches this to answer questions and look up the fix,
+            then walks the user through it on screen. Pick which domains it can read from, or leave all unchecked to use
+            every domain in the workspace.
+          </p>
+          {domains.length === 0 ? (
+            <p className="text-xs text-zinc-500">
+              No knowledge domains yet.{' '}
+              <Link href={`/dashboard/${workspaceId}/knowledge`} className="underline hover:text-zinc-300">
+                Add knowledge
+              </Link>{' '}
+              first, then connect it here.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {domains.map(d => {
+                const checked = domainPick.includes(d.id)
+                return (
+                  <label
+                    key={d.id}
+                    className="flex items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 cursor-pointer hover:border-zinc-700"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleDomain(d.id)}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm text-zinc-200 truncate">{d.name}</span>
+                      {d.description && <span className="block text-xs text-zinc-500 truncate">{d.description}</span>}
+                      <span className="block text-[11px] text-zinc-600">{d.chunkCount} indexed entries</span>
+                    </span>
+                  </label>
+                )
+              })}
+              <p className="text-[11px] text-zinc-500 pt-1">
+                {domainPick.length === 0
+                  ? 'Nothing checked — this agent reads from all knowledge domains. Save to apply.'
+                  : `Reading from ${domainPick.length} domain${domainPick.length === 1 ? '' : 's'}. Save to apply.`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ── Learn from recordings ── */}
