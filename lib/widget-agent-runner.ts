@@ -151,8 +151,44 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
   // Either should silence the AI. We resolve both BEFORE the typing
   // broadcast so the widget never shows a typing indicator that
   // never resolves.
-  const widgetLocationId = `widget:${convo.widgetId}`
-  const widgetContactId = `visitor:${convo.visitorId}`
+  // Resolve a connected CRM location once — reused for promoting the
+  // visitor to a real contact (below) and for the inner adapter that
+  // backs calendar/opportunity tools further down.
+  let realLocationId: string | null = null
+  try {
+    const realLocation = await db.location.findFirst({
+      where: { workspaceId: widget.workspaceId, crmProvider: { not: 'none' } },
+      select: { id: true },
+      orderBy: { installedAt: 'desc' },
+    })
+    realLocationId = realLocation?.id ?? null
+  } catch (err: any) {
+    console.warn('[widget] CRM location resolve failed:', err?.message)
+  }
+
+  // Promote an identified visitor to their real CRM contact. The identify
+  // route already fires syncContactFromVisitor (fire-and-forget); here we
+  // make sure it has actually landed before the agent's first turn — so
+  // the per-contact tooling (qualifying answers, lead scoring, CRM field
+  // sync, tags) operates on the ACTUAL contact instead of a throwaway
+  // `visitor:<id>`. Only attempted when a CRM is connected and the visitor
+  // has an email/phone to match on; otherwise we stay anonymous.
+  let crmContactId: string | null = convo.visitor?.crmContactId ?? null
+  if (!crmContactId && realLocationId && (convo.visitor?.email || convo.visitor?.phone)) {
+    try {
+      const { syncContactFromVisitor } = await import('./widget-crm-sync')
+      crmContactId = await syncContactFromVisitor(widget.workspaceId, convo.visitor)
+    } catch (err: any) {
+      console.warn('[widget] CRM contact promotion failed:', err?.message)
+    }
+  }
+
+  // Use the real CRM contact + location when the visitor is identified and
+  // a CRM is connected; otherwise the synthetic widget/visitor ids. Replies
+  // still route to the widget via the adapter (keyed on conversationId), so
+  // swapping these only affects where CRM-write tools + state records land.
+  const widgetLocationId = (crmContactId && realLocationId) ? realLocationId : `widget:${convo.widgetId}`
+  const widgetContactId = crmContactId ?? `visitor:${convo.visitorId}`
   const state = await getOrCreateConversationState(agent.id, widgetLocationId, widgetContactId, convo.id).catch(() => null)
 
   const decision = shouldAgentReply(convo.status, state)
@@ -227,19 +263,15 @@ Never apologise for the language or mention translation — just speak naturally
 
   // Real CRM adapter (calendar/opportunity tools) when the workspace has
   // one connected, otherwise null and those tools degrade cleanly.
+  // Reuse the CRM location resolved above (for calendar/opportunity tools).
   let inner: import('./crm/types').CrmAdapter | null = null
-  try {
-    const realLocation = await db.location.findFirst({
-      where: { workspaceId: widget.workspaceId, crmProvider: { not: 'none' } },
-      select: { id: true },
-      orderBy: { installedAt: 'desc' },
-    })
-    if (realLocation) {
+  if (realLocationId) {
+    try {
       const { getCrmAdapter } = await import('./crm/factory')
-      inner = await getCrmAdapter(realLocation.id)
+      inner = await getCrmAdapter(realLocationId)
+    } catch (err: any) {
+      console.warn('[widget] could not resolve CRM adapter — calendar tools will degrade:', err?.message)
     }
-  } catch (err: any) {
-    console.warn('[widget] could not resolve CRM adapter — calendar tools will degrade:', err?.message)
   }
 
   const adapter = new WidgetAdapter({
