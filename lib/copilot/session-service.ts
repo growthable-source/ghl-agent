@@ -209,7 +209,7 @@ export async function createStaffSession(opts: {
     const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
-      agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
+      agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
@@ -557,7 +557,7 @@ export async function endCopilotSession(sessionId: string, endedReason: string):
 // No NextAuth — the agent's publicKey IS the credential, same trust
 // model as ChatWidget.publicKey. Only published agents launch; tools
 // are the visitor set (query_knowledge scoped to the agent's domains
-// + take_a_closer_look) — never internal workspace state.
+// + annotate_screen + take_a_closer_look) — never internal workspace state.
 export async function createPublicAgentSession(publicKey: string, opts: { locale?: string } = {}) {
   const agent = await db.copilotAgent.findFirst({
     where: { publicKey, published: true },
@@ -580,7 +580,7 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
   const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
   const { buildAgentPrompt } = await import('./prompt')
   const systemPrompt = buildAgentPrompt({
-    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
+    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
     workspaceName: workspace.name ?? 'this workspace',
     ragContext,
     locale,
@@ -903,7 +903,7 @@ export async function connectMeetingSession(botToken: string) {
 
   const { buildMeetingPrompt } = await import('./prompt')
   const systemPrompt = buildMeetingPrompt({
-    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook },
+    agent: { name: agent.name, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap },
     workspaceName: workspace?.name ?? 'this workspace',
     ragContext,
     locale,

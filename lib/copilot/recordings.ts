@@ -170,7 +170,8 @@ You are given: the agent's name, any ordered steps the operator already wrote, a
 Produce STRICT JSON, no markdown fences:
 {
   "steps": ["a clean, ordered list of the CONCRETE steps the user must complete, phrased as short imperative actions — e.g. 'Connect your CRM under Settings > Integrations'. This is the checklist the agent walks IN ORDER. Pull these from the SOP / recordings faithfully; do not invent steps that aren't there. 3-30 items."],
-  "playbook": "A per-step RUNBOOK in markdown. For EACH step above, write a short block with: exactly what to tell the user to do, WHERE it is on screen (page + the target element and roughly where it sits), the phrasing that works, and any confusion/stall point at that step and how to handle it. Preserve the literal detail from the source — this is the agent's authority on HOW to do each step, so be specific, not generic. End with any objections that came up across the call and how they were handled."
+  "playbook": "A per-step RUNBOOK in markdown. For EACH step above, write a short block with: exactly what to tell the user to do, WHERE it is on screen (page + the target element and roughly where it sits), the phrasing that works, and any confusion/stall point at that step and how to handle it. Preserve the literal detail from the source — this is the agent's authority on HOW to do each step, so be specific, not generic. End with any objections that came up across the call and how they were handled.",
+  "uiMap": "A SCREEN MAP of the product, in markdown, organised by SCREEN/PAGE rather than by step — merge what every source shows into ONE inventory. For each distinct screen seen, write a short block: the screen's name/purpose, how you reach it (the nav path or what you click to land there), and the notable controls on it (buttons, fields, tabs, menus) with roughly where each sits and what it does. This is a map of the UI itself, not a procedure — it lets the agent orient on a screen it saw in one recording while the user is on a related screen later. Only include screens actually visible in the material; do not invent UI. If there is no visible screen content at all, return an empty string."
 }
 
 Rules: Follow the source material closely — if the SOP says to do X before Y, keep that order. Don't summarise away the specifics (exact menu names, button locations, field values). If the operator already wrote steps, reconcile them with the source rather than discarding them. Do not invent anything not supported by the material.`
@@ -178,19 +179,21 @@ Rules: Follow the source material closely — if the SOP says to do X before Y, 
 interface DistillResult {
   steps: string[]
   playbook: string
+  uiMap: string
 }
 
 function parseDistill(raw: string): DistillResult | null {
   const m = raw.replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim().match(/\{[\s\S]*\}/)
   if (!m) return null
   try {
-    const obj = JSON.parse(m[0]) as { steps?: unknown; playbook?: unknown }
+    const obj = JSON.parse(m[0]) as { steps?: unknown; playbook?: unknown; uiMap?: unknown }
     const steps = Array.isArray(obj.steps)
       ? obj.steps.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).map(s => s.trim().slice(0, 500)).slice(0, 40)
       : []
     const playbook = typeof obj.playbook === 'string' ? obj.playbook.trim() : ''
+    const uiMap = typeof obj.uiMap === 'string' ? obj.uiMap.trim() : ''
     if (!playbook && steps.length === 0) return null
-    return { steps, playbook }
+    return { steps, playbook, uiMap }
   } catch {
     return null
   }
@@ -239,13 +242,14 @@ export async function distillPlaybook(agentId: string): Promise<void> {
 
     const data: Record<string, unknown> = {}
     if (parsed.playbook) data.playbook = parsed.playbook.slice(0, 16_000)
+    if (parsed.uiMap) data.uiMap = parsed.uiMap.slice(0, 12_000)
     // Only auto-fill steps when the operator hasn't authored any — never
     // clobber hand-written steps; the playbook still reconciles to them.
     if (existingSteps.length === 0 && parsed.steps.length > 0) data.steps = parsed.steps
     if (Object.keys(data).length > 0) {
       await db.copilotAgent.update({ where: { id: agentId }, data })
       console.log(
-        `[recordings] distilled agent ${agentId} from ${agent.recordings.length} source(s): ${parsed.steps.length} step(s)${existingSteps.length === 0 ? ' auto-filled' : ' (kept operator steps)'}, playbook ${parsed.playbook.length} chars`,
+        `[recordings] distilled agent ${agentId} from ${agent.recordings.length} source(s): ${parsed.steps.length} step(s)${existingSteps.length === 0 ? ' auto-filled' : ' (kept operator steps)'}, playbook ${parsed.playbook.length} chars, uiMap ${parsed.uiMap.length} chars`,
       )
     }
   } catch (err) {

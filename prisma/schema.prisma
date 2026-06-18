@@ -4327,6 +4327,13 @@ model CopilotAgent {
   steps              Json               @default("[]")
   timeboxMinutes     Int                @default(30)
   playbook           String?            @db.Text
+  /// Structured screen/element inventory distilled across ALL of this
+  /// agent's recordings (page → notable controls → what each does → how
+  /// to reach it). Lets a live session reason about a screen it saw in
+  /// one recording while the user is on a related screen now — the
+  /// bridge from recordings to educated UI guesses. Markdown prose,
+  /// operator-inspectable; distilled alongside `playbook`.
+  uiMap              String?            @db.Text
   /// Public key for embed/link launches (mirror ChatWidget.publicKey).
   /// Null until the agent is published.
   publicKey          String?            @unique
