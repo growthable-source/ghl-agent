@@ -23,6 +23,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
   const p = body.proposal
+  const agentKind = body.kind === 'procedural' ? 'procedural' : 'reactive'
+  const procedureMode = body.procedureMode === 'advanced' ? 'advanced' : 'simple'
   // Name is now optional — defaultAgentName() fills in a "Curious Llama"
   // style placeholder if the LLM proposal omitted one. systemPrompt is
   // still required because it carries the agent's actual behaviour.
@@ -64,9 +66,34 @@ export async function POST(req: NextRequest, { params }: Params) {
         instructions: p.instructions || null,
         enabledTools: Array.isArray(p.enabledTools) ? p.enabledTools : [],
         agentType: 'SIMPLE',
+        agentKind,
+        procedureMode,
         formalityLevel: toneToFormality(p.personaTone),
-      },
+      } as any,
     })
+
+    // Procedure steps (procedural agents). Mapped from the proposal's
+    // ordered list; advanced steps may carry a question + skip/jump/stop
+    // rules. Best-effort + guarded so a pre-migration deploy doesn't fail
+    // agent creation.
+    if (agentKind === 'procedural' && Array.isArray(p.procedureSteps)) {
+      const valid = p.procedureSteps.filter((s: any) => s?.title && s?.instruction)
+      if (valid.length) {
+        await (db as any).procedureStep.createMany({
+          data: valid.map((s: any, i: number) => ({
+            agentId: agent.id,
+            order: i,
+            title: String(s.title).slice(0, 120),
+            instruction: String(s.instruction),
+            question: typeof s.question === 'string' && s.question.trim() ? s.question.trim() : null,
+            collectFieldKey: typeof s.collectFieldKey === 'string' && s.collectFieldKey.trim() ? s.collectFieldKey.trim() : null,
+            rules: Array.isArray(s.rules) ? s.rules : [],
+          })),
+        }).catch((err: any) => {
+          console.warn('[wizard/create] procedure steps failed:', err?.message)
+        })
+      }
+    }
 
     // Detection rules
     if (Array.isArray(p.detectionRules)) {

@@ -131,12 +131,64 @@ export async function POST(req: NextRequest, { params }: Params) {
     .slice(-30)
     .map((m: any) => ({ role: m.role, content: m.content }))
 
+  // Agent kind drives how the wizard frames its proposal. Reactive →
+  // detection rules + qualifying questions (diagnose & resolve). Procedural →
+  // an ordered procedureSteps list (walk a sequence); advanced steps can
+  // carry a question + skip/jump/stop rules.
+  const isProcedural = body.kind === 'procedural'
+  const procedureMode = body.procedureMode === 'advanced' ? 'advanced' : 'simple'
+
+  const kindGuidance = isProcedural
+    ? `\n\n## THIS IS A PROCEDURAL AGENT\nIt walks the contact through an ordered sequence with progress tracking. Instead of qualifyingQuestions, produce \`procedureSteps\`: an ordered list, each with a short title and an instruction (what the agent does/says that step). ${procedureMode === 'advanced' ? 'In advanced mode a step may also include a question to ask and answer rules (skip / jump to another step / stop & hand off).' : 'Simple mode: title + instruction only.'} Do NOT produce qualifyingQuestions. Keep steps focused — usually 3–7.`
+    : `\n\n## THIS IS A REACTIVE AGENT\nIt diagnoses and resolves using its knowledge — there is NO fixed step sequence. Use detectionRules + qualifyingQuestions where useful. Do NOT produce procedureSteps and never narrate "step N of M".`
+
+  const baseSchema = PROPOSE_TOOL.input_schema as any
+  const proposeTool: Anthropic.Tool = isProcedural
+    ? {
+        ...PROPOSE_TOOL,
+        input_schema: {
+          ...baseSchema,
+          properties: {
+            ...baseSchema.properties,
+            procedureSteps: {
+              type: 'array',
+              description: 'Ordered steps this procedural agent walks the contact through.',
+              items: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Short step title, e.g. "Collect email".' },
+                  instruction: { type: 'string', description: 'What the agent does or says in this step.' },
+                  ...(procedureMode === 'advanced' ? {
+                    question: { type: 'string', description: 'Optional question to ask the contact in this step.' },
+                    rules: {
+                      type: 'array',
+                      description: 'Optional rules on the answer.',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          when: { type: 'string', description: 'Keyword/phrase the answer contains.' },
+                          action: { type: 'string', enum: ['skip', 'jump', 'stop'] },
+                          target: { type: 'string', description: 'For jump: the title of the step to jump to.' },
+                        },
+                        required: ['when', 'action'],
+                      },
+                    },
+                  } : {}),
+                },
+                required: ['title', 'instruction'],
+              },
+            },
+          },
+        },
+      }
+    : PROPOSE_TOOL
+
   try {
     const res = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
-      system: WIZARD_SYSTEM_PROMPT,
-      tools: [PROPOSE_TOOL],
+      system: WIZARD_SYSTEM_PROMPT + kindGuidance,
+      tools: [proposeTool],
       messages: cleaned,
     })
 

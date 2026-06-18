@@ -13,6 +13,15 @@ interface DetectionRule {
   actionValue: string
 }
 interface QualifyingQuestion { question: string; captureField: string }
+interface ProcedureStepProposal {
+  title: string
+  instruction: string
+  question?: string
+  rules?: { when: string; action: 'skip' | 'jump' | 'stop'; target?: string }[]
+}
+
+type AgentKind = 'reactive' | 'procedural'
+type ProcedureMode = 'simple' | 'advanced'
 
 interface Proposal {
   name: string
@@ -22,12 +31,17 @@ interface Proposal {
   enabledTools: string[]
   detectionRules?: DetectionRule[]
   qualifyingQuestions?: QualifyingQuestion[]
+  procedureSteps?: ProcedureStepProposal[]
   personaTone?: string
 }
 
-const SEED_GREETING: Msg = {
-  role: 'assistant',
-  content: "Hey — I'll help you build an agent in a couple of minutes. What do you want this agent to do? (e.g. \"book demos for our SaaS product\", \"answer support questions for an HVAC company\", \"qualify real-estate buyers and capture their budget\")",
+function greetingFor(kind: AgentKind): Msg {
+  return {
+    role: 'assistant',
+    content: kind === 'procedural'
+      ? "Great — a procedural agent walks someone through a sequence step by step. What's the procedure? (e.g. \"onboard a new client\", \"book a discovery call and collect their goals\", \"run through an intake form\")"
+      : "Great — a reactive agent listens, diagnoses, and resolves using your knowledge. What should it help with? (e.g. \"answer support questions for an HVAC company\", \"triage product issues\", \"handle billing questions\")",
+  }
 }
 
 export default function WizardPage() {
@@ -35,7 +49,11 @@ export default function WizardPage() {
   const router = useRouter()
   const workspaceId = params.workspaceId as string
 
-  const [messages, setMessages] = useState<Msg[]>([SEED_GREETING])
+  // Type choice gates the whole wizard — it frames the conversation and the
+  // proposal. null until the user picks, which is when the chat begins.
+  const [kind, setKind] = useState<AgentKind | null>(null)
+  const [procedureMode, setProcedureMode] = useState<ProcedureMode>('simple')
+  const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [proposal, setProposal] = useState<Proposal | null>(null)
@@ -60,7 +78,7 @@ export default function WizardPage() {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents/wizard`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: next, kind, procedureMode }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -88,7 +106,7 @@ export default function WizardPage() {
       const res = await fetch(`/api/workspaces/${workspaceId}/agents/wizard/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal }),
+        body: JSON.stringify({ proposal, kind, procedureMode }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -114,10 +132,34 @@ export default function WizardPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Build with AI</h1>
         <p className="text-sm text-zinc-400 mt-1">
-          Describe what you want and I&apos;ll spin up the agent — system prompt, rules, qualifying questions, tools, all of it.
+          {kind === null
+            ? 'First, what kind of agent is this? It shapes how the agent behaves.'
+            : 'Describe what you want and I’ll spin up the agent — system prompt, rules, tools, all of it.'}
         </p>
       </div>
 
+      {kind === null && (
+        <TypePicker
+          onPick={(k, m) => {
+            setKind(k)
+            setProcedureMode(m)
+            setMessages([greetingFor(k)])
+          }}
+        />
+      )}
+
+      {kind !== null && (<>
+      <div className="mb-3 flex items-center gap-2 text-xs">
+        <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 capitalize">
+          {kind}{kind === 'procedural' ? ` · ${procedureMode}` : ''}
+        </span>
+        <button
+          onClick={() => { setKind(null); setProposal(null); setMessages([]); setInput('') }}
+          className="text-zinc-500 hover:text-zinc-300"
+        >
+          Change type
+        </button>
+      </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 mb-4 space-y-4">
         {messages.map((m, i) => (
           <Bubble key={i} msg={m} />
@@ -155,6 +197,50 @@ export default function WizardPage() {
           Send
         </button>
       </form>
+      </>)}
+    </div>
+  )
+}
+
+function TypePicker({ onPick }: { onPick: (kind: AgentKind, mode: ProcedureMode) => void }) {
+  const [pendingProcedural, setPendingProcedural] = useState(false)
+  return (
+    <div className="flex-1 flex flex-col justify-center gap-4 max-w-2xl mx-auto w-full">
+      <button
+        onClick={() => onPick('reactive', 'simple')}
+        className="text-left rounded-xl border-2 p-5 transition-colors border-zinc-800 hover:border-orange-500/50 bg-zinc-900/40"
+      >
+        <p className="text-base font-bold text-white">Reactive <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider ml-1">default</span></p>
+        <p className="text-sm text-zinc-400 mt-1">Listens, diagnoses, and resolves using your knowledge. No fixed steps. Best for support, FAQ, triage, Q&amp;A.</p>
+      </button>
+
+      <div className={`rounded-xl border-2 p-5 transition-colors ${pendingProcedural ? 'border-orange-500/50' : 'border-zinc-800 hover:border-orange-500/50'} bg-zinc-900/40`}>
+        <button onClick={() => setPendingProcedural(v => !v)} className="text-left w-full">
+          <p className="text-base font-bold text-white">Procedural</p>
+          <p className="text-sm text-zinc-400 mt-1">Walks the contact through a defined sequence with progress (&ldquo;step 2 of 3&rdquo;). Best for onboarding, intake, booking, guided flows.</p>
+        </button>
+        {pendingProcedural && (
+          <div className="mt-4 pt-4 border-t border-zinc-800">
+            <p className="text-[11px] text-zinc-500 uppercase tracking-wider mb-2">Choose authoring mode</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                onClick={() => onPick('procedural', 'simple')}
+                className="text-left rounded-lg border border-zinc-700 hover:border-zinc-500 p-3"
+              >
+                <p className="text-sm font-medium text-white">Simple</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Ordered written steps.</p>
+              </button>
+              <button
+                onClick={() => onPick('procedural', 'advanced')}
+                className="text-left rounded-lg border border-zinc-700 hover:border-zinc-500 p-3"
+              >
+                <p className="text-sm font-medium text-white">Advanced</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Steps can ask questions &amp; branch (skip / jump / stop).</p>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -230,6 +316,22 @@ function ProposalCard({
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+        {proposal.procedureSteps && proposal.procedureSteps.length > 0 && (
+          <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 md:col-span-2">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">Procedure ({proposal.procedureSteps.length} steps)</p>
+            <ol className="space-y-1 list-decimal list-inside">
+              {proposal.procedureSteps.map((s, i) => (
+                <li key={i} className="text-[11px] text-zinc-300">
+                  <strong className="text-white">{s.title}</strong>
+                  <span className="text-zinc-500"> — {s.instruction}</span>
+                  {s.rules && s.rules.length > 0 && (
+                    <span className="text-zinc-600"> · {s.rules.length} rule{s.rules.length > 1 ? 's' : ''}</span>
+                  )}
+                </li>
+              ))}
+            </ol>
           </div>
         )}
         {proposal.qualifyingQuestions && proposal.qualifyingQuestions.length > 0 && (
