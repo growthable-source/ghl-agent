@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { VapiVoiceAdapter } from '@/lib/voice/vapi-adapter'
 import { VAPI_NATIVE_VOICES } from '@/lib/voice/vapi-native-voices'
+import { filterGeminiVoices, toVoiceWire } from '@/lib/voice/gemini/voices-wire'
 
 /**
- * GET /api/voices?provider=vapi|elevenlabs&search=…
+ * GET /api/voices?provider=vapi|elevenlabs|gemini&search=…
  *
  * Lists voices for the wizard / voice-config UI.
  *
@@ -18,6 +19,13 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search') || undefined
 
   try {
+    if (provider === 'gemini') {
+      return NextResponse.json({
+        provider: 'gemini',
+        voices: filterGeminiVoices(search).map(toVoiceWire),
+      })
+    }
+
     if (provider === 'elevenlabs' || provider === '11labs') {
       const adapter = new VapiVoiceAdapter()
       const voices = await adapter.listVoices(search)
