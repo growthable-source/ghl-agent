@@ -92,6 +92,12 @@ export default function AgentIdentityPage() {
   const [knowledge, setKnowledge] = useState<KnowledgeSource[]>([])
   const [channels, setChannels] = useState<ChannelDeployment[]>([])
   const [autopilotPending, setAutopilotPending] = useState(false)
+  // Agent type (reactive vs procedural). Managed outside the dirty-form
+  // because switching it is a structural change applied immediately — it
+  // reveals/hides the Procedure tab in the layout.
+  const [kind, setKind] = useState<'reactive' | 'procedural'>('reactive')
+  const [procMode, setProcMode] = useState<'simple' | 'advanced'>('simple')
+  const [kindSaving, setKindSaving] = useState(false)
   // Track an in-flight redirect to /flow so we can keep the loading
   // spinner up instead of flashing the Identity page for a frame before
   // the route swap lands.
@@ -125,6 +131,8 @@ export default function AgentIdentityPage() {
             fallbackBehavior: agent.fallbackBehavior ?? 'message',
             agentPersonaName: agent.agentPersonaName ?? null,
           })
+          setKind(agent.agentKind === 'procedural' ? 'procedural' : 'reactive')
+          setProcMode(agent.procedureMode === 'advanced' ? 'advanced' : 'simple')
         }
         if (Array.isArray(channelsRes.deployments)) setChannels(channelsRes.deployments)
         // Knowledge endpoint shape varies — try a few common keys.
@@ -175,6 +183,25 @@ export default function AgentIdentityPage() {
       }
     } finally {
       setAutopilotPending(false)
+    }
+  }
+
+  async function changeKind(nextKind: 'reactive' | 'procedural', nextMode?: 'simple' | 'advanced') {
+    setKindSaving(true)
+    const prevKind = kind
+    setKind(nextKind)
+    if (nextMode) setProcMode(nextMode)
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentKind: nextKind, ...(nextMode ? { procedureMode: nextMode } : {}) }),
+      })
+      // The Procedure tab lives in the layout, which read agentKind once on
+      // mount — reload so it appears/disappears to match the new kind.
+      if (nextKind !== prevKind) router.refresh()
+    } finally {
+      setKindSaving(false)
     }
   }
 
@@ -310,6 +337,43 @@ export default function AgentIdentityPage() {
                     className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-y"
                     style={fieldStyle}
                   />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    Agent type
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { k: 'reactive' as const, title: 'Reactive', desc: 'Answers & resolves — support, FAQ, triage. No steps.' },
+                      { k: 'procedural' as const, title: 'Procedural', desc: 'Walks a defined sequence — onboarding, intake, booking.' },
+                    ]).map(opt => (
+                      <button key={opt.k} type="button" disabled={kindSaving}
+                        onClick={() => changeKind(opt.k)}
+                        className="text-left rounded-lg border p-3 transition-colors disabled:opacity-60"
+                        style={kind === opt.k
+                          ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                          : { borderColor: 'var(--border)' }}>
+                        <p className="text-sm font-medium" style={{ color: kind === opt.k ? 'var(--accent-primary)' : 'var(--text-primary)' }}>{opt.title}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{opt.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                  {kind === 'procedural' && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Mode:</span>
+                      {(['simple', 'advanced'] as const).map(m => (
+                        <button key={m} type="button" disabled={kindSaving}
+                          onClick={() => changeKind('procedural', m)}
+                          className="text-xs px-2.5 py-1 rounded-md border capitalize transition-colors disabled:opacity-60"
+                          style={procMode === m
+                            ? { borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                            : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+                          {m}
+                        </button>
+                      ))}
+                      <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>· Author steps in the <strong>Procedure</strong> tab.</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

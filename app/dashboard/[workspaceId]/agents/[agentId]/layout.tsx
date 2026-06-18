@@ -95,8 +95,6 @@ const HUBS: Hub[] = [
   },
 ]
 
-const ALL_TABS_TEXT: { hub: Hub; tab: Tab }[] = HUBS.flatMap(h => h.tabs.map(t => ({ hub: h, tab: t })))
-
 // Resolve a URL suffix back to the hub + tab it belongs to. Anything we
 // don't recognise falls through to the first tab of the first hub.
 // The candidate list comes from whichever HUBS array is active for
@@ -129,7 +127,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
   const base = `/dashboard/${workspaceId}/agents/${agentId}`
 
-  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number; viewMode: 'simple' | 'advanced'; agentType: string } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number; viewMode: 'simple' | 'advanced'; agentType: string; agentKind: string } | null>(null)
   const [toggling, setToggling] = useState(false)
   const [channelCount, setChannelCount] = useState<number | null>(null)
 
@@ -173,6 +171,9 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
           // agentType drives which HUBS layout we render. VOICE agents
           // get redirected above; this branch only sees SIMPLE / ADVANCED.
           agentType,
+          // Procedural agents get an extra "Procedure" tab; reactive (default)
+          // agents don't — there's no step list to author.
+          agentKind: agent.agentKind === 'procedural' ? 'procedural' : 'reactive',
         })
       })
   }, [workspaceId, agentId, pathname, base, router])
@@ -207,8 +208,16 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   const suffix = pathname.replace(base, '')
   // Voice-typed agents redirect to /voice/[id]/* before this point, so
   // by the time the tab strip renders we only ever have a text agent.
-  const activeHubs = HUBS
-  const { hub: activeHub, tab: activeTab } = resolveActive(suffix, ALL_TABS_TEXT)
+  // Procedural agents get a "Procedure" tab inserted into the Skills hub
+  // (right after its Overview); reactive agents never see it.
+  const isProceduralAgent = agent?.agentKind === 'procedural'
+  const activeHubs = isProceduralAgent
+    ? HUBS.map(h => h.key === 'skills'
+        ? { ...h, tabs: [h.tabs[0], { key: 'procedure', label: 'Procedure', path: '/procedure' }, ...h.tabs.slice(1)] }
+        : h)
+    : HUBS
+  const candidates = activeHubs.flatMap(h => h.tabs.map(t => ({ hub: h, tab: t })))
+  const { hub: activeHub, tab: activeTab } = resolveActive(suffix, candidates)
 
   // In advanced mode the canvas is the entire surface — the tabbed nav
   // strips below the header are hidden so the /flow page renders edge
@@ -388,6 +397,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
                     >
                       {tabLabel(t)}
                       {t.key === 'tools' && <NewBadge since="2026-05-29" className="ml-1.5" />}
+                      {t.key === 'procedure' && <NewBadge since="2026-06-18" className="ml-1.5" />}
                       {isActive && (
                         <span
                           className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"

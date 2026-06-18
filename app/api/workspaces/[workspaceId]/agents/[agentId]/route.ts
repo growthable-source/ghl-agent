@@ -109,6 +109,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
       }),
       ...(body.qualifyingStyle !== undefined && { qualifyingStyle: body.qualifyingStyle }),
+      ...(body.agentKind !== undefined && { agentKind: body.agentKind === 'procedural' ? 'procedural' : 'reactive' }),
+      ...(body.procedureMode !== undefined && { procedureMode: body.procedureMode === 'advanced' ? 'advanced' : 'simple' }),
       ...(body.fallbackBehavior !== undefined && { fallbackBehavior: body.fallbackBehavior }),
       ...(body.fallbackMessage !== undefined && { fallbackMessage: body.fallbackMessage }),
       ...(body.workingHoursEnabled !== undefined && { workingHoursEnabled: body.workingHoursEnabled }),
