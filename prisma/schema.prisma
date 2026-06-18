@@ -242,22 +242,22 @@ model UsageRecord {
 // (after capability/reliability escalation); fellBackCalls counts how often
 // a cheaper model escalated to Claude.
 model LlmUsageDaily {
-  id            String   @id @default(cuid())
-  day           String // 'YYYY-MM-DD' UTC
-  workspaceId   String   @default("")
-  surface       String // 'agent' | 'summary' | 'ad-generator' | …
-  modelKey      String // model actually used, e.g. 'deepseek-flash'
-  provider      String // 'anthropic' | 'openai-compat'
-  calls         Int      @default(0)
-  fellBackCalls Int      @default(0)
-  inputTokens   BigInt   @default(0)
-  outputTokens  BigInt   @default(0)
+  id                       String   @id @default(cuid())
+  day                      String // 'YYYY-MM-DD' UTC
+  workspaceId              String   @default("")
+  surface                  String // 'agent' | 'summary' | 'ad-generator' | …
+  modelKey                 String // model actually used, e.g. 'deepseek-flash'
+  provider                 String // 'anthropic' | 'openai-compat'
+  calls                    Int      @default(0)
+  fellBackCalls            Int      @default(0)
+  inputTokens              BigInt   @default(0)
+  outputTokens             BigInt   @default(0)
   // Anthropic prompt-cache accounting. cacheRead bills at ~10% of base
   // input; cacheCreation at ~125%. Lets us prove caching engaged and
   // quantify the saving per workspace/surface. Always 0 on openai-compat.
-  cacheReadInputTokens     BigInt @default(0)
-  cacheCreationInputTokens BigInt @default(0)
-  updatedAt     DateTime @updatedAt
+  cacheReadInputTokens     BigInt   @default(0)
+  cacheCreationInputTokens BigInt   @default(0)
+  updatedAt                DateTime @updatedAt
 
   @@unique([day, workspaceId, surface, modelKey])
   @@index([day])
@@ -609,6 +609,14 @@ model Agent {
   removeFromWorkflowsPick Json? // Array<{ id: string; name: string }>
 
   qualifyingStyle  String  @default("strict") // "strict" | "natural"
+  // Behavioral type chosen at creation. "reactive" (default) = diagnose +
+  // resolve, no step sequence. "procedural" = walk a defined sequence with
+  // progress ("step 2 of 3"). Only procedural agents ever get step framing.
+  agentKind        String  @default("reactive") // "reactive" | "procedural"
+  // How a procedural agent's steps are authored. Only meaningful when
+  // agentKind="procedural". "simple" = written steps; "advanced" = steps +
+  // per-answer skip/jump/stop rules.
+  procedureMode    String  @default("simple") // "simple" | "advanced"
   fallbackBehavior String  @default("message") // "message" | "transfer" | "message_and_transfer"
   fallbackMessage  String? @db.Text
 
@@ -712,6 +720,7 @@ model Agent {
   stopConditions       StopCondition[]
   followUpSequences    FollowUpSequence[]
   qualifyingQuestions  QualifyingQuestion[]
+  procedureSteps       ProcedureStep[]
   conversationStates   ConversationStateRecord[]
   contactMemories      ContactMemory[]
   conversationMessages ConversationMessage[]
@@ -720,7 +729,7 @@ model Agent {
   // 'gemini' (native speech-to-speech, web + phone). Authoritative for
   // which config table the dashboard + inbound router read. Nullable +
   // defaults to 'vapi' so every existing agent stays on Vapi untouched.
-  voiceRuntime         String?     @default("vapi")
+  voiceRuntime         String?                   @default("vapi")
   geminiVoiceConfig    GeminiVoiceConfig?
   channelDeployments   ChannelDeployment[]
   triggers             AgentTrigger[]
@@ -1785,27 +1794,51 @@ model QualifyingQuestion {
 }
 
 model ConversationStateRecord {
-  id                String            @id @default(cuid())
-  agentId           String
-  agent             Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  locationId        String
+  id                 String            @id @default(cuid())
+  agentId            String
+  agent              Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  locationId         String
   /// Added 2026-05-29 so /needs-attention can read Location.crmProvider
   /// for HandoffAlertBanner deep-link routing. Column already existed;
   /// only the Prisma relation declaration was missing — no SQL needed.
-  location          Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  contactId         String
-  conversationId    String?
-  state             ConversationState @default(ACTIVE)
-  messageCount      Int               @default(0)
-  pauseReason       String?
-  pausedAt          DateTime?
-  resumedAt         DateTime?
-  qualifyingAnswers Json?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  location           Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  contactId          String
+  conversationId     String?
+  state              ConversationState @default(ACTIVE)
+  messageCount       Int               @default(0)
+  pauseReason        String?
+  pausedAt           DateTime?
+  resumedAt          DateTime?
+  qualifyingAnswers  Json?
+  // Procedural agents only: which step (0-based order) this conversation is
+  // on, and when the procedure completed. Null for reactive agents — there's
+  // no counter to surface, which is what keeps step framing out of support.
+  procedureStepOrder Int?
+  procedureDoneAt    DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   @@unique([agentId, contactId])
   @@index([locationId, state])
+}
+
+/// One step in a procedural agent's sequence. Simple mode uses title +
+/// instruction; advanced mode adds an optional question, a field to save the
+/// answer to, and answer rules ([{ when, action: "skip"|"jump"|"stop",
+/// target? }]) that let a step skip, jump, or stop the procedure.
+model ProcedureStep {
+  id              String   @id @default(cuid())
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  order           Int
+  title           String
+  instruction     String   @db.Text
+  question        String?
+  collectFieldKey String?
+  rules           Json     @default("[]")
+  createdAt       DateTime @default(now())
+
+  @@index([agentId, order])
 }
 
 model ConversationMessage {
