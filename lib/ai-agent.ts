@@ -247,6 +247,23 @@ export async function runAgent(opts: {
   // In sandbox: show all questions (no answer state to check)
   // In production: only show unanswered required questions
   let qualifyingBlock = ''
+  let procedureBlock = ''
+  // Behavioral kind decides the prompt shape. Guarded: a missing column
+  // (pre-migration) resolves to "reactive" — the safe default that carries
+  // no step scaffolding, which is exactly what we want everywhere by default.
+  let agentKind = 'reactive'
+  let procedureMode: 'simple' | 'advanced' = 'simple'
+  if (agentId) {
+    try {
+      const k = await (await import('./db')).db.agent.findUnique({
+        where: { id: agentId },
+        select: { agentKind: true, procedureMode: true } as any,
+      })
+      agentKind = (k as any)?.agentKind ?? 'reactive'
+      procedureMode = (((k as any)?.procedureMode ?? 'simple') as 'simple' | 'advanced')
+    } catch { /* pre-migration → reactive */ }
+  }
+  const isProcedural = agentKind === 'procedural'
   if (agentId) {
     // Merge context for rendering {{contact.first_name|there}} etc. in
     // question text. Persona provides agent.name; timezone comes from
@@ -274,14 +291,39 @@ export async function runAgent(opts: {
       user: assignedUser,
       timezone: null,
     }
-    if (isSandbox) {
-      const { getAllQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
-      const questions = await getAllQuestions(agentId)
-      qualifyingBlock = buildQualifyingPromptBlock(questions, qualifyingStyle ?? 'strict', mergeCtx)
+    if (isProcedural) {
+      // PROCEDURAL: build the step/progress block; no qualifying scaffolding.
+      const { db } = await import('./db')
+      let steps: any[] = []
+      try {
+        steps = await db.procedureStep.findMany({ where: { agentId }, orderBy: { order: 'asc' } })
+      } catch (e: any) {
+        if (e?.code !== 'P2021' && e?.code !== 'P2022') throw e
+      }
+      let curOrder = 0
+      try {
+        const st = await db.conversationStateRecord.findUnique({
+          where: { agentId_contactId: { agentId, contactId } },
+          select: { procedureStepOrder: true } as any,
+        })
+        curOrder = (st as any)?.procedureStepOrder ?? 0
+      } catch { /* pre-migration → step 0 */ }
+      const { buildProcedureBlock } = await import('./agent/procedure')
+      procedureBlock = buildProcedureBlock(steps as any, curOrder, procedureMode)
     } else {
-      const { getUnansweredQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
-      const unanswered = await getUnansweredQuestions(agentId, contactId)
-      qualifyingBlock = buildQualifyingPromptBlock(unanswered, qualifyingStyle ?? 'strict', mergeCtx)
+      // REACTIVE: qualifying questions are still available, but FORCED to
+      // natural style — never the strict, ordered "step 1 of 3" block, which
+      // is the framing that leaked into support conversations.
+      const reactiveStyle = 'natural' as const
+      if (isSandbox) {
+        const { getAllQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
+        const questions = await getAllQuestions(agentId)
+        qualifyingBlock = buildQualifyingPromptBlock(questions, reactiveStyle, mergeCtx)
+      } else {
+        const { getUnansweredQuestions, buildQualifyingPromptBlock } = await import('./qualifying')
+        const unanswered = await getUnansweredQuestions(agentId, contactId)
+        qualifyingBlock = buildQualifyingPromptBlock(unanswered, reactiveStyle, mergeCtx)
+      }
     }
   }
 
@@ -802,6 +844,7 @@ export async function runAgent(opts: {
         persona,
         channel,
         fallback,
+        procedureBlock,
         qualifyingBlock,
         detectionRulesBlock,
         listeningRulesBlock,

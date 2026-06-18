@@ -23,7 +23,8 @@ export interface SystemPromptOptions {
   /** Channel name used in the "Channel: X" context line (e.g. SMS / WhatsApp / Live_Chat). */
   channel?: string
   fallback?: FallbackConfig
-  /** Pre-built block strings, rendered in this order: qualifying → detection → listening → memory → advanced → persona → platform → integrations. */
+  /** Pre-built block strings, rendered in this order: procedure → qualifying → detection → listening → memory → advanced → persona → platform → integrations. */
+  procedureBlock?: string
   qualifyingBlock?: string
   detectionRulesBlock?: string
   listeningRulesBlock?: string
@@ -66,6 +67,7 @@ export function buildSystemPromptParts(ctx: AgentContext, options: SystemPromptO
     persona,
     channel,
     fallback,
+    procedureBlock,
     qualifyingBlock,
     detectionRulesBlock,
     listeningRulesBlock,
@@ -171,6 +173,10 @@ ${(() => {
 
 ## Tone
 Professional but warm. Match the contact's energy.`
+
+  if (procedureBlock) {
+    prompt += procedureBlock
+  }
 
   if (qualifyingBlock) {
     prompt += qualifyingBlock
