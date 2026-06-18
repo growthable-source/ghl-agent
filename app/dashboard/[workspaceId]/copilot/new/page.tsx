@@ -11,7 +11,7 @@
  * editor, where the operator adds knowledge + recordings/documents.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { COPILOT_VOICES, ROTATE_VOICE } from '@/lib/copilot/voices'
@@ -96,6 +96,28 @@ export default function NewCopilotAgentPage() {
   const [domainPick, setDomainPick] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Play a short sample of the currently-selected voice. Rotate has no
+  // single voice to sample, so the button is disabled for it.
+  const playPreview = useCallback(async () => {
+    if (voice === ROTATE_VOICE) return
+    setPreviewError(null)
+    setPreviewing(true)
+    try {
+      audioRef.current?.pause()
+      const a = new Audio(`/api/copilot/voice-preview?voice=${encodeURIComponent(voice)}`)
+      audioRef.current = a
+      a.onended = () => setPreviewing(false)
+      a.onerror = () => { setPreviewing(false); setPreviewError('Could not play a sample. Try again.') }
+      await a.play()
+    } catch {
+      setPreviewing(false)
+      setPreviewError('Could not play a sample. Try again.')
+    }
+  }, [voice])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -221,21 +243,34 @@ export default function NewCopilotAgentPage() {
         </div>
         <div>
           <label className="block text-xs font-medium text-zinc-400 mb-1">Voice</label>
-          <select
-            value={voice}
-            onChange={e => setVoice(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-          >
-            <option value="">Default voice</option>
-            <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
-            {COPILOT_VOICES.map(v => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={voice}
+              onChange={e => { setVoice(e.target.value); setPreviewError(null) }}
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+            >
+              <option value="">Default voice</option>
+              <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
+              {COPILOT_VOICES.map(v => (
+                <option key={v.id} value={v.id}>{v.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void playPreview()}
+              disabled={previewing || voice === ROTATE_VOICE}
+              title={voice === ROTATE_VOICE ? 'Rotate uses a different voice each session — nothing single to preview' : 'Hear a sample of this voice'}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors disabled:opacity-40"
+              style={{ borderColor: 'var(--border-secondary)', color: 'var(--text-secondary)' }}
+            >
+              {previewing ? '♪ Playing…' : '▶ Preview'}
+            </button>
+          </div>
           <p className="text-[11px] text-zinc-500 mt-1">
             Pick one and the agent keeps that voice every call; choose <strong>Rotate</strong> and each session opens
-            with a different voice and human name, like a real team.
+            with a different voice and human name, like a real team. Hit <strong>Preview</strong> to hear it first.
           </p>
+          {previewError && <p className="text-[11px] mt-1" style={{ color: 'var(--accent-red)' }}>{previewError}</p>}
         </div>
         <div>
           <label className="block text-xs font-medium text-zinc-400 mb-1">How to start the call</label>

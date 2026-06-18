@@ -62,6 +62,9 @@ export default function CopilotAgentEditor() {
   const [stepsText, setStepsText] = useState('')
   const [minutes, setMinutes] = useState('30')
   const [voice, setVoice] = useState('')
+  const [previewing, setPreviewing] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const [appContext, setAppContext] = useState('')
   const [playbook, setPlaybook] = useState('')
   // Knowledge scope — connect this co-pilot to the workspace's indexed
@@ -105,6 +108,24 @@ export default function CopilotAgentEditor() {
   const toggleDomain = useCallback((id: string) => {
     setDomainPick(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
   }, [])
+
+  // Hear a sample of the selected voice. Rotate has no single voice to play.
+  const playPreview = useCallback(async () => {
+    if (voice === ROTATE_VOICE) return
+    setPreviewError(null)
+    setPreviewing(true)
+    try {
+      previewAudioRef.current?.pause()
+      const a = new Audio(`/api/copilot/voice-preview?voice=${encodeURIComponent(voice)}`)
+      previewAudioRef.current = a
+      a.onended = () => setPreviewing(false)
+      a.onerror = () => { setPreviewing(false); setPreviewError('Could not play a sample. Try again.') }
+      await a.play()
+    } catch {
+      setPreviewing(false)
+      setPreviewError('Could not play a sample. Try again.')
+    }
+  }, [voice])
 
   useEffect(() => {
     void load()
@@ -331,17 +352,30 @@ export default function CopilotAgentEditor() {
 
         <div>
           <label className="block text-xs font-medium text-zinc-400 mb-1">Voice</label>
-          <select
-            value={voice}
-            onChange={e => setVoice(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-          >
-            <option value="">Default voice</option>
-            <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
-            {COPILOT_VOICES.map(v => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={voice}
+              onChange={e => { setVoice(e.target.value); setPreviewError(null) }}
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+            >
+              <option value="">Default voice</option>
+              <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
+              {COPILOT_VOICES.map(v => (
+                <option key={v.id} value={v.id}>{v.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void playPreview()}
+              disabled={previewing || voice === ROTATE_VOICE}
+              title={voice === ROTATE_VOICE ? 'Rotate uses a different voice each session — nothing single to preview' : 'Hear a sample of this voice'}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors disabled:opacity-40"
+              style={{ borderColor: 'var(--border-secondary)', color: 'var(--text-secondary)' }}
+            >
+              {previewing ? '♪ Playing…' : '▶ Preview'}
+            </button>
+          </div>
+          {previewError && <p className="text-[11px] mt-1" style={{ color: 'var(--accent-red)' }}>{previewError}</p>}
           <p className="text-[11px] text-zinc-500 mt-1">
             Pick one voice and the agent keeps it every call (this stops the accent drifting). Choose{' '}
             <strong>Rotate</strong> and each session opens with a different voice and a different human name — so a
