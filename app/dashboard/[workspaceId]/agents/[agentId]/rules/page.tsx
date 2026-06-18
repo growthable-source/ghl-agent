@@ -57,6 +57,32 @@ const ACTION_LABELS: Record<ActionType, { label: string; hint: string }> = {
   dnd_channel:           { label: 'Mark contact as Do Not Disturb', hint: 'Block the channel this conversation is on (or a specific one)' },
 }
 
+/**
+ * Some rules were seeded (by the agent-creation wizard) with a legacy
+ * action vocabulary — `add_tag` / `add_note` — that the canonical set
+ * below renamed or dropped. Editing such a rule used to crash the form
+ * (ACTION_LABELS[unknownType] is undefined → reading .hint throws → the
+ * whole page hits its error boundary). Normalize legacy types to the
+ * canonical equivalent so the editor opens cleanly and a re-save writes
+ * canonical data the runtime actually executes.
+ */
+function normalizeLegacyAction(
+  actionType: string,
+  params: Record<string, any> | null,
+): { actionType: ActionType; actionParams: Record<string, any> } {
+  const p = params ?? {}
+  if (actionType === 'add_tag') {
+    const tags = Array.isArray(p.tags) ? p.tags : (p.tag ? [p.tag] : [])
+    return { actionType: 'update_contact_tags', actionParams: { tags } }
+  }
+  // `add_note` (and any other unrecognized type) has no canonical action —
+  // drop the editor into a safe default so it renders; the operator re-picks.
+  if (!(actionType in ACTION_LABELS)) {
+    return { actionType: 'update_contact_field', actionParams: {} }
+  }
+  return { actionType: actionType as ActionType, actionParams: p }
+}
+
 const OPPORTUNITY_STATUSES = [
   { value: 'won',       label: 'Won' },
   { value: 'lost',      label: 'Lost' },
@@ -169,15 +195,16 @@ export default function RulesPage() {
 
   function startEdit(r: AgentRule) {
     setEditingId(r.id)
+    const norm = normalizeLegacyAction(r.actionType ?? 'update_contact_field', r.actionParams)
     setForm({
       name: r.name,
       conditionDescription: r.conditionDescription,
       examples: r.examples ?? [],
-      actionType: (r.actionType as ActionType) ?? 'update_contact_field',
+      actionType: norm.actionType,
       targetFieldKey: r.targetFieldKey ?? '',
       targetValue: r.targetValue ?? '',
       overwrite: r.overwrite ?? false,
-      actionParams: r.actionParams ?? {},
+      actionParams: norm.actionParams,
       isActive: r.isActive,
       newExample: '',
       newTag: '',
@@ -268,6 +295,9 @@ export default function RulesPage() {
   function describeThen(rule: AgentRule): string {
     const p = rule.actionParams ?? {}
     switch (rule.actionType) {
+      // Legacy wizard-seeded types — render readably instead of dumping the raw key.
+      case 'add_tag':  return `+ tag ${(p.tags as string[])?.[0] ? `"${(p.tags as string[])[0]}"` : (p.tag ? `"${p.tag}"` : '(none)')}`
+      case 'add_note': return 'add note'
       case 'update_contact_field': return `${fieldName(rule.targetFieldKey)} = "${rule.targetValue}"`
       case 'update_contact_tags':  return `+ tag ${((p.tags as string[]) ?? []).map(t => `"${t}"`).join(', ') || '(none)'}`
       case 'remove_contact_tags':  return `− tag ${((p.tags as string[]) ?? []).map(t => `"${t}"`).join(', ') || '(none)'}`
@@ -437,7 +467,7 @@ export default function RulesPage() {
                     <option key={a} value={a}>{ACTION_LABELS[a].label}</option>
                   ))}
                 </select>
-                <p className="text-[11px] text-zinc-600 mt-1">{ACTION_LABELS[form.actionType].hint}</p>
+                <p className="text-[11px] text-zinc-600 mt-1">{ACTION_LABELS[form.actionType]?.hint ?? ''}</p>
               </div>
 
               {/* update_contact_field */}

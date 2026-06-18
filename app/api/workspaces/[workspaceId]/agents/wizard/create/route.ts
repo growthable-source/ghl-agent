@@ -73,17 +73,34 @@ export async function POST(req: NextRequest, { params }: Params) {
       for (let i = 0; i < p.detectionRules.length; i++) {
         const r = p.detectionRules[i]
         if (!r?.name || !r?.description || !r?.actionType) continue
-        const params: Record<string, string> =
-          r.actionType === 'add_tag' ? { tag: r.actionValue }
-          : r.actionType === 'add_note' ? { note: r.actionValue }
-          : r.actionType === 'add_to_workflow' ? { workflowName: r.actionValue }
-          : {}
+
+        // Map the LLM's loose action vocabulary onto the CANONICAL action
+        // types the rules editor + runtime executor understand. Seeding the
+        // raw `add_tag` / `add_note` types (as we used to) produced rules
+        // that don't execute, render as raw text, and crash the edit form.
+        let actionType: string
+        let params: Record<string, any>
+        if (r.actionType === 'add_tag') {
+          actionType = 'update_contact_tags'
+          params = { tags: r.actionValue ? [r.actionValue] : [] }
+        } else if (r.actionType === 'add_to_workflow') {
+          actionType = 'add_to_workflow'
+          params = { workflowName: r.actionValue }
+        } else if (r.actionType === 'add_note') {
+          // No canonical "note" action exists — skip rather than seed a
+          // dead rule the operator can't edit or run.
+          console.warn(`[wizard/create] skipping unsupported add_note rule "${r.name}"`)
+          continue
+        } else {
+          actionType = r.actionType
+          params = {}
+        }
         await db.agentRule.create({
           data: {
             agentId: agent.id,
             name: r.name.slice(0, 80),
             conditionDescription: r.description,
-            actionType: r.actionType,
+            actionType,
             actionParams: params,
             targetFieldKey: '',
             targetValue: '',
