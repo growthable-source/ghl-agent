@@ -716,6 +716,12 @@ model Agent {
   contactMemories      ContactMemory[]
   conversationMessages ConversationMessage[]
   vapiConfig           VapiConfig?
+  // Voice runtime discriminator: 'vapi' (today's telephony pipeline) vs
+  // 'gemini' (native speech-to-speech, web + phone). Authoritative for
+  // which config table the dashboard + inbound router read. Nullable +
+  // defaults to 'vapi' so every existing agent stays on Vapi untouched.
+  voiceRuntime         String?     @default("vapi")
+  geminiVoiceConfig    GeminiVoiceConfig?
   channelDeployments   ChannelDeployment[]
   triggers             AgentTrigger[]
   reviews              AgentReview[]
@@ -1924,6 +1930,32 @@ model VapiConfig {
   // save / call and stores the id here. Unique because Vapi assistant
   // ids are 1:1 with VapiConfig rows.
   vapiAssistantId String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Native Gemini speech-to-speech voice config. Sibling to VapiConfig
+// (1:1 on Agent), NOT nullable columns on VapiConfig — VapiConfig is
+// Vapi-specific (vapiAssistantId, ElevenLabs tuning). Gemini bypasses
+// Vapi entirely. twilioNumber* are reserved for the Plan-2 phone path
+// (provisioned via Twilio, not Vapi); the web runtime ignores them.
+model GeminiVoiceConfig {
+  id              String   @id @default(cuid())
+  agentId         String   @unique
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  isActive        Boolean  @default(false)
+  // Gemini prebuilt voice id (e.g. 'Puck', 'Kore'). null = model default.
+  voiceName       String?
+  // Native-audio model id, env-overridable (GEMINI_VOICE_MODEL).
+  model           String   @default("gemini-3.1-flash-live")
+  firstMessage    String?  @db.Text
+  endCallMessage  String?  @db.Text
+  maxDurationSecs Int      @default(600)
+  recordCalls     Boolean  @default(true)
+  language        String?
+  // Plan-2 phone path (Twilio carrier — provisioned outside Vapi).
+  twilioNumberSid String?
+  twilioNumber    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
