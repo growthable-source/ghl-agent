@@ -1036,11 +1036,22 @@ export async function executeTool(
         }
       }
       case 'save_qualifying_answer': {
-        if (agentId) {
+        // The model is supposed to pass contactId, but on some channels
+        // (e.g. inbound email) it routinely omits it — and the qualifying
+        // store is keyed on agentId_contactId, so a missing id used to
+        // explode in Prisma ("Argument `contactId` is missing"). Fall back
+        // to the conversation-level contactId like send_reply does, and if
+        // there's genuinely no contact to key on, soft-skip instead of
+        // crashing — the answer just isn't persisted to a contact record.
+        const qualifyingContactId =
+          (typeof input.contactId === 'string' && input.contactId.length > 0)
+            ? input.contactId
+            : contactId
+        if (agentId && qualifyingContactId) {
           const { saveQualifyingAnswer, executeQualifyingAction } = await import('../qualifying')
           await saveQualifyingAnswer(
             agentId,
-            input.contactId as string,
+            qualifyingContactId,
             input.fieldKey as string,
             input.answer as string,
             locationId
@@ -1049,13 +1060,15 @@ export async function executeTool(
             agentId,
             input.fieldKey as string,
             input.answer as string,
-            input.contactId as string,
+            qualifyingContactId,
             locationId,
             channel,
           )
           return JSON.stringify({ success: true, action: actionResult })
         }
-        return JSON.stringify({ success: true })
+        // No contact context — acknowledge so the agent moves on rather than
+        // retrying a tool that can't succeed for this conversation.
+        return JSON.stringify({ success: true, skipped: !qualifyingContactId ? 'no_contact' : undefined })
       }
       case 'score_lead': {
         const score = input.score as number
