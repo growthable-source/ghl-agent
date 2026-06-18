@@ -135,7 +135,9 @@ export default function NewCopilotAgentPage() {
           persona,
           openingLine,
           collectInfo,
-          steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
+          // Support is reactive — never persist steps for it, even if the
+          // field held leftover text from a prior template pick.
+          steps: template.type === 'support' ? [] : stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
           voice,
           appContext,
@@ -255,27 +257,50 @@ export default function NewCopilotAgentPage() {
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
           />
         </div>
-        <div className="flex gap-3 flex-wrap">
-          <div className="flex-1 min-w-[240px]">
-            <label className="block text-xs font-medium text-zinc-400 mb-1">
-              Procedure steps <span className="text-zinc-600">(one per line — leave blank for general support)</span>
-            </label>
-            <textarea
-              value={stepsText}
-              onChange={e => setStepsText(e.target.value)}
-              rows={6}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
-            />
+        {/* The procedure section is the structural fork between the two
+            kinds. Support is REACTIVE — it diagnoses and resolves whatever
+            comes, so a step sequence makes no sense and would (wrongly) make
+            it narrate "step 1 of N". Onboarding/Other are PROCEDURAL — the
+            steps + timebox are the whole point, so they lead. */}
+        {template.type === 'support' ? (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+            <p className="text-xs text-zinc-400">
+              <strong className="text-zinc-200">Reactive agent.</strong> It listens, diagnoses, and resolves whatever the
+              user brings — no fixed steps, no &ldquo;step 1 of 3.&rdquo; It leans on your connected knowledge to find the fix.
+              Want a guided, step-by-step call instead? Pick <strong className="text-zinc-200">Onboarding</strong>.
+            </p>
           </div>
-          <div className="w-32">
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
-            <input
-              value={minutes}
-              onChange={e => setMinutes(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-            />
+        ) : (
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent-primary)' }}>
+            <p className="text-xs text-zinc-400 mb-3">
+              <strong className="text-zinc-200">Procedural agent.</strong> It leads the call through these steps in order,
+              tracking progress aloud (&ldquo;step 3 of {Math.max(stepsText.split('\n').filter(s => s.trim()).length, 1)}&rdquo;)
+              against the timebox. This sequence is what makes it procedural — without steps it behaves like a reactive Support agent.
+            </p>
+            <div className="flex gap-3 flex-wrap">
+              <div className="flex-1 min-w-[240px]">
+                <label className="block text-xs font-medium text-zinc-400 mb-1">
+                  Procedure steps <span className="text-zinc-600">(one per line)</span>
+                </label>
+                <textarea
+                  value={stepsText}
+                  onChange={e => setStepsText(e.target.value)}
+                  rows={6}
+                  placeholder={'Welcome the user and confirm their goal\nConnect their CRM\nImport their first contacts\nRecap what was set up'}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+                />
+              </div>
+              <div className="w-32">
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
+                <input
+                  value={minutes}
+                  onChange={e => setMinutes(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Connect knowledge */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
