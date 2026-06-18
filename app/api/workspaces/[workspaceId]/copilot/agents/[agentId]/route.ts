@@ -35,6 +35,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       publicKey: agent.publicKey,
       published: agent.published,
       steps: Array.isArray(agent.steps) ? agent.steps : [],
+      procedureMode: (agent as any).procedureMode === 'advanced' ? 'advanced' : 'simple',
+      blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [],
       timeboxMinutes: agent.timeboxMinutes,
       knowledgeDomainIds: agent.knowledgeDomainIds,
       voice: agent.voice,
@@ -77,6 +79,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (Array.isArray(body.knowledgeDomainIds)) {
     data.knowledgeDomainIds = body.knowledgeDomainIds.filter((d): d is string => typeof d === 'string').slice(0, 50)
+  }
+  if (body.procedureMode === 'simple' || body.procedureMode === 'advanced') data.procedureMode = body.procedureMode
+  if (Array.isArray(body.blocks)) {
+    const { normalizeBlocks } = await import('@/lib/copilot/blocks')
+    data.blocks = normalizeBlocks(body.blocks).slice(0, 40) as any
   }
   // Voice: a Gemini voice name, 'rotate', or '' to clear (= default).
   // Validated against the catalog at resolve time, so store as-is.

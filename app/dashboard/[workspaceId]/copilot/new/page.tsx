@@ -15,6 +15,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { COPILOT_VOICES, ROTATE_VOICE } from '@/lib/copilot/voices'
+import CopilotBlockBuilder from '@/components/copilot/CopilotBlockBuilder'
+import type { CopilotBlock } from '@/lib/copilot/blocks'
 
 interface KnowledgeDomainLite {
   id: string
@@ -90,6 +92,8 @@ export default function NewCopilotAgentPage() {
   const [collectInfo, setCollectInfo] = useState(TEMPLATES[0].collectInfo)
   const [stepsText, setStepsText] = useState(TEMPLATES[0].steps.join('\n'))
   const [minutes, setMinutes] = useState('30')
+  const [procedureMode, setProcedureMode] = useState<'simple' | 'advanced'>('simple')
+  const [blocks, setBlocks] = useState<CopilotBlock[]>([])
   const [voice, setVoice] = useState('')
   const [appContext, setAppContext] = useState('')
   const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
@@ -160,6 +164,8 @@ export default function NewCopilotAgentPage() {
           // Support is reactive — never persist steps for it, even if the
           // field held leftover text from a prior template pick.
           steps: template.type === 'support' ? [] : stepsText.split('\n').map(s => s.trim()).filter(Boolean),
+          procedureMode: template.type === 'support' ? 'simple' : procedureMode,
+          blocks: template.type === 'support' ? [] : (procedureMode === 'advanced' ? blocks : []),
           timeboxMinutes: Number(minutes) || 30,
           voice,
           appContext,
@@ -175,7 +181,7 @@ export default function NewCopilotAgentPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, voice, appContext, domainPick, router])
+  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, procedureMode, blocks, voice, appContext, domainPick, router])
 
   if (!workspaceId) return null
 
@@ -307,33 +313,55 @@ export default function NewCopilotAgentPage() {
           </div>
         ) : (
           <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent-primary)' }}>
-            <p className="text-xs text-zinc-400 mb-3">
-              <strong className="text-zinc-200">Procedural agent.</strong> It leads the call through these steps in order,
-              tracking progress aloud (&ldquo;step 3 of {Math.max(stepsText.split('\n').filter(s => s.trim()).length, 1)}&rdquo;)
-              against the timebox. This sequence is what makes it procedural — without steps it behaves like a reactive Support agent.
-            </p>
-            <div className="flex gap-3 flex-wrap">
-              <div className="flex-1 min-w-[240px]">
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  Procedure steps <span className="text-zinc-600">(one per line)</span>
-                </label>
-                <textarea
-                  value={stepsText}
-                  onChange={e => setStepsText(e.target.value)}
-                  rows={6}
-                  placeholder={'Welcome the user and confirm their goal\nConnect their CRM\nImport their first contacts\nRecap what was set up'}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
-                />
-              </div>
-              <div className="w-32">
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
-                <input
-                  value={minutes}
-                  onChange={e => setMinutes(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-                />
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <p className="text-xs text-zinc-400 flex-1 min-w-[220px]">
+                <strong className="text-zinc-200">Procedural agent.</strong> It leads the call through a sequence, tracking
+                progress against the timebox. <strong>Simple</strong> = an ordered checklist. <strong>Advanced</strong> = blocks
+                that can branch on what happens (&ldquo;if they can&rsquo;t share their screen → jump elsewhere&rdquo;).
+              </p>
+              <div className="flex gap-1.5 shrink-0">
+                {(['simple', 'advanced'] as const).map(m => (
+                  <button key={m} type="button" onClick={() => setProcedureMode(m)}
+                    className="text-xs px-2.5 py-1 rounded-md border capitalize transition-colors"
+                    style={procedureMode === m
+                      ? { borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                      : { borderColor: 'var(--border-secondary)', color: 'var(--text-secondary)' }}>
+                    {m}
+                  </button>
+                ))}
               </div>
             </div>
+
+            {procedureMode === 'advanced' ? (
+              <div className="space-y-3">
+                <CopilotBlockBuilder blocks={blocks} onChange={setBlocks} />
+                <div className="w-32">
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
+                  <input value={minutes} onChange={e => setMinutes(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none" />
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-3 flex-wrap">
+                <div className="flex-1 min-w-[240px]">
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    Procedure steps <span className="text-zinc-600">(one per line)</span>
+                  </label>
+                  <textarea
+                    value={stepsText}
+                    onChange={e => setStepsText(e.target.value)}
+                    rows={6}
+                    placeholder={'Welcome the user and confirm their goal\nConnect their CRM\nImport their first contacts\nRecap what was set up'}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+                  />
+                </div>
+                <div className="w-32">
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
+                  <input value={minutes} onChange={e => setMinutes(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none" />
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -20,6 +20,7 @@ import type { WorkspaceSetupState } from './setup-state'
 import { describeSetupState } from './setup-state'
 import type { CopilotWorkflow } from './workflows'
 import { describeWorkflowProgress } from './workflows'
+import { buildCopilotBlockFlow } from './blocks'
 
 export interface BuildCopilotPromptInput {
   setupState: WorkspaceSetupState
@@ -197,7 +198,9 @@ export function buildMeetingPrompt(input: {
   locale: string
 }): string {
   const { agent, ragContext, locale } = input
-  const hasSteps = agent.steps.length > 0
+  const blockFlow = buildCopilotBlockFlow(agent.blocks ?? [])
+  const hasBlocks = !!blockFlow
+  const hasSteps = !hasBlocks && agent.steps.length > 0
   const stepsBlock = hasSteps ? agent.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : ''
 
   return [
@@ -207,7 +210,9 @@ export function buildMeetingPrompt(input: {
       ? `\n## How to open the call\nAs soon as you join: ${agent.openingLine.slice(0, 1000)}`
       : `\n## How to open the call\nGreet the room briefly, introduce yourself by name as an AI assistant, and say what you're here to help with.`,
     agent.collectInfo ? `\n## Information to collect during this call\n${agent.collectInfo.slice(0, 1500)}\nWork these in naturally — don't interrogate.` : ``,
-    hasSteps
+    hasBlocks
+      ? blockFlow
+      : hasSteps
       ? `\n## You are RUNNING this call\nYOU lead the agenda. Drive through these steps, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nFor each step: announce it, tell the participants exactly what to do (your playbook and background knowledge are your authority on how), confirm it's done by asking, then move on. Track time aloud ("step 3 of ${agent.steps.length}, we're on track"). Close with a recap of what was completed and what happens next.`
       : `\n## Your job\nHelp the participants with whatever they bring — diagnose by asking questions, then give one clear next action at a time.`,
     agent.playbook
@@ -246,6 +251,9 @@ export interface AgentForPrompt {
   openingLine?: string | null
   collectInfo?: string | null
   steps: string[]
+  /** Advanced-mode conversational building blocks. When non-empty they
+   *  drive the flow (with branching) instead of the flat `steps` checklist. */
+  blocks?: import('./blocks').CopilotBlock[]
   timeboxMinutes: number
   playbook: string | null
   /** Structured screen/element inventory distilled across all recordings. */
@@ -265,7 +273,10 @@ export interface AgentForPrompt {
  */
 export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: string; ragContext: string; locale: string }): string {
   const { agent, ragContext, locale } = input
-  const hasSteps = agent.steps.length > 0
+  const blockFlow = buildCopilotBlockFlow(agent.blocks ?? [])
+  const hasBlocks = !!blockFlow
+  const hasSteps = !hasBlocks && agent.steps.length > 0
+  const guided = hasBlocks || hasSteps
   const stepsBlock = hasSteps ? agent.steps.map((s, i) => `${i + 1}. ${s}`).join('\n') : ''
 
   return [
@@ -276,7 +287,9 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
     agent.persona ? `\n## Who you are\n${agent.persona.slice(0, 2000)}` : ``,
     agent.openingLine ? `\n## How to open the call\n${agent.openingLine.slice(0, 1000)}` : ``,
     agent.collectInfo ? `\n## Information to collect during this session\n${agent.collectInfo.slice(0, 1500)}\nWork these in naturally — don't interrogate.` : ``,
-    hasSteps
+    hasBlocks
+      ? blockFlow
+      : hasSteps
       ? `\n## You are RUNNING this call\nThis is a guided session: YOU lead, the user follows. Do not wait to be asked — open the call per your directions, then drive the agenda through these steps, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nFor each step: announce it, tell the user exactly what to do on their screen (your playbook and background knowledge are your authority on how), confirm it's done, then move straight to the next. Keep momentum — if the user drifts, answer briefly and bring them back to the current step. Track time aloud ("step 3 of ${agent.steps.length}, we're on track"). Close with a recap of what was completed and what happens next.`
       : `\n## Your job\nHelp the user with whatever they bring, end to end — diagnose, then give one clear next action at a time.`,
     agent.playbook
@@ -289,7 +302,7 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
       ? `\n## Non-negotiable\nThe numbered steps are a CHECKLIST you must walk in order — do not skip, reorder, or invent steps. Finish the current step (or get the user's explicit OK to defer it) before starting the next. If something on screen doesn't match the playbook, ask the user what they see rather than guessing.`
       : ``,
     `\n## How to behave`,
-    `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${hasSteps ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,
+    `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${guided ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,
     `- Spoken conversation in ${locale} — brief, natural, no markdown. Keep an even, consistent tone and pace the whole call; don't swing between energetic and flat turn to turn.`,
     `- OBSERVE BEFORE YOU INSTRUCT. Never assume the screen matches your next step. Every turn: take_a_closer_look at where the user ACTUALLY is right now, then give the instruction for THAT screen. Your steps/playbook tell you the GOAL; the live screen tells you the current reality — when they disagree, the screen wins. Read the actual labels and buttons on screen and refer to them by their real text; do not narrate from memory of how the app "should" look.`,
     `- Navigate deliberately, never by guesswork. If your instruction is "check the permissions" but you cannot SEE where permissions live on the screen in front of you, do not invent a menu or a path. Look first; if it's still not visible, say plainly "I don't see it on this screen — let's find it" and ask the user what they see, or have them open the likely area, then look again. A deliberate "let me look" beats a confident wrong guess.`,

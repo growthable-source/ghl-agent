@@ -218,12 +218,13 @@ export async function createStaffSession(opts: {
     voiceOverride = voiceName
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
-      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
     })
-    if (steps.length > 0) maxSecsOverride = (agent.timeboxMinutes + 5) * 60
+    const blocksLen = Array.isArray((agent as any).blocks) ? (agent as any).blocks.length : 0
+    if (steps.length > 0 || blocksLen > 0) maxSecsOverride = (agent.timeboxMinutes + 5) * 60
   } else if (mode === 'sop') {
     const sop = opts.sopId
       ? await db.copilotSop.findFirst({
@@ -590,13 +591,13 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
   const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
   const { buildAgentPrompt } = await import('./prompt')
   const systemPrompt = buildAgentPrompt({
-    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace.name ?? 'this workspace',
     ragContext,
     locale,
   })
 
-  const maxSecs = steps.length > 0 ? (agent.timeboxMinutes + 5) * 60 : undefined
+  const maxSecs = (steps.length > 0 || (Array.isArray((agent as any).blocks) && (agent as any).blocks.length > 0)) ? (agent.timeboxMinutes + 5) * 60 : undefined
   const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, WIDGET_TOOL_DEFS, maxSecs, undefined, voiceName)
 
   const created = await db.copilotSession.create({
@@ -914,7 +915,7 @@ export async function connectMeetingSession(botToken: string) {
   const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
   const { buildMeetingPrompt } = await import('./prompt')
   const systemPrompt = buildMeetingPrompt({
-    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace?.name ?? 'this workspace',
     ragContext,
     locale,

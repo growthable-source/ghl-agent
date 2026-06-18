@@ -4390,6 +4390,15 @@ model CopilotAgent {
   collectInfo        String?            @db.Text
   knowledgeDomainIds String[]           @default([])
   steps              Json               @default("[]")
+  /// "simple" = the flat `steps` checklist (default). "advanced" = the
+  /// `blocks` flow below — conversational building blocks that can branch.
+  procedureMode      String             @default("simple")
+  /// Advanced-mode conversational building blocks. Array of:
+  /// { id, label, instruction, waitForResponse, rules: [{ id, when,
+  ///   then: { action: "jump"|"instruct"|"end", targetId?, instruction? } }] }.
+  /// Each block is a conversational move; rules branch on what the live
+  /// agent observes. Empty/unused when procedureMode = "simple".
+  blocks             Json               @default("[]")
   timeboxMinutes     Int                @default(30)
   playbook           String?            @db.Text
   /// Structured screen/element inventory distilled across ALL of this

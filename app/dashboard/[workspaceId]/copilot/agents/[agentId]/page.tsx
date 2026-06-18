@@ -16,6 +16,8 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
 import { COPILOT_VOICES, ROTATE_VOICE } from '@/lib/copilot/voices'
+import CopilotBlockBuilder from '@/components/copilot/CopilotBlockBuilder'
+import type { CopilotBlock } from '@/lib/copilot/blocks'
 
 interface Recording {
   id: string
@@ -35,6 +37,8 @@ interface AgentDetail {
   published: boolean
   persona: string | null
   steps: string[]
+  procedureMode?: string
+  blocks?: CopilotBlock[]
   timeboxMinutes: number
   knowledgeDomainIds: string[]
   voice: string | null
@@ -60,6 +64,8 @@ export default function CopilotAgentEditor() {
   const [openingLine, setOpeningLine] = useState('')
   const [collectInfo, setCollectInfo] = useState('')
   const [stepsText, setStepsText] = useState('')
+  const [procedureMode, setProcedureMode] = useState<'simple' | 'advanced'>('simple')
+  const [blocks, setBlocks] = useState<CopilotBlock[]>([])
   const [minutes, setMinutes] = useState('30')
   const [voice, setVoice] = useState('')
   const [previewing, setPreviewing] = useState(false)
@@ -97,6 +103,8 @@ export default function CopilotAgentEditor() {
     setOpeningLine(a.openingLine ?? '')
     setCollectInfo(a.collectInfo ?? '')
     setStepsText(a.steps.join('\n'))
+    setProcedureMode(a.procedureMode === 'advanced' ? 'advanced' : 'simple')
+    setBlocks(Array.isArray(a.blocks) ? a.blocks : [])
     setMinutes(String(a.timeboxMinutes))
     setVoice(a.voice ?? '')
     setAppContext(a.appContext ?? '')
@@ -152,6 +160,8 @@ export default function CopilotAgentEditor() {
           openingLine,
           collectInfo,
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
+          procedureMode,
+          blocks: procedureMode === 'advanced' ? blocks : [],
           timeboxMinutes: Number(minutes) || 30,
           voice,
           appContext,
@@ -164,7 +174,7 @@ export default function CopilotAgentEditor() {
     } finally {
       setSaving(false)
     }
-  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, minutes, voice, appContext, playbook, domainPick])
+  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, procedureMode, blocks, minutes, voice, appContext, playbook, domainPick])
 
   const upload = useCallback(
     async (file: File) => {
@@ -403,7 +413,35 @@ export default function CopilotAgentEditor() {
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
           />
         </div>
-        <div className="flex gap-3 flex-wrap">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-xs text-zinc-500 flex-1 min-w-[220px]">
+            <strong className="text-zinc-300">Simple</strong> = an ordered checklist the agent walks.{' '}
+            <strong className="text-zinc-300">Advanced</strong> = conversational blocks that branch on what happens (e.g.
+            &ldquo;if they can&rsquo;t share their screen → jump elsewhere&rdquo;).
+          </p>
+          <div className="flex gap-1.5 shrink-0">
+            {(['simple', 'advanced'] as const).map(m => (
+              <button key={m} type="button" onClick={() => setProcedureMode(m)}
+                className="text-xs px-2.5 py-1 rounded-md border capitalize transition-colors"
+                style={procedureMode === m
+                  ? { borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+                  : { borderColor: 'var(--border-secondary)', color: 'var(--text-secondary)' }}>
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+        {procedureMode === 'advanced' && (
+          <div className="space-y-3">
+            <CopilotBlockBuilder blocks={blocks} onChange={setBlocks} />
+            <div className="w-32">
+              <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
+              <input value={minutes} onChange={e => setMinutes(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none" />
+            </div>
+          </div>
+        )}
+        <div className="flex gap-3 flex-wrap" style={procedureMode === 'advanced' ? { display: 'none' } : undefined}>
           <div className="flex-1 min-w-[240px]">
             <label className="block text-xs font-medium text-zinc-400 mb-1">
               Procedure steps <span className="text-zinc-600">(one per line — the exact checklist the agent walks, in order)</span>

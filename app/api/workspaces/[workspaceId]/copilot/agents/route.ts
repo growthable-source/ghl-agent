@@ -65,6 +65,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const type = b.type === 'onboarding' || b.type === 'other' ? (b.type as string) : 'support'
   const voice = typeof b.voice === 'string' ? (b.voice as string).slice(0, 40) || null : null
   const appContext = typeof b.appContext === 'string' ? (b.appContext as string).slice(0, 600) || null : null
+  const { normalizeBlocks } = await import('@/lib/copilot/blocks')
+  const procedureMode = b.procedureMode === 'advanced' ? 'advanced' : 'simple'
+  const blocks = normalizeBlocks(b.blocks).slice(0, 40)
   const agent = await db.copilotAgent.create({
     data: {
       workspaceId,
@@ -74,11 +77,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       openingLine: typeof b.openingLine === 'string' ? (b.openingLine as string).slice(0, 1000) : null,
       collectInfo: typeof b.collectInfo === 'string' ? (b.collectInfo as string).slice(0, 1500) : null,
       steps,
+      procedureMode,
+      blocks: blocks as any,
       knowledgeDomainIds,
       voice,
       appContext,
       timeboxMinutes: Math.max(5, Math.min(120, Math.round(Number(body.timeboxMinutes) || 30))),
-    },
+    } as any,
   })
   return NextResponse.json({ agentId: agent.id })
 }
