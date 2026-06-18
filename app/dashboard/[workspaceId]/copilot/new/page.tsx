@@ -11,9 +11,17 @@
  * editor, where the operator adds knowledge + recordings/documents.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { COPILOT_VOICES, ROTATE_VOICE } from '@/lib/copilot/voices'
+
+interface KnowledgeDomainLite {
+  id: string
+  name: string
+  description: string | null
+  chunkCount: number
+}
 
 interface Template {
   key: string
@@ -82,8 +90,23 @@ export default function NewCopilotAgentPage() {
   const [collectInfo, setCollectInfo] = useState(TEMPLATES[0].collectInfo)
   const [stepsText, setStepsText] = useState(TEMPLATES[0].steps.join('\n'))
   const [minutes, setMinutes] = useState('30')
+  const [voice, setVoice] = useState('')
+  const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
+  const [domainPick, setDomainPick] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!workspaceId) return
+    fetch(`/api/admin/knowledge-domains?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => setDomains(d.domains ?? []))
+      .catch(() => undefined)
+  }, [workspaceId])
+
+  const toggleDomain = useCallback((id: string) => {
+    setDomainPick(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
+  }, [])
 
   const pickTemplate = useCallback((t: Template) => {
     setTemplate(t)
@@ -113,6 +136,8 @@ export default function NewCopilotAgentPage() {
           collectInfo,
           steps: stepsText.split('\n').map(s => s.trim()).filter(Boolean),
           timeboxMinutes: Number(minutes) || 30,
+          voice,
+          knowledgeDomainIds: domainPick,
         }),
       })
       const body = await res.json().catch(() => ({}))
@@ -124,7 +149,7 @@ export default function NewCopilotAgentPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, router])
+  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, voice, domainPick, router])
 
   if (!workspaceId) return null
 
@@ -178,6 +203,24 @@ export default function NewCopilotAgentPage() {
           />
         </div>
         <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Voice</label>
+          <select
+            value={voice}
+            onChange={e => setVoice(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+          >
+            <option value="">Default voice</option>
+            <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
+            {COPILOT_VOICES.map(v => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            Pick one and the agent keeps that voice every call; choose <strong>Rotate</strong> and each session opens
+            with a different voice and human name, like a real team.
+          </p>
+        </div>
+        <div>
           <label className="block text-xs font-medium text-zinc-400 mb-1">How to start the call</label>
           <textarea
             value={openingLine}
@@ -217,6 +260,49 @@ export default function NewCopilotAgentPage() {
               className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
             />
           </div>
+        </div>
+
+        {/* Connect knowledge */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <h3 className="text-sm font-semibold text-zinc-100 mb-1">Knowledge</h3>
+          <p className="text-xs text-zinc-400 mb-3">
+            Connect this co-pilot to your indexed knowledge — the same articles, docs, and videos your text and voice
+            agents use. It searches this during a session to answer questions and look up the fix. Leave all unchecked
+            to use every domain in the workspace. You can change this any time in the editor.
+          </p>
+          {domains.length === 0 ? (
+            <p className="text-xs text-zinc-500">
+              No knowledge domains yet —{' '}
+              <Link href={`/dashboard/${workspaceId}/knowledge`} className="underline hover:text-zinc-300">
+                add knowledge
+              </Link>{' '}
+              first, then connect it here or in the editor.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {domains.map(d => {
+                const checked = domainPick.includes(d.id)
+                return (
+                  <label
+                    key={d.id}
+                    className="flex items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 cursor-pointer hover:border-zinc-700"
+                  >
+                    <input type="checkbox" checked={checked} onChange={() => toggleDomain(d.id)} className="mt-0.5" />
+                    <span className="min-w-0">
+                      <span className="block text-sm text-zinc-200 truncate">{d.name}</span>
+                      {d.description && <span className="block text-xs text-zinc-500 truncate">{d.description}</span>}
+                      <span className="block text-[11px] text-zinc-600">{d.chunkCount} indexed entries</span>
+                    </span>
+                  </label>
+                )
+              })}
+              <p className="text-[11px] text-zinc-500 pt-1">
+                {domainPick.length === 0
+                  ? 'Nothing checked — this agent will read from all knowledge domains.'
+                  : `Reading from ${domainPick.length} domain${domainPick.length === 1 ? '' : 's'}.`}
+              </p>
+            </div>
+          )}
         </div>
 
         {error && <p className="text-sm" style={{ color: 'var(--accent-red)' }}>{error}</p>}
