@@ -252,6 +252,11 @@ model LlmUsageDaily {
   fellBackCalls Int      @default(0)
   inputTokens   BigInt   @default(0)
   outputTokens  BigInt   @default(0)
+  // Anthropic prompt-cache accounting. cacheRead bills at ~10% of base
+  // input; cacheCreation at ~125%. Lets us prove caching engaged and
+  // quantify the saving per workspace/surface. Always 0 on openai-compat.
+  cacheReadInputTokens     BigInt @default(0)
+  cacheCreationInputTokens BigInt @default(0)
   updatedAt     DateTime @updatedAt
 
   @@unique([day, workspaceId, surface, modelKey])

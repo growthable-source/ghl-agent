@@ -20,7 +20,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 
-const GATE_MODEL = 'claude-haiku-4-5-20250929'
+const GATE_MODEL = 'claude-haiku-4-5-20251001'
 const GATE_TIMEOUT_MS = 5000
 const GATE_MAX_TOKENS = 120
 

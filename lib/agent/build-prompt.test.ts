@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt } from './build-prompt'
+import { buildSystemPrompt, buildSystemPromptParts } from './build-prompt'
 import type { AgentContext } from '@/types'
 
 const ctx = (over: Partial<AgentContext> = {}): AgentContext => ({
@@ -92,5 +92,33 @@ describe('buildSystemPrompt', () => {
     const out = buildSystemPrompt(ctx(), {})
     expect(out).toContain('Channel: SMS')
     expect(out).toContain('Contact: Pat')
+  })
+})
+
+describe('buildSystemPromptParts (prompt-cache split)', () => {
+  it('keeps the per-minute timestamp OUT of the cacheable prefix', () => {
+    const { prefix, volatile } = buildSystemPromptParts(ctx())
+    // The prefix is what carries cache_control — if it contained the
+    // current time it would change every minute and never cache.
+    expect(prefix).not.toContain('Current date/time')
+    expect(volatile).toContain('Current date/time')
+  })
+
+  it('puts the date-derived slot guidance in the volatile tail', () => {
+    const { prefix, volatile } = buildSystemPromptParts(ctx())
+    expect(prefix).not.toContain('get_available_slots, pass startDate')
+    expect(volatile).toContain('get_available_slots, pass startDate')
+  })
+
+  it('prefix + volatile equals the full string prompt', () => {
+    const { prefix, volatile } = buildSystemPromptParts(ctx(), { channel: 'WhatsApp' })
+    expect(prefix + volatile).toBe(buildSystemPrompt(ctx(), { channel: 'WhatsApp' }))
+  })
+
+  it('keeps the stable instructions and contact context in the prefix', () => {
+    const { prefix } = buildSystemPromptParts(ctx())
+    expect(prefix).toContain('## Your Behaviour')
+    expect(prefix).toContain('Contact: Pat')
+    expect(prefix).toContain('Channel: SMS')
   })
 })

@@ -27,7 +27,7 @@ import type { AgentContext, Message } from '@/types'
 import { AGENT_TOOLS, constrainWorkflowTool } from './agent/tool-catalog'
 import { REQUIRED_TOOL_KEYS } from './agent-tools-catalog'
 import { executeTool } from './agent/execute-tool'
-import { buildSystemPrompt } from './agent/build-prompt'
+import { buildSystemPromptParts } from './agent/build-prompt'
 import type {
   AgentAttachment,
   AgentResponse,
@@ -722,6 +722,25 @@ export async function runAgent(opts: {
 
   // Agentic loop — keeps going until Claude stops calling tools
   let currentMessages = [...messages]
+
+  // ─── Cache the conversation-history prefix ───
+  // Mark the final inbound message with an ephemeral cache breakpoint so
+  // the tool loop's 2nd..Nth iterations re-read the prior history from
+  // cache instead of re-billing it at full price. The breakpoint stays on
+  // this message as the loop appends assistant/tool turns after it, so it
+  // always caches the stable prefix. Only the simple string-content case
+  // is converted — mixed tool_use/tool_result turns are left untouched.
+  {
+    const lastIdx = currentMessages.length - 1
+    const last = lastIdx >= 0 ? (currentMessages[lastIdx] as any) : null
+    if (last && typeof last.content === 'string' && last.content.length > 0) {
+      currentMessages[lastIdx] = {
+        ...last,
+        content: [{ type: 'text', text: last.content, cache_control: { type: 'ephemeral' } }],
+      }
+    }
+  }
+
   const MAX_ITERATIONS = 6
   const availableToolNames = tools.map(t => t.name)
   let hallucinationRetries = 0
@@ -775,28 +794,43 @@ export async function runAgent(opts: {
       toolChoice = { type: 'any' }
     }
 
+    const promptParts = buildSystemPromptParts(
+      { locationId, contactId, contact: loadedContact ?? undefined } as AgentContext,
+      {
+        customPrompt: systemPrompt,
+        persona,
+        channel,
+        fallback,
+        qualifyingBlock,
+        detectionRulesBlock,
+        listeningRulesBlock,
+        contactMemoryBlock,
+        advancedContextBlock,
+        platformGuidelinesBlock,
+        connectedIntegrationsBlock,
+        commerceBlock,
+      },
+    )
+    const brokenLabelsNotice = brokenLabelsForPrompt.length > 0
+      ? `\n\nIMPORTANT: The following CRM resources are temporarily unavailable due to a configuration issue: ${brokenLabelsForPrompt.join(', ')}. The associated tools (booking, workflow enrolment, etc.) have been removed from your tool list for this conversation. If the contact asks about scheduling, workflow actions, or anything that requires these resources, acknowledge their request and tell them a teammate will follow up shortly. Do not pretend to attempt these actions.`
+      : ''
+    // Stable, cacheable prefix — instructions, persona, platform rules,
+    // integrations, experiment/data-source/tool blocks, per-contact context.
+    // Byte-identical across the loop's iterations and across sequential
+    // messages in the same conversation, so it caches cleanly.
+    const stableSystem = promptParts.prefix + experimentBlock + dataSourcesBlock + brokenLabelsNotice + toolRulesBlock
+    // Volatile tail — the per-message "conversation resumed" gap notice and
+    // the current date/time. Sits AFTER the cache breakpoint so it never
+    // invalidates the cached prefix.
+    const volatileSystem = conversationGapBlock + promptParts.volatile
+
     const createParams: any = {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: buildSystemPrompt(
-        { locationId, contactId, contact: loadedContact ?? undefined } as AgentContext,
-        {
-          customPrompt: systemPrompt,
-          persona,
-          channel,
-          fallback,
-          qualifyingBlock,
-          detectionRulesBlock,
-          listeningRulesBlock,
-          contactMemoryBlock,
-          advancedContextBlock,
-          platformGuidelinesBlock,
-          connectedIntegrationsBlock,
-          commerceBlock,
-        },
-      ) + experimentBlock + dataSourcesBlock + conversationGapBlock + (brokenLabelsForPrompt.length > 0
-        ? `\n\nIMPORTANT: The following CRM resources are temporarily unavailable due to a configuration issue: ${brokenLabelsForPrompt.join(', ')}. The associated tools (booking, workflow enrolment, etc.) have been removed from your tool list for this conversation. If the contact asks about scheduling, workflow actions, or anything that requires these resources, acknowledge their request and tell them a teammate will follow up shortly. Do not pretend to attempt these actions.`
-        : '') + toolRulesBlock,
+      system: [
+        { type: 'text', text: stableSystem, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: volatileSystem },
+      ],
       tools,
       messages: currentMessages,
     }

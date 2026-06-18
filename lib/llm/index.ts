@@ -44,12 +44,14 @@ function logCost(requested: string, used: string, usage: { input_tokens: number;
 function recordUsage(
   usedKey: string,
   provider: ProviderKind,
-  usage: { input_tokens: number; output_tokens: number },
+  usage: LlmResponse['usage'],
   fellBack: boolean,
   meta?: LlmCallMeta,
 ): void {
   if (!meta) return
   const day = new Date().toISOString().slice(0, 10)
+  const cacheRead = BigInt(usage.cache_read_input_tokens || 0)
+  const cacheCreate = BigInt(usage.cache_creation_input_tokens || 0)
   import('@/lib/db')
     .then(({ db }) => db.llmUsageDaily.upsert({
       where: { day_workspaceId_surface_modelKey: { day, workspaceId: meta.workspaceId ?? '', surface: meta.surface, modelKey: usedKey } },
@@ -57,12 +59,15 @@ function recordUsage(
         day, workspaceId: meta.workspaceId ?? '', surface: meta.surface, modelKey: usedKey, provider,
         calls: 1, fellBackCalls: fellBack ? 1 : 0,
         inputTokens: BigInt(usage.input_tokens || 0), outputTokens: BigInt(usage.output_tokens || 0),
+        cacheReadInputTokens: cacheRead, cacheCreationInputTokens: cacheCreate,
       },
       update: {
         provider,
         calls: { increment: 1 }, fellBackCalls: { increment: fellBack ? 1 : 0 },
         inputTokens: { increment: BigInt(usage.input_tokens || 0) },
         outputTokens: { increment: BigInt(usage.output_tokens || 0) },
+        cacheReadInputTokens: { increment: cacheRead },
+        cacheCreationInputTokens: { increment: cacheCreate },
       },
     }))
     .catch(() => { /* telemetry only — never affects the call */ })

@@ -82,6 +82,12 @@ export interface LlmResponse {
   /** {type:'text',text} | {type:'tool_use',id,name,input} blocks. */
   content: LlmContentBlock[]
   stop_reason: string | null
-  usage: { input_tokens: number; output_tokens: number }
+  usage: {
+    input_tokens: number
+    output_tokens: number
+    /** Anthropic prompt-cache accounting (absent on openai-compat providers). */
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+  }
   model?: string
 }

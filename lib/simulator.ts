@@ -27,7 +27,7 @@ const client = new Anthropic()
 // Use a slightly cheaper model for the persona to keep cost manageable
 // across large swarms. The persona only needs to maintain a role — it's
 // not the thing under test, so smaller/faster is fine.
-const PERSONA_MODEL = 'claude-haiku-4-5'
+const PERSONA_MODEL = 'claude-haiku-4-5-20251001'
 const PERSONA_END_TOKEN = '[END_CONVERSATION]'
 const MAX_PERSONA_REPLY_CHARS = 500
 

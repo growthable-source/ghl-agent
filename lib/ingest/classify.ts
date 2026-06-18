@@ -83,10 +83,23 @@ Rules:
 - primary_topic is descriptive English, not a key
 - Output ONLY the JSON object. No markdown fences, no commentary.`
 
+  // The instructions + taxonomy + intent list are identical for every
+  // chunk of a domain, which ingestion processes back-to-back. Putting
+  // them in a cached system block means the (often large) taxonomy is
+  // billed once per 5-min window instead of once per chunk. Only the
+  // per-chunk content goes in the user message. Caching engages only
+  // when the prefix clears ~1024 tokens — small taxonomies simply won't
+  // cache, at no cost.
+  const cachedSystem = `${system}
+
+Taxonomy:
+${taxonomyBlock}
+
+Intent tags:
+${intentBlock}`
+
   const userParts: string[] = []
   if (input.contextHint) userParts.push(`Context: ${input.contextHint}`)
-  userParts.push(`\nTaxonomy:\n${taxonomyBlock}`)
-  userParts.push(`\nIntent tags:\n${intentBlock}`)
   userParts.push(`\nChunk:\n${input.content.slice(0, 6000)}`)
 
   let parsed: any = null
@@ -94,7 +107,7 @@ Rules:
     const completion = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system,
+      system: [{ type: 'text', text: cachedSystem, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userParts.join('\n') }],
     })
     const text = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined

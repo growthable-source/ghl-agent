@@ -143,8 +143,9 @@ export default function PersonaPage() {
             <label className="block text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Model</label>
             <div className="space-y-2">
               {[
-                { value: 'auto', label: 'Auto (platform default)', desc: 'Uses the platform default model — recommended.' },
-                { value: 'claude-sonnet', label: 'Claude Sonnet 4', desc: 'Best tool use + vision. Highest cost.' },
+                { value: 'auto', label: 'Auto (platform default)', desc: 'Uses the platform default — currently Claude Haiku 4.5. Recommended.' },
+                { value: 'claude-haiku', label: 'Claude Haiku 4.5', desc: 'Fast, low cost, full tool + vision support. The platform default.' },
+                { value: 'claude-sonnet', label: 'Claude Sonnet 4', desc: 'Strongest tool use + vision. Highest cost — for high-value agents.' },
                 { value: 'deepseek-flash', label: 'DeepSeek V4-Flash', desc: 'Lowest cost. Strong for most chats.' },
                 { value: 'deepseek-pro', label: 'DeepSeek V4-Pro', desc: 'Cheaper frontier; better on deep tool loops.' },
               ].map(opt => (

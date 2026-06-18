@@ -41,7 +41,26 @@ export interface SystemPromptOptions {
   commerceBlock?: string
 }
 
-export function buildSystemPrompt(ctx: AgentContext, options: SystemPromptOptions = {}): string {
+/**
+ * The system prompt split into a cacheable prefix and a volatile suffix.
+ *
+ * `prefix` is everything stable within a conversation — instructions,
+ * persona, platform rules, integrations, plus the per-contact context.
+ * It carries NO per-minute timestamp, so it stays byte-identical across
+ * the tool loop's iterations and across sequential inbound messages in
+ * the same conversation, making it a safe Anthropic prompt-cache prefix.
+ *
+ * `volatile` is the current date/time and the date-derived slot guidance.
+ * It changes every minute, so it must sit AFTER the cache breakpoint and
+ * never be cached. Placing "now" last also makes it the most recent
+ * context the model sees before the conversation.
+ */
+export interface SystemPromptParts {
+  prefix: string
+  volatile: string
+}
+
+export function buildSystemPromptParts(ctx: AgentContext, options: SystemPromptOptions = {}): SystemPromptParts {
   const {
     customPrompt,
     persona,
@@ -75,9 +94,6 @@ export function buildSystemPrompt(ctx: AgentContext, options: SystemPromptOption
 - Source: ${ctx.contact?.source ?? 'unknown'}
 - Location ID: ${ctx.locationId}
 - Channel: ${ch}
-- Current date/time: ${nowHuman} (today is ${todayISO})
-
-When calling get_available_slots, pass startDate="${todayISO}" and endDate="${in4WeeksISO}" (or narrower if the contact specified a window). NEVER pass dates from last year or next year — the current date is ${todayISO}.
 
 ## Your Behaviour
 - Keep replies concise (1–3 sentences max) — this is a ${ch} conversation
@@ -209,5 +225,24 @@ Professional but warm. Match the contact's energy.`
     prompt += connectedIntegrationsBlock
   }
 
-  return prompt
+  // Volatile tail — current date/time + the date-derived slot guidance.
+  // Kept out of `prefix` so the cached prefix doesn't change every minute.
+  const volatile = `
+
+## Right Now
+- Current date/time: ${nowHuman} (today is ${todayISO})
+
+When calling get_available_slots, pass startDate="${todayISO}" and endDate="${in4WeeksISO}" (or narrower if the contact specified a window). NEVER pass dates from last year or next year — the current date is ${todayISO}.`
+
+  return { prefix: prompt, volatile }
+}
+
+/**
+ * Convenience wrapper returning the full system prompt as one string
+ * (prefix + volatile). Used by tests and any caller that doesn't need
+ * the cache-breakpoint split.
+ */
+export function buildSystemPrompt(ctx: AgentContext, options: SystemPromptOptions = {}): string {
+  const { prefix, volatile } = buildSystemPromptParts(ctx, options)
+  return prefix + volatile
 }
