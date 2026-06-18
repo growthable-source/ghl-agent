@@ -1076,6 +1076,45 @@ export async function executeTool(
         // retrying a tool that can't succeed for this conversation.
         return JSON.stringify({ success: true, skipped: !qualifyingContactId ? 'no_contact' : undefined })
       }
+      case 'advance_procedure_step': {
+        // Procedural agents call this to move their progress cursor. The
+        // cursor lives on ConversationStateRecord.procedureStepOrder so the
+        // next turn's prompt block shows the right "step N of M". All DB
+        // access is guarded so a pre-migration deploy degrades to a no-op.
+        const procContactId =
+          (typeof input.contactId === 'string' && input.contactId.length > 0)
+            ? input.contactId
+            : contactId
+        if (!agentId || !procContactId) return JSON.stringify({ success: true })
+        try {
+          const { db } = await import('../db')
+          const steps = await db.procedureStep.findMany({
+            where: { agentId }, orderBy: { order: 'asc' }, select: { title: true },
+          })
+          const total = steps.length
+          const cur = (await db.conversationStateRecord.findUnique({
+            where: { agentId_contactId: { agentId, contactId: procContactId } },
+            select: { procedureStepOrder: true } as any,
+          }).catch(() => null)) as any
+          const curOrder: number = cur?.procedureStepOrder ?? 0
+          const outcome = input.outcome as string
+          let next = curOrder + 1
+          if (outcome === 'jump' && typeof input.targetStepTitle === 'string') {
+            const t = steps.findIndex(s => s.title === input.targetStepTitle)
+            if (t >= 0) next = t
+          }
+          const done = !!input.done || outcome === 'stop' || (total > 0 && next >= total)
+          const clamped = total > 0 ? Math.min(Math.max(next, 0), total - 1) : 0
+          await db.conversationStateRecord.update({
+            where: { agentId_contactId: { agentId, contactId: procContactId } },
+            data: { procedureStepOrder: clamped, ...(done ? { procedureDoneAt: new Date() } : {}) } as any,
+          }).catch(() => {})
+          return JSON.stringify({ success: true, step: clamped, total, done })
+        } catch (err: any) {
+          if (err?.code === 'P2021' || err?.code === 'P2022') return JSON.stringify({ success: true, migrationPending: true })
+          throw err
+        }
+      }
       case 'score_lead': {
         const score = input.score as number
         const reason = input.reason as string

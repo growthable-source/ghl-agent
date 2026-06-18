@@ -494,6 +494,20 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     defaultUseWhen: 'Use whenever the contact answers one of the configured qualifying questions — persist the answer immediately so the next turn can read it.',
   },
   {
+    name: 'advance_procedure_step',
+    description: 'Record progress through the guided procedure. Call when the current step is complete: outcome "next" advances, "skip" skips this step, "jump" goes to the step named in targetStepTitle, "stop" ends the procedure (hand off to a human). Set done=true when the final step is complete. Only available to procedural agents.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        outcome: { type: 'string', enum: ['next', 'skip', 'jump', 'stop'], description: 'What to do after the current step.' },
+        targetStepTitle: { type: 'string', description: 'When outcome="jump", the exact title of the step to jump to.' },
+        done: { type: 'boolean', description: 'True when the procedure is fully complete.' },
+      },
+      required: ['outcome'],
+    },
+    defaultUseWhen: 'Call once the current procedure step\'s goal is met, to advance/skip/jump/stop. Do not call it more than once per step.',
+  },
+  {
     name: 'score_lead',
     description: 'Score a lead from 1-100 based on buying signals, engagement, and qualification. Save the score to the contact. Use this after qualifying or when you detect strong intent.',
     input_schema: {

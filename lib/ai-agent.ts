@@ -463,6 +463,10 @@ export async function runAgent(opts: {
   // 'warn_only' is a no-op — the runtime fallback shipped 2026-05-28
   // handles individual tool failures.
   const toolsToHide = new Set<string>()
+  // advance_procedure_step only makes sense for procedural agents; hide it
+  // everywhere else (covers the "all tools published" path for agents with
+  // a null enabledTools list).
+  if (!isProcedural) toolsToHide.add('advance_procedure_step')
   const brokenLabelsForPrompt: string[] = []
   if (!isSandbox && agentId) {
     try {
@@ -707,6 +711,8 @@ export async function runAgent(opts: {
         ...ruleRequiredTools,
         // Same for listening rules → update_contact_memory.
         ...(hasListeningRules ? ['update_contact_memory'] : []),
+        // Procedural agents drive step progress through this tool.
+        ...(isProcedural ? ['advance_procedure_step'] : []),
       ])]
     : undefined
   const filteredTools = (normalizedTools ? AGENT_TOOLS.filter(t => normalizedTools.includes(t.name)) : AGENT_TOOLS)
