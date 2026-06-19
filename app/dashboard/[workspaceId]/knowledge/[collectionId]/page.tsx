@@ -930,6 +930,7 @@ function MinedQaTab({
   const [loadingPairs, setLoadingPairs] = useState(true)
 
   const activeRun = summary.runs.find(r => r.status === 'queued' || r.status === 'running')
+  const lastRun = summary.runs[0] ?? null
 
   const loadPairs = useCallback(async () => {
     setLoadingPairs(true)
@@ -941,7 +942,9 @@ function MinedQaTab({
 
   useEffect(() => { loadPairs() }, [loadPairs])
 
-  // Poll while a run is active so new pairs surface without a manual refresh.
+  // Poll while a run is active so new pairs + status surface without a manual
+  // refresh. We poll for both 'queued' and 'running' so a queued-but-not-yet-
+  // claimed run still updates the moment the worker picks it up.
   useEffect(() => {
     if (!activeRun) return
     const t = setInterval(() => { onChanged(); loadPairs() }, 8000)
@@ -987,10 +990,29 @@ function MinedQaTab({
         </div>
       )}
 
-      {activeRun && (
+      {/* Run status — surfaces queued / running / completed / failed so a job
+          is never silently invisible. */}
+      {lastRun && lastRun.status === 'queued' && (
         <div className="text-xs rounded-lg p-3 mb-4 flex items-center gap-2" style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>
           <span className="inline-block w-2 h-2 rounded-full animate-pulse" style={{ background: 'currentColor' }} />
-          Mining in progress — scanned {activeRun.conversationsScanned} conversations, {activeRun.pairsGenerated} pairs so far.
+          Queued — waiting for the background worker to pick this up (runs every minute)… · started {relTime(lastRun.createdAt)}
+        </div>
+      )}
+      {lastRun && lastRun.status === 'running' && (
+        <div className="text-xs rounded-lg p-3 mb-4 flex items-center gap-2" style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>
+          <span className="inline-block w-2 h-2 rounded-full animate-pulse" style={{ background: 'currentColor' }} />
+          Mining in progress — scanned {lastRun.conversationsScanned} conversations, {lastRun.pairsGenerated} pairs so far.
+        </div>
+      )}
+      {lastRun && lastRun.status === 'complete' && (
+        <div className="text-xs rounded-lg p-3 mb-4" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+          ✓ Last run finished {relTime(lastRun.createdAt)} — scanned {lastRun.conversationsScanned} conversations, generated {lastRun.pairsGenerated} pair{lastRun.pairsGenerated === 1 ? '' : 's'}.
+          {lastRun.pairsGenerated === 0 && ' No reusable Q&A was found (no human-answered text threads in the window, or all were duplicates).'}
+        </div>
+      )}
+      {lastRun && lastRun.status === 'failed' && (
+        <div className="text-xs rounded-lg p-3 mb-4" style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}>
+          ✗ Last run failed {relTime(lastRun.createdAt)}{lastRun.error ? `: ${lastRun.error}` : '.'} You can try again.
         </div>
       )}
 
