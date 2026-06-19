@@ -70,7 +70,10 @@ export const REGISTRY: Record<ResolvedKey, ResolvedModel> = {
   'openrouter': {
     key: 'openrouter',
     provider: 'openai-compat',
-    vendorModelId: process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat',
+    // Default: Gemini 2.0 Flash — about the cheapest OpenRouter model that
+    // still does forced function-calling reliably (mining needs clean JSON
+    // from the emit_qa_pairs tool). Override with OPENROUTER_MODEL.
+    vendorModelId: process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001',
     baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     capabilities: { vision: false, mcpServers: false, toolReliability: 'medium' },

@@ -18,11 +18,12 @@ export const PRICING: Record<string, ModelPrice> = {
   'claude-haiku': { inPerM: 1, outPerM: 5 },
   'deepseek-flash': { inPerM: 0.14, outPerM: 0.28 },
   'deepseek-pro': { inPerM: 0.435, outPerM: 0.87 },
-  // OpenRouter passthrough — rough default (DeepSeek-class). Override via env
-  // if you point OPENROUTER_MODEL at a pricier model, so estimates stay sane.
+  // OpenRouter passthrough — default matches Gemini 2.0 Flash (the registry
+  // default model). Override via env if you point OPENROUTER_MODEL at a pricier
+  // model, so estimates stay sane.
   'openrouter': {
-    inPerM: Number(process.env.OPENROUTER_PRICE_IN_PER_M) || 0.14,
-    outPerM: Number(process.env.OPENROUTER_PRICE_OUT_PER_M) || 0.28,
+    inPerM: Number(process.env.OPENROUTER_PRICE_IN_PER_M) || 0.10,
+    outPerM: Number(process.env.OPENROUTER_PRICE_OUT_PER_M) || 0.40,
   },
 }
 
