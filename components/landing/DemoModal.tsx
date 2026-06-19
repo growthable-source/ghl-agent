@@ -117,6 +117,21 @@ export default function DemoModal({
     }
   }
 
+  // Pre-fill the GHL booking widget with what they already typed, so they
+  // don't re-enter name/email/phone on the calendar — meaningful friction
+  // saved at the highest-intent moment.
+  const calSrc = (() => {
+    if (!CAL_URL) return ''
+    const params = new URLSearchParams()
+    const parts = name.trim().split(/\s+/).filter(Boolean)
+    if (parts[0]) params.set('first_name', parts[0])
+    if (parts.length > 1) params.set('last_name', parts.slice(1).join(' '))
+    if (email.trim()) params.set('email', email.trim())
+    if (phone.trim()) params.set('phone', phone.trim())
+    const qs = params.toString()
+    return qs ? `${CAL_URL}?${qs}` : CAL_URL
+  })()
+
   const triggerClass =
     variant === 'primary'
       ? 'btn-primary'
@@ -197,9 +212,9 @@ export default function DemoModal({
                 <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
                   You&apos;re saved — now grab a slot that works for you.
                 </p>
-                {CAL_URL ? (
+                {calSrc ? (
                   <iframe
-                    src={CAL_URL}
+                    src={calSrc}
                     title="Book a demo"
                     className="w-full rounded-lg"
                     style={{ height: '60vh', minHeight: 480, border: '1px solid var(--border)' }}
