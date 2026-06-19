@@ -28,6 +28,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/mine-conversations",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/experiment-proposer",
       "schedule": "0 14 * * 1"
     },

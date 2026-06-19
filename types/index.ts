@@ -73,6 +73,9 @@ export interface Conversation {
   unreadCount?: number
   type?: string
   inbox?: boolean
+  // Keyset sort value (epoch-ms) from the CRM search response. Used as the
+  // pagination cursor for windowed reads (conversation Q&A mining).
+  sort?: number[]
 }
 
 export interface Message {
@@ -100,6 +103,14 @@ export interface Message {
   attachmentKind?: 'image' | 'file'
   attachmentUrl?: string
   attachmentName?: string
+  // CRM user id of the team member who sent an outbound message, when the
+  // CRM exposes it. Present for human-sent outbound; absent for inbound and
+  // for automated/bot/workflow sends. Conversation Q&A mining uses this to
+  // favour exchanges a human actually answered. Not all adapters populate it.
+  sentByUserId?: string
+  // Coarse origin label the CRM attaches to a message (e.g. 'app',
+  // 'workflow', 'bulk_actions', 'api'). Lets mining drop automated outbound.
+  messageSource?: string
 }
 
 export interface Opportunity {

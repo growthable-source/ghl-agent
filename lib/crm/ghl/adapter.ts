@@ -11,6 +11,20 @@ import type { CrmAdapter, CustomField, BookAppointmentPayload, CreateOpportunity
 const BASE_URL = 'https://services.leadconnectorhq.com'
 const API_VERSION = '2021-07-28'
 
+// Raw LeadConnector message as returned by /conversations/{id}/messages —
+// a superset of the normalized Message. `userId`/`source` are dropped by the
+// base shape but mining needs them, so getMessages reads from this type.
+type RawGhlMessage = Message & {
+  userId?: string
+  source?: string
+}
+
+// Raw LeadConnector conversation — carries the keyset `sort` array used to
+// page through results (pass sort[0] as the next startAfterDate).
+type RawGhlConversation = Conversation & {
+  sort?: number[]
+}
+
 export class GhlAdapter implements CrmAdapter {
   provider = 'ghl' as const
   locationId: string
@@ -413,6 +427,10 @@ export class GhlAdapter implements CrmAdapter {
     sort?: 'asc' | 'desc'
     sortBy?: 'last_manual_message_date' | 'last_message_date' | 'score_profile'
     limit?: number
+    // Keyset pagination cursor: epoch-ms of the previous page's last
+    // conversation sort value. LeadConnector returns conversations after
+    // this point, enabling deadline-bounded mining across cron ticks.
+    startAfterDate?: number
   } = {}): Promise<Conversation[]> {
     const params = new URLSearchParams({
       locationId: this.locationId,
@@ -426,12 +444,18 @@ export class GhlAdapter implements CrmAdapter {
     if (opts.query) params.set('query', opts.query)
     if (opts.sort) params.set('sort', opts.sort)
     if (opts.sortBy) params.set('sortBy', opts.sortBy)
+    if (typeof opts.startAfterDate === 'number') params.set('startAfterDate', String(opts.startAfterDate))
 
-    const data = await this.apiFetch<{ conversations: Conversation[]; total?: number }>(
+    const data = await this.apiFetch<{ conversations: RawGhlConversation[]; total?: number }>(
       `/conversations/search?${params}`,
       { headers: { 'Version': '2021-04-15' } },
     )
-    return data.conversations ?? []
+    // Pass through the keyset `sort` value so callers can page; the base
+    // Conversation shape omits it.
+    return (data.conversations ?? []).map((c) => ({
+      ...(c as Conversation),
+      sort: Array.isArray(c.sort) ? c.sort : undefined,
+    }))
   }
 
   async getConversation(conversationId: string): Promise<Conversation> {
@@ -501,11 +525,19 @@ export class GhlAdapter implements CrmAdapter {
     }
     if (opts.lastMessageId) params.set('lastMessageId', opts.lastMessageId)
 
-    const data = await this.apiFetch<{ messages: { messages: Message[]; lastMessageId?: string; nextPage?: boolean } }>(
+    const data = await this.apiFetch<{ messages: { messages: RawGhlMessage[]; lastMessageId?: string; nextPage?: boolean } }>(
       `/conversations/${conversationId}/messages?${params}`,
       { headers: { 'Version': '2021-04-15' } },
     )
-    return data.messages?.messages ?? []
+    // Surface the human sender (userId) and origin (source) onto the
+    // normalized Message — LeadConnector includes them on the raw payload
+    // but the base shape drops them. Conversation Q&A mining relies on these
+    // to tell a human-sent outbound from an automated/workflow send.
+    return (data.messages?.messages ?? []).map((m) => ({
+      ...(m as Message),
+      sentByUserId: m.userId ?? undefined,
+      messageSource: m.source ?? undefined,
+    }))
   }
 
   /** Fetch a single message by its ID */

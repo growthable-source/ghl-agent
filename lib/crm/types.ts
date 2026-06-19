@@ -66,7 +66,16 @@ export interface CrmAdapter {
   getCustomFields(): Promise<CustomField[]>
 
   // ─── Conversations & Messaging ───────────────────────────────────────
-  searchConversations(opts?: { contactId?: string; limit?: number }): Promise<Conversation[]>
+  // `sortBy`/`sort`/`startAfterDate` power windowed, deadline-bounded reads
+  // (conversation Q&A mining). Only the GHL adapter honours the cursor; other
+  // adapters ignore the extra fields and page by `limit` alone.
+  searchConversations(opts?: {
+    contactId?: string
+    limit?: number
+    sort?: 'asc' | 'desc'
+    sortBy?: 'last_manual_message_date' | 'last_message_date' | 'score_profile'
+    startAfterDate?: number
+  }): Promise<Conversation[]>
   getConversation(conversationId: string): Promise<Conversation>
   getMessages(conversationId: string, limit?: number): Promise<Message[]>
   sendMessage(payload: SendMessagePayload): Promise<{ messageId: string; conversationId: string }>

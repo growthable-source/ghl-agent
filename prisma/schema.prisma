@@ -4465,3 +4465,78 @@ model MarketingLead {
 
   @@index([createdAt])
 }
+
+// ─── Conversation Q&A Mining ────────────────────────────────────────────────
+// Cold-start helper: a subaccount with a live CRM (LeadConnector) already
+// has months of real conversations where humans answered customer questions.
+// A ConversationMiningRun reads that history in the background, an LLM
+// extracts question→answer pairs from the human-answered exchanges, and the
+// drafts land in MinedQaPair (staging) for operator approval before any
+// become live KnowledgeEntry rows.
+//
+// FK columns are plain scalars (no Prisma relation fields) — these are
+// append-only job/staging tables and the parent models (Workspace/Agent/
+// KnowledgeCollection) stay untouched. The hand-run DDL adds the FK
+// constraints with ON DELETE CASCADE; see prisma/MIGRATIONS.md.
+model ConversationMiningRun {
+  id          String @id @default(cuid())
+  workspaceId String
+  // The agent whose live CRM connection is being mined, and the collection
+  // the approved pairs will be written into.
+  agentId     String
+  collectionId String
+  // queued → running → complete | failed. Claimed compare-and-swap by the
+  // mine-conversations cron, same pattern as IngestionRun.
+  status      String @default("queued")
+  // Inclusive lower / exclusive upper bound of the mining window. Defaults
+  // applied at create time (last 12 months) but operator-editable.
+  windowStart DateTime
+  windowEnd   DateTime
+  // Hard ceiling on conversations scanned this run — bounds cost even if the
+  // window is wide. Continuation runs respect the remaining budget.
+  maxConversations Int @default(2000)
+  // Logical LLM key used for extraction (resolved via lib/llm registry).
+  model       String @default("auto")
+  // Deadline-bounded continuation cursor: epoch-ms of the last conversation's
+  // lastMessageDate processed. Next tick resumes from startAfterDate=cursor.
+  cursor      String?
+  conversationsScanned Int @default(0)
+  pairsGenerated       Int @default(0)
+  estimatedTokens      Int @default(0)
+  actualTokens         Int @default(0)
+  error       String? @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([workspaceId])
+  @@index([collectionId])
+}
+
+// A single draft Q&A pair extracted from a mined conversation. Lives in
+// staging until an operator approves it (→ a KnowledgeEntry with source='qa'
+// in the target collection) or rejects it.
+model MinedQaPair {
+  id          String @id @default(cuid())
+  runId       String
+  workspaceId String
+  collectionId String
+  question    String @db.Text
+  answer      String @db.Text
+  // Provenance so a reviewer can audit the source thread.
+  sourceConversationId String?
+  sourceSnippet        String? @db.Text
+  // Model's self-reported 0..1 confidence the pair is a genuine,
+  // reusable human answer (not chit-chat / one-off).
+  confidence  Float  @default(0)
+  // pending → approved | rejected. Approval creates the KnowledgeEntry.
+  status      String @default("pending")
+  // Set once approved so the staging row links to its live entry.
+  knowledgeEntryId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([collectionId, status])
+  @@index([runId])
+  @@index([workspaceId])
+}
