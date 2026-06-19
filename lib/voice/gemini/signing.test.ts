@@ -2,7 +2,10 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { signBridgeParams, verifyBridgeParams, signBridgeRequest, verifyBridgeRequest } from './signing'
 
 beforeAll(() => {
-  process.env.GEMINI_VOICE_SIGNING_SECRET = 'a6165077125ee0489b829476cc186c19df4e355ce8b91505c3486e3f59ea1646'
+  // Unit-test fixture only — NOT a real credential. The production
+  // GEMINI_VOICE_SIGNING_SECRET is a fresh random value set out-of-band in
+  // Vercel + Fly and never committed to the repo.
+  process.env.GEMINI_VOICE_SIGNING_SECRET = 'unit-test-signing-secret-not-a-real-credential'
 })
 
 describe('signBridgeParams / verifyBridgeParams', () => {
