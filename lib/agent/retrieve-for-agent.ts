@@ -28,6 +28,9 @@ interface AgentForRetrieval {
   id?: string
   workspaceId: string
   knowledgeDomainIds?: string[] | null
+  /** false = read only the (possibly empty) knowledgeDomainIds set.
+   *  true / undefined = read every domain in the workspace (default). */
+  knowledgeScopeAll?: boolean | null
 }
 
 export interface RetrievalForAgentResult {
@@ -44,12 +47,16 @@ export async function retrieveAndFormatForAgent(
   if (!agent?.workspaceId) return { block: '', chunks: [] }
   if (!message || message.trim().length < 3) return { block: '', chunks: [] }
 
+  // scopeToDomains only when the operator explicitly narrowed scope
+  // (knowledgeScopeAll === false). Then an empty id list means "read no
+  // indexed knowledge"; otherwise empty stays workspace-wide.
+  const scopeToDomains = agent.knowledgeScopeAll === false
+
   try {
     const chunks = await retrieveChunks(agent.workspaceId, message, {
       limit: 6,
-      // Empty array = workspace-wide. Non-empty = restricted to those
-      // domains. Same contract as everywhere else in the codebase.
       knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
+      scopeToDomains,
     })
     return { block: buildRetrievedKnowledgeBlock(chunks), chunks }
   } catch (err) {
@@ -101,6 +108,7 @@ export async function debugRetrieveForAgent(
     return await debugRetrieveChunks(agent.workspaceId, message, {
       limit: 6,
       knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
+      scopeToDomains: agent.knowledgeScopeAll === false,
     })
   } catch (err) {
     console.warn('[debugRetrieveForAgent] failed:', errMsg(err))

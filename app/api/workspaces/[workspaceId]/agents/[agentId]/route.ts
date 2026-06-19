@@ -108,6 +108,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(Array.isArray(body.knowledgeDomainIds) && {
         knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
       }),
+      ...(body.knowledgeScopeAll !== undefined && { knowledgeScopeAll: !!body.knowledgeScopeAll }),
       ...(body.qualifyingStyle !== undefined && { qualifyingStyle: body.qualifyingStyle }),
       ...(body.agentKind !== undefined && { agentKind: body.agentKind === 'procedural' ? 'procedural' : 'reactive' }),
       ...(body.procedureMode !== undefined && { procedureMode: body.procedureMode === 'advanced' ? 'advanced' : 'simple' }),

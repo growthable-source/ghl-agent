@@ -51,6 +51,11 @@ export default function AgentKnowledgePage() {
   const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
   const [domainPick, setDomainPick] = useState<string[]>([])
   const [domainOriginal, setDomainOriginal] = useState<string[]>([])
+  // scopeAll = read every collection (ignore the pick). scopeAll=false =
+  // read only the picked set, which may be empty (= no indexed knowledge).
+  // Kept separate from the pick so deselecting the only collection sticks.
+  const [scopeAll, setScopeAll] = useState(true)
+  const [scopeAllOriginal, setScopeAllOriginal] = useState(true)
   const [domainSavedAt, setDomainSavedAt] = useState<number | null>(null)
   const [domainSaving, setDomainSaving] = useState(false)
 
@@ -69,8 +74,12 @@ export default function AgentKnowledgePage() {
 
     setDomains(domRes.domains || [])
     const agentDomains: string[] = agentRes.agent?.knowledgeDomainIds ?? []
+    // Default true for agents predating the scope flag.
+    const agentScopeAll: boolean = agentRes.agent?.knowledgeScopeAll ?? true
     setDomainPick(agentDomains)
     setDomainOriginal(agentDomains)
+    setScopeAll(agentScopeAll)
+    setScopeAllOriginal(agentScopeAll)
 
     setLoading(false)
   }, [workspaceId, agentId])
@@ -85,27 +94,35 @@ export default function AgentKnowledgePage() {
     setDomainPick(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  async function saveDomainScope(allDomains: boolean) {
+  // Switch into "choose collections" mode. Seed the pick with everything
+  // currently indexed so flipping the toggle doesn't silently empty the
+  // agent's knowledge — the operator narrows down from there.
+  function startChoosing() {
+    setScopeAll(false)
+    if (domainPick.length === 0) setDomainPick(domains.map(d => d.id))
+  }
+
+  async function saveDomainScope() {
     setDomainSaving(true)
     try {
-      // "all domains" sends an empty array (= no filter, backward
-      // compatible). Otherwise sends the explicit list.
-      const ids = allDomains ? [] : domainPick
+      // scopeAll=true → backend ignores the id list and reads everything.
+      // scopeAll=false → reads exactly domainPick (empty = no indexed
+      // knowledge). Send both so the two are never conflated again.
       await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ knowledgeDomainIds: ids }),
+        body: JSON.stringify({ knowledgeScopeAll: scopeAll, knowledgeDomainIds: domainPick }),
       })
-      setDomainOriginal(ids)
-      setDomainPick(ids)
+      setDomainOriginal(domainPick)
+      setScopeAllOriginal(scopeAll)
       setDomainSavedAt(Date.now())
       setTimeout(() => setDomainSavedAt(null), 2000)
     } finally { setDomainSaving(false) }
   }
 
-  const domainDirty = domainPick.length !== domainOriginal.length
+  const domainDirty = scopeAll !== scopeAllOriginal
+    || domainPick.length !== domainOriginal.length
     || domainPick.some(id => !domainOriginal.includes(id))
-  const usingAllDomains = domainOriginal.length === 0
 
   async function save() {
     setSaving(true)
@@ -165,27 +182,52 @@ export default function AgentKnowledgePage() {
                 Indexed knowledge collections
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                Pick which crawled / uploaded collections this agent uses to answer questions. By default it reads from all of them.
+                Choose which crawled / uploaded collections this agent reads from. The collections live at the workspace level — this only controls what this agent uses.
               </p>
             </div>
-            {usingAllDomains && (
-              <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded"
+            {scopeAll && (
+              <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded whitespace-nowrap"
                 style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
                 Reading all
               </span>
             )}
           </div>
 
-          <div className="space-y-2">
+          {/* Mode toggle — "all" vs "choose". Decoupled from the pick so an
+              operator can turn every collection off and have it stick. */}
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => setScopeAll(true)}
+              className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
+              style={scopeAll
+                ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                : { border: '1px solid var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
+            >
+              Read all collections
+            </button>
+            <button
+              onClick={startChoosing}
+              className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
+              style={!scopeAll
+                ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                : { border: '1px solid var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
+            >
+              Choose collections
+            </button>
+          </div>
+
+          <div className="space-y-2" style={scopeAll ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
             {domains.map(d => {
-              const checked = usingAllDomains || domainPick.includes(d.id)
-              const effectivelyAll = usingAllDomains
+              // In "all" mode every box reads checked but is inert (the mode
+              // toggle above governs). In "choose" mode the box reflects the
+              // live pick and toggles freely — including down to zero.
+              const checked = scopeAll || domainPick.includes(d.id)
               return (
                 <label
                   key={d.id}
                   className="flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors"
                   style={
-                    checked && !effectivelyAll
+                    !scopeAll && checked
                       ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
                       : { border: '1px solid var(--border)', background: 'var(--surface-secondary)' }
                   }
@@ -193,15 +235,8 @@ export default function AgentKnowledgePage() {
                   <input
                     type="checkbox"
                     checked={checked}
-                    onChange={() => {
-                      if (effectivelyAll) {
-                        // Operator wants to narrow — seed pick with all
-                        // current domains minus the one they just clicked.
-                        setDomainPick(domains.filter(x => x.id !== d.id).map(x => x.id))
-                      } else {
-                        toggleDomain(d.id)
-                      }
-                    }}
+                    disabled={scopeAll}
+                    onChange={() => toggleDomain(d.id)}
                     className="mt-0.5 accent-orange-500"
                   />
                   <div className="flex-1 min-w-0">
@@ -220,19 +255,17 @@ export default function AgentKnowledgePage() {
             })}
           </div>
 
-          <div className="flex items-center justify-between mt-3">
-            <button
-              onClick={() => saveDomainScope(true)}
-              disabled={domainSaving || usingAllDomains}
-              className="text-[11px] disabled:opacity-50"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              Reset to all
-            </button>
+          {!scopeAll && domainPick.length === 0 && (
+            <p className="text-[11px] mt-2" style={{ color: 'var(--accent-amber)' }}>
+              No collections selected — this agent won't use any indexed knowledge.
+            </p>
+          )}
+
+          <div className="flex items-center justify-end mt-3">
             <div className="flex items-center gap-2">
               {domainSavedAt && <span className="text-xs" style={{ color: 'var(--accent-emerald)' }}>✓ Saved</span>}
               <button
-                onClick={() => saveDomainScope(false)}
+                onClick={saveDomainScope}
                 disabled={domainSaving || !domainDirty}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
                 style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}

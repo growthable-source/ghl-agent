@@ -54,6 +54,12 @@ interface RetrieveOptions {
    *  (default — backward compatible with agents that haven't picked
    *  scopes yet). */
   knowledgeDomainIds?: string[]
+  /** When true, retrieval is restricted STRICTLY to knowledgeDomainIds
+   *  even when that list is empty — an empty list then means "no indexed
+   *  knowledge at all" (the operator turned every collection off for this
+   *  agent). When false/undefined, an empty list keeps the legacy
+   *  "workspace-wide" meaning. Only the per-agent path sets this. */
+  scopeToDomains?: boolean
   /** Minimum similarity threshold. Default 0.4 — chunks below this
    *  are usually noise. Tighten when retrieval starts pulling
    *  unrelated content; loosen when sparse domains miss real hits. */
@@ -193,6 +199,12 @@ function buildDomainFilter(opts: RetrieveOptions) {
   // crashing every retrieve with "syntax error at or near $3".
   if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
     return Prisma.sql`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
+  }
+  // Scoped strictly to an empty set → the agent reads NO indexed
+  // knowledge. Must match nothing rather than fall through to the
+  // workspace-wide no-op below (that's the bug this whole change fixes).
+  if (opts.scopeToDomains) {
+    return Prisma.sql`AND FALSE`
   }
   if (opts.knowledgeDomainId) {
     return Prisma.sql`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`

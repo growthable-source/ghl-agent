@@ -39,6 +39,9 @@ export interface AgentForPrompt {
    *  from every domain in the workspace (legacy default). Populated
    *  = only those domain ids. */
   knowledgeDomainIds?: string[] | null
+  /** false = read only knowledgeDomainIds (empty = none). true /
+   *  undefined = read every domain in the workspace (default). */
+  knowledgeScopeAll?: boolean | null
 }
 
 export type PromptChannel = 'widget' | 'native'
@@ -136,7 +139,7 @@ export async function buildBasePrompt(
   // SMS, and webhook paths so every runtime gets the same block.
   if (agent.workspaceId) {
     const { block } = await retrieveAndFormatForAgent(
-      { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds },
+      { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds, knowledgeScopeAll: agent.knowledgeScopeAll },
       incomingMessage,
     )
     prompt += block

@@ -641,11 +641,20 @@ model Agent {
   languages          String[]       @default(["en"])
 
   // ─── Knowledge scope (Phase 2 retrieval) ───
-  // Which KnowledgeDomain ids this agent retrieves from. Empty array =
-  // EVERY domain in the workspace (default — backward compatible with
-  // pre-scoping agents). Populated = restrict retrieval to only those
-  // domains. Lets operators run e.g. one agent on "Product Support"
-  // and another on "Legal Docs" within the same workspace.
+  // Two-part scope so "read everything" is distinct from "read this
+  // specific (possibly empty) set":
+  //   knowledgeScopeAll = true  → retrieve from EVERY domain in the
+  //     workspace, ignoring knowledgeDomainIds (default — backward
+  //     compatible with pre-scoping agents).
+  //   knowledgeScopeAll = false → retrieve ONLY from knowledgeDomainIds.
+  //     An empty list here means the agent reads NO indexed knowledge
+  //     (operator explicitly turned every collection off). This is what
+  //     lets an operator run one agent on "Product Support", another on
+  //     "Legal Docs", and a third on no indexed knowledge at all within
+  //     the same workspace.
+  // Empty knowledgeDomainIds is no longer overloaded to mean "all" — the
+  // scope flag carries that, so deselecting the only collection sticks.
+  knowledgeScopeAll  Boolean  @default(true)
   knowledgeDomainIds String[] @default([])
 
   // ─── Quiet check-in ───
