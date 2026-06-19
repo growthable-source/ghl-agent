@@ -41,6 +41,11 @@ export default function EmailCaptureForm({
       })
       const body = await res.json().catch(() => ({}))
       if (res.ok) {
+        // Fire a Meta Pixel Lead event when a pixel is present on the page
+        // (e.g. the /gyms ad landing page). Guarded so it's a no-op on pages
+        // without a pixel.
+        const w = window as unknown as { fbq?: (...args: unknown[]) => void }
+        if (typeof w.fbq === 'function') w.fbq('track', 'Lead')
         setState('done')
         setMsg("You're on the list — we'll be in touch.")
       } else {
