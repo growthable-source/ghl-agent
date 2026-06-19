@@ -3,7 +3,7 @@ import Link from 'next/link'
 import Script from 'next/script'
 import MarketingNav from '@/components/landing/MarketingNav'
 import MarketingFooter from '@/components/landing/MarketingFooter'
-import EmailCaptureForm from '@/components/landing/EmailCaptureForm'
+import DemoModal from '@/components/landing/DemoModal'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
 
@@ -107,7 +107,10 @@ fbq('track', 'PageView');`}
             Voxility answers every call, text, and ad inquiry in seconds, 24/7 — qualifies the lead, books the tour, and follows up — so your front desk never loses a member to a faster gym down the road.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3">
-            <EmailCaptureForm source="gyms" cta="Get a demo" />
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <DemoModal triggerLabel="Book a demo" source="gyms_hero" />
+              <Link href="/login?mode=signup" className="btn-secondary">Start free</Link>
+            </div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
               Built for gyms across the US &amp; Canada. Free while in beta — no card required.
             </p>
@@ -183,7 +186,7 @@ fbq('track', 'PageView');`}
             See exactly how Voxility would work for your gym — book a quick demo and we&apos;ll show you it answering a lead live.
           </p>
           <div className="flex flex-col items-center gap-3">
-            <EmailCaptureForm source="gyms_cta" cta="Get a demo" />
+            <DemoModal triggerLabel="Book your demo" source="gyms_cta" />
             <Link href="/login?mode=signup" className="text-sm underline" style={{ color: 'var(--accent-primary)' }}>
               or start building free →
             </Link>
