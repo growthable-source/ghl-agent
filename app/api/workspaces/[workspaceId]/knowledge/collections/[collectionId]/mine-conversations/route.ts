@@ -99,7 +99,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       windowStart,
       windowEnd,
       maxConversations: max,
-      model: typeof body.model === 'string' ? body.model : 'auto',
+      // Mining always uses the cheap fleet (resolved in the engine, never
+      // Claude). Stored for the record; 'auto'/Claude keys are coerced to the
+      // cheap default by miningModelKey().
+      model: typeof body.model === 'string' ? body.model : 'deepseek-flash',
     },
   })
 

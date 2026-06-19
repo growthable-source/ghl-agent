@@ -21,7 +21,6 @@ import { db } from '@/lib/db'
 import { getCrmAdapter } from '@/lib/crm/factory'
 import { getCrmLiveStatus } from '@/lib/crm/connection-status'
 import { createMessage } from '@/lib/llm'
-import { resolveKey } from '@/lib/llm/registry'
 import { costUsd } from '@/lib/llm/pricing'
 import { estimateTokens } from '@/lib/chunker'
 import { buildTranscript, questionHash } from '@/lib/conversation-mining-utils'
@@ -32,6 +31,17 @@ export { normalizeQuestion } from '@/lib/conversation-mining-utils'
 const MESSAGES_PER_CONVERSATION = 40
 const CONVERSATIONS_PER_LLM_BATCH = 6
 const SEARCH_PAGE_SIZE = 100
+
+// Mining is bulk, low-stakes, and runs in the background — it must use the
+// cheapest model and NEVER fall back to Anthropic. Defaults to deepseek-flash
+// (routes through DEEPSEEK_BASE_URL/KEY, e.g. OpenRouter). Override with
+// MINING_MODEL to pick a different cheap key. A run's own `model` only wins if
+// it's an explicit, non-'auto', non-Claude key.
+function miningModelKey(runModel?: string | null): string {
+  const cheapDefault = process.env.MINING_MODEL || 'deepseek-flash'
+  if (runModel && runModel !== 'auto' && !runModel.startsWith('claude')) return runModel
+  return cheapDefault
+}
 
 export interface MiningEstimate {
   conversations: number
@@ -104,7 +114,8 @@ async function extractBatch(
       tool_choice: { type: 'tool', name: 'emit_qa_pairs' },
       messages: [{ role: 'user', content: userText }],
     },
-    { surface: 'conversation-mining', workspaceId: meta.workspaceId, agentId: meta.agentId },
+    // noFallback: never silently retry on Anthropic — fail the batch instead.
+    { surface: 'conversation-mining', workspaceId: meta.workspaceId, agentId: meta.agentId, noFallback: true },
   )
 
   const toolUse = res.content.find(b => b.type === 'tool_use') as { input?: { pairs?: ExtractedPair[] } } | undefined
@@ -175,7 +186,7 @@ export async function estimateMining(input: {
   if (!status.live) throw new Error('CRM not connected')
 
   const adapter = await getCrmAdapter(input.locationId)
-  const modelKey = resolveKey(input.model)
+  const modelKey = miningModelKey(input.model)
 
   // Cap the estimate scan so the confirm dialog stays snappy.
   const SCAN_CAP = Math.min(input.max, 300)
@@ -237,7 +248,7 @@ export async function runMiningRun(
   if (!status.live) throw new Error('CRM not connected')
 
   const adapter = await getCrmAdapter(locationId)
-  const modelKey = resolveKey(run.model)
+  const modelKey = miningModelKey(run.model)
 
   // Preload existing question hashes so we don't re-stage duplicates.
   const seen = new Set<string>()

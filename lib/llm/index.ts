@@ -23,6 +23,13 @@ export interface LlmCallMeta {
   surface: string
   workspaceId?: string | null
   agentId?: string | null
+  /**
+   * When true, a failed cheap-model (DeepSeek) call is NOT retried on Claude —
+   * the error propagates instead. Use for cost-sensitive batch work (e.g.
+   * conversation mining) where silently burning Anthropic credits is worse
+   * than failing the batch and retrying later.
+   */
+  noFallback?: boolean
 }
 
 function hasImages(messages: LlmMessageParam[]): boolean {
@@ -98,8 +105,10 @@ export async function createMessage(
     return res
   } catch (err) {
     // Reliability escalation: a DeepSeek call failed after its own retries →
-    // fall back to Claude once so the customer still gets a reply.
-    if (model.key.startsWith('deepseek')) {
+    // fall back to Claude once so the customer still gets a reply. Callers
+    // that would rather fail than spend Anthropic credits (batch/cron work)
+    // pass meta.noFallback.
+    if (model.key.startsWith('deepseek') && !meta?.noFallback) {
       console.warn(`[llm] ${model.key} failed (${(err as Error)?.message ?? err}); falling back to Claude`)
       const claude = getModel(CLAUDE_FALLBACK_KEY)
       const res = await dispatch(claude, params)
