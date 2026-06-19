@@ -23,6 +23,14 @@ export const metadata: Metadata = {
 
 const PIXEL_ID = '1285462570417058'
 
+// Niche copy for the shared demo modal so it reads "gym" everywhere.
+const DEMO_COPY = {
+  heading: 'Book your gym demo',
+  orgLabel: 'Gym / studio name',
+  orgPlaceholder: 'Iron House Fitness',
+  emailPlaceholder: 'alex@yourgym.com',
+}
+
 // Three pillars, gym-framed. Each maps to a real Voxility capability.
 const PILLARS: { eyebrow: string; title: string; body: string; icon: React.ReactNode }[] = [
   {
@@ -108,7 +116,7 @@ fbq('track', 'PageView');`}
           </p>
           <div className="mt-8 flex flex-col items-center gap-3">
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              <DemoModal triggerLabel="Book a demo" source="gyms_hero" />
+              <DemoModal {...DEMO_COPY} triggerLabel="Book a demo" source="gyms_hero" />
               <Link href="/login?mode=signup" className="btn-secondary">Start free</Link>
             </div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
@@ -186,7 +194,7 @@ fbq('track', 'PageView');`}
             See exactly how Voxility would work for your gym — book a quick demo and we&apos;ll show you it answering a lead live.
           </p>
           <div className="flex flex-col items-center gap-3">
-            <DemoModal triggerLabel="Book your demo" source="gyms_cta" />
+            <DemoModal {...DEMO_COPY} triggerLabel="Book your demo" source="gyms_cta" />
             <Link href="/login?mode=signup" className="text-sm underline" style={{ color: 'var(--accent-primary)' }}>
               or start building free →
             </Link>

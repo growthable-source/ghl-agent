@@ -31,11 +31,21 @@ function track(event: string) {
 export default function DemoModal({
   triggerLabel,
   variant = 'primary',
-  source = 'gyms_demo',
+  source = 'demo',
+  heading = 'Book your demo',
+  orgLabel = 'Business name',
+  orgPlaceholder = 'Acme Inc.',
+  emailPlaceholder = 'you@business.com',
 }: {
   triggerLabel: string
   variant?: 'primary' | 'link'
   source?: string
+  /** Niche-specific modal title, e.g. "Book your med spa demo". */
+  heading?: string
+  /** Label for the org field, e.g. "Clinic / practice name". */
+  orgLabel?: string
+  orgPlaceholder?: string
+  emailPlaceholder?: string
 }) {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<'form' | 'calendar'>('form')
@@ -168,7 +178,7 @@ export default function DemoModal({
             {step === 'form' ? (
               <form onSubmit={submit} className="p-6 sm:p-7">
                 <h3 className="text-xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>
-                  Book your gym demo
+                  {heading}
                 </h3>
                 <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
                   See Voxility answer a lead live. Pick a time on the next step.
@@ -176,8 +186,8 @@ export default function DemoModal({
 
                 <div className="space-y-3">
                   <Field label="Your name" value={name} onChange={setName} required placeholder="Alex Carter" autoComplete="name" />
-                  <Field label="Work email" value={email} onChange={setEmail} required type="email" placeholder="alex@yourgym.com" autoComplete="email" />
-                  <Field label="Gym / studio name" value={company} onChange={setCompany} required placeholder="Iron House Fitness" autoComplete="organization" />
+                  <Field label="Work email" value={email} onChange={setEmail} required type="email" placeholder={emailPlaceholder} autoComplete="email" />
+                  <Field label={orgLabel} value={company} onChange={setCompany} required placeholder={orgPlaceholder} autoComplete="organization" />
                   <Field label="Phone" value={phone} onChange={setPhone} required type="tel" placeholder="(555) 123-4567" autoComplete="tel" />
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
