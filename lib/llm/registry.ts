@@ -63,6 +63,18 @@ export const REGISTRY: Record<ResolvedKey, ResolvedModel> = {
     apiKeyEnv: 'DEEPSEEK_API_KEY',
     capabilities: { vision: false, mcpServers: false, toolReliability: 'high' },
   },
+  // Generic OpenRouter passthrough — pick any model via OPENROUTER_MODEL.
+  // Lets cost-sensitive background work (conversation mining) run on a cheap
+  // OpenRouter model with a single dedicated key, independent of the shared
+  // DeepSeek config.
+  'openrouter': {
+    key: 'openrouter',
+    provider: 'openai-compat',
+    vendorModelId: process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat',
+    baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    capabilities: { vision: false, mcpServers: false, toolReliability: 'medium' },
+  },
 }
 
 /** What `auto` resolves to. The fleet rollout switch lives here. */

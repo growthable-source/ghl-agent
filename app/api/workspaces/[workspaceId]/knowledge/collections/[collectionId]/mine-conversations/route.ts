@@ -99,10 +99,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       windowStart,
       windowEnd,
       maxConversations: max,
-      // Mining always uses the cheap fleet (resolved in the engine, never
-      // Claude). Stored for the record; 'auto'/Claude keys are coerced to the
-      // cheap default by miningModelKey().
-      model: typeof body.model === 'string' ? body.model : 'deepseek-flash',
+      // 'auto' lets the engine pick the cheap default (OpenRouter when its key
+      // is set, else deepseek-flash) — never Claude. miningModelKey() coerces
+      // 'auto'/Claude keys; an explicit cheap key passed here is honoured.
+      model: typeof body.model === 'string' ? body.model : 'auto',
     },
   })
 

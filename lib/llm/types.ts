@@ -20,6 +20,11 @@ export type LlmModelKey =
   | 'claude-haiku'
   | 'deepseek-flash'
   | 'deepseek-pro'
+  // Generic OpenRouter passthrough. vendorModelId comes from OPENROUTER_MODEL
+  // (any OpenRouter model id, e.g. 'deepseek/deepseek-chat'). Used for
+  // cost-sensitive background work (conversation mining) that must stay off
+  // Anthropic. openai-compat provider.
+  | 'openrouter'
 
 export type ResolvedKey = Exclude<LlmModelKey, 'auto'>
 

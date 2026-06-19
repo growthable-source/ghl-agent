@@ -33,14 +33,18 @@ const CONVERSATIONS_PER_LLM_BATCH = 6
 const SEARCH_PAGE_SIZE = 100
 
 // Mining is bulk, low-stakes, and runs in the background — it must use the
-// cheapest model and NEVER fall back to Anthropic. Defaults to deepseek-flash
-// (routes through DEEPSEEK_BASE_URL/KEY, e.g. OpenRouter). Override with
-// MINING_MODEL to pick a different cheap key. A run's own `model` only wins if
-// it's an explicit, non-'auto', non-Claude key.
+// cheapest model and NEVER fall back to Anthropic.
+//
+// Default precedence:
+//   1. MINING_MODEL env (explicit override),
+//   2. 'openrouter' when OPENROUTER_API_KEY is set (uses OPENROUTER_MODEL),
+//   3. 'deepseek-flash' otherwise (DEEPSEEK_BASE_URL/KEY).
+// A run's own `model` only wins if it's an explicit, non-'auto', non-Claude key.
 function miningModelKey(runModel?: string | null): string {
-  const cheapDefault = process.env.MINING_MODEL || 'deepseek-flash'
   if (runModel && runModel !== 'auto' && !runModel.startsWith('claude')) return runModel
-  return cheapDefault
+  if (process.env.MINING_MODEL) return process.env.MINING_MODEL
+  if (process.env.OPENROUTER_API_KEY) return 'openrouter'
+  return 'deepseek-flash'
 }
 
 export interface MiningEstimate {
