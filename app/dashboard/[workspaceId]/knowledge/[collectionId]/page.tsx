@@ -44,7 +44,9 @@ interface Collection {
 interface AgentLite { id: string; name: string }
 
 type Tab = 'items' | 'data_sources' | 'agents' | 'mined'
-type AddItem = 'manual' | 'qa' | 'url' | 'file' | 'notion' | 'youtube' | null
+type AddItem = 'manual' | 'qa' | 'url' | 'file' | 'notion' | 'youtube' | 'gdrive' | null
+
+interface GoogleContentStatus { enabled: boolean; connected: boolean; email: string | null }
 
 interface MineableAgent { id: string; name: string }
 interface MiningRun {
@@ -89,6 +91,7 @@ function sourceLabel(source: string): string {
     case 'youtube':    return 'YouTube'
     case 'url':        return 'Web'
     case 'file':       return 'File'
+    case 'gdrive':     return 'Google Drive'
     case 'correction': return 'Correction'
     default:           return source
   }
@@ -115,6 +118,14 @@ export default function CollectionEditorPage() {
   const [editBusy, setEditBusy] = useState(false)
   const [editErr, setEditErr] = useState<string | null>(null)
   const [mining, setMining] = useState<MiningSummary>({ runs: [], pendingCount: 0, mineableAgents: [] })
+  const [gdrive, setGdrive] = useState<GoogleContentStatus>({ enabled: false, connected: false, email: null })
+
+  useEffect(() => {
+    fetch(`/api/integrations/google-content/status?workspaceId=${workspaceId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setGdrive({ enabled: !!d.enabled, connected: !!d.connected, email: d.email ?? null }) })
+      .catch(() => { /* connector off — leave defaults */ })
+  }, [workspaceId])
 
   const fetchMining = useCallback(async () => {
     try {
@@ -277,14 +288,17 @@ export default function CollectionEditorPage() {
                 { id: 'qa',      label: '❓ Q&A pairs' },
                 { id: 'notion',  label: '◫ Notion page' },
                 { id: 'youtube', label: '▶ YouTube' },
-              ] as Array<{ id: Exclude<AddItem, null>; label: string }>).map(t => (
+                // Google Drive only appears once the connector is enabled.
+                ...(gdrive.enabled ? [{ id: 'gdrive' as const, label: '☁ Google Drive', badge: true }] : []),
+              ] as Array<{ id: Exclude<AddItem, null>; label: string; badge?: boolean }>).map(t => (
                 <button
                   key={t.id}
                   onClick={() => setAddItem(t.id)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80"
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 inline-flex items-center gap-1.5"
                   style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
                 >
                   {t.label}
+                  {t.badge && <NewBadge since="2026-06-19" />}
                 </button>
               ))}
             </div>
@@ -295,6 +309,7 @@ export default function CollectionEditorPage() {
                   type={addItem}
                   workspaceId={workspaceId}
                   collectionId={collectionId}
+                  gdrive={gdrive}
                   onClose={() => setAddItem(null)}
                   onAdded={() => { setAddItem(null); fetchAll() }}
                 />
@@ -430,11 +445,12 @@ export default function CollectionEditorPage() {
 // ──────────────────────────────────────────────────────────────────────
 
 function AddItemPanel({
-  type, workspaceId, collectionId, onClose, onAdded,
+  type, workspaceId, collectionId, gdrive, onClose, onAdded,
 }: {
   type: Exclude<AddItem, null>
   workspaceId: string
   collectionId: string
+  gdrive: GoogleContentStatus
   onClose: () => void
   onAdded: () => void
 }) {
@@ -447,6 +463,7 @@ function AddItemPanel({
             : type === 'url' ? 'Crawl a URL'
             : type === 'file' ? 'Upload a file'
             : type === 'notion' ? 'Import from Notion'
+            : type === 'gdrive' ? 'Import from Google Drive'
             : 'Import from YouTube'}
         </p>
         <button onClick={onClose} className="hover:opacity-80" style={{ color: 'var(--text-tertiary)' }}>
@@ -461,6 +478,7 @@ function AddItemPanel({
       {type === 'file'   && <FileForm   workspaceId={workspaceId} collectionId={collectionId} onAdded={onAdded} />}
       {type === 'notion' && <NotionStub />}
       {type === 'youtube'&& <YouTubeStub />}
+      {type === 'gdrive' && <GDriveForm workspaceId={workspaceId} collectionId={collectionId} status={gdrive} onAdded={onAdded} />}
     </div>
   )
 }
@@ -1155,3 +1173,171 @@ function MineModal({
 }
 
 interface MiningEstimateView { conversations: number; capped: boolean; estTokens: number; estUsd: number; model: string }
+
+// ──────────────────────────────────────────────────────────────────────
+// Google Drive import — connect (reusing the app's Google client, drive.file
+// scope) then pick exact files via the Google Picker. We only ever read the
+// files the operator picks. Each file's text becomes KnowledgeEntry rows,
+// exactly like crawl/upload. Dormant unless the connector flag is on.
+// ──────────────────────────────────────────────────────────────────────
+
+interface PickedFile { id: string; name: string; mimeType: string; sizeBytes?: number }
+
+function GDriveForm({
+  workspaceId, collectionId, status, onAdded,
+}: {
+  workspaceId: string
+  collectionId: string
+  status: GoogleContentStatus
+  onAdded: () => void
+}) {
+  const [picked, setPicked] = useState<PickedFile[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [result, setResult] = useState<string | null>(null)
+
+  // Rough token estimate from picked sizes (native Docs report no size → use a
+  // modest per-file default). content tokens ≈ bytes / 4.
+  const estTokens = picked.reduce((s, f) => s + Math.round((f.sizeBytes ?? 8000) / 4), 0)
+
+  async function openPicker() {
+    setErr(null)
+    try {
+      const cfgRes = await fetch(`/api/integrations/google-content/picker-config?workspaceId=${workspaceId}`)
+      const cfg = await cfgRes.json()
+      if (!cfgRes.ok) { setErr(cfg.error || 'Could not open Drive'); return }
+      await loadPickerApi()
+      const g = (window as any).google
+      const view = new g.picker.DocsView(g.picker.ViewId.DOCS)
+      view.setIncludeFolders(true)
+      view.setSelectFolderEnabled(false)
+      const builder = new g.picker.PickerBuilder()
+        .enableFeature(g.picker.Feature.MULTISELECT_ENABLED)
+        .setOAuthToken(cfg.accessToken)
+        .setDeveloperKey(cfg.apiKey)
+        .addView(view)
+        .setCallback((data: any) => {
+          if (data.action === g.picker.Action.PICKED) {
+            const docs = (data.docs || []).map((d: any) => ({
+              id: d.id, name: d.name, mimeType: d.mimeType, sizeBytes: d.sizeBytes ? Number(d.sizeBytes) : undefined,
+            }))
+            setPicked(prev => dedupeById([...prev, ...docs]))
+          }
+        })
+      if (cfg.appId) builder.setAppId(cfg.appId)
+      builder.build().setVisible(true)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not open the Google Picker')
+    }
+  }
+
+  async function importFiles() {
+    if (picked.length === 0) return
+    setBusy(true); setErr(null); setResult(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/knowledge/collections/${collectionId}/import/gdrive`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: picked }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setErr(d.error || 'Import failed'); return }
+      const okCount = (d.imported || []).length
+      const failCount = (d.failed || []).length
+      setResult(`Imported ${okCount} file${okCount === 1 ? '' : 's'}${failCount ? `, ${failCount} failed` : ''}.`)
+      setPicked([])
+      onAdded()
+    } catch {
+      setErr('Import failed')
+    } finally { setBusy(false) }
+  }
+
+  if (!status.connected) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          Connect Google Drive to import docs as knowledge. You&apos;ll pick the exact files — we never read the rest of your drive.
+        </p>
+        <a
+          href={`/api/integrations/google-content/connect?workspaceId=${workspaceId}`}
+          className="inline-block text-xs font-semibold px-3 py-1.5 rounded-lg"
+          style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+        >
+          Connect Google Drive
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          {status.email ? `Connected as ${status.email}. ` : ''}Pick the files to import.
+        </p>
+        <button onClick={openPicker} className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+          + Choose files from Drive
+        </button>
+      </div>
+
+      {picked.length > 0 && (
+        <>
+          <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+            {picked.map(f => (
+              <div key={f.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                <span className="truncate">{f.name}</span>
+                <button onClick={() => setPicked(prev => prev.filter(p => p.id !== f.id))} className="hover:opacity-80 flex-shrink-0" style={{ color: 'var(--accent-red)' }}>Remove</button>
+              </div>
+            ))}
+          </div>
+          <div className="text-xs rounded-lg p-2.5" style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}>
+            ~{picked.length} file{picked.length === 1 ? '' : 's'} · ~{estTokens.toLocaleString()} tokens. Importing large files adds to your agent&apos;s knowledge size — keep selections focused.
+          </div>
+        </>
+      )}
+
+      {err && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{err}</p>}
+      {result && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{result}</p>}
+
+      <button
+        onClick={importFiles}
+        disabled={busy || picked.length === 0}
+        className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+        style={busy || picked.length === 0
+          ? { background: 'var(--surface-tertiary)', color: 'var(--text-muted)', cursor: 'not-allowed' }
+          : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+      >
+        {busy ? 'Importing…' : `Import ${picked.length || ''} file${picked.length === 1 ? '' : 's'}`.trim()}
+      </button>
+    </div>
+  )
+}
+
+function dedupeById(files: PickedFile[]): PickedFile[] {
+  const seen = new Set<string>()
+  return files.filter(f => (seen.has(f.id) ? false : (seen.add(f.id), true)))
+}
+
+// Load the Google Picker API once. Resolves when google.picker is ready.
+let pickerApiPromise: Promise<void> | null = null
+function loadPickerApi(): Promise<void> {
+  if (pickerApiPromise) return pickerApiPromise
+  pickerApiPromise = new Promise<void>((resolve, reject) => {
+    const w = window as any
+    if (w.google?.picker) return resolve()
+    const existing = document.getElementById('google-api-js')
+    const onload = () => {
+      try { w.gapi.load('picker', { callback: () => resolve(), onerror: () => reject(new Error('picker load failed')) }) }
+      catch (e) { reject(e instanceof Error ? e : new Error('picker load failed')) }
+    }
+    if (existing) { onload(); return }
+    const s = document.createElement('script')
+    s.id = 'google-api-js'
+    s.src = 'https://apis.google.com/js/api.js'
+    s.async = true
+    s.defer = true
+    s.onload = onload
+    s.onerror = () => reject(new Error('Failed to load Google API script'))
+    document.body.appendChild(s)
+  })
+  return pickerApiPromise
+}

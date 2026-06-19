@@ -4540,3 +4540,33 @@ model MinedQaPair {
   @@index([runId])
   @@index([workspaceId])
 }
+
+// ─── Google content connector (Drive now, Gmail later) ──────────────────────
+// Workspace-scoped OAuth connection used to import Drive files (and, once the
+// restricted gmail.readonly scope passes Google verification, Gmail threads)
+// into knowledge collections. Reuses the app's existing Google OAuth client;
+// this is a SEPARATE consent round-trip from NextAuth login that adds the
+// drive.file scope and stores its own refresh token.
+//
+// Drive uses the non-restricted `drive.file` scope + the Google Picker, so the
+// app only ever sees files the operator explicitly picked — no whole-drive
+// access, no restricted-scope verification needed. The whole feature is gated
+// behind the GOOGLE_CONTENT_ENABLED env flag until the Drive API + Picker key
+// are provisioned on the existing Google Cloud project.
+//
+// Scalar workspaceId (FK + cascade in hand-run DDL), matching the mining tables.
+model GoogleContentConnection {
+  id           String   @id @default(cuid())
+  workspaceId  String   @unique
+  // The connected Google account's email, for display ("Connected as …").
+  email        String?
+  // OAuth refresh token used to mint short-lived access tokens for Drive/
+  // Picker calls. Server-only.
+  refreshToken String   @db.Text
+  // Space-separated granted scopes, so the UI can tell whether Gmail is
+  // available on this connection once that scope ships.
+  scopes       String   @default("")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
