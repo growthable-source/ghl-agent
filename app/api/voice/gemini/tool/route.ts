@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { executeTool } from '@/lib/agent/execute-tool'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
+import { verifyBridgeRequest } from '@/lib/voice/gemini/signing'
 
 /**
  * POST { agentId, name, args, widgetId? }
@@ -24,12 +25,14 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const cors = widgetCorsHeaders(req.headers.get('origin'))
-  const body = (await req.json().catch(() => ({}))) as {
-    agentId?: string
-    name?: string
-    args?: Record<string, unknown>
-    widgetId?: string
-  }
+  // Read the raw body ONCE so the bridge HMAC sees the exact bytes and the
+  // JSON parse reuses the same string (the body can only be read once).
+  const raw = await req.text()
+  const isBridge = verifyBridgeRequest(raw, req.headers.get('x-voice-signature'))
+  let body: { agentId?: string; name?: string; args?: Record<string, unknown>; widgetId?: string } = {}
+  try {
+    body = JSON.parse(raw)
+  } catch {}
   const agentId = typeof body.agentId === 'string' ? body.agentId : ''
   const name = typeof body.name === 'string' ? body.name : ''
   const args = (body.args && typeof body.args === 'object' ? body.args : {}) as Record<string, unknown>
@@ -51,7 +54,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Auth branch ──
-  if (body.widgetId) {
+  if (isBridge) {
+    // Server-to-server call from the Fly phone bridge — the HMAC over the
+    // raw body (shared signing secret) is the auth. No cookie/widget key.
+  } else if (body.widgetId) {
     const v = await validateWidgetRequest(req, body.widgetId)
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: v.status, headers: cors })
     if (v.widget.workspaceId !== agent.workspaceId) {
