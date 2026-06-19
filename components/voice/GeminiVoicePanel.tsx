@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
 import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
 import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
+import { GeminiPhoneNumberPanel } from '@/components/voice/GeminiPhoneNumberPanel'
 
 interface GeminiConfig {
   isActive: boolean
@@ -14,6 +15,9 @@ interface GeminiConfig {
   maxDurationSecs: number
   recordCalls: boolean
   language: string | null
+  // Phone (Plan 2): the Twilio number wired to this agent. Provisioned by
+  // the phone panel's POST (persisted immediately, not via the save button).
+  twilioNumber: string | null
 }
 
 interface VoiceWire {
@@ -237,6 +241,15 @@ export default function GeminiVoicePanel({
             style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-primary)' }} />
         </div>
       </div>
+
+      {/* Phone (Plan 2): provision a Twilio number so PSTN callers reach
+          this Gemini agent. Persists immediately via its own POST. */}
+      <GeminiPhoneNumberPanel
+        workspaceId={workspaceId}
+        agentId={agentId}
+        currentNumber={config.twilioNumber}
+        onProvisioned={(e164) => patch({ twilioNumber: e164 })}
+      />
 
       {/* Save + Test voice */}
       <div className="flex items-center gap-3">
