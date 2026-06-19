@@ -47,6 +47,35 @@ function miningModelKey(runModel?: string | null): string {
   return 'deepseek-flash'
 }
 
+// LeadConnector rate limits a location to a short burst window (~100 req/10s)
+// shared across ALL app usage. Mining fans out one getMessages per
+// conversation, so it must throttle + back off on 429 or it trips the limit.
+const CRM_THROTTLE_MS = 150 // ~6–7 req/s, comfortably under the burst ceiling
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+/**
+ * Run a CRM call with exponential backoff on 429 (Too Many Requests). The GHL
+ * adapter throws `GHL API error 429 on …`, so we match on the status. Other
+ * errors propagate immediately. Bounded attempts; the cron's deadline +
+ * cursor resume absorb anything that can't finish this tick.
+ */
+async function withCrmRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const MAX_ATTEMPTS = 5
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const isRateLimit = /\b429\b/.test(msg) || /too many requests/i.test(msg)
+      if (!isRateLimit || attempt >= MAX_ATTEMPTS - 1) throw err
+      // 2s, 4s, 8s, 16s (+ jitter) — LeadConnector's window is ~10s.
+      const delay = 2000 * 2 ** attempt + ((attempt * 137) % 400)
+      await sleep(delay)
+    }
+  }
+}
+
 export interface MiningEstimate {
   conversations: number
   /** True when the in-window count exceeded the scan cap and is a floor. */
@@ -146,12 +175,12 @@ async function pageConversations(
   let done = false
 
   while (scanned < opts.max) {
-    const page = await adapter.searchConversations({
+    const page = await withCrmRetry(() => adapter.searchConversations({
       limit: SEARCH_PAGE_SIZE,
       sort: 'desc',
       sortBy: 'last_message_date',
       startAfterDate: cursor,
-    })
+    }))
     if (page.length === 0) { done = true; break }
 
     const inWindow: Conversation[] = []
@@ -207,7 +236,8 @@ export async function estimateMining(input: {
   let sampledCount = 0
   for (const c of sample) {
     try {
-      const msgs = await adapter.getMessages(c.id, MESSAGES_PER_CONVERSATION)
+      await sleep(CRM_THROTTLE_MS)
+      const msgs = await withCrmRetry(() => adapter.getMessages(c.id, MESSAGES_PER_CONVERSATION))
       const transcript = buildTranscript(msgs)
       if (transcript) { sampledTokens += estimateTokens(transcript); sampledCount++ }
     } catch { /* skip unreadable threads in the estimate */ }
@@ -331,7 +361,8 @@ export async function runMiningRun(
         const t = c.sort?.[0] ?? (c.lastMessageDate ? Date.parse(c.lastMessageDate) : 0)
         if (t) persistedCursor = String(t)
         try {
-          const msgs = await adapter.getMessages(c.id, MESSAGES_PER_CONVERSATION)
+          await sleep(CRM_THROTTLE_MS)
+          const msgs = await withCrmRetry(() => adapter.getMessages(c.id, MESSAGES_PER_CONVERSATION))
           const transcript = buildTranscript(msgs)
           if (transcript) batchInputs.push({ index: batchInputs.length, transcript, conversationId: c.id })
         } catch { /* skip unreadable thread */ }
