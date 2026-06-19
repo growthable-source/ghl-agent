@@ -26,6 +26,7 @@ import Link from 'next/link'
 import { VOICE_TEMPLATES, type VoiceTemplate } from '@/lib/voice/templates'
 import { generateAgentName } from '@/lib/random-name'
 import VoicePhoneCallUI from '@/components/dashboard/VoicePhoneCallUI'
+import { GeminiPhoneNumberPanel } from '@/components/voice/GeminiPhoneNumberPanel'
 import { VAPI_NATIVE_DEFAULT_VOICE_ID } from '@/lib/voice/vapi-native-voices'
 
 type Step = 'use_case' | 'voice' | 'personality' | 'knowledge' | 'phone' | 'try_it'
@@ -44,7 +45,7 @@ const STEPS: { key: Step; label: string }[] = [
 // config — Vapi-native voices (Elliot et al., Riley's stack) or any
 // of ElevenLabs' 5000+ voices. Both engines route through Vapi for
 // phone calls.
-type Engine = 'vapi' | 'elevenlabs'
+type Engine = 'vapi' | 'elevenlabs' | 'gemini'
 
 interface VoiceOption {
   id: string
@@ -80,7 +81,7 @@ export default function VoiceWizardPage() {
   //     Vapi-native (Elliot is what powers Vapi's "Riley" demo and
   //     is the stack we've verified end-to-end). ElevenLabs stays
   //     as a second option for operators who want the 5000+ catalogue.
-  const [engine, setEngine] = useState<Engine>('vapi')
+  const [engine, setEngine] = useState<Engine>('gemini')
 
   // ─── Step 2: voice ────────────────────────────────────────────────
   const [voices, setVoices] = useState<VoiceOption[]>([])
@@ -189,6 +190,14 @@ export default function VoiceWizardPage() {
     if (elliot) setSelectedVoice(elliot)
   }, [engine, voices, selectedVoice])
 
+  // Gemini is the star runtime + the wizard default, so pre-select its
+  // first native voice (Puck et al.) once the catalogue loads. Keeps
+  // canContinue (which requires a selectedVoice) green on the happy path.
+  useEffect(() => {
+    if (engine !== 'gemini' || selectedVoice || voices.length === 0) return
+    setSelectedVoice(voices[0])
+  }, [engine, voices, selectedVoice])
+
   // Knowledge domains fetcher
   useEffect(() => {
     fetch(`/api/admin/knowledge-domains?workspaceId=${workspaceId}`)
@@ -261,28 +270,45 @@ export default function VoiceWizardPage() {
         knowledgeMode === 'all' ? null
         : knowledgeMode === 'none' ? []
         : knowledgePick
+      // Gemini is a native speech-to-speech runtime — it persists to
+      // GeminiVoiceConfig and never touches Vapi. The Twilio number is
+      // bought on the final step after the agent exists, so no number
+      // travels in this body. Vapi/ElevenLabs keep the existing vapiConfig.
+      const voiceBody = engine === 'gemini'
+        ? {
+            geminiVoiceConfig: {
+              isActive: true,
+              voiceName: selectedVoice?.id ?? null,
+              firstMessage,
+              endCallMessage,
+              language: null,
+            },
+          }
+        : {
+            vapiConfig: {
+              isActive: true,
+              // Post-Phase-D the two recognised values on VapiConfig.ttsProvider
+              // are 'vapi' (Vapi-native) and 'elevenlabs'. resolveVoiceEngine
+              // server-side maps unknown/legacy values to 'vapi' as the new
+              // default.
+              ttsProvider: engine,
+              voiceId: selectedVoice?.id ?? '',
+              voiceName: selectedVoice?.name ?? null,
+              firstMessage,
+              endCallMessage,
+              phoneNumberId: purchasedNumber?.id ?? null,
+              phoneNumber: purchasedNumber?.number ?? null,
+              maxDurationSecs: 600,
+              recordCalls: true,
+            },
+          }
       const body: Record<string, unknown> = {
         name: agentName,
         systemPrompt: composedSystemPrompt,
         agentType: 'VOICE',
         formalityLevel,
         ...(knowledgeDomainIds && { knowledgeDomainIds }),
-        vapiConfig: {
-          isActive: true,
-          // Post-Phase-D the two recognised values on VapiConfig.ttsProvider
-          // are 'vapi' (Vapi-native) and 'elevenlabs'. resolveVoiceEngine
-          // server-side maps unknown/legacy values to 'vapi' as the new
-          // default.
-          ttsProvider: engine,
-          voiceId: selectedVoice?.id ?? '',
-          voiceName: selectedVoice?.name ?? null,
-          firstMessage,
-          endCallMessage,
-          phoneNumberId: purchasedNumber?.id ?? null,
-          phoneNumber: purchasedNumber?.number ?? null,
-          maxDurationSecs: 600,
-          recordCalls: true,
-        },
+        ...voiceBody,
       }
       const res = await fetch(`/api/workspaces/${workspaceId}/agents`, {
         method: 'POST',
@@ -317,7 +343,12 @@ export default function VoiceWizardPage() {
     if (step === 'voice') return selectedVoice !== null
     if (step === 'personality') return firstMessage.trim().length > 0 && composedSystemPrompt.trim().length > 0
     if (step === 'knowledge') return true
-    if (step === 'phone') return phoneMode === 'skip' || phoneMode === 'port' || !!purchasedNumber
+    if (step === 'phone') {
+      // Gemini buys its Twilio number on the final step (after the agent
+      // exists), so the phone step is informational — always passable.
+      if (engine === 'gemini') return true
+      return phoneMode === 'skip' || phoneMode === 'port' || !!purchasedNumber
+    }
     return false
   })()
 
@@ -425,6 +456,7 @@ export default function VoiceWizardPage() {
           )}
           {step === 'phone' && (
             <PhoneStep
+              engine={engine}
               mode={phoneMode}
               onMode={setPhoneMode}
               countryCode={countryCode}
@@ -448,7 +480,7 @@ export default function VoiceWizardPage() {
               agentName={agentName}
               voiceId={selectedVoice?.id ?? ''}
               firstMessage={firstMessage}
-              ttsProvider={engine}
+              engine={engine}
               outboundEnabled={!!purchasedNumber}
             />
           )}
@@ -555,14 +587,16 @@ function VoiceStep({
         Pick a voice
       </h2>
       <p className="text-sm mb-5" style={{ color: 'var(--text-tertiary)' }}>
-        Standard voices sound great on the phone and are ready to go. Want a
-        specific voice? Switch to ElevenLabs for a much larger premium catalogue.
+        Gemini is a native speech-to-speech voice — it hears and speaks audio
+        directly, so it sounds the most human. Prefer the classic phone stack?
+        Switch to Standard or ElevenLabs.
       </p>
       <div
         className="inline-flex items-center gap-1 p-1 rounded-lg mb-5"
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
         {([
+          { id: 'gemini' as const,     label: 'Gemini — native voice (most human)' },
           { id: 'vapi' as const,       label: 'Standard' },
           { id: 'elevenlabs' as const, label: 'ElevenLabs — premium' },
         ]).map(opt => {
@@ -865,9 +899,10 @@ function KnowledgeStep({
 }
 
 function PhoneStep({
-  mode, onMode, countryCode, onCountryCode, areaCode, onAreaCode,
+  engine, mode, onMode, countryCode, onCountryCode, areaCode, onAreaCode,
   purchasedNumber, purchasing, error, onPurchase,
 }: {
+  engine: Engine
   mode: 'buy' | 'skip' | 'port'
   onMode: (m: 'buy' | 'skip' | 'port') => void
   countryCode: string
@@ -879,6 +914,40 @@ function PhoneStep({
   error: string | null
   onPurchase: () => void
 }) {
+  // Gemini provisions its Twilio number on the final step (after the
+  // agent row exists, so the number can be persisted to GeminiVoiceConfig
+  // and the inbound router can resolve it). Nothing to do here — just
+  // tell the operator where the number lives.
+  if (engine === 'gemini') {
+    return (
+      <div>
+        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+          Phone number
+        </h2>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-tertiary)' }}>
+          Where calls come in and go out from.
+        </p>
+        <div
+          className="rounded-xl p-5"
+          style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+        >
+          <div className="flex items-start gap-3">
+            <div className="text-2xl leading-none">📞</div>
+            <div>
+              <div className="font-medium text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
+                Your phone number is set up on the next step
+              </div>
+              <div className="text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                We&apos;ll provision a dedicated number for this agent right after it&apos;s
+                created — so it&apos;s wired straight to your new agent. You can also test in
+                the browser first without a number.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
   // Vapi sells provider-managed numbers in these countries. US is the
   // only one on the free tier — the rest need billing enabled at
   // dashboard.vapi.ai. We surface them all and let the operator deal with
@@ -1006,7 +1075,7 @@ function PhoneStep({
 
 function TryItStep({
   workspaceId, agentId, submitting, error, onCreate, hasSelection,
-  agentName, voiceId, firstMessage, ttsProvider, outboundEnabled,
+  agentName, voiceId, firstMessage, engine, outboundEnabled,
 }: {
   workspaceId: string
   agentId: string | null
@@ -1017,7 +1086,7 @@ function TryItStep({
   agentName: string
   voiceId: string
   firstMessage: string
-  ttsProvider: 'vapi' | 'elevenlabs'
+  engine: Engine
   outboundEnabled: boolean
 }) {
   const [locationId, setLocationId] = useState<string | null>(null)
@@ -1053,6 +1122,40 @@ function TryItStep({
             {submitting ? 'Creating agent…' : 'Create agent and test'}
           </button>
         </div>
+      ) : engine === 'gemini' ? (
+        // Gemini is a native speech-to-speech runtime — VoicePhoneCallUI is
+        // Vapi-specific, so we don't render it here. The Twilio number is
+        // bought right now (the agent row exists), and the in-browser test
+        // lives on the agent's voice config page.
+        <div className="space-y-5">
+          <p className="text-sm font-medium" style={{ color: '#22c55e' }}>
+            ✓ Your Gemini voice agent is live.
+          </p>
+          <div>
+            <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+              Get a phone number
+            </h3>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
+              Provision a dedicated number so callers can reach this agent.
+            </p>
+            <GeminiPhoneNumberPanel
+              workspaceId={workspaceId}
+              agentId={agentId}
+              currentNumber={null}
+              onProvisioned={() => {}}
+            />
+          </div>
+          <p className="text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Want to hear it first?{' '}
+            <Link
+              href={`/dashboard/${workspaceId}/voice/${agentId}/configuration`}
+              className="underline"
+              style={{ color: '#fa4d2e' }}
+            >
+              Open agent → test in browser
+            </Link>
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
           <VoicePhoneCallUI
@@ -1061,7 +1164,7 @@ function TryItStep({
             agentName={agentName}
             voiceId={voiceId}
             firstMessage={firstMessage}
-            ttsProvider={ttsProvider}
+            ttsProvider={engine}
             locationId={locationId ?? ''}
             outboundEnabled={outboundEnabled && !!locationId}
           />

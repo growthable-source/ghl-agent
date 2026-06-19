@@ -336,6 +336,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       } catch (err: any) {
         console.warn(`[Agents] VapiConfig create failed for ${agent.id}: ${err?.message}`)
       }
+    } else if (agentType === 'VOICE' && body.geminiVoiceConfig && typeof body.geminiVoiceConfig === 'object') {
+      try {
+        const g = body.geminiVoiceConfig as Record<string, unknown>
+        await db.geminiVoiceConfig.create({
+          data: {
+            agentId: agent.id,
+            isActive: g.isActive !== false,
+            voiceName: typeof g.voiceName === 'string' ? g.voiceName : null,
+            ...(typeof g.model === 'string' && g.model ? { model: g.model } : {}),
+            firstMessage: typeof g.firstMessage === 'string' ? g.firstMessage : null,
+            endCallMessage: typeof g.endCallMessage === 'string' ? g.endCallMessage : null,
+            language: typeof g.language === 'string' ? g.language : null,
+            ...(typeof g.twilioNumber === 'string' && { twilioNumber: g.twilioNumber }),
+            ...(typeof g.twilioNumberSid === 'string' && { twilioNumberSid: g.twilioNumberSid }),
+          },
+        })
+        // Flip the runtime discriminator so the dashboard + inbound phone
+        // router treat this as a Gemini voice agent (not Vapi).
+        await db.agent.update({ where: { id: agent.id }, data: { voiceRuntime: 'gemini' } })
+      } catch (err: any) {
+        console.warn(`[Agents] Gemini voice config create failed for ${agent.id}: ${err?.message}`)
+      }
     }
 
     return NextResponse.json({ agent, vapiAssistantId, vapiSyncError }, { status: 201 })
