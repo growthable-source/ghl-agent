@@ -112,8 +112,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
      * second one no-ops via the try/catch.
      */
     async signIn({ user, account }) {
-      // Email/credentials providers (and the catch-all) skip this.
-      if (!account || account.type !== 'oauth' || !user.email) return true
+      // Only OAuth/OIDC sign-ins need account auto-linking; email,
+      // credentials, and webauthn skip this.
+      //
+      // IMPORTANT: Google is an *OIDC* provider in Auth.js v5
+      // (account.type === 'oidc'), NOT 'oauth' — only GitHub is 'oauth'.
+      // The original guard checked `!== 'oauth'`, which silently excluded
+      // every Google sign-in. growthable.io is a Google Workspace domain,
+      // so the entire internal team hit OAuthAccountNotLinked while GitHub
+      // users were fine. Cover both provider types.
+      if (!account || !user.email) return true
+      if (account.type !== 'oauth' && account.type !== 'oidc') return true
 
       const existing = await db.user.findUnique({
         where: { email: user.email },
