@@ -381,6 +381,7 @@ function rollup<Row, Payload extends Record<string, unknown>>(
     }
   }
   return Array.from(buckets.values())
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- drop `sum`, keep the rest
     .map(({ sum: _sum, ...rest }) => rest as Payload & { count: number; avg: number })
     .sort((a, b) => b.count - a.count)
 }
