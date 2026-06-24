@@ -40,6 +40,27 @@ export function resolveScope(
   return { workspaceId: opts.requestedWorkspaceId }
 }
 
+/**
+ * Per-workspace endpoint scope resolution. Wraps the pure `resolveScope` and,
+ * for org keys only, verifies the requested workspace actually exists (404 if
+ * not) — workspace keys are already locked to their own workspace, so they skip
+ * the extra query. Returns the resolved (non-null) workspaceId.
+ */
+export async function resolveWorkspaceScope(
+  key: KeyContext,
+  requestedWorkspaceId: string | undefined
+): Promise<{ workspaceId: string }> {
+  const { workspaceId } = resolveScope(key, { requestedWorkspaceId })
+  if (!workspaceId) {
+    throw new AuthError(422, 'workspace_required', 'workspaceId required')
+  }
+  if (key.scope === 'org') {
+    const exists = await db.workspace.findUnique({ where: { id: workspaceId }, select: { id: true } })
+    if (!exists) throw new AuthError(404, 'not_found', 'Workspace not found')
+  }
+  return { workspaceId }
+}
+
 /** Verify the Bearer key against the DB. Throws AuthError(401) on failure. */
 export async function authenticateApiKey(req: NextRequest): Promise<KeyContext> {
   const header = req.headers.get('authorization') || ''

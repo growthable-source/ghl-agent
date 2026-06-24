@@ -324,7 +324,7 @@ export async function listCsatResponses(
   scope: CsatScope,
   opts: { cursor?: string; limit?: number },
 ) {
-  const limit = Math.min(opts.limit ?? 50, 200)
+  const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? 50) || 50), 200)
   const where: Prisma.WidgetConversationWhereInput = {
     csatSubmittedAt: { gte: scope.from, lt: scope.to },
     widget: { workspaceId: scope.workspaceId },

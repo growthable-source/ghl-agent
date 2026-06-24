@@ -22,6 +22,15 @@ export function parseWindow(url: URL): Window {
   return { from, to, brandId }
 }
 
+/** Parse a `limit` query param, clamped to [1, max], default `def`. NaN-safe. */
+export function parseLimit(url: URL, def = 50, max = 200): number {
+  const raw = url.searchParams.get('limit')
+  if (!raw) return def
+  const n = Math.floor(Number(raw))
+  if (!Number.isFinite(n)) return def
+  return Math.min(Math.max(1, n), max)
+}
+
 /** Map an AuthError (or unknown) to a uniform JSON error response. */
 export function errorResponse(err: unknown): NextResponse {
   if (err instanceof AuthError) {

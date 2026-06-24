@@ -267,7 +267,7 @@ export async function listTickets(
   scope: MetricScope,
   opts: { cursor?: string; limit?: number },
 ) {
-  const limit = Math.min(opts.limit ?? 50, 200)
+  const limit = Math.min(Math.max(1, Math.floor(opts.limit ?? 50) || 50), 200)
   const where: Record<string, unknown> = {
     workspaceId: scope.workspaceId,
     createdAt: { gte: scope.from, lt: scope.to },
