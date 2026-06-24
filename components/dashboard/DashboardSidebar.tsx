@@ -48,6 +48,8 @@ const FEATURE_SHIP_DATES: Record<string, string> = {
   gettingStarted: '2026-05-29', // First-run guide for newly-installed workspaces
   voiceAgents: '2026-06-06', // Voice agents promoted to their own top-level section
   copilot: '2026-06-10', // Real-time screen-share Co-Pilot (v0, behind plan gate)
+  apiAccess: '2026-06-24', // API Access settings page (support-metrics connector)
+  slaPolicies: '2026-06-24', // SLA Policies settings page (support-metrics connector)
 }
 
 export default function DashboardSidebar() {
@@ -499,6 +501,8 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/settings/ticketing`, 'Ticketing')}
                     {navLink(`/dashboard/${workspaceId}/settings/live-chat`, 'Live chat queue', null, '2026-06-15')}
                     {navLink(`/dashboard/${workspaceId}/settings/kiosk`, 'Shared-login operators', null, '2026-06-17')}
+                    {navLink(`/dashboard/${workspaceId}/settings/api-access`, 'API Access', null, FEATURE_SHIP_DATES.apiAccess)}
+                    {navLink(`/dashboard/${workspaceId}/settings/sla`, 'SLA Policies', null, FEATURE_SHIP_DATES.slaPolicies)}
                   </div>
                 </div>
                 </>)}
