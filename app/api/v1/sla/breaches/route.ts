@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateApiKey, resolveScope } from '@/lib/api-auth'
 import { parseWindow, errorResponse, ok } from '@/lib/api-scope'
+import { withApiLog } from '@/lib/api-log'
 import { listSlaBreaches } from '@/lib/support-metrics/sla'
 
-export async function GET(req: NextRequest) {
+export const GET = withApiLog(async (req: NextRequest) => {
   try {
     const key = await authenticateApiKey(req)
     const url = new URL(req.url)
@@ -16,4 +17,4 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     return errorResponse(err)
   }
-}
+})

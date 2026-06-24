@@ -2,10 +2,12 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authenticateApiKey, resolveScope, AuthError } from '@/lib/api-auth'
 import { parseWindow, errorResponse, ok } from '@/lib/api-scope'
+import { withApiLog } from '@/lib/api-log'
 import { getTicket } from '@/lib/support-metrics/tickets'
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withApiLog(async (req: NextRequest, ctx?: unknown) => {
   try {
+    const { params } = ctx as { params: Promise<{ id: string }> }
     const key = await authenticateApiKey(req)
     const url = new URL(req.url)
     const { workspaceId } = resolveScope(key, { requestedWorkspaceId: url.searchParams.get('workspaceId') || undefined })
@@ -17,4 +19,4 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch (err) {
     return errorResponse(err)
   }
-}
+})

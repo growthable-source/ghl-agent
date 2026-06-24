@@ -32,5 +32,9 @@ export function errorResponse(err: unknown): NextResponse {
 }
 
 export function ok(data: unknown, meta: Record<string, unknown>): NextResponse {
-  return NextResponse.json({ ...meta, data })
+  const res = NextResponse.json({ ...meta, data })
+  if (typeof meta.scope === 'string') res.headers.set('x-api-scope', meta.scope)
+  if (typeof meta.workspaceId === 'string') res.headers.set('x-api-workspace', meta.workspaceId)
+  if (typeof meta.apiKeyId === 'string') res.headers.set('x-api-key-id', meta.apiKeyId)
+  return res
 }
