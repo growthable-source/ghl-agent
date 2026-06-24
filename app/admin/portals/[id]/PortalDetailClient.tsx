@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
+import BrandMultiSelect from '@/components/BrandMultiSelect'
 
 interface Brand { id: string; name: string; slug: string }
 interface BrandWithWorkspace { id: string; name: string; slug: string; workspace: { id: string; name: string } }
@@ -49,15 +50,6 @@ export default function PortalDetailClient({
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteOk, setInviteOk] = useState<string | null>(null)
   const [inviting, setInviting] = useState(false)
-
-  function toggleInviteBrand(id: string) {
-    setInviteBrandIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
 
   async function sendInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -135,26 +127,12 @@ export default function PortalDetailClient({
             {brands.length === 0 ? (
               <p className="text-xs text-zinc-500">No brands in this portal yet. Add some under “Brands in this portal” above.</p>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {brands.map(b => {
-                  const on = inviteBrandIds.has(b.id)
-                  return (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => toggleInviteBrand(b.id)}
-                      className={
-                        'px-2.5 py-1 rounded text-xs border transition-colors ' +
-                        (on
-                          ? 'bg-amber-400 text-zinc-950 border-amber-400'
-                          : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-600')
-                      }
-                    >
-                      {b.name}
-                    </button>
-                  )
-                })}
-              </div>
+              <BrandMultiSelect
+                options={brands.map(b => ({ id: b.id, name: b.name }))}
+                selected={inviteBrandIds}
+                onChange={setInviteBrandIds}
+                placeholder="Select brands to assign"
+              />
             )}
             <p className="text-xs text-zinc-500 mt-1.5">
               The user will only see conversations for the brands you select.
@@ -256,15 +234,6 @@ function UserCard({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  function toggle(id: string) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   async function save() {
     setError(null)
     setSaving(true)
@@ -328,26 +297,12 @@ function UserCard({
       <div className="mt-3">
         {editing ? (
           <>
-            <div className="flex flex-wrap gap-2">
-              {brands.map(b => {
-                const on = selected.has(b.id)
-                return (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => toggle(b.id)}
-                    className={
-                      'px-2.5 py-1 rounded text-xs border transition-colors ' +
-                      (on
-                        ? 'bg-amber-400 text-zinc-950 border-amber-400'
-                        : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-600')
-                    }
-                  >
-                    {b.name}
-                  </button>
-                )
-              })}
-            </div>
+            <BrandMultiSelect
+              options={brands.map(b => ({ id: b.id, name: b.name }))}
+              selected={selected}
+              onChange={setSelected}
+              placeholder="Select brands"
+            />
             {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
             <div className="flex items-center gap-2 mt-3">
               <button
@@ -552,29 +507,8 @@ function BrandCatalogSection({
 }) {
   const [editing, setEditing] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set(catalog.map(b => b.id)))
-  const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  function toggle(id: string) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const q = query.trim().toLowerCase()
-  const visible = q
-    ? allBrands.filter(b => b.name.toLowerCase().includes(q) || b.workspace.name.toLowerCase().includes(q))
-    : allBrands
-  const groups = new Map<string, BrandWithWorkspace[]>()
-  for (const b of visible) {
-    const arr = groups.get(b.workspace.name) ?? []
-    arr.push(b)
-    groups.set(b.workspace.name, arr)
-  }
 
   async function save() {
     setError(null)
@@ -630,40 +564,17 @@ function BrandCatalogSection({
           )
         ) : (
           <>
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Search brands or workspaces…"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:border-amber-400 outline-none mb-3"
+            <BrandMultiSelect
+              options={allBrands.map(b => ({
+                id: b.id,
+                name: b.name,
+                workspace: b.workspace,
+              }))}
+              selected={selected}
+              onChange={setSelected}
+              groupByWorkspace
+              placeholder="Select brands for this portal"
             />
-            <div className="max-h-80 overflow-y-auto space-y-4">
-              {Array.from(groups.entries()).map(([wsName, list]) => (
-                <div key={wsName}>
-                  <p className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5">{wsName}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {list.map(b => {
-                      const on = selected.has(b.id)
-                      return (
-                        <button
-                          key={b.id}
-                          type="button"
-                          onClick={() => toggle(b.id)}
-                          className={
-                            'px-2.5 py-1 rounded text-xs border transition-colors ' +
-                            (on
-                              ? 'bg-amber-400 text-zinc-950 border-amber-400'
-                              : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-600')
-                          }
-                        >
-                          {b.name}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-              {visible.length === 0 && <p className="text-xs text-zinc-500">No brands match “{query}”.</p>}
-            </div>
             {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
             <div className="flex items-center gap-2 mt-4">
               <button
