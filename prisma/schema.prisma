@@ -215,6 +215,10 @@ model Workspace {
   // editor. Coexists with the hardcoded registry at lib/agent/presets.ts.
   presets WorkspacePreset[]
 
+  // ─── External API access ───
+  ApiKeys     ApiKey[]
+  SlaPolicies SlaPolicy[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -4178,6 +4182,57 @@ model LiveChatSettings {
   queueMessage            String? @db.Text
 
   updatedAt DateTime @updatedAt
+}
+
+// ─── External metrics API ────────────────────────────────────────────────────
+// API keys, SLA policy targets, and request audit log for the /api/v1/...
+// read-only metrics API used by external reporting tools.
+
+model ApiKey {
+  id              String    @id @default(cuid())
+  workspaceId     String? // null = org-scope key
+  scope           String // 'workspace' | 'org'
+  name            String
+  prefix          String // first 12 chars of the raw key, shown in UI
+  hashedKey       String    @unique // SHA-256 hex of the raw key
+  lastUsedAt      DateTime?
+  createdByUserId String?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, revokedAt])
+}
+
+model SlaPolicy {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  priority          String // 'urgent' | 'high' | 'normal' | 'low' | 'default'
+  firstResponseMins Int? // target minutes; null = not tracked
+  resolutionMins    Int?
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, priority])
+  @@index([workspaceId])
+}
+
+model ApiRequestLog {
+  id          String   @id @default(cuid())
+  apiKeyId    String?
+  scope       String
+  workspaceId String?
+  path        String
+  status      Int
+  durationMs  Int
+  createdAt   DateTime @default(now())
+
+  @@index([apiKeyId, createdAt])
+  @@index([createdAt])
 }
 
 // ─── Shared-login kiosk operators ───────────────────────────────────
