@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { getTicketingStatus } from '@/lib/ticketing-access'
+import { getTicketMetrics } from '@/lib/support-metrics/tickets'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -57,162 +57,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
   const brandFilter = url.searchParams.get('brandId')
 
-  // Shared base — workspace + brand filter. Date filters layer on
-  // top per query depending on what's being measured.
-  const base: Prisma.TicketWhereInput = { workspaceId }
-  if (brandFilter === 'no_brand') {
-    base.brandId = null
-  } else if (brandFilter) {
-    base.brandId = brandFilter
-  }
-
-  // ── Scorecards ─────────────────────────────────────────────────────
-  // open    — currently open + pending + on_hold (snapshot, not window)
-  // created — opened in window
-  // closed  — closed in window
-  const [openCount, createdCount, closedCount, resolutionStats] = await Promise.all([
-    db.ticket.count({ where: { ...base, status: { in: ['open', 'pending', 'on_hold'] } } }),
-    db.ticket.count({ where: { ...base, createdAt: { gte: since, lte: until } } }),
-    db.ticket.count({ where: { ...base, closedAt: { gte: since, lte: until, not: null } } }),
-    // Avg resolution time over tickets closed in window. We compute
-    // in JS because Prisma's aggregate doesn't support derived
-    // expressions; the count is small enough (one row per closed
-    // ticket) that this is fine.
-    db.ticket.findMany({
-      where: { ...base, closedAt: { gte: since, lte: until, not: null } },
-      select: { createdAt: true, closedAt: true },
-    }),
-  ])
-
-  const avgResolutionHours = avgHours(resolutionStats)
-
-  // ── Trend (prior window) ───────────────────────────────────────────
-  const priorSince = new Date(since.getTime() - days * 86_400_000)
-  const [priorCreated, priorClosed, priorResolutionStats] = await Promise.all([
-    db.ticket.count({ where: { ...base, createdAt: { gte: priorSince, lt: since } } }),
-    db.ticket.count({ where: { ...base, closedAt: { gte: priorSince, lt: since, not: null } } }),
-    db.ticket.findMany({
-      where: { ...base, closedAt: { gte: priorSince, lt: since, not: null } },
-      select: { createdAt: true, closedAt: true },
-    }),
-  ])
-  const priorAvgResolutionHours = avgHours(priorResolutionStats)
-
-  // ── Distributions in window ────────────────────────────────────────
-  const tickets = await db.ticket.findMany({
-    where: { ...base, createdAt: { gte: since, lte: until } },
-    select: {
-      status: true,
-      priority: true,
-      brandId: true,
-      assignedUserId: true,
-      createdAt: true,
-      closedAt: true,
-      brand: { select: { id: true, name: true, primaryColor: true } },
-      assignedUser: { select: { id: true, name: true, email: true, image: true } },
-    },
-  })
-
-  const byStatusMap = new Map<string, number>()
-  for (const t of tickets) byStatusMap.set(t.status, (byStatusMap.get(t.status) ?? 0) + 1)
-  const byStatus = Array.from(byStatusMap.entries()).map(([status, count]) => ({ status, count }))
-
-  const byPriorityMap = new Map<string, number>()
-  for (const t of tickets) byPriorityMap.set(t.priority, (byPriorityMap.get(t.priority) ?? 0) + 1)
-  const byPriority = ['urgent', 'high', 'normal', 'low']
-    .map(p => ({ priority: p, count: byPriorityMap.get(p) ?? 0 }))
-
-  // ── By brand ───────────────────────────────────────────────────────
-  type BrandRow = {
-    brandId: string | null; name: string; color: string | null
-    count: number; openCount: number; resolutionDeltas: number[]
-  }
-  const byBrandMap = new Map<string, BrandRow>()
-  for (const t of tickets) {
-    const key = t.brandId ?? '∅'
-    const existing = byBrandMap.get(key) ?? {
-      brandId: t.brandId,
-      name: t.brand?.name ?? '(no brand)',
-      color: t.brand?.primaryColor ?? null,
-      count: 0,
-      openCount: 0,
-      resolutionDeltas: [],
-    }
-    existing.count += 1
-    if (['open', 'pending', 'on_hold'].includes(t.status)) existing.openCount += 1
-    if (t.closedAt) existing.resolutionDeltas.push(t.closedAt.getTime() - t.createdAt.getTime())
-    byBrandMap.set(key, existing)
-  }
-  const byBrand = Array.from(byBrandMap.values())
-    .map(b => ({
-      brandId: b.brandId, name: b.name, color: b.color,
-      count: b.count, openCount: b.openCount,
-      avgResolutionHours: b.resolutionDeltas.length
-        ? Number((b.resolutionDeltas.reduce((a, x) => a + x, 0) / b.resolutionDeltas.length / 3_600_000).toFixed(1))
-        : null,
-    }))
-    .sort((a, b) => b.count - a.count)
-
-  // ── By operator (human assignee) ───────────────────────────────────
-  type OpRow = {
-    userId: string; name: string; email: string | null; image: string | null
-    count: number; openCount: number; resolutionDeltas: number[]
-  }
-  const byOpMap = new Map<string, OpRow>()
-  for (const t of tickets) {
-    if (!t.assignedUserId || !t.assignedUser) continue
-    const key = t.assignedUserId
-    const existing = byOpMap.get(key) ?? {
-      userId: t.assignedUserId,
-      name: t.assignedUser.name || t.assignedUser.email || 'Teammate',
-      email: t.assignedUser.email,
-      image: t.assignedUser.image,
-      count: 0, openCount: 0, resolutionDeltas: [],
-    }
-    existing.count += 1
-    if (['open', 'pending', 'on_hold'].includes(t.status)) existing.openCount += 1
-    if (t.closedAt) existing.resolutionDeltas.push(t.closedAt.getTime() - t.createdAt.getTime())
-    byOpMap.set(key, existing)
-  }
-  const byOperator = Array.from(byOpMap.values())
-    .map(o => ({
-      userId: o.userId, name: o.name, email: o.email, image: o.image,
-      count: o.count, openCount: o.openCount,
-      avgResolutionHours: o.resolutionDeltas.length
-        ? Number((o.resolutionDeltas.reduce((a, x) => a + x, 0) / o.resolutionDeltas.length / 3_600_000).toFixed(1))
-        : null,
-    }))
-    .sort((a, b) => b.count - a.count)
-
-  // ── Daily series (created vs closed) ───────────────────────────────
-  // Bucket by YYYY-MM-DD in workspace UTC. For small windows this is
-  // a single pass; for 365 days it's still a few thousand rows max.
-  const dayKey = (d: Date) => d.toISOString().slice(0, 10)
-  const createdByDay = new Map<string, number>()
-  const closedByDay = new Map<string, number>()
-  for (const t of tickets) {
-    const k = dayKey(t.createdAt)
-    createdByDay.set(k, (createdByDay.get(k) ?? 0) + 1)
-    if (t.closedAt) {
-      const ck = dayKey(t.closedAt)
-      closedByDay.set(ck, (closedByDay.get(ck) ?? 0) + 1)
-    }
-  }
-  // Walk the window so the series has rows for empty days too.
-  const created: Array<{ day: string; count: number }> = []
-  const closed: Array<{ day: string; count: number }> = []
-  for (let i = 0; i < days; i++) {
-    const d = new Date(since.getTime() + i * 86_400_000)
-    const k = dayKey(d)
-    created.push({ day: k, count: createdByDay.get(k) ?? 0 })
-    closed.push({ day: k, count: closedByDay.get(k) ?? 0 })
-  }
-
-  // ── Brand picker source-of-truth ───────────────────────────────────
-  const allBrands = await db.brand.findMany({
-    where: { workspaceId },
-    select: { id: true, name: true, primaryColor: true },
-    orderBy: { name: 'asc' },
+  const data = await getTicketMetrics(db, {
+    workspaceId,
+    from: since,
+    to: until,
+    brandId: brandFilter ?? undefined,
   })
 
   return NextResponse.json({
@@ -221,38 +70,6 @@ export async function GET(req: NextRequest, { params }: Params) {
     from: since.toISOString(),
     to: until.toISOString(),
     filters: { brandId: brandFilter ?? null },
-    scorecards: {
-      open: openCount,
-      created: createdCount,
-      closed: closedCount,
-      avgResolutionHours,
-    },
-    trend: {
-      deltaCreated: createdCount - priorCreated,
-      deltaClosed: closedCount - priorClosed,
-      deltaAvgResolutionHours: priorAvgResolutionHours !== null && avgResolutionHours !== null
-        ? Number((avgResolutionHours - priorAvgResolutionHours).toFixed(1))
-        : null,
-      priorCreated,
-      priorClosed,
-      priorAvgResolutionHours,
-    },
-    byStatus,
-    byPriority,
-    byBrand,
-    byOperator,
-    created,
-    closed,
-    allBrands,
+    ...data,
   })
-}
-
-/** Mean closed-at minus created-at, in hours, rounded to 0.1. Null
- *  when nothing was closed in the window. */
-function avgHours(rows: Array<{ createdAt: Date; closedAt: Date | null }>): number | null {
-  const deltas = rows
-    .filter(r => r.closedAt)
-    .map(r => (r.closedAt!.getTime() - r.createdAt.getTime()) / 3_600_000)
-  if (deltas.length === 0) return null
-  return Number((deltas.reduce((a, x) => a + x, 0) / deltas.length).toFixed(1))
 }
