@@ -46,6 +46,10 @@ export interface IngestResult {
    *  the caller should queue a continuation run. Hash-matching makes
    *  the re-walk cheap: already-ingested pages skip embedding. */
   deadlineExhausted?: boolean
+  /** Discovered URLs skipped because they were already crawled (already
+   *  have live chunks for this source). The reason fetch/Firecrawl cost
+   *  stays flat across recrawls instead of re-scraping the whole site. */
+  skippedAlreadyCrawled?: number
 }
 
 export interface IngestOptions {
@@ -61,6 +65,12 @@ export interface IngestOptions {
    *  sites complete across ticks rather than truncating at one
    *  function budget. */
   deadlineAt?: number
+  /** Force a full re-scrape: fetch every discovered URL even if it was
+   *  already crawled. Off by default — steady-state recrawls only
+   *  follow NEW links and never re-scrape already-indexed pages, which
+   *  is what keeps Firecrawl credit use flat. Set true only for a
+   *  deliberate content-change refresh of an existing source. */
+  force?: boolean
 }
 
 interface ErrorEntry {
@@ -116,6 +126,7 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
   let pagesSucceeded = 0
   let chunksCreated = 0
   let chunksSuperseded = 0
+  let skippedAlreadyCrawled = 0
 
   try {
     const discovered = await adapter.discover(ctx).catch(err => {
@@ -123,17 +134,46 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
       return [] as Awaited<ReturnType<SourceAdapter['discover']>>
     })
 
-    // Tell the client how many pages we found so it can render a
-    // progress bar with the right total.
+    // Only follow NEW links. A URL that already has live chunks for this
+    // source was already crawled — re-fetching it buys nothing and, for
+    // JS-rendered pages, burns a Firecrawl scrape every recrawl (the
+    // hash-match below only saves re-EMBEDDING, not the fetch). New docs
+    // pages and new RSS items aren't indexed yet, so they still ingest;
+    // feeds keep updating because each new item is a new URL. `force`
+    // bypasses this for a deliberate full re-scrape.
+    let toFetch = discovered
+    if (!opts.force && discovered.length > 0) {
+      const indexed: Array<{ sourceUrl: string }> = await (db as any).knowledgeChunk.findMany({
+        where: { sourceId: source.id, supersededAt: null },
+        distinct: ['sourceUrl'],
+        select: { sourceUrl: true },
+      }).catch(() => [])
+      const indexedKeys = new Set(
+        indexed.map(r => canonicalUrlKey(r.sourceUrl)).filter(Boolean),
+      )
+      if (indexedKeys.size > 0) {
+        toFetch = discovered.filter(item => {
+          const key = canonicalUrlKey(item.identifier)
+          if (key && indexedKeys.has(key)) { skippedAlreadyCrawled++; return false }
+          return true
+        })
+      }
+    }
+    if (skippedAlreadyCrawled > 0) {
+      console.log(`[ingest] ${skippedAlreadyCrawled}/${discovered.length} discovered URLs already crawled — skipping re-fetch`)
+    }
+
+    // Tell the client how many pages we'll actually fetch so it can
+    // render a progress bar with the right total.
     await (db as any).ingestionRun.update({
       where: { id: run.id },
-      data: { pagesAttempted: discovered.length },
+      data: { pagesAttempted: toFetch.length },
     }).catch(() => {})
 
-    for (const item of discovered) {
+    for (const item of toFetch) {
       if (opts.deadlineAt && Date.now() > opts.deadlineAt) {
         deadlineExhausted = true
-        console.log(`[ingest] soft deadline hit after ${pagesAttempted}/${discovered.length} pages — continuation will resume`)
+        console.log(`[ingest] soft deadline hit after ${pagesAttempted}/${toFetch.length} pages — continuation will resume`)
         break
       }
       pagesAttempted++
@@ -221,6 +261,30 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     chunksCreated,
     chunksSuperseded,
     deadlineExhausted,
+    skippedAlreadyCrawled,
+  }
+}
+
+/**
+ * Canonical key for "have we already crawled this URL?" comparisons.
+ * Folds away the differences that don't change the underlying resource —
+ * scheme (http/https), host case, default ports, a single trailing
+ * slash, and the fragment — so a link discovered as `http://x/a/`
+ * matches a chunk stored (post-redirect) as `https://x/a`. The query
+ * string is KEPT: `?id=1` vs `?id=2` can be genuinely different pages,
+ * and a false match would silently drop content. Returns '' for inputs
+ * that aren't URLs (e.g. a bare YouTube video id), which never match —
+ * so non-URL sources keep their existing re-fetch behaviour.
+ */
+export function canonicalUrlKey(raw: string): string {
+  try {
+    const u = new URL(raw)
+    const host = u.host.toLowerCase() // URL already drops :80/:443
+    let path = u.pathname
+    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1)
+    return `${host}${path}${u.search}`
+  } catch {
+    return ''
   }
 }
 
