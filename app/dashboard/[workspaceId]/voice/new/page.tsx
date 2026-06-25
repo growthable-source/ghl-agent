@@ -78,10 +78,10 @@ export default function VoiceWizardPage() {
   const [template, setTemplate] = useState<VoiceTemplate | null>(null)
 
   // ─── Voice engine — tab choice on the Voice step. Default to
-  //     Cartesia (Sonic) — the most-human voice, Vapi's own default
-  //     provider, and it keeps our Claude brain + tools on every call.
-  //     Standard / ElevenLabs remain as alternatives.
-  const [engine, setEngine] = useState<Engine>('cartesia')
+  //     ElevenLabs — top-tier human voices that work end-to-end with our
+  //     existing keys: previews play right in the picker AND calls run via
+  //     Vapi. (Cartesia previews need a key we don't have.)
+  const [engine, setEngine] = useState<Engine>('elevenlabs')
 
   // ─── Step 2: voice ────────────────────────────────────────────────
   const [voices, setVoices] = useState<VoiceOption[]>([])
@@ -190,11 +190,11 @@ export default function VoiceWizardPage() {
     if (elliot) setSelectedVoice(elliot)
   }, [engine, voices, selectedVoice])
 
-  // Cartesia is the wizard default (most-human), so pre-select its first
-  // voice (Katie) once the catalogue loads. Keeps canContinue (which
-  // requires a selectedVoice) green on the happy path.
+  // Pre-select the first voice for the natural engines (ElevenLabs is the
+  // wizard default; Cartesia too) once the catalogue loads, so canContinue
+  // (which requires a selectedVoice) is green on the happy path.
   useEffect(() => {
-    if (engine !== 'cartesia' || selectedVoice || voices.length === 0) return
+    if ((engine !== 'elevenlabs' && engine !== 'cartesia') || selectedVoice || voices.length === 0) return
     setSelectedVoice(voices[0])
   }, [engine, voices, selectedVoice])
 
@@ -227,12 +227,13 @@ export default function VoiceWizardPage() {
   }, [voices, voiceQuery, accentFilter])
 
   function playPreview(voice: VoiceOption) {
-    // Vapi-native and ElevenLabs ship pre-recorded preview URLs. Gemini
-    // native voices have none (no public one-shot CDN clip), so fall back
-    // to on-demand synth via /api/voices/preview — otherwise the play
-    // button is dead for the most-human engine.
+    // ElevenLabs (and Vapi-native) ship pre-recorded preview URLs that play
+    // instantly. Cartesia / Gemini have none, so fall back to on-demand
+    // synth via /api/voices/preview — otherwise the play button is dead.
     const url = voice.previewUrl
-      ?? (engine === 'gemini' ? `/api/voices/preview?voice=${encodeURIComponent(voice.id)}` : null)
+      ?? (engine === 'cartesia' || engine === 'gemini'
+        ? `/api/voices/preview?provider=${engine}&voice=${encodeURIComponent(voice.id)}`
+        : null)
     if (!url) return
     if (previewPlaying === voice.id) {
       setPreviewPlaying(null)
@@ -598,9 +599,9 @@ function VoiceStep({
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
         {([
-          { id: 'cartesia' as const,   label: 'Natural — most human' },
+          { id: 'elevenlabs' as const, label: 'Natural — most human' },
           { id: 'vapi' as const,       label: 'Standard' },
-          { id: 'elevenlabs' as const, label: 'ElevenLabs' },
+          { id: 'cartesia' as const,   label: 'Cartesia' },
         ]).map(opt => {
           const active = engine === opt.id
           return (

@@ -98,11 +98,13 @@ export default function VoicePage() {
 
   const [config, setConfig] = useState<VapiConfig>({
     phoneNumberId: null, phoneNumber: null,
-    // Default to Cartesia (Sonic) — the most-human voice, Vapi's own
-    // default provider. Keeps our Claude brain + tools. Katie is a warm
-    // conversational default; the picker offers the rest.
-    ttsProvider: 'cartesia',
-    voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', voiceName: 'Katie',
+    // Default to ElevenLabs — top-tier human voices that work end-to-end
+    // with the keys we already have: public preview URLs (the ▶ plays with
+    // no synth/key) AND calls via Vapi. Cartesia is also offered, but its
+    // previews need a CARTESIA_API_KEY we don't have, so it's not the
+    // default. Sarah is a warm, conversational starting voice.
+    ttsProvider: 'elevenlabs',
+    voiceId: 'EXAVITQu4vr4xnSDxMaL', voiceName: 'Sarah',
     stability: 0.5, similarityBoost: 0.75, speed: 1.0, style: 0.0,
     firstMessage: '', endCallMessage: '',
     maxDurationSecs: 600, recordCalls: true,
@@ -213,11 +215,14 @@ export default function VoicePage() {
   }, [config.ttsProvider])
 
   function playPreview(voiceId: string, previewUrl: string | null) {
-    // Both engines ship a preview URL: ElevenLabs via the catalogue
-    // response, Vapi-native via lib/voice/vapi-native-voices.ts. No
-    // on-demand synth fallback needed.
-    void voiceId
-    const url = previewUrl
+    // ElevenLabs ships a public preview URL in the catalogue → plays
+    // instantly. Cartesia/Gemini have no pre-recorded sample, so fall back
+    // to on-demand synth (/api/voices/preview) instead of a dead button.
+    const url =
+      previewUrl ??
+      (config.ttsProvider === 'cartesia'
+        ? `/api/voices/preview?provider=cartesia&voice=${encodeURIComponent(voiceId)}`
+        : null)
     if (!url) return
     if (playingId === voiceId) {
       audioRef.current?.pause()
@@ -227,7 +232,8 @@ export default function VoicePage() {
     if (audioRef.current) audioRef.current.pause()
     const audio = new Audio(url)
     audio.onended = () => setPlayingId(null)
-    audio.play()
+    audio.onerror = () => setPlayingId(null)
+    audio.play().catch(() => setPlayingId(null))
     audioRef.current = audio
     setPlayingId(voiceId)
   }
@@ -371,7 +377,7 @@ export default function VoicePage() {
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice type</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              Natural is the most human-sounding option and works out of the box. Standard and ElevenLabs are alternatives if you want a specific voice.
+              Natural voices are the most human-sounding and you can preview them right here. Standard and Cartesia are alternatives.
             </p>
           </div>
           <div
@@ -379,9 +385,9 @@ export default function VoicePage() {
             style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
           >
             {([
-              { id: 'cartesia',   label: 'Natural — most human' },
+              { id: 'elevenlabs', label: 'Natural — most human' },
               { id: 'vapi',       label: 'Standard' },
-              { id: 'elevenlabs', label: 'ElevenLabs' },
+              { id: 'cartesia',   label: 'Cartesia' },
             ] as const).map(opt => {
               const active = config.ttsProvider === opt.id
               return (

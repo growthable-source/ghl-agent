@@ -2,47 +2,60 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { GEMINI_NATIVE_VOICE_IDS } from '@/lib/voice/gemini-native-voices'
 import { synthesizeVoicePreview, isGeminiTtsEnabled, VOICE_AGENT_PREVIEW_TEXT } from '@/lib/voice/gemini-tts'
+import { getCartesiaVoice } from '@/lib/voice/cartesia-voices'
+import { synthesizeCartesiaPreview, isCartesiaTtsEnabled } from '@/lib/voice/cartesia-tts'
 
 /**
- * GET /api/voices/preview?voice=Puck
+ * GET /api/voices/preview?provider=cartesia&voice=<id>
  *
- * Returns a short WAV sample of a Gemini prebuilt voice so an operator can
- * hear it before pinning it to a voice agent. Gemini voices have no
- * pre-recorded sample URL (no public one-shot CDN clip), so the picker
- * synthesizes one on demand here instead of leaving the play button dead.
+ * Returns a short synthesized sample of a voice so the picker ▶ actually
+ * plays something — Cartesia and Gemini voices have no pre-recorded CDN
+ * sample, so we synth one on demand. Fixed sample text + bounded voice set
+ * → only a handful of distinct responses, which the CDN caches.
  *
- * Guard rails mirror the co-pilot preview route: signed-in user, the voice
- * must be one of the fixed native names, and the sample text is fixed — so
- * there are only ~8 possible responses, which the CDN caches. Generation
- * cost is bounded regardless of traffic.
+ * provider=cartesia (default, our most-human engine) → MP3 via Cartesia TTS
+ * provider=gemini                                     → WAV via Gemini TTS
  */
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (!isGeminiTtsEnabled()) {
+
+  const provider = req.nextUrl.searchParams.get('provider') || 'cartesia'
+  const raw = req.nextUrl.searchParams.get('voice') ?? ''
+
+  const cacheHeaders = {
+    // Fixed text + bounded voice set → safe to cache hard at the CDN.
+    'Cache-Control': 'public, max-age=86400, s-maxage=604800, immutable',
+  }
+
+  if (provider === 'gemini') {
+    if (!isGeminiTtsEnabled()) {
+      return NextResponse.json({ error: 'Voice preview is not configured on this deployment.' }, { status: 503 })
+    }
+    if (raw && !GEMINI_NATIVE_VOICE_IDS.some(id => id === raw)) {
+      return NextResponse.json({ error: 'Unknown voice' }, { status: 400 })
+    }
+    const wav = await synthesizeVoicePreview(raw || null, VOICE_AGENT_PREVIEW_TEXT)
+    if (!wav) return NextResponse.json({ error: 'Could not generate a sample. Try again.' }, { status: 502 })
+    return new NextResponse(new Uint8Array(wav), {
+      status: 200,
+      headers: { 'Content-Type': 'audio/wav', ...cacheHeaders },
+    })
+  }
+
+  // Cartesia (default) — most-human engine.
+  if (!isCartesiaTtsEnabled()) {
     return NextResponse.json({ error: 'Voice preview is not configured on this deployment.' }, { status: 503 })
   }
-
-  const raw = req.nextUrl.searchParams.get('voice') ?? ''
-  // Empty → Gemini's default voice. Otherwise must be a known native voice.
-  if (raw && !GEMINI_NATIVE_VOICE_IDS.some(id => id === raw)) {
+  if (!raw || !getCartesiaVoice(raw)) {
     return NextResponse.json({ error: 'Unknown voice' }, { status: 400 })
   }
-  const voiceName = raw || null
-
-  const wav = await synthesizeVoicePreview(voiceName, VOICE_AGENT_PREVIEW_TEXT)
-  if (!wav) {
-    return NextResponse.json({ error: 'Could not generate a sample. Try again.' }, { status: 502 })
-  }
-
-  return new NextResponse(new Uint8Array(wav), {
+  const mp3 = await synthesizeCartesiaPreview(raw)
+  if (!mp3) return NextResponse.json({ error: 'Could not generate a sample. Try again.' }, { status: 502 })
+  return new NextResponse(new Uint8Array(mp3), {
     status: 200,
-    headers: {
-      'Content-Type': 'audio/wav',
-      // Fixed text + bounded voice set → safe to cache hard at the CDN.
-      'Cache-Control': 'public, max-age=86400, s-maxage=604800, immutable',
-    },
+    headers: { 'Content-Type': 'audio/mpeg', ...cacheHeaders },
   })
 }
