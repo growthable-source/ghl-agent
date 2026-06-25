@@ -235,6 +235,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       ? body.calendarId
       : null
 
+    // Voice agents must ship with the voice tool subset enabled so booking
+    // + contact capture surface out of the box — the runtime exposes
+    // VOICE_AGENT_TOOL_NAMES ∩ enabledTools, and the wizard doesn't send
+    // enabledTools. Merge the subset into whatever was supplied (or seed it)
+    // for VOICE agents; TEXT agents keep body.enabledTools ?? Prisma default.
+    let effectiveEnabledTools: string[] | undefined =
+      Array.isArray(body.enabledTools) ? body.enabledTools : undefined
+    if (agentType === 'VOICE') {
+      const { VOICE_AGENT_TOOL_NAMES } = await import('@/lib/agent/tool-catalog')
+      const base = effectiveEnabledTools ?? ['get_contact_details', 'update_contact_tags']
+      effectiveEnabledTools = [...new Set([...base, ...VOICE_AGENT_TOOL_NAMES])]
+    }
+
     const agent = await db.agent.create({
       data: {
         workspaceId,
@@ -247,7 +260,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
         name: defaultAgentName(body.name),
         systemPrompt: body.systemPrompt,
         instructions: body.instructions ?? null,
-        ...(body.enabledTools !== undefined && { enabledTools: body.enabledTools }),
+        ...(effectiveEnabledTools !== undefined && { enabledTools: effectiveEnabledTools }),
         ...(Array.isArray(body.knowledgeDomainIds) && {
           knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
         }),
