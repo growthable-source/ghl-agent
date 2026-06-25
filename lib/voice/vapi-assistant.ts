@@ -106,13 +106,17 @@ async function buildAssistantSystemPrompt(opts: {
   }
 
   if (agent.calendarId) {
-    prompt += `\n\n## Calendar Configuration\nCalendar ID for booking: ${agent.calendarId}\nAlways use get_available_slots before booking.`
+    prompt += `\n\n## Calendar Configuration\nThis agent can book appointments. Call get_available_slots before offering times, then book_appointment to commit. The calendar id is wired automatically — you don't pass it.`
+  } else {
+    prompt += `\n\n## Booking\nNo calendar is connected. If the caller wants to schedule, capture their name + email (upsert_contact) and say a teammate will follow up.`
   }
 
   // ── VOICE CALL INSTRUCTIONS (bottom of prompt — repeats tool rule) ──
   prompt += '\n\n## VOICE CALL INSTRUCTIONS\n'
   prompt += 'You are on a live phone call. Speak naturally and conversationally. Keep responses SHORT — 1-3 sentences max. No bullet points, no markdown.\n\n'
   prompt += '**REMINDER:** Before answering any question with specifics, call `query_knowledge` first (or a Shopify tool when commerce-related). A two-second "let me check" beat sounds natural; silence while a tool runs sounds dead, so always pre-acknowledge ("let me check that for you", "one sec, looking that up").\n'
+  prompt += '\n### Booking and capturing the caller\n'
+  prompt += 'When the caller wants to book or you\'re taking details: get their first name and email, save them to the CRM with upsert_contact (their phone is already known — include it), check real availability with get_available_slots, offer specific times with the timezone, and when they pick one call book_appointment in the same turn. Never claim something is booked without calling book_appointment.\n'
 
   // Fallback behaviour
   const fb = agent.fallbackBehavior ?? 'message'

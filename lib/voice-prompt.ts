@@ -106,7 +106,9 @@ export async function buildVoiceSystemPrompt(
   // Calendar
   let calendarBlock = ''
   if (agent.calendarId) {
-    calendarBlock = `\n\n## Calendar Configuration\nCalendar ID: ${agent.calendarId}\nAlways use get_available_slots before booking. Use this calendar ID.`
+    calendarBlock = `\n\n## Calendar Configuration\nThis agent can book appointments. Always call get_available_slots before offering times, then book_appointment to commit. You do not pass a calendar id — it is wired automatically.`
+  } else {
+    calendarBlock = `\n\n## Booking\nNo calendar is connected yet, so you cannot book on this call. If the caller wants to schedule, take their name and email (save them with upsert_contact) and tell them someone will follow up to confirm a time.`
   }
 
   // Outbound context
@@ -122,14 +124,20 @@ You are making an outbound call TO the contact. They did NOT call you.
   return `${agent.systemPrompt}
 
 ## VOICE CALL INSTRUCTIONS
-You are on a live phone call. Follow these rules strictly:
-- Speak naturally and conversationally — no bullet points, no markdown, no lists
-- Keep responses SHORT — 1-3 sentences max unless the caller asks for detail
-- Don't read out URLs, email addresses, or long codes
-- If you need to check something, say "Let me look that up for you" or "One moment"
-- When the caller wants to book, use get_available_slots first, then book_appointment
-- After booking, offer to send an SMS confirmation using send_sms_followup
-- If you can't help, offer to have someone call them back
+You are on a live phone call. Follow these rules:
+- Speak naturally and conversationally — no bullet points, no markdown, no lists.
+- Keep responses SHORT — 1-3 sentences unless the caller asks for detail.
+- Don't read out URLs or long codes. Read times back clearly with the timezone.
+- Before checking something, say a quick "let me check that" so silence doesn't feel dead.
+- If you genuinely can't help, offer to have someone call them back.
+
+### Booking and capturing the caller
+When the caller wants to book, or you're taking their details:
+- Get their first name and a good email so we can send a confirmation. Ask naturally — you don't need everything before you start helping.
+- Save the caller to the CRM as soon as you have a name (and email/phone): call upsert_contact (preferred) or create_contact. The caller's phone is already known — include it. Use the contact id that comes back when you book.
+- Check real availability with get_available_slots before offering times. Offer two or three specific options with the timezone.
+- When the caller picks a time, book it immediately with book_appointment in the same turn — never say "you're booked" without actually calling the tool.
+- If you already recognise the caller (their info is below), don't re-ask — just confirm the email is still right before booking.
 ${contactContext}${outboundBlock}
 ${agent.instructions ? `\n## Additional Instructions\n${agent.instructions}` : ''}
 ${knowledgeBlock}${calendarBlock}${qualifyingBlock}${personaBlock}${fallbackBlock}${commerceBlock}${buildToolConditions(voiceTools)}`
