@@ -98,13 +98,12 @@ export default function VoicePage() {
 
   const [config, setConfig] = useState<VapiConfig>({
     phoneNumberId: null, phoneNumber: null,
-    // Default to ElevenLabs — top-tier human voices that work end-to-end
-    // with the keys we already have: public preview URLs (the ▶ plays with
-    // no synth/key) AND calls via Vapi. Cartesia is also offered, but its
-    // previews need a CARTESIA_API_KEY we don't have, so it's not the
-    // default. Sarah is a warm, conversational starting voice.
-    ttsProvider: 'elevenlabs',
-    voiceId: 'EXAVITQu4vr4xnSDxMaL', voiceName: 'Sarah',
+    // Default to Cartesia (Sonic) — Vapi's own default provider and the
+    // most human-sounding voice. With CARTESIA_API_KEY set, previews synth
+    // on demand AND calls run through Vapi. Katie is a warm conversational
+    // starting voice; the picker offers the rest.
+    ttsProvider: 'cartesia',
+    voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', voiceName: 'Katie',
     stability: 0.5, similarityBoost: 0.75, speed: 1.0, style: 0.0,
     firstMessage: '', endCallMessage: '',
     maxDurationSecs: 600, recordCalls: true,
@@ -377,7 +376,7 @@ export default function VoicePage() {
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice type</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              Natural voices are the most human-sounding and you can preview them right here. Standard and Cartesia are alternatives.
+              Natural voices are the most human-sounding and you can preview them right here. Standard and ElevenLabs are alternatives.
             </p>
           </div>
           <div
@@ -385,9 +384,9 @@ export default function VoicePage() {
             style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
           >
             {([
-              { id: 'elevenlabs', label: 'Natural — most human' },
+              { id: 'cartesia',   label: 'Natural — most human' },
               { id: 'vapi',       label: 'Standard' },
-              { id: 'cartesia',   label: 'Cartesia' },
+              { id: 'elevenlabs', label: 'ElevenLabs' },
             ] as const).map(opt => {
               const active = config.ttsProvider === opt.id
               return (

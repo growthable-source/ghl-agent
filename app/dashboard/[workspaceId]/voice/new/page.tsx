@@ -78,10 +78,11 @@ export default function VoiceWizardPage() {
   const [template, setTemplate] = useState<VoiceTemplate | null>(null)
 
   // ─── Voice engine — tab choice on the Voice step. Default to
-  //     ElevenLabs — top-tier human voices that work end-to-end with our
-  //     existing keys: previews play right in the picker AND calls run via
-  //     Vapi. (Cartesia previews need a key we don't have.)
-  const [engine, setEngine] = useState<Engine>('elevenlabs')
+  //     Cartesia (Sonic) — Vapi's own default provider and the most
+  //     human-sounding voice. With CARTESIA_API_KEY set, previews synth in
+  //     the picker AND calls run via Vapi. Standard / ElevenLabs are
+  //     alternatives.
+  const [engine, setEngine] = useState<Engine>('cartesia')
 
   // ─── Step 2: voice ────────────────────────────────────────────────
   const [voices, setVoices] = useState<VoiceOption[]>([])
@@ -599,9 +600,9 @@ function VoiceStep({
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
         {([
-          { id: 'elevenlabs' as const, label: 'Natural — most human' },
+          { id: 'cartesia' as const,   label: 'Natural — most human' },
           { id: 'vapi' as const,       label: 'Standard' },
-          { id: 'cartesia' as const,   label: 'Cartesia' },
+          { id: 'elevenlabs' as const, label: 'ElevenLabs' },
         ]).map(opt => {
           const active = engine === opt.id
           return (
