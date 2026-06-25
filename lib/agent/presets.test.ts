@@ -7,9 +7,27 @@ describe('AGENT_PRESETS registry', () => {
     expect(ids).toEqual(['booking', 'conversational', 'custom', 'voice'])
   })
 
-  it('every preset has guided autonomy by default', () => {
+  it('non-voice presets are guided; voice is autonomous (ungated booking on a live call)', () => {
     for (const p of AGENT_PRESETS) {
-      expect(p.autonomyMode).toBe('guided')
+      expect(p.autonomyMode).toBe(p.id === 'voice' ? 'autonomous' : 'guided')
+    }
+  })
+})
+
+describe('Voice Agent preset (book + capture defaults)', () => {
+  const voice = getPreset('voice')!
+
+  it('enables the booking + capture tools explicitly', () => {
+    for (const n of ['get_available_slots', 'book_appointment', 'upsert_contact', 'create_contact', 'find_contact_by_email_or_phone']) {
+      const d = voice.tools.find(t => t.toolName === n)
+      expect(d, `expected a delta for ${n}`).toBeTruthy()
+      expect(d!.enabled, `${n} should be enabled`).toBe(true)
+    }
+  })
+
+  it('keeps text-send tools disabled', () => {
+    for (const n of ['send_reply', 'send_sms', 'send_email']) {
+      expect(voice.tools.find(t => t.toolName === n)?.enabled).toBe(false)
     }
   })
 })

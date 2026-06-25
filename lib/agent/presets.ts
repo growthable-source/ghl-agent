@@ -96,9 +96,28 @@ export const AGENT_PRESETS: AgentPreset[] = [
   {
     id: 'voice',
     label: 'Voice Agent',
-    description: 'Built for inbound + outbound phone calls. Voice IS the channel — every text-channel send tool is disabled (the agent SPEAKS, it doesn\'t SMS itself). Calendar, contact lookup, tagging, and post-call SMS-followup stay on so the agent can book, qualify, and follow up after the call.',
-    autonomyMode: 'guided',
+    description: 'Inbound + outbound phone calls. Books appointments and captures the caller (name/email → CRM) out of the box — just pick a calendar. Text-channel send tools are off (the agent speaks). Runs ungated: a live call has no per-turn conversation context for the enforced-tool gate to evaluate.',
+    // Autonomous, NOT guided. book_appointment is an `enforced` tool; the
+    // gate (lib/agent/tool-gate.ts) would fire against voice's empty
+    // per-turn context (no conversationId/messageHistory on a live call)
+    // and could block legit bookings. Voice is real-time with no approval
+    // step, so it must run ungated.
+    autonomyMode: 'autonomous',
     tools: [
+      // ── Book + capture: ON by default so a voice agent can check
+      // availability, book, and create/upsert the caller's contact out of
+      // the box. The only required setup is picking a calendar.
+      { toolName: 'get_available_slots', enabled: true },
+      { toolName: 'get_calendar_events', enabled: true },
+      { toolName: 'cancel_appointment', enabled: true },
+      { toolName: 'reschedule_appointment', enabled: true },
+      { toolName: 'create_appointment_note', enabled: true },
+      { toolName: 'find_contact_by_email_or_phone', enabled: true },
+      { toolName: 'upsert_contact', enabled: true },
+      { toolName: 'create_contact', enabled: true },
+      { toolName: 'update_contact_field', enabled: true },
+      { toolName: 'update_contact_tags', enabled: true },
+      { toolName: 'add_contact_note', enabled: true },
       // Text-channel sends — off. Voice agents don't reply over SMS /
       // Email / WhatsApp; they speak. Leaving these enabled lets the
       // model occasionally try to "send a confirmation text" mid-call
@@ -125,10 +144,10 @@ export const AGENT_PRESETS: AgentPreset[] = [
       { toolName: 'create_shopify_checkout', enabled: false },
       { toolName: 'create_shopify_discount', enabled: false },
       { toolName: 'record_back_in_stock_interest', enabled: false },
-      // Booking failure → escalate. The caller is on the line; falling
-      // back to a "we'll get back to you" canned line is worse than
-      // bridging the call to a human.
-      { toolName: 'book_appointment', onFailure: 'transfer_to_human' },
+      // Booking is enabled AND, on failure, escalates. The caller is on
+      // the line; falling back to a "we'll get back to you" canned line is
+      // worse than bridging the call to a human.
+      { toolName: 'book_appointment', enabled: true, onFailure: 'transfer_to_human' },
     ],
   },
   {
