@@ -132,6 +132,18 @@ export default function VoiceWizardPage() {
   const [knowledgeMode, setKnowledgeMode] = useState<'all' | 'pick' | 'none'>('all')
   const [knowledgePick, setKnowledgePick] = useState<string[]>([])
 
+  // Booking calendar. Picking one here lets the agent check availability +
+  // book on the call (it always captures the caller's name/email to the CRM
+  // either way). Persisted as Agent.calendarId by the create API.
+  const [calendars, setCalendars] = useState<Array<{ id: string; name: string }>>([])
+  const [calendarId, setCalendarId] = useState<string>('')
+  useEffect(() => {
+    fetch(`/api/workspaces/${workspaceId}/calendars`)
+      .then(r => r.ok ? r.json() : { calendars: [] })
+      .then(d => setCalendars(Array.isArray(d.calendars) ? d.calendars : []))
+      .catch(() => setCalendars([]))
+  }, [workspaceId])
+
   // ─── Step 5: phone ────────────────────────────────────────────────
   const [phoneMode, setPhoneMode] = useState<'buy' | 'skip' | 'port'>('buy')
   const [areaCode, setAreaCode] = useState('')
@@ -311,6 +323,7 @@ export default function VoiceWizardPage() {
         systemPrompt: composedSystemPrompt,
         agentType: 'VOICE',
         formalityLevel,
+        ...(calendarId && { calendarId }),
         ...(knowledgeDomainIds && { knowledgeDomainIds }),
         ...voiceBody,
       }
@@ -450,13 +463,35 @@ export default function VoiceWizardPage() {
             />
           )}
           {step === 'knowledge' && (
-            <KnowledgeStep
-              domains={knowledgeDomains}
-              mode={knowledgeMode}
-              onMode={setKnowledgeMode}
-              pick={knowledgePick}
-              onPick={setKnowledgePick}
-            />
+            <div className="space-y-6">
+              <KnowledgeStep
+                domains={knowledgeDomains}
+                mode={knowledgeMode}
+                onMode={setKnowledgeMode}
+                pick={knowledgePick}
+                onPick={setKnowledgePick}
+              />
+              <div className="rounded-xl border p-5 space-y-2" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Booking calendar</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  Pick a calendar and this agent can check availability and book appointments right on the call. It always captures the caller&apos;s name and email to your CRM.
+                </p>
+                <select
+                  value={calendarId}
+                  onChange={e => setCalendarId(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
+                  style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}
+                >
+                  <option value="">No booking — answer &amp; capture contacts only</option>
+                  {calendars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                {calendars.length === 0 && (
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    No calendars found for this workspace&apos;s CRM. You can connect one later from the agent&apos;s Voice &amp; Script tab.
+                  </p>
+                )}
+              </div>
+            </div>
           )}
           {step === 'phone' && (
             <PhoneStep

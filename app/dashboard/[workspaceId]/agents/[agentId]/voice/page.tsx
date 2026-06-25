@@ -159,6 +159,26 @@ export default function VoicePage() {
   // the agent metadata; harmless when it stays default.
   const [agentType, setAgentType] = useState<string>('SIMPLE')
 
+  // Booking calendar. With one connected, the agent checks availability +
+  // books on the call; either way it captures the caller's name/email to
+  // the CRM. Stored as Agent.calendarId, saved via the agent PATCH.
+  const [calendars, setCalendars] = useState<Array<{ id: string; name: string }>>([])
+  const [calendarId, setCalendarId] = useState<string>('')
+  const [savingCalendar, setSavingCalendar] = useState(false)
+
+  async function saveCalendar(id: string) {
+    setCalendarId(id)
+    setSavingCalendar(true)
+    try {
+      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ calendarId: id || null }),
+      })
+    } catch { /* non-fatal */ }
+    finally { setSavingCalendar(false) }
+  }
+
   // Test call previously lived inline here as a 100-line transient-
   // assistant block. It was the pre-Round-3 path — different shape,
   // no query_knowledge tool, no Shopify tools, hardcoded ElevenLabs
@@ -190,7 +210,13 @@ export default function VoicePage() {
         .then(r => r.ok ? r.json() : null)
         .then((d: any) => {
           if (d?.agent?.agentType) setAgentType(d.agent.agentType)
+          if (typeof d?.agent?.calendarId === 'string') setCalendarId(d.agent.calendarId)
         })
+        .catch(() => {}),
+      // Booking calendars available on this agent's CRM location.
+      fetch(`/api/workspaces/${workspaceId}/calendars?agentId=${agentId}`)
+        .then(r => r.ok ? r.json() : { calendars: [] })
+        .then((d: any) => setCalendars(Array.isArray(d.calendars) ? d.calendars : []))
         .catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [workspaceId, agentId])
@@ -570,6 +596,37 @@ export default function VoicePage() {
                 {filteredVoices.length === 0 && <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)' }}>No voices match your search.</p>}
               </div>
             </div>
+          )}
+        </div>
+
+        {/* ── Booking ── */}
+        <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Booking</p>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+              style={calendarId
+                ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
+                : { background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}>
+              {calendarId ? 'On' : 'Not set'}
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Pick a calendar and this agent checks availability and books appointments on the call. It always captures the caller&apos;s name and email to your CRM.
+          </p>
+          <select
+            value={calendarId}
+            onChange={e => saveCalendar(e.target.value)}
+            disabled={savingCalendar}
+            className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none disabled:opacity-60"
+            style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}
+          >
+            <option value="">No booking — answer &amp; capture contacts only</option>
+            {calendars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {calendars.length === 0 && (
+            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              No calendars found for this agent&apos;s CRM. Connect LeadConnector (with calendar access) to enable booking.
+            </p>
           )}
         </div>
 
