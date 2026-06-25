@@ -101,7 +101,10 @@ export default function VoicePage() {
   const [config, setConfig] = useState<VapiConfig>({
     phoneNumberId: null, phoneNumber: null,
     ttsProvider: 'vapi',
-    voiceId: 'EXAVITQu4vr4xnSDxMaL', voiceName: 'Sarah',
+    // Default to a valid Vapi-NATIVE voice (engine is 'vapi' above). The
+    // old default paired the native engine with an ElevenLabs id ("Sarah"),
+    // which Vapi 400s on save. Elliot is Vapi's demo default.
+    voiceId: 'Elliot', voiceName: 'Elliot',
     stability: 0.5, similarityBoost: 0.75, speed: 1.0, style: 0.0,
     firstMessage: '', endCallMessage: '',
     maxDurationSecs: 600, recordCalls: true,

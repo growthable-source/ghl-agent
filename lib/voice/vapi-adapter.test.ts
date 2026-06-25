@@ -5,6 +5,21 @@ import {
   ELEVEN_DEFAULT_MODEL,
   resolveVoiceEngine,
 } from './vapi-adapter'
+import { coerceVapiNativeVoiceId } from './vapi-native-voices'
+
+describe('coerceVapiNativeVoiceId', () => {
+  it('keeps a valid native voice (canonical casing)', () => {
+    expect(coerceVapiNativeVoiceId('Cole')).toBe('Cole')
+    expect(coerceVapiNativeVoiceId('elliot')).toBe('Elliot')
+  })
+
+  it('falls back to the default native voice for null / empty / unknown / ElevenLabs ids', () => {
+    expect(coerceVapiNativeVoiceId(null)).toBe('Elliot')
+    expect(coerceVapiNativeVoiceId(undefined)).toBe('Elliot')
+    expect(coerceVapiNativeVoiceId('')).toBe('Elliot')
+    expect(coerceVapiNativeVoiceId('EXAVITQu4vr4xnSDxMaL')).toBe('Elliot')
+  })
+})
 
 describe('elevenLabsModel', () => {
   const original = process.env.VAPI_ELEVENLABS_MODEL
@@ -55,12 +70,15 @@ describe('buildVapiVoiceBlock — Vapi-native engine (default)', () => {
     expect(block.voiceId).toBe('Elliot')
   })
 
-  it('leaves non-catalogue ids unchanged', () => {
-    // Defensive: an unknown id (typo, ElevenLabs id misrouted, etc.)
-    // shouldn't get mangled — pass it through and let Vapi reject it
-    // with a useful error.
-    const block = buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'not-a-real-voice-xyz' })
-    expect(block.voiceId).toBe('not-a-real-voice-xyz')
+  it('falls back to the default native voice for a non-catalogue id', () => {
+    // Previously this passed the id through and let Vapi reject the whole
+    // assistant ("voice.voiceId must be one of …") — a hard dead-end on
+    // Save. Now an unknown id (typo, or an ElevenLabs id left on a
+    // native-engine agent) coerces to the default native voice so the
+    // call still connects.
+    expect(buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'not-a-real-voice-xyz' }).voiceId).toBe('Elliot')
+    // The exact legacy seed default that caused the reported failure.
+    expect(buildVapiVoiceBlock({ engine: 'vapi', voiceId: 'EXAVITQu4vr4xnSDxMaL' }).voiceId).toBe('Elliot')
   })
 
   it('does NOT include the ElevenLabs model / tuning fields', () => {

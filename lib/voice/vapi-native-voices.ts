@@ -105,3 +105,21 @@ export function canonicalVapiVoiceId(voiceId: string): string {
   const match = getVapiNativeVoice(voiceId)
   return match ? match.id : voiceId
 }
+
+/**
+ * Coerce ANY voice id to a guaranteed-valid Vapi-native voice id.
+ *
+ * The Vapi-native voice block ({ provider: 'vapi', voiceId }) only accepts
+ * the 30 catalogue names — Vapi 400s the whole assistant with
+ * "voice.voiceId must be one of the following values: Clara, …" if the id
+ * is anything else. That happens whenever a native-engine agent still
+ * carries an ElevenLabs id: the legacy seed default (EXAVITQu4vr4xnSDxMaL
+ * / "Sarah"), or a leftover from switching the engine from ElevenLabs back
+ * to native without re-picking a voice. Unknown / mismatched ids fall back
+ * to the default native voice so Save + the call always succeed instead of
+ * dead-ending on a cryptic provider error.
+ */
+export function coerceVapiNativeVoiceId(voiceId: string | null | undefined): string {
+  const match = voiceId ? getVapiNativeVoice(voiceId) : null
+  return match ? match.id : VAPI_NATIVE_DEFAULT_VOICE_ID
+}
