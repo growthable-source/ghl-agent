@@ -24,7 +24,8 @@
  */
 
 import { db } from '@/lib/db'
-import { VAPI_TOOLS } from '@/lib/voice-prompt'
+import { VOICE_KNOWLEDGE_TOOL } from '@/lib/voice-prompt'
+import { AGENT_TOOLS, VOICE_AGENT_TOOL_NAMES, anthropicToolToVapi } from '@/lib/agent/tool-catalog'
 import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 const APP_URL = process.env.APP_URL || 'https://app.voxility.ai'
@@ -129,19 +130,58 @@ async function buildAssistantSystemPrompt(opts: {
 }
 
 /**
- * Convert an Anthropic-format tool definition (input_schema-style) into
- * Vapi's function-call shape. Used to register the catalogue's Shopify
- * tools onto a voice agent's assistant config without re-typing them.
+ * Build the full function-tool list for a voice assistant: the
+ * voice-specific query_knowledge tool, the CRM/calendar catalogue tools
+ * the agent has enabled (intersected with the voice subset), the
+ * conditional Shopify tools, and the operator's custom voiceTools. Same
+ * catalogue the text agent uses — no parallel tool state. Deduped by
+ * function name (custom tools may overlap catalogue names).
  */
-function anthropicToolToVapi(t: { name: string; description: string; input_schema: Record<string, unknown> }) {
-  return {
-    type: 'function' as const,
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.input_schema,
-    },
+export async function buildVoiceFunctionTools(opts: {
+  agentId: string
+  workspaceId: string | null
+  enabledTools: string[]
+  customVoiceTools: any[]
+  /** Pass when already known to skip a second Shopify lookup; else resolved here. */
+  shopifyConnected?: boolean
+}): Promise<Array<{ type: string; function?: any }>> {
+  const enabled = new Set(opts.enabledTools)
+  const byName = new Map((AGENT_TOOLS as any[]).map(t => [t.name, t]))
+  const toVapi = (t: any) => anthropicToolToVapi({ name: t.name, description: t.description, input_schema: t.input_schema })
+
+  // CRM/calendar tools: the voice subset ∩ the agent's enabledTools.
+  const crmTools = (VOICE_AGENT_TOOL_NAMES as readonly string[])
+    .filter(name => enabled.has(name))
+    .map(name => byName.get(name))
+    .filter(Boolean)
+    .map(toVapi)
+
+  // Shopify (conditional on a connected store).
+  let shopifyConnected = opts.shopifyConnected
+  if (shopifyConnected === undefined && opts.workspaceId) {
+    try {
+      const { getShopifyConnection } = await import('@/lib/commerce/shopify/token-store')
+      shopifyConnected = !!(await getShopifyConnection(opts.workspaceId))
+    } catch (err: any) {
+      console.warn(`[vapi-assistant] shopify lookup failed for ${opts.agentId}:`, err?.message)
+      shopifyConnected = false
+    }
   }
+  const shopifyTools = shopifyConnected
+    ? SHOPIFY_VOICE_TOOL_NAMES.map(name => byName.get(name)).filter(Boolean).map(toVapi)
+    : []
+
+  const custom = (opts.customVoiceTools || []).map(({ condition, ...rest }: any) => rest)
+
+  const all = [VOICE_KNOWLEDGE_TOOL, ...crmTools, ...shopifyTools, ...custom]
+  const seen = new Set<string>()
+  return all.filter((t: any) => {
+    const n = t?.function?.name
+    if (!n) return true
+    if (seen.has(n)) return false
+    seen.add(n)
+    return true
+  })
 }
 
 /**
@@ -236,33 +276,23 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
     language: vapiConfig.language,
   })
 
-  const customTools = ((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest)
-
-  // Append the 7 Shopify tools when the workspace has a store
-  // connected. Schemas come from the canonical tool-catalog (the same
-  // source the text-agent path uses) and get reshaped to Vapi's
-  // function-call envelope. Webhook dispatcher delegates to executeTool
-  // so we never duplicate the Shopify adapter logic.
-  let shopifyTools: Array<ReturnType<typeof anthropicToolToVapi>> = []
-  if (shopifyConnected) {
-    try {
-      const { AGENT_TOOLS } = await import('@/lib/agent/tool-catalog')
-      const byName = new Map((AGENT_TOOLS as any[]).map(t => [t.name, t]))
-      shopifyTools = SHOPIFY_VOICE_TOOL_NAMES
-        .map(name => byName.get(name))
-        .filter(Boolean)
-        .map(anthropicToolToVapi)
-    } catch (err: any) {
-      console.warn(`[vapi-assistant] shopify tool catalog import failed for ${agentId}:`, err?.message)
-    }
-  }
+  // Build the full function-tool list from the canonical catalogue:
+  // query_knowledge + the voice subset ∩ enabledTools + conditional
+  // Shopify + custom voiceTools. Same source the text agent uses — no
+  // parallel hardcoded list. The webhook dispatches them via executeTool.
+  const desiredFunctionTools = await buildVoiceFunctionTools({
+    agentId: agent.id,
+    workspaceId: agent.workspaceId,
+    enabledTools: (agent as any).enabledTools ?? [],
+    customVoiceTools: (vapiConfig.voiceTools as any[]) || [],
+    shopifyConnected,
+  })
 
   // Ensure org-level Vapi Tool entities exist for every function the
   // assistant needs, then reference them by id from model.toolIds.
   // Inline model.tools[] doesn't dispatch at runtime — Vapi's UI shows
   // "No tools attached" and the webhook never gets hit. Migrating to
   // standalone Tools (Round 14) is the fix.
-  const desiredFunctionTools = [...VAPI_TOOLS, ...shopifyTools, ...customTools]
   const functionToolIds = await ensureVapiTools(desiredFunctionTools)
 
   // Vapi built-in `endCall` tool — Vapi-managed, not a function. Stored

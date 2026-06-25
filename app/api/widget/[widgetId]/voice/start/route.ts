@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
-import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
 import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 type Params = { params: Promise<{ widgetId: string }> }

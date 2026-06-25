@@ -5,87 +5,27 @@ import { buildPersonaBlock } from '@/lib/persona'
 import { db } from '@/lib/db'
 import { buildVoiceCommerceBlock } from '@/lib/commerce/shopify/voice-prompt'
 
-export const VAPI_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      // Per-turn knowledge retrieval. Voice agents previously got a
-      // hard-capped 30-entry slice of their knowledge base baked into
-      // the static system prompt — for collections with thousands of
-      // RSS entries (or anything > 30) the most-recent and most-
-      // relevant items never reached the model. This tool replaces
-      // the bake-in: the model calls it with the user's question, the
-      // webhook runs vector retrieval and returns the top 5 matched
-      // chunks as the tool result.
-      name: 'query_knowledge',
-      description: 'Search the workspace knowledge base for information relevant to the caller\'s question. ALWAYS call this BEFORE answering any question that asks for specific facts — product details, release notes, FAQ answers, policies, pricing, anything the merchant has documented. Pass the caller\'s question restated naturally. Returns up to 5 ranked snippets; if it returns nothing, say so honestly instead of guessing.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'The caller\'s question, restated naturally as a search query.' },
-        },
-        required: ['query'],
+/**
+ * The one voice-specific tool that isn't in the canonical AGENT_TOOLS
+ * catalogue: per-turn knowledge retrieval. The webhook runs vector
+ * retrieval and returns the top matched chunks. Every OTHER voice tool
+ * (booking, contact capture, etc.) is generated from AGENT_TOOLS via
+ * buildVoiceFunctionTools — voice no longer has a parallel hardcoded set.
+ */
+export const VOICE_KNOWLEDGE_TOOL = {
+  type: 'function' as const,
+  function: {
+    name: 'query_knowledge',
+    description: 'Search the workspace knowledge base for information relevant to the caller\'s question. ALWAYS call this BEFORE answering any question that asks for specific facts — product details, release notes, FAQ answers, policies, pricing, anything the merchant has documented. Pass the caller\'s question restated naturally. Returns up to 5 ranked snippets; if it returns nothing, say so honestly instead of guessing.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The caller\'s question, restated naturally as a search query.' },
       },
+      required: ['query'],
     },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'book_appointment',
-      description: 'Book an appointment for the caller',
-      parameters: {
-        type: 'object',
-        properties: {
-          startTime: { type: 'string', description: 'ISO datetime for the appointment' },
-          name: { type: 'string', description: 'Caller name for the booking' },
-        },
-        required: ['startTime'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_available_slots',
-      description: 'Get available appointment slots for booking',
-      parameters: {
-        type: 'object',
-        properties: {
-          date: { type: 'string', description: 'Date to check in YYYY-MM-DD format' },
-        },
-        required: ['date'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'tag_contact',
-      description: 'Tag the caller contact with a label',
-      parameters: {
-        type: 'object',
-        properties: {
-          tag: { type: 'string', description: 'Tag to apply to the contact' },
-        },
-        required: ['tag'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'send_sms_followup',
-      description: 'Send an SMS follow-up message to the caller after the call',
-      parameters: {
-        type: 'object',
-        properties: {
-          message: { type: 'string', description: 'The SMS message to send after the call' },
-        },
-        required: ['message'],
-      },
-    },
-  },
-]
+}
 
 export function buildToolConditions(voiceTools?: any[] | null): string {
   if (!voiceTools || !Array.isArray(voiceTools)) return ''

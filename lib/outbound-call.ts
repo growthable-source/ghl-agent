@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { createOutboundCall } from '@/lib/vapi-client'
-import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
+import { buildVoiceSystemPrompt } from '@/lib/voice-prompt'
+import { buildVoiceFunctionTools } from '@/lib/voice/vapi-assistant'
 import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 import { checkVoiceQuota } from '@/lib/voice-quota'
 
@@ -113,16 +114,19 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
   }
 
   // 4. Build assistant config (same shape as inbound assistant-request response)
+  const voiceFunctionTools = await buildVoiceFunctionTools({
+    agentId: agent.id,
+    workspaceId: agent.workspaceId,
+    enabledTools: (agent as any).enabledTools ?? [],
+    customVoiceTools: (vapiConfig.voiceTools as any[]) || [],
+  })
   const assistantConfig = {
     name: agent.name,
     model: {
       provider: 'anthropic',
       model: 'claude-sonnet-4-20250514',
       messages: [{ role: 'system', content: systemPrompt }],
-      tools: [
-        ...VAPI_TOOLS,
-        ...((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest),
-      ],
+      tools: voiceFunctionTools,
     },
     voice: buildVapiVoiceBlock({
       engine: resolveVoiceEngine(vapiConfig.ttsProvider),

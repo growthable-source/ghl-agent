@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { VAPI_TOOLS, buildVoiceSystemPrompt } from '@/lib/voice-prompt'
+import { buildVoiceSystemPrompt } from '@/lib/voice-prompt'
 import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 async function findAgentByPhoneNumber(phoneNumber: string) {
@@ -151,92 +151,28 @@ async function runVoiceToolInner(
       return result
     }
 
-    // ── CRM / calendar tools (the original 4) ──
-    switch (functionName) {
-      case 'get_available_slots': {
-        if (!ctx.locationId) return 'Sorry, I cannot check availability right now.'
-        const { getFreeSlots } = await import('@/lib/crm-client')
-        const agent = ctx.agentId ? await db.agent.findUnique({ where: { id: ctx.agentId } }) : null
-        if (!agent?.calendarId) return 'No calendar configured for this agent.'
-        const startDate: string = (params.date as string) || new Date().toISOString().split('T')[0]
-        const endDateObj = new Date(startDate)
-        endDateObj.setDate(endDateObj.getDate() + 2)
-        const endDate = endDateObj.toISOString().split('T')[0]
-        const timezone = (params.timezone as string) || 'America/New_York'
-        const slots = await getFreeSlots(ctx.locationId, agent.calendarId, startDate, endDate, timezone)
-        if (!slots || slots.length === 0) return 'No available slots in the next few days. Would you like to try a different date?'
-        const byDay: Record<string, string[]> = {}
-        for (const s of slots.slice(0, 15)) {
-          const dt = new Date(s.startTime)
-          const dayKey = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-          const time = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-          if (!byDay[dayKey]) byDay[dayKey] = []
-          byDay[dayKey].push(time)
-        }
-        const formatted = Object.entries(byDay).map(([day, times]) => `${day}: ${times.join(', ')}`).join('. ')
-        return `Here are the available times. ${formatted}`
-      }
-
-      case 'book_appointment': {
-        if (!ctx.locationId) return 'Sorry, I cannot book right now.'
-        const { bookAppointment, searchContacts: sc } = await import('@/lib/crm-client')
-        const agentForBook = ctx.agentId ? await db.agent.findUnique({ where: { id: ctx.agentId } }) : null
-        if (!agentForBook?.calendarId) return 'No calendar configured.'
-        let contactId = ''
-        try {
-          const contacts = await sc(ctx.locationId, ctx.callerPhone)
-          if (contacts && contacts.length > 0) contactId = contacts[0].id
-        } catch {}
-        if (!contactId) return 'I could not find your contact record. I will have someone follow up.'
-        const startTime = params.startTime as string
-        let endTime = (params.endTime as string) || ''
-        if (!endTime && startTime) {
-          const end = new Date(startTime)
-          end.setMinutes(end.getMinutes() + 30)
-          endTime = end.toISOString()
-        }
-        await bookAppointment(ctx.locationId, {
-          calendarId: agentForBook.calendarId,
-          contactId,
-          startTime,
-          endTime,
-          title: params.name ? `Call with ${params.name}` : 'Appointment',
-          selectedTimezone: (params.timezone as string) || 'America/New_York',
+    // ── CRM / calendar tools — delegate to the canonical executor via the
+    // shared voice resolver. It resolves the caller's contact from
+    // callerPhone (so booking defaults to "the caller"), injects the
+    // agent's bound calendarId, and calls executeTool exactly like the
+    // text agent does. The old hand-rolled switch (which failed booking
+    // for unknown callers and had no contact-capture path) is gone.
+    const agentRow = ctx.agentId
+      ? await db.agent.findUnique({
+          where: { id: ctx.agentId },
+          select: { workspaceId: true, calendarId: true },
         })
-        const bookedTime = new Date(startTime).toLocaleString('en-US', {
-          weekday: 'long', month: 'short', day: 'numeric',
-          hour: 'numeric', minute: '2-digit', hour12: true,
-        })
-        return `Done! Your appointment is booked for ${bookedTime}. You will receive a confirmation shortly.`
-      }
-
-      case 'tag_contact': {
-        if (!ctx.locationId || !ctx.callerPhone) return 'Could not tag contact.'
-        const { searchContacts: sc2, addTagsToContact } = await import('@/lib/crm-client')
-        const contacts = await sc2(ctx.locationId, ctx.callerPhone)
-        if (contacts && contacts.length > 0) {
-          await addTagsToContact(ctx.locationId, contacts[0].id, [params.tag as string])
-        }
-        return 'Done.'
-      }
-
-      case 'send_sms_followup': {
-        if (!ctx.locationId || !ctx.callerPhone) return 'Could not send SMS.'
-        const { searchContacts: sc3, sendMessage } = await import('@/lib/crm-client')
-        const contacts = await sc3(ctx.locationId, ctx.callerPhone)
-        if (contacts && contacts.length > 0) {
-          await sendMessage(ctx.locationId, {
-            type: 'SMS',
-            contactId: contacts[0].id,
-            message: params.message as string,
-          })
-        }
-        return 'SMS sent.'
-      }
-
-      default:
-        return 'Function not found.'
-    }
+      : null
+    const { runVoiceAgentTool } = await import('@/lib/voice/voice-tool-context')
+    return runVoiceAgentTool({
+      name: functionName,
+      params,
+      agentId: ctx.agentId,
+      locationId: ctx.locationId,
+      workspaceId: agentRow?.workspaceId ?? null,
+      callerPhone: ctx.callerPhone,
+      calendarId: agentRow?.calendarId ?? null,
+    })
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err)
     console.warn('[Voice tool] dispatch error:', { tool: functionName, errMsg })
@@ -288,6 +224,17 @@ export async function POST(req: NextRequest) {
     const locationId = agent.locationId
     const systemPrompt = await buildVoiceSystemPrompt(agent, agent.knowledgeEntries, callerPhone, locationId, vapiConfig.voiceTools as any[])
 
+    // Catalogue-generated tool list (knowledge + voice subset ∩ enabledTools
+    // + conditional Shopify + custom) — same set the registered-assistant
+    // path uses. No hardcoded VAPI_TOOLS.
+    const { buildVoiceFunctionTools } = await import('@/lib/voice/vapi-assistant')
+    const voiceFunctionTools = await buildVoiceFunctionTools({
+      agentId: agent.id,
+      workspaceId: agent.workspaceId,
+      enabledTools: (agent as any).enabledTools ?? [],
+      customVoiceTools: (vapiConfig.voiceTools as any[]) || [],
+    })
+
     // Resolve the caller to a contact so merge fields in first/end messages
     // can render. Inbound voice calls often come from unknown numbers — if
     // the lookup fails we pass null and fallback syntax kicks in.
@@ -327,10 +274,7 @@ export async function POST(req: NextRequest) {
           provider: 'anthropic',
           model: 'claude-sonnet-4-20250514',
           messages: [{ role: 'system', content: systemPrompt }],
-          tools: [
-            ...VAPI_TOOLS,
-            ...((vapiConfig.voiceTools as any[]) || []).map(({ condition, ...rest }: any) => rest),
-          ],
+          tools: voiceFunctionTools,
         },
         voice: buildVapiVoiceBlock({
           engine: resolveVoiceEngine(vapiConfig.ttsProvider),
