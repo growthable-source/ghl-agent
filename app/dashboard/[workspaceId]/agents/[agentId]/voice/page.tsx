@@ -4,8 +4,6 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
-import NewBadge from '@/components/NewBadge'
-import GeminiVoicePanel from '@/components/voice/GeminiVoicePanel'
 
 interface VapiConfig {
   phoneNumberId: string | null
@@ -130,16 +128,6 @@ export default function VoicePage() {
   const [playingId, setPlayingId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Top-level voice RUNTIME: 'vapi' (existing pipeline) vs 'gemini'
-  // (native speech-to-speech). Loaded from the gemini-voice API so the
-  // picker reflects the saved discriminator; defaults to 'vapi'.
-  const [voiceRuntime, setVoiceRuntime] = useState<'vapi' | 'gemini'>('vapi')
-  useEffect(() => {
-    fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/gemini-voice`)
-      .then(r => r.json())
-      .then(d => { if (d?.voiceRuntime === 'gemini') setVoiceRuntime('gemini') })
-      .catch(() => {})
-  }, [workspaceId, agentId])
 
   // Phone provisioning
   const [showBuyForm, setShowBuyForm] = useState(false)
@@ -359,38 +347,6 @@ export default function VoicePage() {
         </div>
       )}
 
-      {/* ── Voice RUNTIME picker (top-level: Vapi pipeline vs Gemini) ── */}
-      <div className="mb-6 rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <div>
-          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice runtime</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-            Choose how this agent speaks. Gemini is a native speech-to-speech model — it hears and speaks audio directly, so it sounds noticeably more human.
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-1 p-1 rounded-lg" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-          {([
-            { id: 'vapi' as const,   label: 'Phone & web via Vapi' },
-            { id: 'gemini' as const, label: 'Gemini — native voice (most human)' },
-          ]).map(opt => {
-            const active = voiceRuntime === opt.id
-            return (
-              <button key={opt.id} type="button" onClick={() => setVoiceRuntime(opt.id)}
-                className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors inline-flex items-center gap-1.5"
-                style={active ? { background: '#fa4d2e', color: '#ffffff' } : { background: 'transparent', color: 'var(--text-secondary)' }}>
-                {opt.label}
-                {opt.id === 'gemini' && <NewBadge since="2026-06-18" />}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {voiceRuntime === 'gemini' && (
-        <GeminiVoicePanel workspaceId={workspaceId} agentId={agentId} />
-      )}
-
-      {voiceRuntime === 'vapi' && (
-      <>
       <form onSubmit={save} className="space-y-6">
 
         {/* ── Enable toggle ── */}
@@ -818,8 +774,6 @@ export default function VoicePage() {
           Open Overview →
         </Link>
       </div>
-      </>
-      )}
     </div>
   )
 }

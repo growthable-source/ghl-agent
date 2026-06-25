@@ -169,6 +169,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
     update: body,
   })
 
+  // Saving the Vapi config commits this agent to the Vapi runtime. This
+  // self-heals any agent still flagged 'gemini' from the retired
+  // browser-direct Gemini stack: opening the (now unified) voice page and
+  // hitting Save migrates it cleanly, no SQL required.
+  await db.agent.update({ where: { id: agentId }, data: { voiceRuntime: 'vapi' } })
+
   // Sync the registered Vapi assistant with the new config. This is
   // the validation gate — if Vapi rejects any field, we return the
   // typed error so the UI can render it inline next to the save
