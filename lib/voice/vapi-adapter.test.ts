@@ -115,6 +115,40 @@ describe('buildVapiVoiceBlock — Vapi-native engine (default)', () => {
   })
 })
 
+describe('resolveVoiceEngine — Cartesia', () => {
+  it('maps "cartesia" to cartesia', () => {
+    expect(resolveVoiceEngine('cartesia')).toBe('cartesia')
+  })
+})
+
+describe('buildVapiVoiceBlock — Cartesia engine (the new default)', () => {
+  it('emits provider "cartesia" with a model + the chosen voiceId', () => {
+    const block = buildVapiVoiceBlock({ engine: 'cartesia', voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02' })
+    expect(block.provider).toBe('cartesia')
+    expect(block.voiceId).toBe('f786b574-daa5-4673-aa0c-cbe3e8534c02')
+    expect(typeof block.model).toBe('string')
+  })
+
+  it('coerces an unknown voiceId to the default so Vapi never 400s', () => {
+    const block = buildVapiVoiceBlock({ engine: 'cartesia', voiceId: 'not-a-cartesia-id' })
+    expect(block.provider).toBe('cartesia')
+    // CARTESIA_DEFAULT_VOICE_ID (Katie) unless overridden by env.
+    expect(typeof block.voiceId).toBe('string')
+    expect((block.voiceId as string).length).toBeGreaterThan(0)
+  })
+
+  it('passes language through when set', () => {
+    const block = buildVapiVoiceBlock({ engine: 'cartesia', voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', language: 'en' })
+    expect(block.language).toBe('en')
+  })
+
+  it('does NOT include ElevenLabs tuning fields', () => {
+    const block = buildVapiVoiceBlock({ engine: 'cartesia', voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', stability: 0.5, similarityBoost: 0.7 })
+    expect(block).not.toHaveProperty('stability')
+    expect(block).not.toHaveProperty('similarityBoost')
+  })
+})
+
 describe('buildVapiVoiceBlock — ElevenLabs engine', () => {
   it('emits provider "11labs" with the default turbo_v2_5 model', () => {
     const block = buildVapiVoiceBlock({ engine: 'elevenlabs', voiceId: 'abc123' })

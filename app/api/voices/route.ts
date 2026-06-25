@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { VapiVoiceAdapter } from '@/lib/voice/vapi-adapter'
 import { VAPI_NATIVE_VOICES } from '@/lib/voice/vapi-native-voices'
 import { filterGeminiVoices, toVoiceWire } from '@/lib/voice/gemini/voices-wire'
+import { filterCartesiaVoices } from '@/lib/voice/cartesia-voices'
 
 /**
  * GET /api/voices?provider=vapi|elevenlabs|gemini&search=…
@@ -19,6 +20,16 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search') || undefined
 
   try {
+    if (provider === 'cartesia') {
+      // Cartesia (Sonic) — most-human premium TTS, the default engine.
+      // Same wire shape as the others; toVoiceWire maps VoiceOption →
+      // { voice_id, name, preview_url, labels, language, category }.
+      return NextResponse.json({
+        provider: 'cartesia',
+        voices: filterCartesiaVoices(search).map(toVoiceWire),
+      })
+    }
+
     if (provider === 'gemini') {
       return NextResponse.json({
         provider: 'gemini',

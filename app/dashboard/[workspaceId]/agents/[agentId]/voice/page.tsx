@@ -17,7 +17,7 @@ interface VapiConfig {
    * Tuning sliders (stability/similarityBoost/speed/style) only apply
    * to ElevenLabs voices; the UI hides them on Vapi-native.
    */
-  ttsProvider: 'vapi' | 'elevenlabs'
+  ttsProvider: 'vapi' | 'elevenlabs' | 'cartesia'
   voiceId: string
   voiceName: string | null
   stability: number
@@ -100,11 +100,11 @@ export default function VoicePage() {
 
   const [config, setConfig] = useState<VapiConfig>({
     phoneNumberId: null, phoneNumber: null,
-    ttsProvider: 'vapi',
-    // Default to a valid Vapi-NATIVE voice (engine is 'vapi' above). The
-    // old default paired the native engine with an ElevenLabs id ("Sarah"),
-    // which Vapi 400s on save. Elliot is Vapi's demo default.
-    voiceId: 'Elliot', voiceName: 'Elliot',
+    // Default to Cartesia (Sonic) — the most-human voice, Vapi's own
+    // default provider. Keeps our Claude brain + tools. Katie is a warm
+    // conversational default; the picker offers the rest.
+    ttsProvider: 'cartesia',
+    voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', voiceName: 'Katie',
     stability: 0.5, similarityBoost: 0.75, speed: 1.0, style: 0.0,
     firstMessage: '', endCallMessage: '',
     maxDurationSecs: 600, recordCalls: true,
@@ -415,7 +415,7 @@ export default function VoicePage() {
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Voice type</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              Standard voices sound great on the phone and work out of the box. ElevenLabs unlocks a much larger premium catalogue.
+              Natural is the most human-sounding option and works out of the box. Standard and ElevenLabs are alternatives if you want a specific voice.
             </p>
           </div>
           <div
@@ -423,8 +423,9 @@ export default function VoicePage() {
             style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
           >
             {([
+              { id: 'cartesia',   label: 'Natural — most human' },
               { id: 'vapi',       label: 'Standard' },
-              { id: 'elevenlabs', label: 'ElevenLabs — premium' },
+              { id: 'elevenlabs', label: 'ElevenLabs' },
             ] as const).map(opt => {
               const active = config.ttsProvider === opt.id
               return (

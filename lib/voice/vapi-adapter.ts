@@ -1,5 +1,6 @@
 import { searchElevenLabsVoices } from '../vapi-client'
 import { coerceVapiNativeVoiceId } from './vapi-native-voices'
+import { CARTESIA_MODEL, CARTESIA_DEFAULT_VOICE_ID, getCartesiaVoice } from './cartesia-voices'
 import type { VoiceOption } from './types'
 
 /**
@@ -45,15 +46,16 @@ export class VapiVoiceAdapter {
 // (Phase D SQL) values are 'vapi' or 'elevenlabs' — no more 'xai'
 // rows. Unknown values fall back to 'vapi' (the new default).
 
-export type VoiceEngine = 'elevenlabs' | 'vapi'
+export type VoiceEngine = 'elevenlabs' | 'vapi' | 'cartesia'
 
 /** Map the persisted VapiConfig.ttsProvider field to a VoiceEngine. */
 export function resolveVoiceEngine(ttsProvider?: string | null): VoiceEngine {
   if (ttsProvider === 'elevenlabs' || ttsProvider === '11labs') return 'elevenlabs'
-  // 'vapi' (new default), legacy 'xai', null, undefined → 'vapi'.
-  // Legacy 'xai' rows should never reach here after Phase D SQL runs
-  // (they're rewritten to 'vapi'/'elliot'); this fallback covers any
-  // that slip through.
+  // Cartesia (Sonic) — the most-human premium TTS, the new default for
+  // fresh agents. Keeps our Claude brain + tools (it's a pipeline voice,
+  // not a brain-swapping speech-to-speech model).
+  if (ttsProvider === 'cartesia') return 'cartesia'
+  // 'vapi' (legacy default), legacy 'xai', null, undefined → 'vapi'.
   return 'vapi'
 }
 
@@ -97,6 +99,19 @@ export interface VapiVoiceParams {
  */
 export function buildVapiVoiceBlock(p: VapiVoiceParams): Record<string, unknown> {
   const engine = p.engine ?? 'vapi'
+
+  if (engine === 'cartesia') {
+    // Cartesia (Sonic) — Vapi's default premium TTS, the most natural
+    // voice we offer. Shape: { provider: 'cartesia', model, voiceId }.
+    // A non-Cartesia / missing id coerces to the default so Vapi never
+    // 400s the assistant (same guard rail as the native engine).
+    return {
+      provider: 'cartesia' as const,
+      model: CARTESIA_MODEL,
+      voiceId: getCartesiaVoice(p.voiceId)?.id ?? CARTESIA_DEFAULT_VOICE_ID,
+      ...(p.language && { language: p.language }),
+    }
+  }
 
   if (engine === 'elevenlabs') {
     // ElevenLabs path — full shape with tuning + model. Kept for

@@ -45,7 +45,7 @@ const STEPS: { key: Step; label: string }[] = [
 // config — Vapi-native voices (Elliot et al., Riley's stack) or any
 // of ElevenLabs' 5000+ voices. Both engines route through Vapi for
 // phone calls.
-type Engine = 'vapi' | 'elevenlabs' | 'gemini'
+type Engine = 'cartesia' | 'vapi' | 'elevenlabs' | 'gemini'
 
 interface VoiceOption {
   id: string
@@ -78,10 +78,10 @@ export default function VoiceWizardPage() {
   const [template, setTemplate] = useState<VoiceTemplate | null>(null)
 
   // ─── Voice engine — tab choice on the Voice step. Default to
-  //     Vapi-native (Elliot is what powers Vapi's "Riley" demo and
-  //     is the stack we've verified end-to-end). ElevenLabs stays
-  //     as a second option for operators who want the 5000+ catalogue.
-  const [engine, setEngine] = useState<Engine>('gemini')
+  //     Cartesia (Sonic) — the most-human voice, Vapi's own default
+  //     provider, and it keeps our Claude brain + tools on every call.
+  //     Standard / ElevenLabs remain as alternatives.
+  const [engine, setEngine] = useState<Engine>('cartesia')
 
   // ─── Step 2: voice ────────────────────────────────────────────────
   const [voices, setVoices] = useState<VoiceOption[]>([])
@@ -190,11 +190,11 @@ export default function VoiceWizardPage() {
     if (elliot) setSelectedVoice(elliot)
   }, [engine, voices, selectedVoice])
 
-  // Gemini is the star runtime + the wizard default, so pre-select its
-  // first native voice (Puck et al.) once the catalogue loads. Keeps
-  // canContinue (which requires a selectedVoice) green on the happy path.
+  // Cartesia is the wizard default (most-human), so pre-select its first
+  // voice (Katie) once the catalogue loads. Keeps canContinue (which
+  // requires a selectedVoice) green on the happy path.
   useEffect(() => {
-    if (engine !== 'gemini' || selectedVoice || voices.length === 0) return
+    if (engine !== 'cartesia' || selectedVoice || voices.length === 0) return
     setSelectedVoice(voices[0])
   }, [engine, voices, selectedVoice])
 
@@ -598,9 +598,9 @@ function VoiceStep({
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
         {([
-          { id: 'gemini' as const,     label: 'Gemini — native voice (most human)' },
+          { id: 'cartesia' as const,   label: 'Natural — most human' },
           { id: 'vapi' as const,       label: 'Standard' },
-          { id: 'elevenlabs' as const, label: 'ElevenLabs — premium' },
+          { id: 'elevenlabs' as const, label: 'ElevenLabs' },
         ]).map(opt => {
           const active = engine === opt.id
           return (
