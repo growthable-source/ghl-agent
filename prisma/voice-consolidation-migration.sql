@@ -19,8 +19,11 @@ BEGIN;
 -- 1. Give every Gemini voice agent a Cartesia VapiConfig if it lacks one.
 --    Katie (f786b574-...) is the warm conversational default; CARTESIA_MODEL
 --    defaults to sonic-2 in code, so the model field is left to the app.
-INSERT INTO "VapiConfig" ("agentId", "ttsProvider", "voiceId", "voiceName", "isActive")
-SELECT a."id", 'cartesia', 'f786b574-daa5-4673-aa0c-cbe3e8534c02', 'Katie', true
+--    NOTE: VapiConfig.id is a Prisma cuid generated in the APP layer, so it
+--    has no DB default — raw SQL must supply an id. gen_random_uuid() (PG13+)
+--    gives a unique String id; the column is just text, format doesn't matter.
+INSERT INTO "VapiConfig" ("id", "agentId", "ttsProvider", "voiceId", "voiceName", "isActive")
+SELECT gen_random_uuid()::text, a."id", 'cartesia', 'f786b574-daa5-4673-aa0c-cbe3e8534c02', 'Katie', true
 FROM "Agent" a
 LEFT JOIN "VapiConfig" v ON v."agentId" = a."id"
 WHERE a."voiceRuntime" = 'gemini'
