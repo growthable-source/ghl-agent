@@ -244,7 +244,7 @@ export default function MetaConversationDetail({ workspaceId, conversationId, on
                 </span>
               </div>
               <p className="text-xs italic mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Your agent will auto-reply on its next polling cycle. Type below to take over and write your own.
+                Autopilot is on — your agent replies automatically. If it hasn&apos;t replied, type below to take over and write your own.
               </p>
             </div>
           )}

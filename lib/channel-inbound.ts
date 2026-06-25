@@ -28,6 +28,8 @@
 
 import { db } from './db'
 import { runAgent, type AgentResponse } from './ai-agent'
+import { isUnansweredSkip } from './agent/reply-skip'
+import { notify } from './notifications'
 import { buildBasePrompt } from './agent/build-base-prompt'
 import { findMatchingAgent } from './routing'
 import { getOrCreateConversationState, incrementMessageCount } from './conversation-state'
@@ -204,7 +206,29 @@ export async function finalizeChannelInbound(p: FinalizeParams): Promise<void> {
   }
 
   if (logId) {
-    if (sendSucceeded) {
+    if (isUnansweredSkip(result.skipped)) {
+      // Transient infra failure (model provider down / out of credit) — the
+      // agent produced no reply. Do NOT stamp SUCCESS (the message went
+      // unanswered). Record an error and page the workspace so a human can
+      // take over, mirroring the marketplace-webhook path.
+      await db.messageLog.update({
+        where: { id: logId },
+        data: {
+          status: 'ERROR',
+          outboundReply: null,
+          errorMessage: `Agent produced no reply — ${result.skipped} (model provider unavailable)`,
+        },
+      }).catch(() => {})
+      if (agent.workspaceId) {
+        notify({
+          workspaceId: agent.workspaceId,
+          event: 'agent_error',
+          title: `Agent couldn't reply`,
+          body: `The AI model was unavailable, so "${inboundMessage.slice(0, 120)}" is waiting for a human.`,
+          severity: 'error',
+        }).catch(() => {})
+      }
+    } else if (sendSucceeded) {
       await db.messageLog.update({
         where: { id: logId },
         data: {

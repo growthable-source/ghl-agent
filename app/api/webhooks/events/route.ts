@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTokens } from '@/lib/token-store'
 import { getMessages } from '@/lib/crm-client'
 import { runAgent } from '@/lib/ai-agent'
+import { isUnansweredSkip } from '@/lib/agent/reply-skip'
 import { processContactTrigger } from '@/lib/triggers'
 import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
@@ -490,6 +491,19 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
             },
             deferSend: shouldDeferForApproval,
           })
+
+          // ─── Unanswered skip → surface as an error, never SUCCESS ───
+          // runAgent returns { reply: null, skipped } when it produced no
+          // reply. For transient infra failures (model provider down / out
+          // of credit) the inbound went genuinely unanswered. Falling
+          // through here stamped MessageLog SUCCESS with a null reply — the
+          // message was silently dropped while the inbox showed "Autopilot
+          // will reply". Throw so the catch below records ERROR, pages the
+          // workspace, and fires message.error; the visitor's message stays
+          // visible for a human to take over.
+          if (isUnansweredSkip(result.skipped)) {
+            throw new Error(`Agent produced no reply — ${result.skipped} (model provider unavailable)`)
+          }
 
           // ─── Approval queue — flag if rules match ───
           const { needsApproval, reason: approvalReason } = evaluateApprovalNeed({
