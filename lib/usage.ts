@@ -7,7 +7,7 @@
  */
 
 import { db } from '@/lib/db'
-import { currentBillingPeriod } from '@/lib/plans'
+import { currentBillingPeriod, effectiveVoiceMinuteLimit } from '@/lib/plans'
 
 /**
  * Record a message sent by an AI agent.
@@ -105,7 +105,9 @@ export async function getCurrentUsage(workspaceId: string): Promise<{
     messages: ws.messageUsage,
     messageLimit: ws.messageLimit,
     voiceSeconds: ws.voiceMinuteUsage,
-    voiceMinuteLimit: ws.voiceMinuteLimit,
+    // Plan-derived (column is only an override) so billing display and
+    // the voice gate agree — see effectiveVoiceMinuteLimit.
+    voiceMinuteLimit: effectiveVoiceMinuteLimit(ws.plan, ws.voiceMinuteLimit),
     plan: ws.plan,
     trialEndsAt: ws.trialEndsAt,
   }

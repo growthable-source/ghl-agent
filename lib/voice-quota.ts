@@ -30,7 +30,7 @@
  */
 
 import { db } from '@/lib/db'
-import { getPlanFeatures, currentBillingPeriod } from '@/lib/plans'
+import { getPlanFeatures, currentBillingPeriod, effectiveVoiceMinuteLimit } from '@/lib/plans'
 
 /**
  * Send a warning when ≥ 80 % of the included voice minutes have been
@@ -80,7 +80,11 @@ export async function checkVoiceQuota(workspaceId: string): Promise<VoiceQuotaRe
 
   const features = getPlanFeatures(ws.plan)
   const usedMinutes = Math.ceil((ws.voiceMinuteUsage ?? 0) / 60)
-  const limitMinutes = ws.voiceMinuteLimit ?? 0
+  // Entitlement is driven by the PLAN, not the denormalized column — see
+  // effectiveVoiceMinuteLimit. This is what stops a voice-enabled
+  // workspace whose column was never backfilled from being told "voice
+  // isn't on your plan".
+  const limitMinutes = effectiveVoiceMinuteLimit(ws.plan, ws.voiceMinuteLimit)
 
   // Plan doesn't include voice at all.
   if (limitMinutes <= 0) {
@@ -139,7 +143,7 @@ export async function maybeSendVoiceQuotaWarning(
     select: { voiceMinuteLimit: true, plan: true, name: true },
   })
   if (!ws) return
-  const limitMinutes = ws.voiceMinuteLimit ?? 0
+  const limitMinutes = effectiveVoiceMinuteLimit(ws.plan, ws.voiceMinuteLimit)
   if (limitMinutes <= 0) return // no warn for "not on plan"
 
   const usedMinutes = Math.ceil(usedSecondsAfter / 60)

@@ -20,6 +20,14 @@ const GEMINI_TTS_MODEL = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-previ
 export const VOICE_PREVIEW_TEXT =
   "Hi — I'm your Voxility co-pilot. I'll guide you through it, one step at a time."
 
+/**
+ * Neutral preview line for a phone/voice AGENT (vs the co-pilot). Used by
+ * the generic /api/voices/preview endpoint so the sample sounds like a
+ * call agent, not a screen-share guide. Fixed → cacheable.
+ */
+export const VOICE_AGENT_PREVIEW_TEXT =
+  "Hi there — thanks for calling. This is how I'll sound when I answer. How can I help you today?"
+
 export function isGeminiTtsEnabled(): boolean {
   return !!process.env.GEMINI_API_KEY
 }
@@ -57,7 +65,10 @@ function rateFromMime(mime: string | undefined): number {
  * Synthesize the fixed preview line in `voiceName` (null/omitted → Gemini's
  * default voice). Returns WAV bytes, or null on any failure.
  */
-export async function synthesizeVoicePreview(voiceName: string | null): Promise<Buffer | null> {
+export async function synthesizeVoicePreview(
+  voiceName: string | null,
+  text: string = VOICE_PREVIEW_TEXT,
+): Promise<Buffer | null> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return null
 
@@ -72,7 +83,7 @@ export async function synthesizeVoicePreview(voiceName: string | null): Promise<
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: VOICE_PREVIEW_TEXT }] }],
+          contents: [{ parts: [{ text }] }],
           generationConfig: {
             responseModalities: ['AUDIO'],
             speechConfig,

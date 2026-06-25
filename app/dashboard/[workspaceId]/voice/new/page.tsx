@@ -227,10 +227,12 @@ export default function VoiceWizardPage() {
   }, [voices, voiceQuery, accentFilter])
 
   function playPreview(voice: VoiceOption) {
-    // Both engines ship preview URLs (ElevenLabs in the catalogue
-    // response, Vapi-native in lib/voice/vapi-native-voices.ts pointing
-    // at storage.vapi.ai samples). No on-demand synth needed.
+    // Vapi-native and ElevenLabs ship pre-recorded preview URLs. Gemini
+    // native voices have none (no public one-shot CDN clip), so fall back
+    // to on-demand synth via /api/voices/preview — otherwise the play
+    // button is dead for the most-human engine.
     const url = voice.previewUrl
+      ?? (engine === 'gemini' ? `/api/voices/preview?voice=${encodeURIComponent(voice.id)}` : null)
     if (!url) return
     if (previewPlaying === voice.id) {
       setPreviewPlaying(null)

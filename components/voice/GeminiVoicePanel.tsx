@@ -43,6 +43,11 @@ export default function GeminiVoicePanel({
   const [saved, setSaved] = useState(false)
   const [voices, setVoices] = useState<VoiceWire[]>([])
 
+  // Voice preview (▶ on each voice card). Gemini ships no pre-recorded
+  // sample, so we synth one on demand via /api/voices/preview.
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+
   const [callState, setCallState] = useState<CallState>('idle')
   const [callError, setCallError] = useState<string | null>(null)
   const turnsRef = useRef<Turn[]>([])
@@ -72,6 +77,23 @@ export default function GeminiVoicePanel({
   }, [workspaceId, agentId])
 
   const patch = (p: Partial<GeminiConfig>) => setConfig(c => (c ? { ...c, ...p } : c))
+
+  const playPreview = useCallback((voiceId: string) => {
+    // Toggle off if this voice is already playing.
+    if (previewId === voiceId) {
+      previewAudioRef.current?.pause()
+      previewAudioRef.current = null
+      setPreviewId(null)
+      return
+    }
+    previewAudioRef.current?.pause()
+    const audio = new Audio(`/api/voices/preview?voice=${encodeURIComponent(voiceId)}`)
+    audio.onended = () => setPreviewId(null)
+    audio.onerror = () => setPreviewId(null)
+    audio.play().catch(() => setPreviewId(null))
+    previewAudioRef.current = audio
+    setPreviewId(voiceId)
+  }, [previewId])
 
   const save = useCallback(async () => {
     if (!config) return
@@ -170,6 +192,7 @@ export default function GeminiVoicePanel({
   }, [workspaceId, agentId, endCall])
 
   useEffect(() => () => void endCall(), [endCall])
+  useEffect(() => () => { previewAudioRef.current?.pause() }, [])
 
   if (!config) {
     return <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading Gemini voice…</p>
@@ -204,18 +227,30 @@ export default function GeminiVoicePanel({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {voices.map(v => {
             const active = config.voiceName === v.voice_id
+            const playing = previewId === v.voice_id
             return (
-              <button key={v.voice_id} type="button" onClick={() => patch({ voiceName: v.voice_id })}
-                className="text-left rounded-lg border px-3 py-2 transition-colors"
+              <div key={v.voice_id}
+                onClick={() => patch({ voiceName: v.voice_id })}
+                className="flex items-center gap-2 text-left rounded-lg border px-3 py-2 transition-colors cursor-pointer"
                 style={active
                   ? { borderColor: '#fa4d2e', background: 'var(--surface-secondary)' }
                   : { borderColor: 'var(--border)', background: 'transparent' }}>
-                <span className="text-xs font-semibold block" style={{ color: 'var(--text-primary)' }}>{v.name}</span>
-                <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{v.labels.description ?? ''}</span>
-              </button>
+                <button type="button"
+                  onClick={e => { e.stopPropagation(); playPreview(v.voice_id) }}
+                  aria-label={playing ? `Stop ${v.name} preview` : `Play ${v.name} preview`}
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] flex-shrink-0 transition-colors"
+                  style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
+                  {playing ? '⏸' : '▶'}
+                </button>
+                <span className="min-w-0">
+                  <span className="text-xs font-semibold block" style={{ color: 'var(--text-primary)' }}>{v.name}</span>
+                  <span className="text-[10px] block truncate" style={{ color: 'var(--text-tertiary)' }}>{v.labels.description ?? ''}</span>
+                </span>
+              </div>
             )
           })}
         </div>
+        <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Tap ▶ to hear a short sample.</p>
       </div>
 
       {/* First / end message */}

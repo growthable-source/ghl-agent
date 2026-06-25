@@ -264,6 +264,29 @@ export function canUseVoice(plan: string): boolean {
 }
 
 /**
+ * The voice-minute cap to actually enforce for a workspace.
+ *
+ * `Workspace.voiceMinuteLimit` is a DENORMALIZED cache that only gets
+ * written on a Stripe webhook or an explicit plan-change. A workspace put
+ * on a voice-enabled plan any other way (internal flip, grandfathered,
+ * hand-run SQL) keeps the schema default of 0 — which the old gates
+ * misread as "voice isn't on your plan" even on the top tier. The PLAN is
+ * the source of truth:
+ *   - plan doesn't include voice  → 0  (hard "not on plan")
+ *   - column is a positive override (custom grant) → honor it
+ *   - otherwise → the plan's included minutes
+ *
+ * Pass the workspace's stored column as `columnLimit`; it becomes an
+ * override rather than the primary signal.
+ */
+export function effectiveVoiceMinuteLimit(plan: string, columnLimit: number | null | undefined): number {
+  const features = getPlanFeatures(plan)
+  if (!features.voiceEnabled) return 0
+  const col = columnLimit ?? 0
+  return col > 0 ? col : features.voiceMinutes
+}
+
+/**
  * Co-Pilot v0 access. Plan-gate by default; pre-GA the
  * COPILOT_WORKSPACE_ALLOWLIST env var (comma-separated workspace ids)
  * lets us dogfood inside specific workspaces without flipping the
