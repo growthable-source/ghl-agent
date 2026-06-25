@@ -57,15 +57,21 @@ export default function VoiceAgentOverview() {
   const [vapi, setVapi] = useState<VapiConfigData | null>(null)
   const [calls, setCalls] = useState<CallData[]>([])
   const [loading, setLoading] = useState(true)
+  // Voice runtime discriminator ('vapi' | 'gemini'). Gemini agents have no
+  // Vapi assistant, so the test panel must run the native Gemini test —
+  // otherwise it dead-ends on "isn't synced with the voice provider".
+  const [voiceRuntime, setVoiceRuntime] = useState<'vapi' | 'gemini'>('vapi')
+  const [geminiVoiceName, setGeminiVoiceName] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       try {
-        const [agentRes, vapiRes, callsRes] = await Promise.all([
+        const [agentRes, vapiRes, callsRes, geminiRes] = await Promise.all([
           fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`),
           fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`),
           fetch(`/api/workspaces/${workspaceId}/calls?agentId=${agentId}&limit=10`).catch(() => null),
+          fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/gemini-voice`).catch(() => null),
         ])
 
         if (cancelled) return
@@ -96,6 +102,11 @@ export default function VoiceAgentOverview() {
           const d = await callsRes.json()
           if (Array.isArray(d.calls)) setCalls(d.calls.slice(0, 10))
         }
+        if (geminiRes?.ok) {
+          const d = await geminiRes.json()
+          if (d?.voiceRuntime === 'gemini') setVoiceRuntime('gemini')
+          if (d?.config?.voiceName) setGeminiVoiceName(d.config.voiceName)
+        }
       } catch (err) {
         console.error('[VoiceAgentOverview] load failed:', err)
       } finally {
@@ -114,8 +125,11 @@ export default function VoiceAgentOverview() {
     )
   }
 
-  const voiceLabel = vapi?.voiceName || vapi?.voiceId || 'No voice selected'
-  const engineLabel = vapi?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Standard'
+  const isGemini = voiceRuntime === 'gemini'
+  const voiceLabel = isGemini
+    ? (geminiVoiceName || 'Default voice')
+    : (vapi?.voiceName || vapi?.voiceId || 'No voice selected')
+  const engineLabel = isGemini ? 'Gemini · native voice' : vapi?.ttsProvider === 'elevenlabs' ? 'ElevenLabs' : 'Standard'
   const phoneNumber = vapi?.phoneNumber
   const hasAssistantSync = !!vapi?.vapiAssistantId
 
@@ -197,11 +211,12 @@ export default function VoiceAgentOverview() {
           workspaceId={workspaceId}
           agentId={agentId}
           agentName={agent.name}
-          voiceId={vapi?.voiceId || ''}
+          voiceId={isGemini ? (geminiVoiceName || 'Default') : (vapi?.voiceId || '')}
           firstMessage={vapi?.firstMessage ?? null}
           ttsProvider={(vapi?.ttsProvider as 'vapi' | 'elevenlabs') || 'vapi'}
           locationId={agent.locationId || ''}
-          outboundEnabled={!!phoneNumber && !!agent.locationId}
+          voiceRuntime={voiceRuntime}
+          outboundEnabled={!isGemini && !!phoneNumber && !!agent.locationId}
         />
       </div>
 

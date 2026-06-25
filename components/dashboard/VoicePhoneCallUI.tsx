@@ -18,6 +18,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useGeminiTestCall } from '@/lib/voice/use-gemini-test-call'
 
 export interface VoicePhoneCallUIProps {
   workspaceId: string
@@ -39,6 +40,13 @@ export interface VoicePhoneCallUIProps {
   locationId: string
   /** When true, the dial-real-number button is hidden */
   outboundEnabled?: boolean
+  /**
+   * Which voice runtime the agent actually uses. 'gemini' agents have no
+   * Vapi assistant, so the browser test must run the Gemini Live path —
+   * routing them through the Vapi tester just errors "isn't synced".
+   * Defaults to 'vapi' for back-compat with existing call sites.
+   */
+  voiceRuntime?: 'vapi' | 'gemini'
 }
 
 type CallMode = 'idle' | 'browser' | 'outbound'
@@ -180,7 +188,7 @@ function IdleScreen({
 // ─── Browser call ────────────────────────────────────────────────────
 
 function BrowserCallScreen({
-  agentId, agentName, voiceId, firstMessage, onHangUp,
+  workspaceId, agentId, agentName, voiceId, firstMessage, voiceRuntime, onHangUp,
 }: VoicePhoneCallUIProps & { onHangUp: () => void }) {
   void voiceId // displayed on idle screen only; kept on the interface for consistency
   // Brief "ringing" theatre before connecting — sells the phone-call
@@ -231,12 +239,13 @@ function BrowserCallScreen({
 
       {phase === 'connected' && (
         <div className="rounded-xl p-3" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-          {/* Always Vapi — the legacy ttsProvider prop is kept on the
-              component surface for back-compat but no longer branches
-              the render. Vapi routes the right TTS engine (Vapi-native
-              or ElevenLabs) based on the agent's voice config at call
-              time. */}
-          <VapiBrowserCall agentId={agentId} firstMessage={firstMessage ?? undefined} />
+          {/* Runtime-aware: Gemini agents have no Vapi assistant, so they
+              run the native Gemini Live test. Vapi agents (Vapi-native or
+              ElevenLabs — Vapi routes the TTS engine at call time) run the
+              Vapi browser path. */}
+          {voiceRuntime === 'gemini'
+            ? <GeminiBrowserCall workspaceId={workspaceId} agentId={agentId} />
+            : <VapiBrowserCall agentId={agentId} firstMessage={firstMessage ?? undefined} />}
         </div>
       )}
 
@@ -451,6 +460,48 @@ function VapiBrowserCall({ agentId, firstMessage }: { agentId: string; firstMess
       <div className="space-y-1.5 max-h-48 overflow-y-auto text-sm">
         {transcript.length === 0 ? (
           <p className="text-xs italic" style={{ color: 'var(--text-tertiary)' }}>Transcript will appear here as the call progresses…</p>
+        ) : transcript.map((line, i) => (
+          <div key={i}>
+            <span className="text-[10px] font-semibold uppercase tracking-wider mr-2" style={{ color: 'var(--text-tertiary)' }}>{line.role}</span>
+            <span style={{ color: 'var(--text-primary)' }}>{line.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Gemini-runtime browser test. Uses the shared useGeminiTestCall hook
+// (same code path as the config panel's Test-voice button) and auto-starts
+// on mount. No "isn't synced" precondition — Gemini agents are live the
+// moment they're created; this just opens a mic + WebSocket session.
+function GeminiBrowserCall({ workspaceId, agentId }: { workspaceId: string; agentId: string }) {
+  const { callState, callError, transcript, startCall, endCall } = useGeminiTestCall(workspaceId, agentId)
+
+  useEffect(() => {
+    void startCall()
+    return () => { void endCall() }
+    // Start exactly once when this screen mounts; the hook is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const statusLabel =
+    callState === 'live' ? 'Listening'
+    : callState === 'connecting' ? 'Connecting…'
+    : callState === 'error' ? 'Error'
+    : 'Call ended'
+
+  return (
+    <div>
+      <p className="text-[11px] mb-2" style={{ color: 'var(--text-tertiary)' }}>{statusLabel}</p>
+      {callError && (
+        <p className="text-[11px] mb-2" style={{ color: '#ef4444' }}>{callError}</p>
+      )}
+      <div className="space-y-1.5 max-h-48 overflow-y-auto text-sm">
+        {transcript.length === 0 ? (
+          <p className="text-xs italic" style={{ color: 'var(--text-tertiary)' }}>
+            {callState === 'live' ? 'Say hello — the agent is listening…' : 'Transcript will appear here as the call progresses…'}
+          </p>
         ) : transcript.map((line, i) => (
           <div key={i}>
             <span className="text-[10px] font-semibold uppercase tracking-wider mr-2" style={{ color: 'var(--text-tertiary)' }}>{line.role}</span>

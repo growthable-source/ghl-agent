@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
-import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
-import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
 import { GeminiPhoneNumberPanel } from '@/components/voice/GeminiPhoneNumberPanel'
+import { useGeminiTestCall } from '@/lib/voice/use-gemini-test-call'
 
 interface GeminiConfig {
   isActive: boolean
@@ -27,9 +26,6 @@ interface VoiceWire {
   language: string | null
 }
 
-type CallState = 'idle' | 'connecting' | 'live' | 'error'
-type Turn = { role: 'user' | 'agent'; text: string }
-
 export default function GeminiVoicePanel({
   workspaceId,
   agentId,
@@ -48,13 +44,9 @@ export default function GeminiVoicePanel({
   const [previewId, setPreviewId] = useState<string | null>(null)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  const [callState, setCallState] = useState<CallState>('idle')
-  const [callError, setCallError] = useState<string | null>(null)
-  const turnsRef = useRef<Turn[]>([])
-  const providerRef = useRef<GeminiLiveProvider | null>(null)
-  const micRef = useRef<MicCapture | null>(null)
-  const playerRef = useRef<PcmPlayer | null>(null)
-  const startedAtRef = useRef<number>(0)
+  // Live test call — shared hook (same code path the Overview test panel
+  // uses), so a Gemini agent is testable from both surfaces.
+  const { callState, callError, startCall, endCall } = useGeminiTestCall(workspaceId, agentId)
 
   // Load config + voice catalogue.
   useEffect(() => {
@@ -113,85 +105,6 @@ export default function GeminiVoicePanel({
     }
   }, [config, workspaceId, agentId])
 
-  const endCall = useCallback(async () => {
-    const durationSecs = startedAtRef.current ? (Date.now() - startedAtRef.current) / 1000 : 0
-    try {
-      await providerRef.current?.close()
-    } catch {}
-    micRef.current?.stop()
-    playerRef.current?.stop()
-    providerRef.current = null
-    micRef.current = null
-    playerRef.current = null
-    setCallState('idle')
-    // Persist transcript (best-effort).
-    if (turnsRef.current.length) {
-      void fetch(`/api/voice/gemini/transcript`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentId, durationSecs, turns: turnsRef.current }),
-      }).catch(() => {})
-    }
-    turnsRef.current = []
-  }, [agentId])
-
-  const startCall = useCallback(async () => {
-    setCallError(null)
-    setCallState('connecting')
-    turnsRef.current = []
-    try {
-      const res = await fetch(
-        `/api/workspaces/${workspaceId}/agents/${agentId}/gemini-voice/token`,
-        { method: 'POST' },
-      )
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}))
-        throw new Error(e.error || 'Could not start voice session')
-      }
-      const { connection, tools, vendorConfig } = await res.json()
-
-      const provider = new GeminiLiveProvider()
-      const player = new PcmPlayer()
-      await player.start()
-      const mic = new MicCapture(chunk => provider.sendAudioChunk(chunk))
-
-      provider.onAudioOutput = pcm => player.enqueue(pcm)
-      provider.onInterrupted = () => player.flush()
-      provider.onTranscript = turn => {
-        if (turn.final) turnsRef.current.push({ role: turn.role, text: turn.text })
-      }
-      provider.onToolCall = async call => {
-        const r = await fetch(`/api/voice/gemini/tool`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ agentId, name: call.name, args: call.args }),
-        })
-        return await r.json().catch(() => ({ error: 'tool failed' }))
-      }
-      provider.onError = msg => {
-        setCallError(msg)
-        setCallState('error')
-      }
-      provider.onEnded = () => {
-        void endCall()
-      }
-
-      await provider.connect({ connection, tools, vendorConfig })
-      await mic.start()
-      providerRef.current = provider
-      micRef.current = mic
-      playerRef.current = player
-      startedAtRef.current = Date.now()
-      setCallState('live')
-    } catch (err) {
-      setCallError(err instanceof Error ? err.message : 'Voice session failed')
-      setCallState('error')
-      micRef.current?.stop()
-      playerRef.current?.stop()
-    }
-  }, [workspaceId, agentId, endCall])
-
-  useEffect(() => () => void endCall(), [endCall])
   useEffect(() => () => { previewAudioRef.current?.pause() }, [])
 
   if (!config) {

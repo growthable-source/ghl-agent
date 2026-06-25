@@ -1125,14 +1125,24 @@ function TryItStep({
           </button>
         </div>
       ) : engine === 'gemini' ? (
-        // Gemini is a native speech-to-speech runtime — VoicePhoneCallUI is
-        // Vapi-specific, so we don't render it here. The Twilio number is
-        // bought right now (the agent row exists), and the in-browser test
-        // lives on the agent's voice config page.
+        // Gemini is a native speech-to-speech runtime. VoicePhoneCallUI is
+        // now runtime-aware, so the in-browser test runs right here — no
+        // need to bounce the user to the config page to hear their agent.
         <div className="space-y-5">
           <p className="text-sm font-medium" style={{ color: '#22c55e' }}>
-            ✓ Your Gemini voice agent is live.
+            ✓ Your Gemini voice agent is live. Tap “Test call in browser” to hear it.
           </p>
+          <VoicePhoneCallUI
+            workspaceId={workspaceId}
+            agentId={agentId}
+            agentName={agentName}
+            voiceId={voiceId}
+            firstMessage={firstMessage}
+            ttsProvider="vapi"
+            locationId={locationId ?? ''}
+            voiceRuntime="gemini"
+            outboundEnabled={false}
+          />
           <div>
             <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
               Get a phone number
@@ -1147,16 +1157,6 @@ function TryItStep({
               onProvisioned={() => {}}
             />
           </div>
-          <p className="text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            Want to hear it first?{' '}
-            <Link
-              href={`/dashboard/${workspaceId}/voice/${agentId}/configuration`}
-              className="underline"
-              style={{ color: '#fa4d2e' }}
-            >
-              Open agent → test in browser
-            </Link>
-          </p>
         </div>
       ) : (
         <div className="space-y-4">
