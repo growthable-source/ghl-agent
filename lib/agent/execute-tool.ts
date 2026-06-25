@@ -667,6 +667,21 @@ export async function executeTool(
       case 'book_appointment': {
         const startTime = input.startTime as string
         let endTime = (input.endTime as string) || ''
+        // Resolve the contact: model-supplied wins; else fall back to the
+        // conversation/caller contact context (positional param 13). Voice
+        // callers are resolved from their phone upstream and passed here, so
+        // a brand-new caller captured via upsert_contact this turn still books.
+        const bookContactId =
+          (typeof input.contactId === 'string' && input.contactId.length > 0)
+            ? (input.contactId as string)
+            : contactId
+        if (!bookContactId) {
+          return JSON.stringify({
+            success: false,
+            error: 'book_appointment was called without a contactId and there is no caller contact context.',
+            hint: 'Capture the caller first: ask their name + email, call upsert_contact (or create_contact), then retry book_appointment using the contactId it returns.',
+          })
+        }
         if (!endTime && startTime) {
           const end = new Date(startTime)
           if (isNaN(end.getTime())) {
@@ -682,7 +697,7 @@ export async function executeTool(
         try {
           const result = await crm.bookAppointment({
             calendarId: input.calendarId as string,
-            contactId: input.contactId as string,
+            contactId: bookContactId,
             startTime,
             endTime,
             title: input.title as string | undefined,
