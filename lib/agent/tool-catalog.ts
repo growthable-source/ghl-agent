@@ -778,6 +778,47 @@ export const SAFE_READ_ONLY_TOOLS = new Set([
 ])
 
 /**
+ * The catalogue tools a VOICE agent may expose, intersected at runtime
+ * with the agent's enabledTools. Voice no longer has a parallel hardcoded
+ * tool list — it draws from this same catalogue the text agent uses, so
+ * booking + contact capture work identically. `query_knowledge` is
+ * voice-specific (defined in lib/voice-prompt.ts, not here); Shopify tools
+ * are added separately when a store is connected.
+ */
+export const VOICE_AGENT_TOOL_NAMES = [
+  'get_available_slots',
+  'book_appointment',
+  'get_calendar_events',
+  'cancel_appointment',
+  'reschedule_appointment',
+  'create_appointment_note',
+  'find_contact_by_email_or_phone',
+  'upsert_contact',
+  'create_contact',
+  'update_contact_field',
+  'update_contact_tags',
+  'add_contact_note',
+] as const
+
+/**
+ * Reshape an Anthropic-format tool def (name/description/input_schema)
+ * into Vapi's function-call envelope. Strips Voxility-internal metadata
+ * (defaultUseWhen, enforcement, …) — Vapi's tool schema rejects unknown
+ * keys. Single source of truth, imported by the voice runtime so we never
+ * re-type a catalogue tool by hand.
+ */
+export function anthropicToolToVapi(t: { name: string; description: string; input_schema: Record<string, unknown> }) {
+  return {
+    type: 'function' as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.input_schema,
+    },
+  }
+}
+
+/**
  * Optionally constrain add_to_workflow / remove_from_workflow's `workflowId`
  * to an enum of user-pinned workflow IDs.
  *
