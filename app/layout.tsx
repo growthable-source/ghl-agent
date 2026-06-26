@@ -76,7 +76,7 @@ export const metadata: Metadata = {
   },
 
   // OG = how the page previews on Facebook, LinkedIn, Slack, Discord.
-  // Images are auto-picked up from /app/opengraph-image.png by Next.
+  // Image is auto-picked up from /app/opengraph-image.tsx (dynamic next/og).
   openGraph: {
     type: 'website',
     locale: 'en_US',

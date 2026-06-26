@@ -12,13 +12,14 @@ import Image from 'next/image'
  * Theme:
  *   dark   – color gradient on dark background (default)
  *   light  – black version for light backgrounds
+ *   white  – solid white version for dark/photographic backgrounds
  */
 
 interface XoveraLogoProps {
   variant?: 'mark' | 'full'
   height?: number
   className?: string
-  theme?: 'dark' | 'light'
+  theme?: 'dark' | 'light' | 'white'
 }
 
 export default function XoveraLogo({
@@ -40,9 +41,10 @@ export default function XoveraLogo({
     )
   }
 
-  // Full wordmark — aspect ratio is ~3.32:1 (3177 x 957)
-  const width = Math.round(height * 3.32)
-  const src = theme === 'light' ? '/logo-black.svg' : '/logo-color.svg'
+  // Full wordmark — aspect ratio is ~3.28:1 (426 x 130)
+  const width = Math.round(height * 3.28)
+  const src =
+    theme === 'light' ? '/logo-black.svg' : theme === 'white' ? '/logo-white.svg' : '/logo-color.svg'
 
   return (
     <Image
