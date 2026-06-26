@@ -1207,6 +1207,30 @@ export async function executeTool(
         }
         const summary = String((input as any).summary || '').slice(0, 500)
         const { db: prisma } = await import('../db')
+        // Guard: never close a chat that's waiting in the human queue.
+        // When a visitor asks for a human and the team is at capacity (or
+        // nobody is online), the chat is enqueued — queuedAt set,
+        // assignedUserId still null — and the AI is DELIBERATELY kept
+        // active to keep helping while they wait (see
+        // lib/widget-routing.ts enqueueConversation). Without this guard
+        // the still-active AI could judge the thread "done" and end it
+        // here, silently dropping the visitor from the queue before any
+        // teammate ever picked them up — they'd surface as Ended +
+        // Unassigned in the inbox. That's the intermittent "conversations
+        // auto-close without being assigned" bug. A human is on the hook
+        // for this chat; refuse and let them take over.
+        const convoState = await prisma.widgetConversation
+          .findUnique({
+            where: { id: widgetConvId },
+            select: { queuedAt: true, assignedUserId: true },
+          })
+          .catch(() => null)
+        if (convoState?.queuedAt && !convoState.assignedUserId) {
+          return JSON.stringify({
+            error:
+              'Cannot end this conversation — the visitor is waiting in the queue for a human teammate to take over. Keep helping until a teammate picks it up; do not close it.',
+          })
+        }
         await prisma.widgetConversation.update({
           where: { id: widgetConvId },
           data: { status: 'ended', lastMessageAt: new Date() },
