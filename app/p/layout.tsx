@@ -1,5 +1,5 @@
 /**
- * Public landing-page layout (Voxility-hosted /p/<slug> routes).
+ * Public landing-page layout (Xovera-hosted /p/<slug> routes).
  *
  * Loads Inter (body) + Fraunces (serif display) + Plus Jakarta Sans
  * (geometric display) via next/font so AI-generated landing pages can
@@ -60,7 +60,7 @@ export default function PublicLandingLayout({ children }: { children: React.Reac
           (0,4,0) specificity — to beat them inside the public landing
           scope we use ID-prefixed selectors for (1,1,0) specificity,
           which wins regardless of the dashboard's !important.
-          Without this every form card on /p/<slug> renders Voxility
+          Without this every form card on /p/<slug> renders Xovera
           orange, every "white" surface comes out themed, etc. */}
       <style>{`
         #vox-public-page .bg-white { background-color: #ffffff !important; }

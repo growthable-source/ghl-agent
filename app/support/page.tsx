@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 
 export const metadata = {
-  title: 'Support | Voxility',
-  description: 'Get help with Voxility. Browse our documentation, submit feedback, or reach out to our team.',
+  title: 'Support | Xovera',
+  description: 'Get help with Xovera. Browse our documentation, submit feedback, or reach out to our team.',
 }
 
 function CardLink({ href, title, description, external, icon }: { href: string; title: string; description: string; external?: boolean; icon: React.ReactNode }) {
@@ -34,8 +34,8 @@ export default function SupportPage() {
       <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: 'var(--border)', background: 'rgba(5,8,15,0.85)' }}>
         <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <VoxilityLogo variant="mark" height={26} />
-            <span className="font-bold text-sm">Voxility</span>
+            <XoveraLogo variant="mark" height={26} />
+            <span className="font-bold text-sm">Xovera</span>
           </Link>
           <div className="flex items-center gap-6 text-sm">
             <Link href="/docs" className="hover:text-white transition-colors" style={{ color: 'var(--text-secondary)' }}>Docs</Link>
@@ -73,7 +73,7 @@ export default function SupportPage() {
           />
 
           <CardLink
-            href="https://voxility.canny.io"
+            href="https://xovera.canny.io"
             title="Feature requests and bug reports"
             description="Submit ideas, vote on upcoming features, and report bugs through our public feedback board."
             external
@@ -85,9 +85,9 @@ export default function SupportPage() {
           />
 
           <CardLink
-            href="mailto:support@voxility.io"
+            href="mailto:support@xovera.io"
             title="Email support"
-            description="Reach our team directly at support@voxility.io. We typically respond within a few hours on business days."
+            description="Reach our team directly at support@xovera.io. We typically respond within a few hours on business days."
             external
             icon={
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -118,8 +118,8 @@ export default function SupportPage() {
               a="Add a rule or stop condition in your agent's configuration that triggers a transfer. You can specify a phone number or use your CRM's round-robin assignment to route to available team members."
             />
             <FaqItem
-              q="Can I use Voxility without a CRM?"
-              a="Yes. While CRM integration unlocks the full feature set (contact sync, appointment booking, pipeline updates), you can use Voxility standalone for voice and messaging automation."
+              q="Can I use Xovera without a CRM?"
+              a="Yes. While CRM integration unlocks the full feature set (contact sync, appointment booking, pipeline updates), you can use Xovera standalone for voice and messaging automation."
             />
             <FaqItem
               q="How do I cancel or change my plan?"
@@ -127,7 +127,7 @@ export default function SupportPage() {
             />
             <FaqItem
               q="I found a bug — where do I report it?"
-              a="Head to our feedback board at voxility.canny.io and submit a bug report. Include screenshots or steps to reproduce if possible — it helps us fix things faster."
+              a="Head to our feedback board at xovera.canny.io and submit a bug report. Include screenshots or steps to reproduce if possible — it helps us fix things faster."
             />
           </div>
         </div>
@@ -141,7 +141,7 @@ export default function SupportPage() {
           <p className="mb-8" style={{ color: 'var(--text-secondary)' }}>
             Our team is here for you. Drop us a line and we&apos;ll get back to you as soon as possible.
           </p>
-          <a href="mailto:support@voxility.io" className="btn-primary text-base py-3 px-8">
+          <a href="mailto:support@xovera.io" className="btn-primary text-base py-3 px-8">
             Contact support
           </a>
         </div>
@@ -150,7 +150,7 @@ export default function SupportPage() {
       {/* ═══ Footer ═══ */}
       <footer className="border-t py-8 px-6" style={{ borderColor: '#121a2b' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between text-xs" style={{ color: '#475569' }}>
-          <VoxilityLogo height={16} />
+          <XoveraLogo height={16} />
           <div className="flex items-center gap-6">
             <Link href="/docs" className="hover:text-white transition-colors">Docs</Link>
             <Link href="/login" className="hover:text-white transition-colors">Log in</Link>

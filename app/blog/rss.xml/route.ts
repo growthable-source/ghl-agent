@@ -1,6 +1,6 @@
 import { POSTS } from '@/lib/blog-posts'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 /**
  * RSS 2.0 feed at /blog/rss.xml.
@@ -44,7 +44,7 @@ export async function GET() {
         `      <pubDate>${new Date(p.publishedAt).toUTCString()}</pubDate>`,
         `      <description>${esc(p.description)}</description>`,
         `      <category>${esc(p.category)}</category>`,
-        `      <author>noreply@voxility.ai (${esc(p.author)})</author>`,
+        `      <author>noreply@xovera.io (${esc(p.author)})</author>`,
         '    </item>',
       ].join('\n')
     })
@@ -53,10 +53,10 @@ export async function GET() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Voxility Blog</title>
+    <title>Xovera Blog</title>
     <link>${SITE_URL}/blog</link>
     <atom:link href="${SITE_URL}/blog/rss.xml" rel="self" type="application/rss+xml" />
-    <description>Guides, comparisons, and product updates from Voxility — the self-improving AI agent platform for GoHighLevel and HubSpot.</description>
+    <description>Guides, comparisons, and product updates from Xovera — the self-improving AI agent platform for GoHighLevel and HubSpot.</description>
     <language>en-us</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
 ${items}

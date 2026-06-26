@@ -8,7 +8,7 @@
 Let a customer fully whitelabel their support portal: their own domain
 (`support.theirbrand.com`), their logo, their accent color. A visitor
 to that domain sees the customer's brand on the login screen and
-throughout — never "Voxility".
+throughout — never "Xovera".
 
 ## Decisions (settled)
 
@@ -56,7 +56,7 @@ keeps doing so.
 
 ## Routing (narrow middleware rewrite)
 
-The root `/` is the Voxility marketing site, so a custom-domain visitor
+The root `/` is the Xovera marketing site, so a custom-domain visitor
 must be routed to the portal. Constraints: middleware runs on Edge and
 cannot use Prisma, so it does **no DB lookup** — only a host check.
 
@@ -77,7 +77,7 @@ cannot use Prisma, so it does **no DB lookup** — only a host check.
 ## Branding application
 
 - **Login page** (`app/portal/login/page.tsx` + `LoginForm`): resolve
-  branding by host; show the portal logo + name instead of the Voxility
+  branding by host; show the portal logo + name instead of the Xovera
   wordmark; apply `primaryColor` to the submit button + focus accents,
   falling back to the existing amber when unset.
 - **Layout** (`app/portal/layout.tsx`): already shows the logo

@@ -22,7 +22,7 @@ Therefore co-browse is only possible where **the customer embeds our SDK inside
 their own product** — i.e. our script runs *in their page's own origin*, with
 direct access to that page's DOM. This is the same audience as today's
 `copilot.js` embed, but a different mode: today the embed `window.open()`s a
-**separate Voxility tab** (to dodge iframe/permission limits); co-browse instead
+**separate Xovera tab** (to dodge iframe/permission limits); co-browse instead
 runs the session **in-page**, as a widget panel inside the host product.
 
 Consequences:
@@ -122,11 +122,11 @@ highlight_element({ elementId: "e12", label?: "Click Save", style?: "ring"|"arro
   still feed frames so the agent can *read* rendered content (charts, canvas,
   images the DOM doesn't describe)? Likely yes, low-fps, optional.
 - **OQ-2 — embed friction.** This needs the customer to add an in-page script.
-  Is that acceptable, or do we also want a Voxility-hosted "demo product" mode
+  Is that acceptable, or do we also want a Xovera-hosted "demo product" mode
   for prospects who can't install? (Separate, smaller effort.)
 - **OQ-3 — id stability** across SPA re-renders: name+role+path heuristic vs.
-  injecting `data-voxility-id`. Spike decides.
-- **OQ-4 — does this also replace screen-share for *staff* (Voxility dashboard)
+  injecting `data-xovera-id`. Spike decides.
+- **OQ-4 — does this also replace screen-share for *staff* (Xovera dashboard)
   guidance?** Our own dashboard could host the SDK natively → best-in-class
   in-app guidance, no screen-share at all. Tempting Phase-2 once the SDK exists.
 

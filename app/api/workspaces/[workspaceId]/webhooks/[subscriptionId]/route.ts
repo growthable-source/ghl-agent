@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     await fireWebhook({
       workspaceId,
       event: 'test',
-      payload: { message: 'Voxility webhook test', triggeredBy: access.session.user.id, timestamp: new Date().toISOString() },
+      payload: { message: 'Xovera webhook test', triggeredBy: access.session.user.id, timestamp: new Date().toISOString() },
     })
     return NextResponse.json({ success: true })
   }

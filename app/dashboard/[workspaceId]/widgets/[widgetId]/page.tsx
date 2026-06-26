@@ -137,7 +137,7 @@ export default function WidgetEditorPage() {
   const isInline = widget.embedMode === 'inline'
 
   const scriptSnippet = `<script src="${origin}/widget.js" data-widget-id="${widget.id}" data-public-key="${widget.publicKey}" async></script>`
-  const inlineSnippet = `<div id="voxility-call"></div>\n<script src="${origin}/widget.js" data-widget-id="${widget.id}" data-public-key="${widget.publicKey}" data-mount="#voxility-call" async></script>`
+  const inlineSnippet = `<div id="xovera-call"></div>\n<script src="${origin}/widget.js" data-widget-id="${widget.id}" data-public-key="${widget.publicKey}" data-mount="#xovera-call" async></script>`
   const hostedUrl = widget.slug ? `${origin}/c/${widget.slug}` : ''
   const emailSigSnippet = hostedUrl
     ? `<a href="${hostedUrl}" style="display:inline-block;padding:8px 14px;border-radius:999px;background:${widget.primaryColor};color:${widget.buttonTextColor};font:600 13px -apple-system,Segoe UI,sans-serif;text-decoration:none">📞 ${widget.buttonLabel}</a>`

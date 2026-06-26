@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const html = renderCsatReportHtml(data, { workspaceId, workspaceName })
   const subject = renderCsatReportSubject(data, workspaceName)
-  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Voxility <notifications@voxility.app>'
+  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
 
   const sendRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',

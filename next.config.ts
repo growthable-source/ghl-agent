@@ -18,7 +18,7 @@ import type { NextConfig } from "next";
 //      compromised cookie's blast radius is one tenant.
 //
 // What we lose by allowing any parent: defense against clickjacking
-// for users who are already signed into Voxility *outside* the iframe
+// for users who are already signed into Xovera *outside* the iframe
 // (a SameSite=None session cookie travels in any frame). Follow-up to
 // mitigate: split the embed-session cookie from the regular browser
 // cookie so a malicious parent can't piggyback on a passive session.

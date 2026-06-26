@@ -31,7 +31,7 @@ export default async function PortalLoginPage() {
               className="text-[10px] font-semibold uppercase tracking-widest"
               style={accent ? { color: accent } : undefined}
             >
-              {branding?.name ?? 'Voxility'}
+              {branding?.name ?? 'Xovera'}
             </p>
           )}
           <h1 className="text-2xl font-semibold text-white mt-2">

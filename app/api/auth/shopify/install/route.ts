@@ -77,9 +77,9 @@ export async function GET(req: NextRequest) {
   }
 
   // The redirect URI must match exactly what's registered in the Partner
-  // dashboard. APP_URL is set per environment (prod=app.voxility.ai,
+  // dashboard. APP_URL is set per environment (prod=app.xovera.io,
   // local=http://localhost:3000) so this resolves correctly in both.
-  const appUrl = process.env.APP_URL || 'https://app.voxility.ai'
+  const appUrl = process.env.APP_URL || 'https://app.xovera.io'
   const redirectUri = `${appUrl}/api/auth/shopify/callback`
 
   const state = signState(workspaceId)

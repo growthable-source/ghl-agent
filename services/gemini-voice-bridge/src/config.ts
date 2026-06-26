@@ -1,7 +1,7 @@
 /** Env validation for the bridge. Fails fast at boot if anything is missing. */
 export interface BridgeConfig {
   port: number
-  appUrl: string // Vercel origin, e.g. https://app.voxility.example
+  appUrl: string // Vercel origin, e.g. https://app.xovera.example
   geminiApiKey: string
   geminiModel: string
   signingSecret: string

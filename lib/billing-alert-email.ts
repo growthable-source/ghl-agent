@@ -78,7 +78,7 @@ export async function sendTrialEndingEmail(ctx: BillingAlertContext & {
   const dayWord = daysLeft === 1 ? 'day' : 'days'
 
   const { html, text } = renderBrandedEmail({
-    title: `Your Voxility trial ends in ${daysLeft} ${dayWord}`,
+    title: `Your Xovera trial ends in ${daysLeft} ${dayWord}`,
     preheader: `Pick a plan to keep ${ctx.workspaceName} running without interruption.`,
     severity: 'warning',
     intro: `Heads-up — your trial for ${ctx.workspaceName} ends on ${ctx.trialEndsAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}. Pick a plan to keep your agents running, your conversations live, and your inbox available.`,
@@ -92,7 +92,7 @@ export async function sendTrialEndingEmail(ctx: BillingAlertContext & {
 
   for (const to of recipients) {
     try {
-      await sendEmail({ to, subject: `Your Voxility trial ends in ${daysLeft} ${dayWord}`, html, text, context: 'TrialEnding' })
+      await sendEmail({ to, subject: `Your Xovera trial ends in ${daysLeft} ${dayWord}`, html, text, context: 'TrialEnding' })
     } catch (err: any) {
       console.warn(`[BillingAlert] Trial-ending send to ${to} failed:`, err?.message)
     }

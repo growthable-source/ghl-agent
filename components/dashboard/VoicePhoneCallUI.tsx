@@ -727,7 +727,7 @@ function OutboundCallScreen({
           </div>
           <div className="space-y-2">
             <a
-              href="mailto:support@voxility.ai?subject=Enable%20international%20voice%20calls"
+              href="mailto:support@xovera.io?subject=Enable%20international%20voice%20calls"
               className="block rounded-xl p-4 transition-colors hover:opacity-95"
               style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
             >

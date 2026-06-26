@@ -143,7 +143,7 @@ export async function scrapeBrandFromUrl(rawUrl: string): Promise<ScrapeResult |
       method: 'GET',
       headers: {
         // Pretend to be a normal browser — many sites 403 on bare fetches.
-        'User-Agent': 'Mozilla/5.0 (compatible; VoxilityBrandScraper/1.0; +https://voxility.ai)',
+        'User-Agent': 'Mozilla/5.0 (compatible; XoveraBrandScraper/1.0; +https://xovera.io)',
         Accept: 'text/html,application/xhtml+xml',
       },
       signal: controller.signal,

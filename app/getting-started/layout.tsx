@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 
 /**
  * Public chrome for the Getting Started page. Matches the help-center
@@ -9,9 +9,9 @@ import VoxilityLogo from '@/components/VoxilityLogo'
  * /dashboard/*).
  */
 export const metadata = {
-  title: 'Getting started with Voxility — Conversational AI for your CRM',
+  title: 'Getting started with Xovera — Conversational AI for your CRM',
   description:
-    'Voxility runs AI agents on top of your CRM — SMS, WhatsApp, Email, Live Chat, Voice. Here\'s the four-step setup, the core concepts, and the example agents to copy.',
+    'Xovera runs AI agents on top of your CRM — SMS, WhatsApp, Email, Live Chat, Voice. Here\'s the four-step setup, the core concepts, and the example agents to copy.',
   robots: { index: true, follow: true },
 }
 
@@ -27,8 +27,8 @@ export default function GettingStartedLayout({ children }: { children: React.Rea
       >
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <VoxilityLogo variant="mark" height={22} />
-            <span className="font-semibold text-sm">Voxility</span>
+            <XoveraLogo variant="mark" height={22} />
+            <span className="font-semibold text-sm">Xovera</span>
           </Link>
           <nav className="flex items-center gap-5 text-xs">
             <Link href="/help" className="hover:opacity-80 transition-opacity" style={{ color: 'var(--text-tertiary)' }}>
@@ -58,7 +58,7 @@ export default function GettingStartedLayout({ children }: { children: React.Rea
           className="max-w-5xl mx-auto px-6 text-xs flex items-center justify-between"
           style={{ color: 'var(--text-muted)' }}
         >
-          <span>© {new Date().getFullYear()} Voxility</span>
+          <span>© {new Date().getFullYear()} Xovera</span>
           <div className="flex items-center gap-4">
             <Link href="/privacy" className="hover:opacity-80 transition-opacity">Privacy</Link>
             <Link href="/terms" className="hover:opacity-80 transition-opacity">Terms</Link>

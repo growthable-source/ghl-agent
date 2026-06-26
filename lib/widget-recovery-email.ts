@@ -10,7 +10,7 @@
  * Single-factor by design — email ownership is proved by the click.
  * Tokens expire in 30 minutes and are single-use.
  *
- * Uses the shared branded wrapper so the email picks up the Voxility
+ * Uses the shared branded wrapper so the email picks up the Xovera
  * header, the standard CTA button shape, and the manage-notifications
  * footer link.
  */

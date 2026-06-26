@@ -5,7 +5,7 @@ import { sendPushToUser } from '@/lib/web-push'
 type Params = { params: Promise<{ workspaceId: string }> }
 
 /**
- * POST → fire a "Hello from Voxility" push to all of the calling user's
+ * POST → fire a "Hello from Xovera" push to all of the calling user's
  * registered browsers. Used by the "Send test" button on the prefs page
  * to verify the subscription round-trip works.
  */
@@ -20,7 +20,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     body: 'You\'ll receive notifications here for the events you opted into.',
     link: `/dashboard/${workspaceId}/settings/notifications`,
     severity: 'info',
-    tag: 'voxility-test',
+    tag: 'xovera-test',
   })
 
   if (result.delivered === 0) {

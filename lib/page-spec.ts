@@ -1,5 +1,5 @@
 /**
- * Voxility landing-page spec
+ * Xovera landing-page spec
  *
  * Structured JSON shape stored in `LandingPage.spec`. The AI generator
  * (lib/vsl-generator.ts, phase 3) outputs this; the renderer
@@ -9,7 +9,7 @@
  * union by `type`. New section types must be added here AND in the
  * renderer's <SectionRenderer/> switch.
  *
- * Ported from the lead-hacker-daily voxility-integration reference branch
+ * Ported from the lead-hacker-daily xovera-integration reference branch
  * (src/lib/page-spec.ts) — same shape, no behavior change.
  */
 

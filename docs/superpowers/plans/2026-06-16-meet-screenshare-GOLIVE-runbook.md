@@ -99,7 +99,7 @@ real Google Meet.
 ## Part C — Test it on a real Google Meet
 
 1. Start a meeting: **meet.google.com → New meeting → Start an instant meeting.** Leave the tab open.
-2. In Voxility, send the meeting bot to that Meet link (the same way you did before). **Admit the bot**
+2. In Xovera, send the meeting bot to that Meet link (the same way you did before). **Admit the bot**
    when it asks to join.
 3. In the Meet, **share your screen**: click **Present now → A tab** (or window) and pick something.
 4. **Watch it work:** within a few seconds the bot should start referring to what's on your shared

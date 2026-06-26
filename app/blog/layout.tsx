@@ -5,7 +5,7 @@ import MarketingFooter from '@/components/landing/MarketingFooter'
 export const metadata: Metadata = {
   title: {
     default: 'Blog',
-    template: '%s | Voxility Blog',
+    template: '%s | Xovera Blog',
   },
   description: 'Guides, comparisons, and product updates from the team building the self-improving AI agent platform for sales and marketing teams.',
   alternates: { canonical: '/blog' },

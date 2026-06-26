@@ -1,5 +1,5 @@
 /**
- * Voxility Widget — embed loader
+ * Xovera Widget — embed loader
  *
  * Chat widget (floating launcher → chat iframe):
  *   <script src="https://your-host.com/widget.js"
@@ -11,16 +11,16 @@
  *   Same snippet — type comes from server config.
  *
  * Click-to-call inline (button rendered into a host-page div):
- *   <div id="voxility-call"></div>
+ *   <div id="xovera-call"></div>
  *   <script src="…/widget.js"
  *           data-widget-id="wgt_xxx"
  *           data-public-key="widget_pub_xxx"
- *           data-mount="#voxility-call"
+ *           data-mount="#xovera-call"
  *           async></script>
  */
 (function () {
-  if (window.__voxilityLoaded) return
-  window.__voxilityLoaded = true
+  if (window.__xoveraLoaded) return
+  window.__xoveraLoaded = true
 
   var me = document.currentScript
   if (!me) {
@@ -29,13 +29,13 @@
       if (scripts[i].src && scripts[i].src.indexOf('widget.js') !== -1) { me = scripts[i]; break }
     }
   }
-  if (!me) { console.warn('[Voxility] Could not find widget script tag'); return }
+  if (!me) { console.warn('[Xovera] Could not find widget script tag'); return }
 
   var widgetId = me.getAttribute('data-widget-id') || me.getAttribute('data-key')
   var publicKey = me.getAttribute('data-public-key') || me.getAttribute('data-pk')
   var mountSelector = me.getAttribute('data-mount')
   if (!widgetId || !publicKey) {
-    console.warn('[Voxility] widget.js needs data-widget-id and data-public-key attributes')
+    console.warn('[Xovera] widget.js needs data-widget-id and data-public-key attributes')
     return
   }
 
@@ -55,7 +55,7 @@
     .then(function (cfg) {
       if (cfg && cfg.id) { state.config = cfg; render(); startVisitorTracking() }
     })
-    .catch(function (e) { console.warn('[Voxility] config fetch failed:', e) })
+    .catch(function (e) { console.warn('[Xovera] config fetch failed:', e) })
 
   // ─── Visitor tracking ──────────────────────────────────────────────
   // Fires page_view events to /visitor/events so the operator inbox
@@ -104,7 +104,7 @@
     }
   }
   // Parent-page context to hand the iframe. The chat/call pages run on
-  // the Voxility origin INSIDE an iframe, so their own window.location is
+  // the Xovera origin INSIDE an iframe, so their own window.location is
   // the embed URL — useless for "which page/site did this chat come
   // from?". We pass the host page's real URL + title through the query
   // string so the embed can record it as the conversation's origin
@@ -237,7 +237,7 @@
     } else {
       var mount = mountSelector ? document.querySelector(mountSelector) : null
       if (!mount) {
-        console.warn('[Voxility] inline mount target not found:', mountSelector || '#voxility-call')
+        console.warn('[Xovera] inline mount target not found:', mountSelector || '#xovera-call')
         return
       }
       mount.appendChild(btn)
@@ -308,7 +308,7 @@
   // the panel with it, keeping their 70px gap. Position persists per
   // widget in localStorage. A movement threshold distinguishes a drag
   // from a plain click so opening the widget still works.
-  var POS_KEY = 'voxility_widget_pos_' + widgetId
+  var POS_KEY = 'xovera_widget_pos_' + widgetId
   function loadPos() {
     try { return JSON.parse(localStorage.getItem(POS_KEY) || 'null') } catch (_) { return null }
   }
@@ -398,7 +398,7 @@
   }
 
   // Programmatic API for host pages
-  window.Voxility = {
+  window.Xovera = {
     open: function () { if (!state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call') },
     close: function () { if (state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call') },
     toggle: function () { toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call') },

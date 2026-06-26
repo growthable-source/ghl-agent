@@ -17,8 +17,8 @@ const PRIMARY_HOSTS = new Set(
   [
     hostnameOf(process.env.NEXT_PUBLIC_SITE_URL),
     hostnameOf(process.env.NEXT_PUBLIC_APP_URL),
-    'voxility.ai',
-    'app.voxility.ai',
+    'xovera.io',
+    'app.xovera.io',
     'localhost',
     '127.0.0.1',
   ].filter((h): h is string => !!h),
@@ -63,7 +63,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Whitelabel routing: on a portal custom domain, the root path serves
-  // the portal (not the Voxility marketing site). Host-only check — no
+  // the portal (not the Xovera marketing site). Host-only check — no
   // DB lookup (Edge); the portal pages resolve branding by host. Only
   // the root is rewritten; /portal/*, /api/*, /_next/* pass through and
   // already work on the custom domain.

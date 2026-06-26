@@ -3,7 +3,7 @@
 /**
  * Funnels list page.
  *
- * Styled with Voxility design tokens (CSS variables on :root) — never
+ * Styled with Xovera design tokens (CSS variables on :root) — never
  * hardcoded Tailwind color utilities like bg-white/bg-blue-600. Match
  * the visual language of /dashboard/[workspaceId]/calls and the agents
  * pages so this page slots in cleanly.

@@ -3,9 +3,9 @@ import { findAlternative } from '@/lib/alternatives-data'
 
 export const size = OG_SIZE
 export const contentType = OG_CONTENT_TYPE
-export const alt = 'Intercom alternative — Voxility'
+export const alt = 'Intercom alternative — Xovera'
 
 export default function Og() {
   const a = findAlternative('intercom-alternative')
-  return marketingOg({ eyebrow: a?.eyebrow ?? 'Alternative', title: a?.heading ?? 'Voxility' })
+  return marketingOg({ eyebrow: a?.eyebrow ?? 'Alternative', title: a?.heading ?? 'Xovera' })
 }

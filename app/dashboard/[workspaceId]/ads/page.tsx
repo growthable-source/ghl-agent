@@ -88,7 +88,7 @@ export default function AdsDashboardPage() {
             Ads
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Draft, launch, and optimise Meta and Google ad campaigns from inside Voxility.
+            Draft, launch, and optimise Meta and Google ad campaigns from inside Xovera.
           </p>
         </div>
         <div className="flex gap-2">

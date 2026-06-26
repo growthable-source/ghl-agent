@@ -41,10 +41,10 @@ interface AttentionItem {
   contactId: string
   conversationId?: string | null
   /**
-   * Tells us where this conversation actually lives. Voxility-side inbox
+   * Tells us where this conversation actually lives. Xovera-side inbox
    * exists only for widget conversations (locationId begins with `widget:`).
    * For everything else we look at `crmProvider` to decide whether to
-   * deep-link into LeadConnector, HubSpot, or fall back to Voxility's
+   * deep-link into LeadConnector, HubSpot, or fall back to Xovera's
    * contacts page. Optional for backward-compat with old API responses
    * that didn't ship the fields.
    */
@@ -173,7 +173,7 @@ export default function HandoffAlertBanner() {
   const extra = visible.length - 1
 
   /**
-   * Widget conversations live in Voxility's own inbox (the only place
+   * Widget conversations live in Xovera's own inbox (the only place
    * they exist). Identifiable by the `widget:` prefix on the locationId.
    */
   function isWidgetItem(item: AttentionItem): boolean {
@@ -183,12 +183,12 @@ export default function HandoffAlertBanner() {
   /**
    * Resolve the URL where the operator can actually pick up this
    * conversation. Per-CRM:
-   *   - widget       → Voxility inbox
+   *   - widget       → Xovera inbox
    *   - ghl          → LeadConnector conversations UI
    *   - hubspot      → HubSpot contact record (no conversations UI we own)
-   *   - native/none  → Voxility contacts page (the only place native
+   *   - native/none  → Xovera contacts page (the only place native
    *                    conversations are managed)
-   *   - unknown      → Voxility contacts fallback
+   *   - unknown      → Xovera contacts fallback
    *
    * The previous version assumed every non-widget item was GHL, which
    * 404'd for native + hubspot installs. Now driven by the explicit
@@ -197,7 +197,7 @@ export default function HandoffAlertBanner() {
   function takeOverUrl(item: AttentionItem): { url: string; external: boolean } | null {
     if (!workspaceId) return null
 
-    // Widget conversation → Voxility inbox.
+    // Widget conversation → Xovera inbox.
     if (isWidgetItem(item) && item.conversationId) {
       return {
         url: `/dashboard/${workspaceId}/inbox?conversation=${item.conversationId}`,
@@ -223,7 +223,7 @@ export default function HandoffAlertBanner() {
 
     // HubSpot — no conversations URL we can address reliably; deep-link
     // to the contact record. portalId is on the Location row but not in
-    // this payload yet; for now we send the operator to the Voxility
+    // this payload yet; for now we send the operator to the Xovera
     // contact page where they can pick up from the recorded context.
     if (item.crmProvider === 'hubspot' && item.contactId) {
       return {
@@ -232,7 +232,7 @@ export default function HandoffAlertBanner() {
       }
     }
 
-    // Native / none / unknown — Voxility contacts page is the source
+    // Native / none / unknown — Xovera contacts page is the source
     // of truth for these conversations.
     if (item.contactId) {
       return {
@@ -256,7 +256,7 @@ export default function HandoffAlertBanner() {
   function takeOverLabel(item: AttentionItem): string {
     if (isWidgetItem(item)) return 'Take over'
     if (item.crmProvider === 'ghl') return 'Open in CRM'
-    // native / hubspot / unknown → operator stays inside Voxility
+    // native / hubspot / unknown → operator stays inside Xovera
     return 'Take over'
   }
 
@@ -327,7 +327,7 @@ export default function HandoffAlertBanner() {
           title={
             takeOverIsExternal(primary)
               ? 'Open the conversation in LeadConnector (new tab)'
-              : 'Open the conversation in Voxility'
+              : 'Open the conversation in Xovera'
           }
         >
           {takeOverLabel(primary) === 'Open in CRM' ? 'Open in CRM' : 'Take over now'}
@@ -382,7 +382,7 @@ export default function HandoffAlertBanner() {
                 title={
                   takeOverIsExternal(item)
                     ? 'Open the conversation in LeadConnector (new tab)'
-                    : 'Open the conversation in Voxility'
+                    : 'Open the conversation in Xovera'
                 }
               >
                 {takeOverLabel(item)}{takeOverIsExternal(item) && <span aria-hidden> ↗</span>}

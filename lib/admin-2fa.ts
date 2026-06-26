@@ -12,7 +12,7 @@
 import { generateSecret as otpGenerateSecret, generateURI, verifySync } from 'otplib'
 import QRCode from 'qrcode'
 
-const ISSUER = 'Voxility Admin'
+const ISSUER = 'Xovera Admin'
 
 export function generateSecret(): string {
   return otpGenerateSecret()

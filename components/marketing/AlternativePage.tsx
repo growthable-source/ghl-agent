@@ -4,7 +4,7 @@ import MarketingFooter from '@/components/landing/MarketingFooter'
 import type { Alternative } from '@/lib/alternatives-data'
 import type { CompareCellKind } from '@/lib/compare-data'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 const CELL: Record<CompareCellKind, { icon: string; color: string }> = {
   yes: { icon: '✓', color: 'var(--accent-emerald)' },
@@ -78,18 +78,18 @@ export default function AlternativePage({ data }: { data: Alternative }) {
             <p className="text-[0.95rem] leading-[1.7]" style={{ color: 'var(--text-secondary)' }}>{data.theirPitch}</p>
           </div>
           <div className="vox-card p-6" style={{ background: 'linear-gradient(135deg, var(--accent-primary-bg) 0%, var(--surface) 100%)' }}>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-3" style={{ color: 'var(--accent-primary)' }}>How Voxility is different</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-3" style={{ color: 'var(--accent-primary)' }}>How Xovera is different</div>
             <p className="text-[0.95rem] leading-[1.7]" style={{ color: 'var(--text-secondary)' }}>{data.ourAngle}</p>
           </div>
         </section>
 
         {/* Feature matrix */}
         <section className="mb-14">
-          <h2 className="text-2xl font-bold tracking-tight mb-6">Voxility vs. {data.competitor}, feature by feature</h2>
+          <h2 className="text-2xl font-bold tracking-tight mb-6">Xovera vs. {data.competitor}, feature by feature</h2>
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
             <div className="grid grid-cols-[1fr_auto_auto] text-sm">
               <div className="px-4 py-3 font-semibold" style={{ background: 'var(--surface-secondary)', color: 'var(--text-primary)' }}>Feature</div>
-              <div className="px-4 py-3 font-semibold text-center min-w-[120px]" style={{ background: 'var(--surface-secondary)', color: 'var(--accent-primary)' }}>Voxility</div>
+              <div className="px-4 py-3 font-semibold text-center min-w-[120px]" style={{ background: 'var(--surface-secondary)', color: 'var(--accent-primary)' }}>Xovera</div>
               <div className="px-4 py-3 font-semibold text-center min-w-[120px]" style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}>{data.competitor}</div>
               {data.rows.map((r, i) => (
                 <div key={r.feature} className="contents">
@@ -111,7 +111,7 @@ export default function AlternativePage({ data }: { data: Alternative }) {
             </ul>
           </div>
           <div className="vox-card p-6">
-            <h3 className="font-semibold mb-3" style={{ color: 'var(--accent-primary)' }}>When Voxility is the better pick</h3>
+            <h3 className="font-semibold mb-3" style={{ color: 'var(--accent-primary)' }}>When Xovera is the better pick</h3>
             <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
               {data.whenToPickUs.map((t) => (<li key={t} className="flex gap-2"><span style={{ color: 'var(--accent-primary)' }}>✓</span>{t}</li>))}
             </ul>
@@ -136,7 +136,7 @@ export default function AlternativePage({ data }: { data: Alternative }) {
 
         {/* CTA */}
         <section className="vox-card p-8 md:p-12 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">See why teams switch to Voxility.</h2>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">See why teams switch to Xovera.</h2>
           <p className="mb-6 text-[0.9375rem] max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>Build your first AI agent in under 5 minutes. Free while in beta.</p>
           <Link href="/login?mode=signup" className="btn-primary">Start building free</Link>
         </section>

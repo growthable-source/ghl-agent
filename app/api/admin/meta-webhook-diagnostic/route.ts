@@ -17,7 +17,7 @@
  * Auth: ?secret=<CRON_SECRET>. Same pattern the cron endpoints use.
  *
  * Usage:
- *   curl "https://app.voxility.ai/api/admin/meta-webhook-diagnostic?secret=<CRON_SECRET>&pageId=1048992941631381"
+ *   curl "https://app.xovera.io/api/admin/meta-webhook-diagnostic?secret=<CRON_SECRET>&pageId=1048992941631381"
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -180,7 +180,7 @@ const GRAPH = 'https://graph.facebook.com/v19.0'
 async function checkMetaSide(req: NextRequest, appId: string, appSecret: string) {
   const fix = req.nextUrl.searchParams.get('fix') === 'true'
   const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN
-  const expectedCallbackUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://app.voxility.ai').replace(/\/+$/, '') + '/api/meta/webhook'
+  const expectedCallbackUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://app.xovera.io').replace(/\/+$/, '') + '/api/meta/webhook'
   const appToken = `${appId}|${appSecret}`
   const REQUIRED_FIELDS = ['messages', 'messaging_postbacks', 'message_reads', 'messaging_referrals']
 

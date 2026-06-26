@@ -1103,7 +1103,7 @@ function PhoneStep({
             <input type="radio" name="pmode" checked={mode === 'port'} onChange={() => onMode('port')} className="mt-1 accent-orange-500" />
             <div>
               <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>I already have a number</div>
-              <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Twilio / Vonage / 8x8 numbers can be ported in. Email support@voxility.ai and we&apos;ll connect it for you.</div>
+              <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Twilio / Vonage / 8x8 numbers can be ported in. Email support@xovera.io and we&apos;ll connect it for you.</div>
             </div>
           </div>
         </div>

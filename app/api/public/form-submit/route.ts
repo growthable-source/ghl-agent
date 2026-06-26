@@ -1,5 +1,5 @@
 /**
- * Public form-submit endpoint for Voxility landing pages.
+ * Public form-submit endpoint for Xovera landing pages.
  *
  * No auth: this is the webhook every /p/<slug> form posts to. We trust
  * the request shape but validate the landing page (must exist, must be

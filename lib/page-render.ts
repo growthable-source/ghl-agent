@@ -103,7 +103,7 @@ export async function renderLandingPage(rawUrl: string): Promise<PageRenderResul
     })
 
     await page.setExtraHTTPHeaders({
-      'User-Agent': 'Mozilla/5.0 (compatible; VoxilityBuildLoop/1.0; +https://voxility.ai)',
+      'User-Agent': 'Mozilla/5.0 (compatible; XoveraBuildLoop/1.0; +https://xovera.io)',
     })
 
     await page.goto(url.toString(), { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS })

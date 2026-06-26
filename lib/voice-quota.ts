@@ -2,7 +2,7 @@
  * Voice-minute quota gates.
  *
  * Every voice agent on the platform draws from a single shared voice
- * provider (Voxility manages it; users never see the vendor). Without
+ * provider (Xovera manages it; users never see the vendor). Without
  * quotas, one workspace could burn unlimited international minutes
  * overnight. This module gates calls at the start (in-progress calls
  * are never killed mid-call — user-hostile) and surfaces the 80%

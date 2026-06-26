@@ -19,7 +19,7 @@
 
 const FETCH_TIMEOUT_MS = 15_000
 const UA =
-  'Mozilla/5.0 (compatible; VoxilityBot/1.0; +https://voxility.ai) AppleWebKit/537.36 Chrome/124 Safari/537.36'
+  'Mozilla/5.0 (compatible; XoveraBot/1.0; +https://xovera.io) AppleWebKit/537.36 Chrome/124 Safari/537.36'
 
 export interface FetchedPage {
   html: string

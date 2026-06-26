@@ -104,7 +104,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Two reply paths exist depending on how the inbound arrived:
   //
-  //  1. **Direct Meta OAuth** — Voxility has its own Page Access Token
+  //  1. **Direct Meta OAuth** — Xovera has its own Page Access Token
   //     stored in an Integration row (matched by pageId). Reply goes
   //     straight to Meta's Send API.
   //

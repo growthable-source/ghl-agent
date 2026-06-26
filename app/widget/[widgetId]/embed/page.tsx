@@ -341,7 +341,7 @@ export default function WidgetEmbedPage() {
     // page even after the visitor has navigated elsewhere mid-chat.
     //
     // This page runs INSIDE the embed iframe, so window.location is the
-    // Voxility embed URL — not the host site. widget.js passes the host
+    // Xovera embed URL — not the host site. widget.js passes the host
     // page's real URL + title through `purl`/`ptitle`; prefer those so
     // the inbox shows the customer's page. When purl is absent AND we're
     // framed (visitor's browser still running a cached pre-purl
@@ -1381,7 +1381,7 @@ export default function WidgetEmbedPage() {
                 </svg>
               </button>
             </div>
-            <p className="text-[9px] text-zinc-600 text-center mt-2">Powered by Voxility</p>
+            <p className="text-[9px] text-zinc-600 text-center mt-2">Powered by Xovera</p>
           </form>
           )}
         </>

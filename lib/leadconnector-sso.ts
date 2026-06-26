@@ -1,12 +1,12 @@
 /**
  * Decryption for LeadConnector Custom App SSO payloads.
  *
- * When Voxility is embedded as an iframe inside LeadConnector (via a
+ * When Xovera is embedded as an iframe inside LeadConnector (via a
  * Custom Menu Link in the marketplace listing), the parent frame posts
  * an encrypted blob containing the active user's identity. We decrypt
  * it with the Shared Secret (a.k.a. "SSO Key") from the marketplace app
  * settings, trust the resulting user info because LeadConnector signed
- * it with our secret, and mint a Voxility session from it.
+ * it with our secret, and mint a Xovera session from it.
  *
  * Encryption format is OpenSSL-compatible (CryptoJS.AES.encrypt default):
  *   base64(  "Salted__" || salt[8] || ciphertext  )

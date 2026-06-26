@@ -45,7 +45,7 @@ export async function sendEmail(
   opts: { throwOnMissingKey?: boolean } = {},
 ): Promise<string | null> {
   const apiKey = process.env.RESEND_API_KEY
-  const from = params.from || process.env.NOTIFICATION_FROM_EMAIL || 'Voxility <notifications@voxility.app>'
+  const from = params.from || process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
   const ctx = params.context ? `[${params.context}] ` : ''
 
   if (!apiKey) {

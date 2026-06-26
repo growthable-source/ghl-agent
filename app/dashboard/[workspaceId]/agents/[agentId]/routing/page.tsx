@@ -227,7 +227,7 @@ export default function RoutingPage() {
                 This agent has no Deploy rules — it won&apos;t receive any inbound messages.
               </p>
               <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--accent-red)' }}>
-                Every agent in Voxility is deny-by-default: if you don&apos;t tell it which
+                Every agent in Xovera is deny-by-default: if you don&apos;t tell it which
                 conversations to take, it takes none. Add at least one rule below. For a
                 catch-all, pick <span className="font-mono">All inbound messages</span>.
               </p>

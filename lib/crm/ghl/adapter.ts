@@ -643,7 +643,7 @@ export class GhlAdapter implements CrmAdapter {
 
   /**
    * Live-chat typing indicator for GHL's native chat widget. Different from
-   * Voxility's widget — this is used when an agent is typing into a GHL-
+   * Xovera's widget — this is used when an agent is typing into a GHL-
    * hosted chat session and we want the contact to see typing bubbles.
    */
   async sendLiveChatTyping(params: {

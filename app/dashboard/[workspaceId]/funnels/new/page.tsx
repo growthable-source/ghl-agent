@@ -3,7 +3,7 @@
 /**
  * Funnel creation wizard — 5 steps.
  *
- * Styled with Voxility design tokens (var(--surface), var(--accent-primary)
+ * Styled with Xovera design tokens (var(--surface), var(--accent-primary)
  * etc.) — never hardcoded Tailwind color utilities. Mirrors the visual
  * language of the rest of the dashboard (calls, agents pages).
  */

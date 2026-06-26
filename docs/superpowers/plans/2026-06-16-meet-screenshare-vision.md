@@ -527,7 +527,7 @@ primary_region = "sjc"
 ````markdown
 # recall-video-worker
 
-Relays a Recall.ai bot's real-time screenshare frames into the Voxility meeting-bot
+Relays a Recall.ai bot's real-time screenshare frames into the Xovera meeting-bot
 page so the live Gemini session can see the shared screen.
 
 - `wss://<host>/recall/:botToken` — Recall pushes `video_separate_png.data` here.

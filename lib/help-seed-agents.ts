@@ -1380,7 +1380,7 @@ looks like for this agent. It serves two purposes:
 
 1. **Shapes the agent** — the objectives are injected into the agent's
    context so it naturally nudges toward them.
-2. **Measures the agent** — lets Voxility attribute wins to specific
+2. **Measures the agent** — lets Xovera attribute wins to specific
    conversations in Performance and Insights.
 
 ## Anatomy of an objective
@@ -1798,7 +1798,7 @@ visible during the call. Great for auditioning voice tuning changes.
 ## Recording + transcripts
 
 **Record Calls** is ON by default. Recordings live on Vapi; transcripts
-land in your Voxility inbox. Turn off if you're in a jurisdiction with
+land in your Xovera inbox. Turn off if you're in a jurisdiction with
 strict consent requirements you haven't met.
 
 ## End-call phrases
@@ -2137,7 +2137,7 @@ time.
   will honour these.
 - **Don't dump customer PII you didn't get permission for.** The
   note goes into memory which is visible to anyone with access to
-  this contact's record in Voxility.
+  this contact's record in Xovera.
 
 ## Takeover without a follow-up note
 

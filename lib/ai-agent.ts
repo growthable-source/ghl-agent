@@ -744,7 +744,7 @@ export async function runAgent(opts: {
   // pinned for a given tool, drop the tool entirely — publishing it with no
   // valid target just invites hallucinated workflowIds that 404 against GHL.
   //
-  // We also strip Voxility-internal metadata (defaultUseWhen,
+  // We also strip Xovera-internal metadata (defaultUseWhen,
   // defaultOnFailure, enforcement) from each entry before passing to the
   // Anthropic API. Those fields live on AgentToolDef for the resolver +
   // gate to consume — Anthropic's tool-definition shape only accepts

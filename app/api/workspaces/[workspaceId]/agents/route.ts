@@ -134,7 +134,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     console.warn('[Agents] Feature gating query failed (migration pending?) — allowing agent creation')
   }
 
-  // Internal workspaces (at least one @voxility.ai member, or allowlisted
+  // Internal workspaces (at least one @xovera.io member, or allowlisted
   // via SUPER_ADMIN_EMAILS) skip every billing/trial gate. Staff, demo
   // accounts, and dogfooding shouldn't ever be blocked behind a paywall.
   const internal = await isInternalWorkspace(workspaceId)

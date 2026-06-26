@@ -8,7 +8,7 @@
  * tools, transcription, compression) INSIDE the token via
  * liveConnectConstraints, so the client cannot tamper with
  * instructions even though it holds the connection. This replaces
- * the spec's LiveKit SFU + Agents-worker design for v0 — Voxility
+ * the spec's LiveKit SFU + Agents-worker design for v0 — Xovera
  * deploys to Vercel only, which can't host a long-running worker,
  * and browser-direct removes a media hop (helps the 800 ms
  * no-dead-air constraint). The P2 meeting-bot channel

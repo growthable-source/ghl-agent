@@ -4,7 +4,7 @@
  * Pre-refactor this file shipped its own ~50 lines of inline HTML +
  * its own escapeHtml + its own Resend POST. Now it just composes a
  * BrandedEmail and hands off to sendEmail() — the wrapper supplies
- * the Voxility header bar, severity-aware accent (info for invites),
+ * the Xovera header bar, severity-aware accent (info for invites),
  * the CTA button shape, and the footer.
  */
 
@@ -30,8 +30,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 export async function sendWorkspaceInviteEmail(p: InvitePayload): Promise<void> {
   const inviterLine = p.inviterName
-    ? `${p.inviterName} invited you to ${p.workspaceName} on Voxility`
-    : `You've been invited to ${p.workspaceName} on Voxility`
+    ? `${p.inviterName} invited you to ${p.workspaceName} on Xovera`
+    : `You've been invited to ${p.workspaceName} on Xovera`
   const roleLabel = ROLE_LABELS[p.role] || `a ${p.role}`
 
   const { html, text } = renderBrandedEmail({
@@ -50,7 +50,7 @@ export async function sendWorkspaceInviteEmail(p: InvitePayload): Promise<void> 
 
   await sendEmail({
     to: p.to,
-    subject: `You're invited to ${p.workspaceName} on Voxility`,
+    subject: `You're invited to ${p.workspaceName} on Xovera`,
     html,
     text,
     context: 'WorkspaceInvite',

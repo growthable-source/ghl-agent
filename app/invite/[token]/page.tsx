@@ -127,7 +127,7 @@ export default function InviteAcceptPage() {
   }
 
   const { invite, session } = data
-  const wsName = invite.workspace.name || 'a Voxility workspace'
+  const wsName = invite.workspace.name || 'a Xovera workspace'
   const mismatch = session.email && session.email.toLowerCase() !== invite.email.toLowerCase()
 
   return (

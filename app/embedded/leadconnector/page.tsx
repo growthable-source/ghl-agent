@@ -6,7 +6,7 @@
  * The URL registered as a Custom Menu Link in the marketplace listing
  * points here. The page mounts inside an iframe, asks the parent frame
  * for the active user's encrypted identity blob, posts it to the
- * handshake endpoint to mint a Voxility session, then redirects into
+ * handshake endpoint to mint a Xovera session, then redirects into
  * the workspace dashboard in embedded mode.
  *
  * Failure modes (each with an inline message — the iframe is too narrow
@@ -150,7 +150,7 @@ export default function LeadConnectorEmbeddedEntry() {
         )}
         {state.kind === 'error' && (
           <>
-            <p className="text-sm font-medium mb-2">Could not load Voxility</p>
+            <p className="text-sm font-medium mb-2">Could not load Xovera</p>
             <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary, #71717a)' }}>{state.message}</p>
             {state.detail && (
               <p className="text-[10px] font-mono mb-4" style={{ color: 'var(--text-tertiary, #71717a)' }}>{state.detail}</p>
@@ -162,7 +162,7 @@ export default function LeadConnectorEmbeddedEntry() {
               className="inline-block text-xs px-3 py-2 rounded-lg border transition-colors"
               style={{ borderColor: 'var(--border, #27272a)', color: 'var(--text-primary, #fafafa)' }}
             >
-              Open Voxility in a new tab →
+              Open Xovera in a new tab →
             </a>
           </>
         )}

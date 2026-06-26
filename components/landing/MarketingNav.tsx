@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 import AnnouncementBar from './AnnouncementBar'
 
 /**
@@ -25,7 +25,7 @@ export default function MarketingNav({ links = DEFAULT_LINKS }: { links?: NavLin
       <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(248,247,244,0.85)', borderColor: 'var(--border)' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between px-6 h-16">
           <Link href="/" className="flex items-center">
-            <VoxilityLogo height={28} />
+            <XoveraLogo height={28} />
           </Link>
           <div className="hidden md:flex items-center gap-7">
             {links.map((l) => (

@@ -67,7 +67,7 @@ async function main() {
     process.exit(1)
   }
 
-  console.log('\nVoxility super-admin bootstrap\n')
+  console.log('\nXovera super-admin bootstrap\n')
   const emailRaw = (await rl.question('Email: ')).trim().toLowerCase()
   if (!emailRaw || !emailRaw.includes('@')) {
     console.error('Invalid email.')

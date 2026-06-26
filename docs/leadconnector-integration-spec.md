@@ -1,7 +1,7 @@
 # LeadConnector / GoHighLevel Integration Spec
 
 This document is a complete code spec for the LeadConnector (a.k.a.
-GoHighLevel / GHL / HighLevel) integration as it works in Voxility's
+GoHighLevel / GHL / HighLevel) integration as it works in Xovera's
 `ghl-agent` codebase. It's written so another engineer or agent can
 read it cold and rebuild a functional integration in another project —
 no prior context required.
@@ -18,7 +18,7 @@ The integration covers five things:
    auth headers, version pinning, error surface.
 5. **Marketplace webhooks** — inbound message, install event, contact
    create, etc.
-6. **iframe SSO handshake** — when Voxility is launched from a GHL
+6. **iframe SSO handshake** — when Xovera is launched from a GHL
    Custom Menu Link, we decrypt the marketplace payload and mint a
    session without a second login.
 
@@ -35,7 +35,7 @@ The integration covers five things:
 | API version header | `Version: 2021-07-28` (default), some endpoints want `2021-04-15` (see §4) |
 | Auth header | `Authorization: Bearer <accessToken>` |
 | Content type | `application/json` (most), `application/x-www-form-urlencoded` (oauth/token) |
-| Whitelabel CRM dashboard | `${LEADCONNECTOR_DASHBOARD_BASE_URL or app.voxility.ai}/v2/location/<locationId>` |
+| Whitelabel CRM dashboard | `${LEADCONNECTOR_DASHBOARD_BASE_URL or app.xovera.io}/v2/location/<locationId>` |
 
 **Do not put "GHL" or "HighLevel" in user-facing file/route/env names.**
 Use `leadconnector` or generic "CRM" terminology. The string `GhlAdapter`
@@ -50,7 +50,7 @@ OAUTH_CLIENT_ID            # from Marketplace → My Apps → Auth → Client Ke
 OAUTH_CLIENT_SECRET        # same place; shown once on creation
 OAUTH_VERSION_ID           # optional; pins your installed app version
 
-APP_URL                    # e.g. https://app.voxility.ai — used to build redirect_uri
+APP_URL                    # e.g. https://app.xovera.io — used to build redirect_uri
 
 # Webhook signing (optional but recommended)
 WEBHOOK_SECRET             # if your marketplace listing signs webhooks
@@ -59,7 +59,7 @@ WEBHOOK_SECRET             # if your marketplace listing signs webhooks
 LEADCONNECTOR_SSO_KEY      # the "Shared Secret" from the marketplace app settings
 
 # Optional whitelabel dashboard host
-LEADCONNECTOR_DASHBOARD_BASE_URL   # defaults to https://app.voxility.ai
+LEADCONNECTOR_DASHBOARD_BASE_URL   # defaults to https://app.xovera.io
 ```
 
 Marketplace listing config (in the GHL developer portal):
@@ -380,7 +380,7 @@ Two synthetic Location IDs exist that should NOT be passed to
 `/oauth/token`:
 
 - `placeholder:<workspaceId>` — agent created before connecting any CRM
-- `native:<workspaceId>` — Voxility's built-in CRM (no external auth)
+- `native:<workspaceId>` — Xovera's built-in CRM (no external auth)
 
 Both have empty tokens. Skip refresh attempts for any key starting
 with those prefixes.
@@ -658,7 +658,7 @@ function verifySignature(req: NextRequest, rawBody: string): boolean {
 
 ## 7. iframe SSO handshake
 
-Voxility is embedded as a Custom Menu Link inside the LeadConnector
+Xovera is embedded as a Custom Menu Link inside the LeadConnector
 agency dashboard. From inside the iframe, the client posts a
 `REQUEST_USER_DATA` message to its parent. The marketplace responds
 with an encrypted blob; the client POSTs that blob to
@@ -825,7 +825,7 @@ matters:
 2. **Customer-facing copy** — say "your CRM", not "LeadConnector" or
    "GoHighLevel". There is no whitelabel-name API; don't invent one.
 3. **Dashboard URL** — build links to the sub-account dashboard using
-   `LEADCONNECTOR_DASHBOARD_BASE_URL` (default `https://app.voxility.ai`)
+   `LEADCONNECTOR_DASHBOARD_BASE_URL` (default `https://app.xovera.io`)
    so each deploy can point at its own whitelabel host. See
    `lib/leadconnector-dashboard-url.ts`.
 

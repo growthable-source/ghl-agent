@@ -28,7 +28,7 @@ import { VOICE_KNOWLEDGE_TOOL } from '@/lib/voice-prompt'
 import { AGENT_TOOLS, VOICE_AGENT_TOOL_NAMES, anthropicToolToVapi } from '@/lib/agent/tool-catalog'
 import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
-const APP_URL = process.env.APP_URL || 'https://app.voxility.ai'
+const APP_URL = process.env.APP_URL || 'https://app.xovera.io'
 
 // Default model + transcriber stack. Mirrors Vapi's demo "Riley"
 // assistant exactly (OpenAI gpt-4.1 + Deepgram nova-3 + Vapi-native

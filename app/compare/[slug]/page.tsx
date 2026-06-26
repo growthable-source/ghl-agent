@@ -5,7 +5,7 @@ import MarketingNav from '@/components/landing/MarketingNav'
 import MarketingFooter from '@/components/landing/MarketingFooter'
 import { findComparisonBySlug, COMPARISONS, type CompareCellKind } from '@/lib/compare-data'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 type Params = { params: Promise<{ slug: string }> }
 
@@ -53,10 +53,10 @@ export default async function ComparePage({ params }: Params) {
     description: cmp.description,
     datePublished: cmp.updatedAt,
     dateModified: cmp.updatedAt,
-    author: { '@type': 'Organization', name: 'Voxility', url: SITE_URL },
+    author: { '@type': 'Organization', name: 'Xovera', url: SITE_URL },
     publisher: {
       '@type': 'Organization',
-      name: 'Voxility',
+      name: 'Xovera',
       logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo-color.svg` },
     },
     mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE_URL}/compare/${cmp.slug}` },

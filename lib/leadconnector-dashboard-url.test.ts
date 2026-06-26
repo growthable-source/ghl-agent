@@ -13,9 +13,9 @@ describe('getLocationDashboardUrl', () => {
     else process.env.LEADCONNECTOR_DASHBOARD_BASE_URL = originalEnv
   })
 
-  it('builds the canonical /v2/location/<id> URL on the Voxility default', () => {
+  it('builds the canonical /v2/location/<id> URL on the Xovera default', () => {
     expect(getLocationDashboardUrl('RgbqCi123abc', 'ghl'))
-      .toBe('https://app.voxility.ai/v2/location/RgbqCi123abc')
+      .toBe('https://app.xovera.io/v2/location/RgbqCi123abc')
   })
 
   it('respects LEADCONNECTOR_DASHBOARD_BASE_URL for whitelabel overrides', () => {
@@ -48,10 +48,10 @@ describe('getLocationDashboardUrl', () => {
 
   it('URL-encodes the locationId so weird characters do not break the link', () => {
     expect(getLocationDashboardUrl('a/b?c', 'ghl'))
-      .toBe('https://app.voxility.ai/v2/location/a%2Fb%3Fc')
+      .toBe('https://app.xovera.io/v2/location/a%2Fb%3Fc')
   })
 
   it('defaults provider to ghl when omitted', () => {
-    expect(getLocationDashboardUrl('xyz')).toBe('https://app.voxility.ai/v2/location/xyz')
+    expect(getLocationDashboardUrl('xyz')).toBe('https://app.xovera.io/v2/location/xyz')
   })
 })

@@ -81,7 +81,7 @@ export async function cancelEvent(token: string, eventUri: string, reason?: stri
   const uuid = eventUri.split('/').pop()
   await calendlyRequest(`/scheduled_events/${uuid}/cancellation`, token, {
     method: 'POST',
-    body: JSON.stringify({ reason: reason || 'Cancelled via Voxility AI' }),
+    body: JSON.stringify({ reason: reason || 'Cancelled via Xovera AI' }),
   })
   return { success: true }
 }

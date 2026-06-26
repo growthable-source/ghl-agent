@@ -860,7 +860,7 @@ export default function AgentsPage() {
                       this agent is wired to without clicking through.
                       Format: "<BusinessName> (<linked locationId>)".
                       The locationId itself is a hyperlink into the
-                      whitelabel LC dashboard (app.voxility.ai by
+                      whitelabel LC dashboard (app.xovera.io by
                       default; configurable via env). Fallback chain:
                         1. businessName + linked locationId (real install
                            with a snapshot)

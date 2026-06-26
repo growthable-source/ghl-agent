@@ -132,7 +132,7 @@ Fly secrets (set after the app is created in Task 9 — `GEMINI_API_KEY` is the 
 fly secrets set \
   GEMINI_VOICE_SIGNING_SECRET=a6165077125ee0489b829476cc186c19df4e355ce8b91505c3486e3f59ea1646 \
   GEMINI_API_KEY="$GEMINI_API_KEY" \
-  APP_URL="https://app.voxility.example" \
+  APP_URL="https://app.xovera.example" \
   GEMINI_VOICE_MODEL=gemini-3.1-flash-live \
   -a voxility-gemini-voice-bridge
 ```
@@ -1432,7 +1432,7 @@ cd ghl-agent/services/gemini-voice-bridge && npm install
 /** Env validation for the bridge. Fails fast at boot if anything is missing. */
 export interface BridgeConfig {
   port: number
-  appUrl: string // Vercel origin, e.g. https://app.voxility.example
+  appUrl: string // Vercel origin, e.g. https://app.xovera.example
   geminiApiKey: string
   geminiModel: string
   signingSecret: string

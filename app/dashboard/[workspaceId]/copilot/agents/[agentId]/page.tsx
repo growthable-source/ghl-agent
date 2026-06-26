@@ -653,7 +653,7 @@ export default function CopilotAgentEditor() {
                 value={`<a href="${window.location.origin}/copilot/live/${agent.publicKey}" target="_blank" rel="noopener">Get live help</a>`}
               />
               <DeployField
-                label="JavaScript snippet (floating button + window.VoxilityCopilot.launch())"
+                label="JavaScript snippet (floating button + window.XoveraCopilot.launch())"
                 value={`<script src="${window.location.origin}/copilot.js" data-copilot-key="${agent.publicKey}" async></script>`}
               />
             </div>

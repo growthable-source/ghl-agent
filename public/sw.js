@@ -1,5 +1,5 @@
 /**
- * Voxility service worker — handles browser push notifications.
+ * Xovera service worker — handles browser push notifications.
  *
  * Registered by /dashboard/[ws]/settings/notifications when the user
  * clicks "Enable browser push". The page POSTs the resulting subscription
@@ -19,9 +19,9 @@ self.addEventListener('push', (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch (_) {}
 
-  const title = data.title || 'Voxility'
+  const title = data.title || 'Xovera'
   const body = data.body || ''
-  const tag = data.tag || 'voxility-notification'
+  const tag = data.tag || 'xovera-notification'
   const link = data.link || '/'
   const severity = data.severity || 'info'
 

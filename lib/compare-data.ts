@@ -24,7 +24,7 @@ export interface CompareRow {
 
 export interface Comparison {
   slug: string
-  us: string                 // usually "Voxility"
+  us: string                 // usually "Xovera"
   them: string               // competitor name
   title: string              // page title
   description: string        // meta desc + OG
@@ -44,13 +44,13 @@ export interface Comparison {
 
 export const COMPARISONS: Comparison[] = [
   {
-    slug: 'voxility-vs-synthflow',
-    us: 'Voxility',
+    slug: 'xovera-vs-synthflow',
+    us: 'Xovera',
     them: 'Synthflow',
-    title: 'Voxility vs. Synthflow — honest comparison for GoHighLevel',
-    description: 'Voxility vs. Synthflow: both run AI agents that take calls. We dig into where each one wins — voice quality, CRM integration depth, multi-channel support, and the feedback loop — so you can pick without a weeklong trial.',
+    title: 'Xovera vs. Synthflow — honest comparison for GoHighLevel',
+    description: 'Xovera vs. Synthflow: both run AI agents that take calls. We dig into where each one wins — voice quality, CRM integration depth, multi-channel support, and the feedback loop — so you can pick without a weeklong trial.',
     theirPitch: 'Synthflow is a voice-first AI agent platform that\'s built a solid reputation for call quality and reliability. It integrates with GoHighLevel via webhooks and custom triggers, and the builder is genuinely easy to use for inbound call flows (qualify → book → transfer).',
-    ourAngle: 'Voxility is built as a first-class GoHighLevel marketplace app — the agent reads and writes CRM data natively, and covers every channel (voice, SMS, email, WhatsApp, Instagram, Facebook, Google Business, live chat) with one brain. Where Synthflow is a voice-only tool that bolts onto GHL, we live inside it.',
+    ourAngle: 'Xovera is built as a first-class GoHighLevel marketplace app — the agent reads and writes CRM data natively, and covers every channel (voice, SMS, email, WhatsApp, Instagram, Facebook, Google Business, live chat) with one brain. Where Synthflow is a voice-only tool that bolts onto GHL, we live inside it.',
     rows: [
       { feature: 'Inbound + outbound voice calls', us: { kind: 'yes' }, them: { kind: 'yes' } },
       { feature: 'SMS, email, WhatsApp, Instagram, Facebook, GMB, live chat', us: { kind: 'yes' }, them: { kind: 'no', note: 'Voice-only' } },
@@ -80,13 +80,13 @@ export const COMPARISONS: Comparison[] = [
   },
 
   {
-    slug: 'voxility-vs-gohighlevel-conversation-ai',
-    us: 'Voxility',
+    slug: 'xovera-vs-gohighlevel-conversation-ai',
+    us: 'Xovera',
     them: 'GoHighLevel Conversation AI',
-    title: 'Voxility vs. GoHighLevel\u2019s built-in Conversation AI',
-    description: 'GoHighLevel Conversation AI is free and built-in. Voxility is an add-on. Here\u2019s honestly where each wins — and when the free built-in option is genuinely the right call.',
+    title: 'Xovera vs. GoHighLevel\u2019s built-in Conversation AI',
+    description: 'GoHighLevel Conversation AI is free and built-in. Xovera is an add-on. Here\u2019s honestly where each wins — and when the free built-in option is genuinely the right call.',
     theirPitch: 'GoHighLevel ships a built-in Conversation AI that auto-replies to inbox messages (SMS + chat), handles basic qualifying, and does it all at no extra cost. For an agency just getting started, the zero-friction price tag is meaningful.',
-    ourAngle: 'Voxility is an installable marketplace app that runs alongside — not against — the built-in assistant. The built-in tool is great for &ldquo;someone is texting us, send a canned-ish reply.&rdquo; Voxility is for &ldquo;the AI should actually qualify, book, and update the CRM, across every channel, and get measurably better over time.&rdquo;',
+    ourAngle: 'Xovera is an installable marketplace app that runs alongside — not against — the built-in assistant. The built-in tool is great for &ldquo;someone is texting us, send a canned-ish reply.&rdquo; Xovera is for &ldquo;the AI should actually qualify, book, and update the CRM, across every channel, and get measurably better over time.&rdquo;',
     rows: [
       { feature: 'Free', us: { kind: 'partial', note: 'Free in beta' }, them: { kind: 'yes' } },
       { feature: 'Inbound + outbound voice calls', us: { kind: 'yes' }, them: { kind: 'no' } },

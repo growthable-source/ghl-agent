@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const filename = `voxility-installs-${new Date().toISOString().slice(0, 10)}.csv`
+  const filename = `xovera-installs-${new Date().toISOString().slice(0, 10)}.csv`
   return new NextResponse(lines.join('\n'), {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

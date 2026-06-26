@@ -23,14 +23,14 @@ const dmMono = DM_Mono({
 // ────────────────────────────────────────────────────────────────────────
 // Primary keywords targeted (in order of priority):
 //   1. "LeadConnector AI" / "LeadConnector AI add-on" (marketplace traffic
-//      — operators install Voxility from the LeadConnector marketplace)
+//      — operators install Xovera from the LeadConnector marketplace)
 //   2. "HubSpot AI" / "AI agent HubSpot"
 //   3. "conversational AI" / "AI for sales teams" (broad head terms)
 //   4. "AI receptionist" / "AI SDR" (long-tail)
 //
 // `metadataBase` is used by Next to resolve absolute URLs for OG/Twitter
 // images and canonical links. Set once, read everywhere.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -39,12 +39,12 @@ export const metadata: Metadata = {
   // the landing page can override via `generateMetadata` if needed.
   // Format: <primary value prop> — <product> <category>
   title: {
-    default: 'Voxility — AI Agents for Sales & Marketing Teams | Self-Improving Conversational AI',
-    template: '%s | Voxility',
+    default: 'Xovera — AI Agents for Sales & Marketing Teams | Self-Improving Conversational AI',
+    template: '%s | Xovera',
   },
 
   description:
-    'Voxility is the conversational AI platform built for sales and marketing teams. AI agents that answer calls, respond to SMS, qualify leads, book appointments — and get measurably better every day from the conversations they have. Install free from the LeadConnector marketplace or connect HubSpot in one click.',
+    'Xovera is the conversational AI platform built for sales and marketing teams. AI agents that answer calls, respond to SMS, qualify leads, book appointments — and get measurably better every day from the conversations they have. Install free from the LeadConnector marketplace or connect HubSpot in one click.',
 
   // Keyword meta tag is largely ignored by Google but some secondary
   // engines (Yandex, Baidu) + marketplace crawlers still read it. Low
@@ -65,9 +65,9 @@ export const metadata: Metadata = {
     'AI for CRM',
   ],
 
-  authors: [{ name: 'Voxility' }],
-  creator: 'Voxility',
-  publisher: 'Voxility',
+  authors: [{ name: 'Xovera' }],
+  creator: 'Xovera',
+  publisher: 'Xovera',
 
   // Canonical + language alternates. Canonical goes to the bare domain
   // so Google doesn't split signal between utm-tagged URLs.
@@ -81,18 +81,18 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: SITE_URL,
-    siteName: 'Voxility',
-    title: 'Voxility — AI Agents for Sales & Marketing Teams',
+    siteName: 'Xovera',
+    title: 'Xovera — AI Agents for Sales & Marketing Teams',
     description:
       'Conversational AI that answers calls, responds to texts, books appointments — and gets better every day. Self-improving agents that plug into your existing tools.',
   },
 
   twitter: {
     card: 'summary_large_image',
-    title: 'Voxility — AI Agents for Sales & Marketing Teams',
+    title: 'Xovera — AI Agents for Sales & Marketing Teams',
     description:
       'Self-improving AI agents that answer calls, respond to texts, and book appointments inside your CRM. Free while in beta.',
-    // creator: '@voxility_ai',   // uncomment when handle exists
+    // creator: '@xovera_ai',   // uncomment when handle exists
   },
 
   // Explicit robots. Default allow; adjust if we ever need to de-index

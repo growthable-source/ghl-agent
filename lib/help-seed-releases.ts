@@ -173,11 +173,11 @@ Place a target div where you want the button to appear, then point the
 script at it:
 
 \`\`\`html
-<div id="voxility-call"></div>
+<div id="xovera-call"></div>
 <script src="https://yourdomain.com/widget.js"
         data-widget-id="wgt_xxx"
         data-public-key="widget_pub_xxx"
-        data-mount="#voxility-call"
+        data-mount="#xovera-call"
         async></script>
 \`\`\`
 

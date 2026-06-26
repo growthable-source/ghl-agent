@@ -11,7 +11,7 @@ export async function fetchPageContent(url: string): Promise<{ title: string; te
   // Try direct fetch first
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Voxility-Bot/1.0)' },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Xovera-Bot/1.0)' },
       signal: AbortSignal.timeout(10000),
     })
     if (res.ok) {
@@ -24,7 +24,7 @@ export async function fetchPageContent(url: string): Promise<{ title: string; te
   // Fallback: Jina AI reader
   const jinaUrl = `https://r.jina.ai/${url}`
   const res = await fetch(jinaUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Voxility-Bot/1.0)', 'Accept': 'text/plain' },
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Xovera-Bot/1.0)', 'Accept': 'text/plain' },
     signal: AbortSignal.timeout(25000),
   })
   if (!res.ok) throw new Error(`Could not read page (${res.status})`)

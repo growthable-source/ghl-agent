@@ -85,7 +85,7 @@ export default function AdminSetupPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-zinc-950 text-zinc-100">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-400/90">Voxility</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-400/90">Xovera</p>
           <h1 className="text-2xl font-semibold mt-1">Create the first admin</h1>
           <p className="text-xs text-zinc-500 mt-1.5 leading-relaxed">
             This page only works once. After the first super admin is created,

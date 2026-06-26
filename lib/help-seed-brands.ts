@@ -40,7 +40,7 @@ You should turn on Brands if:
   clients on each client's own widgets, hosted call pages, or support
   channels.
 - **You whitelabel** — i.e. the visitor experience says "Acme Corp,"
-  not "Voxility," even though you're the team behind it.
+  not "Xovera," even though you're the team behind it.
 - **One support team handles many brands** rather than spinning up a
   workspace per client. (Workspaces stay separate when you need
   separate billing, separate operator rosters, or contractual data

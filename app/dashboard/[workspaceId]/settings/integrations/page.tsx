@@ -232,7 +232,7 @@ export default function IntegrationsPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white">Slack</p>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Connect a channel via OAuth. You&apos;ll pick which channel Voxility posts to during install — nothing to paste.
+                  Connect a channel via OAuth. You&apos;ll pick which channel Xovera posts to during install — nothing to paste.
                 </p>
               </div>
               <button onClick={connectSlack}
@@ -342,7 +342,7 @@ export default function IntegrationsPage() {
                 Payloads are HMAC-SHA256 signed — check the <code className="text-orange-400">X-Voxility-Signature</code> header.
               </p>
               <input value={newWebhookUrl} onChange={e => setNewWebhookUrl(e.target.value)}
-                placeholder="https://your-app.com/webhooks/voxility"
+                placeholder="https://your-app.com/webhooks/xovera"
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono mb-3"
               />
               <p className="text-xs text-zinc-400 mb-2">Events to subscribe to:</p>

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Detects whether Voxility is running embedded inside another product
+ * Detects whether Xovera is running embedded inside another product
  * (today: a LeadConnector Custom Menu Link iframe) and exposes a React
  * context so any component can adapt its chrome. Two signals:
  *

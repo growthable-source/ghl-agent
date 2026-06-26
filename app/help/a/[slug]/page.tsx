@@ -10,7 +10,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const a = await db.helpArticle.findUnique({ where: { slug } })
   if (!a || a.status !== 'published') return {}
   return {
-    title: `${a.title} — Voxility Help`,
+    title: `${a.title} — Xovera Help`,
     description: a.summary ?? undefined,
     openGraph: { title: a.title, description: a.summary ?? undefined, type: 'article' },
   }

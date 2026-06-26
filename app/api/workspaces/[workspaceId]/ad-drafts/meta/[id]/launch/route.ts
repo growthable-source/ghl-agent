@@ -9,7 +9,7 @@
  * per-ad errors so the operator knows what to fix.
  *
  * The launched campaign starts PAUSED in Meta — the operator activates
- * it from Meta Ads Manager (or, eventually, a Voxility-side toggle).
+ * it from Meta Ads Manager (or, eventually, a Xovera-side toggle).
  */
 
 import { NextRequest, NextResponse } from 'next/server'

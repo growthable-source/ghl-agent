@@ -1,7 +1,7 @@
 /**
- * Voxility Co-Pilot embed — drop a live screen-share agent into any app.
+ * Xovera Co-Pilot embed — drop a live screen-share agent into any app.
  *
- *   <script src="https://app.voxility.ai/copilot.js"
+ *   <script src="https://app.xovera.io/copilot.js"
  *           data-copilot-key="cpa_..." async></script>
  *
  * Renders a launch button (bottom-right by default) that opens the
@@ -9,8 +9,8 @@
  * permission prompts always work regardless of the host page's iframe
  * policies. Programmatic API for custom buttons:
  *
- *   window.VoxilityCopilot.launch()        // open the session
- *   window.VoxilityCopilot.url             // the launch URL
+ *   window.XoveraCopilot.launch()        // open the session
+ *   window.XoveraCopilot.url             // the launch URL
  *
  * data- options: data-label="Get live help"  data-position="bottom-left"
  *                data-color="#e84425"        data-hide-button="true"
@@ -20,7 +20,7 @@
   if (!script) return
   var key = script.getAttribute('data-copilot-key')
   if (!key) {
-    console.warn('[voxility-copilot] missing data-copilot-key')
+    console.warn('[xovera-copilot] missing data-copilot-key')
     return
   }
   var base = new URL(script.src).origin
@@ -30,7 +30,7 @@
     window.open(url, '_blank', 'noopener')
   }
 
-  window.VoxilityCopilot = { launch: launch, url: url }
+  window.XoveraCopilot = { launch: launch, url: url }
 
   if (script.getAttribute('data-hide-button') === 'true') return
 

@@ -18,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     await notify({
       workspaceId,
       event: 'test',
-      title: 'Voxility test notification',
+      title: 'Xovera test notification',
       body: 'If you see this, your notification channel is working!',
       severity: 'info',
     })

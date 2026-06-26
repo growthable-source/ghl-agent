@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Voxility — AI Agents for Sales & Marketing Teams',
-    short_name: 'Voxility',
+    name: 'Xovera — AI Agents for Sales & Marketing Teams',
+    short_name: 'Xovera',
     description:
       'Self-improving conversational AI agents for sales and marketing teams. Answer calls, respond to texts, qualify leads, and book appointments — with an agent that gets better every day.',
     start_url: '/dashboard',

@@ -38,7 +38,7 @@ export async function POST() {
       categoryId: category.id,
       status: 'published',
       publishedAt: existing?.publishedAt ?? new Date(),
-      authorEmail: email ?? 'seed@voxility.ai',
+      authorEmail: email ?? 'seed@xovera.io',
     }
     if (existing) {
       await db.helpArticle.update({ where: { id: existing.id }, data })

@@ -3,14 +3,14 @@
  *
  * Every LeadConnector sub-account has a dashboard URL of the shape
  * `<whitelabel-host>/v2/location/<locationId>`. The whitelabel host
- * depends on which reseller the install came from — Voxility's own
- * deploy uses `app.voxility.ai`, but the same code can ship under any
+ * depends on which reseller the install came from — Xovera's own
+ * deploy uses `app.xovera.io`, but the same code can ship under any
  * agency's branded subdomain.
  *
  * We don't try to derive the host from the install payload; the
  * Marketplace API doesn't return it. Instead, the deployment's own
  * whitelabel host is read from `LEADCONNECTOR_DASHBOARD_BASE_URL`,
- * falling back to `https://app.voxility.ai`. Override per environment
+ * falling back to `https://app.xovera.io`. Override per environment
  * if the same code ships behind a different agency brand.
  *
  * Why a wrapper instead of inlining the template: we use this from at
@@ -20,7 +20,7 @@
  * dashboard route. One function, one place to update.
  */
 
-const DEFAULT_BASE = 'https://app.voxility.ai'
+const DEFAULT_BASE = 'https://app.xovera.io'
 
 /**
  * Returns a clickable dashboard URL for a Location, or null when the

@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 
 export const metadata = {
-  title: 'Terms of Service | Voxility',
-  description: 'Terms governing your use of the Voxility AI conversational agent platform.',
+  title: 'Terms of Service | Xovera',
+  description: 'Terms governing your use of the Xovera AI conversational agent platform.',
 }
 
 const LAST_UPDATED = '1 May 2026'
@@ -14,8 +14,8 @@ export default function TermsPage() {
       <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: 'var(--border)', background: 'rgba(5,8,15,0.85)' }}>
         <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <VoxilityLogo variant="mark" height={26} />
-            <span className="font-bold text-sm">Voxility</span>
+            <XoveraLogo variant="mark" height={26} />
+            <span className="font-bold text-sm">Xovera</span>
           </Link>
           <div className="flex items-center gap-6 text-sm">
             <Link href="/docs" className="hover:text-white transition-colors" style={{ color: 'var(--text-secondary)' }}>Docs</Link>
@@ -39,14 +39,14 @@ export default function TermsPage() {
         <div className="max-w-2xl mx-auto space-y-8 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
 
           <Block title="Agreement">
-            By creating a Voxility account or using the service, you agree to these Terms. The
-            service is operated by Kroc Fitness &amp; Lifestyle Pty Ltd (&ldquo;Voxility&rdquo;,
-            &ldquo;we&rdquo;). If you&rsquo;re using Voxility on behalf of a company, you confirm you
+            By creating a Xovera account or using the service, you agree to these Terms. The
+            service is operated by Kroc Fitness &amp; Lifestyle Pty Ltd (&ldquo;Xovera&rdquo;,
+            &ldquo;we&rdquo;). If you&rsquo;re using Xovera on behalf of a company, you confirm you
             have authority to bind that company to these Terms.
           </Block>
 
           <Block title="The service">
-            Voxility provides an AI conversational agent platform that connects to your CRM
+            Xovera provides an AI conversational agent platform that connects to your CRM
             and messaging channels &mdash; including Facebook Pages, Instagram, SMS, and voice
             &mdash; to handle customer conversations. Features may be added, changed, or removed
             during the beta period.
@@ -61,7 +61,7 @@ export default function TermsPage() {
           <Block title="Acceptable use">
             You agree not to:
             <ul className="list-disc pl-5 space-y-2 mt-3">
-              <li>Use Voxility to send spam, deceptive, harassing, or unlawful messages.</li>
+              <li>Use Xovera to send spam, deceptive, harassing, or unlawful messages.</li>
               <li>Impersonate any person or misrepresent your affiliation with one.</li>
               <li>Violate the platform policies of any connected channel (e.g.{' '}
                 <a href="https://developers.facebook.com/terms/" target="_blank" rel="noopener noreferrer" className="underline">Meta Platform Terms</a>,{' '}
@@ -78,27 +78,27 @@ export default function TermsPage() {
 
           <Block title="Your content and data">
             You retain ownership of conversation data, contacts, and other content you bring
-            into Voxility. You grant us a limited license to process this content solely to
+            into Xovera. You grant us a limited license to process this content solely to
             provide the service to you. See our{' '}
             <Link href="/privacy" className="underline">Privacy Policy</Link> for details.
           </Block>
 
           <Block title="AI-generated output">
-            Voxility uses third-party AI models (e.g. OpenAI, Anthropic) to generate replies
+            Xovera uses third-party AI models (e.g. OpenAI, Anthropic) to generate replies
             in conversations. AI output may be inaccurate or unsuitable for sensitive
             decisions; you&rsquo;re responsible for reviewing and approving the agent
-            configuration that drives those replies. Don&rsquo;t use Voxility for medical, legal,
+            configuration that drives those replies. Don&rsquo;t use Xovera for medical, legal,
             or financial advice without appropriate human oversight.
           </Block>
 
           <Block title="Connected platforms">
             When you connect Facebook, Instagram, your CRM, or any other third-party service,
-            your use of those platforms is governed by their own terms. Voxility is not
+            your use of those platforms is governed by their own terms. Xovera is not
             responsible for outages, policy changes, or token revocations on those platforms.
           </Block>
 
           <Block title="Beta service">
-            Voxility is currently in beta. The service is provided &ldquo;as is&rdquo; and
+            Xovera is currently in beta. The service is provided &ldquo;as is&rdquo; and
             &ldquo;as available&rdquo;, without warranties of any kind. We don&rsquo;t guarantee
             uninterrupted or error-free operation. Beta users may receive features that change
             or are removed before general release.
@@ -110,7 +110,7 @@ export default function TermsPage() {
           </Block>
 
           <Block title="Limitation of liability">
-            To the maximum extent permitted by law, Voxility&rsquo;s total liability for any
+            To the maximum extent permitted by law, Xovera&rsquo;s total liability for any
             claim arising from these Terms or the service is limited to the fees you paid us
             in the 12 months before the claim (or AUD $100 if no fees were paid). We are not
             liable for indirect, incidental, consequential, or punitive damages.
@@ -137,7 +137,7 @@ export default function TermsPage() {
           </Block>
 
           <Block title="Contact">
-            <a href="mailto:support@voxility.io" className="underline">support@voxility.io</a>
+            <a href="mailto:support@xovera.io" className="underline">support@xovera.io</a>
           </Block>
 
         </div>
@@ -145,7 +145,7 @@ export default function TermsPage() {
 
       <footer className="border-t py-8 px-6" style={{ borderColor: '#121a2b' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between text-xs" style={{ color: '#475569' }}>
-          <VoxilityLogo height={16} />
+          <XoveraLogo height={16} />
           <div className="flex items-center gap-6">
             <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
             <Link href="/data-deletion" className="hover:text-white transition-colors">Data Deletion</Link>

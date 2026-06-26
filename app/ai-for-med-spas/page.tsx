@@ -5,12 +5,12 @@ import MarketingNav from '@/components/landing/MarketingNav'
 import MarketingFooter from '@/components/landing/MarketingFooter'
 import DemoModal from '@/components/landing/DemoModal'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 export const metadata: Metadata = {
-  title: 'AI for Med Spas & Aesthetic Clinics — Never Miss a Consult | Voxility',
+  title: 'AI for Med Spas & Aesthetic Clinics — Never Miss a Consult | Xovera',
   description:
-    'Voxility helps med spas, aesthetic and health clinics across the US & Canada book more consults: instant speed-to-lead, ad automation that turns clicks into booked consultations, and a voice AI agent that answers every call 24/7. Fill your calendar, lose fewer leads.',
+    'Xovera helps med spas, aesthetic and health clinics across the US & Canada book more consults: instant speed-to-lead, ad automation that turns clicks into booked consultations, and a voice AI agent that answers every call 24/7. Fill your calendar, lose fewer leads.',
   alternates: { canonical: `${SITE_URL}/ai-for-med-spas` },
   openGraph: {
     title: 'AI for Med Spas & Aesthetic Clinics — Never Miss a Consult',
@@ -31,12 +31,12 @@ const DEMO_COPY = {
   emailPlaceholder: 'alex@yourclinic.com',
 }
 
-// Three pillars, med-spa framed. Each maps to a real Voxility capability.
+// Three pillars, med-spa framed. Each maps to a real Xovera capability.
 const PILLARS: { eyebrow: string; title: string; body: string; icon: React.ReactNode }[] = [
   {
     eyebrow: 'Speed to lead',
     title: 'Reply in seconds, not hours',
-    body: 'Aesthetic leads go cold fast — they’re price-shopping Botox and fillers across three clinics. The moment someone fills a form, DMs you, or calls and you miss it, Voxility texts and calls back automatically, answers their question, and books the consult before a competitor does.',
+    body: 'Aesthetic leads go cold fast — they’re price-shopping Botox and fillers across three clinics. The moment someone fills a form, DMs you, or calls and you miss it, Xovera texts and calls back automatically, answers their question, and books the consult before a competitor does.',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
@@ -67,17 +67,17 @@ const PILLARS: { eyebrow: string; title: string; body: string; icon: React.React
 
 const STEPS: { n: string; title: string; body: string }[] = [
   { n: '1', title: 'Connect your tools', body: 'Link your CRM, calendar, and ad accounts in a few minutes. No developer required.' },
-  { n: '2', title: 'Voxility engages every lead', body: 'Web forms, DMs, missed calls, and ad clicks all get an instant, on-brand response by text and voice.' },
+  { n: '2', title: 'Xovera engages every lead', body: 'Web forms, DMs, missed calls, and ad clicks all get an instant, on-brand response by text and voice.' },
   { n: '3', title: 'Consults get booked', body: 'The agent qualifies, answers treatment and pricing questions you approve, and books consultations onto your calendar — then logs it in your CRM.' },
   { n: '4', title: 'You see booked chairs, not clicks', body: 'Every interaction is tracked end-to-end, so you know exactly which ads and channels fill your schedule.' },
 ]
 
 const FAQS: { q: string; a: string }[] = [
-  { q: 'Does it work with my med spa CRM / booking system?', a: 'Yes. Voxility installs from the GoHighLevel Marketplace and connects to HubSpot, and the agent reads and writes your CRM natively — leads, consults, and patients all stay in sync with your calendar.' },
+  { q: 'Does it work with my med spa CRM / booking system?', a: 'Yes. Xovera installs from the GoHighLevel Marketplace and connects to HubSpot, and the agent reads and writes your CRM natively — leads, consults, and patients all stay in sync with your calendar.' },
   { q: 'Is it appropriate for a medical / aesthetic practice?', a: 'It handles the front desk — scheduling, FAQs, and lead follow-up. You set the script and guardrails, and it routes anything clinical to your team. It only says what you approve about pricing and treatments; it never invents medical advice.' },
   { q: 'Can it book consultations and treatments?', a: 'Yes — it checks real-time availability and books during the conversation, with automatic confirmations and reminders to cut the no-shows that hurt high-value aesthetic appointments.' },
   { q: 'Does the voice sound like a robot?', a: 'No. It uses natural, human-sounding voices — most callers don’t realize they’re talking to an AI until you tell them.' },
-  { q: 'Is this available in the US and Canada?', a: 'Yes — Voxility is built for med spas, aesthetic and health clinics across both the US and Canada, with local phone numbers in both countries.' },
+  { q: 'Is this available in the US and Canada?', a: 'Yes — Xovera is built for med spas, aesthetic and health clinics across both the US and Canada, with local phone numbers in both countries.' },
 ]
 
 export default function MedSpaLandingPage() {
@@ -112,7 +112,7 @@ fbq('track', 'PageView');`}
             Turn every inquiry into a <span className="text-gradient">booked consult</span> — automatically.
           </h1>
           <p className="text-lg leading-[1.6] max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-            Voxility answers every call, text, and ad inquiry in seconds, 24/7 — qualifies the lead, books the consultation, and follows up — so your front desk never loses a high-value treatment to a faster clinic.
+            Xovera answers every call, text, and ad inquiry in seconds, 24/7 — qualifies the lead, books the consultation, and follows up — so your front desk never loses a high-value treatment to a faster clinic.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3">
             <div className="flex flex-col sm:flex-row items-center gap-3">
@@ -149,7 +149,7 @@ fbq('track', 'PageView');`}
         <div className="max-w-[1100px] mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-              Three ways clinics grow with Voxility
+              Three ways clinics grow with Xovera
             </h2>
           </div>
           <div className="grid md:grid-cols-3 gap-4">
@@ -191,7 +191,7 @@ fbq('track', 'PageView');`}
             Stop losing consults to slow follow-up
           </h2>
           <p className="mb-7 text-[0.9375rem] max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-            See exactly how Voxility would work for your clinic — book a quick demo and we&apos;ll show you it answering a lead live.
+            See exactly how Xovera would work for your clinic — book a quick demo and we&apos;ll show you it answering a lead live.
           </p>
           <div className="flex flex-col items-center gap-3">
             <DemoModal {...DEMO_COPY} triggerLabel="Book your demo" source="medspa_cta" />

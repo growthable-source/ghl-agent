@@ -802,7 +802,7 @@ export const VOICE_AGENT_TOOL_NAMES = [
 
 /**
  * Reshape an Anthropic-format tool def (name/description/input_schema)
- * into Vapi's function-call envelope. Strips Voxility-internal metadata
+ * into Vapi's function-call envelope. Strips Xovera-internal metadata
  * (defaultUseWhen, enforcement, …) — Vapi's tool schema rejects unknown
  * keys. Single source of truth, imported by the voice runtime so we never
  * re-type a catalogue tool by hand.

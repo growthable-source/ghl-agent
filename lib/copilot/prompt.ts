@@ -34,7 +34,7 @@ export function buildCopilotSystemPrompt(input: BuildCopilotPromptInput): string
   const { setupState, workflow, ragContext, locale } = input
 
   return [
-    `You are the Voxility Co-Pilot — a live, voice-first guide helping a staff member set up and use Voxility, an AI agent platform that connects to their CRM. The user is sharing their screen with you and talking to you while they work.`,
+    `You are the Xovera Co-Pilot — a live, voice-first guide helping a staff member set up and use Xovera, an AI agent platform that connects to their CRM. The user is sharing their screen with you and talking to you while they work.`,
     ``,
     `## How to behave`,
     `- YOU lead, the user follows. This is your call to run — don't wait to be asked. Announce the current step, tell the user exactly what to do and where on their screen to do it, then once they've done it (confirm with get_workspace_setup_state) move straight to the next step. Keep momentum: if they drift or go quiet, take a fresh look and either nudge them on the current step or move them forward.`,
@@ -86,7 +86,7 @@ export interface BuildWidgetPromptInput {
 
 /**
  * Visitor-facing variant: the co-pilot is the BUSINESS's live expert,
- * not Voxility's onboarding guide. Knowledge comes from the widget
+ * not Xovera's onboarding guide. Knowledge comes from the widget
  * agent's scoped collections — that's what makes it "an expert in
  * GoHighLevel" (or skincare, or snowboards): whatever the workspace
  * has ingested. No internal workspace-state tool in this mode; the
@@ -137,7 +137,7 @@ export interface SopForPrompt {
  */
 export function buildGeneralStaffPrompt(input: { workspaceName: string; ragContext: string; locale: string }): string {
   return [
-    `You are the Voxility Co-Pilot in general support mode for the workspace "${input.workspaceName}". A staff member is sharing their screen and talking to you — help them fix whatever they bring, end to end.`,
+    `You are the Xovera Co-Pilot in general support mode for the workspace "${input.workspaceName}". A staff member is sharing their screen and talking to you — help them fix whatever they bring, end to end.`,
     ``,
     `## How to behave`,
     `- You are an advisor: you CANNOT click or change anything — the user does. Diagnose, then give one clear next action at a time.`,
@@ -164,7 +164,7 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
   const { sop } = input
   const steps = sop.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')
   return [
-    `You are the Voxility Co-Pilot running the procedure "${sop.title}" with a staff member of "${input.workspaceName}" who is sharing their screen. Your job: get them through every step, in order, within about ${sop.timeboxMinutes} minutes.`,
+    `You are the Xovera Co-Pilot running the procedure "${sop.title}" with a staff member of "${input.workspaceName}" who is sharing their screen. Your job: get them through every step, in order, within about ${sop.timeboxMinutes} minutes.`,
     ``,
     `## The procedure`,
     `Goal: ${sop.goal}`,

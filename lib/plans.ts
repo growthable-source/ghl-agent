@@ -1,5 +1,5 @@
 /**
- * Plan configuration and feature gating for Voxility.
+ * Plan configuration and feature gating for Xovera.
  *
  * Tiers: trial → starter → growth → scale
  * Trial gives full Growth-tier access for 7 days.
@@ -419,7 +419,7 @@ export function getPlanDefaults(plan: PlanId): {
 
 // ─── Funnel builder access ────────────────────────────────────────────
 //
-// Voxility funnel layer is gated to Growth and Scale tiers (and Trial
+// Xovera funnel layer is gated to Growth and Scale tiers (and Trial
 // within its 7-day window). Starter / Free workspaces see the Funnels
 // nav item but the wizard and APIs return a paywall.
 

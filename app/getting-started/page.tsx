@@ -9,7 +9,7 @@
  * "HighLevel" / "GHL". User-facing copy is brand-neutral elsewhere
  * ("your CRM") for non-LeadConnector contexts; this page deliberately
  * names LeadConnector because the marketplace install is the primary
- * way customers land on Voxility today.
+ * way customers land on Xovera today.
  */
 
 import Link from 'next/link'
@@ -37,13 +37,13 @@ export default function GettingStartedPage() {
         />
         <div className="relative px-7 py-10 lg:px-12 lg:py-14 text-white">
           <p className="text-xs font-semibold tracking-wider uppercase opacity-80 mb-3">
-            Welcome to Voxility
+            Welcome to Xovera
           </p>
           <h1 className="text-3xl lg:text-4xl font-bold leading-tight tracking-tight">
             Get your first AI agent live in under ten minutes.
           </h1>
           <p className="mt-4 max-w-xl text-base lg:text-lg leading-relaxed opacity-90">
-            Voxility runs AI agents that talk to your contacts on every
+            Xovera runs AI agents that talk to your contacts on every
             channel — SMS, WhatsApp, Email, Live Chat, Voice — and use
             LeadConnector as the source of truth for contacts,
             conversations, calendars, and pipelines.
@@ -83,8 +83,8 @@ export default function GettingStartedPage() {
         <ol className="space-y-3">
           <StepCard
             n={1}
-            title="Install Voxility into your LeadConnector sub-account"
-            body="From the LeadConnector marketplace, find Voxility and hit Install. We provision your workspace automatically and inherit your sub-account name, timezone, and team — no separate signup form. If you arrived here directly, sign in and we'll guide you through connecting LeadConnector from the integrations page."
+            title="Install Xovera into your LeadConnector sub-account"
+            body="From the LeadConnector marketplace, find Xovera and hit Install. We provision your workspace automatically and inherit your sub-account name, timezone, and team — no separate signup form. If you arrived here directly, sign in and we'll guide you through connecting LeadConnector from the integrations page."
           />
 
           <StepCard
@@ -112,7 +112,7 @@ export default function GettingStartedPage() {
       <section className="mb-14">
         <header className="mb-6">
           <h2 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-            The six things that make Voxility work
+            The six things that make Xovera work
           </h2>
           <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>
             You don&apos;t need to read these before building. They&apos;re
@@ -139,7 +139,7 @@ export default function GettingStartedPage() {
           <ConceptCard
             icon={<IconKnowledge />}
             title="Knowledge"
-            body="Collections of source material your agent can reference at conversation time — your website, help articles, pricing PDFs, FAQs. Add a URL or upload a file; Voxility chunks and indexes it."
+            body="Collections of source material your agent can reference at conversation time — your website, help articles, pricing PDFs, FAQs. Add a URL or upload a file; Xovera chunks and indexes it."
           />
           <ConceptCard
             icon={<IconApprovals />}
@@ -198,12 +198,12 @@ export default function GettingStartedPage() {
 
         <div className="space-y-3">
           <Faq
-            q="Does Voxility work with my LeadConnector sub-account?"
+            q="Does Xovera work with my LeadConnector sub-account?"
             a="Yes. Install from the LeadConnector marketplace and we connect to your sub-account automatically — contacts, conversations, pipelines, calendars, custom fields, tags, and team members are all available immediately."
           />
           <Faq
             q="Does it replace LeadConnector?"
-            a="No. Voxility sits on top of LeadConnector. Your CRM stays the source of truth — every conversation, contact update, appointment, and pipeline move our agents make happens inside your sub-account."
+            a="No. Xovera sits on top of LeadConnector. Your CRM stays the source of truth — every conversation, contact update, appointment, and pipeline move our agents make happens inside your sub-account."
           />
           <Faq
             q="Can I review what the agent does before it sends?"
@@ -211,7 +211,7 @@ export default function GettingStartedPage() {
           />
           <Faq
             q="What does it cost?"
-            a="Voxility runs on a per-message pricing model with plan-included volume — see the pricing page for current tiers. New workspaces start on a 7-day trial with no card required."
+            a="Xovera runs on a per-message pricing model with plan-included volume — see the pricing page for current tiers. New workspaces start on a 7-day trial with no card required."
           />
         </div>
       </section>
@@ -236,9 +236,9 @@ export default function GettingStartedPage() {
             body="Sign in and pick up where you left off — or finish setup if you just installed."
           />
           <NextLink
-            href="mailto:support@voxility.ai"
+            href="mailto:support@xovera.io"
             title="Talk to a human"
-            body="Hit us up at support@voxility.ai — we read every message."
+            body="Hit us up at support@xovera.io — we read every message."
             external
           />
         </div>

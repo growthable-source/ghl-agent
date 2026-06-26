@@ -96,7 +96,7 @@ export async function createCalcomBooking(
 export async function cancelCalcomBooking(apiKey: string, bookingId: number, reason?: string) {
   await calcomRequest(`/bookings/${bookingId}/cancel`, apiKey, {
     method: 'POST',
-    body: JSON.stringify({ cancellationReason: reason || 'Cancelled via Voxility AI' }),
+    body: JSON.stringify({ cancellationReason: reason || 'Cancelled via Xovera AI' }),
   })
   return { success: true }
 }

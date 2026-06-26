@@ -60,15 +60,15 @@ describe('renderBrandedEmail', () => {
     const html = renderBrandedEmail({
       title: 't',
       bodyHtml: '',
-      manageNotificationsUrl: 'https://app.voxility.ai/dashboard',
+      manageNotificationsUrl: 'https://app.xovera.io/dashboard',
     }).html
     expect(html).toContain('Manage notifications')
-    expect(html).toContain('https://app.voxility.ai/dashboard')
+    expect(html).toContain('https://app.xovera.io/dashboard')
   })
 
   it('embeds the brand wordmark in the hero header', () => {
     const html = renderBrandedEmail({ title: 't', bodyHtml: '' }).html
-    expect(html).toContain('Voxility')
+    expect(html).toContain('Xovera')
     // No external image hosts referenced — every brand element is
     // CSS-only.
     expect(html).not.toMatch(/<img[^>]*src=/i)

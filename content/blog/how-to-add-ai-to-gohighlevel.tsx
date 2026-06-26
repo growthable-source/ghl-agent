@@ -8,7 +8,7 @@ export const meta: BlogPostMeta = {
   description: 'A practical walkthrough — from marketplace install to first live agent. Everything a non-technical operator needs to get a real AI agent answering calls and texts inside GoHighLevel.',
   category: 'Guides',
   publishedAt: '2026-04-24',
-  author: 'Voxility',
+  author: 'Xovera',
   readingTimeMinutes: 7,
   tags: ['GoHighLevel', 'how-to', 'AI agents', 'setup'],
 }
@@ -35,7 +35,7 @@ export default function Post() {
           <Strong>GoHighLevel&apos;s built-in Conversation AI</Strong> — free, included in most plans, good for auto-replying to text and chat. Limited on voice and on the things you can let the AI actually <em>do</em>.
         </LI>
         <LI>
-          <Strong>A marketplace add-on</Strong> like <A href="/">Voxility</A> — installs directly from the GHL marketplace, runs inside your account, has native CRM tools. Free while in beta.
+          <Strong>A marketplace add-on</Strong> like <A href="/">Xovera</A> — installs directly from the GHL marketplace, runs inside your account, has native CRM tools. Free while in beta.
         </LI>
         <LI>
           <Strong>A voice-only developer platform</Strong> like Retell or Vapi wired up via webhook — powerful, requires engineering.
@@ -43,7 +43,7 @@ export default function Post() {
       </UL>
 
       <P>
-        We&apos;re going to walk through the marketplace add-on path using Voxility because that&apos;s what we build, but the shape of the process is the same for most tools — pick up whichever steps apply.
+        We&apos;re going to walk through the marketplace add-on path using Xovera because that&apos;s what we build, but the shape of the process is the same for most tools — pick up whichever steps apply.
       </P>
 
       <H2 id="step-2-install">Step 2: Install from the marketplace</H2>
@@ -53,7 +53,7 @@ export default function Post() {
           Open the GoHighLevel marketplace (left sidebar in your agency view, or <Code>/marketplace</Code> from the dashboard).
         </LI>
         <LI>
-          Search <Strong>Voxility</Strong> and click <Strong>Install</Strong>. Approve the requested scopes when HighLevel&apos;s OAuth prompt appears — the agent needs permission to read contacts, update opportunities, send messages, and create calendar events to do its job.
+          Search <Strong>Xovera</Strong> and click <Strong>Install</Strong>. Approve the requested scopes when HighLevel&apos;s OAuth prompt appears — the agent needs permission to read contacts, update opportunities, send messages, and create calendar events to do its job.
         </LI>
         <LI>
           Pick the sub-accounts you want to enable. You can always add more later; there&apos;s no penalty for starting narrow.
@@ -71,7 +71,7 @@ export default function Post() {
       <H2 id="step-3-build">Step 3: Build your first agent</H2>
 
       <P>
-        After install, you&apos;ll land in the Voxility dashboard. Click <Strong>New agent</Strong> and fill in four things:
+        After install, you&apos;ll land in the Xovera dashboard. Click <Strong>New agent</Strong> and fill in four things:
       </P>
 
       <OL>
@@ -100,7 +100,7 @@ export default function Post() {
       </P>
 
       <P>
-        Voxility has two test surfaces:
+        Xovera has two test surfaces:
       </P>
 
       <UL>

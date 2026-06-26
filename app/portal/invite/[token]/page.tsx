@@ -41,7 +41,7 @@ export default async function AcceptInvitePage({ params }: Params) {
             <img src={invite.portal.logoUrl} alt={invite.portal.name} className="h-9 mx-auto mb-3" />
           ) : (
             <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--portal-accent)]">
-              {invite ? invite.portal.name : 'Voxility'}
+              {invite ? invite.portal.name : 'Xovera'}
             </p>
           )}
           <h1 className="text-2xl font-semibold text-white mt-2">

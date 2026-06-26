@@ -207,7 +207,7 @@ export default function CallEmbedPage() {
           </button>
         )}
       </div>
-      <p className="text-[10px] text-zinc-600 text-center pb-4">Powered by Voxility</p>
+      <p className="text-[10px] text-zinc-600 text-center pb-4">Powered by Xovera</p>
     </div>
   )
 }

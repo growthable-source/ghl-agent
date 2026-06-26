@@ -11,7 +11,7 @@ import {
   LiveChatIcon, SlackIcon, ZapierIcon, MessengerIcon, VideoMeetingIcon,
 } from '@/components/icons/brand-icons'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 // Public demo agent ("Harry") — drives the Co-Pilot "try it" CTAs. Its
 // publicKey gates the screen-share link (/copilot/live/<key>) and the demo
@@ -27,7 +27,7 @@ const MARKETPLACE_URL = 'https://marketplace.gohighlevel.com/'
 
 type LogoItem = { label: string; Icon: React.ComponentType<{ className?: string }> }
 
-// Tools Voxility integrates with (logos in the integrations row).
+// Tools Xovera integrates with (logos in the integrations row).
 const INTEGRATIONS: LogoItem[] = [
   { label: 'GoHighLevel', Icon: GoHighLevelIcon },
   { label: 'HubSpot', Icon: HubSpotIcon },
@@ -70,20 +70,20 @@ const CHANNELS: LogoItem[] = [
 const ORG_SCHEMA = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'Voxility',
+  name: 'Xovera',
   url: SITE_URL,
   logo: `${SITE_URL}/logo-color.svg`,
   description:
     'Conversational AI agents for sales and marketing teams. Self-improving agents that answer calls, respond to texts, qualify leads, and book appointments — natively connected to your existing CRM.',
   sameAs: [
-    'https://voxility.canny.io',
+    'https://xovera.canny.io',
   ],
 }
 
 const SOFTWARE_SCHEMA = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
-  name: 'Voxility',
+  name: 'Xovera',
   applicationCategory: 'BusinessApplication',
   operatingSystem: 'Web',
   description:
@@ -134,7 +134,7 @@ const FAQ_SCHEMA = {
     },
     {
       '@type': 'Question',
-      name: 'What CRMs does Voxility work with?',
+      name: 'What CRMs does Xovera work with?',
       acceptedAnswer: {
         '@type': 'Answer',
         text: 'LeadConnector (via the marketplace) and HubSpot today, with more on the way. We sync contacts, pipelines, calendars, and conversations. The agent reads and writes CRM data natively — no Zapier glue required.',
@@ -142,7 +142,7 @@ const FAQ_SCHEMA = {
     },
     {
       '@type': 'Question',
-      name: 'Do I need to be technical to use Voxility?',
+      name: 'Do I need to be technical to use Xovera?',
       acceptedAnswer: {
         '@type': 'Answer',
         text: 'No. If you can fill out a form, you can build an agent. Pick a voice, write some instructions in plain English, add your qualifying questions, and go live. No code, no API keys, no developers.',
@@ -161,17 +161,17 @@ const FAQ_SCHEMA = {
       name: 'How much does it cost?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Voxility is free during beta. Pricing lands as we exit beta, designed for agencies and SMBs.',
+        text: 'Xovera is free during beta. Pricing lands as we exit beta, designed for agencies and SMBs.',
       },
     },
   ],
 }
 
 /**
- * Voxility landing page.
+ * Xovera landing page.
  *
  * Narrative: the *self-improving* AI agent. Most AI-voice products give
- * you a script-reader; Voxility agents start good and get measurably
+ * you a script-reader; Xovera agents start good and get measurably
  * better every day — from their own conversations, from simulations
  * the operator runs, and from improvements that other agents on the
  * platform discover. The "rising tide" is the differentiator.
@@ -185,7 +185,7 @@ const FAQ_SCHEMA = {
  *      going live)
  *   6. Features grid
  *   7. How it works
- *   8. Why Voxility (narrative card)
+ *   8. Why Xovera (narrative card)
  *   9. Use cases
  *  10. FAQ (expanded to address the self-improvement question)
  *  11. Final CTA
@@ -322,7 +322,7 @@ export default function LandingPage() {
               Every lead, answered. Every demo, <span className="text-gradient">booked</span>.
             </h1>
             <p className="mb-10 leading-[1.65]" style={{ color: 'var(--text-secondary)', fontSize: '1.125rem' }}>
-              Your team shouldn&apos;t be answering the same questions at 11pm. Voxility runs AI agents that handle inbound calls, texts, and chats end-to-end — qualifying every lead, booking demos mid-conversation, and getting measurably smarter from every interaction. Plugs into your existing tools in one click. Live in five minutes.
+              Your team shouldn&apos;t be answering the same questions at 11pm. Xovera runs AI agents that handle inbound calls, texts, and chats end-to-end — qualifying every lead, booking demos mid-conversation, and getting measurably smarter from every interaction. Plugs into your existing tools in one click. Live in five minutes.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-4">
               <Link href="/login?mode=signup" className="btn-primary">
@@ -419,7 +419,7 @@ export default function LandingPage() {
       <section className="max-w-4xl mx-auto px-6 py-24">
         <div className="text-center mb-10">
           <span className="section-label inline-block mb-3">A real call</span>
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">This is what a Voxility agent sounds like.</h2>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">This is what a Xovera agent sounds like.</h2>
         </div>
         <div className="vox-card overflow-hidden" style={{ boxShadow: '0 4px 40px rgba(0,0,0,0.08)' }}>
           <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
@@ -786,7 +786,7 @@ export default function LandingPage() {
                 <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>GoHighLevel Sponsored Partner</h3>
                 <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>Marketplace app</span>
               </div>
-              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Install Voxility from the GoHighLevel Marketplace in one click — the agent reads and writes your CRM natively.</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Install Xovera from the GoHighLevel Marketplace in one click — the agent reads and writes your CRM natively.</p>
             </div>
             <span className="ml-auto shrink-0 hidden sm:inline text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>Install →</span>
           </a>
@@ -847,12 +847,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ Why Voxility ═══ */}
+      {/* ═══ Why Xovera ═══ */}
       <section className="py-8 px-6">
         <div className="max-w-[1280px] mx-auto">
           <div className="vox-card p-10 md:p-16" style={{ background: 'linear-gradient(135deg, var(--surface) 0%, var(--surface-secondary) 100%)' }}>
             <div className="max-w-3xl">
-              <span className="section-label inline-block mb-4">Why Voxility</span>
+              <span className="section-label inline-block mb-4">Why Xovera</span>
               <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">
                 This isn&apos;t a chatbot with a phone number.
               </h2>
@@ -861,7 +861,7 @@ export default function LandingPage() {
                   Most &ldquo;AI voice&rdquo; products give you a script reader that falls apart the moment a customer asks a real question. The fix has always been the same: stop the agent, edit the prompt, redeploy, pray.
                 </p>
                 <p>
-                  Voxility agents are different. They know your business because you teach them — with a knowledge base, qualifying questions, and a persona that matches your brand. They have <strong style={{ color: 'var(--text-primary)' }}>26+ CRM-native tools</strong> to actually do things: check calendars, book appointments, tag leads, send texts, update pipelines.
+                  Xovera agents are different. They know your business because you teach them — with a knowledge base, qualifying questions, and a persona that matches your brand. They have <strong style={{ color: 'var(--text-primary)' }}>26+ CRM-native tools</strong> to actually do things: check calendars, book appointments, tag leads, send texts, update pipelines.
                 </p>
                 <p>
                   And every single conversation makes them better. A dedicated AI reviewer audits every call, every text exchange, and every simulation — proposing concrete prompt improvements that apply to the live agent in about thirty seconds. Tomorrow&apos;s agent is measurably sharper than today&apos;s, without you opening a single settings page.
@@ -938,7 +938,7 @@ export default function LandingPage() {
               a="Every applied learning shows up on the conversation or swarm detail page with a Retire button. One click reverts it cleanly. We also version every prompt change — you can see exactly what shifted and when."
             />
             <FAQItem
-              q="What CRMs does Voxility work with?"
+              q="What CRMs does Xovera work with?"
               a="LeadConnector (via the marketplace) and HubSpot today, with more on the way. We sync contacts, pipelines, calendars, and conversations. The agent reads and writes CRM data natively — no Zapier glue required."
             />
             <FAQItem
@@ -946,7 +946,7 @@ export default function LandingPage() {
               a="Very. We use ElevenLabs with 100+ voice options. You can tune speed, tone, and personality. Most callers don't realize they're talking to an AI until you tell them."
             />
             <FAQItem
-              q="Do I need to be technical to use Voxility?"
+              q="Do I need to be technical to use Xovera?"
               a="No. If you can fill out a form, you can build an agent. Pick a voice, write some instructions in plain English, add your qualifying questions, and go live. No code, no API keys, no developers."
             />
             <FAQItem
@@ -955,7 +955,7 @@ export default function LandingPage() {
             />
             <FAQItem
               q="How much does it cost?"
-              a="Voxility is free during beta. Pricing lands as we exit beta, designed for agencies and SMBs — no surprises, no per-minute math homework."
+              a="Xovera is free during beta. Pricing lands as we exit beta, designed for agencies and SMBs — no surprises, no per-minute math homework."
             />
           </div>
         </div>

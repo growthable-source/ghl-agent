@@ -2,7 +2,7 @@
  * Internal-workspace detection.
  *
  * A workspace is "internal" when at least one member is signed in with an
- * email on the @voxility.ai domain, or when their email is on the
+ * email on the @xovera.io domain, or when their email is on the
  * SUPER_ADMIN_EMAILS allowlist (covers the Google Workspace alias case
  * where the primary email is on a different domain).
  *
@@ -12,10 +12,10 @@
  * isn't enforced.
  *
  * Kept as a lazy, per-request lookup rather than a cached flag on the
- * Workspace row so that (a) adding a @voxility.ai teammate to an existing
+ * Workspace row so that (a) adding a @xovera.io teammate to an existing
  * external workspace immediately makes it internal, and (b) removing the
- * last @voxility.ai member flips it back. One indexed query per request
- * is fine; the list of workspaces Voxility staff are members of is small.
+ * last @xovera.io member flips it back. One indexed query per request
+ * is fine; the list of workspaces Xovera staff are members of is small.
  */
 
 import { db } from './db'
@@ -30,7 +30,7 @@ function getAllowlist(): string[] {
 function isInternalEmail(email: string | null | undefined): boolean {
   if (!email) return false
   const e = email.toLowerCase()
-  if (e.endsWith('@voxility.ai')) return true
+  if (e.endsWith('@xovera.io')) return true
   return getAllowlist().includes(e)
 }
 

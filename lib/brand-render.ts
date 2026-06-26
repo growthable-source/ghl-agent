@@ -104,7 +104,7 @@ export async function renderUrl(rawUrl: string): Promise<RenderResult | RenderFa
     const page = context.pages()[0] ?? (await context.newPage())
 
     await page.setExtraHTTPHeaders({
-      'User-Agent': 'Mozilla/5.0 (compatible; VoxilityBrandRenderer/1.0; +https://voxility.ai)',
+      'User-Agent': 'Mozilla/5.0 (compatible; XoveraBrandRenderer/1.0; +https://xovera.io)',
     })
     await page.goto(url.toString(), {
       waitUntil: 'networkidle',

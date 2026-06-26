@@ -181,7 +181,7 @@ export default function DemoModal({
                   {heading}
                 </h3>
                 <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
-                  See Voxility answer a lead live. Pick a time on the next step.
+                  See Xovera answer a lead live. Pick a time on the next step.
                 </p>
 
                 <div className="space-y-3">

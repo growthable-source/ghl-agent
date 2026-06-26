@@ -6,7 +6,7 @@
  *                                   the service worker can subscribe
  *   VAPID_PRIVATE_KEY             — base64url, server-only signing key
  *   VAPID_SUBJECT                 — mailto:you@yourdomain.com (optional;
- *                                   defaults to mailto:notifications@voxility.app)
+ *                                   defaults to mailto:notifications@xovera.io)
  *
  * Generate the keypair once with:
  *   npx web-push generate-vapid-keys
@@ -21,7 +21,7 @@ function configureVapid() {
   if (vapidConfigured) return true
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
   const privateKey = process.env.VAPID_PRIVATE_KEY || ''
-  const subject = process.env.VAPID_SUBJECT || 'mailto:notifications@voxility.app'
+  const subject = process.env.VAPID_SUBJECT || 'mailto:notifications@xovera.io'
   if (!publicKey || !privateKey) return false
   webpush.setVapidDetails(subject, publicKey, privateKey)
   vapidConfigured = true

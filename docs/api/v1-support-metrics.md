@@ -1,4 +1,4 @@
-# Voxility API v1 — Support Metrics Reference
+# Xovera API v1 — Support Metrics Reference
 
 A read-only HTTP API for pulling support, ticketing, SLA, CSAT, and queue metrics into external dashboards or reporting tools.
 
@@ -20,7 +20,7 @@ Authorization: Bearer vox_live_<token>
 
 **Workspace key** — created by any workspace admin in *Settings → API Access*. The key is permanently bound to one workspace. You do not need to (and generally should not) pass `workspaceId` on workspace-key requests. If you do pass it, it must match the workspace the key belongs to; any mismatch returns `403 forbidden`.
 
-**Org key** — provisioned by the Voxility maintainer for multi-workspace integrations. An org key:
+**Org key** — provisioned by the Xovera maintainer for multi-workspace integrations. An org key:
 
 - Is required for `GET /api/v1/org/*` endpoints.
 - On all other (per-workspace) endpoints, **must** include `?workspaceId=<id>` to scope down to a specific workspace. Omitting it returns `422 workspace_required`.

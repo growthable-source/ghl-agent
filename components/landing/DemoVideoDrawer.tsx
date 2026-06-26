@@ -57,7 +57,7 @@ export default function DemoVideoDrawer({
             <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
               <div>
                 <p className="section-label">See it in action</p>
-                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>The 2-minute Voxility demo</h3>
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>The 2-minute Xovera demo</h3>
               </div>
               <button
                 type="button"
@@ -75,7 +75,7 @@ export default function DemoVideoDrawer({
                 {video.kind === 'iframe' && (
                   <iframe
                     src={video.src}
-                    title="Voxility demo"
+                    title="Xovera demo"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                     allowFullScreen
                     className="absolute inset-0 w-full h-full"

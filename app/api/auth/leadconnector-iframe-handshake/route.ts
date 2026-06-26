@@ -1,7 +1,7 @@
 /**
  * LeadConnector Custom-App SSO handshake.
  *
- * Inside the iframe Voxility runs in when launched from a LeadConnector
+ * Inside the iframe Xovera runs in when launched from a LeadConnector
  * Custom Menu Link, the client posts a REQUEST_USER_DATA message to its
  * parent. The marketplace responds with an encrypted blob signed with
  * our app's Shared Secret. The client POSTs that blob here; we decrypt,
@@ -9,7 +9,7 @@
  * database session, set the session cookie, and return the destination
  * URL.
  *
- * The decrypted payload is trustworthy because only Voxility and the
+ * The decrypted payload is trustworthy because only Xovera and the
  * marketplace know the Shared Secret — anyone fabricating a payload
  * without it gets caught at decrypt time. We do still verify the user
  * has membership in the matching workspace before minting the session.
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Map marketplace identity onto Voxility records. Strategy:
+  // Map marketplace identity onto Xovera records. Strategy:
   //   1. Find the Location row whose id matches activeLocation (or any
   //      Location in the same companyId if activeLocation isn't set —
   //      agency menu link with no sub-account selected).
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
   if (!location || !location.workspaceId) {
     return NextResponse.json(
       {
-        error: 'No Voxility workspace is connected to this location yet. Reinstall the app via the marketplace to provision one.',
+        error: 'No Xovera workspace is connected to this location yet. Reinstall the app via the marketplace to provision one.',
         code: 'NO_LOCATION',
       },
       { status: 404 },
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
   const role = payload.role === 'admin' ? 'admin' : 'member'
   // Refresh the role on every handshake — marketplace payload is the
   // source of truth. The old `update: {}` meant a user demoted in
-  // GHL kept their elevated Voxility access forever (and vice versa,
+  // GHL kept their elevated Xovera access forever (and vice versa,
   // a promotion never propagated). We do NOT touch 'owner' rows
   // though — that role is set by direct-signup workspace creation
   // and shouldn't be clobbered just because the same user also has
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
   // The embed cookie is deliberately a DIFFERENT name from the regular
   // NextAuth session cookie. Keeping them separate means:
   //   1. A passive browser session in another tab (SameSite=Lax) won't
-  //      be piggybacked by a malicious site that iframes Voxility — its
+  //      be piggybacked by a malicious site that iframes Xovera — its
   //      cookie can't travel in a third-party context, ours can.
   //   2. Signing out of one context doesn't kill the other.
   // Middleware promotes this value onto the regular cookie name on the

@@ -1,7 +1,7 @@
 /**
  * Embed-mode session cookie.
  *
- * Voxility sessions split into two cookies, intentionally:
+ * Xovera sessions split into two cookies, intentionally:
  *
  *   __Secure-authjs.session-token       (SameSite=Lax)  — browser tabs
  *   __Secure-voxility-embed-session     (SameSite=None) — iframe inside CRM
@@ -10,7 +10,7 @@
  * different SameSite values matter for security:
  *
  *   - SameSite=Lax cookies don't send in third-party iframes, so a
- *     malicious site that iframes app.voxility.ai cannot piggyback on
+ *     malicious site that iframes app.xovera.io cannot piggyback on
  *     a user's passive browser session.
  *   - SameSite=None cookies travel in any iframe, which is required
  *     for the CRM-embedded experience to work across thousands of

@@ -105,7 +105,7 @@ makes it safe to re-run if Step 1 hasn't happened yet.
 **Verify:**
 
 ```bash
-curl -fsS https://<your-voxility-domain>/api/auth/leadconnector-iframe-handshake \
+curl -fsS https://<your-xovera-domain>/api/auth/leadconnector-iframe-handshake \
   -X POST -H 'Content-Type: application/json' -d '{}'
 ```
 
@@ -117,7 +117,7 @@ env var.
 
 ## Step 4 — Configure the marketplace listing
 
-In the LeadConnector marketplace builder for the Voxility app:
+In the LeadConnector marketplace builder for the Xovera app:
 
 ### 4a. Custom Menu Links
 
@@ -125,9 +125,9 @@ Add at least one sub-account-scoped menu link:
 
 | Field    | Value                                                                            |
 |----------|----------------------------------------------------------------------------------|
-| Label    | `Voxility`                                                                       |
-| URL      | `https://<your-voxility-domain>/embedded/leadconnector?embedded=leadconnector`   |
-| Icon     | (your choice — Voxility wordmark or icon)                                        |
+| Label    | `Xovera`                                                                       |
+| URL      | `https://<your-xovera-domain>/embedded/leadconnector?embedded=leadconnector`   |
+| Icon     | (your choice — Xovera wordmark or icon)                                        |
 | Scope    | Sub-account                                                                      |
 
 Optionally add a parallel agency-scoped link with the same URL — useful
@@ -178,7 +178,7 @@ to fix.
 
 ### 5c. Marketplace install → installSource attribution (Step 1 work)
 
-1. From your dev sub-account inside LeadConnector, install Voxility
+1. From your dev sub-account inside LeadConnector, install Xovera
    via the marketplace.
 2. After OAuth completes, query the new workspace:
    ```sql
@@ -202,7 +202,7 @@ to fix.
 
 ### 5e. Iframe entry (Steps 2-4 work)
 
-1. From your dev sub-account inside LeadConnector, click the Voxility
+1. From your dev sub-account inside LeadConnector, click the Xovera
    menu link you added in Step 4a.
 2. Iframe loads. Brief "Connecting to your CRM…" → "Signing you in…"
    → "Loading your workspace…" spinner sequence.

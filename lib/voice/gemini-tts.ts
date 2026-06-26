@@ -18,7 +18,7 @@ const GEMINI_TTS_MODEL = process.env.GEMINI_TTS_MODEL ?? 'gemini-2.5-flash-previ
 
 /** The line every voice preview speaks. Fixed → cacheable, and short. */
 export const VOICE_PREVIEW_TEXT =
-  "Hi — I'm your Voxility co-pilot. I'll guide you through it, one step at a time."
+  "Hi — I'm your Xovera co-pilot. I'll guide you through it, one step at a time."
 
 /**
  * Neutral preview line for a phone/voice AGENT (vs the co-pilot). Used by

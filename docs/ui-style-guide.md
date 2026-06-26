@@ -1,4 +1,4 @@
-# Voxility — Fonts & Colors (light theme)
+# Xovera — Fonts & Colors (light theme)
 
 ## Fonts
 - **DM Sans** — all UI text (Google Fonts)

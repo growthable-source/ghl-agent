@@ -3,7 +3,7 @@
 import Image from 'next/image'
 
 /**
- * Voxility brand logo — uses the actual corporate identity SVGs.
+ * Xovera brand logo — uses the actual corporate identity SVGs.
  *
  * Variants:
  *   mark   – waveform circle icon only (/logo-mark.svg)
@@ -14,24 +14,24 @@ import Image from 'next/image'
  *   light  – black version for light backgrounds
  */
 
-interface VoxilityLogoProps {
+interface XoveraLogoProps {
   variant?: 'mark' | 'full'
   height?: number
   className?: string
   theme?: 'dark' | 'light'
 }
 
-export default function VoxilityLogo({
+export default function XoveraLogo({
   variant = 'full',
   height = 32,
   className = '',
   theme = 'dark',
-}: VoxilityLogoProps) {
+}: XoveraLogoProps) {
   if (variant === 'mark') {
     return (
       <Image
         src="/logo-mark.svg"
-        alt="Voxility"
+        alt="Xovera"
         width={height}
         height={height}
         className={`shrink-0 ${className}`}
@@ -47,7 +47,7 @@ export default function VoxilityLogo({
   return (
     <Image
       src={src}
-      alt="Voxility"
+      alt="Xovera"
       width={width}
       height={height}
       className={`shrink-0 ${className}`}

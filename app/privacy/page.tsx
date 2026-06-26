@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 
 export const metadata = {
-  title: 'Privacy Policy | Voxility',
-  description: 'How Voxility collects, uses, stores, and protects your data, including data obtained through connected platforms like Facebook, Instagram, and your CRM.',
+  title: 'Privacy Policy | Xovera',
+  description: 'How Xovera collects, uses, stores, and protects your data, including data obtained through connected platforms like Facebook, Instagram, and your CRM.',
 }
 
 const LAST_UPDATED = '1 May 2026'
@@ -14,8 +14,8 @@ export default function PrivacyPage() {
       <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: 'var(--border)', background: 'rgba(5,8,15,0.85)' }}>
         <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <VoxilityLogo variant="mark" height={26} />
-            <span className="font-bold text-sm">Voxility</span>
+            <XoveraLogo variant="mark" height={26} />
+            <span className="font-bold text-sm">Xovera</span>
           </Link>
           <div className="flex items-center gap-6 text-sm">
             <Link href="/docs" className="hover:text-white transition-colors" style={{ color: 'var(--text-secondary)' }}>Docs</Link>
@@ -39,7 +39,7 @@ export default function PrivacyPage() {
         <div className="max-w-2xl mx-auto space-y-8 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
 
           <Block title="Who we are">
-            Voxility is operated by Kroc Fitness &amp; Lifestyle Pty Ltd (&ldquo;Voxility&rdquo;,
+            Xovera is operated by Kroc Fitness &amp; Lifestyle Pty Ltd (&ldquo;Xovera&rdquo;,
             &ldquo;we&rdquo;, &ldquo;us&rdquo;). We provide an AI conversational agent platform that
             connects to your CRM and messaging channels (including Facebook Pages, Instagram,
             SMS, and voice) to handle customer conversations on your behalf.
@@ -74,7 +74,7 @@ export default function PrivacyPage() {
             and receive messages through Messenger and Instagram Direct on your behalf.
             <p className="mt-3">
               We retain these tokens for as long as the connection is active. If you remove
-              Voxility from <a href="https://www.facebook.com/settings?tab=business_tools" target="_blank" rel="noopener noreferrer" className="underline">Facebook Settings &rarr; Business Integrations</a>,
+              Xovera from <a href="https://www.facebook.com/settings?tab=business_tools" target="_blank" rel="noopener noreferrer" className="underline">Facebook Settings &rarr; Business Integrations</a>,
               Meta sends a deauthorization webhook and we automatically purge the token and
               cached Page metadata.
             </p>
@@ -98,7 +98,7 @@ export default function PrivacyPage() {
           <Block title="Your rights">
             You can access, correct, or delete your data at any time. To request deletion, see
             our <Link href="/data-deletion" className="underline">Data Deletion page</Link> or
-            email us at <a href="mailto:support@voxility.io" className="underline">support@voxility.io</a>.
+            email us at <a href="mailto:support@xovera.io" className="underline">support@xovera.io</a>.
             If you&rsquo;re in the EU, UK, or California, you have additional rights under GDPR,
             UK GDPR, or CCPA respectively &mdash; including the right to object to processing
             and the right to data portability. We&rsquo;ll respond to verified requests within 30 days.
@@ -111,7 +111,7 @@ export default function PrivacyPage() {
           </Block>
 
           <Block title="Children">
-            Voxility is not intended for use by anyone under 16. We do not knowingly collect
+            Xovera is not intended for use by anyone under 16. We do not knowingly collect
             personal information from children. If you believe a child has provided us with
             personal information, contact us and we&rsquo;ll delete it.
           </Block>
@@ -123,7 +123,7 @@ export default function PrivacyPage() {
 
           <Block title="Contact">
             Questions or requests:{' '}
-            <a href="mailto:support@voxility.io" className="underline">support@voxility.io</a>.
+            <a href="mailto:support@xovera.io" className="underline">support@xovera.io</a>.
           </Block>
 
         </div>
@@ -131,7 +131,7 @@ export default function PrivacyPage() {
 
       <footer className="border-t py-8 px-6" style={{ borderColor: '#121a2b' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between text-xs" style={{ color: '#475569' }}>
-          <VoxilityLogo height={16} />
+          <XoveraLogo height={16} />
           <div className="flex items-center gap-6">
             <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
             <Link href="/data-deletion" className="hover:text-white transition-colors">Data Deletion</Link>

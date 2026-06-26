@@ -41,7 +41,7 @@ export async function POST() {
       publishedAt: status === 'published'
         ? (existing?.publishedAt ?? new Date())
         : null,
-      authorEmail: email ?? 'seed@voxility.ai',
+      authorEmail: email ?? 'seed@xovera.io',
     }
     if (existing) {
       await db.helpArticle.update({ where: { id: existing.id }, data })

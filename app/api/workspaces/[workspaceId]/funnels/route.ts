@@ -1,5 +1,5 @@
 /**
- * Voxility funnels — list + create campaigns.
+ * Xovera funnels — list + create campaigns.
  *
  * GET  → list campaigns the caller can see (workspace-scoped).
  * POST → create a draft campaign with the 6-question intake. The

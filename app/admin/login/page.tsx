@@ -75,7 +75,7 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-400/90">
-            Voxility
+            Xovera
           </p>
           <h1 className="text-2xl font-semibold mt-1">Admin sign in</h1>
           <p className="text-xs text-zinc-500 mt-1.5">

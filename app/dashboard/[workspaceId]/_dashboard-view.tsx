@@ -201,7 +201,7 @@ export default function WorkspaceDashboardView() {
     return (
       <div className="p-6 max-w-[1200px] mx-auto">
         <div className="mb-6">
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Welcome to Voxility</h1>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Welcome to Xovera</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
             Your AI agents, knowledge, and conversations — all in one place. Start here.
           </p>
@@ -571,7 +571,7 @@ export default function WorkspaceDashboardView() {
 
 // ─── Donut components ──────────────────────────────────────────────────────
 
-// Stable palette for channel slices. Voxility doesn't have a per-channel
+// Stable palette for channel slices. Xovera doesn't have a per-channel
 // brand colour system yet, so this is hand-tuned for visual distinction
 // rather than semantic match (only LeadConnector's orange-on-orange would
 // have semantic meaning, and that's covered by the accent token).

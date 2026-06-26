@@ -3,7 +3,7 @@ import MarketingNav from '@/components/landing/MarketingNav'
 import MarketingFooter from '@/components/landing/MarketingFooter'
 import type { Solution } from '@/lib/solutions-data'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 export default function SolutionPage({ data }: { data: Solution }) {
   const faqLd = {
@@ -26,7 +26,7 @@ export default function SolutionPage({ data }: { data: Solution }) {
   const productLd = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
-    name: `Voxility — ${data.eyebrow}`,
+    name: `Xovera — ${data.eyebrow}`,
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web',
     description: data.metaDescription,

@@ -1,19 +1,19 @@
 # LeadConnector Marketplace embed setup
 
-Voxility ships as a LeadConnector marketplace app. Operators install it
+Xovera ships as a LeadConnector marketplace app. Operators install it
 from inside their CRM; the OAuth flow provisions a Workspace + Location;
-the marketplace listing's **Custom Menu Link** loads Voxility as an
+the marketplace listing's **Custom Menu Link** loads Xovera as an
 iframe inside the CRM UI so users never leave their CRM.
 
 This doc covers what to configure on the marketplace side and what env
-vars to set on the Voxility side. The code paths referenced here all
+vars to set on the Xovera side. The code paths referenced here all
 already exist in `main` — there's nothing left to build.
 
 ---
 
 ## 1. Marketplace app settings (one-time)
 
-In the marketplace builder for the Voxility app:
+In the marketplace builder for the Xovera app:
 
 ### Build → Auth → OAuth scopes
 
@@ -27,12 +27,12 @@ consumes). No change.
 
 ### Build → Custom Menu Links
 
-Add these menu items so installed users see Voxility inside their CRM:
+Add these menu items so installed users see Xovera inside their CRM:
 
 | Scope         | Menu label   | URL                                                                                  |
 |---------------|--------------|--------------------------------------------------------------------------------------|
-| Sub-account   | Voxility     | `https://<your-voxility-domain>/embedded/leadconnector?embedded=leadconnector`       |
-| Agency (opt.) | Voxility     | `https://<your-voxility-domain>/embedded/leadconnector?embedded=leadconnector`       |
+| Sub-account   | Xovera     | `https://<your-xovera-domain>/embedded/leadconnector?embedded=leadconnector`       |
+| Agency (opt.) | Xovera     | `https://<your-xovera-domain>/embedded/leadconnector?embedded=leadconnector`       |
 
 The marketplace doesn't need to substitute `{{location.id}}` or
 `{{company.id}}` in the URL — the iframe asks the parent frame for that
@@ -43,12 +43,12 @@ and matches what first-party iframes do.
 ### Build → Advanced Settings → Shared Secret
 
 Copy the **Shared Secret** (sometimes called "SSO Key") from this
-section. You'll set it on the Voxility side as `LEADCONNECTOR_SSO_KEY`
+section. You'll set it on the Xovera side as `LEADCONNECTOR_SSO_KEY`
 (next section).
 
 ---
 
-## 2. Voxility env vars
+## 2. Xovera env vars
 
 Set this on the deployment (Vercel project settings, or `.env` for
 local):
@@ -69,10 +69,10 @@ still cover the install OAuth flow.
 
 ## 3. How the iframe load works (debugging reference)
 
-When a user clicks the Voxility menu link inside their CRM:
+When a user clicks the Xovera menu link inside their CRM:
 
 1. The CRM iframes
-   `https://<voxility>/embedded/leadconnector?embedded=leadconnector`.
+   `https://<xovera>/embedded/leadconnector?embedded=leadconnector`.
 2. The page posts `{ message: 'REQUEST_USER_DATA' }` to `window.parent`.
 3. The CRM replies with `{ encryptedData: '<AES-CBC ciphertext>' }`.
 4. The page POSTs that blob to
@@ -100,7 +100,7 @@ The trust gate is the SSO handshake, not the parent origin:
   `LEADCONNECTOR_SSO_KEY`. The handshake fails and no session is minted.
 - Browser and iframe sessions use **separate cookies**:
   - `__Secure-authjs.session-token` (`SameSite=Lax`) — set by normal
-    Voxility login flows, doesn't travel in third-party iframes.
+    Xovera login flows, doesn't travel in third-party iframes.
   - `__Secure-voxility-embed-session` (`SameSite=None`) — set by the
     handshake, travels in any iframe.
   Middleware promotes the embed cookie onto the regular cookie name
@@ -108,7 +108,7 @@ The trust gate is the SSO handshake, not the parent origin:
   session without code changes anywhere else. Browsers never see the
   rename — the two cookies stay logically separate, which closes the
   clickjacking-via-passive-session vector (a malicious site that
-  iframes Voxility can't piggyback on a user's existing browser
+  iframes Xovera can't piggyback on a user's existing browser
   session because the Lax cookie won't send).
 
 ### Failure modes seen during testing
@@ -141,7 +141,7 @@ The trust gate is the SSO handshake, not the parent origin:
 Two options:
 
 1. **Mock parent**: open `tools/dev-lc-parent.html` (TBD — not built
-   yet) in a browser; it iframes your local Voxility and posts a fake
+   yet) in a browser; it iframes your local Xovera and posts a fake
    encrypted payload back. Requires you to encrypt a test payload with
    the dev `LEADCONNECTOR_SSO_KEY` first.
 2. **Submission preview**: the marketplace lets you publish to a

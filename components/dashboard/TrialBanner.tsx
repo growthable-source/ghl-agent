@@ -46,7 +46,7 @@ export default function TrialBanner({ workspaceId }: Props) {
         style={{ background: 'var(--accent-red-bg)', borderColor: 'var(--accent-red)' }}
       >
         <p className="text-xs font-medium" style={{ color: 'var(--accent-red)' }}>
-          Your trial has expired. Upgrade to continue using Voxility.
+          Your trial has expired. Upgrade to continue using Xovera.
         </p>
         <Link
           href={`/dashboard/${workspaceId}/settings/billing`}

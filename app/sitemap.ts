@@ -4,7 +4,7 @@ import { COMPARISONS } from '@/lib/compare-data'
 import { ALTERNATIVES } from '@/lib/alternatives-data'
 import { SOLUTIONS } from '@/lib/solutions-data'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 /**
  * Root sitemap — covers the marketing surface + blog + comparisons.

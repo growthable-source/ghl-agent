@@ -29,7 +29,7 @@ export default async function HelpLanding() {
       {/* Hero + search */}
       <section className="text-center py-12">
         <h1 className="text-4xl font-bold text-zinc-50 tracking-tight">How can we help?</h1>
-        <p className="mt-3 text-zinc-400">Guides, videos, and reference material for building with Voxility.</p>
+        <p className="mt-3 text-zinc-400">Guides, videos, and reference material for building with Xovera.</p>
         <div className="mt-8 max-w-2xl mx-auto">
           <HelpSearch />
         </div>

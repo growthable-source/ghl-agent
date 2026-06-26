@@ -7,7 +7,7 @@ export const revalidate = 60
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const c = await db.helpCategory.findUnique({ where: { slug } })
-  return c ? { title: `${c.name} — Voxility Help`, description: c.description ?? undefined } : {}
+  return c ? { title: `${c.name} — Xovera Help`, description: c.description ?? undefined } : {}
 }
 
 export default async function CategoryPage({ params }: { params: Promise<{ slug: string }> }) {

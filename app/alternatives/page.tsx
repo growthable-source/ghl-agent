@@ -6,11 +6,11 @@ import { ALTERNATIVES } from '@/lib/alternatives-data'
 import { SOLUTIONS } from '@/lib/solutions-data'
 
 export const metadata: Metadata = {
-  title: 'Voxility alternatives & comparisons',
+  title: 'Xovera alternatives & comparisons',
   description:
-    'How Voxility compares to Intercom, Fin, Zendesk AI, Tidio, and Drift — plus solution guides for AI customer service, AI chat widgets, AI receptionists, and AI SDRs.',
+    'How Xovera compares to Intercom, Fin, Zendesk AI, Tidio, and Drift — plus solution guides for AI customer service, AI chat widgets, AI receptionists, and AI SDRs.',
   alternates: { canonical: '/alternatives' },
-  openGraph: { title: 'Voxility alternatives & comparisons', type: 'website', url: '/alternatives' },
+  openGraph: { title: 'Xovera alternatives & comparisons', type: 'website', url: '/alternatives' },
 }
 
 export default function AlternativesHub() {
@@ -22,7 +22,7 @@ export default function AlternativesHub() {
         <div className="text-center mb-12">
           <div className="section-label mb-3">Alternatives &amp; comparisons</div>
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4" style={{ color: 'var(--text-primary)' }}>
-            How Voxility compares
+            How Xovera compares
           </h1>
           <p className="max-w-2xl mx-auto text-lg" style={{ color: 'var(--text-secondary)' }}>
             Honest, up-to-date comparisons against the tools you&apos;re probably weighing — plus problem-led guides for the outcomes you&apos;re after.
@@ -34,7 +34,7 @@ export default function AlternativesHub() {
           {ALTERNATIVES.map((a) => (
             <Link key={a.slug} href={`/${a.slug}`} className="vox-card p-6 block">
               <div className="section-label mb-2">{a.eyebrow}</div>
-              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Voxility vs. {a.competitor}</h3>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Xovera vs. {a.competitor}</h3>
               <p className="text-sm leading-[1.6]" style={{ color: 'var(--text-secondary)' }}>{a.hook}</p>
               <span className="inline-block mt-3 text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>Read the comparison →</span>
             </Link>

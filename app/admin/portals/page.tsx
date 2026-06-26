@@ -6,7 +6,7 @@ import { requireAdminOrNull } from '@/lib/admin-auth'
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'Portals · Voxility Admin',
+  title: 'Portals · Xovera Admin',
   robots: { index: false, follow: false },
 }
 

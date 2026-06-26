@@ -166,7 +166,7 @@ async function dispatchSlack(
         title: params.title,
         text: params.body || '',
         ...(params.link ? { title_link: params.link } : {}),
-        footer: 'Voxility',
+        footer: 'Xovera',
         ts: Math.floor(Date.now() / 1000),
       }],
     }),
@@ -199,7 +199,7 @@ async function dispatchEmail(
     title: params.title,
     severity,
     bodyHtml: params.body ? paragraphs([params.body]) : '',
-    cta: params.link ? { label: 'Open in Voxility', url: params.link } : undefined,
+    cta: params.link ? { label: 'Open in Xovera', url: params.link } : undefined,
     manageNotificationsUrl: `${process.env.APP_URL || ''}/dashboard`,
   })
 
@@ -235,7 +235,7 @@ async function dispatchDiscord(
         description: params.body || '',
         color,
         ...(params.link ? { url: params.link } : {}),
-        footer: { text: 'Voxility' },
+        footer: { text: 'Xovera' },
         timestamp: new Date().toISOString(),
       }],
     }),
@@ -299,7 +299,7 @@ async function dispatchSms(
   // excessive segmentation on carriers that charge per segment.
   const bodyLine = params.body ? ` — ${params.body}` : ''
   const linkLine = params.link ? `\n${params.link}` : ''
-  const raw = `[Voxility] ${params.title}${bodyLine}${linkLine}`
+  const raw = `[Xovera] ${params.title}${bodyLine}${linkLine}`
   const message = raw.length > 320 ? raw.slice(0, 317) + '…' : raw
 
   const res = await fetch(

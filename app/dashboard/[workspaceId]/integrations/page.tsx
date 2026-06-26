@@ -46,7 +46,7 @@ export default function IntegrationsPage() {
   // When loaded inside the LeadConnector iframe, this page collapses
   // to the bare minimum of "extras that complement GHL" — channels and
   // calendars are GHL's responsibility, the CRM is implicit. See the
-  // Phase 5 plan for the rationale: in embed mode, Voxility is an
+  // Phase 5 plan for the rationale: in embed mode, Xovera is an
   // agent layer on top of GHL, not a standalone product.
   const { embedded } = useEmbedded()
 
@@ -1159,7 +1159,7 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Twilio — hidden in embed mode (GHL connects SMS via its
-            own Twilio integration; Voxility-direct Twilio would be
+            own Twilio integration; Xovera-direct Twilio would be
             duplicative). */}
         {!embedded && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
@@ -1237,7 +1237,7 @@ export default function IntegrationsPage() {
         {/* Meta — Facebook Messenger + Instagram DMs (native, no CRM dep).
             Hidden in embed mode: GHL connects Meta Pages + IG Business
             accounts via its own integration and pipes DMs into its
-            conversation API — Voxility reads them from there. A
+            conversation API — Xovera reads them from there. A
             second direct connection here would create two intake
             paths for the same message. */}
         {!embedded && (
@@ -1458,7 +1458,7 @@ export default function IntegrationsPage() {
         )}
 
         {/* Payments section — hidden in embed mode (GHL handles
-            payments natively; Voxility's Stripe integration would
+            payments natively; Xovera's Stripe integration would
             duplicate). */}
         {!embedded && (
         <>
@@ -1628,7 +1628,7 @@ export default function IntegrationsPage() {
 
           {metaAdAccounts.length === 0 && (
             <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
-              Connect Meta Ads to draft, launch, and optimise Facebook and Instagram campaigns from inside Voxility. Requires the Marketing API permissions on your Meta App and a user with the &quot;Manage campaigns&quot; task on the ad account.
+              Connect Meta Ads to draft, launch, and optimise Facebook and Instagram campaigns from inside Xovera. Requires the Marketing API permissions on your Meta App and a user with the &quot;Manage campaigns&quot; task on the ad account.
             </p>
           )}
         </div>

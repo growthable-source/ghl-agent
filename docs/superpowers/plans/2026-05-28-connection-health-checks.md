@@ -1669,7 +1669,7 @@ Set the agent's `calendarId` to an obviously-invalid value (e.g. `bad-id-123`). 
 With a healthy calendar configured, delete the calendar in the CRM. Trigger the cron manually:
 
 ```bash
-curl -H "Authorization: Bearer $CRON_SECRET" https://app.voxility.ai/api/cron/agent-reference-health
+curl -H "Authorization: Bearer $CRON_SECRET" https://app.xovera.io/api/cron/agent-reference-health
 ```
 
 Confirm: response shows `broken: 1`, DB row flips to broken, email + banner appear.

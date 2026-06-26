@@ -5,7 +5,7 @@
  *
  * Reuses META_APP_ID / META_APP_SECRET / META_OAUTH_STATE_SECRET — there's
  * one Meta App per deployment that holds both the messaging and ads
- * permissions. If Voxility ever needs to split them into two App IDs,
+ * permissions. If Xovera ever needs to split them into two App IDs,
  * factor a META_ADS_APP_ID env var here.
  *
  * Flow:

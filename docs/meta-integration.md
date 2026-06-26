@@ -14,7 +14,7 @@ on App Review for production traffic against non-test users.
 
 1. Go to <https://developers.facebook.com/apps/> and click **Create App**.
 2. Use case: **Other** → **Business** → name it whatever (e.g.
-   "Voxility Agent"). The name is internal — it's never shown to end
+   "Xovera Agent"). The name is internal — it's never shown to end
    users in the messaging product.
 3. Once created, copy two values from **App settings → Basic**:
    - **App ID** → goes into `META_APP_ID` env var

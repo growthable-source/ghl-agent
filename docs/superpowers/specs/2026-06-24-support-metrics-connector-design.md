@@ -37,7 +37,7 @@ no stored **targets** to measure attainment against.
 |---|---|
 | Scope | **Both** — per-workspace API keys **and** an org-wide roll-up |
 | Payload | **Both** — aggregate metrics **and** raw-record drill-down |
-| SLA | **Config in Voxility** — a first-class `SlaPolicy` table per workspace |
+| SLA | **Config in Xovera** — a first-class `SlaPolicy` table per workspace |
 | Delivery | **REST pull only** (polling) for v1; webhooks deferred |
 | Architecture | **A** — new versioned `/api/v1/...` namespace + Bearer API-key auth |
 

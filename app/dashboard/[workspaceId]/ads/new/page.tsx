@@ -11,7 +11,7 @@
  *   3. Generate (Claude streams the AI draft into AdCampaignDraft).
  *   4. Redirect to /ads/drafts/[id] for the operator to review + launch.
  *
- * Voxility-style design tokens throughout. The same animation pattern as
+ * Xovera-style design tokens throughout. The same animation pattern as
  * the funnel wizard is reused, but with media-buyer-themed status lines.
  */
 

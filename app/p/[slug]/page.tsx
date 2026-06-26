@@ -1,5 +1,5 @@
 /**
- * Public Voxility landing page renderer at /p/<slug>.
+ * Public Xovera landing page renderer at /p/<slug>.
  *
  * Server component. Anonymous access. Reads LandingPage by slug. Renders
  * the section list via <SectionRenderer/>. The form is rendered as a

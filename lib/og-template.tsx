@@ -42,14 +42,14 @@ export function marketingOg({ eyebrow, title }: { eyebrow: string; title: string
           <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', color: '#fa4d2e', display: 'flex' }}>
             {eyebrow}
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#f8fafc', display: 'flex' }}>Voxility</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#f8fafc', display: 'flex' }}>Xovera</div>
         </div>
         <div style={{ fontSize: title.length > 60 ? 56 : 70, fontWeight: 800, lineHeight: 1.08, letterSpacing: '-0.02em', maxWidth: 1040, display: 'flex', zIndex: 1 }}>
           {title}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 22, color: '#94a3b8', zIndex: 1 }}>
           <div style={{ display: 'flex' }}>AI agents for sales &amp; marketing teams</div>
-          <div style={{ display: 'flex', color: '#fa4d2e', fontWeight: 600 }}>voxility.ai</div>
+          <div style={{ display: 'flex', color: '#fa4d2e', fontWeight: 600 }}>xovera.io</div>
         </div>
       </div>
     ),

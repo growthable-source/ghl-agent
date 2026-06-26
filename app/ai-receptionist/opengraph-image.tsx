@@ -3,9 +3,9 @@ import { findSolution } from '@/lib/solutions-data'
 
 export const size = OG_SIZE
 export const contentType = OG_CONTENT_TYPE
-export const alt = 'AI receptionist — Voxility'
+export const alt = 'AI receptionist — Xovera'
 
 export default function Og() {
   const s = findSolution('ai-receptionist')
-  return marketingOg({ eyebrow: s?.eyebrow ?? 'Voxility', title: s?.heading ?? 'Voxility' })
+  return marketingOg({ eyebrow: s?.eyebrow ?? 'Xovera', title: s?.heading ?? 'Xovera' })
 }

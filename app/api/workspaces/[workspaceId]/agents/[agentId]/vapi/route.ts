@@ -146,7 +146,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             limit: voiceQuota.limit,
             planLabel: voiceQuota.planLabel,
           },
-      serverUrl: `${process.env.APP_URL || 'https://app.voxility.ai'}/api/vapi/webhook`,
+      serverUrl: `${process.env.APP_URL || 'https://app.xovera.io'}/api/vapi/webhook`,
     })
   } catch (err: any) {
     console.error('[Vapi Route] CRASH:', err)

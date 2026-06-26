@@ -6,7 +6,7 @@ import { isInternalWorkspace } from '@/lib/internal-workspace'
  * GET /api/workspaces/:workspaceId/internal
  *
  * Returns { internal: boolean } — whether the workspace is considered
- * internal (any @voxility.ai member or allowlisted email). Used by the
+ * internal (any @xovera.io member or allowlisted email). Used by the
  * billing UI to decide whether to show the "no card required" banner
  * and swap copy on the plan CTAs.
  */

@@ -6,12 +6,12 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
  *
  * Starts the Slack OAuth flow. We ask only for the `incoming-webhook`
  * scope so Slack's own channel picker runs during install — the user
- * chooses which channel Voxility posts to, and the callback receives a
+ * chooses which channel Xovera posts to, and the callback receives a
  * ready-to-use webhook URL bound to that channel.
  *
- * Voxility owns the Slack app (SLACK_CLIENT_ID / SLACK_CLIENT_SECRET).
+ * Xovera owns the Slack app (SLACK_CLIENT_ID / SLACK_CLIENT_SECRET).
  * Every customer installs it into their own workspace; we store the
- * webhook + channel metadata per Voxility workspace.
+ * webhook + channel metadata per Xovera workspace.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)

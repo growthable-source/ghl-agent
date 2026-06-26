@@ -5,7 +5,7 @@
  * "rounded white card on #f4f4f5" idiom copy-pasted across five files,
  * each with its own escapeHtml, its own accent variable, its own
  * button styling. This made consistent branding (header bar with the
- * Voxility wordmark, severity badge for warning/error mails, a single
+ * Xovera wordmark, severity badge for warning/error mails, a single
  * CTA button shape, a uniform footer with manage-notifications link)
  * impossible without touching all five places.
  *
@@ -34,7 +34,7 @@
  */
 
 const BRAND = {
-  name: 'Voxility',
+  name: 'Xovera',
   /** Primary accent — same #fa4d2e used everywhere in the app. */
   accent: '#fa4d2e',
   /** Hero bar gradient — softer than a flat block; reads as branded
@@ -96,7 +96,7 @@ export interface BrandedEmail {
   severity?: EmailSeverity
   /** Optional CTA. Renders below the body. */
   cta?: { label: string; url: string }
-  /** Optional footer text — overrides the default "Sent by Voxility" line. */
+  /** Optional footer text — overrides the default "Sent by Xovera" line. */
   footer?: string
   /** When set, included as a "Manage notifications" link in the footer. */
   manageNotificationsUrl?: string
@@ -162,7 +162,7 @@ export function renderBrandedEmail(email: BrandedEmail): RenderedEmail {
              style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;
                     box-shadow:0 1px 3px rgba(0,0,0,0.06);">
 
-        <!-- Hero header bar with the Voxility wordmark. CSS only — no
+        <!-- Hero header bar with the Xovera wordmark. CSS only — no
              external image, so every client renders it consistently. -->
         <tr><td style="background:${BRAND.heroGradient};padding:18px 28px;">
           <span style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;

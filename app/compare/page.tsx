@@ -5,8 +5,8 @@ import MarketingFooter from '@/components/landing/MarketingFooter'
 import { COMPARISONS } from '@/lib/compare-data'
 
 export const metadata: Metadata = {
-  title: 'Voxility vs. alternatives — honest comparisons',
-  description: 'Transparent comparisons between Voxility and other AI agent options for sales and marketing teams. What each tool wins on, what it can\u2019t do, and when to pick which.',
+  title: 'Xovera vs. alternatives — honest comparisons',
+  description: 'Transparent comparisons between Xovera and other AI agent options for sales and marketing teams. What each tool wins on, what it can\u2019t do, and when to pick which.',
   alternates: { canonical: '/compare' },
 }
 
@@ -29,9 +29,9 @@ export default function CompareIndex() {
             <span className="mx-2">/</span>
             <span style={{ color: 'var(--text-secondary)' }}>Compare</span>
           </nav>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">Voxility vs. alternatives</h1>
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">Xovera vs. alternatives</h1>
           <p className="text-lg max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
-            Honest comparisons between Voxility and other AI agent options for sales and marketing teams — including scenarios where the other tool is genuinely the right pick.
+            Honest comparisons between Xovera and other AI agent options for sales and marketing teams — including scenarios where the other tool is genuinely the right pick.
           </p>
         </header>
 
@@ -59,7 +59,7 @@ export default function CompareIndex() {
         </div>
 
         <p className="mt-16 text-[11px] max-w-xl" style={{ color: 'var(--text-tertiary)' }}>
-          These comparisons are written by the Voxility team. We fact-check what we say about competitors from their public product pages, and we update pages when they change. If you work at a product we compare ourselves to and something is wrong, tell us at <a href="https://voxility.canny.io" className="underline">voxility.canny.io</a>.
+          These comparisons are written by the Xovera team. We fact-check what we say about competitors from their public product pages, and we update pages when they change. If you work at a product we compare ourselves to and something is wrong, tell us at <a href="https://xovera.canny.io" className="underline">xovera.canny.io</a>.
         </p>
       </div>
       <MarketingFooter />

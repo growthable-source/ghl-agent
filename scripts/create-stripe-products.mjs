@@ -3,12 +3,12 @@ import Stripe from 'stripe'
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 async function main() {
-  console.log('Creating Stripe products and prices for Voxility...\n')
+  console.log('Creating Stripe products and prices for Xovera...\n')
 
   // ── 1. Base subscription products ──────────────────────────────────
 
   const starter = await stripe.products.create({
-    name: 'Voxility Starter',
+    name: 'Xovera Starter',
     description: '3 AI agents, 1,500 messages/mo, SMS + Email + Live Chat',
     metadata: { plan: 'starter' },
   })
@@ -35,7 +35,7 @@ async function main() {
   // ──
 
   const growth = await stripe.products.create({
-    name: 'Voxility Growth',
+    name: 'Xovera Growth',
     description: '5 AI agents, 5,000 messages/mo, all channels, Voice AI (60 min), lead scoring',
     metadata: { plan: 'growth' },
   })
@@ -62,7 +62,7 @@ async function main() {
   // ──
 
   const scale = await stripe.products.create({
-    name: 'Voxility Scale',
+    name: 'Xovera Scale',
     description: '15 AI agents, 15,000 messages/mo, all channels + tools, Voice AI (200 min), unlimited team',
     metadata: { plan: 'scale' },
   })
@@ -89,7 +89,7 @@ async function main() {
   // ── 2. Metered overage prices ──────────────────────────────────────
 
   const messageOverageProduct = await stripe.products.create({
-    name: 'Voxility Message Overage',
+    name: 'Xovera Message Overage',
     description: 'Per-message overage beyond plan inclusion',
     metadata: { type: 'overage', resource: 'message' },
   })
@@ -109,7 +109,7 @@ async function main() {
   console.log(`  $0.04/message (${messageOverage.id})`)
 
   const voiceOverageProduct = await stripe.products.create({
-    name: 'Voxility Voice Overage',
+    name: 'Xovera Voice Overage',
     description: 'Per-minute voice overage beyond plan inclusion',
     metadata: { type: 'overage', resource: 'voice' },
   })
@@ -131,7 +131,7 @@ async function main() {
   // ── 3. Extra agent add-on ──────────────────────────────────────────
 
   const extraAgentProduct = await stripe.products.create({
-    name: 'Voxility Extra Agent',
+    name: 'Xovera Extra Agent',
     description: 'Additional AI agent slot (quantity-based)',
     metadata: { type: 'addon', resource: 'agent' },
   })
@@ -152,7 +152,7 @@ async function main() {
   console.log('  Add these to your .env / .env.local:')
   console.log('════════════════════════════════════════════════════════\n')
 
-  const envVars = `# Stripe — Voxility Billing
+  const envVars = `# Stripe — Xovera Billing
 STRIPE_SECRET_KEY=${process.env.STRIPE_SECRET_KEY}
 STRIPE_WEBHOOK_SECRET=whsec_REPLACE_ME
 

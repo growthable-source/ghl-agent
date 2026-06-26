@@ -74,7 +74,7 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  // Is this workspace internal (Voxility staff)? We ask the server rather
+  // Is this workspace internal (Xovera staff)? We ask the server rather
   // than duplicating the allowlist logic client-side — source of truth
   // lives in lib/internal-workspace.ts.
   const [isInternal, setIsInternal] = useState(false)
@@ -187,7 +187,7 @@ export default function BillingPage() {
       </div>
 
       {/* Internal-workspace banner. Replaces the trial / trial-expired
-          banners for Voxility staff workspaces. */}
+          banners for Xovera staff workspaces. */}
       {isInternal && (
         <div
           className="rounded-xl border p-4 mb-6 flex items-center justify-between"
@@ -249,7 +249,7 @@ export default function BillingPage() {
         >
           <p className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>Trial Expired</p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--accent-red)', opacity: 0.85 }}>
-            Your trial has ended. Select a plan below to continue using Voxility.
+            Your trial has ended. Select a plan below to continue using Xovera.
           </p>
         </div>
       )}

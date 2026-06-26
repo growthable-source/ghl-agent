@@ -32,7 +32,7 @@ export async function POST() {
       status: 'published',
       // Preserve the original publish date so ordering stays stable on reseeds.
       publishedAt: existing?.publishedAt ?? new Date(),
-      authorEmail: email ?? 'seed@voxility.ai',
+      authorEmail: email ?? 'seed@xovera.io',
     }
     if (existing) {
       await db.helpArticle.update({ where: { id: existing.id }, data })

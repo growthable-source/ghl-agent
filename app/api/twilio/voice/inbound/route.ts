@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const toNumber = (formData.get('To') as string) || ''
   const fromNumber = (formData.get('From') as string) || ''
 
-  const bridgeUrl = process.env.VOICE_BRIDGE_WSS_URL  // e.g. wss://bridge.voxility.ai
+  const bridgeUrl = process.env.VOICE_BRIDGE_WSS_URL  // e.g. wss://bridge.xovera.io
   if (!bridgeUrl) {
     // TwiML polite fallback — caller hears the message, call ends cleanly.
     const fallback = `<?xml version="1.0" encoding="UTF-8"?>

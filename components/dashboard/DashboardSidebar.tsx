@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 import { NavCountsProvider, useNavCounts, NavBadge } from './useNavCounts'
 import WorkspaceAvatar from './WorkspaceAvatar'
 import CannyChangelogButton from '@/components/CannyChangelogButton'
@@ -101,7 +101,7 @@ function SidebarBody() {
   const [moreOpen, setMoreOpen] = useState(false)
 
   useEffect(() => {
-    // Cheap check — is the signed-in user a Voxility super-admin? If yes
+    // Cheap check — is the signed-in user a Xovera super-admin? If yes
     // we render an extra "Help Center · Admin" entry near the bottom.
     fetch('/api/me/super')
       .then(r => r.json())
@@ -216,8 +216,8 @@ function SidebarBody() {
             : '/dashboard'}
           className="flex items-center gap-2.5"
         >
-          <VoxilityLogo variant="mark" height={26} />
-          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Voxility</span>
+          <XoveraLogo variant="mark" height={26} />
+          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Xovera</span>
         </Link>
       </div>
 
@@ -552,7 +552,7 @@ function SidebarBody() {
             badge. Sits above Feedback so users see the updates first. */}
         <CannyChangelogButton />
         <a
-          href="https://voxility.canny.io"
+          href="https://xovera.canny.io"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
@@ -589,7 +589,7 @@ function SidebarBody() {
             </div>
             {embedded ? (
               // Inside the embedded iframe, sign-out is owned by the
-              // host CRM (signing out of Voxility while staying signed
+              // host CRM (signing out of Xovera while staying signed
               // into the CRM just causes the next iframe load to
               // re-handshake and sign back in).
               // Surface an "Open in new tab" escape hatch instead — gives

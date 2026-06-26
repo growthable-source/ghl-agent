@@ -39,7 +39,7 @@ export default async function DashboardPage() {
   // cookie is SameSite=None so it travels in regular browser tabs
   // too — once a user has ever tested in the iframe, the cookie
   // persists and would otherwise trap them in the bound workspace
-  // even when they open app.voxility.ai in a regular tab. Use only
+  // even when they open app.xovera.io in a regular tab. Use only
   // Sec-Fetch-Dest: iframe (reliable on initial iframe document
   // loads, the realistic entry point) for the iframe redirect.
   //

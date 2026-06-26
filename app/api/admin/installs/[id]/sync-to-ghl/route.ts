@@ -78,7 +78,7 @@ export async function POST(
   // Source label matches the dashboard so reporting lines up across
   // both products.
   const tags = [
-    `voxility-install`,
+    `xovera-install`,
     `source:${install.source}`,
     install.userRole ? `role:${install.userRole}` : null,
   ].filter(Boolean) as string[]
@@ -98,14 +98,14 @@ export async function POST(
     tags,
     customFields: [
       // Free-text fields on the GHL contact so the sales rep can see
-      // exactly which Voxility workspace this lead came from without
+      // exactly which Xovera workspace this lead came from without
       // having to cross-reference IDs.
-      { key: 'voxility_workspace_id', field_value: install.workspace?.id ?? '' },
-      { key: 'voxility_workspace_name', field_value: install.workspace?.name ?? '' },
-      { key: 'voxility_install_id', field_value: install.id },
-      { key: 'voxility_installed_at', field_value: install.installedAt.toISOString() },
-      { key: 'voxility_external_location_id', field_value: install.externalLocationId ?? '' },
-      { key: 'voxility_external_company_id', field_value: install.externalCompanyId ?? '' },
+      { key: 'xovera_workspace_id', field_value: install.workspace?.id ?? '' },
+      { key: 'xovera_workspace_name', field_value: install.workspace?.name ?? '' },
+      { key: 'xovera_install_id', field_value: install.id },
+      { key: 'xovera_installed_at', field_value: install.installedAt.toISOString() },
+      { key: 'xovera_external_location_id', field_value: install.externalLocationId ?? '' },
+      { key: 'xovera_external_company_id', field_value: install.externalCompanyId ?? '' },
     ],
   }
 

@@ -1,7 +1,7 @@
-# Voxility super-admin cockpit (`/admin`)
+# Xovera super-admin cockpit (`/admin`)
 
 Staff-only backend for cross-workspace visibility. Not shown in any
-customer-facing help. This document is for Voxility employees who
+customer-facing help. This document is for Xovera employees who
 support or operate the platform.
 
 ## Who should read this
@@ -155,7 +155,7 @@ In order of least-to-most invasive:
    password.
 4. **Nuclear option**: direct SQL:
    ```sql
-   DELETE FROM "SuperAdmin" WHERE email = 'you@voxility.ai';
+   DELETE FROM "SuperAdmin" WHERE email = 'you@xovera.io';
    -- Then hit /admin/setup again. It'll unlock (zero admins exist).
    ```
 

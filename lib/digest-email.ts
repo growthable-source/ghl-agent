@@ -7,7 +7,7 @@
  *
  * Required env:
  *   RESEND_API_KEY
- *   NOTIFICATION_FROM_EMAIL  (defaults to "Voxility <notifications@voxility.app>")
+ *   NOTIFICATION_FROM_EMAIL  (defaults to "Xovera <notifications@xovera.io>")
  *   APP_URL                  (used for the "Open dashboard" CTA)
  */
 
@@ -120,12 +120,12 @@ export function renderDigestHtml(payload: DigestPayload, opts: RenderOpts): stri
               ${totalsTable}
               ${agentsTable}
 
-              <a href="${escapeHtml(dashUrl)}" style="display:inline-block;padding:11px 20px;background:#fa4d2e;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Open full digest in Voxility →</a>
+              <a href="${escapeHtml(dashUrl)}" style="display:inline-block;padding:11px 20px;background:#fa4d2e;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Open full digest in Xovera →</a>
             </td>
           </tr>
           <tr>
             <td style="padding:14px 28px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;line-height:1.5;">
-              You&rsquo;re receiving this because you&rsquo;re a member of ${escapeHtml(workspaceName)} on Voxility.
+              You&rsquo;re receiving this because you&rsquo;re a member of ${escapeHtml(workspaceName)} on Xovera.
               <a href="${escapeHtml(dashUrl)}" style="color:#9ca3af;">Manage digest preferences</a>
             </td>
           </tr>
@@ -152,7 +152,7 @@ export function renderDigestText(payload: DigestPayload, workspaceName: string):
       `  ${i + 1}. ${a.name} — ${a.messages} msg, ${a.appointments} appt, $${a.estCost.toFixed(2)}${a.fallbackCount > 0 ? ` (${a.fallbackCount} "I don't know" replies)` : ''}`
     ),
     '',
-    '— Voxility',
+    '— Xovera',
   ]
   return lines.join('\n')
 }
@@ -170,7 +170,7 @@ export async function sendDigestEmail(p: SendDigestParams): Promise<{ ok: boolea
   if (!apiKey) {
     return { ok: false, reason: 'RESEND_API_KEY not set' }
   }
-  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Voxility <notifications@voxility.app>'
+  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
   const html = renderDigestHtml(p.payload, {
     workspaceId: p.workspaceId,
     workspaceName: p.workspaceName,

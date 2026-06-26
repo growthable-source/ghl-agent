@@ -28,7 +28,7 @@ and the **disconnect** flow. Nothing else.
 OAUTH_CLIENT_ID         # Marketplace → My Apps → Auth → Client Keys
 OAUTH_CLIENT_SECRET     # Same place; shown once on creation
 OAUTH_VERSION_ID        # Optional; pins your installed app version
-APP_URL                 # e.g. https://app.voxility.ai — used to build redirect_uri
+APP_URL                 # e.g. https://app.xovera.io — used to build redirect_uri
 ```
 
 Marketplace listing config (in the GHL developer portal):

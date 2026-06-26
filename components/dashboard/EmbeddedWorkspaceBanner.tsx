@@ -2,7 +2,7 @@ import { headers } from 'next/headers'
 import { db } from '@/lib/db'
 
 /**
- * Slim chrome shown at the top of the dashboard when Voxility is
+ * Slim chrome shown at the top of the dashboard when Xovera is
  * loaded inside a Custom Menu Link iframe. Tells the user which
  * sub-account they're operating in so it's obvious "I'm working on
  * Growthable NSW" vs the picker of seven workspaces they'd see in a
@@ -65,7 +65,7 @@ export default async function EmbeddedWorkspaceBanner({ workspaceId }: { workspa
         aria-hidden
       />
       <span>
-        You&apos;re working in the Voxility workspace for{' '}
+        You&apos;re working in the Xovera workspace for{' '}
         <span className="font-semibold" style={{ color: 'var(--text-primary, #f8fafc)' }}>
           {displayName}
         </span>

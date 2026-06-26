@@ -52,7 +52,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const base = process.env.NEXT_PUBLIC_APP_URL || ''
     await sendWorkspaceInviteEmail({
       to: invite.email,
-      workspaceName: ws?.name || 'a Voxility workspace',
+      workspaceName: ws?.name || 'a Xovera workspace',
       inviterName: inviter?.name ?? inviter?.email ?? null,
       role: invite.role,
       inviteUrl: `${base}/invite/${newToken}`,

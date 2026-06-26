@@ -37,7 +37,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   }
 
   // Check agent limit using the owner's effective plan (account-level).
-  // Internal workspaces (any @voxility.ai member) bypass the gate entirely.
+  // Internal workspaces (any @xovera.io member) bypass the gate entirely.
   const internal = await isInternalWorkspace(workspaceId)
   if (!internal) {
     try {

@@ -10,7 +10,7 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
  * beyond posting via the webhook — minimum surface for our current
  * handover-paging use case.
  *
- * Voxility owns the Discord app (DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET).
+ * Xovera owns the Discord app (DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET).
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)

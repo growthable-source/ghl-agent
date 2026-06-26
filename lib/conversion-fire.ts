@@ -1,7 +1,7 @@
 /**
  * Conversion firing — Meta CAPI + Google Ads server-side conversions.
  *
- * The unfair advantage of the Voxility funnel layer: every funnel stage
+ * The unfair advantage of the Xovera funnel layer: every funnel stage
  * (lead, call_connected, qualified, booked, sale) fires server-side to
  * the ad platforms so their algos optimize on bookings, not just clicks.
  * Most advertisers never wire this up; we do it automatically as part of

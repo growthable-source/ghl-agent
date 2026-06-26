@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -326,10 +326,10 @@ export default function UserOnboardingModal({
           <div className="space-y-6">
             <div className="text-center">
               <div className="flex justify-center mb-4">
-                <VoxilityLogo variant="mark" height={40} />
+                <XoveraLogo variant="mark" height={40} />
               </div>
               <h2 className="text-2xl font-bold tracking-tight mb-1" style={{ color: 'var(--text-primary, #f8fafc)' }}>
-                Welcome to <span className="text-gradient">Voxility</span>
+                Welcome to <span className="text-gradient">Xovera</span>
               </h2>
               <p className="text-sm" style={{ color: 'var(--text-secondary, #94a3b8)' }}>
                 {userName ? `Hey ${userName.split(' ')[0]}! ` : ''}Let&apos;s set up your workspace.
@@ -812,7 +812,7 @@ export default function UserOnboardingModal({
 
             <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border, #121a2b)' }}>
               <iframe
-                src="https://crm.voxility.ai/widget/bookings/voxility-conversational-ai-onb"
+                src="https://crm.xovera.io/widget/bookings/xovera-conversational-ai-onb"
                 className="w-full border-0"
                 style={{ height: '500px', background: 'var(--surface, #090d15)' }}
                 title="Book onboarding call"

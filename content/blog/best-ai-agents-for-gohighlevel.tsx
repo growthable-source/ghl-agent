@@ -8,7 +8,7 @@ export const meta: BlogPostMeta = {
   description: 'An honest, up-to-date comparison of the AI agent options for GoHighLevel — what each one does well, what it can\'t do, and how to pick.',
   category: 'Guides',
   publishedAt: '2026-04-24',
-  author: 'Voxility',
+  author: 'Xovera',
   readingTimeMinutes: 9,
   tags: ['GoHighLevel', 'comparison', 'AI agents', 'conversational AI'],
 }
@@ -21,7 +21,7 @@ export default function Post() {
       </Lede>
 
       <P>
-        We&apos;re the team behind <A href="/">Voxility</A>, one of the options on this list — so take the write-up on ourselves with the appropriate amount of salt. The rest of the list is researched from public product pages and GHL marketplace listings. If you work for any of these companies and something is wrong or out-of-date, <A href="https://voxility.canny.io">tell us</A> and we&apos;ll fix it.
+        We&apos;re the team behind <A href="/">Xovera</A>, one of the options on this list — so take the write-up on ourselves with the appropriate amount of salt. The rest of the list is researched from public product pages and GHL marketplace listings. If you work for any of these companies and something is wrong or out-of-date, <A href="https://xovera.canny.io">tell us</A> and we&apos;ll fix it.
       </P>
 
       <H2 id="what-to-look-for">What actually matters when picking an AI agent for GoHighLevel</H2>
@@ -74,13 +74,13 @@ export default function Post() {
       </P>
 
       <P>
-        If you&apos;re an agency with engineering capacity, this is the route to the most customised agent. If you&apos;re a non-technical operator, pick something with an agent-builder UI on top (Voxility, Synthflow) — the underlying voice layer for many of those tools is one of these anyway.
+        If you&apos;re an agency with engineering capacity, this is the route to the most customised agent. If you&apos;re a non-technical operator, pick something with an agent-builder UI on top (Xovera, Synthflow) — the underlying voice layer for many of those tools is one of these anyway.
       </P>
 
-      <H3 id="voxility">Voxility (us)</H3>
+      <H3 id="xovera">Xovera (us)</H3>
 
       <P>
-        <Strong>Full disclosure — we built this.</Strong> Voxility is built as a first-class GoHighLevel marketplace app, so the agent has native CRM tools (26+ at time of writing): book appointments, tag contacts, move pipeline stages, enroll in workflows, create tasks, update custom fields, detect sentiment. One agent handles voice, SMS, email, WhatsApp, Instagram, Facebook, and live chat.
+        <Strong>Full disclosure — we built this.</Strong> Xovera is built as a first-class GoHighLevel marketplace app, so the agent has native CRM tools (26+ at time of writing): book appointments, tag contacts, move pipeline stages, enroll in workflows, create tasks, update custom fields, detect sentiment. One agent handles voice, SMS, email, WhatsApp, Instagram, Facebook, and live chat.
       </P>
 
       <P>
@@ -88,7 +88,7 @@ export default function Post() {
       </P>
 
       <Callout title="For transparency">
-        We&apos;re listing ourselves because we genuinely think it&apos;s the best option for <em>most</em> GHL agencies, but the honest answer is that there&apos;s no universally best tool. <A href="/compare/voxility-vs-synthflow">Read our Voxility vs. Synthflow comparison</A> or try us free (<A href="/login?mode=signup">no card required</A>) and make your own call.
+        We&apos;re listing ourselves because we genuinely think it&apos;s the best option for <em>most</em> GHL agencies, but the honest answer is that there&apos;s no universally best tool. <A href="/compare/xovera-vs-synthflow">Read our Xovera vs. Synthflow comparison</A> or try us free (<A href="/login?mode=signup">no card required</A>) and make your own call.
       </Callout>
 
       <H3 id="other">Other options worth knowing</H3>
@@ -128,7 +128,7 @@ export default function Post() {
       <H2 id="bottom-line">Bottom line</H2>
 
       <P>
-        For agencies who need one agent per sub-account across voice and messaging, <A href="/">Voxility</A> is where we&apos;d start (bias acknowledged). For voice-only simple flows, <A href="https://synthflow.ai" >Synthflow</A> is a decent narrower option. For developers who want to build custom, <A href="https://retellai.com">Retell</A> or <A href="https://vapi.ai">Vapi</A>. Avoid gluing your own thing together unless you have a reason to — there&apos;s no prize for shipping the 100th ChatGPT-via-Zapier bot.
+        For agencies who need one agent per sub-account across voice and messaging, <A href="/">Xovera</A> is where we&apos;d start (bias acknowledged). For voice-only simple flows, <A href="https://synthflow.ai" >Synthflow</A> is a decent narrower option. For developers who want to build custom, <A href="https://retellai.com">Retell</A> or <A href="https://vapi.ai">Vapi</A>. Avoid gluing your own thing together unless you have a reason to — there&apos;s no prize for shipping the 100th ChatGPT-via-Zapier bot.
       </P>
 
       <P>

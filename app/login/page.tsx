@@ -3,7 +3,7 @@
 import { signIn } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 import { Suspense } from 'react'
 
 function LoginForm() {
@@ -19,7 +19,7 @@ function LoginForm() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex mb-6">
-            <VoxilityLogo height={36} />
+            <XoveraLogo height={36} />
           </Link>
           <h1 className="text-2xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
             {isSignUp ? 'Create your account' : 'Welcome back'}

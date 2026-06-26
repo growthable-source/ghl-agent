@@ -9,14 +9,14 @@ async function main() {
 
   const messageMeter = await stripe.billing.meters.create({
     display_name: 'AI Messages',
-    event_name: 'voxility_message',
+    event_name: 'xovera_message',
     default_aggregation: { formula: 'sum' },
   })
   console.log(`✓ Meter: AI Messages (${messageMeter.id})`)
 
   const voiceMeter = await stripe.billing.meters.create({
     display_name: 'Voice Minutes',
-    event_name: 'voxility_voice_minute',
+    event_name: 'xovera_voice_minute',
     default_aggregation: { formula: 'sum' },
   })
   console.log(`✓ Meter: Voice Minutes (${voiceMeter.id})`)
@@ -24,7 +24,7 @@ async function main() {
   // ── 2. Create metered prices backed by meters ──────────────────────
 
   const messageOverageProduct = await stripe.products.create({
-    name: 'Voxility Message Overage',
+    name: 'Xovera Message Overage',
     description: 'Per-message overage beyond plan inclusion',
     metadata: { type: 'overage', resource: 'message' },
   })
@@ -44,7 +44,7 @@ async function main() {
   console.log(`  $0.04/message (${messageOverage.id})`)
 
   const voiceOverageProduct = await stripe.products.create({
-    name: 'Voxility Voice Overage',
+    name: 'Xovera Voice Overage',
     description: 'Per-minute voice overage beyond plan inclusion',
     metadata: { type: 'overage', resource: 'voice' },
   })
@@ -66,7 +66,7 @@ async function main() {
   // ── 3. Extra agent add-on ──────────────────────────────────────────
 
   const extraAgentProduct = await stripe.products.create({
-    name: 'Voxility Extra Agent',
+    name: 'Xovera Extra Agent',
     description: 'Additional AI agent slot (quantity-based)',
     metadata: { type: 'addon', resource: 'agent' },
   })

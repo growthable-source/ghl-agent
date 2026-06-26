@@ -51,7 +51,7 @@ function classifyVapiError(status: number, rawBody: string): VapiError {
     )
   }
 
-  // Voxility's default voice plan covers US outbound only. Calls to
+  // Xovera's default voice plan covers US outbound only. Calls to
   // non-US destinations bubble up here. The user-facing copy is
   // brand-neutral on purpose — customers shouldn't see the underlying
   // voice-vendor's brand name (we whitelabel across thousands of
@@ -68,7 +68,7 @@ function classifyVapiError(status: number, rawBody: string): VapiError {
   // International phone-number purchase rejected because the platform's
   // voice account isn't on the paid plan that covers that country.
   // Operator never set this up directly — the right path is "contact
-  // support" so Voxility flips them onto the international plan. Same
+  // support" so Xovera flips them onto the international plan. Same
   // brand-neutral rationale as above.
   if (status === 400 && /payment|billing|subscription|plan/i.test(message) && /country|international|number/i.test(message)) {
     return new VapiError(

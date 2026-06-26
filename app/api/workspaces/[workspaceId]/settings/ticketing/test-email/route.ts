@@ -9,7 +9,7 @@ type Params = { params: Promise<{ workspaceId: string }> }
 /**
  * POST { to?: string }
  *
- * Pre-flight: send a tiny "this is a test from Voxility" email
+ * Pre-flight: send a tiny "this is a test from Xovera" email
  * through the same path real ticket replies use. Lets the operator
  * verify their From identity + Resend domain setup BEFORE a customer
  * is waiting on the other end.
@@ -46,8 +46,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   const result = await sendTicketingEmail({
     workspaceId,
     to: toRaw,
-    subject: 'Voxility ticketing — test email',
-    text: 'This is a test from your Voxility ticketing setup. If you\'re reading this, your sender configuration is working.',
+    subject: 'Xovera ticketing — test email',
+    text: 'This is a test from your Xovera ticketing setup. If you\'re reading this, your sender configuration is working.',
     includeSignature: false,
   })
 

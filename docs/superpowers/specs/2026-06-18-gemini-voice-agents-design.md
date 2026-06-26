@@ -216,7 +216,7 @@ Copilot `onToolCall` → backend pattern.)
 Gemini config (voice catalogue with preview, first/end message, Twilio
 number, advanced). The page already uses (or is being ported to) the
 `useDirtyForm` + `<SaveBar>` pattern — Gemini fields participate in the
-same dirty tracking; **use the `voxility-save-refactor` skill** if this
+same dirty tracking; **use the `xovera-save-refactor` skill** if this
 page is still on the legacy inline-save button.
 
 A `<NewBadge since="2026-06-...">` ships on the Gemini option + a

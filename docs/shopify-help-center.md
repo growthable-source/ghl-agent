@@ -1,4 +1,4 @@
-# Voxility Help Center
+# Xovera Help Center
 
 > A complete set of help-center articles ready to drop into your knowledge base.
 > The Shopify section is the focus of this document; other product areas are
@@ -9,7 +9,7 @@
 ## Table of contents
 
 **Getting started**
-- Welcome to Voxility
+- Welcome to Xovera
 - Creating your first agent
 
 **Integrations**
@@ -82,7 +82,7 @@ but the connection itself is one per workspace.
 
 ### Steps
 
-1. Open **Integrations** in your Voxility dashboard.
+1. Open **Integrations** in your Xovera dashboard.
 2. Find the **Shopify** card.
 3. Type your shop domain (either `yourstore` or `yourstore.myshopify.com` — we'll add the rest if you only type the name).
 4. Click **Connect**. You'll be sent to Shopify to authorise the install.
@@ -93,7 +93,7 @@ That's it. Test by opening the **Playground** and asking "do you have any [produ
 
 ### A heads-up about scopes
 
-The first time you set up the Shopify app for Voxility, you'll need to declare
+The first time you set up the Shopify app for Xovera, you'll need to declare
 which permissions ("access scopes") the app requests. See the next article for
 the one-time setup if you're seeing scope-related errors.
 
@@ -106,7 +106,7 @@ or you see errors mentioning **"Access denied for products field"**, the app's
 access scopes haven't been configured yet. This is a one-time setup in
 Shopify's Dev Dashboard.
 
-### What scopes does Voxility need?
+### What scopes does Xovera need?
 
 ```
 read_products, read_inventory, read_orders, write_draft_orders,
@@ -122,11 +122,11 @@ read_price_rules, write_discounts
 ### Where to add them
 
 1. Open your Shopify Partner account.
-2. Go to your Voxility app's **Dev Dashboard**.
+2. Go to your Xovera app's **Dev Dashboard**.
 3. Find the section called **Versions** (this is where access scopes for newer Shopify apps live).
 4. Add the scopes listed above.
 5. **Release** the new version so the changes go live.
-6. Back in your Shopify store admin, uninstall the Voxility app, then reconnect from Voxility's Integrations page.
+6. Back in your Shopify store admin, uninstall the Xovera app, then reconnect from Xovera's Integrations page.
 
 The uninstall + reinstall is necessary so Shopify can show the consent screen
 listing the scopes for you to approve. Without re-installing, the previous
@@ -208,7 +208,7 @@ shipped on Tuesday, what's up?"
 ### Where the customer email/phone comes from
 
 Your CRM (HighLevel, HubSpot, the native CRM, or the Meta DM sender). If
-Voxility doesn't have an email or phone for the contact yet, the lookup is
+Xovera doesn't have an email or phone for the contact yet, the lookup is
 skipped and the agent treats them as a new customer — never inventing past
 purchases.
 
@@ -290,7 +290,7 @@ operators leave a tag on agent-generated codes so they're easy to filter.
 ## Article: Back-in-stock notifications
 
 When a customer asks about an item that's sold out, your agent can capture
-their interest. When stock returns, Voxility **automatically DMs them**
+their interest. When stock returns, Xovera **automatically DMs them**
 without you having to do anything.
 
 ### How it works
@@ -301,8 +301,8 @@ without you having to do anything.
 4. Customer: "Yes please"
 5. Agent calls the back-in-stock tool, recording the interest.
 6. (Days later) You restock the variant in Shopify.
-7. Shopify fires an inventory update webhook to Voxility.
-8. Voxility sends a message to the same chat: *"Good news — the grey wool beanie is back in stock! You can grab it here: [link]"*
+7. Shopify fires an inventory update webhook to Xovera.
+8. Xovera sends a message to the same chat: *"Good news — the grey wool beanie is back in stock! You can grab it here: [link]"*
 
 ### Channel support
 
@@ -321,7 +321,7 @@ came from, so support agents can drill in if needed.
 
 ### Disconnecting
 
-1. Open **Integrations** in your Voxility dashboard.
+1. Open **Integrations** in your Xovera dashboard.
 2. On the Shopify card, click **Disconnect**.
 3. Confirm.
 
@@ -329,8 +329,8 @@ Your agents will lose the Shopify capabilities immediately. Your data on
 Shopify is untouched — disconnecting only pauses our access. You can reconnect
 at any time.
 
-> **Note:** Disconnecting from Voxility does **not** uninstall the app on the
-> Shopify side. The app stays installed in your Shopify admin but Voxility
+> **Note:** Disconnecting from Xovera does **not** uninstall the app on the
+> Shopify side. The app stays installed in your Shopify admin but Xovera
 > stops calling it. To fully uninstall (revoke our access entirely), uninstall
 > from your Shopify store's **Settings → Apps and sales channels**.
 
@@ -342,7 +342,7 @@ before. Your previous data (back-in-stock signals, etc.) is preserved.
 ### What happens when a token expires
 
 Shopify's access tokens last 1 hour and refresh automatically. You shouldn't
-ever notice — Voxility refreshes 5 minutes before expiry. If a refresh fails
+ever notice — Xovera refreshes 5 minutes before expiry. If a refresh fails
 (e.g. you uninstalled from Shopify directly), the integration shows as
 disconnected and you'll need to reconnect.
 
@@ -361,12 +361,12 @@ in **Agent settings → Tools** and confirm the four Shopify reflexes are on.
 
 The OAuth install completed but Shopify didn't grant the `read_products`
 scope. Fix the scopes in the Dev Dashboard (per the scopes article), uninstall
-the app from Shopify, then reconnect from Voxility's Integrations page.
+the app from Shopify, then reconnect from Xovera's Integrations page.
 
 ### "Non-expiring access tokens are no longer accepted"
 
 Shopify upgraded their security model in December 2025 — older non-expiring
-tokens are no longer honoured. Voxility now requests expiring tokens
+tokens are no longer honoured. Xovera now requests expiring tokens
 automatically; you just need to uninstall + reconnect once to get the new
 token shape. If you're still seeing this after reconnecting, contact support.
 
@@ -393,7 +393,7 @@ disconnection.
 
 ### "Custom apps aren't an option in my Shopify admin"
 
-Shopify deprecated legacy custom apps in January 2026. Use Voxility's OAuth
+Shopify deprecated legacy custom apps in January 2026. Use Xovera's OAuth
 install flow (the Connect button on the Integrations page) instead — that's
 the supported path going forward.
 

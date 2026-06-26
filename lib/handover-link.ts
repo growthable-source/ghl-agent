@@ -3,12 +3,12 @@
  *
  * Routing rules:
  *   - Widget locationId (starts with `widget:`) OR Live_Chat channel
- *       → Voxility inbox (the only place widget conversations exist).
+ *       → Xovera inbox (the only place widget conversations exist).
  *   - GHL-backed location (crmProvider === 'ghl')
  *       → LeadConnector conversations UI with the conversationId, or
  *         the GHL contact detail page when we don't have a conversation.
  *   - Native / HubSpot / unknown
- *       → Voxility's own contacts/inbox surface. Sending these to
+ *       → Xovera's own contacts/inbox surface. Sending these to
  *         app.gohighlevel.com 404s, which is what we fix here.
  *
  * Pure function — callers pass what they have, we pick what works.
@@ -63,7 +63,7 @@ export function resolveHandoverLink(ctx: HandoverLinkContext): string {
     return `https://app.gohighlevel.com/v2/location/${locationId}/contacts/detail/${contactId}`
   }
 
-  // Native / HubSpot / unknown: Voxility-side contacts page is the
+  // Native / HubSpot / unknown: Xovera-side contacts page is the
   // operator's actual destination. Sending these to GHL 404s.
   if (workspaceId && contactId) {
     return `${appUrl}/dashboard/${workspaceId}/contacts/${contactId}`

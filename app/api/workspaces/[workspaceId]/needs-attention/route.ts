@@ -115,11 +115,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Every item carries its `locationId` AND `crmProvider` so the
   // HandoffAlertBanner's "Take over" button can open the conversation
   // where it actually lives:
-  //   - widget locationId (starts with 'widget:')  → Voxility inbox
-  //   - native locationId                          → Voxility contacts page
+  //   - widget locationId (starts with 'widget:')  → Xovera inbox
+  //   - native locationId                          → Xovera contacts page
   //   - ghl                                        → LeadConnector deep link
   //   - hubspot                                    → HubSpot deep link
-  //   - anything else                              → Voxility contact fallback
+  //   - anything else                              → Xovera contact fallback
   // Without crmProvider, every non-widget item used to be assumed GHL —
   // which 404s for native + hubspot installs.
   for (const state of pausedStates) {

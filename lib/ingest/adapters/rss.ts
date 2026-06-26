@@ -55,7 +55,7 @@ export const rssAdapter: SourceAdapter = {
       try { excludeRegexes.push(new RegExp(pattern)) } catch { /* ignore bad pattern */ }
     }
 
-    const res = await fetch(feedUrl, { headers: { 'User-Agent': 'Voxility-Ingest/1.0' } })
+    const res = await fetch(feedUrl, { headers: { 'User-Agent': 'Xovera-Ingest/1.0' } })
     if (!res.ok) throw new Error(`rss adapter: feed ${res.status} for ${feedUrl}`)
     const xml = await res.text()
 

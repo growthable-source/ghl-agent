@@ -73,5 +73,5 @@ export async function GET(req: NextRequest) {
   })
 
   const stamp = new Date().toISOString().slice(0, 10)
-  return csvResponse(`voxility-workspaces-${stamp}.csv`, toCsv(rows))
+  return csvResponse(`xovera-workspaces-${stamp}.csv`, toCsv(rows))
 }

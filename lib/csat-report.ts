@@ -252,7 +252,7 @@ export function renderCsatReportHtml(data: CsatData, opts: RenderOpts): string {
   `}
 
   <p style="margin:32px 0 0;font-size:11px;color:#9ca3af;text-align:center;">
-    Voxility CSAT report. Generated for ${escapeHtml(opts.workspaceName)}.
+    Xovera CSAT report. Generated for ${escapeHtml(opts.workspaceName)}.
   </p>
 </div>
 </body></html>`

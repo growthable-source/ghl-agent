@@ -6,7 +6,7 @@
  *
  * Uses Anthropic Claude (claude-opus-4-7) with adaptive thinking, prompt
  * caching on the system prompt, and tool calling for typed JSON output.
- * Ported from the lead-hacker-daily voxility-integration reference
+ * Ported from the lead-hacker-daily xovera-integration reference
  * (supabase/functions/ai-vsl-generate) — same prompt, same tool schema,
  * same output shape.
  */

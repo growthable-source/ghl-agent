@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { getAdminSession, roleHas } from '@/lib/admin-auth'
 
 export const metadata = {
-  title: 'Voxility Admin',
+  title: 'Xovera Admin',
   // No robots — this UI should never be indexed.
   robots: { index: false, follow: false },
 }
@@ -51,7 +51,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <aside className="w-56 shrink-0 border-r border-zinc-800 bg-zinc-950 flex flex-col">
         <div className="px-4 py-4 border-b border-zinc-800">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-400/90">
-            Voxility
+            Xovera
           </p>
           <p className="text-sm font-medium text-zinc-200">Super Admin</p>
         </div>

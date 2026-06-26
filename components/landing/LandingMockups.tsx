@@ -54,7 +54,7 @@ export function DashboardStatsMockup() {
   ]
   return (
     <div className="w-full rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 24px 60px -24px rgba(0,0,0,0.18)' }}>
-      <WindowChrome label="Voxility · Dashboard" accent={<LiveDot label="Live" />} />
+      <WindowChrome label="Xovera · Dashboard" accent={<LiveDot label="Live" />} />
       <div className="p-5">
         <div className="grid grid-cols-2 gap-3 mb-4">
           {stats.map((s) => (
@@ -181,7 +181,7 @@ export function MeetingMockup() {
 export function AgentBuilderMockup() {
   return (
     <div className="w-full rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 24px 60px -24px rgba(0,0,0,0.18)' }}>
-      <WindowChrome label="Voxility · Conversation review" accent={<span className="text-[0.625rem]" style={{ color: 'var(--text-tertiary)' }}>auto-audit</span>} />
+      <WindowChrome label="Xovera · Conversation review" accent={<span className="text-[0.625rem]" style={{ color: 'var(--text-tertiary)' }}>auto-audit</span>} />
       <div className="p-5">
         {/* flagged transcript turn */}
         <div className="text-[0.625rem] uppercase tracking-wide mb-2 font-semibold" style={{ color: 'var(--text-tertiary)' }}>Flagged turn</div>

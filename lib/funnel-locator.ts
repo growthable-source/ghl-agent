@@ -1,7 +1,7 @@
 /**
  * Funnel-side CRM locator
  *
- * Form submissions on a Voxility landing page need to land in a CRM. The
+ * Form submissions on a Xovera landing page need to land in a CRM. The
  * landing page belongs to a Workspace; it MAY be tied to a Campaign which
  * MAY be tied to a Location (GHL/HubSpot). When no Location is set, fall
  * back to the workspace's first Location with a usable crmProvider, or

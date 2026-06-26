@@ -7,7 +7,7 @@ import PortalDetailClient from './PortalDetailClient'
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'Portal · Voxility Admin',
+  title: 'Portal · Xovera Admin',
   robots: { index: false, follow: false },
 }
 

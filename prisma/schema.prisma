@@ -180,7 +180,7 @@ model Workspace {
   nativeMessages       NativeMessage[]
   nativeCustomFields   NativeCustomField[]
 
-  // ─── Voxility funnel layer ───
+  // ─── Xovera funnel layer ───
   // Campaigns + landing pages + form submissions + conversion events
   // + per-campaign pixel configs. Workspace-scoped, plan-gated (Pro+).
   campaigns        Campaign[]
@@ -189,7 +189,7 @@ model Workspace {
   conversionEvents ConversionEvent[]
   pixelConfigs     PixelConfig[]
 
-  // ─── Voxility ad-launcher layer ───
+  // ─── Xovera ad-launcher layer ───
   // Connected Meta + Google Ads accounts, AI drafts, UTM templates.
   // Daily metrics + recommendations + activity_log live on each
   // account row (cascade through workspace deletion).
@@ -205,7 +205,7 @@ model Workspace {
   marketplaceInstalls MarketplaceInstall[]
   utmTemplates        UtmTemplate[]
 
-  // ─── Voxility commerce layer ───
+  // ─── Xovera commerce layer ───
   // One Shopify store per workspace (MVP — drop @unique on
   // ShopifyShop.workspaceId to support multi-store later).
   shopifyShop ShopifyShop? @relation("WorkspaceShopify")
@@ -450,7 +450,7 @@ enum FormalityLevel {
 // for MVP; drop the @unique on workspaceId to allow multi-store).
 //
 // `id` is the canonical *.myshopify.com domain (e.g.
-// "voxility-dev.myshopify.com"), which is what Shopify uses everywhere —
+// "xovera-dev.myshopify.com"), which is what Shopify uses everywhere —
 // admin API host, webhook payload `X-Shopify-Shop-Domain` header, and
 // the OAuth `shop` query param. Storing it as the PK lets webhook
 // handlers (which only know the shop domain, not workspaceId) look up
@@ -750,7 +750,7 @@ model Agent {
   platformLearnings    PlatformLearning[]
   simulations          Simulation[]
 
-  // Voxility funnel layer — agents can be wired into a Campaign as either
+  // Xovera funnel layer — agents can be wired into a Campaign as either
   // the triggered responder (instant SMS/voice) or the conversational
   // handler (callback that qualifies + books). Same Agent row can serve
   // both roles or many campaigns.
@@ -1602,7 +1602,7 @@ model AgentTemplate {
   createdAt                 DateTime @default(now())
 
   // ─── Workspace-scoped templates ───
-  // null workspaceId = official/global template (seeded by Voxility).
+  // null workspaceId = official/global template (seeded by Xovera).
   // non-null = saved by a customer from an existing agent; only visible
   // inside that workspace.
   workspaceId   String?
@@ -2105,7 +2105,7 @@ model Integration {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Voxility funnel layer — pixel configs reference Integration for OAuth tokens.
+  // Xovera funnel layer — pixel configs reference Integration for OAuth tokens.
   pixelConfigsAsMeta   PixelConfig[] @relation("PixelMetaIntegration")
   pixelConfigsAsGoogle PixelConfig[] @relation("PixelGoogleIntegration")
 
@@ -2579,7 +2579,7 @@ model AgentExperimentEvent {
 
 // ─── Help Center ─────────────────────────────────────────────────────────
 // Public, crawlable help articles. Authored by super-admins (emails ending
-// in @voxility.ai). No per-workspace scoping — the help center is
+// in @xovera.io). No per-workspace scoping — the help center is
 // product-global, served at /help and indexable.
 model HelpCategory {
   id          String        @id @default(cuid())
@@ -3092,8 +3092,8 @@ model NativeContact {
   // read-side hint so list views can show the badge without joining.
   isSuppressed Boolean @default(false)
 
-  // ─── Voxility funnel attribution ───
-  // Set on first form submission via a Voxility landing page. Lets us
+  // ─── Xovera funnel attribution ───
+  // Set on first form submission via a Xovera landing page. Lets us
   // answer "which campaign did this contact come from" without joining
   // every form_submission for them.
   sourceCampaignId String?
@@ -3295,11 +3295,11 @@ model NativeCustomField {
   @@index([workspaceId, position])
 }
 
-// ─── Voxility funnel layer ─────────────────────────────────────────────
+// ─── Xovera funnel layer ─────────────────────────────────────────────
 //
 // Campaign = the unifying primitive: one offer's worth of landing page +
 // form + agent response + ad tracking. Workspace-scoped. Plan-gated to
-// Pro/Agency tiers. The lead-hacker-daily voxility-integration branch is
+// Pro/Agency tiers. The lead-hacker-daily xovera-integration branch is
 // the React Router + Supabase reference design these models port from.
 
 // ─── Campaign ──────────────────────────────────────────────────────────
@@ -3669,12 +3669,12 @@ model PixelConfig {
   @@index([workspaceId])
 }
 
-// ─── Voxility ad-launcher layer ────────────────────────────────────────
+// ─── Xovera ad-launcher layer ────────────────────────────────────────
 //
 // Connected Meta Ads + Google Ads accounts, AI-generated campaign drafts,
 // daily metric snapshots, AI recommendations, account-level audit log.
 // Ported from the lead-hacker-daily reference (workspace-scoped instead
-// of folder-scoped — Voxility's Workspace IS the agency-client unit).
+// of folder-scoped — Xovera's Workspace IS the agency-client unit).
 
 // ─── MetaAdAccount ────────────────────────────────────────────────────
 model MetaAdAccount {
@@ -3938,7 +3938,7 @@ model AdRecommendation {
 }
 
 // ─── AdActivityLog ────────────────────────────────────────────────────
-// Per-account audit trail. Distinct from Voxility's workspace AuditLog
+// Per-account audit trail. Distinct from Xovera's workspace AuditLog
 // because ad-account actions (sync, autopilot fire, manual deploy)
 // have a different audience (ops + advertisers, not workspace admins).
 model AdActivityLog {

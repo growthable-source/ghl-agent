@@ -92,7 +92,7 @@ export default function OnboardingWizard({ workspaceId }: { workspaceId: string 
               <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
               Connected
             </div>
-            <h1 className="text-3xl font-semibold mb-3">Welcome to Voxility</h1>
+            <h1 className="text-3xl font-semibold mb-3">Welcome to Xovera</h1>
             <p className="text-zinc-400 mb-8">
               Let&apos;s get your AI SMS agent set up in 2 minutes. We&apos;ll create your first agent and it&apos;ll be live immediately.
             </p>

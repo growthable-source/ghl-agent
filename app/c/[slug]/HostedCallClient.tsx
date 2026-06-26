@@ -185,7 +185,7 @@ export default function HostedCallClient(p: Props) {
       </main>
 
       <footer className="px-6 py-4 text-center">
-        <p className="text-[11px] text-zinc-600">Powered by Voxility</p>
+        <p className="text-[11px] text-zinc-600">Powered by Xovera</p>
       </footer>
     </div>
   )

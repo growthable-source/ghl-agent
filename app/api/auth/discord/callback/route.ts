@@ -10,7 +10,7 @@ import { db } from '@/lib/db'
  *
  * We only need `webhook.url` to post notifications, but we stash guild +
  * channel metadata so the integrations UI can show something meaningful
- * ("Voxility · #alerts") instead of an opaque URL.
+ * ("Xovera · #alerts") instead of an opaque URL.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)

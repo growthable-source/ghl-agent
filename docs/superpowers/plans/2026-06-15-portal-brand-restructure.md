@@ -847,7 +847,7 @@ import NewPortalForm from './NewPortalForm'
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'New portal · Voxility Admin',
+  title: 'New portal · Xovera Admin',
   robots: { index: false, follow: false },
 }
 

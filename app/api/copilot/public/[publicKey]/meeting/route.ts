@@ -44,7 +44,7 @@ function clientIp(req: NextRequest): string | null {
 
 /**
  * Soft origin lock. When COPILOT_DEMO_ALLOWED_ORIGINS is set (comma-separated
- * list of origins, e.g. "https://voxility.ai,https://www.voxility.ai"), only
+ * list of origins, e.g. "https://xovera.io,https://www.xovera.io"), only
  * those origins may launch a demo. Unset = allow any (lets the website team
  * test before the env is configured). Browser-only deterrent — the real cost
  * ceiling is the concurrency cap + per-IP cooldown in the session service.

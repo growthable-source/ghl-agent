@@ -8,7 +8,7 @@ import { findPostBySlug, POSTS } from '@/lib/blog-posts'
 // the default (Node) runtime.
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
-export const alt = 'Voxility blog post'
+export const alt = 'Xovera blog post'
 
 /**
  * Per-post dynamic Open Graph image.
@@ -30,7 +30,7 @@ export async function generateStaticParams() {
 export default async function OgImage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const post = findPostBySlug(slug)
-  const title = post?.title ?? 'Voxility Blog'
+  const title = post?.title ?? 'Xovera Blog'
   const category = post?.category ?? 'Guides'
 
   return new ImageResponse(
@@ -85,7 +85,7 @@ export default async function OgImage({ params }: { params: Promise<{ slug: stri
               display: 'flex',
             }}
           >
-            Voxility
+            Xovera
           </div>
         </div>
 
@@ -116,7 +116,7 @@ export default async function OgImage({ params }: { params: Promise<{ slug: stri
           }}
         >
           <div style={{ display: 'flex' }}>Conversational AI for GoHighLevel &amp; HubSpot</div>
-          <div style={{ display: 'flex', color: '#fa4d2e', fontWeight: 600 }}>voxility.ai</div>
+          <div style={{ display: 'flex', color: '#fa4d2e', fontWeight: 600 }}>xovera.io</div>
         </div>
       </div>
     ),

@@ -39,7 +39,7 @@ const TOPICS: WebhookTopicSpec[] = [
  * successful no-op.
  */
 export async function registerWebhooks(shop: string, accessToken: string): Promise<void> {
-  const appUrl = (process.env.APP_URL || 'https://app.voxility.ai').replace(/\/+$/, '')
+  const appUrl = (process.env.APP_URL || 'https://app.xovera.io').replace(/\/+$/, '')
 
   for (const t of TOPICS) {
     const callbackUrl = `${appUrl}${t.path}`

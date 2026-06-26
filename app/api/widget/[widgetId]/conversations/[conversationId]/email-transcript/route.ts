@@ -67,7 +67,7 @@ function renderHtml(params: {
           <p style="margin:0 0 18px;font-size:12px;color:#6b7280;">Here's a copy of what you talked about, for your records.</p>
           <table role="presentation" width="100%">${rows}</table>
         </td></tr>
-        <tr><td style="padding:14px 28px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;">Powered by Voxility</td></tr>
+        <tr><td style="padding:14px 28px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;">Powered by Xovera</td></tr>
       </table>
     </td></tr>
   </table>
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       error: 'Email delivery not configured. Operator: set RESEND_API_KEY.',
     }, { status: 500, headers })
   }
-  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Voxility <notifications@voxility.app>'
+  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
 
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widgetId },

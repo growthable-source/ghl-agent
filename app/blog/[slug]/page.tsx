@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { findPostBySlug, relatedPosts, POSTS } from '@/lib/blog-posts'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://voxility.ai'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 type Params = { params: Promise<{ slug: string }> }
 
@@ -72,7 +72,7 @@ export default async function BlogPostPage({ params }: Params) {
     },
     publisher: {
       '@type': 'Organization',
-      name: 'Voxility',
+      name: 'Xovera',
       logo: {
         '@type': 'ImageObject',
         url: `${SITE_URL}/logo-color.svg`,

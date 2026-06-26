@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import VoxilityLogo from '@/components/VoxilityLogo'
+import XoveraLogo from '@/components/XoveraLogo'
 import EmailCaptureForm from './EmailCaptureForm'
 
 /**
@@ -66,13 +66,13 @@ export default function MarketingFooter() {
             <FooterLink href="/blog">Blog</FooterLink>
             <FooterLink href="/compare">Compare</FooterLink>
             <FooterLink href="/help">Help</FooterLink>
-            <FooterLink href="https://voxility.canny.io" external>Feedback</FooterLink>
+            <FooterLink href="https://xovera.canny.io" external>Feedback</FooterLink>
           </Col>
         </div>
 
         <div className="flex items-center justify-between text-xs pt-2" style={{ color: 'var(--text-muted)' }}>
-          <VoxilityLogo height={16} />
-          <span>© Voxility — Conversational AI for sales &amp; marketing teams</span>
+          <XoveraLogo height={16} />
+          <span>© Xovera — Conversational AI for sales &amp; marketing teams</span>
         </div>
       </div>
     </footer>

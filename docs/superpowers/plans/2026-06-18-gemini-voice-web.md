@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add Google Gemini as a native **speech-to-speech** voice runtime to the Voxility app, web (in-browser) surface only, plus the runtime-agnostic shared core that Plan 2 (phone, Fly.io/Twilio bridge) builds on. An operator picks "Gemini — native voice" on an agent's voice page, configures a prebuilt voice + first/end message, and runs a "Test voice" call in the browser; the public chat widget routes a visitor voice call to the same Gemini Live runtime. Tool calls round-trip through the existing agent executor; transcripts persist on the existing `CallLog` / `WidgetVoiceCall` rows.
+**Goal:** Add Google Gemini as a native **speech-to-speech** voice runtime to the Xovera app, web (in-browser) surface only, plus the runtime-agnostic shared core that Plan 2 (phone, Fly.io/Twilio bridge) builds on. An operator picks "Gemini — native voice" on an agent's voice page, configures a prebuilt voice + first/end message, and runs a "Test voice" call in the browser; the public chat widget routes a visitor voice call to the same Gemini Live runtime. Tool calls round-trip through the existing agent executor; transcripts persist on the existing `CallLog` / `WidgetVoiceCall` rows.
 
 **Architecture:** Gemini is a *new top-level voice runtime*, a sibling to (not an engine inside) the existing Vapi pipeline. An `Agent.voiceRuntime` discriminator (`'vapi' | 'gemini'`) plus a sibling `GeminiVoiceConfig` table hold the choice. A pure, runtime-agnostic session builder (`lib/voice/gemini/session.ts`, **no next/prisma imports** — Plan 2's Fly bridge imports it directly) composes the Gemini Live `liveConfig` (system instruction from the agent prompt + brand-neutral voice guardrails, tool declarations mapped from the agent's CRM tool catalogue, voice/language/duration). A thin server mint (`lib/voice/gemini/mint.ts`) turns that into a Google ephemeral token, reusing the exact pattern from `lib/copilot/session-service.ts`. The browser reuses `GeminiLiveProvider` (`lib/copilot/providers/gemini-live.ts`) and the audio plumbing (`lib/copilot/audio-client.ts`) **as-is** — both already ship for Copilot. Routes own auth; the shared core owns everything else.
 
@@ -2164,7 +2164,7 @@ The widget already has the `voiceEnabled` flag + `voiceOpen/voiceState('idle'|'c
 This is intentionally decoupled — **do not block the Gemini feature on it.** The voice page is still on the legacy inline-save pattern; the Gemini panel above was added consistent with that legacy mechanism (its own self-save button). Once the feature is verified and merged, port the whole page to `useDirtyForm` + `<SaveBar>`.
 
 - [ ] Invoke the dedicated skill, which knows the canonical target (`app/dashboard/[workspaceId]/agents/[agentId]/voice/page.tsx`) and the exact refactor:
-  - Run the `voxility-save-refactor` skill against the voice page.
+  - Run the `xovera-save-refactor` skill against the voice page.
   - Fold the Gemini panel's fields into the same `useDirtyForm` snapshot so a single `<SaveBar>` saves both the Vapi config (existing PUT) and the Gemini config (`gemini-voice` PUT), and the bar enables only when something actually changed.
 - [ ] Verify dirty tracking lights the SaveBar on any Gemini field edit and clears after save.
 - [ ] Commit on the same branch (or a follow-up branch) with the standard co-author trailer.
