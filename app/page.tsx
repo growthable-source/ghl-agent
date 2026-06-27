@@ -5,11 +5,8 @@ import MarketingFooter from '@/components/landing/MarketingFooter'
 import EmailCaptureForm from '@/components/landing/EmailCaptureForm'
 import MeetingDemoModal from '@/components/landing/MeetingDemoModal'
 import DemoVideoDrawer from '@/components/landing/DemoVideoDrawer'
-import {
-  GoHighLevelIcon, HubSpotIcon, ShopifyIcon, VapiIcon, CalendlyIcon, CalcomIcon,
-  StripeIcon, FacebookIcon, InstagramIcon, GoogleIcon, WhatsAppIcon, SmsIcon,
-  LiveChatIcon, SlackIcon, ZapierIcon, MessengerIcon, VideoMeetingIcon,
-} from '@/components/icons/brand-icons'
+import { GoHighLevelIcon } from '@/components/icons/brand-icons'
+import { INTEGRATIONS, CHANNELS, MARKETPLACE_URL } from '@/lib/integrations-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
@@ -22,38 +19,9 @@ const DEMO_PUBLIC_KEY = 'cpa_eULDA-kRF2FPObVnzdRQNS49'
 // (or a self-hosted .mp4). Empty = the drawer shows a "coming soon" poster.
 const DEMO_VIDEO_URL = ''
 
-// GoHighLevel Marketplace listing — the Sponsored Partner badge links here.
-const MARKETPLACE_URL = 'https://marketplace.gohighlevel.com/'
-
-type LogoItem = { label: string; Icon: React.ComponentType<{ className?: string }> }
-
-// Tools Xovera integrates with (logos in the integrations row).
-const INTEGRATIONS: LogoItem[] = [
-  { label: 'GoHighLevel', Icon: GoHighLevelIcon },
-  { label: 'HubSpot', Icon: HubSpotIcon },
-  { label: 'Shopify', Icon: ShopifyIcon },
-  { label: 'Facebook', Icon: FacebookIcon },
-  { label: 'Instagram', Icon: InstagramIcon },
-  { label: 'Zapier', Icon: ZapierIcon },
-  { label: 'Slack', Icon: SlackIcon },
-  { label: 'Stripe', Icon: StripeIcon },
-  { label: 'Calendly', Icon: CalendlyIcon },
-  { label: 'Cal.com', Icon: CalcomIcon },
-  { label: 'Vapi', Icon: VapiIcon },
-  { label: 'Google', Icon: GoogleIcon },
-]
-
-// Channels the agent shows up on (PhoneIcon is the local glyph defined below).
-const CHANNELS: LogoItem[] = [
-  { label: 'Zoom & Google Meet', Icon: VideoMeetingIcon },
-  { label: 'Voice calls', Icon: PhoneIcon },
-  { label: 'SMS', Icon: SmsIcon },
-  { label: 'WhatsApp', Icon: WhatsAppIcon },
-  { label: 'Facebook Messenger', Icon: MessengerIcon },
-  { label: 'Instagram DMs', Icon: InstagramIcon },
-  { label: 'Live chat widget', Icon: LiveChatIcon },
-  { label: 'Slack', Icon: SlackIcon },
-]
+// INTEGRATIONS, CHANNELS, and MARKETPLACE_URL now live in
+// @/lib/integrations-data so the homepage strip and the /integrations page
+// share one source of truth.
 
 // ────────────────────────────────────────────────────────────────────────
 // JSON-LD structured data
@@ -304,9 +272,9 @@ export default function LandingPage() {
         links={[
           { href: '#features', label: 'Features' },
           { href: '#copilot', label: 'Co-Pilot' },
-          { href: '#integrations', label: 'Integrations' },
+          { href: '/integrations', label: 'Integrations' },
+          { href: '/services', label: 'Services' },
           { href: '#learning-loop', label: 'The loop' },
-          { href: '#faq', label: 'FAQ' },
         ]}
       />
 
@@ -869,6 +837,40 @@ export default function LandingPage() {
                 <p>
                   That&apos;s the bet. Agents that start good. Get better. <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>Every single day.</span>
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ Services teaser — software + a team behind it ═══ */}
+      <section className="py-24 px-6">
+        <div className="max-w-[1100px] mx-auto">
+          <div className="vox-card p-8 md:p-12">
+            <div className="grid md:grid-cols-2 gap-8 items-center">
+              <div>
+                <span className="section-label inline-block mb-4">Software + services</span>
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-4">Don&apos;t want to run it yourself? We will.</h2>
+                <p className="text-[0.9375rem] leading-[1.65] mb-6" style={{ color: 'var(--text-secondary)' }}>
+                  Xovera isn&apos;t just a tool — it&apos;s a team. Our specialists run your ads, build your agents, design your funnels, and manage your reputation on the HighLevel platform we build on as an official partner. You get booked appointments, not homework.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Link href="/services" className="btn-primary">Explore done-for-you services</Link>
+                  <Link href="/integrations" className="btn-secondary">See integrations</Link>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { t: 'Paid ads management', d: 'We run Meta & Google' },
+                  { t: 'Done-for-you agent setup', d: 'Built & trained for you' },
+                  { t: 'Lead-gen funnels', d: 'Pages that convert' },
+                  { t: 'Reputation management', d: 'More 5-star reviews' },
+                ].map((s) => (
+                  <div key={s.t} className="rounded-xl p-4" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
+                    <div className="text-[0.875rem] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{s.t}</div>
+                    <div className="text-[0.75rem]" style={{ color: 'var(--text-tertiary)' }}>{s.d}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

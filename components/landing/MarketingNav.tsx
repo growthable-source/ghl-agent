@@ -12,9 +12,9 @@ export type NavLink = { href: string; label: string }
 
 const DEFAULT_LINKS: NavLink[] = [
   { href: '/#features', label: 'Features' },
-  { href: '/#integrations', label: 'Integrations' },
+  { href: '/integrations', label: 'Integrations' },
+  { href: '/services', label: 'Services' },
   { href: '/alternatives', label: 'Alternatives' },
-  { href: '/compare', label: 'Compare' },
   { href: '/blog', label: 'Blog' },
 ]
 

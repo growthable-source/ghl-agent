@@ -47,7 +47,8 @@ export default function MarketingFooter() {
           <Col title="Product">
             <FooterLink href="/#features">Features</FooterLink>
             <FooterLink href="/#copilot">Co-Pilot</FooterLink>
-            <FooterLink href="/#integrations">Integrations</FooterLink>
+            <FooterLink href="/integrations">Integrations</FooterLink>
+            <FooterLink href="/services">Services</FooterLink>
             <FooterLink href="/login?mode=signup">Get started</FooterLink>
           </Col>
           <Col title="Solutions">
@@ -55,6 +56,7 @@ export default function MarketingFooter() {
             <FooterLink href="/ai-chat-widget-builder">AI chat widget builder</FooterLink>
             <FooterLink href="/ai-receptionist">AI receptionist</FooterLink>
             <FooterLink href="/ai-sdr">AI SDR</FooterLink>
+            <FooterLink href="/ai-for-gyms">AI for gyms</FooterLink>
           </Col>
           <Col title="Alternatives">
             <FooterLink href="/intercom-alternative">Intercom alternative</FooterLink>
