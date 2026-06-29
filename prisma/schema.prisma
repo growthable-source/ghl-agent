@@ -1382,6 +1382,19 @@ model MessageLog {
   errorMessage     String?   @db.Text
   createdAt        DateTime  @default(now())
 
+  // ─── Out-of-band model-failure retry (transient provider outages) ───
+  // When a reply was skipped by a TRANSIENT model failure (model_unavailable),
+  // the row is marked ERROR and modelRetryAt is set to a future time. The
+  // retry-model-failures cron replays due rows, re-running the agent on the
+  // same prompt and sending on the captured channel. modelRetryAt is cleared
+  // when the reply lands, when a human takes over, or when retries are
+  // exhausted (operator paged). Permanent failures (model_rejected) leave
+  // modelRetryAt null and are paged immediately.
+  channel                String? // inbound channel (e.g. "SMS","FB","IG"); where the retried reply is sent
+  conversationProviderId String? // CRM conversation provider id needed to send the retried reply
+  modelRetryAt           DateTime? // when this errored row is next due for an automatic retry
+  modelRetryCount        Int       @default(0)
+
   // ─── Approval Queue ───
   needsApproval  Boolean @default(false)
   approvalStatus String? // "pending" | "approved" | "rejected" | "auto_sent" | "auto_sent_by_judge" | "rejected_by_judge"
@@ -1404,6 +1417,8 @@ model MessageLog {
   @@index([locationId, createdAt(sort: Desc)])
   @@index([agentId, createdAt(sort: Desc)])
   @@index([needsApproval, approvalStatus])
+  // Cron picks due retries: WHERE status='ERROR' AND modelRetryAt <= now().
+  @@index([modelRetryAt])
 }
 
 enum LogStatus {

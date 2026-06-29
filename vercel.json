@@ -16,6 +16,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/retry-model-failures",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/prune-audit-log",
       "schedule": "30 3 * * *"
     },

@@ -29,8 +29,7 @@
 import { db } from './db'
 import { runAgent, type AgentResponse } from './ai-agent'
 import { isUnansweredSkip } from './agent/reply-skip'
-import { describeUnansweredSkip } from './agent/unanswered-skip'
-import { notify } from './notifications'
+import { recordUnansweredSkip } from './model-retry'
 import { buildBasePrompt } from './agent/build-base-prompt'
 import { findMatchingAgent } from './routing'
 import { getOrCreateConversationState, incrementMessageCount } from './conversation-state'
@@ -209,33 +208,22 @@ export async function finalizeChannelInbound(p: FinalizeParams): Promise<void> {
   if (logId) {
     if (isUnansweredSkip(result.skipped)) {
       // Infra failure (model provider down, out of credit, or a permanent
-      // 4xx) — the agent produced no reply. Do NOT stamp SUCCESS (the message
-      // went unanswered). Record an error and page the workspace so a human
-      // can take over, mirroring the marketplace-webhook path. The copy is
-      // class-aware (transient vs rejected) and carries the status+model.
-      const notice = describeUnansweredSkip({
+      // 4xx) — the agent produced no reply. Do NOT stamp SUCCESS. Native
+      // (Twilio/Meta) sends can't be replayed by the retry cron, so this path
+      // pages a human immediately (retrySupported:false) with class-aware,
+      // evidence-carrying copy.
+      await recordUnansweredSkip({
+        logId,
+        agentId: agent.id,
         agentName: (agent as any).name ?? 'Agent',
+        workspaceId: agent.workspaceId ?? null,
+        channel: 'native',
+        contactId,
         inboundMessage,
         skipped: result.skipped,
         skipDetail: result.skipDetail,
+        retrySupported: false,
       })
-      await db.messageLog.update({
-        where: { id: logId },
-        data: {
-          status: 'ERROR',
-          outboundReply: null,
-          errorMessage: notice.errorMessage.slice(0, 500),
-        },
-      }).catch(() => {})
-      if (agent.workspaceId) {
-        notify({
-          workspaceId: agent.workspaceId,
-          event: 'agent_error',
-          title: notice.notifyTitle,
-          body: notice.notifyBody,
-          severity: notice.severity,
-        }).catch(() => {})
-      }
     } else if (sendSucceeded) {
       await db.messageLog.update({
         where: { id: logId },

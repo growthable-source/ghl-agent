@@ -13,7 +13,7 @@ import { getTokens } from '@/lib/token-store'
 import { getMessages } from '@/lib/crm-client'
 import { runAgent } from '@/lib/ai-agent'
 import { isUnansweredSkip } from '@/lib/agent/reply-skip'
-import { describeUnansweredSkip } from '@/lib/agent/unanswered-skip'
+import { recordUnansweredSkip } from '@/lib/model-retry'
 import { processContactTrigger } from '@/lib/triggers'
 import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
@@ -403,18 +403,25 @@ export async function POST(req: NextRequest) {
           // workspace, and fires message.error; the visitor's message stays
           // visible for a human to take over.
           if (isUnansweredSkip(result.skipped)) {
-            // Class-aware, evidence-carrying error: transient
-            // (model_unavailable) vs permanent (model_rejected), plus the
-            // status+model. The catch below records ERROR, pages the
-            // workspace, and fires message.error; the inbound stays visible
-            // for a human to take over.
-            const notice = describeUnansweredSkip({
+            // Unanswered (model failed). A TRANSIENT failure schedules an
+            // out-of-band retry (retry-model-failures cron) WITHOUT paging; a
+            // PERMANENT 4xx pages a human now. Either way the inbound is never
+            // stamped SUCCESS. break out of the case — do not fall through to
+            // the send/approval/goal logic below.
+            await recordUnansweredSkip({
+              logId: log.id,
+              agentId: agent.id,
               agentName: agent.name,
+              workspaceId: agent.workspaceId ?? null,
+              channel,
+              conversationProviderId: p.conversationProviderId,
+              contactId: p.contactId,
               inboundMessage,
               skipped: result.skipped,
               skipDetail: result.skipDetail,
+              retrySupported: true,
             })
-            throw new Error(notice.errorMessage)
+            break
           }
 
           // ─── Approval queue — flag if rules match ───
