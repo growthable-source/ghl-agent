@@ -13,7 +13,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 export const metadata: Metadata = {
   title: 'AI for Gyms & Fitness Studios — Never Miss a Lead | Xovera',
   description:
-    'Xovera helps gyms and fitness studios across the US & Canada win more members: instant speed-to-lead, ad automation that turns clicks into booked tours, and a voice AI agent that answers every call 24/7. Book more tours, lose fewer leads.',
+    'Xovera helps gyms and fitness studios across the US & Canada turn more leads into paying members: instant speed-to-lead, automatic routing to the right instructor or salesperson, and relentless follow-up that answers every call, text, and ad — 24/7, with nobody at the desk.',
   alternates: { canonical: `${SITE_URL}/ai-for-gyms` },
   openGraph: {
     title: 'AI for Gyms & Fitness Studios — Never Miss a Lead',
@@ -140,10 +140,10 @@ fbq('track', 'PageView');`}
         <div className="relative z-10 max-w-[860px] mx-auto text-center">
           <div className="section-label mb-4" style={{ color: '#ff7a52' }}>For gyms &amp; fitness studios · US &amp; Canada</div>
           <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.04] mb-5" style={{ color: '#ffffff' }}>
-            Turn every lead into a <span className="text-gradient">booked tour</span> — automatically.
+            Turn every lead into a <span className="text-gradient">paying member</span> — automatically.
           </h1>
           <p className="text-lg md:text-xl leading-[1.6] max-w-2xl mx-auto" style={{ color: 'rgba(255,255,255,0.88)' }}>
-            Xovera answers every call, text, and ad inquiry in seconds, 24/7 — qualifies the lead, books the tour, and follows up — so your front desk never loses a member to a faster gym down the road.
+            The moment a lead comes in — call, text, DM, or ad — Xovera answers in seconds, routes it to the right instructor or salesperson, and follows up relentlessly until they&apos;re signed up and paying. Any hour, with nobody at the desk.
           </p>
           <div className="mt-9 flex flex-col items-center gap-3">
             <div className="flex flex-col sm:flex-row items-center gap-3">
