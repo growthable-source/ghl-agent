@@ -900,13 +900,21 @@ export async function runAgent(opts: {
       // a structured "skipped" result so the channel handler can leave
       // the message unanswered for the next inbound or a human, rather
       // than dropping it into a void. The conversation stays intact.
-      console.error(`[Agent] Anthropic call failed after retries (status ${err?.status ?? 'network'}):`, err?.message)
+      // Classify: a transient 429/5xx/network failure ('model_unavailable')
+      // is retryable out-of-band; a non-retryable 4xx ('model_rejected', e.g.
+      // context-too-long or a bad key) fails identically on retry and must be
+      // paged, not retried. Persist the status + model so the two are
+      // distinguishable after the fact (console alone is ephemeral on Vercel).
+      const { classifyLlmFailure } = await import('./agent/model-failure')
+      const failure = classifyLlmFailure(err, agentModelKey ?? 'auto')
+      console.error(`[Agent] LLM call failed after retries (${failure.detail}):`, err?.message)
       return {
         reply: null,
         actionsPerformed,
         tokensUsed: totalInputTokens + totalOutputTokens,
         toolCallTrace,
-        skipped: 'model_unavailable',
+        skipped: failure.skipped,
+        skipDetail: failure.detail,
       } as AgentResponse
     }
 

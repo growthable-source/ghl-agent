@@ -13,6 +13,7 @@ import { getTokens } from '@/lib/token-store'
 import { getMessages } from '@/lib/crm-client'
 import { runAgent } from '@/lib/ai-agent'
 import { isUnansweredSkip } from '@/lib/agent/reply-skip'
+import { describeUnansweredSkip } from '@/lib/agent/unanswered-skip'
 import { processContactTrigger } from '@/lib/triggers'
 import { db } from '@/lib/db'
 import { findMatchingAgent } from '@/lib/routing'
@@ -502,7 +503,18 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
           // workspace, and fires message.error; the visitor's message stays
           // visible for a human to take over.
           if (isUnansweredSkip(result.skipped)) {
-            throw new Error(`Agent produced no reply — ${result.skipped} (model provider unavailable)`)
+            // Class-aware, evidence-carrying error: transient
+            // (model_unavailable) vs permanent (model_rejected), plus the
+            // status+model. The catch below records ERROR, pages the
+            // workspace, and fires message.error; the inbound stays visible
+            // for a human to take over.
+            const notice = describeUnansweredSkip({
+              agentName: agent.name,
+              inboundMessage,
+              skipped: result.skipped,
+              skipDetail: result.skipDetail,
+            })
+            throw new Error(notice.errorMessage)
           }
 
           // ─── Approval queue — flag if rules match ───

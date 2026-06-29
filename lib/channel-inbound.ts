@@ -29,6 +29,7 @@
 import { db } from './db'
 import { runAgent, type AgentResponse } from './ai-agent'
 import { isUnansweredSkip } from './agent/reply-skip'
+import { describeUnansweredSkip } from './agent/unanswered-skip'
 import { notify } from './notifications'
 import { buildBasePrompt } from './agent/build-base-prompt'
 import { findMatchingAgent } from './routing'
@@ -207,25 +208,32 @@ export async function finalizeChannelInbound(p: FinalizeParams): Promise<void> {
 
   if (logId) {
     if (isUnansweredSkip(result.skipped)) {
-      // Transient infra failure (model provider down / out of credit) — the
-      // agent produced no reply. Do NOT stamp SUCCESS (the message went
-      // unanswered). Record an error and page the workspace so a human can
-      // take over, mirroring the marketplace-webhook path.
+      // Infra failure (model provider down, out of credit, or a permanent
+      // 4xx) — the agent produced no reply. Do NOT stamp SUCCESS (the message
+      // went unanswered). Record an error and page the workspace so a human
+      // can take over, mirroring the marketplace-webhook path. The copy is
+      // class-aware (transient vs rejected) and carries the status+model.
+      const notice = describeUnansweredSkip({
+        agentName: (agent as any).name ?? 'Agent',
+        inboundMessage,
+        skipped: result.skipped,
+        skipDetail: result.skipDetail,
+      })
       await db.messageLog.update({
         where: { id: logId },
         data: {
           status: 'ERROR',
           outboundReply: null,
-          errorMessage: `Agent produced no reply — ${result.skipped} (model provider unavailable)`,
+          errorMessage: notice.errorMessage.slice(0, 500),
         },
       }).catch(() => {})
       if (agent.workspaceId) {
         notify({
           workspaceId: agent.workspaceId,
           event: 'agent_error',
-          title: `Agent couldn't reply`,
-          body: `The AI model was unavailable, so "${inboundMessage.slice(0, 120)}" is waiting for a human.`,
-          severity: 'error',
+          title: notice.notifyTitle,
+          body: notice.notifyBody,
+          severity: notice.severity,
         }).catch(() => {})
       }
     } else if (sendSucceeded) {

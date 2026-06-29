@@ -23,8 +23,17 @@ export interface AgentResponse {
   deferredCapture?: DeferredSendCapture['captured']
   /** Set when the run ended without a reply for a non-content reason
    *  the caller should treat as "leave it for next time", not a hard
-   *  failure. 'model_unavailable' = Anthropic was down after retries. */
-  skipped?: 'model_unavailable'
+   *  failure.
+   *  - 'model_unavailable' = TRANSIENT provider failure (429/5xx/network)
+   *    after retries — retryable out-of-band.
+   *  - 'model_rejected'    = PERMANENT non-retryable 4xx (bad request, auth,
+   *    model-not-found) — page immediately, retrying fails identically.
+   *  - 'broken_references' = workspace config gate (own fallback path). */
+  skipped?: 'model_unavailable' | 'model_rejected' | 'broken_references'
+  /** Diagnostic for an unanswered skip (HTTP status + model key that failed).
+   *  Persisted into MessageLog.errorMessage so a transient outage is
+   *  distinguishable from a permanent 4xx after the fact. */
+  skipDetail?: string
 }
 
 export interface AgentAttachment {

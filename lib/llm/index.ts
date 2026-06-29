@@ -104,12 +104,15 @@ export async function createMessage(
     recordUsage(model.key, model.provider, res.usage, !!reason, meta)
     return res
   } catch (err) {
-    // Reliability escalation: a DeepSeek call failed after its own retries →
-    // fall back to Claude once so the customer still gets a reply. Callers
-    // that would rather fail than spend Anthropic credits (batch/cron work)
-    // pass meta.noFallback.
-    if (model.key.startsWith('deepseek') && !meta?.noFallback) {
-      console.warn(`[llm] ${model.key} failed (${(err as Error)?.message ?? err}); falling back to Claude`)
+    // Reliability escalation: the agent's chosen model failed after its own
+    // retries → fall back to baseline Claude ONCE so the customer still gets
+    // a reply. This covers every non-baseline model (DeepSeek, Haiku, Opus,
+    // OpenRouter) — a single overloaded/misconfigured model must not strand a
+    // live inbound. No-op (and re-throws) when the failed model already IS the
+    // baseline. Callers that would rather fail than spend Anthropic credits
+    // (batch/cron work) pass meta.noFallback.
+    if (model.key !== CLAUDE_FALLBACK_KEY && !meta?.noFallback) {
+      console.warn(`[llm] ${model.key} failed (${(err as Error)?.message ?? err}); falling back to ${CLAUDE_FALLBACK_KEY}`)
       const claude = getModel(CLAUDE_FALLBACK_KEY)
       const res = await dispatch(claude, params)
       logCost(requested, claude.key, res.usage, 'error')
