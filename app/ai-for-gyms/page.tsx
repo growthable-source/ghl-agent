@@ -103,50 +103,59 @@ fbq('track', 'PageView');`}
 
       <MarketingNav />
 
-      {/* ── Hero — split: copy left, activewear sign-up video right ── */}
-      <section className="relative pt-16 pb-14 px-6 overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 70% 30%, rgba(232,68,37,0.10), transparent 60%)' }} />
-        <div className="relative z-10 max-w-[1180px] mx-auto grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-          {/* Copy */}
-          <div className="text-center lg:text-left">
-            <div className="section-label mb-3">For gyms &amp; fitness studios · US &amp; Canada</div>
-            <h1 className="text-4xl md:text-[3.25rem] font-extrabold tracking-tight leading-[1.06] mb-5" style={{ color: 'var(--text-primary)' }}>
-              Turn every lead into a <span className="text-gradient">booked tour</span> — automatically.
-            </h1>
-            <p className="text-lg leading-[1.6] max-w-xl mx-auto lg:mx-0" style={{ color: 'var(--text-secondary)' }}>
-              Xovera answers every call, text, and ad inquiry in seconds, 24/7 — qualifies the lead, books the tour, and follows up — so your front desk never loses a member to a faster gym down the road.
-            </p>
-            <div className="mt-8 flex flex-col items-center lg:items-start gap-3">
-              <div className="flex flex-col sm:flex-row items-center gap-3">
-                <DemoModal {...DEMO_COPY} triggerLabel="Book a demo" source="gyms_hero" />
-                <Link href="/login?mode=signup" className="btn-secondary">Start free</Link>
-              </div>
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                Built for gyms across the US &amp; Canada. Free while in beta — no card required.
-              </p>
-            </div>
-          </div>
+      {/* ── Hero — full-bleed background video with overlaid copy ── */}
+      <section className="relative flex items-center justify-center overflow-hidden min-h-[clamp(560px,86vh,820px)] px-6 py-20">
+        {/* Background video */}
+        <video
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          poster="/landing/gym-hero-poster.jpg"
+          aria-hidden="true"
+        >
+          <source src="/landing/gym-hero.mp4" type="video/mp4" />
+        </video>
 
-          {/* Video */}
-          <div className="relative">
-            <div
-              className="absolute -inset-3 rounded-[1.75rem] pointer-events-none"
-              style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(232,68,37,0.18), transparent 70%)' }}
-            />
-            <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ border: '1px solid var(--border)' }}>
-              <video
-                className="w-full h-auto block"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                poster="/landing/gym-hero-poster.jpg"
-                aria-label="Members signing up at a gym front desk"
+        {/* Legibility scrim — darkens the video so light copy stays readable */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(10,13,24,0.78) 0%, rgba(10,13,24,0.55) 45%, rgba(10,13,24,0.80) 100%)',
+          }}
+        />
+        {/* Subtle brand wash from the corner */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse at 80% 15%, rgba(232,68,37,0.22), transparent 55%)' }}
+        />
+
+        {/* Copy */}
+        <div className="relative z-10 max-w-[860px] mx-auto text-center">
+          <div className="section-label mb-4" style={{ color: '#ff7a52' }}>For gyms &amp; fitness studios · US &amp; Canada</div>
+          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.04] mb-5" style={{ color: '#ffffff' }}>
+            Turn every lead into a <span className="text-gradient">booked tour</span> — automatically.
+          </h1>
+          <p className="text-lg md:text-xl leading-[1.6] max-w-2xl mx-auto" style={{ color: 'rgba(255,255,255,0.88)' }}>
+            Xovera answers every call, text, and ad inquiry in seconds, 24/7 — qualifies the lead, books the tour, and follows up — so your front desk never loses a member to a faster gym down the road.
+          </p>
+          <div className="mt-9 flex flex-col items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <DemoModal {...DEMO_COPY} triggerLabel="Book a demo" source="gyms_hero" />
+              <Link
+                href="/login?mode=signup"
+                className="inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold transition-colors"
+                style={{ border: '1px solid rgba(255,255,255,0.55)', color: '#ffffff' }}
               >
-                <source src="/landing/gym-hero.mp4" type="video/mp4" />
-              </video>
+                Start free
+              </Link>
             </div>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+              Built for gyms across the US &amp; Canada. Free while in beta — no card required.
+            </p>
           </div>
         </div>
       </section>
