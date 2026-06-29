@@ -5,6 +5,7 @@ import MarketingNav from '@/components/landing/MarketingNav'
 import MarketingFooter from '@/components/landing/MarketingFooter'
 import DemoModal from '@/components/landing/DemoModal'
 import LogoMarquee from '@/components/landing/LogoMarquee'
+import InlineLeadForm from '@/components/landing/InlineLeadForm'
 import { GYM_SYSTEMS } from '@/lib/integrations-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
@@ -208,12 +209,65 @@ fbq('track', 'PageView');`}
           <div className="grid md:grid-cols-3 gap-4">
             {PILLARS.map((p) => (
               <div key={p.title} className="vox-card p-7">
-                <div className="icon-box mb-5">{p.icon}</div>
+                <div className="flex items-center justify-center w-11 h-11 rounded-xl mb-5" style={{ background: 'var(--gradient-primary)', color: '#fff', boxShadow: 'var(--shadow-primary)' }}>{p.icon}</div>
                 <div className="section-label mb-2">{p.eyebrow}</div>
                 <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>{p.title}</h3>
                 <p className="text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>{p.body}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Dark band: watch it work (SMS mockup) ── */}
+      <section className="relative overflow-hidden mb-20 py-20 px-6" style={{ background: 'linear-gradient(160deg, #0c1018 0%, #15182b 60%, #1d1326 100%)' }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 78% 20%, rgba(232,68,37,0.28), transparent 55%)' }} />
+        <div className="relative z-10 max-w-[1100px] mx-auto grid lg:grid-cols-2 gap-12 items-center">
+          {/* Copy */}
+          <div>
+            <div className="section-label mb-3" style={{ color: '#ff7a52' }}>See it in action</div>
+            <h2 className="text-3xl md:text-[2.5rem] font-extrabold tracking-tight leading-[1.08] mb-4" style={{ color: '#ffffff' }}>
+              A missed inquiry at 9pm. <span className="text-gradient">A booked tour by 9:01.</span>
+            </h2>
+            <p className="text-[1.0625rem] leading-[1.6] mb-7" style={{ color: 'rgba(255,255,255,0.78)' }}>
+              While your front desk is closed, Xovera texts back in seconds, answers the real questions, and books the tour straight onto your calendar — then logs it in your CRM. No lead left on read.
+            </p>
+            <div className="flex flex-wrap gap-6 mb-8">
+              {[
+                { v: '<60s', l: 'Avg. reply time' },
+                { v: '3.2×', l: 'More tours booked' },
+                { v: '0', l: 'Leads to voicemail' },
+              ].map((s) => (
+                <div key={s.l}>
+                  <div className="text-2xl font-extrabold" style={{ color: '#ffffff' }}>{s.v}</div>
+                  <div className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.55)' }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+            <DemoModal {...DEMO_COPY} triggerLabel="See it answer a lead live" source="gyms_mockup" />
+          </div>
+
+          {/* Phone-style SMS thread */}
+          <div className="relative mx-auto w-full max-w-[380px]">
+            <div className="absolute -inset-4 rounded-[2rem] pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(232,68,37,0.30), transparent 70%)' }} />
+            <div className="relative rounded-[1.75rem] p-4 sm:p-5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)' }}>
+              <div className="flex items-center gap-2 pb-3 mb-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+                <span className="w-2 h-2 rounded-full glow-pulse" style={{ background: '#22c55e' }} />
+                <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>Xovera · live</span>
+                <span className="ml-auto text-[11px]" style={{ color: 'rgba(255,255,255,0.45)' }}>New lead · Meta ad</span>
+              </div>
+              <div className="space-y-2.5">
+                <Bubble side="in">Hi, saw your ad — how much is membership? 👀</Bubble>
+                <Bubble side="out">Hey! Thanks for reaching out 💪 Plans start at $39/mo. Want to swing by for a free day pass?</Bubble>
+                <Bubble side="in">Yeah, tomorrow evening could work</Bubble>
+                <Bubble side="out">Perfect — I&apos;ve got Thu 6:00pm open. Want me to lock it in?</Bubble>
+                <Bubble side="in">Yes please 🙌</Bubble>
+                <Bubble side="out">Booked! You&apos;ll get a reminder text. See you Thursday 🎉</Bubble>
+              </div>
+              <div className="mt-3 flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-lg" style={{ background: 'rgba(34,197,94,0.14)', color: '#4ade80' }}>
+                ✓ Tour booked · synced to CRM
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -265,8 +319,8 @@ fbq('track', 'PageView');`}
         </div>
       </section>
 
-      {/* ── How it works ── */}
-      <section className="px-6 mb-20">
+      {/* ── How it works (tinted band) ── */}
+      <section className="px-6 py-16 mb-20" style={{ background: 'var(--surface-secondary)' }}>
         <div className="max-w-[1100px] mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Live in an afternoon</h2>
@@ -274,8 +328,8 @@ fbq('track', 'PageView');`}
           </div>
           <div className="grid md:grid-cols-4 gap-4">
             {STEPS.map((s) => (
-              <div key={s.n} className="vox-card p-6">
-                <div className="text-sm font-bold mb-3" style={{ color: 'var(--accent-primary)' }}>{s.n}</div>
+              <div key={s.n} className="relative rounded-xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg mb-3 text-sm font-bold" style={{ background: 'var(--gradient-primary)', color: '#fff' }}>{s.n}</div>
                 <h3 className="text-[0.9375rem] font-semibold mb-1.5" style={{ color: 'var(--text-primary)' }}>{s.title}</h3>
                 <p className="text-[0.875rem] leading-[1.6]" style={{ color: 'var(--text-secondary)' }}>{s.body}</p>
               </div>
@@ -284,21 +338,30 @@ fbq('track', 'PageView');`}
         </div>
       </section>
 
-      {/* ── CTA band ── */}
-      <section className="px-6 mb-20">
-        <div className="max-w-[820px] mx-auto vox-card p-8 md:p-12 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3" style={{ color: 'var(--text-primary)' }}>
-            Stop losing members to slow follow-up
-          </h2>
-          <p className="mb-7 text-[0.9375rem] max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-            See exactly how Xovera would work for your gym — book a quick demo and we&apos;ll show you it answering a lead live.
-          </p>
-          <div className="flex flex-col items-center gap-3">
-            <DemoModal {...DEMO_COPY} triggerLabel="Book your demo" source="gyms_cta" />
-            <Link href="/login?mode=signup" className="text-sm underline" style={{ color: 'var(--accent-primary)' }}>
-              or start building free →
-            </Link>
+      {/* ── Dark band: inline lead-capture form ── */}
+      <section className="relative overflow-hidden mb-20 py-20 px-6" style={{ background: 'linear-gradient(150deg, #1a0f12 0%, #20131b 45%, #0e1120 100%)' }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 20% 25%, rgba(232,68,37,0.30), transparent 55%)' }} />
+        <div className="relative z-10 max-w-[1080px] mx-auto grid lg:grid-cols-2 gap-12 items-center">
+          {/* Copy */}
+          <div>
+            <div className="section-label mb-3" style={{ color: '#ff7a52' }}>Book your demo</div>
+            <h2 className="text-3xl md:text-[2.5rem] font-extrabold tracking-tight leading-[1.08] mb-4" style={{ color: '#ffffff' }}>
+              Stop losing members to <span className="text-gradient">slow follow-up</span>.
+            </h2>
+            <p className="text-[1.0625rem] leading-[1.6] mb-6" style={{ color: 'rgba(255,255,255,0.78)' }}>
+              In 20 minutes we&apos;ll show Xovera answering a real lead for your gym — texting, qualifying, and booking a tour live. Grab a time, it&apos;s on us.
+            </p>
+            <ul className="space-y-2.5">
+              {['Free while in beta — no card required', 'Live in an afternoon, no new software to learn', 'Local numbers across the US & Canada'].map((t) => (
+                <li key={t} className="flex items-center gap-2.5 text-[0.9375rem]" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold shrink-0" style={{ background: 'rgba(232,68,37,0.9)', color: '#fff' }}>✓</span>
+                  {t}
+                </li>
+              ))}
+            </ul>
           </div>
+          {/* Form box */}
+          <InlineLeadForm source="gyms_inline" cta="Book my demo →" />
         </div>
       </section>
 
@@ -332,6 +395,26 @@ fbq('track', 'PageView');`}
           }),
         }}
       />
+    </div>
+  )
+}
+
+// SMS bubble for the "see it in action" mockup. Inbound = neutral glass,
+// outbound = brand gradient.
+function Bubble({ side, children }: { side: 'in' | 'out'; children: React.ReactNode }) {
+  const isOut = side === 'out'
+  return (
+    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className="max-w-[82%] px-3.5 py-2 text-[0.875rem] leading-[1.45]"
+        style={
+          isOut
+            ? { background: 'linear-gradient(135deg, #fa4d2e, #fb8e4a)', color: '#fff', borderRadius: '16px 16px 4px 16px' }
+            : { background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.92)', borderRadius: '16px 16px 16px 4px' }
+        }
+      >
+        {children}
+      </div>
     </div>
   )
 }
