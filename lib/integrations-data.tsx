@@ -12,8 +12,32 @@ import {
 
 export type LogoItem = { label: string; Icon: React.ComponentType<{ className?: string }> }
 
-// GoHighLevel Marketplace listing — the Sponsored Partner badge links here.
+// GoHighLevel Marketplace listing — kept for the homepage partner reference.
 export const MARKETPLACE_URL = 'https://marketplace.gohighlevel.com/'
+
+/**
+ * Ubiquitous US gym / studio management systems. Xovera layers on top of
+ * whatever a gym already runs — it doesn't replace the gym's operating
+ * system. Some are live integrations, others are quick to build on request.
+ *
+ * `src` (a path under /public) renders an official logo image; until those
+ * assets are dropped in, each falls back to a clean wordmark in the marquee.
+ */
+export type GymSystem = { name: string; src?: string }
+export const GYM_SYSTEMS: GymSystem[] = [
+  { name: 'Mindbody' },
+  { name: 'ABC Fitness' },
+  { name: 'Club Automation' },
+  { name: 'Zen Planner' },
+  { name: 'Glofox' },
+  { name: 'Mariana Tek' },
+  { name: 'PushPress' },
+  { name: 'Wodify' },
+  { name: 'Trainerize' },
+  { name: 'Clubworx' },
+  { name: 'Gymdesk' },
+  { name: 'TeamUp' },
+]
 
 /** Flat list used by the homepage "Integrates with" strip. */
 export const INTEGRATIONS: LogoItem[] = [
@@ -56,7 +80,7 @@ export const INTEGRATION_GROUPS: IntegrationGroup[] = [
     category: 'CRM & platforms',
     caption: 'Your system of record. The agent reads and writes it natively.',
     items: [
-      { label: 'GoHighLevel', Icon: GoHighLevelIcon, blurb: 'One-click Marketplace install. We build on HighLevel as a Sponsored Partner & reseller.' },
+      { label: 'GoHighLevel', Icon: GoHighLevelIcon, blurb: 'The platform we build on — enterprise marketing automation, without you having to run it.' },
       { label: 'HubSpot', Icon: HubSpotIcon, blurb: 'Two-way contact, deal, and conversation sync.' },
       { label: 'Shopify', Icon: ShopifyIcon, blurb: 'Orders, customers, and storefront events feed the agent.' },
     ],

@@ -3,19 +3,20 @@ import Link from 'next/link'
 import MarketingNav from '@/components/landing/MarketingNav'
 import MarketingFooter from '@/components/landing/MarketingFooter'
 import { GoHighLevelIcon } from '@/components/icons/brand-icons'
-import { INTEGRATION_GROUPS, CHANNELS, MARKETPLACE_URL } from '@/lib/integrations-data'
+import LogoMarquee from '@/components/landing/LogoMarquee'
+import { INTEGRATION_GROUPS, CHANNELS, GYM_SYSTEMS } from '@/lib/integrations-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
 export const metadata: Metadata = {
-  title: 'Integrations — Built on GoHighLevel, connects to your whole stack | Xovera',
+  title: 'Integrations — Works with your gym software, not instead of it | Xovera',
   description:
-    'Xovera is a GoHighLevel Marketplace app and Sponsored Partner, with native connections to HubSpot, Meta & Google Ads, Stripe, Calendly, Cal.com, Twilio, Slack, Shopify and more. One agent across voice, SMS, WhatsApp, and chat.',
+    'Xovera layers on top of the gym software you already run — Mindbody, ABC, Club Automation and more — to handle lead acquisition and marketing. Built on GoHighLevel, our preferred platform, and connected to Meta & Google Ads, HubSpot, Stripe, Calendly, Twilio, Slack and more.',
   alternates: { canonical: `${SITE_URL}/integrations` },
   openGraph: {
-    title: 'Integrations — Built on GoHighLevel, connects to your whole stack',
+    title: 'Integrations — Works with your gym software, not instead of it',
     description:
-      'A GoHighLevel Marketplace app & Sponsored Partner, natively connected to the tools you already run.',
+      'Layers on top of the gym systems you already run. Built on GoHighLevel, our preferred platform.',
     url: `${SITE_URL}/integrations`,
     type: 'website',
   },
@@ -32,15 +33,33 @@ export default function IntegrationsPage() {
         <div className="relative z-10 max-w-[820px] mx-auto text-center">
           <div className="section-label mb-3">Integrations</div>
           <h1 className="text-4xl md:text-[3.25rem] font-extrabold tracking-tight leading-[1.06] mb-5" style={{ color: 'var(--text-primary)' }}>
-            Built on HighLevel. <span className="text-gradient">Connected to everything else.</span>
+            Works with your stack — <span className="text-gradient">not instead of it.</span>
           </h1>
           <p className="text-lg leading-[1.6] max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-            Xovera installs from the GoHighLevel Marketplace in one click, then plugs natively into the CRM, ad accounts, calendars, and channels you already run — no Zapier glue required.
+            Xovera layers on top of the gym and business software you already run to take over lead acquisition and marketing. Built on GoHighLevel — our preferred platform — and connected to your ad accounts, calendars, and channels. No rip-and-replace, no Zapier glue.
           </p>
         </div>
       </section>
 
-      {/* ── HighLevel partner band — front and centre ── */}
+      {/* ── Gym systems marquee — front and centre ── */}
+      <section className="px-6 mb-16">
+        <div className="max-w-[1100px] mx-auto text-center mb-7">
+          <span className="section-label inline-block mb-3">Built for the systems gyms already run</span>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3" style={{ color: 'var(--text-primary)' }}>
+            Keep your gym software. We run the growth layer.
+          </h2>
+          <p className="max-w-2xl mx-auto text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
+            Mindbody, ABC, Club Automation and the rest keep running your floor. Xovera sits on top to acquire and convert leads — some of these are live integrations today, the rest are quick for us to build.
+          </p>
+        </div>
+        <LogoMarquee items={GYM_SYSTEMS} />
+        <p className="text-center text-sm mt-6" style={{ color: 'var(--text-tertiary)' }}>
+          Don&apos;t see your system?{' '}
+          <Link href="/login?mode=signup" className="underline" style={{ color: 'var(--accent-primary)' }}>Tell us and we&apos;ll add it →</Link>
+        </p>
+      </section>
+
+      {/* ── HighLevel: the platform we build on (preferred, not required) ── */}
       <section className="px-6 mb-16">
         <div className="max-w-[1000px] mx-auto">
           <div className="vox-card p-8 md:p-10 text-center relative overflow-hidden">
@@ -51,20 +70,18 @@ export default function IntegrationsPage() {
               </div>
               <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
                 <h2 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                  A GoHighLevel Sponsored Partner
+                  Built on GoHighLevel
                 </h2>
                 <span className="text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>
-                  Official partner &amp; reseller
+                  Our preferred platform
                 </span>
               </div>
               <p className="max-w-2xl mx-auto text-[0.9375rem] leading-[1.65] mb-7" style={{ color: 'var(--text-secondary)' }}>
-                We build directly on HighLevel and resell it as a partner — so Xovera isn&apos;t a bolt-on. The agent reads and writes your CRM natively: contacts, conversations, calendars, pipelines, and opportunities all stay in sync, in real time.
+                As a GoHighLevel partner, we build Xovera on HighLevel and bring it to you fully set up — you don&apos;t have to install it, learn it, or move your gym onto it. It powers the marketing layer; your gym software keeps running your gym. Prefer HubSpot? That works too.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <a href={MARKETPLACE_URL} target="_blank" rel="noopener noreferrer" className="btn-primary">
-                  Install from the Marketplace →
-                </a>
-                <Link href="/login?mode=signup" className="btn-secondary">Start free</Link>
+                <Link href="/login?mode=signup" className="btn-primary">Start free</Link>
+                <Link href="/services" className="btn-secondary">Or have us run it for you →</Link>
               </div>
             </div>
           </div>
@@ -135,7 +152,7 @@ export default function IntegrationsPage() {
             Connect your stack in an afternoon
           </h2>
           <p className="mb-7 text-[0.9375rem] max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-            Install from the GoHighLevel Marketplace, link your tools, and your agent is live across every channel — no developer required.
+            Link your tools and your agent is live across every channel — sitting on top of the gym software you already run. No developer required.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link href="/login?mode=signup" className="btn-primary">Start building free</Link>

@@ -6,7 +6,7 @@ import EmailCaptureForm from '@/components/landing/EmailCaptureForm'
 import MeetingDemoModal from '@/components/landing/MeetingDemoModal'
 import DemoVideoDrawer from '@/components/landing/DemoVideoDrawer'
 import { GoHighLevelIcon } from '@/components/icons/brand-icons'
-import { INTEGRATIONS, CHANNELS, MARKETPLACE_URL } from '@/lib/integrations-data'
+import { INTEGRATIONS, CHANNELS } from '@/lib/integrations-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
@@ -299,18 +299,16 @@ export default function LandingPage() {
               </Link>
               <DemoVideoDrawer videoUrl={DEMO_VIDEO_URL} triggerLabel="▶ Watch the 2-min demo" />
             </div>
-            <a
-              href={MARKETPLACE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/integrations"
               className="inline-flex items-center gap-2 mt-6 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors hover:bg-[var(--surface-secondary)]"
               style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)', border: '1px solid var(--border)' }}
             >
               <GoHighLevelIcon className="w-4 h-4" />
-              GoHighLevel Sponsored Partner
-            </a>
+              Built on GoHighLevel · our preferred platform
+            </Link>
             <p className="mt-5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              One-click install · Live in under 5 minutes · Free while in beta
+              Built on GoHighLevel · Live in under 5 minutes · Free while in beta
             </p>
           </div>
 
@@ -684,10 +682,10 @@ export default function LandingPage() {
               <div className="icon-box mb-5"><CrmIcon /></div>
               <h3 className="text-lg font-semibold mb-2">Plugs into your existing stack</h3>
               <p className="text-[0.9375rem] leading-[1.65] mb-4" style={{ color: 'var(--text-secondary)' }}>
-                Install from the LeadConnector marketplace or connect HubSpot in one click. Agents read and write your CRM natively — tag contacts, update custom fields, move pipeline stages, enroll in workflows, log every interaction. No Zapier glue, no engineering ticket.
+                Built on GoHighLevel (our preferred platform) or connect HubSpot — your call. Agents read and write your CRM natively — tag contacts, update custom fields, move pipeline stages, enroll in workflows, log every interaction. No Zapier glue, no engineering ticket.
               </p>
               <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />LeadConnector marketplace install</li>
+                <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Built on GoHighLevel · HubSpot too</li>
                 <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Native HubSpot integration</li>
                 <li className="flex items-center gap-2"><CheckIcon className="w-3.5 h-3.5" style={{ color: 'var(--accent-emerald)' }} />Full audit trail</li>
               </ul>
@@ -735,15 +733,13 @@ export default function LandingPage() {
             <span className="section-label inline-block mb-4">Integrations &amp; channels</span>
             <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">Plugs into your stack. Shows up on every channel.</h2>
             <p className="max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
-              A first-class GoHighLevel Marketplace app and Sponsored Partner — with native connections to the tools you run and the channels your customers actually use.
+              Built on GoHighLevel — our preferred platform — and connected to the tools you already run and the channels your customers actually use. We layer on top; we don&apos;t replace your stack.
             </p>
           </div>
 
-          {/* HighLevel Sponsored Partner banner */}
-          <a
-            href={MARKETPLACE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          {/* HighLevel: the platform we build on */}
+          <Link
+            href="/integrations"
             className="vox-card p-6 md:p-7 flex items-center gap-5 mb-10 transition-colors hover:border-[var(--accent-primary)]"
           >
             <div className="icon-box shrink-0" style={{ width: '3rem', height: '3rem' }}>
@@ -751,13 +747,13 @@ export default function LandingPage() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>GoHighLevel Sponsored Partner</h3>
-                <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>Marketplace app</span>
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Built on GoHighLevel</h3>
+                <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>Our preferred platform</span>
               </div>
-              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Install Xovera from the GoHighLevel Marketplace in one click — the agent reads and writes your CRM natively.</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>As a GoHighLevel partner, we build on HighLevel and bring it to you fully set up — no install or migration required.</p>
             </div>
-            <span className="ml-auto shrink-0 hidden sm:inline text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>Install →</span>
-          </a>
+            <span className="ml-auto shrink-0 hidden sm:inline text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>See integrations →</span>
+          </Link>
 
           {/* Integrations row */}
           <div className="mb-10">
@@ -800,7 +796,7 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { step: '01', title: 'Connect your CRM', desc: 'Install from the marketplace. Contacts, pipelines, and calendars sync automatically.' },
+              { step: '01', title: 'Connect your CRM', desc: 'Built on GoHighLevel, or connect HubSpot. Contacts, pipelines, and calendars sync automatically.' },
               { step: '02', title: 'Build your agent', desc: 'Persona, knowledge, qualifying questions, voice. Plain English only — no code.' },
               { step: '03', title: 'Swarm-test it', desc: 'Run one scenario against every personality type. Fix what breaks before a real customer sees it.' },
               { step: '04', title: 'Go live, let it learn', desc: 'Flip it on. It answers calls, texts, qualifies, books — and improves from every conversation.' },

@@ -4,6 +4,8 @@ import Script from 'next/script'
 import MarketingNav from '@/components/landing/MarketingNav'
 import MarketingFooter from '@/components/landing/MarketingFooter'
 import DemoModal from '@/components/landing/DemoModal'
+import LogoMarquee from '@/components/landing/LogoMarquee'
+import { GYM_SYSTEMS } from '@/lib/integrations-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
 
@@ -73,7 +75,7 @@ const STEPS: { n: string; title: string; body: string }[] = [
 ]
 
 const FAQS: { q: string; a: string }[] = [
-  { q: 'Does it work with my gym software / CRM?', a: 'Yes. Xovera installs from the GoHighLevel Marketplace and connects to HubSpot, and the agent reads and writes your CRM natively — leads, tours, and members all stay in sync.' },
+  { q: 'Does it work with my gym software?', a: 'Yes — and it doesn’t replace it. Keep Mindbody, ABC, Club Automation or whatever runs your gym; Xovera layers on top to handle lead acquisition and marketing. It’s built on GoHighLevel (our preferred platform) and also connects to HubSpot, so leads, tours, and members stay in sync. Don’t see your system? It’s quick for us to add.' },
   { q: 'What does it actually say to leads?', a: 'You set the script and guardrails. It answers questions about memberships, hours, and classes from your own info, qualifies the lead, and books a tour or free trial — it never invents pricing or promises you didn’t set.' },
   { q: 'Can it book tours and trials on my calendar?', a: 'Yes — it checks real-time availability and books during the conversation, with automatic confirmations and reminders to cut no-shows.' },
   { q: 'Does the voice sound like a robot?', a: 'No. It uses natural, human-sounding voices — most callers don’t realize they’re talking to an AI until you tell them.' },
@@ -178,6 +180,23 @@ fbq('track', 'PageView');`}
         </div>
       </section>
 
+      {/* ── Works alongside your gym software (positioning + marquee) ── */}
+      <section className="px-6 mb-20">
+        <div className="max-w-[1100px] mx-auto text-center mb-9">
+          <span className="section-label inline-block mb-3">Works with what you already run</span>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3" style={{ color: 'var(--text-primary)' }}>
+            We don&apos;t replace your gym software. We run your growth on top of it.
+          </h2>
+          <p className="max-w-2xl mx-auto text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
+            Keep Mindbody, ABC, Club Automation — whatever runs your floor. Xovera layers on top to take over lead acquisition and marketing: every inquiry answered, qualified, and booked. Built on GoHighLevel, our preferred platform, so you get enterprise-grade automation without running it yourself.
+          </p>
+        </div>
+        <LogoMarquee items={GYM_SYSTEMS} />
+        <p className="text-center text-sm mt-6" style={{ color: 'var(--text-tertiary)' }}>
+          Don&apos;t see your system? We&apos;ll build the integration — it&apos;s quick.
+        </p>
+      </section>
+
       {/* ── Three pillars ── */}
       <section className="px-6 mb-20">
         <div className="max-w-[1100px] mx-auto">
@@ -195,6 +214,53 @@ fbq('track', 'PageView');`}
                 <p className="text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>{p.body}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Run your own ads, or have us run them ── */}
+      <section className="px-6 mb-20">
+        <div className="max-w-[1000px] mx-auto">
+          <div className="text-center mb-9">
+            <span className="section-label inline-block mb-3">Your ads, your call</span>
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3" style={{ color: 'var(--text-primary)' }}>
+              Run the ads yourself — or hand us the keys
+            </h2>
+            <p className="max-w-2xl mx-auto text-[0.9375rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
+              Either way it&apos;s the same platform and the same agent working every lead. Start hands-on, upgrade to fully managed whenever you want.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="vox-card p-7">
+              <div className="section-label mb-2">Self-serve</div>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Launch your own ads</h3>
+              <p className="text-[0.9375rem] leading-[1.65] mb-5" style={{ color: 'var(--text-secondary)' }}>
+                Build and launch Meta &amp; Google campaigns right inside the platform. Every click that becomes a lead is instantly engaged and booked — and you see real cost-per-tour, not just cost-per-click.
+              </p>
+              <ul className="space-y-1.5">
+                {['Meta & Google in one place', 'Leads auto-engaged & booked', 'Cost-per-tour reporting'].map((d) => (
+                  <li key={d} className="flex items-center gap-2 text-[0.875rem]" style={{ color: 'var(--text-secondary)' }}>
+                    <span style={{ color: 'var(--accent-primary)' }}>✓</span> {d}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="vox-card p-7 relative overflow-hidden">
+              <span className="absolute top-5 right-5 text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}>Managed</span>
+              <div className="section-label mb-2">Done-for-you</div>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Have us run them for you</h3>
+              <p className="text-[0.9375rem] leading-[1.65] mb-5" style={{ color: 'var(--text-secondary)' }}>
+                Upgrade to our managed-ads service and our team plans, launches, and optimizes the campaigns for you — it all still lives in your platform, so you keep full visibility and own everything.
+              </p>
+              <ul className="space-y-1.5 mb-5">
+                {['We plan, launch & optimize', 'Creative & copy testing', 'You keep full visibility'].map((d) => (
+                  <li key={d} className="flex items-center gap-2 text-[0.875rem]" style={{ color: 'var(--text-secondary)' }}>
+                    <span style={{ color: 'var(--accent-primary)' }}>✓</span> {d}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/services" className="text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>See managed services →</Link>
+            </div>
           </div>
         </div>
       </section>
