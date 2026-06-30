@@ -25,7 +25,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = 'claude-haiku-4-5'
 const CHUNKS_PER_PASS = 60
 const MAX_PASSES = 4
 

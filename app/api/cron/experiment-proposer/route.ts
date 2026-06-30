@@ -119,7 +119,7 @@ ${snap.losses.map((l, i) => `[${i + 1}] Inbound: "${l.inbound.slice(0, 200)}"\n 
 Propose at most one experiment.`
 
   const res = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1500,
     system: SYSTEM_PROMPT,
     tools: [PROPOSER_TOOL],

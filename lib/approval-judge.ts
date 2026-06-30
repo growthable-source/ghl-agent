@@ -37,8 +37,8 @@ export interface JudgeOutput {
 }
 
 const MODEL_IDS: Record<'haiku' | 'sonnet', string> = {
-  haiku: 'claude-haiku-4-5-20251001',
-  sonnet: 'claude-sonnet-4-20250514',
+  haiku: 'claude-haiku-4-5',
+  sonnet: 'claude-sonnet-4-6',
 }
 
 const SYSTEM_PROMPT = `You are a safety reviewer for an AI agent's draft reply before it's sent to a real person via SMS, email, or chat.

@@ -18,7 +18,7 @@ import { applyLearning } from './platform-learning'
  */
 
 const client = new Anthropic()
-const REVIEWER_MODEL = 'claude-sonnet-4-20250514'
+const REVIEWER_MODEL = 'claude-sonnet-4-6'
 const VALID_SCOPES = new Set(['this_agent', 'workspace', 'all_agents'])
 
 const AUTO_REVIEW_SYSTEM_PREAMBLE = `You are an experienced conversational-AI engineer auditing a production AI sales/support agent. Below you'll see the agent's configuration and a SIMULATED conversation that was just run against it to generate training signal — a persona-Claude played a customer with a specific communication style, and the real agent (under test) responded.

@@ -13,7 +13,7 @@ const client = new Anthropic()
 // Same model the production agent uses, so the reviewer reasons with
 // the same "head" that wrote the replies. Diagnosing a behaviour is a
 // lot less useful if the auditor is a noticeably different model.
-const REVIEWER_MODEL = 'claude-sonnet-4-20250514'
+const REVIEWER_MODEL = 'claude-sonnet-4-6'
 
 /**
  * Meta-Claude review endpoint.

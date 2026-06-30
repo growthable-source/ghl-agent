@@ -33,7 +33,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 
 const VIDEO_MODEL = process.env.COPILOT_RECORDING_MODEL || 'gemini-2.5-flash'
-const DISTILL_MODEL = 'claude-haiku-4-5-20251001'
+const DISTILL_MODEL = 'claude-haiku-4-5'
 const FILE_ACTIVE_TIMEOUT_MS = 90_000
 
 const MEDIA_PROMPT = `You are analysing a recording of a human running an onboarding / support call where they guide a user through a software product, often sharing or directing the user's screen.

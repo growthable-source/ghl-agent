@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { db } from '@/lib/db'
+import { handleMarketingLead } from '@/lib/marketing-lead-handler'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -68,12 +69,18 @@ export async function POST(req: NextRequest) {
   const referrer = req.headers.get('referer')?.slice(0, 500) ?? null
 
   try {
+    const existing = await db.marketingLead.findUnique({ where: { email }, select: { id: true } }).catch(() => null)
     await db.marketingLead.upsert({
       where: { email },
       // Refresh the detail bag on repeat submit so the demo form's richer
       // fields win over an earlier bare-email newsletter signup.
       update: { utm: detailJson },
       create: { email, source, utm: detailJson, referrer, ipHash: clientIpHash(req) },
+    })
+    // Sync to the sales CRM + alert the team (only on first capture).
+    await handleMarketingLead({
+      email, name: lead.name, phone: lead.phone, company: lead.company,
+      monthlyLeads: lead.monthlyLeads, source, referrer, alert: !existing,
     })
     return NextResponse.json({ ok: true }, { headers: CORS })
   } catch (err) {

@@ -23,7 +23,7 @@ import { applyLearning } from './platform-learning'
  */
 
 const client = new Anthropic()
-const REVIEWER_MODEL = 'claude-sonnet-4-20250514'
+const REVIEWER_MODEL = 'claude-sonnet-4-6'
 
 const FEEDBACK_SYSTEM_PREAMBLE = `You are an experienced conversational-AI engineer. A user of a production AI agent just flagged one specific agent reply as wrong — they provided a narrative explaining why. Your job is to propose a SINGLE concrete prompt_addition that would prevent the agent from making the same mistake again.
 

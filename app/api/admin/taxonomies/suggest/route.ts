@@ -42,7 +42,7 @@ interface Suggestion {
   sampleChunks: Array<{ id: string; primaryTopic: string | null; preview: string }>
 }
 
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = 'claude-haiku-4-5'
 const MAX_CHUNKS = 60
 
 export async function POST(req: NextRequest) {

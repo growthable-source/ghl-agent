@@ -36,14 +36,14 @@ export const REGISTRY: Record<ResolvedKey, ResolvedModel> = {
   'claude-sonnet': {
     key: 'claude-sonnet',
     provider: 'anthropic',
-    vendorModelId: process.env.CLAUDE_AGENT_MODEL || 'claude-sonnet-4-20250514',
+    vendorModelId: process.env.CLAUDE_AGENT_MODEL || 'claude-sonnet-4-6',
     apiKeyEnv: 'ANTHROPIC_API_KEY',
     capabilities: { vision: true, mcpServers: true, toolReliability: 'high' },
   },
   'claude-haiku': {
     key: 'claude-haiku',
     provider: 'anthropic',
-    vendorModelId: process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
+    vendorModelId: process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5',
     apiKeyEnv: 'ANTHROPIC_API_KEY',
     capabilities: { vision: true, mcpServers: true, toolReliability: 'medium' },
   },

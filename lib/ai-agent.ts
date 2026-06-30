@@ -875,7 +875,7 @@ export async function runAgent(opts: {
     const volatileSystem = conversationGapBlock + promptParts.volatile
 
     const createParams: any = {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       system: [
         { type: 'text', text: stableSystem, cache_control: { type: 'ephemeral' } },

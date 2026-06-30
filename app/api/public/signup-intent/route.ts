@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { SIGNUP_INTENT_COOKIE, SIGNUP_INTENT_TTL_SECS, signSignupIntent, type CrmChoice } from '@/lib/signup-intent'
+import { handleMarketingLead } from '@/lib/marketing-lead-handler'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -46,12 +47,15 @@ export async function POST(req: NextRequest) {
 
   // Persist the lead (best-effort — never block signup if the table lags).
   try {
+    const existing = await db.marketingLead.findUnique({ where: { email }, select: { id: true } }).catch(() => null)
     const detail = { lead: { name, company }, signupCrmChoice: crm, intent: 'signup' }
     await db.marketingLead.upsert({
       where: { email },
       update: { utm: detail, source: 'signup' },
       create: { email, source: 'signup', utm: detail, referrer: req.headers.get('referer')?.slice(0, 500) ?? null, ipHash: ipHash(req) },
     })
+    // Sync to the sales CRM + alert the team (only on first capture).
+    await handleMarketingLead({ email, name, company, source: 'signup', crmChoice: crm, referrer: req.headers.get('referer'), alert: !existing })
   } catch (err) {
     console.error('[signup-intent] lead save failed (non-fatal):', err instanceof Error ? err.message : err)
   }

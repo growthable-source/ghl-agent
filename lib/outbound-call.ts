@@ -124,7 +124,7 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
     name: agent.name,
     model: {
       provider: 'anthropic',
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       messages: [{ role: 'system', content: systemPrompt }],
       tools: voiceFunctionTools,
     },

@@ -26,7 +26,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { getTicketingStatus } from '@/lib/ticketing-access'
 
-const ANALYSIS_MODEL = 'claude-haiku-4-5-20251001'
+const ANALYSIS_MODEL = 'claude-haiku-4-5'
 const MAX_TRANSCRIPT_CHARS = 24_000
 
 export interface SessionAnalysis {

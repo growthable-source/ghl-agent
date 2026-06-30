@@ -15,7 +15,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db'
 
 const client = new Anthropic()
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = 'claude-haiku-4-5'
 
 const SUMMARY_SYSTEM =
   'Summarise this live-chat transcript for an operator scanning the inbox. ' +

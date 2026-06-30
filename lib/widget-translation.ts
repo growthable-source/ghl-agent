@@ -22,7 +22,7 @@ import { db } from './db'
 import { broadcast } from './widget-sse'
 
 const client = new Anthropic()
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = 'claude-haiku-4-5'
 
 // ISO 639-1 codes we accept back from the model. We constrain the
 // output to a known set so a creative Haiku can't slip "Klingon" or

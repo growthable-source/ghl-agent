@@ -185,7 +185,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const res = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: WIZARD_SYSTEM_PROMPT + kindGuidance,
       tools: [proposeTool],

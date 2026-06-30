@@ -19,7 +19,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic()
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = 'claude-haiku-4-5'
 const MAX_TOKENS = 200
 
 export interface TaxonomyRow {

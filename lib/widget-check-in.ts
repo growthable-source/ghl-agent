@@ -27,7 +27,7 @@ import { broadcast } from './widget-sse'
 const client = new Anthropic()
 
 // Keep the model fast + cheap — this is a one-line nudge, not a reasoning task.
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = 'claude-haiku-4-5'
 
 // Heuristic keywords that suggest the agent already nudged. Avoids
 // stacking "still there?" messages if the cron mis-fires across runs.
