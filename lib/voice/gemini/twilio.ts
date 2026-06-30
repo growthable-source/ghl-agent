@@ -103,6 +103,47 @@ export async function purchaseNumber(opts: {
   }
 }
 
+/** True when account creds + an outbound voice "From" number are configured. */
+export function isOutboundVoiceConfigured(): boolean {
+  return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VOICE_FROM_NUMBER)
+}
+
+/** Send an SMS (used for the demo OTP). Returns the message SID. */
+export async function sendSms(opts: { to: string; body: string; from?: string }): Promise<string> {
+  const { sid } = creds()
+  const from = opts.from ?? process.env.TWILIO_SMS_FROM_NUMBER ?? process.env.TWILIO_VOICE_FROM_NUMBER
+  if (!from) throw new TwilioError(500, '', 'No Twilio sending number configured.')
+  const form = new URLSearchParams({ To: opts.to, From: from, Body: opts.body })
+  const m = await twilioFetch(`/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  })
+  return m.sid
+}
+
+/** Place an outbound call that fetches TwiML from `answerUrl` on answer. Returns the call SID. */
+export async function placeCall(opts: { to: string; answerUrl: string; from?: string }): Promise<string> {
+  const { sid } = creds()
+  const from = opts.from ?? process.env.TWILIO_VOICE_FROM_NUMBER
+  if (!from) throw new TwilioError(500, '', 'No Twilio voice number configured.')
+  const form = new URLSearchParams({
+    To: opts.to,
+    From: from,
+    Url: opts.answerUrl,
+    Method: 'POST',
+    // Stop ringing a number that doesn't pick up promptly.
+    Timeout: '20',
+    MachineDetection: 'Enable',
+  })
+  const c = await twilioFetch(`/Accounts/${sid}/Calls.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  })
+  return c.sid
+}
+
 /** List numbers already owned on this Twilio account. */
 export async function listOwnedNumbers(): Promise<OwnedNumber[]> {
   const { sid } = creds()

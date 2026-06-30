@@ -6,6 +6,8 @@ import MarketingFooter from '@/components/landing/MarketingFooter'
 import DemoModal from '@/components/landing/DemoModal'
 import LogoMarquee from '@/components/landing/LogoMarquee'
 import InlineLeadForm from '@/components/landing/InlineLeadForm'
+import VoiceSampleButton from '@/components/landing/VoiceSampleButton'
+import VoiceCallTest from '@/components/landing/VoiceCallTest'
 import { GYM_SYSTEMS } from '@/lib/integrations-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
@@ -314,6 +316,50 @@ fbq('track', 'PageView');`}
                 ))}
               </ul>
               <Link href="/services" className="text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>See managed services →</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Voice AI section (dark, animated phone) ── */}
+      <section className="relative overflow-hidden mb-20 py-20 px-6" style={{ background: '#070708' }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 25% 25%, rgba(232,68,37,0.22), transparent 55%)' }} />
+        <div className="relative z-10 max-w-[1140px] mx-auto grid lg:grid-cols-2 gap-12 items-center">
+          {/* Copy + CTAs */}
+          <div>
+            <div className="section-label mb-3" style={{ color: '#ff7a52' }}>Voice AI receptionist</div>
+            <h2 className="text-3xl md:text-[2.5rem] font-extrabold tracking-tight leading-[1.08] mb-4" style={{ color: '#ffffff' }}>
+              Never miss another call — <span className="text-gradient">even at 11pm</span>.
+            </h2>
+            <p className="text-[1.0625rem] leading-[1.6] mb-6" style={{ color: 'rgba(255,255,255,0.78)' }}>
+              A natural-sounding AI answers every call the second it rings — day, night, weekends. It knows your memberships, classes and hours, routes the call to the right instructor or salesperson, and books the lead in. No voicemail, no missed members.
+            </p>
+            <ul className="space-y-2.5 mb-8">
+              {['Answers 24/7 in a real, human-sounding voice', 'Routes to the right person — or handles it end-to-end', 'Books trials & tours, then follows up by text'].map((t) => (
+                <li key={t} className="flex items-center gap-2.5 text-[0.9375rem]" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold shrink-0" style={{ background: 'rgba(232,68,37,0.9)', color: '#fff' }}>✓</span>
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap items-center gap-3">
+              <VoiceSampleButton />
+              <VoiceCallTest />
+            </div>
+          </div>
+
+          {/* Animated phone screen */}
+          <div className="relative mx-auto w-full max-w-[460px]">
+            <div className="absolute -inset-6 rounded-[2.5rem] pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 35%, rgba(232,68,37,0.28), transparent 70%)' }} />
+            <div className="relative w-full overflow-hidden rounded-2xl" style={{ aspectRatio: '700 / 745', border: '1px solid rgba(255,255,255,0.10)', boxShadow: '0 30px 80px -20px rgba(0,0,0,0.7)' }}>
+              <iframe
+                src="/voice-ai-never-miss.html"
+                title="Xovera voice AI answering an after-hours gym call"
+                loading="lazy"
+                scrolling="no"
+                className="absolute top-0"
+                style={{ left: '-35.7%', width: '171.4%', aspectRatio: '1200 / 800', border: 0 }}
+              />
             </div>
           </div>
         </div>

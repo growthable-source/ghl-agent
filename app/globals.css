@@ -439,6 +439,19 @@ body {
   .marquee-track { animation: none; }
 }
 
+/* Equalizer bars for the voice-sample button */
+@keyframes eqBounce {
+  0%, 100% { height: 0.35rem; }
+  50%      { height: 1rem; }
+}
+.eq-bar {
+  height: 0.35rem;
+  animation: eqBounce 0.9s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eq-bar { animation: none; height: 0.7rem; }
+}
+
 /* Slide-out drawer (demo video) + backdrop fade */
 @keyframes voxSlideInRight {
   from { transform: translateX(100%); }
