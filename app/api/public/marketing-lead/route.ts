@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { db } from '@/lib/db'
+import { handleMarketingLead } from '@/lib/marketing-lead-handler'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -61,6 +62,8 @@ export async function POST(req: NextRequest) {
       update: {},
       create: { email, source, utm: utm ?? undefined, referrer, ipHash: clientIpHash(req) },
     })
+    // Newsletter is a soft lead — sync to the sales CRM, but no team alert.
+    await handleMarketingLead({ email, source, referrer, alert: false })
     return NextResponse.json({ ok: true }, { headers: CORS })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
