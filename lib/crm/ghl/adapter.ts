@@ -553,11 +553,30 @@ export class GhlAdapter implements CrmAdapter {
 
   async sendMessage(payload: SendMessagePayload): Promise<{ messageId: string; conversationId: string }> {
     console.log(`[GHL] sendMessage type=${payload.type} contact=${payload.contactId} provId=${payload.conversationProviderId ?? 'none'}`)
-    return this.apiFetch('/conversations/messages', {
-      method: 'POST',
-      headers: { 'Version': '2021-04-15' },
-      body: JSON.stringify(payload),
-    })
+    // GHL eventual consistency: a just-created contact (e.g. from a Facebook
+    // lead-form inbound) is sometimes referenced by the conversation webhook
+    // before it's queryable, so the send 400s with
+    // CONVERSATIONS_CONTACT_NOT_FOUND even though the id is valid and the
+    // contact lands moments later. Ride out the replication lag with a short
+    // bounded backoff, scoped to ONLY that error so real failures (and normal
+    // sends) aren't delayed. If it's still missing after the window, throw —
+    // the caller surfaces it / the out-of-band retry can pick it up.
+    const CONTACT_RACE_BACKOFF_MS = [1500, 3000, 5000]
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.apiFetch<{ messageId: string; conversationId: string }>('/conversations/messages', {
+          method: 'POST',
+          headers: { 'Version': '2021-04-15' },
+          body: JSON.stringify(payload),
+        })
+      } catch (err) {
+        const isContactRace = /CONTACT_NOT_FOUND/i.test((err as Error)?.message ?? '')
+        if (!isContactRace || attempt >= CONTACT_RACE_BACKOFF_MS.length) throw err
+        const delay = CONTACT_RACE_BACKOFF_MS[attempt]
+        console.warn(`[GHL] contact ${payload.contactId} not found yet (replication lag) — retry ${attempt + 1}/${CONTACT_RACE_BACKOFF_MS.length} in ${delay}ms`)
+        await new Promise(r => setTimeout(r, delay))
+      }
+    }
   }
 
   /**
