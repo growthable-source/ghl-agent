@@ -53,6 +53,8 @@ async function syncToSalesGhl(e: MarketingLeadEvent): Promise<void> {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, Version: GHL_VERSION, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
+    // Bound it — this runs in the form's request path; a slow CRM must not hang the submit.
+    signal: AbortSignal.timeout(5000),
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
@@ -99,6 +101,7 @@ async function slackAlert(e: MarketingLeadEvent): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
+    signal: AbortSignal.timeout(5000),
   })
 }
 
