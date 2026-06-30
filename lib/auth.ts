@@ -1,6 +1,5 @@
 import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
-import GitHub from 'next-auth/providers/github'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import { db } from '@/lib/db'
 
@@ -46,18 +45,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Safe to auto-link here: Google ALWAYS delivers a verified email
       // address on the ID token, so "email exists in our DB" from a
       // Google-verified sign-in can only be the same human who owned
-      // that email originally. Without this flag, a user who first
-      // signed up via GitHub can't later sign in via Google (or vice
-      // versa) even though they're the same person — they hit the
+      // that email originally — without this flag they'd hit the
       // OAuthAccountNotLinked error and get stuck.
-      allowDangerousEmailAccountLinking: true,
-    })] : []),
-    ...(process.env.GITHUB_CLIENT_ID ? [GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      // GitHub verifies the primary email before returning it via the
-      // user:email scope. Same reasoning as Google above — safe to
-      // auto-link.
       allowDangerousEmailAccountLinking: true,
     })] : []),
   ],
