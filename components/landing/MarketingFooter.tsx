@@ -31,7 +31,25 @@ function FooterLink({ href, children, external }: { href: string; children: Reac
   )
 }
 
-export default function MarketingFooter() {
+export default function MarketingFooter({ minimal = false }: { minimal?: boolean }) {
+  // Minimal footer for focused landers (e.g. paid-traffic niche pages): no
+  // link columns or newsletter that would funnel visitors off the page —
+  // just brand + the legally-required links.
+  if (minimal) {
+    return (
+      <footer className="border-t mt-24 py-8 px-6" style={{ borderColor: 'var(--border)' }}>
+        <div className="max-w-[1280px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <XoveraLogo height={16} />
+          <div className="flex items-center gap-5">
+            <Link href="/privacy" className="transition-colors hover:text-[var(--text-primary)]">Privacy</Link>
+            <Link href="/terms" className="transition-colors hover:text-[var(--text-primary)]">Terms</Link>
+            <span>© Xovera</span>
+          </div>
+        </div>
+      </footer>
+    )
+  }
+
   return (
     <footer className="border-t mt-24 py-10 px-6" style={{ borderColor: 'var(--border)' }}>
       <div className="max-w-[1280px] mx-auto">

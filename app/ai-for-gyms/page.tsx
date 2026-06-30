@@ -106,7 +106,7 @@ fbq('track', 'PageView');`}
         <img height="1" width="1" style={{ display: 'none' }} alt="" src={`https://www.facebook.com/tr?id=${PIXEL_ID}&ev=PageView&noscript=1`} />
       </noscript>
 
-      <MarketingNav />
+      <MarketingNav links={[]} showAnnouncement={false} logoHref="/ai-for-gyms" />
 
       {/* ── Hero — full-bleed background video with overlaid copy ── */}
       <section className="relative flex items-center justify-center overflow-hidden min-h-[clamp(560px,86vh,820px)] px-6 py-20">
@@ -315,7 +315,7 @@ fbq('track', 'PageView');`}
                   </li>
                 ))}
               </ul>
-              <Link href="/services" className="text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>See managed services →</Link>
+              <DemoModal {...DEMO_COPY} variant="link" triggerLabel="Ask us about managed ads →" source="gyms_managed_ads" />
             </div>
           </div>
         </div>
@@ -344,7 +344,7 @@ fbq('track', 'PageView');`}
             </ul>
             <div className="flex flex-wrap items-center gap-3">
               <VoiceSampleButton />
-              <VoiceCallTest />
+              <VoiceCallTest fallbackHref="#book" fallbackLabel="Book your demo instead" />
             </div>
           </div>
 
@@ -385,7 +385,7 @@ fbq('track', 'PageView');`}
       </section>
 
       {/* ── Dark band: inline lead-capture form ── */}
-      <section className="relative overflow-hidden mb-20 py-20 px-6" style={{ background: 'linear-gradient(150deg, #1a0f12 0%, #20131b 45%, #0e1120 100%)' }}>
+      <section id="book" className="relative overflow-hidden mb-20 py-20 px-6 scroll-mt-20" style={{ background: 'linear-gradient(150deg, #1a0f12 0%, #20131b 45%, #0e1120 100%)' }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 20% 25%, rgba(232,68,37,0.30), transparent 55%)' }} />
         <div className="relative z-10 max-w-[1080px] mx-auto grid lg:grid-cols-2 gap-12 items-center">
           {/* Copy */}
@@ -429,7 +429,7 @@ fbq('track', 'PageView');`}
         </div>
       </section>
 
-      <MarketingFooter />
+      <MarketingFooter minimal />
 
       <script
         type="application/ld+json"

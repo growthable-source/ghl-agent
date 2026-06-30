@@ -10,7 +10,13 @@ import { useState, type FormEvent } from 'react'
  */
 type Step = 'idle' | 'form' | 'code' | 'calling' | 'unavailable'
 
-export default function VoiceCallTest() {
+export default function VoiceCallTest({
+  fallbackHref = '/services',
+  fallbackLabel = 'Book a demo instead',
+}: {
+  fallbackHref?: string
+  fallbackLabel?: string
+} = {}) {
   const [step, setStep] = useState<Step>('idle')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -105,7 +111,7 @@ export default function VoiceCallTest() {
         <div className="text-center py-2">
           <h3 className="text-lg font-bold mb-1" style={{ color: '#fff' }}>Almost there</h3>
           <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.7)' }}>Our live call demo is rolling out shortly. Book a demo and we&apos;ll show you the voice AI answering a real lead.</p>
-          <a href="/services" className="btn-primary inline-block">Book a demo instead</a>
+          <a href={fallbackHref} className="btn-primary inline-block">{fallbackLabel}</a>
         </div>
       )}
     </div>

@@ -18,13 +18,23 @@ const DEFAULT_LINKS: NavLink[] = [
   { href: '/blog', label: 'Blog' },
 ]
 
-export default function MarketingNav({ links = DEFAULT_LINKS }: { links?: NavLink[] }) {
+export default function MarketingNav({
+  links = DEFAULT_LINKS,
+  showAnnouncement = true,
+  logoHref = '/',
+}: {
+  links?: NavLink[]
+  /** Hide the site-wide promo bar (e.g. on a focused paid-traffic lander). */
+  showAnnouncement?: boolean
+  /** Where the logo links — point at the lander itself to keep the funnel self-contained. */
+  logoHref?: string
+}) {
   return (
     <>
-      <AnnouncementBar />
+      {showAnnouncement && <AnnouncementBar />}
       <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(248,247,244,0.85)', borderColor: 'var(--border)' }}>
         <div className="max-w-[1280px] mx-auto flex items-center justify-between px-6 h-16">
-          <Link href="/" className="flex items-center">
+          <Link href={logoHref} className="flex items-center">
             <XoveraLogo height={28} />
           </Link>
           <div className="hidden md:flex items-center gap-7">
