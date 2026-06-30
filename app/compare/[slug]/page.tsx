@@ -166,7 +166,7 @@ export default async function ComparePage({ params }: Params) {
           <p className="mb-6 max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
             Run your 2–3 hardest real customer scenarios through both platforms. The honest test beats any comparison page.
           </p>
-          <Link href="/login?mode=signup" className="btn-primary">
+          <Link href="/start" className="btn-primary">
             Start building free →
           </Link>
         </section>

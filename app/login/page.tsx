@@ -73,7 +73,7 @@ function LoginForm() {
             </>
           ) : (
             <>Don&apos;t have an account?{' '}
-              <Link href="/login?mode=signup" className="hover:underline" style={{ color: 'var(--text-primary)' }}>Sign up</Link>
+              <Link href="/start" className="hover:underline" style={{ color: 'var(--text-primary)' }}>Sign up</Link>
             </>
           )}
         </p>

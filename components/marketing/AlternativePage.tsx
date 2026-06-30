@@ -65,7 +65,7 @@ export default function AlternativePage({ data }: { data: Alternative }) {
           </h1>
           <p className="text-lg leading-[1.6] max-w-3xl" style={{ color: 'var(--text-secondary)' }}>{data.hook}</p>
           <div className="flex flex-col sm:flex-row gap-3 mt-7">
-            <Link href="/login?mode=signup" className="btn-primary">Start building free</Link>
+            <Link href="/start" className="btn-primary">Start building free</Link>
             <Link href="/#copilot" className="btn-secondary">See the live demo</Link>
           </div>
           <div className="text-xs font-mono mt-4" style={{ color: 'var(--text-tertiary)' }}>Updated {data.updatedAt}</div>
@@ -138,7 +138,7 @@ export default function AlternativePage({ data }: { data: Alternative }) {
         <section className="vox-card p-8 md:p-12 text-center">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">See why teams switch to Xovera.</h2>
           <p className="mb-6 text-[0.9375rem] max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>Build your first AI agent in under 5 minutes. Free while in beta.</p>
-          <Link href="/login?mode=signup" className="btn-primary">Start building free</Link>
+          <Link href="/start" className="btn-primary">Start building free</Link>
         </section>
       </article>
 

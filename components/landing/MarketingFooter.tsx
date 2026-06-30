@@ -67,7 +67,7 @@ export default function MarketingFooter({ minimal = false }: { minimal?: boolean
             <FooterLink href="/#copilot">Co-Pilot</FooterLink>
             <FooterLink href="/integrations">Integrations</FooterLink>
             <FooterLink href="/services">Services</FooterLink>
-            <FooterLink href="/login?mode=signup">Get started</FooterLink>
+            <FooterLink href="/start">Get started</FooterLink>
           </Col>
           <Col title="Solutions">
             <FooterLink href="/ai-customer-service">AI customer service</FooterLink>

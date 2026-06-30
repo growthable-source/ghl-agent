@@ -57,7 +57,7 @@ const STEP_LABELS = ['Workspace', 'Profile', 'Channels', 'Team', 'Get Started']
 // pointless — that step is dropped and the indicator collapses to 4.
 const STEP_LABELS_WORKSPACE_EXISTS = ['Profile', 'Channels', 'Team', 'Get Started']
 
-type CrmChoice = 'ghl' | 'none' | 'other' | null
+type CrmChoice = 'ghl' | 'hubspot' | 'none' | 'other' | null
 
 type ChannelChoice = 'instagram' | 'facebook' | 'sms' | 'whatsapp' | 'webchat' | 'email'
 
@@ -115,6 +115,10 @@ interface Props {
   // Drives the post-onboarding landing: marketplace installs go
   // straight to the agent wizard (CRM is implicit, no point asking).
   existingInstallSource?: string
+  // Pre-signup intent captured on /start (before Google). When present we
+  // pre-fill the workspace/company name + CRM choice instead of re-asking.
+  signupCrm?: 'ghl' | 'hubspot' | 'native'
+  signupCompany?: string
 }
 
 export default function UserOnboardingModal({
@@ -122,6 +126,8 @@ export default function UserOnboardingModal({
   userName,
   existingWorkspaceId,
   existingInstallSource,
+  signupCrm,
+  signupCompany,
 }: Props) {
   const router = useRouter()
   // Skip step 0 (workspace name + icon) when we already have a
@@ -142,13 +148,13 @@ export default function UserOnboardingModal({
     return generateRandomName()
   }, [emailDomain])
 
-  // Step 0 — Workspace
-  const [workspaceName, setWorkspaceName] = useState(defaultName)
+  // Step 0 — Workspace (pre-fill business name from the /start intent)
+  const [workspaceName, setWorkspaceName] = useState(() => signupCompany || defaultName)
   const [workspaceIcon, setWorkspaceIcon] = useState(randomIcon)
   const [showIconPicker, setShowIconPicker] = useState(false)
 
   // Step 1 — Profile
-  const [companyName, setCompanyName] = useState('')
+  const [companyName, setCompanyName] = useState(signupCompany ?? '')
   const [companySize, setCompanySize] = useState('')
   const [role, setRole] = useState('')
 
@@ -160,7 +166,9 @@ export default function UserOnboardingModal({
   const [channels, setChannels] = useState<Set<ChannelChoice>>(
     () => new Set<ChannelChoice>(['instagram', 'facebook'])
   )
-  const [crmChoice, setCrmChoice] = useState<CrmChoice>('none')
+  const [crmChoice, setCrmChoice] = useState<CrmChoice>(
+    signupCrm === 'ghl' ? 'ghl' : signupCrm === 'hubspot' ? 'hubspot' : 'none',
+  )
 
   function toggleChannel(id: ChannelChoice) {
     setChannels(prev => {
@@ -255,7 +263,7 @@ export default function UserOnboardingModal({
       if (isMarketplaceInstall) {
         next = `/dashboard/${workspaceId}/agents/new`
       } else {
-        const wantsCrm = crmChoice === 'ghl' || crmChoice === 'other'
+        const wantsCrm = crmChoice === 'ghl' || crmChoice === 'hubspot' || crmChoice === 'other'
         const hasChannelSelection = channels.size > 0
         next = wantsCrm
           ? `/dashboard/${workspaceId}/integrations`
@@ -575,9 +583,10 @@ export default function UserOnboardingModal({
                 </label>
                 <div className="space-y-1.5">
                   {([
-                    { value: 'none' as const, title: 'No, I just want the inbox', helper: 'Recommended for most small businesses' },
-                    { value: 'ghl' as const,  title: 'Yes — LeadConnector' },
-                    { value: 'other' as const, title: "Yes — something else (we'll ask later)" },
+                    { value: 'none' as const, title: 'No CRM — use Xovera’s', helper: 'Recommended for most small businesses' },
+                    { value: 'ghl' as const,  title: 'GoHighLevel' },
+                    { value: 'hubspot' as const, title: 'HubSpot' },
+                    { value: 'other' as const, title: "Something else (we'll ask later)" },
                   ]).map(opt => {
                     const selected = crmChoice === opt.value
                     return (

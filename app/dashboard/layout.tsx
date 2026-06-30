@@ -1,9 +1,11 @@
+import { cookies } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar'
 import Breadcrumbs from '@/components/dashboard/Breadcrumbs'
 import UserOnboardingModal from '@/components/dashboard/UserOnboardingModal'
 import { EmbeddedProvider } from '@/lib/embedded-context'
+import { SIGNUP_INTENT_COOKIE, readSignupIntent } from '@/lib/signup-intent'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -51,6 +53,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
   }
 
+  // Pre-signup intent (from /start): the visitor already told us their CRM +
+  // business name before Google. Pass it in so onboarding pre-fills instead
+  // of asking again.
+  const signupIntent = needsOnboarding
+    ? readSignupIntent((await cookies()).get(SIGNUP_INTENT_COOKIE)?.value)
+    : null
+
   return (
     <EmbeddedProvider>
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
@@ -75,6 +84,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           userName={session!.user.name ?? undefined}
           existingWorkspaceId={existingWorkspaceId ?? undefined}
           existingInstallSource={existingInstallSource ?? undefined}
+          signupCrm={signupIntent?.crm ?? undefined}
+          signupCompany={signupIntent?.company ?? undefined}
         />
       )}
     </div>

@@ -103,7 +103,7 @@ export default function ServicesPage() {
           <div className="mt-8 flex flex-col items-center gap-3">
             <div className="flex flex-col sm:flex-row items-center gap-3">
               <DemoModal {...DEMO_COPY} triggerLabel="Book a strategy call" source="services_hero" />
-              <Link href="/login?mode=signup" className="btn-secondary">Or use the software yourself</Link>
+              <Link href="/start" className="btn-secondary">Or use the software yourself</Link>
             </div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Built on GoHighLevel · Official partner &amp; reseller</p>
           </div>

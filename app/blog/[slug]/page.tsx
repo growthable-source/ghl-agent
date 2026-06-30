@@ -171,7 +171,7 @@ export default async function BlogPostPage({ params }: Params) {
         <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
           Build your first AI agent in under 5 minutes. Free while in beta.
         </p>
-        <Link href="/login?mode=signup" className="btn-primary">
+        <Link href="/start" className="btn-primary">
           Start building free →
         </Link>
       </section>

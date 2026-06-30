@@ -96,7 +96,7 @@ export default function DemoVideoDrawer({
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 mt-6">
-                <a href="/login?mode=signup" className="btn-primary">Start building free</a>
+                <a href="/start" className="btn-primary">Start building free</a>
                 <a href="#copilot" onClick={() => setOpen(false)} className="btn-secondary">Try the live Co-Pilot demo</a>
               </div>
             </div>

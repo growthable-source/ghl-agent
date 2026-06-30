@@ -117,7 +117,7 @@ fbq('track', 'PageView');`}
           <div className="mt-8 flex flex-col items-center gap-3">
             <div className="flex flex-col sm:flex-row items-center gap-3">
               <DemoModal {...DEMO_COPY} triggerLabel="Book a demo" source="medspa_hero" />
-              <Link href="/login?mode=signup" className="btn-secondary">Start free</Link>
+              <Link href="/start" className="btn-secondary">Start free</Link>
             </div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
               Built for clinics across the US &amp; Canada. Free while in beta — no card required.
@@ -195,7 +195,7 @@ fbq('track', 'PageView');`}
           </p>
           <div className="flex flex-col items-center gap-3">
             <DemoModal {...DEMO_COPY} triggerLabel="Book your demo" source="medspa_cta" />
-            <Link href="/login?mode=signup" className="text-sm underline" style={{ color: 'var(--accent-primary)' }}>
+            <Link href="/start" className="text-sm underline" style={{ color: 'var(--accent-primary)' }}>
               or start building free →
             </Link>
           </div>

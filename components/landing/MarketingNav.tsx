@@ -48,7 +48,7 @@ export default function MarketingNav({
             <Link href="/login" className="text-sm font-medium transition-colors hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>
               Log in
             </Link>
-            <Link href="/login?mode=signup" className="btn-primary text-sm py-2 px-5">
+            <Link href="/start" className="btn-primary text-sm py-2 px-5">
               Get started
             </Link>
           </div>

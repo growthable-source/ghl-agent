@@ -47,7 +47,7 @@ export default function SolutionPage({ data }: { data: Solution }) {
           </h1>
           <p className="text-lg leading-[1.6] max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>{data.hook}</p>
           <div className="flex flex-col sm:flex-row gap-3 mt-8 justify-center">
-            <Link href="/login?mode=signup" className="btn-primary">Start building free</Link>
+            <Link href="/start" className="btn-primary">Start building free</Link>
             <Link href="/#copilot" className="btn-secondary">See the live demo</Link>
           </div>
         </div>
@@ -108,7 +108,7 @@ export default function SolutionPage({ data }: { data: Solution }) {
         <div className="max-w-[760px] mx-auto vox-card p-8 md:p-12 text-center">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">Ready to see it work?</h2>
           <p className="mb-6 text-[0.9375rem] max-w-xl mx-auto" style={{ color: 'var(--text-secondary)' }}>Build your first AI agent in under 5 minutes. Free while in beta.</p>
-          <Link href="/login?mode=signup" className="btn-primary">Start building free</Link>
+          <Link href="/start" className="btn-primary">Start building free</Link>
         </div>
       </section>
 

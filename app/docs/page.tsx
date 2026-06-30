@@ -217,7 +217,7 @@ export default function DocsPage() {
         <div className="relative z-10 max-w-2xl mx-auto text-center">
           <h2 className="text-2xl font-bold mb-4">Ready to get started?</h2>
           <p className="mb-8" style={{ color: 'var(--text-secondary)' }}>Build your first AI agent in under 5 minutes. Free while in beta.</p>
-          <Link href="/login?mode=signup" className="btn-primary text-base py-3 px-8">
+          <Link href="/start" className="btn-primary text-base py-3 px-8">
             Create your account
           </Link>
         </div>

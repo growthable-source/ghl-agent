@@ -55,7 +55,7 @@ export default function IntegrationsPage() {
         <LogoMarquee items={GYM_SYSTEMS} />
         <p className="text-center text-sm mt-6" style={{ color: 'var(--text-tertiary)' }}>
           Don&apos;t see your system?{' '}
-          <Link href="/login?mode=signup" className="underline" style={{ color: 'var(--accent-primary)' }}>Tell us and we&apos;ll add it →</Link>
+          <Link href="/start" className="underline" style={{ color: 'var(--accent-primary)' }}>Tell us and we&apos;ll add it →</Link>
         </p>
       </section>
 
@@ -80,7 +80,7 @@ export default function IntegrationsPage() {
                 As a GoHighLevel partner, we build Xovera on HighLevel and bring it to you fully set up — you don&apos;t have to install it, learn it, or move your gym onto it. It powers the marketing layer; your gym software keeps running your gym. Prefer HubSpot? That works too.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <Link href="/login?mode=signup" className="btn-primary">Start free</Link>
+                <Link href="/start" className="btn-primary">Start free</Link>
                 <Link href="/services" className="btn-secondary">Or have us run it for you →</Link>
               </div>
             </div>
@@ -121,7 +121,7 @@ export default function IntegrationsPage() {
           </div>
           <p className="text-center text-sm mt-8" style={{ color: 'var(--text-tertiary)' }}>
             …and thousands more via Zapier. Need a specific integration?{' '}
-            <Link href="/login?mode=signup" className="underline" style={{ color: 'var(--accent-primary)' }}>Ask us →</Link>
+            <Link href="/start" className="underline" style={{ color: 'var(--accent-primary)' }}>Ask us →</Link>
           </p>
         </div>
       </section>
@@ -155,7 +155,7 @@ export default function IntegrationsPage() {
             Link your tools and your agent is live across every channel — sitting on top of the gym software you already run. No developer required.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href="/login?mode=signup" className="btn-primary">Start building free</Link>
+            <Link href="/start" className="btn-primary">Start building free</Link>
             <Link href="/services" className="btn-secondary">Or have us set it up →</Link>
           </div>
         </div>

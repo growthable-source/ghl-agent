@@ -293,7 +293,7 @@ export default function LandingPage() {
               Your team shouldn&apos;t be answering the same questions at 11pm. Xovera runs AI agents that handle inbound calls, texts, and chats end-to-end — qualifying every lead, booking demos mid-conversation, and getting measurably smarter from every interaction. Plugs into your existing tools in one click. Live in five minutes.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-4">
-              <Link href="/login?mode=signup" className="btn-primary">
+              <Link href="/start" className="btn-primary">
                 Start building free
                 <ArrowIcon />
               </Link>
@@ -529,7 +529,7 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
-              <Link href="/login?mode=signup" className="btn-primary">
+              <Link href="/start" className="btn-primary">
                 Try a swarm
                 <ArrowIcon />
               </Link>
@@ -879,7 +879,7 @@ export default function LandingPage() {
         <div className="relative z-10 max-w-3xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-4">Ready to stop missing calls?</h2>
           <p className="mb-8 text-[0.9375rem]" style={{ color: 'var(--text-secondary)' }}>Build your first AI agent in under 5 minutes. Free while in beta.</p>
-          <Link href="/login?mode=signup" className="btn-primary">
+          <Link href="/start" className="btn-primary">
             Start building free
             <ArrowIcon />
           </Link>
@@ -985,7 +985,7 @@ export default function LandingPage() {
           <p className="mb-10 text-[1.0625rem] leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>
             Build your first AI agent in under 5 minutes. Free while in beta.
           </p>
-          <Link href="/login?mode=signup" className="btn-primary text-base py-3 px-8">
+          <Link href="/start" className="btn-primary text-base py-3 px-8">
             Get started free
             <ArrowIcon />
           </Link>
