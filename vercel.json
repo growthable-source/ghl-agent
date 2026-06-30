@@ -48,10 +48,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/sync-ad-metrics",
-      "schedule": "30 4 * * *"
-    },
-    {
       "path": "/api/cron/cleanup-expired-invites",
       "schedule": "15 4 * * *"
     },
