@@ -7,7 +7,7 @@ import DemoModal from '@/components/landing/DemoModal'
 import LogoMarquee from '@/components/landing/LogoMarquee'
 import InlineLeadForm from '@/components/landing/InlineLeadForm'
 import VoiceSampleButton from '@/components/landing/VoiceSampleButton'
-import VoiceCallTest from '@/components/landing/VoiceCallTest'
+import VoiceWebCall from '@/components/landing/VoiceWebCall'
 import { GYM_SYSTEMS } from '@/lib/integrations-data'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://xovera.io'
@@ -344,7 +344,7 @@ fbq('track', 'PageView');`}
             </ul>
             <div className="flex flex-wrap items-center gap-3">
               <VoiceSampleButton />
-              <VoiceCallTest fallbackHref="#book" fallbackLabel="Book your demo instead" />
+              <VoiceWebCall fallbackHref="#book" fallbackLabel="Book your demo instead" />
             </div>
           </div>
 

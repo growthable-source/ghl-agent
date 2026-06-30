@@ -1,0 +1,94 @@
+'use client'
+
+/**
+ * Browser-side Gemini Live voice call for the PUBLIC landing-page demo.
+ * Same audio pipeline as the dashboard tester (useGeminiTestCall) but it
+ * fetches its token from the public, demo-agent endpoint and disables tool
+ * calls + transcript persistence (both hit authed routes). Mic → Gemini
+ * Live directly; no Twilio, no Fly bridge.
+ */
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
+import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
+
+export type WebCallState = 'idle' | 'connecting' | 'live' | 'ended' | 'error' | 'unavailable'
+
+export function usePublicVoiceCall() {
+  const [state, setState] = useState<WebCallState>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+
+  const providerRef = useRef<GeminiLiveProvider | null>(null)
+  const micRef = useRef<MicCapture | null>(null)
+  const playerRef = useRef<PcmPlayer | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const teardown = useCallback(async () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    try { await providerRef.current?.close() } catch {}
+    micRef.current?.stop()
+    playerRef.current?.stop()
+    providerRef.current = null
+    micRef.current = null
+    playerRef.current = null
+  }, [])
+
+  const endCall = useCallback(async (next: WebCallState = 'ended') => {
+    await teardown()
+    setSecondsLeft(null)
+    setState(next)
+  }, [teardown])
+
+  const startCall = useCallback(async () => {
+    setError(null)
+    setState('connecting')
+    try {
+      const res = await fetch('/api/public/voice-demo/web-token', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (res.status === 503) { setState('unavailable'); return }
+      if (!res.ok) throw new Error(data.error || 'Could not start the voice session.')
+
+      const { connection, tools, vendorConfig, maxSessionSecs } = data
+
+      const provider = new GeminiLiveProvider()
+      const player = new PcmPlayer()
+      await player.start()
+      const mic = new MicCapture((chunk: string) => provider.sendAudioChunk(chunk))
+
+      provider.onAudioOutput = (pcm) => player.enqueue(pcm)
+      provider.onInterrupted = () => player.flush()
+      provider.onToolCall = async () => ({ error: 'not available in demo' }) // no real actions in the public demo
+      provider.onError = (msg: string) => { setError(msg); void endCall('error') }
+      provider.onEnded = () => { void endCall('ended') }
+
+      await provider.connect({ connection, tools, vendorConfig })
+      await mic.start()
+      providerRef.current = provider
+      micRef.current = mic
+      playerRef.current = player
+
+      const cap = Number(maxSessionSecs || connection?.maxSessionSecs || 120)
+      setSecondsLeft(cap)
+      timerRef.current = setInterval(() => {
+        setSecondsLeft((s) => {
+          if (s === null) return s
+          if (s <= 1) { void endCall('ended'); return 0 }
+          return s - 1
+        })
+      }, 1000)
+      setState('live')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Voice session failed.')
+      micRef.current?.stop()
+      playerRef.current?.stop()
+      setState('error')
+    }
+  }, [endCall])
+
+  // Tear down if the component unmounts mid-call.
+  useEffect(() => () => { void teardown() }, [teardown])
+
+  const reset = useCallback(() => { setState('idle'); setError(null); setSecondsLeft(null) }, [])
+
+  return { state, error, secondsLeft, startCall, endCall, reset }
+}
