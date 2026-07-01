@@ -18,10 +18,7 @@ import { useEmbedded } from '@/lib/embedded-context'
 // jargon without renaming routes. Primary-nav labels stay self-evident.
 const NAV_HINTS: Record<string, string> = {
   '/csat': 'Customer satisfaction — how people rated their conversations',
-  '/tool-gate': 'Which agent actions were allowed, blocked, or needed approval',
-  '/decisions': 'Why the agent chose each reply or action — its reasoning trail',
   '/insights': 'How your agents are performing overall',
-  '/insights/retrieval': 'Test what your agent knows — ask it a question and see what it retrieves',
   '/performance': 'Response times, resolution rates, and volume over time',
   '/digest': 'A weekly email-style summary of agent activity',
   '/simulations': 'Stress-test an agent against many synthetic customers at once',
@@ -33,7 +30,6 @@ const NAV_HINTS: Record<string, string> = {
   '/settings/data-sources': 'Live data the agent can look up mid-conversation (Sheets, Airtable, APIs)',
   '/settings/integrations': 'Channels shared across your workspaces',
   '/integrations': 'Connect your CRM, Shopify, Meta, and other tools',
-  '/funnels': 'Multi-step sequences that qualify and route leads',
   '/brands': 'Per-brand voice, colours, and styling for whitelabel clients',
   '/settings/brand-groups': 'Group brands so agents prioritise the right knowledge',
 }
@@ -44,7 +40,6 @@ const NAV_HINTS: Record<string, string> = {
 const FEATURE_SHIP_DATES: Record<string, string> = {
   simulations: '2026-04-20',
   integrations: '2026-05-12', // Shopify connector ships today
-  toolGate:    '2026-05-30', // Phase B3 enforced-tool gate analytics
   gettingStarted: '2026-05-29', // First-run guide for newly-installed workspaces
   voiceAgents: '2026-06-06', // Voice agents promoted to their own top-level section
   copilot: '2026-06-10', // Real-time screen-share Co-Pilot (v0, behind plan gate)
@@ -425,11 +420,8 @@ function SidebarBody() {
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Insights</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
-                    {navLink(`/dashboard/${workspaceId}/insights/retrieval`, '↳ Test your AI')}
                     {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
                     {navLink(`/dashboard/${workspaceId}/csat`, 'Satisfaction')}
-                    {navLink(`/dashboard/${workspaceId}/decisions`, 'Decisions')}
-                    {navLink(`/dashboard/${workspaceId}/tool-gate`, 'Tool gate', null, FEATURE_SHIP_DATES.toolGate)}
                     {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
 
                     {/* ── Native CRM (only when workspace is on the built-in CRM) ── */}
@@ -461,15 +453,6 @@ function SidebarBody() {
                         used to live here and was buried two levels deep
                         (More → Library → Widgets). */}
 
-                    {/* ── Tools — try it before it ships ──
-                        Playground was promoted to primary nav (next to
-                        Agent) so it's findable. Simulations stays here
-                        until it has the muscle to deserve top-level. */}
-                    <div className="pt-3 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Tools</p>
-                    </div>
-                    {navLink(`/dashboard/${workspaceId}/simulations`, 'Simulations', null, FEATURE_SHIP_DATES.simulations)}
-
                     {/* ── Workspace — admin & plumbing ── */}
                     <div className="pt-3 pb-1 px-3">
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Workspace</p>
@@ -485,9 +468,6 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
                     {navLink(`/dashboard/${workspaceId}/settings/ticketing`, 'Ticketing')}
                     {navLink(`/dashboard/${workspaceId}/settings/live-chat`, 'Live chat queue', null, '2026-06-15')}
-                    {navLink(`/dashboard/${workspaceId}/settings/kiosk`, 'Shared-login operators', null, '2026-06-17')}
-                    {navLink(`/dashboard/${workspaceId}/settings/api-access`, 'API Access', null, FEATURE_SHIP_DATES.apiAccess)}
-                    {navLink(`/dashboard/${workspaceId}/settings/sla`, 'SLA Policies', null, FEATURE_SHIP_DATES.slaPolicies)}
                   </div>
                 </div>
                 </>)}

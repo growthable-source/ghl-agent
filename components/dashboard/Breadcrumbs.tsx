@@ -32,7 +32,6 @@ const ROUTE_LABELS: Record<string, string> = {
   approvals: 'Approvals',
   insights: 'Insights',
   performance: 'Performance',
-  decisions: 'Decisions',
   digest: 'Weekly Digest',
   corrections: 'Corrections',
   'audit-log': 'Audit Log',
