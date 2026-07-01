@@ -313,6 +313,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     where: { id: conversationId },
     data: {
       lastMessageAt: new Date(),
+      // Operator replied — clear the escalation debounce so a later stall
+      // can escalate again.
+      escalatedNotifiedAt: null,
       ...(wasActive ? { status: 'handed_off' } : {}),
     },
   })

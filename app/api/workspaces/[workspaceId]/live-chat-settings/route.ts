@@ -40,6 +40,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.queueMessage === null || typeof body.queueMessage === 'string') {
     data.queueMessage = body.queueMessage ? String(body.queueMessage).trim().slice(0, 1000) || null : null
   }
+  if (typeof body.escalateAfterMinutes === 'number' && Number.isFinite(body.escalateAfterMinutes)) {
+    // 0 = off; cap at 24h so a typo can't push escalation absurdly far out.
+    data.escalateAfterMinutes = Math.max(0, Math.min(1440, Math.floor(body.escalateAfterMinutes)))
+  }
+  if (typeof body.escalateReassign === 'boolean') data.escalateReassign = body.escalateReassign
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No mutable fields' }, { status: 400 })
   }

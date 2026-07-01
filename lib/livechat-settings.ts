@@ -15,6 +15,8 @@ export interface LiveChatSettings {
   queueGameEnabled: boolean
   queueEmailTicketEnabled: boolean
   queueMessage: string | null
+  escalateAfterMinutes: number
+  escalateReassign: boolean
 }
 
 export const LIVE_CHAT_DEFAULTS: LiveChatSettings = {
@@ -23,6 +25,8 @@ export const LIVE_CHAT_DEFAULTS: LiveChatSettings = {
   queueGameEnabled: false,
   queueEmailTicketEnabled: false,
   queueMessage: null,
+  escalateAfterMinutes: 0,
+  escalateReassign: false,
 }
 
 export async function getLiveChatSettings(workspaceId: string): Promise<LiveChatSettings> {
@@ -38,6 +42,11 @@ export async function getLiveChatSettings(workspaceId: string): Promise<LiveChat
       queueGameEnabled: !!row.queueGameEnabled,
       queueEmailTicketEnabled: !!row.queueEmailTicketEnabled,
       queueMessage: row.queueMessage ?? null,
+      escalateAfterMinutes:
+        Number.isFinite(row.escalateAfterMinutes) && row.escalateAfterMinutes > 0
+          ? row.escalateAfterMinutes
+          : 0,
+      escalateReassign: !!row.escalateReassign,
     }
   } catch {
     // Table missing (pre-migration) → behave as queue-off.

@@ -65,8 +65,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     where: { id: conversationId },
     // Clear staleNotifiedAt so the stale-cron can page again next time this
     // thread goes quiet. Without this the cron debounce would persist
-    // forever across multiple quiet periods.
-    data: { lastMessageAt: new Date(), staleNotifiedAt: null },
+    // forever across multiple quiet periods. escalatedNotifiedAt resets too
+    // so a re-stalled chat can escalate again.
+    data: { lastMessageAt: new Date(), staleNotifiedAt: null, escalatedNotifiedAt: null },
   })
 
   // Fire new-conversation notification after the response so the widget

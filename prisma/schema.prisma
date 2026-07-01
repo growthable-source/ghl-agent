@@ -2247,6 +2247,10 @@ model WidgetConversation {
   // Cron debounce for conversation.stale — set when we've already paged
   // about this thread so we don't notify again until the visitor replies.
   staleNotifiedAt  DateTime?
+  // Cron debounce for time-based operator escalation (assigned human hasn't
+  // replied to a waiting visitor within LiveChatSettings.escalateAfterMinutes).
+  // Stamped when escalated; cleared when the visitor or operator sends next.
+  escalatedNotifiedAt DateTime?
   // Visitor satisfaction (1–5 stars). Submitted via the widget's "Rate
   // this chat" control or auto-prompted on Start-new-conversation.
   csatRating       Int?
@@ -3344,6 +3348,14 @@ model LiveChatSettings {
   queueEmailTicketEnabled Boolean @default(false)
   // Operator-authored copy shown in the visitor's queue banner.
   queueMessage            String? @db.Text
+
+  // Time-based escalation. When a conversation assigned to a human has a
+  // waiting visitor (their message is the last one) and the operator hasn't
+  // replied for this many minutes, the stale-conversations cron escalates.
+  // 0 = disabled (default). escalateReassign=false pings the operator only;
+  // true also returns the chat to the queue so another operator picks it up.
+  escalateAfterMinutes    Int     @default(0)
+  escalateReassign        Boolean @default(false)
 
   updatedAt DateTime @updatedAt
 }

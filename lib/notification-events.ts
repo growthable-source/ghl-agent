@@ -25,6 +25,12 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     defaultUserChannels: ['email'],
   },
   {
+    id: 'conversation.escalated',
+    label: 'Chat escalated — operator not replying',
+    description: 'A visitor was waiting past the escalation window without an operator reply, so the chat was escalated (and optionally reassigned).',
+    defaultUserChannels: ['email', 'web_push'],
+  },
+  {
     id: 'needs_attention',
     label: 'Conversation needs attention',
     description: 'An agent paused itself for sentiment, keyword match, or a stop condition.',

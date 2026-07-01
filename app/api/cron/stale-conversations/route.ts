@@ -108,6 +108,102 @@ export async function GET(req: NextRequest) {
     }).catch(() => {})
   }
 
+  // ── Time-based operator escalation ──
+  // A conversation assigned to a human, where the visitor's message is the
+  // last one and the operator hasn't replied within escalateAfterMinutes,
+  // gets escalated: ping the assigned operator, and (if escalateReassign)
+  // return it to the queue so another available operator picks it up.
+  // Opt-in per workspace (escalateAfterMinutes > 0). The whole block is
+  // guarded so a pre-migration DB (missing columns) simply skips it.
+  let escalated = 0
+  let reassigned = 0
+  try {
+    const escSettings = await db.liveChatSettings.findMany({
+      where: { escalateAfterMinutes: { gt: 0 } },
+      select: { workspaceId: true, escalateAfterMinutes: true, escalateReassign: true },
+    })
+    for (const s of escSettings) {
+      const threshold = new Date(Date.now() - s.escalateAfterMinutes * 60 * 1000)
+      const rows = await db.widgetConversation.findMany({
+        where: {
+          widget: { workspaceId: s.workspaceId },
+          assignedUserId: { not: null },
+          status: { not: 'ended' },
+          escalatedNotifiedAt: null,
+          lastMessageAt: { lt: threshold },
+        },
+        include: {
+          widget: { select: { name: true, workspaceId: true } },
+          assignedUser: { select: { id: true, name: true, email: true } },
+        },
+        take: 50,
+      })
+      for (const convo of rows) {
+        const last = await db.widgetMessage.findFirst({
+          where: { conversationId: convo.id },
+          orderBy: { createdAt: 'desc' },
+          select: { role: true, content: true },
+        })
+        // Only chase when the visitor is the one waiting. If the operator
+        // already replied last, there's nothing stalled.
+        if (!last || last.role !== 'visitor') continue
+
+        const link = resolveHandoverLink({
+          workspaceId: convo.widget.workspaceId,
+          locationId: `widget:${convo.widgetId}`,
+          conversationId: convo.id,
+          channel: 'Live_Chat',
+        })
+        const who = convo.assignedUser?.name || convo.assignedUser?.email || 'the assigned operator'
+        const preview = (last.content || '').length > 120 ? last.content.slice(0, 117) + '…' : last.content
+
+        try {
+          // Ping the assigned operator directly.
+          if (convo.assignedUserId) {
+            await notify({
+              workspaceId: convo.widget.workspaceId,
+              event: 'conversation.escalated',
+              title: `A visitor has been waiting ${s.escalateAfterMinutes}+ min for your reply`,
+              body: `On ${convo.widget.name || 'your widget'}. Last message: "${preview}"`,
+              link,
+              severity: 'warning',
+              targetUserId: convo.assignedUserId,
+            })
+          }
+          // When reassignment is on, return the chat to the queue and let
+          // the router hand it to another available operator.
+          if (s.escalateReassign) {
+            await db.widgetConversation.update({
+              where: { id: convo.id },
+              data: { assignedUserId: null, assignedAt: null, assignmentReason: null, queuedAt: new Date() },
+            })
+            const { advanceQueue } = await import('@/lib/widget-routing')
+            const res = await advanceQueue(convo.widget.workspaceId).catch(() => ({ assigned: 0 }))
+            reassigned += res.assigned
+            await notify({
+              workspaceId: convo.widget.workspaceId,
+              event: 'conversation.escalated',
+              title: `Reassigned a stalled chat (waiting ${s.escalateAfterMinutes}+ min)`,
+              body: `${who} hadn't replied — returned to the queue. Last message: "${preview}"`,
+              link,
+              severity: 'warning',
+            })
+          }
+          escalated++
+        } catch (err: any) {
+          console.warn('[stale-cron] escalation failed for', convo.id, err?.message)
+        }
+        // Debounce regardless of outcome — cleared when the visitor or the
+        // operator sends the next message.
+        await db.widgetConversation.update({
+          where: { id: convo.id }, data: { escalatedNotifiedAt: new Date() },
+        }).catch(() => {})
+      }
+    }
+  } catch (err: any) {
+    console.warn('[stale-cron] escalation scan skipped:', err?.message)
+  }
+
   // Queue backstop: the event-driven advance (chat-end / agent-online)
   // covers the common case; this re-evaluates any workspace with chats
   // still waiting, so nothing stalls in the queue if an event was missed.
@@ -135,5 +231,5 @@ export async function GET(req: NextRequest) {
   }
 
   await recordCronRun('stale-conversations', true)
-  return NextResponse.json({ scanned: candidates.length, paged, checkedIn, queueAdvanced })
+  return NextResponse.json({ scanned: candidates.length, paged, checkedIn, escalated, reassigned, queueAdvanced })
 }

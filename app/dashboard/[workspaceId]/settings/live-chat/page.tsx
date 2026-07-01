@@ -17,6 +17,8 @@ interface Settings {
   queueGameEnabled: boolean
   queueEmailTicketEnabled: boolean
   queueMessage: string | null
+  escalateAfterMinutes: number
+  escalateReassign: boolean
 }
 
 export default function LiveChatSettingsPage() {
@@ -122,6 +124,43 @@ export default function LiveChatSettingsPage() {
             disabled={saving}
             onChange={v => patch({ queueEmailTicketEnabled: v })}
           />
+        </div>
+
+        <div className="pt-2 border-t space-y-4" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Escalate stalled chats</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              If a visitor is waiting and the assigned operator hasn&rsquo;t replied within this many minutes, ping them — and optionally hand the chat to another available operator.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+              Escalate after (minutes)
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={1440}
+              value={s.escalateAfterMinutes}
+              disabled={saving}
+              onChange={e => setSettings({ ...s, escalateAfterMinutes: Number(e.target.value) })}
+              onBlur={e => patch({ escalateAfterMinutes: Number(e.target.value) })}
+              className="w-28 rounded-lg px-3 py-2 text-sm"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+            />
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              0 turns escalation off. e.g. 5 = ping the operator once a visitor has been waiting 5 minutes.
+            </p>
+          </div>
+          <div className={s.escalateAfterMinutes > 0 ? '' : 'opacity-40 pointer-events-none'}>
+            <Toggle
+              label="Reassign if still unanswered"
+              help="Return the chat to the queue so another available operator picks it up, instead of only pinging the original operator."
+              checked={s.escalateReassign}
+              disabled={saving || s.escalateAfterMinutes <= 0}
+              onChange={v => patch({ escalateReassign: v })}
+            />
+          </div>
         </div>
 
         <div>
