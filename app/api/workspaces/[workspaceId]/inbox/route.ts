@@ -142,6 +142,9 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
     lastMessageAt: c.lastMessageAt.toISOString(),
     lastMessage: c.messages[0] ? {
       role: c.messages[0].role,
+      // Non-null when a human operator sent the last message — the inbox
+      // uses this to show "AI" only for genuine agent replies.
+      sentByUserId: c.messages[0].sentByUserId ?? null,
       content: (c.messages[0].content || '').slice(0, 120),
       kind: c.messages[0].kind,
       createdAt: c.messages[0].createdAt.toISOString(),
@@ -212,10 +215,11 @@ async function fetchMetaRows(workspaceId: string): Promise<any[]> {
       lastMessage: c.lastMessagePreview ? {
         // Map our 'in' / 'out' onto the role vocabulary the UI uses for
         // widget messages so the prefix icon (👤 / 🤖) keeps working
-        // without a special case. Operator-typed Meta replies will have
-        // sentByUserId set; we don't surface that distinction in the
-        // list row, just in the detail view.
+        // without a special case. Operator-typed Meta replies carry
+        // lastMessageSentByUserId — surfaced below so the list row shows
+        // the operator, not an "AI" badge.
         role: c.lastMessageDirection === 'out' ? 'agent' : 'visitor',
+        sentByUserId: c.lastMessageSentByUserId ?? null,
         content: c.lastMessagePreview,
         kind: undefined,
         createdAt: c.lastMessageAt.toISOString(),

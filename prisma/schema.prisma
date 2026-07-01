@@ -2330,6 +2330,12 @@ model WidgetMessage {
   conversationId String
   conversation   WidgetConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           String
+  // Set when a human operator (not the AI agent) sent this outbound message
+  // from the dashboard inbox. Null for AI-agent replies and visitor messages.
+  // Mirrors MetaMessage.sentByUserId — lets the inbox distinguish "AI" vs a
+  // human reply without a new role value (role stays 'agent' for both, so
+  // transcript/export/CRM-sync consumers are unaffected).
+  sentByUserId   String?
   content        String             @db.Text
   kind           String             @default("text")
   // Detected language (ISO 639-1) of the message content. Null until
@@ -2786,6 +2792,10 @@ model MetaConversation {
   lastMessageAt        DateTime      @default(now())
   lastMessagePreview   String?
   lastMessageDirection String? // 'in' | 'out'
+  // Denormalized operator id of the last outbound message, so the inbox
+  // list can show "AI" vs a human reply without joining MetaMessage.
+  // Null when the last outbound was an AI reply (or last message inbound).
+  lastMessageSentByUserId String?
   unreadCount          Int           @default(0)
   assignedUserId       String?
   assignedUser         User?         @relation("MetaConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)

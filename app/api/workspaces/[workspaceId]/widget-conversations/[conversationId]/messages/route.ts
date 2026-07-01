@@ -304,7 +304,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const wasUnassigned = (convo as any).assignedUserId == null
 
   const msg = await db.widgetMessage.create({
-    data: { conversationId, role: 'agent', content, kind: 'text' },
+    // role stays 'agent' (outbound) so transcript/export/CRM-sync logic is
+    // unchanged; sentByUserId marks it as a human operator reply so the
+    // inbox shows the operator, not an "AI" badge.
+    data: { conversationId, role: 'agent', sentByUserId: access.session.user.id, content, kind: 'text' },
   })
   await db.widgetConversation.update({
     where: { id: conversationId },

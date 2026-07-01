@@ -49,7 +49,7 @@ interface Row {
   assignedAt: string | null
   assignmentReason: string | null
   lastMessageAt: string
-  lastMessage: { role: string; content: string; kind?: string; createdAt: string } | null
+  lastMessage: { role: string; sentByUserId?: string | null; content: string; kind?: string; createdAt: string } | null
   // Search-only metadata. Populated by the /search endpoint when
   // there's a query — empty when the inbox is showing the regular
   // recency list.
@@ -1173,12 +1173,24 @@ export default function InboxPage() {
                     ) : r.lastMessage ? (
                       <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>
                         {r.lastMessage.role === 'agent' && (
-                          <span
-                            className="inline-flex items-center text-[9px] font-bold tracking-wider px-1 py-px rounded mr-1.5 align-middle"
-                            style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
-                          >
-                            AI
-                          </span>
+                          r.lastMessage.sentByUserId ? (
+                            // Human operator sent the last reply — show a
+                            // neutral person marker, not the "AI" badge.
+                            <span
+                              className="inline-flex items-center text-[9px] font-bold tracking-wider px-1 py-px rounded mr-1.5 align-middle"
+                              style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}
+                              title="Sent by a human operator"
+                            >
+                              <svg viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5Z"/></svg>
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center text-[9px] font-bold tracking-wider px-1 py-px rounded mr-1.5 align-middle"
+                              style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
+                            >
+                              AI
+                            </span>
+                          )
                         )}
                         {lastKind === 'image'
                           ? <span className="italic" style={{ color: 'var(--text-muted)' }}>sent an image</span>

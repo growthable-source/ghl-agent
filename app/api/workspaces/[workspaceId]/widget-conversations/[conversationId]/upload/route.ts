@@ -66,7 +66,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     ? blob.url
     : JSON.stringify({ url: blob.url, name: file.name, mime, size: file.size })
   const msg = await db.widgetMessage.create({
-    data: { conversationId, role: 'agent', content, kind: isImage ? 'image' : 'file' },
+    // Operator-uploaded attachment — mark the sender so the inbox doesn't
+    // badge it "AI". role stays 'agent' (outbound).
+    data: { conversationId, role: 'agent', sentByUserId: access.session.user.id, content, kind: isImage ? 'image' : 'file' },
   })
   await db.widgetConversation.update({
     where: { id: conversationId },

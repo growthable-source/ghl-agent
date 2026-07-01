@@ -78,6 +78,9 @@ export async function recordInboundMetaMessage(params: InboundParams): Promise<s
           lastMessageAt: new Date(),
           lastMessagePreview: previewOf(text),
           lastMessageDirection: 'in',
+          // Inbound message — clear any stale operator marker from a prior
+          // outbound so the inbox doesn't keep attributing it to a human.
+          lastMessageSentByUserId: null,
           unreadCount: { increment: 1 },
           // Refresh page name in case it changed in Meta.
           pageName: pageName ?? undefined,
@@ -168,6 +171,9 @@ export async function recordOutboundMetaMessage(params: OutboundParams): Promise
           lastMessageAt: new Date(),
           lastMessagePreview: previewOf(text),
           lastMessageDirection: 'out',
+          // Denormalize the sender so the inbox list shows "AI" only for
+          // agent replies. Null when the AI sent it (sentByUserId unset).
+          lastMessageSentByUserId: sentByUserId ?? null,
         },
       }),
     ])
