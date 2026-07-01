@@ -91,6 +91,7 @@ export default function AgentIdentityPage() {
   const [initial, setInitial] = useState<AgentRecord | null>(null)
   const [knowledge, setKnowledge] = useState<KnowledgeSource[]>([])
   const [channels, setChannels] = useState<ChannelDeployment[]>([])
+  const [stopConditions, setStopConditions] = useState<{ conditionType: string; value: string | null }[]>([])
   const [autopilotPending, setAutopilotPending] = useState(false)
   // Agent type (reactive vs procedural). Managed outside the dirty-form
   // because switching it is a structural change applied immediately — it
@@ -108,8 +109,11 @@ export default function AgentIdentityPage() {
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`).then(r => r.json()),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/channels`).then(r => r.json()).catch(() => ({})),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/knowledge`).then(r => r.json()).catch(() => ({})),
+      // Real handoff config lives in Stop Conditions — the "Handoff to human"
+      // card below reflects these instead of hardcoded toggle state.
+      fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/stop-conditions`).then(r => r.json()).catch(() => ({})),
     ])
-      .then(([agentRes, channelsRes, knowledgeRes]) => {
+      .then(([agentRes, channelsRes, knowledgeRes, stopCondRes]) => {
         const agent = agentRes.agent
         // Advanced-mode short-circuit. When the agent is configured to
         // render as a canvas, the root URL should land directly on /flow
@@ -135,6 +139,7 @@ export default function AgentIdentityPage() {
           setProcMode(agent.procedureMode === 'advanced' ? 'advanced' : 'simple')
         }
         if (Array.isArray(channelsRes.deployments)) setChannels(channelsRes.deployments)
+        if (Array.isArray(stopCondRes.conditions)) setStopConditions(stopCondRes.conditions)
         // Knowledge endpoint shape varies — try a few common keys.
         const ks = knowledgeRes.collections ?? knowledgeRes.knowledge ?? knowledgeRes.entries ?? []
         if (Array.isArray(ks)) {
@@ -221,6 +226,12 @@ export default function AgentIdentityPage() {
 
   const enabledActions = draft.enabledTools ?? []
   const liveChannels = channels.filter(c => c.isActive)
+
+  // Real handoff state, derived from the agent's tools + Stop Conditions
+  // (the actual backing config) rather than hardcoded toggle values.
+  const asksForHumanOn = enabledActions.includes('transfer_to_human')
+  const sentimentOn = stopConditions.some(c => c.conditionType === 'SENTIMENT')
+  const messageCountCond = stopConditions.find(c => c.conditionType === 'MESSAGE_COUNT')
 
   return (
     <div className="pb-24" style={{ background: 'var(--background)' }}>
@@ -465,26 +476,37 @@ export default function AgentIdentityPage() {
           <div className="rounded-2xl border overflow-hidden" style={cardStyle}>
             <HandoffRow
               label="Customer asks for a human"
-              desc="Words like 'agent', 'representative', 'speak to someone'"
-              on={true}
+              desc={asksForHumanOn
+                ? "Words like 'agent', 'representative', 'speak to someone' hand off"
+                : "Turn on the Transfer to human tool to enable this"}
+              on={asksForHumanOn}
+              href={`${base}/tools`}
             />
             <HandoffRow
               label="Customer mentions a complaint or refund"
-              desc="Triggers handoff for delicate situations"
-              on={draft.fallbackBehavior !== 'message'}
+              desc={sentimentOn
+                ? 'A Sentiment stop condition hands off on hostile / refund language'
+                : 'Add a Sentiment stop condition to hand off on delicate situations'}
+              on={sentimentOn}
+              href={`${base}/goals`}
             />
             <HandoffRow
-              label="Conversation goes &gt; 5 messages without resolution"
-              desc="Pings your team if the agent is going in circles"
-              on={false}
+              label={messageCountCond?.value
+                ? `Conversation goes &gt; ${messageCountCond.value} messages without resolution`
+                : 'Conversation goes &gt; N messages without resolution'}
+              desc={messageCountCond
+                ? 'A Message Count stop condition pings your team if the agent is going in circles'
+                : 'Add a Message Count stop condition to ping your team when the agent goes in circles'}
+              on={!!messageCountCond}
+              href={`${base}/goals`}
               isLast
             />
             <Link
-              href={`${base}/rules`}
+              href={`${base}/goals`}
               className="block px-4 py-3 text-xs font-medium border-t text-center transition-colors"
               style={{ borderColor: 'var(--border)', color: 'var(--accent-primary)', background: 'var(--surface-secondary)' }}
             >
-              Manage handoff rules →
+              Manage handoff rules in Stop Conditions →
             </Link>
           </div>
         </Section>
@@ -591,12 +613,10 @@ function ToggleStatic({ on }: { on: boolean }) {
   )
 }
 
-function HandoffRow({ label, desc, on, isLast }: { label: string; desc: string; on: boolean; isLast?: boolean }) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 px-4 py-3 ${!isLast ? 'border-b' : ''}`}
-      style={{ borderColor: 'var(--border)' }}
-    >
+function HandoffRow({ label, desc, on, href, isLast }: { label: string; desc: string; on: boolean; href?: string; isLast?: boolean }) {
+  const cls = `flex items-center justify-between gap-3 px-4 py-3 ${!isLast ? 'border-b' : ''}`
+  const inner = (
+    <>
       <div className="min-w-0">
         <p
           className="text-sm font-medium"
@@ -605,9 +625,24 @@ function HandoffRow({ label, desc, on, isLast }: { label: string; desc: string; 
         />
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
       </div>
-      <ToggleStatic on={on} />
-    </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Status reflects the real backing config (tool / stop condition),
+            it is not an in-place switch — the row links to the editor. */}
+        <span className="text-[11px] font-medium" style={{ color: on ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+          {on ? 'On' : 'Off'}
+        </span>
+        <ToggleStatic on={on} />
+      </div>
+    </>
   )
+  if (href) {
+    return (
+      <Link href={href} className={`${cls} transition-colors hover:bg-[var(--surface-secondary)]`} style={{ borderColor: 'var(--border)' }}>
+        {inner}
+      </Link>
+    )
+  }
+  return <div className={cls} style={{ borderColor: 'var(--border)' }}>{inner}</div>
 }
 
 function KnowledgeEmpty({ href }: { href: string }) {
