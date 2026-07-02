@@ -42,8 +42,17 @@ export async function GET(req: NextRequest) {
     })
     if (!widget || widget.workspaceId !== workspaceId) return fail('widget_not_found')
 
-    const t = await exchangeAgencyCode(code)
-    if (!t.companyId) return fail('no_company_in_grant')
+    let t
+    try {
+      t = await exchangeAgencyCode(code)
+    } catch (err: any) {
+      console.error('[AgencyOAuth] token exchange failed:', err?.message)
+      return fail('token_exchange_failed')
+    }
+    if (!t.companyId) {
+      console.error('[AgencyOAuth] grant carried no companyId — userType:', t.userType, 'keys:', Object.keys(t).join(','))
+      return fail('no_company_in_grant')
+    }
 
     const session = await auth()
     const tokenData = {
@@ -73,7 +82,11 @@ export async function GET(req: NextRequest) {
       new URL(`/dashboard/${workspaceId}/widgets/${widgetId}/locations?connected=1`, req.url),
     )
   } catch (err: any) {
-    console.error('[AgencyOAuth] callback error:', err?.message)
-    return fail('token_exchange_failed')
+    console.error('[AgencyOAuth] callback error:', err?.code, err?.message)
+    // P2021 = AgencyConnection/AgencyLocation tables don't exist yet —
+    // the hand-run SQL hasn't been applied. Distinct error so the page
+    // can say exactly that instead of a generic auth failure.
+    if (err?.code === 'P2021') return fail('db_not_migrated')
+    return fail('connection_save_failed')
   }
 }
