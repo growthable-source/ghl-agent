@@ -45,6 +45,7 @@ const FEATURE_SHIP_DATES: Record<string, string> = {
   copilot: '2026-06-10', // Real-time screen-share Co-Pilot (v0, behind plan gate)
   apiAccess: '2026-06-24', // API Access settings page (support-metrics connector)
   slaPolicies: '2026-06-24', // SLA Policies settings page (support-metrics connector)
+  locations: '2026-07-02', // Per-location widget control (agency connection)
 }
 
 export default function DashboardSidebar() {
@@ -460,6 +461,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
                     {navLink(`/dashboard/${workspaceId}/settings/members`, 'Members')}
                     {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations', null, FEATURE_SHIP_DATES.integrations)}
+                    {navLink(`/dashboard/${workspaceId}/locations`, 'Locations', null, FEATURE_SHIP_DATES.locations)}
                     {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
                     {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}
                     {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
