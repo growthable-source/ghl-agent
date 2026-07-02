@@ -27,9 +27,13 @@ export async function GET(req: NextRequest, { params }: Params) {
   // from another workspace can't be read through this route.
   const connection = await db.agencyConnection.findFirst({
     where: { widgetId, workspaceId, widget: { workspaceId } },
-    select: { id: true, companyId: true, tokenRefreshFailedAt: true },
+    select: { id: true, companyId: true, tokenRefreshFailedAt: true, accessToken: true },
   }).catch(() => null)
-  if (!connection) return NextResponse.json({ connected: false, locations: [], total: 0 })
+  // Blank accessToken = explicitly disconnected (tokens blanked, rows +
+  // toggles preserved). The page shows its reconnect state instead.
+  if (!connection || connection.accessToken === '') {
+    return NextResponse.json({ connected: false, locations: [], total: 0 })
+  }
 
   const where = {
     connectionId: connection.id,

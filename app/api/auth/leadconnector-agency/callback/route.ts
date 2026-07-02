@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
-import { exchangeAgencyCode, syncAgencyLocations } from '@/lib/leadconnector-agency'
+import { exchangeAgencyCode, fetchCompanyName, syncAgencyLocations } from '@/lib/leadconnector-agency'
 
 /**
  * GET /api/auth/leadconnector-agency/callback
@@ -55,6 +55,10 @@ export async function GET(req: NextRequest) {
     }
 
     const session = await auth()
+    // Agency display name for the connection card. Best-effort — null on
+    // 403/timeout, and the upsert retries without the field on DBs that
+    // haven't run the companyName ALTER yet.
+    const companyName = await fetchCompanyName(t.access_token, t.companyId)
     const tokenData = {
       workspaceId: widget.workspaceId,
       companyId: t.companyId,
@@ -64,15 +68,20 @@ export async function GET(req: NextRequest) {
       scope: Array.isArray(t.scope) ? t.scope.join(' ') : (t.scope ?? ''),
       tokenRefreshFailedAt: null,
     }
-    const conn = await db.agencyConnection.upsert({
-      where: { widgetId: widget.id },
-      create: {
-        widgetId: widget.id,
-        ...tokenData,
-        connectedByUserId: session?.user?.id ?? null,
-      },
-      update: tokenData,
-    })
+    const doUpsert = (extra: { companyName?: string | null }) =>
+      db.agencyConnection.upsert({
+        where: { widgetId: widget.id },
+        create: {
+          widgetId: widget.id,
+          ...tokenData,
+          ...extra,
+          connectedByUserId: session?.user?.id ?? null,
+        },
+        update: { ...tokenData, ...extra },
+      })
+    const conn = companyName
+      ? await doUpsert({ companyName }).catch(() => doUpsert({}))
+      : await doUpsert({})
 
     // First sync inline; failure is non-fatal (Refresh button retries).
     await syncAgencyLocations(conn.id).catch(err =>

@@ -90,6 +90,24 @@ export async function getAgencyAccessToken(connectionId: string): Promise<string
   }
 }
 
+/**
+ * Fetch the agency's display name (GET /companies/:id, companies.readonly).
+ * Best-effort: returns null on any failure — callers fall back to the id.
+ */
+export async function fetchCompanyName(accessToken: string, companyId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(companyId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}`, Version: API_VERSION, Accept: 'application/json' },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const name = data?.company?.name ?? data?.name
+    return typeof name === 'string' && name.trim() ? name.trim() : null
+  } catch {
+    return null
+  }
+}
+
 /** Paginated GET /locations/search for every location under the agency. */
 export async function listAgencyLocations(accessToken: string, companyId: string): Promise<FetchedAgencyLocation[]> {
   const out: FetchedAgencyLocation[] = []
@@ -134,6 +152,16 @@ export async function syncAgencyLocations(connectionId: string): Promise<{ total
     select: { id: true, companyId: true },
   })
   const token = await getAgencyAccessToken(connectionId)
+  // Refresh the agency display name opportunistically. Both writes are
+  // guarded: best-effort fetch, and a .catch for DBs that haven't run the
+  // companyName ALTER yet.
+  const companyName = await fetchCompanyName(token, conn.companyId)
+  if (companyName) {
+    await db.agencyConnection.update({
+      where: { id: connectionId },
+      data: { companyName },
+    }).catch(() => {})
+  }
   const fetched = await listAgencyLocations(token, conn.companyId)
   const existing = await db.agencyLocation.findMany({
     where: { connectionId },

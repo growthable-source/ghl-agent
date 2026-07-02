@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { workspaceRoleHas, type WorkspaceRole } from '@/lib/require-workspace-role'
 import { agencyOAuthConfigured } from '@/lib/leadconnector-agency'
 import LocationList from '@/components/locations/LocationList'
+import DisconnectAgencyButton from '@/components/locations/DisconnectAgencyButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,14 +56,24 @@ export default async function WidgetLocationsPage({
     select: { id: true, name: true },
   })
 
-  // .catch: AgencyConnection may not exist yet on un-migrated DBs (Ryan
-  // hand-runs SQL after deploy). Treat as "not connected" instead of 500.
+  // Outer .catch: AgencyConnection may not exist yet on un-migrated DBs
+  // (Ryan hand-runs SQL after deploy) — treat as "not connected" instead
+  // of 500. Inner .catch: the companyName column ships in a later manual
+  // ALTER; retry the select without it so the page renders either way.
   const connection = widget
     ? await db.agencyConnection.findFirst({
         where: { widgetId: widget.id, workspaceId },
-        select: { id: true, companyId: true },
-      }).catch(() => null)
+        select: { id: true, companyId: true, companyName: true, accessToken: true, createdAt: true },
+      }).catch(() =>
+        db.agencyConnection.findFirst({
+          where: { widgetId: widget.id, workspaceId },
+          select: { id: true, companyId: true, accessToken: true, createdAt: true },
+        }).then(c => (c ? { ...c, companyName: null as string | null } : null)).catch(() => null),
+      )
     : null
+  // Disconnect blanks the tokens but keeps the row (and the toggles).
+  const isConnected = !!connection && connection.accessToken !== ''
+  const agencyLabel = connection?.companyName ?? connection?.companyId ?? ''
 
   if (!widget) {
     return <div className="p-8 text-zinc-500">Widget not found</div>
@@ -111,11 +122,12 @@ export default async function WidgetLocationsPage({
         </div>
       )}
 
-      {!connection ? (
+      {!isConnected ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center space-y-4">
           <p className="text-sm text-zinc-300">
-            This widget isn&apos;t connected to an agency yet. Connect it to pull
-            in every location and control the widget per location.
+            {connection
+              ? <>Disconnected from <span className="font-medium text-zinc-100">{agencyLabel}</span>. Your per-location settings are preserved — reconnect to resume syncing.</>
+              : <>This widget isn&apos;t connected to an agency yet. Connect it to pull in every location and control the widget per location.</>}
           </p>
           {agencyOAuthConfigured() ? (
             canManage ? (
@@ -153,11 +165,44 @@ export default async function WidgetLocationsPage({
           )}
         </div>
       ) : (
-        <LocationList
-          apiBase={`/api/workspaces/${workspaceId}/widgets/${widgetId}/locations`}
-          canManage={canManage}
-          reconnectHref={`/api/auth/leadconnector-agency/install?widgetId=${widget.id}`}
-        />
+        <div className="space-y-4">
+          {/* Connection card — WHICH agency, since when, and the exits. */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                Connected to {connection!.companyName ?? 'agency'}
+              </p>
+              <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-muted)' }}>
+                {connection!.companyId} · since {connection!.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            </div>
+            {canManage && (
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Plain <a>: API route redirect — next/link 404s on it. */}
+                <a
+                  href={`/api/auth/leadconnector-agency/install?widgetId=${widget.id}`}
+                  className="text-xs px-3 py-1.5 rounded-lg border transition-opacity hover:opacity-80"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+                >
+                  Change agency
+                </a>
+                <DisconnectAgencyButton
+                  workspaceId={workspaceId}
+                  widgetId={widget.id}
+                  agencyLabel={agencyLabel}
+                />
+              </div>
+            )}
+          </div>
+          <LocationList
+            apiBase={`/api/workspaces/${workspaceId}/widgets/${widgetId}/locations`}
+            canManage={canManage}
+            reconnectHref={`/api/auth/leadconnector-agency/install?widgetId=${widget.id}`}
+          />
+        </div>
       )}
     </div>
   )

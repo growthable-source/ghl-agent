@@ -3829,6 +3829,10 @@ model AgencyConnection {
   workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   provider             String           @default("leadconnector")
   companyId            String
+  // Agency display name, fetched from GET /companies/:id at connect time
+  // and refreshed on sync. Nullable — pre-migration rows and 403s (scope
+  // missing) fall back to showing the raw companyId.
+  companyName          String?
   accessToken          String
   refreshToken         String
   expiresAt            DateTime
