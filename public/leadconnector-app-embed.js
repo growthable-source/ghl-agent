@@ -39,9 +39,20 @@
 
   var loadedForLocation = null
 
+  // Docs examples namespace the context API under AppUtils.Utilities
+  // (getCurrentUser/getCurrentLocation/getCompany). Fall back to a flat
+  // AppUtils shape defensively in case the runtime exposes both.
+  function utils() {
+    var a = window.AppUtils
+    if (!a) return null
+    if (a.Utilities && typeof a.Utilities.getCurrentLocation === 'function') return a.Utilities
+    if (typeof a.getCurrentLocation === 'function') return a
+    return null
+  }
+
   function waitForAppUtils(attempt) {
     attempt = attempt || 0
-    if (window.AppUtils && typeof window.AppUtils.getCurrentLocation === 'function') { boot(); return }
+    if (utils()) { boot(); return }
     if (attempt > 60) return // ~30s — not a Custom JS context after all
     setTimeout(function () { waitForAppUtils(attempt + 1) }, 500)
   }
@@ -56,7 +67,7 @@
   }
 
   function resolveAndMount() {
-    Promise.resolve(window.AppUtils.getCurrentLocation())
+    Promise.resolve(utils().getCurrentLocation())
       .then(function (loc) {
         var locationId = loc && loc.id
         if (!locationId || locationId === loadedForLocation) return
@@ -108,7 +119,7 @@
       setTimeout(function () { identify(attempt + 1) }, 500)
       return
     }
-    Promise.resolve(window.AppUtils.getCurrentUser())
+    Promise.resolve(utils().getCurrentUser())
       .then(function (u) {
         if (!u) return
         var name = u.name || [u.firstName, u.lastName].filter(Boolean).join(' ')
