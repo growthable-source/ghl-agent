@@ -5,7 +5,7 @@
  * widget on/off toggles. Shared between the workspace dashboard
  * (/dashboard/[workspaceId]/locations) and the customer portal
  * (/portal/locations) — pass the right API base for each surface:
- *   dashboard: /api/workspaces/<id>/agency-locations
+ *   dashboard: /api/workspaces/<wsId>/widgets/<widgetId>/locations
  *   portal:    /api/portal/locations
  * Both bases expose GET (list), PATCH (bulk toggle), POST /sync.
  */
@@ -75,14 +75,14 @@ export default function LocationList({
     debounceRef.current = setTimeout(() => { setPage(1); load(value, filter, 1) }, 300)
   }
 
-  async function applyToggle(locationIds: string[], widgetEnabled: boolean) {
-    if (!canManage || locationIds.length === 0) return
+  async function applyToggle(ids: string[], widgetEnabled: boolean) {
+    if (!canManage || ids.length === 0) return
     setBusy(true)
     try {
       const res = await fetch(apiBase, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationIds, widgetEnabled }),
+        body: JSON.stringify({ ids, widgetEnabled }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Update failed')
       setSelected(new Set())
@@ -112,7 +112,7 @@ export default function LocationList({
   }
 
   const rows = data.locations
-  const allOnPageSelected = rows.length > 0 && rows.every(r => selected.has(r.locationId))
+  const allOnPageSelected = rows.length > 0 && rows.every(r => selected.has(r.id))
   const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize))
 
   return (
@@ -193,8 +193,8 @@ export default function LocationList({
                 checked={allOnPageSelected}
                 onChange={() => {
                   const next = new Set(selected)
-                  if (allOnPageSelected) rows.forEach(r => next.delete(r.locationId))
-                  else rows.forEach(r => next.add(r.locationId))
+                  if (allOnPageSelected) rows.forEach(r => next.delete(r.id))
+                  else rows.forEach(r => next.add(r.id))
                   setSelected(next)
                 }}
                 style={{ accentColor: 'var(--accent-primary)' }}
@@ -220,11 +220,11 @@ export default function LocationList({
               {canManage && (
                 <input
                   type="checkbox"
-                  checked={selected.has(r.locationId)}
+                  checked={selected.has(r.id)}
                   onChange={() => {
                     const next = new Set(selected)
-                    if (next.has(r.locationId)) next.delete(r.locationId)
-                    else next.add(r.locationId)
+                    if (next.has(r.id)) next.delete(r.id)
+                    else next.add(r.id)
                     setSelected(next)
                   }}
                   style={{ accentColor: 'var(--accent-primary)' }}
@@ -245,7 +245,7 @@ export default function LocationList({
             <span className="text-right">
               <button
                 type="button"
-                onClick={() => applyToggle([r.locationId], !r.widgetEnabled)}
+                onClick={() => applyToggle([r.id], !r.widgetEnabled)}
                 disabled={!canManage || busy}
                 role="switch"
                 aria-checked={r.widgetEnabled}

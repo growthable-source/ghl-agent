@@ -64,8 +64,10 @@ export async function GET(req: NextRequest) {
 
 /**
  * PATCH /api/portal/locations
- * Body: { locationIds: string[], widgetEnabled: boolean }
- * Toggle scoped to the portal user's accessible connections.
+ * Body: { ids: string[] (AgencyLocation.id), widgetEnabled: boolean }
+ * Row ids (not locationIds) so a toggle targets exactly one widget's
+ * connection even when the portal user can see several widgets that
+ * serve the same agency location.
  */
 export async function PATCH(req: NextRequest) {
   const session = await getPortalSession()
@@ -74,15 +76,15 @@ export async function PATCH(req: NextRequest) {
   if (connectionIds.length === 0) return NextResponse.json({ error: 'No agency connection' }, { status: 404 })
 
   const body = await req.json().catch(() => null)
-  const locationIds: unknown = body?.locationIds
+  const ids: unknown = body?.ids
   const widgetEnabled: unknown = body?.widgetEnabled
-  if (!Array.isArray(locationIds) || locationIds.length === 0 || locationIds.length > 500
-      || !locationIds.every(id => typeof id === 'string') || typeof widgetEnabled !== 'boolean') {
-    return NextResponse.json({ error: 'locationIds (1-500 strings) and widgetEnabled (boolean) required' }, { status: 400 })
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500
+      || !ids.every(id => typeof id === 'string') || typeof widgetEnabled !== 'boolean') {
+    return NextResponse.json({ error: 'ids (1-500 strings) and widgetEnabled (boolean) required' }, { status: 400 })
   }
 
   const result = await db.agencyLocation.updateMany({
-    where: { locationId: { in: locationIds }, connectionId: { in: connectionIds } },
+    where: { id: { in: ids }, connectionId: { in: connectionIds } },
     data: {
       widgetEnabled,
       widgetEnabledUpdatedAt: new Date(),

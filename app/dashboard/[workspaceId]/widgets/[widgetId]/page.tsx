@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { MergeFieldTextarea } from '@/components/MergeFieldHelper'
+import NewBadge from '@/components/NewBadge'
 
 interface Widget {
   id: string
@@ -250,6 +251,23 @@ export default function WidgetEditorPage() {
               copied={copied === 'crmPerLocation'}
               onCopy={() => copy('crmPerLocation', crmPerLocationSnippet)}
             />
+            <div className="mt-3 flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3">
+              <div>
+                <p className="text-xs font-semibold text-white">
+                  📍 Per-location control <NewBadge since="2026-07-02" className="ml-1" />
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Connect this widget to your CRM agency, then turn it on or off for each location.
+                </p>
+              </div>
+              <Link
+                href={`/dashboard/${workspaceId}/widgets/${widgetId}/locations`}
+                className="shrink-0 text-xs font-semibold px-3 py-2 rounded-lg text-white hover:opacity-90"
+                style={{ background: '#fa4d2e' }}
+              >
+                Manage locations →
+              </Link>
+            </div>
           </div>
 
           <div className="border-t border-zinc-800 pt-4">

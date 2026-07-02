@@ -2153,6 +2153,7 @@ model ChatWidget {
   updatedAt                 DateTime             @updatedAt
   visitors                  WidgetVisitor[]
   conversations             WidgetConversation[]
+  agencyConnection          AgencyConnection?
 
   @@index([workspaceId])
   @@index([folderId])
@@ -3815,11 +3816,15 @@ model GoogleContentConnection {
 // ─── Agency-level CRM connection (per-location widget control) ─────────────
 // Deliberately separate from the Location token store: this is a DIFFERENT
 // LeadConnector marketplace app (agency-scoped install, its own client
-// id/secret) connected once per workspace. One workspace has many widgets;
-// the location toggle lives here, not on any widget.
+// id/secret). Hierarchy: ONE WIDGET connects to ONE AGENCY — the connection
+// hangs off the ChatWidget, and its locations toggle that widget on/off per
+// sub-account. workspaceId is denormalized from the widget for scoping
+// queries (portal access, admin lists).
 
 model AgencyConnection {
   id                   String           @id @default(cuid())
+  widgetId             String           @unique
+  widget               ChatWidget       @relation(fields: [widgetId], references: [id], onDelete: Cascade)
   workspaceId          String
   workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   provider             String           @default("leadconnector")
@@ -3834,7 +3839,7 @@ model AgencyConnection {
   updatedAt            DateTime         @updatedAt
   locations            AgencyLocation[]
 
-  @@unique([workspaceId, companyId])
+  @@index([workspaceId])
 }
 
 model AgencyLocation {

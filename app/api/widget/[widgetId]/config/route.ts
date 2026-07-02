@@ -23,11 +23,14 @@ export async function GET(req: NextRequest, { params }: Params) {
   const w = v.widget
 
   // ── Per-location kill switch (opt-in, fail-open) ────────────────────
-  // Only embeds that carry data-location-id send this param. A location
-  // explicitly toggled off returns {disabled:true} and the embed renders
-  // nothing. Every other path — no param, no AgencyLocation row, no
-  // agency connection, DB error — falls through to the normal config
-  // response, so pre-existing embeds are untouched.
+  // Only embeds that carry data-location-id send this param. The check
+  // is scoped to THIS widget's agency connection (one widget ↔ one
+  // agency): a location toggled off for this widget returns
+  // {disabled:true} and the embed renders nothing, without affecting any
+  // other widget serving the same location. Every other path — no param,
+  // no connection on this widget, no AgencyLocation row, DB error —
+  // falls through to the normal config response, so pre-existing embeds
+  // are untouched.
   const embedLocationId = req.nextUrl.searchParams.get('locationId')
   if (embedLocationId) {
     try {
@@ -36,7 +39,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         where: {
           locationId: embedLocationId,
           removedAt: null,
-          connection: { workspaceId: w.workspaceId },
+          connection: { widgetId: w.id },
         },
         select: { widgetEnabled: true },
       })

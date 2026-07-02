@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceRole } from '@/lib/require-workspace-role'
 
-type Params = { params: Promise<{ workspaceId: string }> }
+type Params = { params: Promise<{ workspaceId: string; widgetId: string }> }
 
 const PAGE_SIZE = 50
 
 /**
- * GET /api/workspaces/:id/agency-locations?q=&filter=all|on|off&page=1
- * Location list for the per-location widget toggle. Member+ can view.
+ * GET /api/workspaces/:workspaceId/widgets/:widgetId/locations
+ *   ?q=&filter=all|on|off&page=1
+ * Location list for THIS widget's agency connection (one widget ↔ one
+ * agency). Member+ can view.
  */
 export async function GET(req: NextRequest, { params }: Params) {
-  const { workspaceId } = await params
+  const { workspaceId, widgetId } = await params
   const access = await requireWorkspaceRole(workspaceId, 'member')
   if (access instanceof NextResponse) return access
 
@@ -21,9 +23,11 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   // .catch: table may not exist yet on un-migrated DBs — report "not
   // connected" instead of 500 so the page renders its connect state.
+  // The widgetId+workspaceId pair is checked together so a widget id
+  // from another workspace can't be read through this route.
   const connection = await db.agencyConnection.findFirst({
-    where: { workspaceId },
-    select: { id: true, companyId: true, tokenRefreshFailedAt: true, updatedAt: true },
+    where: { widgetId, workspaceId, widget: { workspaceId } },
+    select: { id: true, companyId: true, tokenRefreshFailedAt: true },
   }).catch(() => null)
   if (!connection) return NextResponse.json({ connected: false, locations: [], total: 0 })
 
@@ -63,6 +67,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     connected: true,
+    companyId: connection.companyId,
     needsReconnect: !!connection.tokenRefreshFailedAt,
     locations,
     total,
@@ -74,27 +79,27 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 /**
- * PATCH /api/workspaces/:id/agency-locations
- * Body: { locationIds: string[] (AgencyLocation.locationId), widgetEnabled: boolean }
+ * PATCH /api/workspaces/:workspaceId/widgets/:widgetId/locations
+ * Body: { ids: string[] (AgencyLocation.id), widgetEnabled: boolean }
  * Bulk + single toggle share this. Admin+ only.
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const { workspaceId } = await params
+  const { workspaceId, widgetId } = await params
   const access = await requireWorkspaceRole(workspaceId, 'admin')
   if (access instanceof NextResponse) return access
 
   const body = await req.json().catch(() => null)
-  const locationIds: unknown = body?.locationIds
+  const ids: unknown = body?.ids
   const widgetEnabled: unknown = body?.widgetEnabled
-  if (!Array.isArray(locationIds) || locationIds.length === 0 || locationIds.length > 500
-      || !locationIds.every(id => typeof id === 'string') || typeof widgetEnabled !== 'boolean') {
-    return NextResponse.json({ error: 'locationIds (1-500 strings) and widgetEnabled (boolean) required' }, { status: 400 })
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500
+      || !ids.every(id => typeof id === 'string') || typeof widgetEnabled !== 'boolean') {
+    return NextResponse.json({ error: 'ids (1-500 strings) and widgetEnabled (boolean) required' }, { status: 400 })
   }
 
   const result = await db.agencyLocation.updateMany({
     where: {
-      locationId: { in: locationIds },
-      connection: { workspaceId },
+      id: { in: ids },
+      connection: { widgetId, workspaceId, widget: { workspaceId } },
     },
     data: {
       widgetEnabled,
