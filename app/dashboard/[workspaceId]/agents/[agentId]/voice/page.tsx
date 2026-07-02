@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
+import AgentCrmCard from '@/components/agents/AgentCrmCard'
 
 interface VapiConfig {
   phoneNumberId: string | null
@@ -347,6 +348,18 @@ export default function VoicePage() {
         <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
           Configure inbound call handling. Same knowledge base and brain as SMS.
         </p>
+      )}
+
+      {/* Per-agent CRM connection. Voice agents have no Integrations tab
+          (their hub is /voice/[agentId]/*), so the shared card lives on
+          their configuration home. Text agents get it on /integrations —
+          don't double-render for the bolt-on-voice case. */}
+      {agentType === 'VOICE' && (
+        <AgentCrmCard
+          workspaceId={workspaceId}
+          agentId={agentId}
+          returnTo={`/dashboard/${workspaceId}/voice/${agentId}/configuration`}
+        />
       )}
 
       {!vapiReady && (

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import {
   LeadConnectorIcon, VapiIcon, TwilioIcon, HubSpotIcon,
@@ -670,10 +671,14 @@ export default function IntegrationsPage() {
         </div>
         )}
 
-        {/* LeadConnector (GHL) — always rendered in embed mode (the
-            CRM is implicit and locked); standalone mode keeps the
-            primary/showAll logic. */}
-        {(embedded || primaryCrm === 'ghl' || showAllCrms) && (
+        {/* LeadConnector (GHL) — EMBED MODE ONLY. Inside the LeadConnector
+            iframe the CRM is implicit and locked, so the card is purely
+            informational. In standalone mode the connection is no longer a
+            workspace concern at all: each agent connects its own
+            sub-account from its CRM card (text agents → Integrations tab,
+            voice agents → Configuration). The pointer card below sends
+            people there. */}
+        {embedded && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
           {embedded ? (
             <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
@@ -815,6 +820,37 @@ export default function IntegrationsPage() {
               })}
             </div>
           )}
+        </div>
+        )}
+
+        {/* LeadConnector pointer — standalone mode. The connect /
+            reconnect / disconnect controls moved into each agent. */}
+        {!embedded && (primaryCrm === 'ghl' || showAllCrms || ghlConnected) && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><LeadConnectorIcon className="w-8 h-8" /></div>
+              <div>
+                <p className="text-sm font-medium text-zinc-200">LeadConnector</p>
+                <p className="text-xs text-zinc-500">
+                  Connections now live on each agent — open an agent and connect
+                  its own sub-account from the CRM card (text agents: Integrations
+                  tab · voice agents: Configuration).
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {ghlConnected && (
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-900/30 text-emerald-400">Connected</span>
+              )}
+              <Link
+                href={`/dashboard/${workspaceId}/agents`}
+                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+              >
+                Go to agents →
+              </Link>
+            </div>
+          </div>
         </div>
         )}
 

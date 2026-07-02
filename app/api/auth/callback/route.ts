@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
     const rawState = searchParams.get('state')
     let stateWorkspaceId: string | null = null
     let stateReturnTo: string | null = null
+    let stateAgentId: string | null = null
     if (rawState) {
       try {
         const decoded = JSON.parse(Buffer.from(rawState, 'base64url').toString('utf8'))
@@ -140,6 +141,9 @@ export async function GET(req: NextRequest) {
             !decoded.returnTo.startsWith('//')
           ) {
             stateReturnTo = decoded.returnTo
+          }
+          if (typeof decoded.agentId === 'string') {
+            stateAgentId = decoded.agentId
           }
         } else {
           stateWorkspaceId = rawState
@@ -200,6 +204,31 @@ export async function GET(req: NextRequest) {
         externalCompanyId: tokenData.companyId ?? null,
         externalUserId: tokenData.userId ?? null,
       })
+
+    // ── Per-agent binding ───────────────────────────────────────────────
+    // When the connect flow was started from an agent's CRM card, bind
+    // the freshly connected sub-account to THAT agent. Connections belong
+    // to agents, not the workspace — two agents in one workspace can
+    // point at different sub-accounts. Guarded by workspace membership
+    // (the agent must live in the state's workspace) so a tampered state
+    // can't rebind someone else's agent.
+    if (stateAgentId && stateWorkspaceId) {
+      try {
+        const bound = await db.agent.updateMany({
+          where: { id: stateAgentId, workspaceId: stateWorkspaceId },
+          data: { locationId: storeKey },
+        })
+        if (bound.count === 0) {
+          console.warn(`[OAuth ${cid}] agent bind skipped — agent ${stateAgentId} not in workspace ${stateWorkspaceId}`)
+        } else {
+          console.log(`[OAuth ${cid}] bound agent ${stateAgentId} to location ${storeKey}`)
+        }
+      } catch (err: any) {
+        // Binding failure shouldn't lose the OAuth grant — tokens are
+        // saved; the user can re-pick the CRM from the agent card.
+        console.warn(`[OAuth ${cid}] agent bind failed:`, err?.message)
+      }
+    }
 
     if (stateWorkspaceId) {
       await cascadeAgents(stateWorkspaceId)

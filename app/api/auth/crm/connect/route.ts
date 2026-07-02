@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -18,17 +19,39 @@ export async function GET(req: NextRequest) {
       ? rawReturnTo
       : null
 
+  // Optional: agentId makes this a PER-AGENT connection — the callback
+  // binds the freshly connected sub-account to this agent's locationId.
+  // Connections belong to agents, not the workspace; this is how the
+  // agent CRM card (text + voice agents) starts the flow. Validated
+  // against the workspace so a foreign agent id can't be smuggled in.
+  const rawAgentId = searchParams.get('agentId')
+  let agentId: string | null = null
+  if (rawAgentId) {
+    const agent = await db.agent.findFirst({
+      where: { id: rawAgentId, workspaceId },
+      select: { id: true },
+    })
+    if (!agent) {
+      return NextResponse.json({ error: 'Agent not found in workspace' }, { status: 404 })
+    }
+    agentId = agent.id
+  }
+
   const clientId = process.env.OAUTH_CLIENT_ID
   const versionId = process.env.OAUTH_VERSION_ID
   if (!clientId) {
     return NextResponse.json({ error: 'CRM OAuth not configured' }, { status: 500 })
   }
 
-  // state encoding: when returnTo is present, encode {workspaceId,
-  // returnTo} as base64url JSON. Otherwise stay with bare workspaceId
-  // so unrelated flows that don't know about this contract still work.
-  const state = returnTo
-    ? Buffer.from(JSON.stringify({ workspaceId, returnTo }), 'utf8').toString('base64url')
+  // state encoding: when returnTo or agentId is present, encode
+  // {workspaceId, agentId?, returnTo?} as base64url JSON. Otherwise stay
+  // with bare workspaceId so unrelated flows that don't know about this
+  // contract still work.
+  const state = returnTo || agentId
+    ? Buffer.from(
+        JSON.stringify({ workspaceId, ...(agentId ? { agentId } : {}), ...(returnTo ? { returnTo } : {}) }),
+        'utf8',
+      ).toString('base64url')
     : workspaceId
 
   const params = new URLSearchParams({
