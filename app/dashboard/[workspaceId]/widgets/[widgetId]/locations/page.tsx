@@ -78,13 +78,26 @@ export default async function WidgetLocationsPage({
             canManage ? (
               // Plain <a>, NOT next/link: the install endpoint is an API
               // route answering with a 302 — client-side router navigation
-              // can't resolve it and 404s.
-              <a
-                href={`/api/auth/leadconnector-agency/install?widgetId=${widget.id}`}
-                className="inline-flex rounded-lg bg-accent-primary-bg px-4 py-2 text-sm font-medium text-accent-primary"
-              >
-                Connect agency account
-              </a>
+              // can't resolve it and 404s. Two variants, same app: the
+              // whitelabel chooser (leadconnectorhq.com) for agencies on
+              // whitelabel domains, and the standard gohighlevel.com login.
+              <div className="space-y-2">
+                <a
+                  href={`/api/auth/leadconnector-agency/install?widgetId=${widget.id}`}
+                  className="inline-flex rounded-lg bg-accent-primary-bg px-4 py-2 text-sm font-medium text-accent-primary"
+                >
+                  Connect agency account
+                </a>
+                <p className="text-xs text-zinc-500">
+                  Signed in on gohighlevel.com instead of a whitelabel domain?{' '}
+                  <a
+                    href={`/api/auth/leadconnector-agency/install?widgetId=${widget.id}&variant=standard`}
+                    className="underline hover:text-zinc-300"
+                  >
+                    Connect via gohighlevel.com
+                  </a>
+                </p>
+              </div>
             ) : (
               <p className="text-xs text-zinc-500">
                 Ask a workspace admin to connect the agency account.
