@@ -77,23 +77,37 @@ export default async function WidgetLocationsPage({
         >
           ← Back to {widget.name}
         </Link>
-        <h1 className="text-xl font-semibold text-zinc-100">Locations · {widget.name}</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Turn this widget on or off per location. This widget connects to one
-          agency; its embed must include{' '}
-          <code className="text-xs text-zinc-400">data-location-id</code> (use the
-          &quot;CRM agency install&quot; snippet) for the toggle to apply.
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Locations · {widget.name}
+        </h1>
+        <p className="mt-1 text-sm max-w-2xl" style={{ color: 'var(--text-tertiary)' }}>
+          Turn this widget on or off for each location in your agency. The toggle
+          applies to embeds installed with the &quot;CRM agency install&quot; snippet
+          — the one carrying{' '}
+          <code
+            className="text-xs px-1 py-0.5 rounded"
+            style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}
+          >
+            data-location-id
+          </code>
+          .
         </p>
       </div>
 
       {connectError && (
-        <div className="rounded-lg border border-zinc-800 bg-accent-red-bg px-4 py-3 text-sm text-accent-red">
+        <div
+          className="rounded-lg border px-4 py-3 text-sm"
+          style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
+        >
           {connectError}
         </div>
       )}
       {justConnected && connection && (
-        <div className="rounded-lg border border-zinc-800 bg-accent-primary-bg px-4 py-3 text-sm text-accent-primary">
-          Agency connected — locations are syncing below.
+        <div
+          className="rounded-lg border px-4 py-3 text-sm"
+          style={{ borderColor: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
+        >
+          ✓ Agency connected — your locations are synced below.
         </div>
       )}
 
