@@ -53,6 +53,11 @@ const nextConfig: NextConfig = {
     return [
       { source: "/dashboard/:path*", headers: [cspHeader] },
       { source: "/embedded/:path*", headers: [cspHeader] },
+      // The customer portal is embeddable in the LeadConnector menu via
+      // custom menu links — same thousands-of-whitelabel-domains reality
+      // as the dashboard, so the same frame-ancestors * decision applies.
+      // Auth is the portal's own JWT cookie, not parent-origin trust.
+      { source: "/portal/:path*", headers: [cspHeader] },
       { source: "/api/auth/leadconnector-iframe-handshake", headers: [cspHeader] },
       // The embed loader runs on customer sites where browsers (and WP
       // caching/optimizer plugins) hold on to whatever copy they first

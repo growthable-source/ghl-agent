@@ -33,6 +33,12 @@ import bcrypt from 'bcryptjs'
 import { db } from './db'
 
 const COOKIE_NAME = 'voxility_portal'
+// Companion cookie with SameSite=None so the portal session travels when
+// the portal is framed inside the LeadConnector menu (third-party iframe
+// context — Lax cookies don't attach there). Mirrors the dashboard's
+// dual-cookie pattern: the Lax cookie stays the primary for normal tabs;
+// this one exists purely for iframes. Same JWT value, same TTL.
+const EMBED_COOKIE_NAME = 'voxility_portal_embed'
 // 14 days. Long enough that customers don't need to re-auth weekly,
 // short enough that a stolen cookie expires before most invoice cycles.
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14
@@ -106,7 +112,7 @@ export async function verifyPortalPassword(plain: string, hash: string): Promise
  */
 export async function getPortalSession(): Promise<PortalSession | null> {
   const jar = await cookies()
-  const token = jar.get(COOKIE_NAME)?.value
+  const token = jar.get(COOKIE_NAME)?.value ?? jar.get(EMBED_COOKIE_NAME)?.value
   if (!token) return null
   const payload = await verifyPortalToken(token)
   if (!payload) return null
@@ -143,9 +149,21 @@ export async function setPortalCookie(token: string): Promise<void> {
     path: '/',
     maxAge: SESSION_TTL_SECONDS,
   })
+  // SameSite=None requires Secure, so the embed cookie only exists in
+  // production (HTTPS). Locally the portal can't be iframe-tested anyway.
+  if (process.env.NODE_ENV === 'production') {
+    jar.set(EMBED_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      path: '/',
+      maxAge: SESSION_TTL_SECONDS,
+    })
+  }
 }
 
 export async function clearPortalCookie(): Promise<void> {
   const jar = await cookies()
   jar.delete(COOKIE_NAME)
+  jar.delete(EMBED_COOKIE_NAME)
 }

@@ -5,6 +5,7 @@ import { getPortalSession } from '@/lib/portal-auth'
 import { getPortalBranding } from '@/lib/portal-branding'
 import { db } from '@/lib/db'
 import NewBadge from '@/components/NewBadge'
+import PortalShell from '@/components/portal/PortalShell'
 
 export const metadata = {
   title: 'Customer Portal',
@@ -62,6 +63,8 @@ export default async function PortalLayout({ children }: { children: React.React
       className="min-h-screen flex bg-zinc-950 text-zinc-100"
       style={{ ['--portal-accent']: portal?.primaryColor || '#fbbf24' } as React.CSSProperties}
     >
+      <PortalShell
+        sidebar={
       <aside className="w-60 shrink-0 border-r border-zinc-800 flex flex-col">
         <div className="px-4 py-4 border-b border-zinc-800">
           {portal?.logoUrl ? (
@@ -108,7 +111,10 @@ export default async function PortalLayout({ children }: { children: React.React
           </form>
         </div>
       </aside>
-      <main className="flex-1 min-w-0">{children}</main>
+        }
+      >
+        {children}
+      </PortalShell>
     </div>
   )
 }
