@@ -53,7 +53,7 @@ interface BrandOption {
   primaryColor: string | null
 }
 
-type CopyKey = 'embed' | 'hostedUrl' | 'emailSig' | 'inline'
+type CopyKey = 'embed' | 'hostedUrl' | 'emailSig' | 'inline' | 'crmInstall'
 
 export default function WidgetEditorPage() {
   const params = useParams()
@@ -138,6 +138,9 @@ export default function WidgetEditorPage() {
 
   const scriptSnippet = `<script src="${origin}/widget.js" data-widget-id="${widget.id}" data-public-key="${widget.publicKey}" async></script>`
   const inlineSnippet = `<div id="xovera-call"></div>\n<script src="${origin}/widget.js" data-widget-id="${widget.id}" data-public-key="${widget.publicKey}" data-mount="#xovera-call" async></script>`
+  // CRM-dashboard variant: widget + the hosted sidebar switch that lets
+  // staff hide/show the widget per-browser while they work.
+  const crmInstallSnippet = `${scriptSnippet}\n<script src="${origin}/leadconnector-widget-toggle.js" async></script>`
   const hostedUrl = widget.slug ? `${origin}/c/${widget.slug}` : ''
   const emailSigSnippet = hostedUrl
     ? `<a href="${hostedUrl}" style="display:inline-block;padding:8px 14px;border-radius:999px;background:${widget.primaryColor};color:${widget.buttonTextColor};font:600 13px -apple-system,Segoe UI,sans-serif;text-decoration:none">📞 ${widget.buttonLabel}</a>`
@@ -222,6 +225,16 @@ export default function WidgetEditorPage() {
             copied={copied === (isInline ? 'inline' : 'embed')}
             onCopy={() => copy(isInline ? 'inline' : 'embed', isInline ? inlineSnippet : scriptSnippet)}
           />
+
+          <div className="border-t border-zinc-800 pt-4">
+            <SnippetRow
+              label="🖥️ CRM dashboard install (with hide/show switch)"
+              help="Loads the widget inside your CRM's dashboard and adds a small on/off switch to the sidebar menu, so your team can hide the widget while they work. Paste into your CRM's custom JavaScript / custom code settings — switch state is remembered per browser."
+              value={crmInstallSnippet}
+              copied={copied === 'crmInstall'}
+              onCopy={() => copy('crmInstall', crmInstallSnippet)}
+            />
+          </div>
 
           <div className="border-t border-zinc-800 pt-4">
             <div className="flex items-center justify-between mb-2">
