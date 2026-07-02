@@ -57,9 +57,13 @@ function timeAgo(iso: string): string {
 export default function LocationList({
   apiBase,
   canManage,
+  reconnectHref,
 }: {
   apiBase: string
   canManage: boolean
+  /** OAuth install URL for the reconnect CTA (dashboard only — the
+      portal can't drive the admin OAuth flow, so it omits this). */
+  reconnectHref?: string
 }) {
   const [data, setData] = useState<ListResponse | null>(null)
   const [q, setQ] = useState('')
@@ -156,6 +160,13 @@ export default function LocationList({
           style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
         >
           The agency connection needs to be reconnected — location data may be stale.
+          {reconnectHref && canManage && (
+            // Plain <a>: the install endpoint is an API route (302 to the
+            // OAuth chooser); client-side router navigation 404s on it.
+            <a href={reconnectHref} className="ml-2 font-semibold underline">
+              Reconnect now →
+            </a>
+          )}
         </div>
       )}
 

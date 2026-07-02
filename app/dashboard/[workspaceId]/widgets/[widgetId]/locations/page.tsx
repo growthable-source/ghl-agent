@@ -156,6 +156,7 @@ export default async function WidgetLocationsPage({
         <LocationList
           apiBase={`/api/workspaces/${workspaceId}/widgets/${widgetId}/locations`}
           canManage={canManage}
+          reconnectHref={`/api/auth/leadconnector-agency/install?widgetId=${widget.id}`}
         />
       )}
     </div>
