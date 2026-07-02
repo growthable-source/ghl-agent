@@ -34,6 +34,12 @@
   var widgetId = me.getAttribute('data-widget-id') || me.getAttribute('data-key')
   var publicKey = me.getAttribute('data-public-key') || me.getAttribute('data-pk')
   var mountSelector = me.getAttribute('data-mount')
+  // Optional per-location identity for the agency kill switch. The CRM
+  // resolves {{location.id}} per sub-account when the snippet is installed
+  // via agency custom code — but on plain sites the literal braces come
+  // through untouched, so treat an unreplaced merge tag as absent.
+  var locationId = me.getAttribute('data-location-id')
+  if (locationId && (locationId.indexOf('{{') !== -1 || !locationId.trim())) locationId = null
   if (!widgetId || !publicKey) {
     console.warn('[Xovera] widget.js needs data-widget-id and data-public-key attributes')
     return
@@ -65,9 +71,11 @@
     if (state.launcher) state.launcher.style.display = h ? 'none' : state.launcherDisplay
   }
 
-  fetch(hostUrl + '/api/widget/' + widgetId + '/config?pk=' + encodeURIComponent(publicKey))
+  fetch(hostUrl + '/api/widget/' + widgetId + '/config?pk=' + encodeURIComponent(publicKey)
+      + (locationId ? '&locationId=' + encodeURIComponent(locationId) : ''))
     .then(function (r) { return r.json() })
     .then(function (cfg) {
+      if (cfg && cfg.disabled) return   // location toggled off — render nothing
       if (cfg && cfg.id) { state.config = cfg; render(); startVisitorTracking() }
     })
     .catch(function (e) { console.warn('[Xovera] config fetch failed:', e) })

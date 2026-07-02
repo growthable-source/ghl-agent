@@ -22,6 +22,32 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const w = v.widget
 
+  // ── Per-location kill switch (opt-in, fail-open) ────────────────────
+  // Only embeds that carry data-location-id send this param. A location
+  // explicitly toggled off returns {disabled:true} and the embed renders
+  // nothing. Every other path — no param, no AgencyLocation row, no
+  // agency connection, DB error — falls through to the normal config
+  // response, so pre-existing embeds are untouched.
+  const embedLocationId = req.nextUrl.searchParams.get('locationId')
+  if (embedLocationId) {
+    try {
+      const { db } = await import('@/lib/db')
+      const row = await db.agencyLocation.findFirst({
+        where: {
+          locationId: embedLocationId,
+          removedAt: null,
+          connection: { workspaceId: w.workspaceId },
+        },
+        select: { widgetEnabled: true },
+      })
+      if (row && !row.widgetEnabled) {
+        return NextResponse.json({ disabled: true }, { headers })
+      }
+    } catch {
+      /* fail open — widget renders as normal */
+    }
+  }
+
   // Render merge fields on the welcome message. Widget visitors are usually
   // anonymous at config-load time, so contact-scoped tokens resolve to their
   // fallbacks — e.g. `Welcome back {{contact.first_name|friend}}` becomes
