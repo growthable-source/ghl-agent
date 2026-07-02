@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getPortalSession } from '@/lib/portal-auth'
 import { getPortalBranding } from '@/lib/portal-branding'
 import { db } from '@/lib/db'
+import NewBadge from '@/components/NewBadge'
 
 export const metadata = {
   title: 'Customer Portal',
@@ -75,6 +76,7 @@ export default async function PortalLayout({ children }: { children: React.React
         <nav className="flex-1 p-2 space-y-0.5 text-sm">
           <NavLink href="/portal" label="Overview" icon="grid" />
           <NavLink href="/portal/conversations" label="Live Chats" icon="chat" />
+          <NavLink href="/portal/locations" label="Locations" icon="pin" isNew />
           <NavLink href="/portal/tickets" label="Tickets" icon="ticket" />
           <NavLink href="/portal/reports" label="Reports" icon="chart" />
           <NavLink href="/portal/settings" label="Settings" icon="gear" />
@@ -117,9 +119,10 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   ticket: <><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z" /><path d="M13 5v14" strokeDasharray="2 2" /></>,
   chart: <><path d="M3 3v18h18" /><path d="M7 14l3-4 3 3 4-6" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
+  pin: <><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>,
 }
 
-function NavLink({ href, label, icon }: { href: string; label: string; icon?: string }) {
+function NavLink({ href, label, icon, isNew }: { href: string; label: string; icon?: string; isNew?: boolean }) {
   return (
     <Link
       href={href}
@@ -131,6 +134,7 @@ function NavLink({ href, label, icon }: { href: string; label: string; icon?: st
         </svg>
       )}
       {label}
+      {isNew && <NewBadge since="2026-07-02" className="ml-1" />}
     </Link>
   )
 }
