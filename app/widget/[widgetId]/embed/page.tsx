@@ -80,8 +80,12 @@ export default function WidgetEmbedPage() {
   const [sending, setSending] = useState(false)
   const [typing, setTyping] = useState(false)
   const [needsIdentity, setNeedsIdentity] = useState(false)
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  // Host-supplied identity (vname/vemail): widget.js forwards it when the
+  // host page already knows the visitor (e.g. the CRM dashboard reads the
+  // logged-in user via the app-embed script). Prefilled here so the chat
+  // never has to ask. Same trust level as the form — convenience only.
+  const [name, setName] = useState(() => searchParams.get('vname') ?? '')
+  const [email, setEmail] = useState(() => searchParams.get('vemail') ?? '')
   const [error, setError] = useState<string | null>(null)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [voiceState, setVoiceState] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle')
@@ -258,8 +262,10 @@ export default function WidgetEmbedPage() {
       .then(data => {
         if (data.error) { setError(data.error); return }
         setConfig(data)
-        // If widget requires identity, show the form
-        if (data.requireEmail) setNeedsIdentity(true)
+        // If widget requires identity, show the form — unless the host
+        // page already supplied an email (vemail), in which case the
+        // visitor is pre-identified and the gate would just be friction.
+        if (data.requireEmail && !searchParams.get('vemail')) setNeedsIdentity(true)
         else if (data.askForNameEmail) {
           // Soft prompt — but still allow chat
         }
@@ -332,6 +338,39 @@ export default function WidgetEmbedPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, widgetId, publicKey, needsIdentity])
+
+  // Live identity from the host page: widget.js forwards Xovera.identify()
+  // calls as a postMessage (identity that arrived after the iframe was
+  // built rides in here instead of the vname/vemail URL params). No
+  // origin check on purpose — embeds run on arbitrary customer domains,
+  // and identity is non-privileged prefill (same trust as the form).
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      const d = e.data
+      if (!d || d.type !== 'xovera:identify') return
+      const newName = typeof d.name === 'string' ? d.name.slice(0, 200) : ''
+      const newEmail = typeof d.email === 'string' ? d.email.slice(0, 320) : ''
+      if (!newName && !newEmail) return
+      setName(prev => prev || newName)
+      setEmail(prev => prev || newEmail)
+      if (newEmail) setNeedsIdentity(false)
+      // Visitor row already created without identity? Update it in place
+      // so the inbox shows who this is without waiting for the form.
+      if (visitorId && widgetId) {
+        const cookieId = getCookieId()
+        if (cookieId) {
+          fetch(`/api/widget/${widgetId}/visitor?pk=${publicKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookieId, email: newEmail || undefined, name: newName || undefined }),
+          }).catch(() => {})
+        }
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visitorId, widgetId, publicKey])
 
   // Step 3: open/resume conversation
   useEffect(() => {

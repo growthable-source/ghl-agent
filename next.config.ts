@@ -68,6 +68,13 @@ const nextConfig: NextConfig = {
         source: "/widget.js",
         headers: [{ key: "Cache-Control", value: "public, max-age=300, must-revalidate" }],
       },
+      // Same short TTL for the marketplace Custom JS file — the CRM
+      // injects it on every dashboard load and we want deploys to
+      // propagate within minutes, not at the browser cache's mercy.
+      {
+        source: "/leadconnector-app-embed.js",
+        headers: [{ key: "Cache-Control", value: "public, max-age=300, must-revalidate" }],
+      },
     ]
   },
 }

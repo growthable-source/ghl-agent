@@ -55,6 +55,7 @@
     launcherDisplay: 'flex',
     iframe: null,
     iframeWrap: null,
+    identity: null,
   }
 
   // ─── Visibility kill switch ─────────────────────────────────────────
@@ -209,6 +210,7 @@
     var embedUrl = hostUrl + '/widget/' + widgetId + '/embed?pk=' + encodeURIComponent(publicKey)
       + (cid ? '&cid=' + encodeURIComponent(cid) : '')
       + parentContextQuery()
+      + identityQuery()
     var wrap = buildIframe(embedUrl, cfg.title || 'Chat', position, false)
     document.body.appendChild(wrap)
     state.iframeWrap = wrap
@@ -326,6 +328,10 @@
         state.iframeWrap.style.transform = 'translateY(0)'
       })
       if (swapIcon && launcher) launcher.innerHTML = svgClose()
+      // Re-send any host-supplied identity on open — covers identify()
+      // calls that landed while the iframe was still booting and missed
+      // the live postMessage.
+      pushIdentity()
     } else {
       state.iframeWrap.style.pointerEvents = 'none'
       state.iframeWrap.style.opacity = '0'
@@ -437,6 +443,31 @@
     return '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
   }
 
+  // ─── Visitor identity (host-supplied) ───────────────────────────────
+  // Host pages that already know who the visitor is (e.g. the CRM
+  // dashboard, where the app-embed script reads the logged-in user) can
+  // pre-identify them so the chat never asks for name/email. Same trust
+  // level as the in-chat form — convenience, never authentication.
+  // If the iframe exists the identity is forwarded live via postMessage;
+  // otherwise it rides along as vname/vemail when the iframe is built.
+  function identityQuery() {
+    var id = state.identity
+    if (!id) return ''
+    return (id.name ? '&vname=' + encodeURIComponent(id.name) : '')
+      + (id.email ? '&vemail=' + encodeURIComponent(id.email) : '')
+  }
+  function pushIdentity() {
+    if (!state.identity || !state.iframeWrap) return
+    var frame = state.iframeWrap.querySelector('iframe')
+    if (!frame || !frame.contentWindow) return
+    try {
+      frame.contentWindow.postMessage(
+        { type: 'xovera:identify', name: state.identity.name || null, email: state.identity.email || null },
+        hostUrl || '*'
+      )
+    } catch (_) {}
+  }
+
   // Programmatic API for host pages
   window.Xovera = {
     open: function () { if (!state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call') },
@@ -445,5 +476,13 @@
     hide: function () { setHidden(true) },
     show: function () { setHidden(false) },
     isHidden: function () { return visHidden() },
+    identify: function (info) {
+      if (!info || typeof info !== 'object') return
+      var name = typeof info.name === 'string' ? info.name.slice(0, 200) : null
+      var email = typeof info.email === 'string' ? info.email.slice(0, 320) : null
+      if (!name && !email) return
+      state.identity = { name: name, email: email }
+      pushIdentity()
+    },
   }
 })();
