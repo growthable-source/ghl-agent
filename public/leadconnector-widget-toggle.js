@@ -1,8 +1,10 @@
 /**
- * Xovera — LeadConnector sidebar switch for the chat widget
+ * Xovera — LeadConnector header switch for the chat widget
  *
- * Adds a "Chat widget" on/off switch to the bottom of the LeadConnector
- * left sidebar so staff can hide the floating widget while they work.
+ * Adds a circular hide/show button to the LeadConnector top-right header
+ * controls (next to the notification / help buttons) so staff can hide
+ * the floating widget while they work. Falls back to a row at the bottom
+ * of the left sidebar on skins without the header controls strip.
  * The choice is per-browser (localStorage) and is honored by widget.js
  * on every future page load until switched back on.
  *
@@ -33,6 +35,42 @@
 
   var ROW_ID = 'xovera-widget-toggle'
 
+  function svgChat(slashed) {
+    return '<svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">'
+      + '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>'
+      + (slashed ? '<line x1="3" y1="3" x2="21" y2="21" stroke-width="2.4"></line>' : '')
+      + '</svg>'
+  }
+
+  // Header variant — a 32px circle matching the native header controls
+  // (notification bell, help button) in the top-right strip.
+  function buildHeaderButton() {
+    var btn = document.createElement('button')
+    btn.id = ROW_ID
+    btn.type = 'button'
+    btn.setAttribute('role', 'switch')
+    btn.style.cssText = [
+      'width:32px', 'height:32px', 'border-radius:50%', 'border:none',
+      'display:inline-flex', 'align-items:center', 'justify-content:center',
+      // Native header buttons carry margin-left:10px and no right margin —
+      // mirror that or the strip gets a double gap on one side.
+      'cursor:pointer', 'flex:none', 'margin:0 0 0 10px', 'padding:0',
+      'transition:background 0.15s ease',
+    ].join(';')
+    function paint() {
+      var on = !isHidden()
+      btn.style.background = on ? '#16a34a' : '#9ca3af'
+      btn.innerHTML = svgChat(!on)
+      btn.title = on ? 'Hide chat widget' : 'Show chat widget'
+      btn.setAttribute('aria-checked', on ? 'true' : 'false')
+      btn.setAttribute('aria-label', btn.title)
+    }
+    btn.addEventListener('click', function () { setHidden(!isHidden()); paint() })
+    paint()
+    return btn
+  }
+
+  // Sidebar variant — labeled row with a pill switch, used as fallback.
   function buildRow() {
     var row = document.createElement('div')
     row.id = ROW_ID
@@ -80,8 +118,16 @@
 
   function mount() {
     if (document.getElementById(ROW_ID)) return
-    // The sidebar is re-rendered by the SPA router, so we look it up
-    // fresh every time. Selector candidates, most-specific first.
+    // The header/sidebar are re-rendered by the SPA router, so we look
+    // them up fresh every time. Header strip first — it stays visible
+    // even on pages where the sidebar is collapsed.
+    var controls = document.querySelector('.hl_header--controls')
+    if (controls) {
+      // Sit just left of the native circle buttons (help icon if present).
+      var anchor = controls.querySelector('#hl_header--help-icon') || controls.firstElementChild
+      controls.insertBefore(buildHeaderButton(), anchor)
+      return
+    }
     var host =
       document.querySelector('#sidebar-v2 nav') ||
       document.querySelector('#sidebar-v2') ||
