@@ -53,7 +53,7 @@ interface BrandOption {
   primaryColor: string | null
 }
 
-type CopyKey = 'embed' | 'hostedUrl' | 'emailSig' | 'inline' | 'crmInstall'
+type CopyKey = 'embed' | 'hostedUrl' | 'emailSig' | 'inline' | 'crmInstall' | 'crmPerLocation'
 
 export default function WidgetEditorPage() {
   const params = useParams()
@@ -141,6 +141,12 @@ export default function WidgetEditorPage() {
   // CRM-dashboard variant: widget + the hosted sidebar switch that lets
   // staff hide/show the widget per-browser while they work.
   const crmInstallSnippet = `${scriptSnippet}\n<script src="${origin}/leadconnector-widget-toggle.js" async></script>`
+  // Agency-level variant: the {{location.id}} merge tag is resolved per
+  // sub-account by the CRM when the snippet is added via agency custom
+  // code, which is what lets the per-location widget toggle (Locations
+  // page) target each site. On non-CRM sites the tag stays literal and
+  // widget.js ignores it.
+  const crmPerLocationSnippet = `<script src="${origin}/widget.js" data-widget-id="${widget.id}" data-public-key="${widget.publicKey}" data-location-id="{{location.id}}" async></script>`
   const hostedUrl = widget.slug ? `${origin}/c/${widget.slug}` : ''
   const emailSigSnippet = hostedUrl
     ? `<a href="${hostedUrl}" style="display:inline-block;padding:8px 14px;border-radius:999px;background:${widget.primaryColor};color:${widget.buttonTextColor};font:600 13px -apple-system,Segoe UI,sans-serif;text-decoration:none">📞 ${widget.buttonLabel}</a>`
@@ -233,6 +239,16 @@ export default function WidgetEditorPage() {
               value={crmInstallSnippet}
               copied={copied === 'crmInstall'}
               onCopy={() => copy('crmInstall', crmInstallSnippet)}
+            />
+          </div>
+
+          <div className="border-t border-zinc-800 pt-4">
+            <SnippetRow
+              label="📍 CRM agency install (per-location control)"
+              help="Use this version when installing through your CRM's agency-level custom code — the location tag lets you turn the widget on or off per location from the Locations page. On sites outside your CRM the tag is ignored."
+              value={crmPerLocationSnippet}
+              copied={copied === 'crmPerLocation'}
+              onCopy={() => copy('crmPerLocation', crmPerLocationSnippet)}
             />
           </div>
 
