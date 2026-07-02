@@ -46,8 +46,23 @@
     open: false,
     config: null,
     launcher: null,
+    launcherDisplay: 'flex',
     iframe: null,
     iframeWrap: null,
+  }
+
+  // ─── Visibility kill switch ─────────────────────────────────────────
+  // Host pages (e.g. a CRM dashboard where the widget gets in the way of
+  // real work) can hide the widget per-browser via Xovera.hide()/show().
+  // Persisted so the choice survives SPA navigations and reloads.
+  var VIS_KEY = 'xovera_widget_hidden'
+  function visHidden() {
+    try { return localStorage.getItem(VIS_KEY) === '1' } catch (_) { return false }
+  }
+  function setHidden(h) {
+    try { h ? localStorage.setItem(VIS_KEY, '1') : localStorage.removeItem(VIS_KEY) } catch (_) {}
+    if (h && state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call')
+    if (state.launcher) state.launcher.style.display = h ? 'none' : state.launcherDisplay
   }
 
   fetch(hostUrl + '/api/widget/' + widgetId + '/config?pk=' + encodeURIComponent(publicKey))
@@ -174,6 +189,8 @@
     }
     document.body.appendChild(btn)
     state.launcher = btn
+    state.launcherDisplay = 'flex'
+    if (visHidden()) btn.style.display = 'none'
 
     // Pass the parent-page cookieId into the iframe so chat
     // conversations + page_view events end up on the same WidgetVisitor
@@ -243,6 +260,8 @@
       mount.appendChild(btn)
     }
     state.launcher = btn
+    state.launcherDisplay = 'inline-flex'
+    if (visHidden()) btn.style.display = 'none'
 
     // Same cookieId hand-off as the chat widget — keeps page_view
     // events fired by the parent on the same visitor row as any
@@ -273,6 +292,11 @@
       'border:1px solid #27272a',
       'transition:opacity 0.2s ease, transform 0.2s ease',
       'opacity:0', 'transform:translateY(12px)',
+      // Closed/animating panel must never intercept clicks: during the
+      // 220ms close fade the wrap is invisible (opacity 0) but still
+      // display:block over a ~380x620 region right above the launcher —
+      // without this, clicks there are silently swallowed.
+      'pointer-events:none',
     ].join(';')
     var iframe = document.createElement('iframe')
     iframe.src = src
@@ -288,12 +312,14 @@
     state.open = !state.open
     if (state.open) {
       state.iframeWrap.style.display = 'block'
+      state.iframeWrap.style.pointerEvents = 'auto'
       requestAnimationFrame(function () {
         state.iframeWrap.style.opacity = '1'
         state.iframeWrap.style.transform = 'translateY(0)'
       })
       if (swapIcon && launcher) launcher.innerHTML = svgClose()
     } else {
+      state.iframeWrap.style.pointerEvents = 'none'
       state.iframeWrap.style.opacity = '0'
       state.iframeWrap.style.transform = 'translateY(12px)'
       setTimeout(function () { if (!state.open) state.iframeWrap.style.display = 'none' }, 220)
@@ -343,8 +369,14 @@
 
     var dragging = false, moved = false, startX = 0, startY = 0, startSide = 0, startBottom = 0
     var THRESH = 5
-    launcher.style.touchAction = 'none' // stop the page scrolling while dragging on touch
+    // Drag is MOUSE-ONLY. touch-action:none turned the launcher into a
+    // scroll trap on phones: a scroll swipe starting on the button
+    // wouldn't scroll the page — it flung the widget around instead (and
+    // persisted the accidental position). manipulation keeps taps snappy
+    // while letting the browser own pan/scroll gestures.
+    launcher.style.touchAction = 'manipulation'
     launcher.addEventListener('pointerdown', function (e) {
+      if (e.pointerType && e.pointerType !== 'mouse') return
       if (typeof e.button === 'number' && e.button !== 0) return
       dragging = true; moved = false
       startX = e.clientX; startY = e.clientY
@@ -402,5 +434,8 @@
     open: function () { if (!state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call') },
     close: function () { if (state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call') },
     toggle: function () { toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call') },
+    hide: function () { setHidden(true) },
+    show: function () { setHidden(false) },
+    isHidden: function () { return visHidden() },
   }
 })();
