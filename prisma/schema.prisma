@@ -167,6 +167,7 @@ model Workspace {
   copilotSessions      CopilotSession[]      @relation("WorkspaceCopilotSessions")
   copilotSops          CopilotSop[]          @relation("WorkspaceCopilotSops")
   copilotAgents        CopilotAgent[]        @relation("WorkspaceCopilotAgents")
+  agencyConnections    AgencyConnection[]
 
   // ─── Native (built-in) CRM ───
   // Populated only for workspaces using crmProvider='native' on their
@@ -932,18 +933,18 @@ model KnowledgeEntry {
 // pipeline below is the new path: vector-indexed retrieval against
 // crawled / uploaded sources.
 model KnowledgeDomain {
-  id                String             @id @default(cuid())
+  id                String            @id @default(cuid())
   workspaceId       String
-  workspace         Workspace          @relation("WorkspaceKnowledgeDomains", fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace         Workspace         @relation("WorkspaceKnowledgeDomains", fields: [workspaceId], references: [id], onDelete: Cascade)
   name              String
   description       String?
   // Default intent tags injected when the LLM classifier finds nothing
   // in the per-domain taxonomy. Lets a workspace pre-seed sensible
   // labels ("how_to", "pricing", "troubleshooting"...) without manually
   // creating every taxonomy row up front.
-  defaultIntentTags String[]           @default([])
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  defaultIntentTags String[]          @default([])
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
   taxonomies        Taxonomy[]
   sources           KnowledgeSource[]
   chunks            KnowledgeChunk[]
@@ -1088,11 +1089,11 @@ model KnowledgeChunk {
 
   // Versioning chain
   supersedesId       String?
-  supersedes         KnowledgeChunk?         @relation("ChunkSupersession", fields: [supersedesId], references: [id], onDelete: SetNull)
-  supersededBy       KnowledgeChunk[]        @relation("ChunkSupersession")
+  supersedes         KnowledgeChunk?  @relation("ChunkSupersession", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy       KnowledgeChunk[] @relation("ChunkSupersession")
   supersededAt       DateTime?
   supersessionReason String?
-  contentVersion     Int                     @default(1)
+  contentVersion     Int              @default(1)
 
   @@unique([sourceUrl, chunkIndex, contentVersion])
   @@index([knowledgeDomainId, supersededAt])
@@ -2236,55 +2237,55 @@ model WidgetVisitorEvent {
 }
 
 model WidgetConversation {
-  id               String             @id @default(cuid())
-  widgetId         String
-  widget           ChatWidget         @relation(fields: [widgetId], references: [id], onDelete: Cascade)
-  visitorId        String
-  visitor          WidgetVisitor      @relation(fields: [visitorId], references: [id], onDelete: Cascade)
-  agentId          String?
-  status           String             @default("active")
-  lastMessageAt    DateTime           @default(now())
+  id                  String             @id @default(cuid())
+  widgetId            String
+  widget              ChatWidget         @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  visitorId           String
+  visitor             WidgetVisitor      @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  agentId             String?
+  status              String             @default("active")
+  lastMessageAt       DateTime           @default(now())
   // Cron debounce for conversation.stale — set when we've already paged
   // about this thread so we don't notify again until the visitor replies.
-  staleNotifiedAt  DateTime?
+  staleNotifiedAt     DateTime?
   // Cron debounce for time-based operator escalation (assigned human hasn't
   // replied to a waiting visitor within LiveChatSettings.escalateAfterMinutes).
   // Stamped when escalated; cleared when the visitor or operator sends next.
   escalatedNotifiedAt DateTime?
   // Visitor satisfaction (1–5 stars). Submitted via the widget's "Rate
   // this chat" control or auto-prompted on Start-new-conversation.
-  csatRating       Int?
-  csatComment      String?            @db.Text
-  csatSubmittedAt  DateTime?
+  csatRating          Int?
+  csatComment         String?            @db.Text
+  csatSubmittedAt     DateTime?
   // Operator assignment. assignedUserId points at WorkspaceMember.userId
   // (the User row), set either by the routing engine on handover or by
   // an operator picking up the chat manually. assignedAt drives SLA /
   // first-response timing on the inbox.
-  assignedUserId   String?
-  assignedUser     User?              @relation("ConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  assignedAt       DateTime?
+  assignedUserId      String?
+  assignedUser        User?              @relation("ConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt          DateTime?
   // Why the chat was assigned. "manual", "self" (operator self-assigned
   // by replying), "round_robin", "first_available". Useful in the inbox
   // and for debugging routing.
-  assignmentReason String?
+  assignmentReason    String?
   // Set when the chat is waiting in the human queue (team at capacity).
   // "In the queue" = queuedAt != null AND assignedUserId == null AND
   // status != 'ended'. Cleared when a human is assigned. Queue order is
   // queuedAt ascending. See lib/widget-routing.ts advanceQueue().
-  queuedAt         DateTime?
+  queuedAt            DateTime?
   // Where on the host site the visitor first opened this chat. Captured
   // at conversation-create time from the widget's window.location, then
   // never updated — distinct from WidgetVisitor.currentUrl, which tracks
   // the visitor as they browse. Operators use this to know "was this
   // chat started on the pricing page or the docs?".
-  initiatedUrl     String?
-  initiatedTitle   String?
+  initiatedUrl        String?
+  initiatedTitle      String?
   // Cached Haiku-generated summary of the conversation. Computed on
   // demand (Generate button in the inbox) so we don't run Haiku on
   // every chat. Cleared by clients on stale + regenerated when the
   // conversation has grown materially since aiSummaryAt.
-  aiSummary        String?            @db.Text
-  aiSummaryAt      DateTime?
+  aiSummary           String?            @db.Text
+  aiSummaryAt         DateTime?
   // Set when this conversation was merged INTO another one (the visitor
   // returned in a new session with the same issue and an operator
   // combined the threads). Points at the surviving target conversation.
@@ -2292,15 +2293,15 @@ model WidgetConversation {
   // marked status='ended' + mergedIntoId set, so the inbox can quietly
   // redirect anyone who opens it to the merged thread instead of
   // showing a now-empty husk.
-  mergedIntoId     String?
-  createdAt        DateTime           @default(now())
-  messages         WidgetMessage[]
-  notes            ConversationNote[]
-  voiceCalls       WidgetVoiceCall[]
+  mergedIntoId        String?
+  createdAt           DateTime           @default(now())
+  messages            WidgetMessage[]
+  notes               ConversationNote[]
+  voiceCalls          WidgetVoiceCall[]
   // Conversation promoted into a ticket (1:0..1). Back-relation for
   // Ticket.conversation. SetNull on the Ticket side means the ticket
   // survives if the source convo is hard-deleted.
-  ticket           Ticket?            @relation("ConversationTicket")
+  ticket              Ticket?            @relation("ConversationTicket")
 
   @@index([widgetId, lastMessageAt(sort: Desc)])
   @@index([visitorId])
@@ -2782,31 +2783,31 @@ model AdminAuditLog {
 // folded into WidgetConversation, which keeps widget's brand/visitor
 // graph untouched.
 model MetaConversation {
-  id                   String        @id @default(cuid())
-  workspaceId          String
-  locationId           String
-  channel              String // 'messenger' | 'instagram'
-  pageId               String // entry.id from webhook (Page or IG-Business id)
-  pageName             String?
-  senderId             String // PSID for Messenger, IGSID for Instagram
-  senderName           String?
-  senderProfilePicUrl  String?
-  agentId              String?
-  status               String        @default("active")
-  lastMessageAt        DateTime      @default(now())
-  lastMessagePreview   String?
-  lastMessageDirection String? // 'in' | 'out'
+  id                      String        @id @default(cuid())
+  workspaceId             String
+  locationId              String
+  channel                 String // 'messenger' | 'instagram'
+  pageId                  String // entry.id from webhook (Page or IG-Business id)
+  pageName                String?
+  senderId                String // PSID for Messenger, IGSID for Instagram
+  senderName              String?
+  senderProfilePicUrl     String?
+  agentId                 String?
+  status                  String        @default("active")
+  lastMessageAt           DateTime      @default(now())
+  lastMessagePreview      String?
+  lastMessageDirection    String? // 'in' | 'out'
   // Denormalized operator id of the last outbound message, so the inbox
   // list can show "AI" vs a human reply without joining MetaMessage.
   // Null when the last outbound was an AI reply (or last message inbound).
   lastMessageSentByUserId String?
-  unreadCount          Int           @default(0)
-  assignedUserId       String?
-  assignedUser         User?         @relation("MetaConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  assignedAt           DateTime?
-  assignmentReason     String?
-  createdAt            DateTime      @default(now())
-  messages             MetaMessage[]
+  unreadCount             Int           @default(0)
+  assignedUserId          String?
+  assignedUser            User?         @relation("MetaConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt              DateTime?
+  assignmentReason        String?
+  createdAt               DateTime      @default(now())
+  messages                MetaMessage[]
 
   // (page, sender, channel) is a single conversation. Same FB user
   // could DM both your Page (Messenger) and your IG account — those
@@ -2981,9 +2982,9 @@ model NativeContact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listMemberships  NativeContactListMember[]
-  conversations    NativeConversation[]
-  messages         NativeMessage[]
+  listMemberships NativeContactListMember[]
+  conversations   NativeConversation[]
+  messages        NativeMessage[]
 
   @@index([workspaceId, email])
   @@index([workspaceId, phone])
@@ -3354,8 +3355,8 @@ model LiveChatSettings {
   // replied for this many minutes, the stale-conversations cron escalates.
   // 0 = disabled (default). escalateReassign=false pings the operator only;
   // true also returns the chat to the queue so another operator picks it up.
-  escalateAfterMinutes    Int     @default(0)
-  escalateReassign        Boolean @default(false)
+  escalateAfterMinutes Int     @default(0)
+  escalateReassign     Boolean @default(false)
 
   updatedAt DateTime @updatedAt
 }
@@ -3719,34 +3720,34 @@ model MarketingLead {
 // KnowledgeCollection) stay untouched. The hand-run DDL adds the FK
 // constraints with ON DELETE CASCADE; see prisma/MIGRATIONS.md.
 model ConversationMiningRun {
-  id          String @id @default(cuid())
-  workspaceId String
+  id                   String   @id @default(cuid())
+  workspaceId          String
   // The agent whose live CRM connection is being mined, and the collection
   // the approved pairs will be written into.
-  agentId     String
-  collectionId String
+  agentId              String
+  collectionId         String
   // queued → running → complete | failed. Claimed compare-and-swap by the
   // mine-conversations cron, same pattern as IngestionRun.
-  status      String @default("queued")
+  status               String   @default("queued")
   // Inclusive lower / exclusive upper bound of the mining window. Defaults
   // applied at create time (last 12 months) but operator-editable.
-  windowStart DateTime
-  windowEnd   DateTime
+  windowStart          DateTime
+  windowEnd            DateTime
   // Hard ceiling on conversations scanned this run — bounds cost even if the
   // window is wide. Continuation runs respect the remaining budget.
-  maxConversations Int @default(2000)
+  maxConversations     Int      @default(2000)
   // Logical LLM key used for extraction (resolved via lib/llm registry).
-  model       String @default("auto")
+  model                String   @default("auto")
   // Deadline-bounded continuation cursor: epoch-ms of the last conversation's
   // lastMessageDate processed. Next tick resumes from startAfterDate=cursor.
-  cursor      String?
-  conversationsScanned Int @default(0)
-  pairsGenerated       Int @default(0)
-  estimatedTokens      Int @default(0)
-  actualTokens         Int @default(0)
-  error       String? @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  cursor               String?
+  conversationsScanned Int      @default(0)
+  pairsGenerated       Int      @default(0)
+  estimatedTokens      Int      @default(0)
+  actualTokens         Int      @default(0)
+  error                String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([status, createdAt])
   @@index([workspaceId])
@@ -3757,24 +3758,24 @@ model ConversationMiningRun {
 // staging until an operator approves it (→ a KnowledgeEntry with source='qa'
 // in the target collection) or rejects it.
 model MinedQaPair {
-  id          String @id @default(cuid())
-  runId       String
-  workspaceId String
-  collectionId String
-  question    String @db.Text
-  answer      String @db.Text
+  id                   String   @id @default(cuid())
+  runId                String
+  workspaceId          String
+  collectionId         String
+  question             String   @db.Text
+  answer               String   @db.Text
   // Provenance so a reviewer can audit the source thread.
   sourceConversationId String?
-  sourceSnippet        String? @db.Text
+  sourceSnippet        String?  @db.Text
   // Model's self-reported 0..1 confidence the pair is a genuine,
   // reusable human answer (not chit-chat / one-off).
-  confidence  Float  @default(0)
+  confidence           Float    @default(0)
   // pending → approved | rejected. Approval creates the KnowledgeEntry.
-  status      String @default("pending")
+  status               String   @default("pending")
   // Set once approved so the staging row links to its live entry.
-  knowledgeEntryId String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  knowledgeEntryId     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([collectionId, status])
   @@index([runId])
@@ -3809,4 +3810,55 @@ model GoogleContentConnection {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ─── Agency-level CRM connection (per-location widget control) ─────────────
+// Deliberately separate from the Location token store: this is a DIFFERENT
+// LeadConnector marketplace app (agency-scoped install, its own client
+// id/secret) connected once per workspace. One workspace has many widgets;
+// the location toggle lives here, not on any widget.
+
+model AgencyConnection {
+  id                   String           @id @default(cuid())
+  workspaceId          String
+  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider             String           @default("leadconnector")
+  companyId            String
+  accessToken          String
+  refreshToken         String
+  expiresAt            DateTime
+  scope                String
+  tokenRefreshFailedAt DateTime?
+  connectedByUserId    String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  locations            AgencyLocation[]
+
+  @@unique([workspaceId, companyId])
+}
+
+model AgencyLocation {
+  id                     String           @id @default(cuid())
+  connectionId           String
+  connection             AgencyConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  locationId             String
+  name                   String
+  city                   String?
+  state                  String?
+  country                String?
+  email                  String?
+  phone                  String?
+  widgetEnabled          Boolean          @default(true)
+  widgetEnabledUpdatedAt DateTime?
+  // Attribution: "user:<userId>" (dashboard) or "portal:<portalUserId>".
+  widgetEnabledUpdatedBy String?
+  lastSyncedAt           DateTime         @default(now())
+  // Set when the location vanished from the agency on a sync; cleared if it
+  // reappears. Soft flag so a toggle survives remove/re-add. Never deleted.
+  removedAt              DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@unique([connectionId, locationId])
+  @@index([locationId])
 }
