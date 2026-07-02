@@ -6,13 +6,14 @@
  * The choice is per-browser (localStorage) and is honored by widget.js
  * on every future page load until switched back on.
  *
- * Install (Agency Settings → Company → Custom Javascript, or the
- * sub-account Custom Code box), alongside the normal widget snippet:
+ * Install (Agency Settings → Company → Whitelabel → Custom Javascript,
+ * or any Custom Code box — the field takes verbatim HTML, so include
+ * the <script> tags), alongside the normal widget snippet:
  *
- *   var s = document.createElement('script');
- *   s.src = 'https://app.xovera.io/leadconnector-widget-toggle.js';
- *   s.async = true;
- *   document.head.appendChild(s);
+ *   <script src="https://app.xovera.io/widget.js"
+ *           data-widget-id="wgt_xxx" data-public-key="widget_pub_xxx"
+ *           async></script>
+ *   <script src="https://app.xovera.io/leadconnector-widget-toggle.js" async></script>
  */
 (function () {
   if (window.__xoveraMenuToggle) return
