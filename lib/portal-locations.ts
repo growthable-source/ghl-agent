@@ -19,9 +19,11 @@ export async function getPortalConnectionIds(session: PortalSession): Promise<st
   })
   const workspaceIds = [...new Set(brands.map(b => b.workspaceId))]
   if (workspaceIds.length === 0) return []
+  // .catch: AgencyConnection may not exist yet on un-migrated DBs (Ryan
+  // hand-runs SQL after deploy). No table → no connections → empty state.
   const connections = await db.agencyConnection.findMany({
     where: { workspaceId: { in: workspaceIds } },
     select: { id: true },
-  })
+  }).catch(() => [])
   return connections.map(c => c.id)
 }

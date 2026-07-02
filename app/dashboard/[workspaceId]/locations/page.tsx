@@ -31,10 +31,12 @@ export default async function LocationsPage({
     canManage = !!member && workspaceRoleHas(member.role as WorkspaceRole, 'admin')
   }
 
+  // .catch: AgencyConnection may not exist yet on un-migrated DBs (Ryan
+  // hand-runs SQL after deploy). Treat as "not connected" instead of 500.
   const connection = await db.agencyConnection.findFirst({
     where: { workspaceId },
     select: { id: true, companyId: true },
-  })
+  }).catch(() => null)
 
   return (
     <div className="p-6 max-w-5xl space-y-6">

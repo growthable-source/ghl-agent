@@ -19,10 +19,12 @@ export async function GET(req: NextRequest, { params }: Params) {
   const filter = req.nextUrl.searchParams.get('filter') ?? 'all'
   const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') ?? '1', 10) || 1)
 
+  // .catch: table may not exist yet on un-migrated DBs — report "not
+  // connected" instead of 500 so the page renders its connect state.
   const connection = await db.agencyConnection.findFirst({
     where: { workspaceId },
     select: { id: true, companyId: true, tokenRefreshFailedAt: true, updatedAt: true },
-  })
+  }).catch(() => null)
   if (!connection) return NextResponse.json({ connected: false, locations: [], total: 0 })
 
   const where = {
