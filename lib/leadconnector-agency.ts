@@ -15,9 +15,10 @@ import { planAgencyLocationSync, type FetchedAgencyLocation } from '@/lib/agency
 const API_BASE = 'https://services.leadconnectorhq.com'
 const API_VERSION = '2021-07-28'
 // Must match the scopes the marketplace app is registered with EXACTLY —
-// a mismatch errors at the chooser. The app registered locations.write
-// (not .readonly) + companies.readonly.
-export const AGENCY_OAUTH_SCOPES = 'locations.write companies.readonly'
+// a mismatch errors at the chooser. Read-only on purpose: this connection
+// only lists locations (GET /locations/search) for the widget toggle; it
+// never writes to the CRM.
+export const AGENCY_OAUTH_SCOPES = 'locations.readonly companies.readonly'
 
 export function agencyOAuthConfigured(): boolean {
   return !!(process.env.LEADCONNECTOR_AGENCY_CLIENT_ID && process.env.LEADCONNECTOR_AGENCY_CLIENT_SECRET)
