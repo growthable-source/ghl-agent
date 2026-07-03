@@ -66,10 +66,17 @@ function movementChip(e: LeaderboardEntry): string {
   return `<span style="font-size:10px;font-weight:700;color:${INK_SOFT};background:${PAPER};border-radius:20px;padding:2px 8px;">—</span>`
 }
 
-function rankBadge(rank: number, accent: string): string {
-  const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null
-  if (medal) return `<span style="font-size:17px;">${medal}</span>`
-  return `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;background:${PAPER};border:1px solid ${LINE};font-size:11px;font-weight:700;color:${INK_SOFT};">${rank}</span>`
+// Top-3 get tinted gold/silver/bronze circles; everyone else a plain
+// ring. Numbered circles, not emoji — email clients render these
+// consistently and it reads like a real leaderboard, not a chat message.
+const MEDAL_BG = ['#f6ecd3', '#eceef2', '#f3e3d7']
+const MEDAL_FG = ['#a67c1b', '#6d7686', '#a05f33']
+
+function rankBadge(rank: number): string {
+  if (rank <= 3) {
+    return `<span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:50%;background:${MEDAL_BG[rank - 1]};font-size:12px;font-weight:800;color:${MEDAL_FG[rank - 1]};">${rank}</span>`
+  }
+  return `<span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:50%;background:${PAPER};border:1px solid ${LINE};font-size:11px;font-weight:700;color:${INK_SOFT};">${rank}</span>`
 }
 
 export function renderPortalReportHtml(d: PortalReportData): string {
@@ -87,9 +94,9 @@ export function renderPortalReportHtml(d: PortalReportData): string {
       </tr></table>
     </td>`
 
-  const sectionTitle = (emoji: string, title: string, sub?: string) => `
+  const sectionTitle = (title: string, sub?: string) => `
     <div style="margin-bottom:10px;">
-      <span style="font-size:13px;font-weight:800;color:${INK};letter-spacing:-0.2px;">${emoji} ${title}</span>
+      <span style="font-size:12px;font-weight:800;color:${INK};letter-spacing:1px;text-transform:uppercase;">${title}</span>
       ${sub ? `<span style="font-size:11px;color:${FAINT};"> — ${sub}</span>` : ''}
     </div>`
 
@@ -101,11 +108,11 @@ export function renderPortalReportHtml(d: PortalReportData): string {
 
   const leaderboardSection = d.leaderboard.length === 0 ? '' : `
   <tr><td style="padding:26px 32px 0;">
-    ${sectionTitle('🏆', 'Support MVPs', 'your most engaged people this week')}
+    ${sectionTitle('Support MVPs', 'your most engaged people this week')}
     <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${LINE};border-radius:12px;background:#ffffff;">
       ${d.leaderboard.map((e, i) => `
       <tr>
-        <td width="34" align="center" style="padding:10px 4px 10px 14px;${i > 0 ? `border-top:1px solid ${LINE};` : ''}">${rankBadge(e.rank, accent)}</td>
+        <td width="34" align="center" style="padding:10px 4px 10px 14px;${i > 0 ? `border-top:1px solid ${LINE};` : ''}">${rankBadge(e.rank)}</td>
         <td style="padding:10px 8px;${i > 0 ? `border-top:1px solid ${LINE};` : ''}">
           <div style="font-size:13px;font-weight:600;color:${INK};">${esc(e.name ?? e.email)}</div>
           <div style="font-size:11px;color:${FAINT};">${e.chats} chat${e.chats === 1 ? '' : 's'}${e.tickets > 0 ? ` · ${e.tickets} ticket${e.tickets === 1 ? '' : 's'}` : ''}</div>
@@ -120,9 +127,9 @@ export function renderPortalReportHtml(d: PortalReportData): string {
     </div>
   </td></tr>`
 
-  const listSection = (emoji: string, title: string, sub: string, rows: { label: string; value: string }[]) => rows.length === 0 ? '' : `
+  const listSection = (title: string, sub: string, rows: { label: string; value: string }[]) => rows.length === 0 ? '' : `
     <tr><td style="padding:26px 32px 0;">
-      ${sectionTitle(emoji, title, sub)}
+      ${sectionTitle(title, sub)}
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${LINE};border-radius:12px;background:#ffffff;">
         ${rows.map((r, i) => `
         <tr>
@@ -166,7 +173,7 @@ export function renderPortalReportHtml(d: PortalReportData): string {
     <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:12px;background:linear-gradient(135deg, ${accent}18, ${accent}0a);border:1px solid ${accent}45;">
       <tr>
         <td style="padding:18px 20px;">
-          <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:${accent};font-weight:800;">⏱ Estimated time saved</div>
+          <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:${accent};font-weight:800;">Estimated time saved</div>
           <div style="font-size:30px;font-weight:800;color:${INK};margin-top:4px;letter-spacing:-0.8px;">${fmtTimeSaved(d.timeSavedMinutes)}</div>
           <div style="font-size:12px;color:${INK_SOFT};margin-top:4px;line-height:1.5;">
             ${d.aiHandled} conversations fully handled by your AI — about ${MINUTES_PER_HANDLED} minutes each your team got back.
@@ -178,7 +185,7 @@ export function renderPortalReportHtml(d: PortalReportData): string {
 
   ${urgentRows.length > 0 ? `
   <tr><td style="padding:26px 32px 0;">
-    ${sectionTitle('🚩', 'Needs attention')}
+    ${sectionTitle('Needs attention')}
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf4f1;border:1px solid #f2d5cb;border-radius:12px;">
       <tr><td style="padding:14px 18px;">
         ${urgentRows.map(r => `<div style="font-size:13px;color:${INK};padding:3px 0;line-height:1.5;">• ${r}</div>`).join('')}
@@ -195,7 +202,7 @@ export function renderPortalReportHtml(d: PortalReportData): string {
 
   ${d.insights.length > 0 ? `
   <tr><td style="padding:26px 32px 0;">
-    ${sectionTitle('✦', 'AI insights', 'what your customers keep asking about')}
+    ${sectionTitle('AI insights', 'what your customers keep asking about')}
     ${d.insights.map(i => `
     <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${LINE};border-radius:12px;background:${PAPER};margin-bottom:8px;">
       <tr><td style="padding:14px 18px;">
@@ -206,8 +213,8 @@ export function renderPortalReportHtml(d: PortalReportData): string {
     </table>`).join('')}
   </td></tr>` : ''}
 
-  ${listSection('💬', 'Top topics', 'most-matched knowledge', d.topTopics.map(t => ({ label: esc(t.topic), value: `${t.count}` })))}
-  ${listSection('📍', 'Chats by sub-account', 'where conversations came from', d.locationChats.map(l => ({ label: esc(l.name), value: String(l.count) })))}
+  ${listSection('Top topics', 'most-matched knowledge', d.topTopics.map(t => ({ label: esc(t.topic), value: `${t.count}` })))}
+  ${listSection('Chats by sub-account', 'where conversations came from', d.locationChats.map(l => ({ label: esc(l.name), value: String(l.count) })))}
 
   <tr><td style="padding:30px 32px 28px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>

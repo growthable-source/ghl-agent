@@ -10,6 +10,7 @@ import { getOverviewInsights } from '@/lib/portal/overview-insights'
 import { getConnectionSummaries, getChatsPerLocation } from '@/lib/portal/subaccount-stats'
 import { getSupportLeaderboard } from '@/lib/portal/leaderboard'
 import { getPortalAiInsights } from '@/lib/portal/ai-insights'
+import { Trophy, Medal, TrendingUp, TrendingDown, Minus, Sparkles, MessageCircle, Ticket } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -341,48 +342,121 @@ export default async function PortalOverview() {
             )}
           </Panel>
 
-          {/* Support MVPs — the leaderboard. Deliberately playful: heavy
-              use = engagement + a map of documentation gaps, not a
-              problem to scold anyone over. */}
-          <Panel title="🏆 Support MVPs" right={<span className="text-[10px] text-zinc-500">chats + tickets · 7d</span>}>
-            {leaderboard.length === 0 ? (
-              <p className="text-xs text-zinc-500">No identified users in the window yet — the board fills as people chat or open tickets.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {leaderboard.map(e => (
-                  <div key={e.email} className="flex items-center gap-2">
-                    <span className="w-5 text-center shrink-0">
-                      {e.rank <= 3
-                        ? <span className="text-sm">{e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : '🥉'}</span>
-                        : <span className="text-[10px] text-zinc-600">{e.rank}</span>}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-zinc-200 truncate">{e.name ?? e.email}</p>
-                      <p className="text-[10px] text-zinc-500 truncate">
-                        {e.chats} chat{e.chats === 1 ? '' : 's'}{e.tickets > 0 ? ` · ${e.tickets} ticket${e.tickets === 1 ? '' : 's'}` : ''}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={
-                      e.movement === null
-                        ? { color: '#a78bfa', background: 'rgba(167,139,250,0.12)' }
-                        : e.movement > 0
-                          ? { color: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }
-                          : e.movement < 0
-                            ? { color: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }
-                            : { color: 'var(--text-tertiary)', background: 'var(--surface-tertiary)' }
-                    }>
-                      {e.movement === null ? 'new' : e.movement > 0 ? `▲${e.movement}` : e.movement < 0 ? `▼${Math.abs(e.movement)}` : '—'}
-                    </span>
-                    <span className="text-xs font-bold text-zinc-300 w-6 text-right shrink-0">{e.score}</span>
-                  </div>
-                ))}
-                <p className="text-[10px] text-zinc-600 pt-1 leading-relaxed">
-                  Engaged users show you where a help doc could save everyone a trip.
-                </p>
-              </div>
-            )}
-          </Panel>
         </div>
+      </div>
+
+      {/* ─── Support MVPs — full-width leaderboard ─────────────────────
+          Gets real estate on purpose: this is the engagement +
+          knowledge-gap map. Tone is celebratory (medals, trends), not
+          scolding — heavy use means engaged customers. */}
+      <div className="rounded-xl border border-zinc-800 mt-4 overflow-hidden" style={{ background: 'var(--surface)' }}>
+        <div className="flex items-center justify-between flex-wrap gap-2 px-5 pt-4 pb-3">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'color-mix(in srgb, var(--portal-accent) 15%, transparent)', color: 'var(--portal-accent)' }}
+            >
+              <Trophy size={16} strokeWidth={2} />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-zinc-100">Support MVPs</p>
+              <p className="text-[11px] text-zinc-500">Most engaged people · last 7 days · movement vs the week before</p>
+            </div>
+          </div>
+          <span className="text-[10px] uppercase tracking-wider text-zinc-600 font-semibold">chats + tickets</span>
+        </div>
+
+        {leaderboard.length === 0 ? (
+          <p className="px-5 pb-5 text-xs text-zinc-500">
+            No identified users in the window yet — the board fills as people chat or open tickets.
+          </p>
+        ) : (
+          <div>
+            <div className="grid grid-cols-[3rem_1fr_5rem_5rem_6rem_5rem] max-sm:grid-cols-[2.5rem_1fr_5rem_4rem] items-center gap-x-3 border-y border-zinc-800 px-5 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600" style={{ background: 'var(--surface-secondary)' }}>
+              <span>Rank</span>
+              <span>Person</span>
+              <span className="text-right max-sm:hidden">Chats</span>
+              <span className="text-right max-sm:hidden">Tickets</span>
+              <span className="text-right">Trend</span>
+              <span className="text-right">Total</span>
+            </div>
+            {(() => {
+              const maxScore = Math.max(...leaderboard.map(e => e.score), 1)
+              const medalTint = ['rgba(212,167,44,0.16)', 'rgba(148,155,170,0.16)', 'rgba(180,116,74,0.16)']
+              const medalColor = ['#d4a72c', '#a8b0bf', '#c98a5e']
+              return leaderboard.map((e, i) => (
+                <div
+                  key={e.email}
+                  className="grid grid-cols-[3rem_1fr_5rem_5rem_6rem_5rem] max-sm:grid-cols-[2.5rem_1fr_5rem_4rem] items-center gap-x-3 border-b border-zinc-800 last:border-b-0 px-5 py-3"
+                >
+                  <span>
+                    {e.rank <= 3 ? (
+                      <span
+                        className="w-7 h-7 rounded-full flex items-center justify-center"
+                        style={{ background: medalTint[e.rank - 1], color: medalColor[e.rank - 1] }}
+                        title={`#${e.rank}`}
+                      >
+                        <Medal size={15} strokeWidth={2.2} />
+                      </span>
+                    ) : (
+                      <span className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-zinc-500 border border-zinc-800">
+                        {e.rank}
+                      </span>
+                    )}
+                  </span>
+                  <span className="min-w-0 flex items-center gap-2.5">
+                    <span
+                      className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-[11px] font-bold"
+                      style={{ background: 'color-mix(in srgb, var(--portal-accent) 14%, transparent)', color: 'var(--portal-accent)' }}
+                    >
+                      {(e.name ?? e.email).charAt(0).toUpperCase()}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm text-zinc-100 truncate">{e.name ?? e.email}</span>
+                      {e.name && <span className="block text-[11px] text-zinc-500 truncate">{e.email}</span>}
+                    </span>
+                  </span>
+                  <span className="text-right text-sm text-zinc-300 max-sm:hidden">
+                    <span className="inline-flex items-center gap-1.5 justify-end">
+                      <MessageCircle size={13} className="text-zinc-600" />{e.chats}
+                    </span>
+                  </span>
+                  <span className="text-right text-sm text-zinc-300 max-sm:hidden">
+                    <span className="inline-flex items-center gap-1.5 justify-end">
+                      <Ticket size={13} className="text-zinc-600" />{e.tickets}
+                    </span>
+                  </span>
+                  <span className="flex justify-end">
+                    {e.movement === null ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: '#a78bfa', background: 'rgba(167,139,250,0.12)' }}>
+                        <Sparkles size={11} /> new
+                      </span>
+                    ) : e.movement > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }}>
+                        <TrendingUp size={11} /> {e.movement}
+                      </span>
+                    ) : e.movement < 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}>
+                        <TrendingDown size={11} /> {Math.abs(e.movement)}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full text-zinc-500" style={{ background: 'var(--surface-tertiary)' }}>
+                        <Minus size={11} /> held
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-right">
+                    <span className="block text-base font-bold text-zinc-100">{e.score}</span>
+                    <span className="block h-1 mt-1 rounded-full ml-auto" style={{ width: `${Math.max(12, Math.round((e.score / maxScore) * 100))}%`, background: 'color-mix(in srgb, var(--portal-accent) 55%, transparent)' }} />
+                  </span>
+                </div>
+              ))
+            })()}
+            <p className="px-5 py-3 text-[11px] text-zinc-600">
+              Heavy use is a good sign — engaged people ask questions. It&apos;s also your best map of where a help doc could save everyone a trip.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
