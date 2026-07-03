@@ -44,6 +44,24 @@ function screenBeatsDocsBullet(lookVerb: string): string {
   ].join(' ')
 }
 
+/**
+ * The proactive-cue contract, shared by every screen-share mode.
+ * LiveSessionPanel injects bracketed system messages ("[The screen just
+ * changed…]") between turns; this section teaches the model to treat
+ * them as its license to WATCH the screen and verify steps visually,
+ * instead of instructing and then waiting for the user to report back.
+ * Every cue permits silence so the copilot never narrates pixels.
+ */
+function screenCueSection(): string {
+  return [
+    `\n## Reacting to screen cues — watch, don't interrogate`,
+    `Between your turns you may receive bracketed system messages in square brackets — e.g. "[The screen just changed…]" or "[Session started…]". These are cues for YOU, not the user's words; the user did not say them and cannot hear them.`,
+    `They are how you watch the screen like a human helper standing behind the user: you give an instruction, the user acts, the screen changes, a cue arrives. When one does, take a fresh look (take_a_closer_look) and react to what you actually SEE: if they landed somewhere new, orient them to the next action; if the screen shows the step is done, say so and move straight to the next one; if they took a wrong turn, steer them back.`,
+    `Never ask "did you click it?", "is this the right page?", or "let me know when you're done" — the screen answers those questions, so look at it and speak to the result ("that's the one — now open Billing"). Only ask the user to confirm when the screen genuinely cannot show you the answer.`,
+    `But if nothing is actually worth saying — the change is trivial, or you'd just repeat yourself — STAY SILENT and don't take a turn. Leading the call does not mean narrating every pixel.`,
+  ].join('\n')
+}
+
 export interface BuildCopilotPromptInput {
   setupState: WorkspaceSetupState
   workflow: CopilotWorkflow
@@ -78,8 +96,7 @@ export function buildCopilotSystemPrompt(input: BuildCopilotPromptInput): string
     ``,
     `After the user completes an action that should change workspace state, call get_workspace_setup_state to confirm before celebrating.`,
     ``,
-    `## Reacting to screen cues`,
-    `Between your turns you will receive bracketed system messages in square brackets — e.g. "[The screen just changed…]" or "[Session started…]". These are cues for YOU, not the user's words; the user did not say them and cannot hear them. When one arrives, take a fresh look (take_a_closer_look) and react: if the user just landed somewhere new, orient them to the next action; if they completed the current step, acknowledge it and advance; if they took a wrong turn, steer them back. But if nothing is actually worth saying — the change is trivial, or you'd just be repeating yourself — STAY SILENT and don't take a turn. Leading the call does not mean narrating every pixel.`,
+    screenCueSection(),
     `## Current workspace state (at session start — re-check with the tool, it changes as the user works)`,
     describeSetupState(setupState),
     ragContext
@@ -133,6 +150,8 @@ export function buildWidgetCopilotPrompt(input: BuildWidgetPromptInput): string 
     `- If you cannot solve the visitor's problem, say so plainly and let them know the team will follow up — do not bluff. A support ticket is raised automatically for unresolved sessions.`,
     `- The visitor can interrupt you at any time. When they do, stop and respond.`,
     ``,
+    screenCueSection(),
+    ``,
     agentPersona ? `## Tone and persona\n${agentPersona.slice(0, 1500)}\n` : null,
     ragContext ? `## Background knowledge (retrieved for this session)\n${ragContext}\n` : null,
     `## Hard rules`,
@@ -171,6 +190,7 @@ export function buildGeneralStaffPrompt(input: { workspaceName: string; ragConte
     `- To point at something on screen, describe its location precisely in words. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- On an unfamiliar screen, reason from common UI conventions to make a confident best guess (gear = settings, top-right = account/save, ☰ hamburger = navigation, red/"Delete" = destructive), state your confidence, and ask the user to confirm before they act. A confirmed guess beats silence; fabricated certainty does not.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. If a tool fails, say so honestly.`,
+    screenCueSection(),
     input.ragContext ? `\n## Background knowledge\n${input.ragContext}\n` : ``,
     `## Hard rules`,
     `- Read-only and advisory. No fabrication. Refer to the user's CRM as "your CRM".`,
@@ -202,6 +222,7 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
     `- Ground on the live screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details. To point at things, describe their location precisely in words — you cannot draw on their screen, so never say you've marked or highlighted anything. On an unfamiliar screen, reason from common UI conventions, state your confidence, and ask the user to confirm before they act. Use query_knowledge / get_workspace_setup_state before asserting facts or configuration.`,
     screenBeatsDocsBullet('take a closer look (take_a_closer_look)'),
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. Honest about tool failures.`,
+    screenCueSection(),
     input.ragContext ? `\n## Background knowledge\n${input.ragContext}\n` : ``,
     `## Hard rules`,
     `- Read-only and advisory. No fabrication. "Your CRM", never a vendor name. Don't read sensitive on-screen data aloud.`,
@@ -338,8 +359,7 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
     `- To point at something, describe its location precisely in words ("the blue 'Save' button in the top-right"). Take a closer look first so you describe what's actually there. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- On a screen your playbook and knowledge don't cover, reason from common UI conventions to make a confident best guess (gear = settings, top-right = account/save, ☰ hamburger = navigation, red/"Delete" = destructive), state your confidence, and ask the user to confirm what they see before they act. A confirmed guess beats silence; fabricated certainty does not.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. Be honest when a tool fails or you don't know.`,
-    `\n## Reacting to screen cues`,
-    `Between your turns you may receive bracketed system messages in square brackets — e.g. "[The screen just changed…]" or "[Session started…]". These are cues for YOU, not the user's words; the user did not say them and cannot hear them. When one arrives, take a fresh look (take_a_closer_look) and react: greet and orient them at the start, point them to the next action when they land somewhere new, acknowledge and advance when they finish a step, steer them back on a wrong turn. But if nothing is actually worth saying — the change is trivial, or you'd just repeat yourself — STAY SILENT and don't take a turn. Leading the call does not mean narrating every pixel.`,
+    screenCueSection(),
     ragContext ? `\n## Background knowledge\n${ragContext}` : ``,
     `\n## Hard rules`,
     `- Read-only and advisory. No fabrication. "Your CRM", never a vendor name. Don't read sensitive on-screen data aloud.`,

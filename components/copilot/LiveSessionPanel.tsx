@@ -64,15 +64,24 @@ const FLUSH_INTERVAL_MS = 5000
 const NUDGE_MIN_INTERVAL_MS = 6000 // debounce between any two proactive turns
 const MODEL_SPEAK_COOLDOWN_MS = 2000 // quiet window after the model's last audio
 const PROACTIVE_TICK_MS = 22_000 // idle cadence: check progress / re-orient
+// After the model speaks (usually an instruction), the user acts and the
+// screen changes at sub-navigation scale — a modal opens, a panel expands,
+// a toggle flips. Within this window such changes are treated as "the user
+// just did what I asked" and prompt the model to look and react, so it
+// verifies steps visually instead of waiting for the user to report back.
+const ACTION_WATCH_WINDOW_MS = 45_000
 
-// Cues are shared by the onboarding host AND public-agent links, so they
-// stay generic — no tool names (public agents don't have
-// get_workspace_setup_state), no "setup" framing. Each prompt explains
-// how to act on them; each cue permits silence.
+// Cues are shared by every screen-share mode (onboarding, named agents,
+// general support, SOPs, visitor widget), so they stay generic — no tool
+// names (not every mode has get_workspace_setup_state), no "setup"
+// framing. Each prompt explains how to act on them via screenCueSection;
+// each cue permits silence.
 const CUE_KICKOFF =
   '[The session just started and the user is now sharing their screen. Greet them briefly, tell them what you can help with, take a look at where they are, and give them a clear first thing to do.]'
 const CUE_SCREEN_CHANGED =
-  '[The screen just changed — the user navigated to a new view. Take a closer look, then if this is the next step or a wrong turn, guide them in one or two sentences. If nothing needs saying, stay silent.]'
+  '[The screen just changed — the user navigated to a new view. Take a closer look and react to what you see: if this is the next step or a wrong turn, guide them in one or two sentences — don\'t ask them to confirm what the screen already shows. If nothing needs saying, stay silent.]'
+const CUE_USER_ACTED =
+  '[The screen just changed after your last instruction — the user acted. Take a closer look and react to what you actually see: if the step is done, say so and give the next action; if something unexpected appeared, deal with it. Do not ask whether they did it — look. If the change is trivial, stay silent.]'
 const CUE_IDLE_TICK =
   '[The user has gone quiet. Take a quick look at where they are. If they have finished the current step, acknowledge it and move them to the next one; if they seem stuck, offer one specific nudge. If they are clearly mid-task and fine, stay silent.]'
 
@@ -93,10 +102,11 @@ export default function LiveSessionPanel({
   idleBody?: string
   startLabel?: string
   /**
-   * Let the copilot LEAD: greet on connect, speak up on navigation, and
-   * advance the agenda on idle ticks. Onboarding/staff only — the prompt
-   * must explain the bracketed screen cues (buildCopilotSystemPrompt
-   * does). Off for visitor/widget and agent modes.
+   * Let the copilot LEAD: greet on connect, speak up on navigation,
+   * react when the user acts on an instruction, and advance the agenda
+   * on idle ticks. The prompt must explain the bracketed screen cues —
+   * every mode does via screenCueSection (lib/copilot/prompt.ts), so
+   * every call site now opts in.
    */
   proactive?: boolean
   /** Custom copy for the ended card per goal state; defaults provided. */
@@ -350,9 +360,17 @@ export default function LiveSessionPanel({
         })
         // A navigation-scale change just shipped (and as a high-res frame).
         // Prompt the model to look and orient — this is the main thing
-        // that makes the copilot tell the user where to go next.
-        if (frame.trigger === 'change' && frame.diffScore >= NAV_CHANGE_THRESHOLD) {
-          maybeNudge(CUE_SCREEN_CHANGED)
+        // that makes the copilot tell the user where to go next. Smaller
+        // changes (modal opened, panel expanded, toggle flipped) only
+        // matter right after the model gave an instruction: then they
+        // mean "the user just acted", and the model should look and
+        // verify instead of waiting to be told.
+        if (frame.trigger === 'change') {
+          if (frame.diffScore >= NAV_CHANGE_THRESHOLD) {
+            maybeNudge(CUE_SCREEN_CHANGED)
+          } else if (Date.now() - lastModelSpokeAtRef.current < ACTION_WATCH_WINDOW_MS) {
+            maybeNudge(CUE_USER_ACTED)
+          }
         }
       })
       await frames.start()

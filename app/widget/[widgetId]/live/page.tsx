@@ -142,6 +142,11 @@ export default function WidgetLivePage({ params }: { params: Promise<{ widgetId:
         <LiveSessionPanel
           transport={transport}
           accent={accent}
+          // The visitor prompt explains the bracketed screen cues
+          // (screenCueSection), so the assistant greets on connect and
+          // watches the screen after each instruction instead of waiting
+          // for the visitor to report back.
+          proactive
           idleTitle="Get live help on a screen share"
           idleBody="Share your screen and ask anything — the assistant can see what you see and talks you through it step by step. Your screen is never recorded; only the conversation transcript is kept so our team can follow up."
           startLabel="Share screen & start talking"

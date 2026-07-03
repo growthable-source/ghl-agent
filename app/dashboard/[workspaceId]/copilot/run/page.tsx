@@ -101,10 +101,12 @@ export default function CopilotRunPage() {
       <LiveSessionPanel
         key={agentId ?? mode}
         transport={transport}
-        // Proactive leader mode is wired to the onboarding prompt
-        // (buildCopilotSystemPrompt), which explains the screen cues. The
-        // general-support and per-agent prompts don't, so leave them reactive.
-        proactive={!agentId && mode === 'onboarding'}
+        // Every prompt mode now explains the bracketed screen cues
+        // (screenCueSection in lib/copilot/prompt.ts), so every mode gets
+        // the proactive engine. Without it the model only takes a turn
+        // when the user speaks — it can't watch the screen after giving
+        // an instruction or verify steps visually.
+        proactive
         idleTitle={agentId ? `Start your session with ${agentName ?? 'this agent'}` : 'Start a live help session'}
         endedGoalCopy={goal =>
           goal === null
