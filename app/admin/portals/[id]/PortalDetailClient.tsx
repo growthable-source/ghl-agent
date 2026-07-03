@@ -31,7 +31,7 @@ interface PortalBrandingInfo {
 }
 
 export default function PortalDetailClient({
-  portalId, brands, allBrands, users, invites, branding,
+  portalId, brands, allBrands, users, invites, branding, reportFrequency,
 }: {
   portalId: string
   brands: Brand[]
@@ -39,6 +39,7 @@ export default function PortalDetailClient({
   users: PortalUser[]
   invites: PortalInvite[]
   branding: PortalBrandingInfo
+  reportFrequency: string
 }) {
   const router = useRouter()
   const brandLabel = (id: string) => brands.find(b => b.id === id)?.name ?? id
@@ -114,6 +115,8 @@ export default function PortalDetailClient({
         branding={branding}
         onChanged={() => router.refresh()}
       />
+
+      <ReportScheduleSection portalId={portalId} initialFrequency={reportFrequency} />
 
       {/* ─── Invite form ─── */}
       <section>
@@ -747,6 +750,114 @@ function BrandCatalogSection({
             </div>
           </>
         )}
+      </div>
+    </section>
+  )
+}
+
+// ─── Scheduled email reports ─────────────────────────────────────────────
+// Frequency select (saved via the portal PATCH) + a test-send box so the
+// report can be iterated on a real inbox before customers ever see one.
+// The same frequency setting is exposed to portal users in /portal/settings.
+function ReportScheduleSection({ portalId, initialFrequency }: { portalId: string; initialFrequency: string }) {
+  const [frequency, setFrequency] = useState(initialFrequency)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState<string | null>(null)
+  const [testEmail, setTestEmail] = useState('')
+  const [sending, setSending] = useState(false)
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  async function saveFrequency(next: string) {
+    setFrequency(next)
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      const res = await fetch(`/api/admin/portals/${portalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportFrequency: next }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? `Error ${res.status}`)
+      setSaveMsg('Saved')
+      setTimeout(() => setSaveMsg(null), 2000)
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function sendTest(e: React.FormEvent) {
+    e.preventDefault()
+    setSending(true)
+    setTestMsg(null)
+    try {
+      const res = await fetch(`/api/admin/portals/${portalId}/send-report-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error ?? `Error ${res.status}`)
+      setTestMsg({ ok: true, text: `Sent to ${testEmail} — check the inbox.` })
+    } catch (err) {
+      setTestMsg({ ok: false, text: err instanceof Error ? err.message : 'Send failed' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-lg font-semibold text-white mb-3">Email reports</h2>
+      <div className="border border-zinc-800 rounded-lg p-5 bg-zinc-900/30 space-y-4">
+        <div>
+          <label className="block text-sm text-zinc-300 mb-1.5">Send scheduled reports to portal users</label>
+          <div className="flex items-center gap-2">
+            {(['off', 'daily', 'weekly'] as const).map(f => (
+              <button
+                key={f}
+                type="button"
+                disabled={saving}
+                onClick={() => saveFrequency(f)}
+                className={`text-sm px-3.5 py-1.5 rounded border transition-colors ${
+                  frequency === f
+                    ? 'border-amber-400 text-amber-300 bg-amber-400/10'
+                    : 'border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {f === 'off' ? 'Off' : f === 'daily' ? 'Daily' : 'Weekly'}
+              </button>
+            ))}
+            {saveMsg && <span className="text-xs text-zinc-500">{saveMsg}</span>}
+          </div>
+          <p className="text-xs text-zinc-500 mt-1.5">
+            Every active portal user gets the report by email: KPIs, estimated time saved,
+            anything outstanding or urgent, top topics, and the AI insights briefing.
+            Portal users can also change this from their portal Settings.
+          </p>
+        </div>
+
+        <form onSubmit={sendTest} className="flex items-center gap-2 flex-wrap">
+          <input
+            type="email"
+            required
+            value={testEmail}
+            onChange={e => setTestEmail(e.target.value)}
+            placeholder="you@company.com"
+            className="w-64 bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 focus:border-amber-400 outline-none"
+          />
+          <button
+            type="submit"
+            disabled={sending}
+            className="text-sm font-medium px-3.5 py-2 rounded border border-zinc-700 text-zinc-200 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+          >
+            {sending ? 'Sending…' : 'Send test report'}
+          </button>
+          {testMsg && (
+            <span className={`text-xs ${testMsg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>{testMsg.text}</span>
+          )}
+        </form>
       </div>
     </section>
   )

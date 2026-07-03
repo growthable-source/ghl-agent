@@ -21,6 +21,13 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (body.logoUrl === null || typeof body.logoUrl === 'string') data.logoUrl = body.logoUrl || null
   if (body.primaryColor === null || typeof body.primaryColor === 'string') data.primaryColor = body.primaryColor || null
   if (typeof body.isActive === 'boolean') data.isActive = body.isActive
+  // Scheduled email reports to portal users.
+  if (typeof body.reportFrequency === 'string') {
+    if (!['off', 'daily', 'weekly'].includes(body.reportFrequency)) {
+      return NextResponse.json({ error: 'reportFrequency must be off, daily, or weekly' }, { status: 400 })
+    }
+    data.reportFrequency = body.reportFrequency
+  }
   // Custom domain: blank clears it; otherwise normalize + validate. A
   // non-empty string that fails validation is rejected rather than
   // silently dropped, so the operator knows it didn't take.

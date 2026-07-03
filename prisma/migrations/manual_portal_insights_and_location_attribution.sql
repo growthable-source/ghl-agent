@@ -34,3 +34,9 @@ ALTER TABLE "PortalInsight"
     ADD CONSTRAINT "PortalInsight_portalId_fkey"
     FOREIGN KEY ("portalId") REFERENCES "Portal"("id")
     ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- 3. Scheduled portal email reports (same file — run together):
+--    Portal.reportFrequency 'off'|'daily'|'weekly' + last-sent marker.
+
+ALTER TABLE "Portal" ADD COLUMN IF NOT EXISTS "reportFrequency" TEXT NOT NULL DEFAULT 'off';
+ALTER TABLE "Portal" ADD COLUMN IF NOT EXISTS "reportLastSentAt" TIMESTAMP(3);

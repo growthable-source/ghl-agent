@@ -2857,31 +2857,36 @@ model MetaMessage {
 // hash, no cross-pollination of access between the three roles.
 
 model Portal {
-  id           String         @id @default(cuid())
+  id               String         @id @default(cuid())
   // A portal is a named set of brands (PortalBrand) + its users. It is
   // NOT scoped to a workspace — brands carry their own workspace, and a
   // portal may expose brands from any of them.
-  name         String
+  name             String
   // URL-safe identifier for the portal-facing pages (e.g. /portal/login
   // shows the right branding when ?p=<slug> is set, and the slug is the
   // human-friendly handle in the admin list). Lowercase letters/digits/dashes.
-  slug         String         @unique
+  slug             String         @unique
   // Whitelabel host (e.g. "support.acme.com"). When set, requests on
   // this host are routed to the portal and branded as it. Null = the
   // portal is reached via the primary app host only. Manual domain ops:
   // the operator adds the domain to Vercel; the customer points a CNAME.
-  customDomain String?        @unique
+  customDomain     String?        @unique
   // Optional branding override for the portal login + header. When unset
   // we fall back to plain "Customer Portal" styling.
-  logoUrl      String?
-  primaryColor String?
-  isActive     Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  users        PortalUser[]
-  invites      PortalInvite[]
-  portalBrands PortalBrand[]
-  insight      PortalInsight?
+  logoUrl          String?
+  primaryColor     String?
+  isActive         Boolean        @default(true)
+  // Scheduled email reports to portal users: 'off' | 'daily' | 'weekly'.
+  // Settable from BOTH the super-admin portal page and the portal's own
+  // settings. reportLastSentAt drives the hourly cron's due-check.
+  reportFrequency  String         @default("off")
+  reportLastSentAt DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  users            PortalUser[]
+  invites          PortalInvite[]
+  portalBrands     PortalBrand[]
+  insight          PortalInsight?
 }
 
 model PortalBrand {

@@ -93,6 +93,7 @@ export default async function PortalDetailPage({ params }: Params) {
           logoUrl: portal.logoUrl,
           primaryColor: portal.primaryColor,
         }}
+        reportFrequency={(portal as { reportFrequency?: string }).reportFrequency ?? 'off'}
       />
     </div>
   )

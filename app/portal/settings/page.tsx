@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
+import ReportScheduleCard from '@/components/portal/ReportScheduleCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,10 @@ export default async function PortalSettings() {
     <div className="p-6 sm:p-8 max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold text-white">Settings</h1>
       <p className="text-sm text-zinc-400 mt-1">Your portal account.</p>
+
+      <div className="mt-6">
+        <ReportScheduleCard />
+      </div>
 
       <div className="rounded-xl border border-zinc-800 p-5 mt-6 space-y-4" style={{ background: 'var(--surface)' }}>
         <Row label="Name" value={session.name ?? '—'} />
