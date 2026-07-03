@@ -17,16 +17,22 @@ export async function GET(req: NextRequest) {
 
   let widgetId: string | null = null
   let workspaceId: string | null = null
+  let portalReturn = false
   try {
     const decoded = JSON.parse(Buffer.from(rawState ?? '', 'base64url').toString('utf8'))
     if (decoded && typeof decoded.widgetId === 'string') widgetId = decoded.widgetId
     if (decoded && typeof decoded.workspaceId === 'string') workspaceId = decoded.workspaceId
+    // Flow started from /portal/locations (portal-install route) — land
+    // the user back in the portal, not the dashboard they can't access.
+    if (decoded && decoded.portalReturn === true) portalReturn = true
   } catch { /* handled below */ }
 
   const fail = (error: string) => NextResponse.redirect(
-    new URL(widgetId && workspaceId
-      ? `/dashboard/${workspaceId}/widgets/${widgetId}/locations?error=${encodeURIComponent(error)}`
-      : `/dashboard?error=${encodeURIComponent(error)}`, req.url),
+    new URL(portalReturn
+      ? `/portal/locations?error=${encodeURIComponent(error)}`
+      : widgetId && workspaceId
+        ? `/dashboard/${workspaceId}/widgets/${widgetId}/locations?error=${encodeURIComponent(error)}`
+        : `/dashboard?error=${encodeURIComponent(error)}`, req.url),
   )
 
   if (!widgetId || !workspaceId) return fail('missing_state')
@@ -88,7 +94,9 @@ export async function GET(req: NextRequest) {
       console.warn('[AgencyOAuth] initial location sync failed:', err?.message))
 
     return NextResponse.redirect(
-      new URL(`/dashboard/${workspaceId}/widgets/${widgetId}/locations?connected=1`, req.url),
+      new URL(portalReturn
+        ? '/portal/locations?connected=1'
+        : `/dashboard/${workspaceId}/widgets/${widgetId}/locations?connected=1`, req.url),
     )
   } catch (err: any) {
     console.error('[AgencyOAuth] callback error:', err?.code, err?.message)
