@@ -458,10 +458,59 @@ function WhitelabelSection({
 
   const swatch = primaryColor.trim() || '#fbbf24'
 
+  // The URLs customers actually use. With a custom domain the portal
+  // serves from the domain ROOT (middleware rewrites '/' → /portal on
+  // non-primary hosts); without one it's /portal on the app origin.
+  // The embed variant is what agencies paste into a CRM custom menu
+  // link. Built from the SAVED domain — an unsaved edit doesn't count.
+  const savedDomain = (branding.customDomain ?? '').trim()
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://app.xovera.io'
+  const portalUrl = savedDomain ? `https://${savedDomain}` : `${appOrigin}/portal`
+  const embedUrl = savedDomain
+    ? `https://${savedDomain}/portal?embedded=leadconnector`
+    : `${appOrigin}/portal?embedded=leadconnector`
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  function copyUrl(value: string) {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopiedUrl(value)
+      setTimeout(() => setCopiedUrl(null), 2000)
+    })
+  }
+
   return (
     <section>
       <h2 className="text-lg font-semibold text-white mb-3">Whitelabel &amp; branding</h2>
       <div className="border border-zinc-800 rounded-lg p-5 bg-zinc-900/30 space-y-4">
+        {/* Where this portal actually lives — copy-paste ready. */}
+        <div className="space-y-2">
+          {([
+            { label: 'Portal URL', value: portalUrl, hint: savedDomain ? 'Custom domain (serves the portal at the root)' : 'Default — no custom domain set' },
+            { label: 'CRM menu link', value: embedUrl, hint: 'Paste into a LeadConnector custom menu link to embed the portal' },
+          ] as const).map(u => (
+            <div key={u.label} className="flex items-center gap-2">
+              <div className="w-28 shrink-0 text-xs text-zinc-500">{u.label}</div>
+              <a
+                href={u.value}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 min-w-0 truncate font-mono text-xs text-zinc-300 hover:text-white hover:underline"
+                title={u.hint}
+              >
+                {u.value}
+              </a>
+              <button
+                type="button"
+                onClick={() => copyUrl(u.value)}
+                className="shrink-0 text-xs px-2.5 py-1 rounded border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors"
+              >
+                {copiedUrl === u.value ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-zinc-800" />
+
         <div>
           <label className="block text-sm text-zinc-300 mb-1.5">Custom domain</label>
           <input
