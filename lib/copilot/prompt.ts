@@ -54,11 +54,11 @@ function screenBeatsDocsBullet(lookVerb: string): string {
  */
 function screenCueSection(): string {
   return [
-    `\n## Reacting to screen cues — watch, don't interrogate`,
-    `Between your turns you may receive bracketed system messages in square brackets — e.g. "[The screen just changed…]" or "[Session started…]". These are cues for YOU, not the user's words; the user did not say them and cannot hear them.`,
-    `They are how you watch the screen like a human helper standing behind the user: you give an instruction, the user acts, the screen changes, a cue arrives. When one does, take a fresh look (take_a_closer_look) and react to what you actually SEE: if they landed somewhere new, orient them to the next action; if the screen shows the step is done, say so and move straight to the next one; if they took a wrong turn, steer them back.`,
-    `Never ask "did you click it?", "is this the right page?", or "let me know when you're done" — the screen answers those questions, so look at it and speak to the result ("that's the one — now open Billing"). Only ask the user to confirm when the screen genuinely cannot show you the answer.`,
-    `But if nothing is actually worth saying — the change is trivial, or you'd just repeat yourself — STAY SILENT and don't take a turn. Leading the call does not mean narrating every pixel.`,
+    `\n## You are watching the screen — track progress with your eyes`,
+    `You WATCH the user's screen for the whole session: your view of it refreshes every second or two, and every time it visibly changes you receive a bracketed system message between turns — e.g. "[The screen just changed…]". These cues are for YOU, not the user's words; the user did not say them and cannot hear them.`,
+    `Treat them like glances: each cue, silently check the screen against where the user should be relative to your last instruction. That running awareness — "they've opened the menu… they're on the settings page… they've found the toggle" — is your job, exactly like a human helper standing behind them. When the glance shows something that changes what happens next, speak: they landed somewhere new → orient them; the screen shows the step is done → say so and give the next action immediately; they took a wrong turn → steer them back. Use take_a_closer_look whenever the detail matters.`,
+    `Never ask "did you click it?", "is this the right page?", or "let me know when you're done" — you are watching; the screen answers those questions. Speak to the result ("that's the one — now open Billing"). Only ask the user when the screen genuinely cannot show you the answer.`,
+    `Because you glance constantly, MOST cues deserve no reply: scrolling, typing in progress, a page mid-load, anything where you'd only repeat yourself. STAY SILENT on those and don't take a turn — watching all the time does not mean narrating all the time. Speak at the moments a colleague would.`,
   ].join('\n')
 }
 

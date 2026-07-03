@@ -29,6 +29,7 @@ model User {
   createdTickets            Ticket[]             @relation("TicketCreator")
   conversationNotes         ConversationNote[]   @relation("ConversationNoteAuthor")
   authoredTicketMessages    TicketMessage[]      @relation("TicketMessageAuthor")
+  submittedTicketDrafts     TicketReplyDraft[]   @relation("TicketDraftSubmitter")
   sentMetaMessages          MetaMessage[]        @relation("MetaMessageAuthor")
   kioskOperator             KioskOperator?
   createdAt                 DateTime             @default(now())
@@ -938,6 +939,13 @@ model KnowledgeDomain {
   workspace         Workspace         @relation("WorkspaceKnowledgeDomains", fields: [workspaceId], references: [id], onDelete: Cascade)
   name              String
   description       String?
+  // Optional brand scope. Set when this domain is a brand's portal-managed
+  // knowledge container (created lazily by getOrCreateBrandDomain — one per
+  // brand, unique). Null = normal workspace domain. Retrieval stays
+  // workspace-scoped either way; the ticket suggest-reply path additionally
+  // targets this domain by brand.
+  brandId           String?           @unique
+  brand             Brand?            @relation("BrandKnowledgeDomain", fields: [brandId], references: [id], onDelete: Cascade)
   // Default intent tags injected when the LLM classifier finds nothing
   // in the per-domain taxonomy. Lets a workspace pre-seed sensible
   // labels ("how_to", "pricing", "troubleshooting"...) without manually
@@ -2064,6 +2072,11 @@ model Brand {
   // etc.). Surfaced in the inbox as a quick "Open login" button so
   // agents can jump to the right place fast. Generic — no vendor brand.
   loginUrl      String?
+  // Words / phrases the AI must never use when drafting replies for this
+  // brand. Maintained by portal users on the portal Knowledge page; applied
+  // as a hard prompt rule in ticket suggest-reply plus a post-generation
+  // check that warns the composing agent about violations.
+  negativeKeywords String[]           @default([])
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
   widgets       ChatWidget[]
@@ -2071,10 +2084,39 @@ model Brand {
   portalAccess  PortalUserBrand[]     @relation("BrandPortalAccess")
   portalCatalog PortalBrand[]         @relation("BrandPortalCatalog")
   tickets       Ticket[]              @relation("TicketBrand")
+  knowledgeDomain KnowledgeDomain?    @relation("BrandKnowledgeDomain")
+  snippets      BrandSnippet[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
   @@index([brandGroupId])
+}
+
+// Brand-approved reusable blurbs and links — the owner's calendar link,
+// support contact details, refund-policy one-liner, etc. Maintained by
+// portal users; surfaced to ticketing agents in the compose UI and offered
+// to the AI during suggest-reply ("use when clearly relevant, verbatim").
+model BrandSnippet {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  title   String
+  content String @db.Text
+  // 'text' | 'link' — rendering hint for the compose UI; content is
+  // canonical either way (a 'link' snippet's content is the URL).
+  kind    String @default("text")
+
+  isActive Boolean @default(true)
+
+  // Provenance — exactly one is set depending on which surface created it.
+  createdByPortalUserId String?
+  createdByUserId       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([brandId, isActive])
 }
 
 model ChatWidget {
@@ -2930,6 +2972,7 @@ model PortalUser {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   brandAssignments PortalUserBrand[]
+  draftReviews     TicketReplyDraft[] @relation("TicketDraftReviewer")
 
   @@unique([portalId, email])
   @@index([email])
@@ -3276,7 +3319,8 @@ model Ticket {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  messages TicketMessage[]
+  messages    TicketMessage[]
+  replyDrafts TicketReplyDraft[]
 
   @@unique([workspaceId, ticketNumber])
   @@index([workspaceId, status, lastActivityAt])
@@ -3321,6 +3365,43 @@ model TicketMessage {
 
   @@index([ticketId, createdAt])
   @@index([messageId])
+}
+
+// A composed ticket reply held for sign-off before it reaches the customer.
+// Submitted from the dashboard compose box ("Submit for approval"); reviewed
+// by portal users of the ticket's brand on /portal/approvals. Approving
+// sends the email through the same Resend path as a direct reply and stamps
+// sentMessageId with the resulting TicketMessage.
+model TicketReplyDraft {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  body String @db.Text
+
+  // 'pending' | 'approved' | 'rejected' | 'cancelled'
+  status String @default("pending")
+
+  submittedByUserId String?
+  submittedByUser   User?   @relation("TicketDraftSubmitter", fields: [submittedByUserId], references: [id], onDelete: SetNull)
+
+  // Reviewer is a PORTAL user (the brand's own people sign off on what
+  // goes to their customers). reviewedByEmail survives account deletion
+  // and covers super-admin preview sessions that have no PortalUser row.
+  reviewedByPortalUserId String?
+  reviewedByPortalUser   PortalUser? @relation("TicketDraftReviewer", fields: [reviewedByPortalUserId], references: [id], onDelete: SetNull)
+  reviewedByEmail        String?
+  reviewedAt             DateTime?
+  reviewNote             String?     @db.Text
+
+  // TicketMessage created when the approved draft was emailed out.
+  sentMessageId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ticketId, status])
+  @@index([status, createdAt])
 }
 
 model TicketingSettings {

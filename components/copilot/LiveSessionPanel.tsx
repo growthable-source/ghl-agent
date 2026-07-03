@@ -61,15 +61,17 @@ const FLUSH_INTERVAL_MS = 5000
 // talks over the user or natters: debounced, suppressed while the user
 // speaks and just after the model speaks, and every cue lets the model
 // stay silent.
-const NUDGE_MIN_INTERVAL_MS = 6000 // debounce between any two proactive turns
+// The engine is a WATCHER, not a debouncer: every screen change pends a
+// look-cue, and a pended cue is never dropped — it fires as soon as it's
+// polite (user not talking, model finished + cooldown, min interval
+// elapsed). So a change that lands while the model is mid-sentence gets
+// looked at two seconds after it stops, not never. The model is told to
+// stay silent on cues that don't warrant speech, so continuous watching
+// does not mean continuous narration.
+const NUDGE_MIN_INTERVAL_MS = 2500 // floor between any two proactive turns
 const MODEL_SPEAK_COOLDOWN_MS = 2000 // quiet window after the model's last audio
-const PROACTIVE_TICK_MS = 22_000 // idle cadence: check progress / re-orient
-// After the model speaks (usually an instruction), the user acts and the
-// screen changes at sub-navigation scale — a modal opens, a panel expands,
-// a toggle flips. Within this window such changes are treated as "the user
-// just did what I asked" and prompt the model to look and react, so it
-// verifies steps visually instead of waiting for the user to report back.
-const ACTION_WATCH_WINDOW_MS = 45_000
+const WATCHER_TICK_MS = 1000 // how often a pended cue retries firing
+const PROACTIVE_TICK_MS = 22_000 // idle cadence when the screen is static too
 
 // Cues are shared by every screen-share mode (onboarding, named agents,
 // general support, SOPs, visitor widget), so they stay generic — no tool
@@ -81,7 +83,7 @@ const CUE_KICKOFF =
 const CUE_SCREEN_CHANGED =
   '[The screen just changed — the user navigated to a new view. Take a closer look and react to what you see: if this is the next step or a wrong turn, guide them in one or two sentences — don\'t ask them to confirm what the screen already shows. If nothing needs saying, stay silent.]'
 const CUE_USER_ACTED =
-  '[The screen just changed after your last instruction — the user acted. Take a closer look and react to what you actually see: if the step is done, say so and give the next action; if something unexpected appeared, deal with it. Do not ask whether they did it — look. If the change is trivial, stay silent.]'
+  '[The screen just changed — the user is doing something. Check it against your last instruction: if the step is done, say so and give the next action; if something unexpected appeared, deal with it. Do not ask whether they did it — you can see. If it is just scrolling, typing in progress, or a page still loading, stay silent.]'
 const CUE_IDLE_TICK =
   '[The user has gone quiet. Take a quick look at where they are. If they have finished the current step, acknowledge it and move them to the next one; if they seem stuck, offer one specific nudge. If they are clearly mid-task and fine, stay silent.]'
 
@@ -124,6 +126,10 @@ export default function LiveSessionPanel({
   const lastNudgeAtRef = useRef(0)
   const lastModelSpokeAtRef = useRef(0)
   const proactiveTickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // The look-cue waiting to fire once it's polite. Never dropped, only
+  // replaced — a nav-scale cue outranks a smaller-change one.
+  const pendingCueRef = useRef<{ cue: string; nav: boolean } | null>(null)
+  const watcherTickRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const sessionIdRef = useRef<string | null>(null)
   const providerRef = useRef<RealtimeModelProvider | null>(null)
@@ -192,9 +198,12 @@ export default function LiveSessionPanel({
       if (flushTimerRef.current) clearInterval(flushTimerRef.current)
       if (tickTimerRef.current) clearInterval(tickTimerRef.current)
       if (proactiveTickRef.current) clearInterval(proactiveTickRef.current)
+      if (watcherTickRef.current) clearInterval(watcherTickRef.current)
       flushTimerRef.current = null
       tickTimerRef.current = null
       proactiveTickRef.current = null
+      watcherTickRef.current = null
+      pendingCueRef.current = null
 
       framesRef.current?.stop()
       micRef.current?.stop()
@@ -238,6 +247,9 @@ export default function LiveSessionPanel({
     setPartial({ user: '', agent: '' })
     setElapsed(0)
     flushedCountersRef.current = { audioIn: 0, audioOut: 0, frames: 0 }
+    pendingCueRef.current = null
+    lastNudgeAtRef.current = 0
+    lastModelSpokeAtRef.current = 0
 
     try {
       setPhase({ kind: 'starting', step: 'Pick the screen or window to share…' })
@@ -352,25 +364,38 @@ export default function LiveSessionPanel({
         return true
       }
 
+      // The watching loop: a look-cue that can't fire right now is
+      // PENDED, not dropped, and retried every WATCHER_TICK_MS until it
+      // lands. This is what makes the copilot track the screen the whole
+      // session — a change during the model's own speech gets looked at
+      // the moment it finishes, instead of vanishing.
+      const flushPendingCue = () => {
+        const pending = pendingCueRef.current
+        if (pending && maybeNudge(pending.cue)) pendingCueRef.current = null
+      }
+      const pendCue = (cue: string, nav: boolean) => {
+        const pending = pendingCueRef.current
+        // A pending nav-scale cue is never downgraded by a smaller change.
+        if (!pending || nav || !pending.nav) pendingCueRef.current = { cue, nav }
+        flushPendingCue()
+      }
+
       const frames = new ScreenFrameCapture(displayStream, created.realtime.frameFpsCap, frame => {
         provider.sendVideoFrame(frame.base64Jpeg)
         screenBufferRef.current.push({
           detectedContext: { trigger: frame.trigger, diffScore: frame.diffScore },
           ts: new Date().toISOString(),
         })
-        // A navigation-scale change just shipped (and as a high-res frame).
-        // Prompt the model to look and orient — this is the main thing
-        // that makes the copilot tell the user where to go next. Smaller
-        // changes (modal opened, panel expanded, toggle flipped) only
-        // matter right after the model gave an instruction: then they
-        // mean "the user just acted", and the model should look and
-        // verify instead of waiting to be told.
+        // EVERY visible change pends a look-cue: navigation-scale changes
+        // (which also shipped as a high-res frame) tell the model to
+        // orient the user on the new view; smaller ones (modal opened,
+        // panel expanded, toggle flipped) tell it to check the action
+        // against its last instruction. The model is watching the whole
+        // session — the prompt makes silence the default response, so
+        // scrolling and mid-typing don't turn into narration.
         if (frame.trigger === 'change') {
-          if (frame.diffScore >= NAV_CHANGE_THRESHOLD) {
-            maybeNudge(CUE_SCREEN_CHANGED)
-          } else if (Date.now() - lastModelSpokeAtRef.current < ACTION_WATCH_WINDOW_MS) {
-            maybeNudge(CUE_USER_ACTED)
-          }
+          const nav = frame.diffScore >= NAV_CHANGE_THRESHOLD
+          pendCue(nav ? CUE_SCREEN_CHANGED : CUE_USER_ACTED, nav)
         }
       })
       await frames.start()
@@ -383,7 +408,10 @@ export default function LiveSessionPanel({
         // the opening turn, and nothing has spoken yet.
         lastNudgeAtRef.current = Date.now()
         provider.nudge(CUE_KICKOFF)
-        // Keep the agenda moving when the user goes quiet mid-step.
+        // The watching loop: retry any pended look-cue until it lands.
+        watcherTickRef.current = setInterval(flushPendingCue, WATCHER_TICK_MS)
+        // Keep the agenda moving when the screen is static AND the user
+        // has gone quiet — the change-driven cues cover everything else.
         proactiveTickRef.current = setInterval(() => maybeNudge(CUE_IDLE_TICK), PROACTIVE_TICK_MS)
       }
 

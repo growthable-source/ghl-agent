@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { retrieveAndFormatForAgent } from '@/lib/agent/retrieve-for-agent'
+import { buildTicketReplyContext, findNegativeKeywordHits } from '@/lib/tickets/reply-context'
 
 type Params = { params: Promise<{ workspaceId: string; ticketId: string }> }
 
@@ -10,11 +10,15 @@ type Params = { params: Promise<{ workspaceId: string; ticketId: string }> }
  * POST { agentId? } — draft a reply for this ticket using an agent's
  * brain. agentId is optional — when omitted we pick the first active
  * agent in the workspace. The draft is NOT sent or persisted; the
- * UI lets the operator edit before posting through /messages.
+ * UI lets the operator edit before posting through /messages (or
+ * routing through /submit-approval for portal sign-off).
  *
- * Knowledge-aware: runs the same Phase-2 retrieval the chat path
- * uses, so suggested replies can quote the help center / docs the
- * agent is scoped to.
+ * Context-aware: beyond the same Phase-2 retrieval the chat path uses
+ * (now including the brand's portal-managed knowledge domain), the
+ * prompt carries the brand's recent ticket history, the requester's
+ * own open/past tickets, recent live-chat summaries on the brand, the
+ * brand snippet library, and the brand's forbidden-phrase list. See
+ * lib/tickets/reply-context.ts.
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId, ticketId } = await params
@@ -44,10 +48,22 @@ export async function POST(req: NextRequest, { params }: Params) {
   // different framing (greeting, sign-off, longer-form acceptable).
   const lastInbound = [...ticket.messages].reverse().find(m => m.direction === 'inbound')
   const question = lastInbound?.body ?? ticket.subject
-  const phase2 = await retrieveAndFormatForAgent(
-    { id: agent.id, workspaceId, knowledgeDomainIds: (agent as { knowledgeDomainIds?: string[] }).knowledgeDomainIds },
+
+  const context = await buildTicketReplyContext({
+    ticket: {
+      id: ticket.id,
+      workspaceId,
+      brandId: ticket.brandId,
+      contactEmail: ticket.contactEmail,
+      subject: ticket.subject,
+    },
+    agent: {
+      id: agent.id,
+      knowledgeDomainIds: (agent as { knowledgeDomainIds?: string[] }).knowledgeDomainIds,
+      knowledgeScopeAll: (agent as { knowledgeScopeAll?: boolean | null }).knowledgeScopeAll,
+    },
     question,
-  )
+  })
 
   const thread = ticket.messages.map(m => {
     const who = m.direction === 'inbound'
@@ -70,7 +86,7 @@ The customer's subject was: "${ticket.subject}"
 Ticket #${ticket.ticketNumber}.
 
 ${agent.instructions ? `\nAdditional instructions:\n${agent.instructions}\n` : ''}
-${phase2.block}`
+${context.knowledgeBlock}${context.requesterHistoryBlock}${context.brandHistoryBlock}${context.conversationsBlock}${context.snippetsBlock}${context.negativeKeywordsBlock}`
 
   const userPrompt = `Here is the full ticket thread so far (oldest first). Draft the support team's next reply.
 
@@ -89,11 +105,16 @@ ${thread}`
     if (!draft) {
       return NextResponse.json({ error: 'Empty draft from model. Try again or refine the ticket history.' }, { status: 502 })
     }
+    const keywordHits = findNegativeKeywordHits(draft, context.negativeKeywords)
     return NextResponse.json({
       draft,
       agentId: agent.id,
       agentName: agent.name,
-      knowledgeUsed: phase2.chunks.length,
+      knowledgeUsed: context.counts.knowledgeChunks,
+      contextUsed: context.counts,
+      // Forbidden phrases that slipped through despite the prompt rule —
+      // surfaced as a warning so the operator edits before sending.
+      keywordWarnings: keywordHits,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Anthropic call failed'
