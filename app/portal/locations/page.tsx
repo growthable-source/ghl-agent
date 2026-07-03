@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
 import { agencyOAuthConfigured } from '@/lib/leadconnector-agency'
 import LocationList from '@/components/locations/LocationList'
+import DisconnectAgencyButton from '@/components/locations/DisconnectAgencyButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,11 +45,18 @@ export default async function PortalLocationsPage({
         orderBy: { name: 'asc' },
       })
     : []
+  // companyName rides a later manual ALTER — fall back to a select
+  // without it so the page renders on un-migrated DBs.
   const connections = widgets.length
     ? await db.agencyConnection.findMany({
         where: { widgetId: { in: widgets.map(w => w.id) }, NOT: { accessToken: '' } },
-        select: { widgetId: true },
-      }).catch(() => [])
+        select: { widgetId: true, companyId: true, companyName: true, createdAt: true },
+      }).catch(() =>
+        db.agencyConnection.findMany({
+          where: { widgetId: { in: widgets.map(w => w.id) }, NOT: { accessToken: '' } },
+          select: { widgetId: true, companyId: true, createdAt: true },
+        }).then(rows => rows.map(r => ({ ...r, companyName: null as string | null }))).catch(() => []),
+      )
     : []
   const connectedWidgetIds = new Set(connections.map(c => c.widgetId))
   const hasConnection = connectedWidgetIds.size > 0
@@ -120,6 +128,42 @@ export default async function PortalLocationsPage({
         </div>
       ) : (
         <>
+          {/* Connection card(s): WHICH agency each widget is linked to,
+              plus the exits — Change agency re-runs the OAuth (upserts in
+              place), Disconnect blanks tokens but keeps every toggle. */}
+          {connections.map(c => {
+            const widget = widgets.find(w => w.id === c.widgetId)
+            const label = c.companyName ?? c.companyId
+            return (
+              <div
+                key={c.widgetId}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3"
+                style={{ background: 'var(--surface)' }}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-zinc-100 truncate">
+                    Connected to {c.companyName ?? 'your agency'}
+                  </p>
+                  <p className="text-xs mt-0.5 font-mono text-zinc-600">
+                    {c.companyId}{widget ? ` · via ${widget.name}` : ''} · since {c.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Plain <a>: API-route redirect — next/link 404s on it. */}
+                  <a
+                    href={`/api/auth/leadconnector-agency/portal-install?widgetId=${c.widgetId}`}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-zinc-800 text-zinc-400 transition-opacity hover:opacity-80"
+                  >
+                    Change agency
+                  </a>
+                  <DisconnectAgencyButton
+                    endpoint={`/api/portal/locations/connection?widgetId=${c.widgetId}`}
+                    agencyLabel={label}
+                  />
+                </div>
+              </div>
+            )
+          })}
           <LocationList apiBase="/api/portal/locations" canManage />
           {unconnected.length > 0 && agencyOAuthConfigured() && (
             <p className="text-xs text-zinc-500">

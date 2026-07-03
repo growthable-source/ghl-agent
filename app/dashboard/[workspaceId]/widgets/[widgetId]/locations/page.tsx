@@ -190,8 +190,7 @@ export default async function WidgetLocationsPage({
                   Change agency
                 </a>
                 <DisconnectAgencyButton
-                  workspaceId={workspaceId}
-                  widgetId={widget.id}
+                  endpoint={`/api/workspaces/${workspaceId}/widgets/${widget.id}/locations/connection`}
                   agencyLabel={agencyLabel}
                 />
               </div>

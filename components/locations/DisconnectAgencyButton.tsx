@@ -2,19 +2,20 @@
 
 /**
  * Disconnect button for a widget's agency connection. Confirms, calls
- * the DELETE endpoint (which blanks tokens but preserves the synced
- * locations + their toggles), then reloads the server-rendered page.
+ * the given DELETE endpoint (which blanks tokens but preserves the
+ * synced locations + their toggles), then reloads the server-rendered
+ * page. Used by BOTH surfaces — pass the right endpoint:
+ *   dashboard: /api/workspaces/<ws>/widgets/<id>/locations/connection
+ *   portal:    /api/portal/locations/connection?widgetId=<id>
  */
 
 import { useState } from 'react'
 
 export default function DisconnectAgencyButton({
-  workspaceId,
-  widgetId,
+  endpoint,
   agencyLabel,
 }: {
-  workspaceId: string
-  widgetId: string
+  endpoint: string
   agencyLabel: string
 }) {
   const [busy, setBusy] = useState(false)
@@ -28,9 +29,7 @@ export default function DisconnectAgencyButton({
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/widgets/${widgetId}/locations/connection`, {
-        method: 'DELETE',
-      })
+      const res = await fetch(endpoint, { method: 'DELETE' })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Disconnect failed')
       window.location.reload()
     } catch (e: any) {
