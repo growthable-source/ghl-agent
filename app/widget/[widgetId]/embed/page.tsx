@@ -408,10 +408,14 @@ export default function WidgetEmbedPage() {
     })()
     const initiatedUrl = parentUrl || (isTopLevel ? window.location.href : framedReferrer)
     const initiatedTitle = parentTitle || (isTopLevel ? (document.title || null) : null)
+    // CRM sub-account attribution: widget.js forwards data-location-id as
+    // `loc` on the iframe URL; stamped on the conversation at create so
+    // the portal can report chats per sub-account.
+    const embedLocationId = searchParams.get('loc') || null
     fetch(`/api/widget/${widgetId}/conversations?pk=${publicKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitorId, initiatedUrl, initiatedTitle }),
+      body: JSON.stringify({ visitorId, initiatedUrl, initiatedTitle, locationId: embedLocationId }),
     })
       .then(r => r.json())
       .then(data => {

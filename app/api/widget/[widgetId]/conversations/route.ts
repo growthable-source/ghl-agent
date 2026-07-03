@@ -85,6 +85,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   // null when we know the answer.
   const startUrl = initiatedUrl ?? (visitor.currentUrl as string | null) ?? null
   const startTitle = initiatedTitle ?? (visitor.currentTitle as string | null) ?? null
+  // CRM sub-account attribution (data-location-id → iframe `loc` →
+  // here). Nullable; capped defensively like the other embed-supplied
+  // strings.
+  const locationId =
+    typeof body.locationId === 'string' && body.locationId.length > 0
+      ? body.locationId.slice(0, 120)
+      : null
 
   let conv
   try {
@@ -95,6 +102,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         agentId: v.widget.defaultAgentId,
         initiatedUrl: startUrl,
         initiatedTitle: startTitle,
+        locationId,
       } as any,
     })
   } catch (err: any) {

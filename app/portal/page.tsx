@@ -7,6 +7,8 @@ import TelemetryMap, { type GeoPoint } from '@/components/portal/TelemetryMap'
 import WordCloud from '@/components/portal/WordCloud'
 import TopTopics from '@/components/portal/TopTopics'
 import { getOverviewInsights } from '@/lib/portal/overview-insights'
+import { getConnectionSummaries, getChatsPerLocation, getTopConsumers } from '@/lib/portal/subaccount-stats'
+import { getPortalAiInsights } from '@/lib/portal/ai-insights'
 
 export const dynamic = 'force-dynamic'
 
@@ -119,6 +121,17 @@ export default async function PortalOverview() {
   // (knowledge the AI matched). Both best-effort; see overview-insights.ts.
   const { cloudTerms, topTopics } = await getOverviewInsights({ widgetIds, since: since30d })
 
+  // CRM connection status, per-sub-account chat volume, top support
+  // consumers, and the cached AI weekly briefing. All best-effort — each
+  // degrades to empty on un-migrated DBs. AI insights render from cache;
+  // a stale/missing cache kicks off a background regenerate.
+  const [connections, locationChats, topConsumers, aiInsights] = await Promise.all([
+    getConnectionSummaries(widgetIds),
+    getChatsPerLocation(widgetIds, since30d),
+    getTopConsumers(widgetIds, since30d),
+    getPortalAiInsights(session.portalId, widgetIds, workspaceIds[0] ?? null),
+  ])
+
   // Top agents → names
   const agentIds = topAgentGroups.map(g => g.assignedUserId).filter(Boolean) as string[]
   const agentUsers = agentIds.length ? await db.user.findMany({ where: { id: { in: agentIds } }, select: { id: true, name: true, email: true } }) : []
@@ -142,6 +155,39 @@ export default async function PortalOverview() {
         <Kpi label="Avg Resolution" value={avgResSecs ? fmtDuration(avgResSecs) : '—'} />
         <Kpi label="CSAT Score" value={csatPct != null ? `${csatPct}%` : '—'} tone="emerald" sub={`${csatAgg._count.csatRating.toLocaleString()} ratings`} />
         <Kpi label="Agents Online" value={`${agentsOnline}`} sub={`of ${agentsTotal} on the team`} />
+      </div>
+
+      {/* AI insights — the weekly briefing synthesized from support themes */}
+      <div className="rounded-xl border border-zinc-800 p-4 mt-4" style={{ background: 'var(--surface)' }}>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--portal-accent)' }}>
+            ✦ AI Insights
+          </p>
+          <span className="text-[10px] text-zinc-500">
+            {aiInsights
+              ? <>last {aiInsights.windowDays} days · updated {aiInsights.generatedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{aiInsights.stale ? ' · refreshing…' : ''}</>
+              : 'analyzing recent conversations…'}
+          </span>
+        </div>
+        {aiInsights ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {aiInsights.insights.map((ins, i) => (
+              <div key={i} className="rounded-lg border border-zinc-800 p-3.5" style={{ background: 'var(--surface-secondary)' }}>
+                <p className="text-sm font-semibold text-zinc-100">{ins.headline}</p>
+                <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">{ins.detail}</p>
+                <p className="text-xs mt-2.5">
+                  <span className="font-semibold" style={{ color: 'var(--portal-accent)' }}>Suggested: </span>
+                  <span className="text-zinc-300">{ins.suggestedAction}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-zinc-500 py-2">
+            Insights appear here once your assistant has analyzed a week of conversations —
+            what customers keep asking about, what changed, and what to do about it. Check back soon.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
@@ -242,6 +288,76 @@ export default async function PortalOverview() {
           {/* Top topics — knowledge the AI matched to answer */}
           <Panel title="Top Topics" right={<span className="text-[10px] text-zinc-500">knowledge used · 30d</span>}>
             <TopTopics topics={topTopics} />
+          </Panel>
+
+          {/* CRM connection — which agency each widget is linked to */}
+          <Panel title="CRM Connection" right={connections.length > 0 ? <span className="text-[10px]" style={{ color: 'var(--accent-emerald)' }}>● connected</span> : undefined}>
+            {connections.length === 0 ? (
+              <p className="text-xs text-zinc-500">No CRM agency connected to your widgets yet.</p>
+            ) : (
+              <div className="space-y-2.5">
+                {connections.map(c => (
+                  <div key={c.widgetId} className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-zinc-200 truncate">{c.companyName ?? c.companyId}</p>
+                      <p className="text-[10px] text-zinc-500 truncate">via {c.widgetName}</p>
+                    </div>
+                    <span className="text-[10px] text-zinc-400 shrink-0">
+                      {c.enabledLocations}/{c.totalLocations} locations on
+                    </span>
+                  </div>
+                ))}
+                <Link href="/portal/locations" className="inline-block text-[11px] hover:underline" style={{ color: 'var(--portal-accent)' }}>
+                  Manage locations →
+                </Link>
+              </div>
+            )}
+          </Panel>
+
+          {/* Chats by sub-account — forward-only from location capture */}
+          <Panel title="Chats by Sub-account" right={<span className="text-[10px] text-zinc-500">30d</span>}>
+            {locationChats.rows.length === 0 ? (
+              <p className="text-xs text-zinc-500">
+                No location-attributed chats yet — counts appear as new conversations come in from your sub-accounts.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {locationChats.rows.map((l, i) => (
+                  <div key={l.locationId} className="flex items-center gap-2">
+                    <span className="text-[10px] text-zinc-600 w-3">{i + 1}</span>
+                    <span className="text-xs text-zinc-200 flex-1 truncate">{l.name ?? l.locationId}</span>
+                    <span className="text-xs font-semibold text-zinc-400">{l.count}</span>
+                  </div>
+                ))}
+                {locationChats.unattributed > 0 && (
+                  <p className="text-[10px] text-zinc-600 pt-1">
+                    +{locationChats.unattributed} chats without location data (older embeds / non-CRM sites)
+                  </p>
+                )}
+              </div>
+            )}
+          </Panel>
+
+          {/* Top support consumers — who leans on support the most */}
+          <Panel title="Top Support Consumers" right={<span className="text-[10px] text-zinc-500">30d</span>}>
+            {topConsumers.length === 0 ? (
+              <p className="text-xs text-zinc-500">No conversations in the window yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {topConsumers.map((v, i) => (
+                  <div key={v.visitorId} className="flex items-center gap-2">
+                    <span className="text-[10px] text-zinc-600 w-3">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-zinc-200 truncate">{v.name ?? v.email ?? 'Anonymous visitor'}</p>
+                      {v.name && v.email && <p className="text-[10px] text-zinc-500 truncate">{v.email}</p>}
+                    </div>
+                    <span className="text-xs font-semibold text-zinc-400 shrink-0" title={`${v.messages} messages`}>
+                      {v.conversations} chats
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Panel>
         </div>
       </div>

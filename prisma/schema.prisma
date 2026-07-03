@@ -2243,6 +2243,10 @@ model WidgetConversation {
   widget              ChatWidget         @relation(fields: [widgetId], references: [id], onDelete: Cascade)
   visitorId           String
   visitor             WidgetVisitor      @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  // CRM sub-account the chat originated from (data-location-id on the
+  // embed, threaded through the iframe at conversation create). Nullable —
+  // plain-site embeds have no location; rows predating capture are null.
+  locationId          String?
   agentId             String?
   status              String             @default("active")
   lastMessageAt       DateTime           @default(now())
@@ -2305,6 +2309,7 @@ model WidgetConversation {
   ticket              Ticket?            @relation("ConversationTicket")
 
   @@index([widgetId, lastMessageAt(sort: Desc)])
+  @@index([widgetId, locationId])
   @@index([visitorId])
   @@index([agentId, status])
   @@index([assignedUserId, status])
@@ -2876,6 +2881,7 @@ model Portal {
   users        PortalUser[]
   invites      PortalInvite[]
   portalBrands PortalBrand[]
+  insight      PortalInsight?
 }
 
 model PortalBrand {
@@ -3870,4 +3876,17 @@ model AgencyLocation {
 
   @@unique([connectionId, locationId])
   @@index([locationId])
+}
+
+// ─── Portal AI insights cache ───────────────────────────────────────────────
+// One cached synthesis per portal (aiSummary pattern: compute on demand,
+// cache, refresh when stale — no cron). content is the model's JSON:
+// [{ headline, detail, suggestedAction }].
+model PortalInsight {
+  id          String   @id @default(cuid())
+  portalId    String   @unique
+  portal      Portal   @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  content     Json
+  windowDays  Int      @default(7)
+  generatedAt DateTime @default(now())
 }

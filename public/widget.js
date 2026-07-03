@@ -209,6 +209,7 @@
     var cid = getCookieId() || ''
     var embedUrl = hostUrl + '/widget/' + widgetId + '/embed?pk=' + encodeURIComponent(publicKey)
       + (cid ? '&cid=' + encodeURIComponent(cid) : '')
+      + (locationId ? '&loc=' + encodeURIComponent(locationId) : '')
       + parentContextQuery()
       + identityQuery()
     var wrap = buildIframe(embedUrl, cfg.title || 'Chat', position, false)
