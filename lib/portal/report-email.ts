@@ -123,10 +123,17 @@ export async function sendPortalReport(
 
   let recipients = opts.toOverride
   if (!recipients) {
+    // receiveReports is the per-user include/exclude toggle (default on).
+    // Fallback select for DBs that haven't run the column's ALTER yet.
     const users = await db.portalUser.findMany({
-      where: { portalId, isActive: true, acceptedAt: { not: null } },
+      where: { portalId, isActive: true, acceptedAt: { not: null }, receiveReports: true },
       select: { email: true },
-    })
+    }).catch(() =>
+      db.portalUser.findMany({
+        where: { portalId, isActive: true, acceptedAt: { not: null } },
+        select: { email: true },
+      }),
+    )
     recipients = users.map(u => u.email)
   }
   if (recipients.length === 0) return { sent: 0, skipped: 'no active portal users' }

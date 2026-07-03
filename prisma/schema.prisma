@@ -2879,7 +2879,7 @@ model Portal {
   // Scheduled email reports to portal users: 'off' | 'daily' | 'weekly'.
   // Settable from BOTH the super-admin portal page and the portal's own
   // settings. reportLastSentAt drives the hourly cron's due-check.
-  reportFrequency  String         @default("off")
+  reportFrequency  String         @default("weekly")
   reportLastSentAt DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -2911,6 +2911,10 @@ model PortalUser {
   // then they can log in only via the invite link.
   passwordHash     String?
   isActive         Boolean           @default(true)
+  // Include this user in the portal's scheduled email reports. Everyone
+  // is on by default; the Email reports card lets any portal user (or an
+  // admin in preview) exclude individuals.
+  receiveReports   Boolean           @default(true)
   lastLoginAt      DateTime?
   invitedAt        DateTime          @default(now())
   acceptedAt       DateTime?
