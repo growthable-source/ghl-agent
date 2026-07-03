@@ -7,7 +7,8 @@ import TelemetryMap, { type GeoPoint } from '@/components/portal/TelemetryMap'
 import WordCloud from '@/components/portal/WordCloud'
 import TopTopics from '@/components/portal/TopTopics'
 import { getOverviewInsights } from '@/lib/portal/overview-insights'
-import { getConnectionSummaries, getChatsPerLocation, getTopConsumers } from '@/lib/portal/subaccount-stats'
+import { getConnectionSummaries, getChatsPerLocation } from '@/lib/portal/subaccount-stats'
+import { getSupportLeaderboard } from '@/lib/portal/leaderboard'
 import { getPortalAiInsights } from '@/lib/portal/ai-insights'
 
 export const dynamic = 'force-dynamic'
@@ -125,10 +126,12 @@ export default async function PortalOverview() {
   // consumers, and the cached AI weekly briefing. All best-effort — each
   // degrades to empty on un-migrated DBs. AI insights render from cache;
   // a stale/missing cache kicks off a background regenerate.
-  const [connections, locationChats, topConsumers, aiInsights] = await Promise.all([
+  const [connections, locationChats, leaderboard, aiInsights] = await Promise.all([
     getConnectionSummaries(widgetIds),
     getChatsPerLocation(widgetIds, since30d),
-    getTopConsumers(widgetIds, since30d),
+    // 7-day window on purpose: rank movement is week-over-week, matching
+    // the email report.
+    getSupportLeaderboard(widgetIds, session.brandIds, 7),
     getPortalAiInsights(session.portalId, widgetIds, workspaceIds[0] ?? null),
   ])
 
@@ -338,24 +341,44 @@ export default async function PortalOverview() {
             )}
           </Panel>
 
-          {/* Top support consumers — who leans on support the most */}
-          <Panel title="Top Support Consumers" right={<span className="text-[10px] text-zinc-500">30d</span>}>
-            {topConsumers.length === 0 ? (
-              <p className="text-xs text-zinc-500">No conversations in the window yet.</p>
+          {/* Support MVPs — the leaderboard. Deliberately playful: heavy
+              use = engagement + a map of documentation gaps, not a
+              problem to scold anyone over. */}
+          <Panel title="🏆 Support MVPs" right={<span className="text-[10px] text-zinc-500">chats + tickets · 7d</span>}>
+            {leaderboard.length === 0 ? (
+              <p className="text-xs text-zinc-500">No identified users in the window yet — the board fills as people chat or open tickets.</p>
             ) : (
               <div className="space-y-1.5">
-                {topConsumers.map((v, i) => (
-                  <div key={v.visitorId} className="flex items-center gap-2">
-                    <span className="text-[10px] text-zinc-600 w-3">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-zinc-200 truncate">{v.name ?? v.email ?? 'Anonymous visitor'}</p>
-                      {v.name && v.email && <p className="text-[10px] text-zinc-500 truncate">{v.email}</p>}
-                    </div>
-                    <span className="text-xs font-semibold text-zinc-400 shrink-0" title={`${v.messages} messages`}>
-                      {v.conversations} chats
+                {leaderboard.map(e => (
+                  <div key={e.email} className="flex items-center gap-2">
+                    <span className="w-5 text-center shrink-0">
+                      {e.rank <= 3
+                        ? <span className="text-sm">{e.rank === 1 ? '🥇' : e.rank === 2 ? '🥈' : '🥉'}</span>
+                        : <span className="text-[10px] text-zinc-600">{e.rank}</span>}
                     </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-zinc-200 truncate">{e.name ?? e.email}</p>
+                      <p className="text-[10px] text-zinc-500 truncate">
+                        {e.chats} chat{e.chats === 1 ? '' : 's'}{e.tickets > 0 ? ` · ${e.tickets} ticket${e.tickets === 1 ? '' : 's'}` : ''}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={
+                      e.movement === null
+                        ? { color: '#a78bfa', background: 'rgba(167,139,250,0.12)' }
+                        : e.movement > 0
+                          ? { color: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }
+                          : e.movement < 0
+                            ? { color: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }
+                            : { color: 'var(--text-tertiary)', background: 'var(--surface-tertiary)' }
+                    }>
+                      {e.movement === null ? 'new' : e.movement > 0 ? `▲${e.movement}` : e.movement < 0 ? `▼${Math.abs(e.movement)}` : '—'}
+                    </span>
+                    <span className="text-xs font-bold text-zinc-300 w-6 text-right shrink-0">{e.score}</span>
                   </div>
                 ))}
+                <p className="text-[10px] text-zinc-600 pt-1 leading-relaxed">
+                  Engaged users show you where a help doc could save everyone a trip.
+                </p>
               </div>
             )}
           </Panel>
