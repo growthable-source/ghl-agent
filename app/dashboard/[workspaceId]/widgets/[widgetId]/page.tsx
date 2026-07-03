@@ -38,6 +38,8 @@ interface Widget {
   routingFallbackUserId?: string | null
   brandId?: string | null
   agencyUrl?: string | null
+  autoIdentify?: boolean
+  launcherAgents?: { kind: 'chat' | 'voice' | 'copilot'; agentId: string | null; label: string }[] | null
 }
 
 interface MemberOption {
@@ -63,7 +65,10 @@ export default function WidgetEditorPage() {
   const widgetId = params.widgetId as string
 
   const [widget, setWidget] = useState<Widget | null>(null)
-  const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
+  const [agents, setAgents] = useState<Array<{ id: string; name: string; agentType?: string }>>([])
+  // Whether this widget has an active agency connection — gates the
+  // auto-identify option (it only means something in the CRM dashboard).
+  const [agencyConnected, setAgencyConnected] = useState(false)
   const [members, setMembers] = useState<MemberOption[]>([])
   const [brands, setBrands] = useState<BrandOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,13 +78,15 @@ export default function WidgetEditorPage() {
   const [copied, setCopied] = useState<CopyKey | null>(null)
 
   const fetchWidget = useCallback(async () => {
-    const [w, a, m, b] = await Promise.all([
+    const [w, loc, a, m, b] = await Promise.all([
       fetch(`/api/workspaces/${workspaceId}/widgets/${widgetId}`).then(r => r.json()),
+      fetch(`/api/workspaces/${workspaceId}/widgets/${widgetId}/locations`).then(r => r.json()).catch(() => null),
       fetch(`/api/workspaces/${workspaceId}/agents`).then(r => r.json()),
       fetch(`/api/workspaces/${workspaceId}/members`).then(r => r.json()),
       fetch(`/api/workspaces/${workspaceId}/brands`).then(r => r.json()),
     ])
     if (w.widget) setWidget(w.widget)
+    setAgencyConnected(!!loc?.connected)
     setAgents(a.agents || [])
     setMembers(m.members || [])
     setBrands(b.brands || [])
@@ -631,6 +638,77 @@ export default function WidgetEditorPage() {
                     <p className="text-xs text-zinc-500">Agent can ask during conversation if needed (e.g. before booking).</p>
                   </div>
                 </label>
+                {/* Only meaningful once an agency is connected: the
+                    marketplace app's injected JS reads the logged-in CRM
+                    user and pre-identifies the chat. */}
+                {agencyConnected && (
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={widget.autoIdentify !== false} onChange={e => update('autoIdentify', e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-orange-500" />
+                    <div>
+                      <p className="text-sm text-white">Auto-identify CRM users <NewBadge since="2026-07-03" className="ml-1" /></p>
+                      <p className="text-xs text-zinc-500">Inside the CRM dashboard, visitors are recognized from their login — no name/email form. Applies wherever the widget is installed via your marketplace app.</p>
+                    </div>
+                  </label>
+                )}
+              </Section>
+            )}
+
+            {!isCallType && (
+              <Section title="Launcher options">
+                <p className="text-xs text-zinc-500 -mt-1">
+                  Offer up to two kinds of help when the chat opens — e.g. a support agent and an
+                  onboarding agent, or a voice line. Visitors pick before the conversation starts.
+                  Leave both empty for the classic single-agent launcher. Two is the max on purpose —
+                  more would crowd the widget.
+                </p>
+                {[0, 1].map(slot => {
+                  const entries = widget.launcherAgents ?? []
+                  const entry = entries[slot] ?? null
+                  const setEntry = (next: { kind: 'chat' | 'voice' | 'copilot'; agentId: string | null; label: string } | null) => {
+                    const copy = [...entries]
+                    if (next === null) copy.splice(slot, 1)
+                    else copy[slot] = next
+                    update('launcherAgents', copy.length ? copy.slice(0, 2) : null)
+                  }
+                  const selectValue = entry ? (entry.kind === 'copilot' ? 'copilot' : `${entry.kind}:${entry.agentId}`) : ''
+                  return (
+                    <div key={slot} className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={selectValue}
+                        onChange={e => {
+                          const v = e.target.value
+                          if (!v) { setEntry(null); return }
+                          if (v === 'copilot') {
+                            setEntry({ kind: 'copilot', agentId: null, label: entry?.label || 'Live screen-share help' })
+                            return
+                          }
+                          const [kind, agentId] = v.split(':') as ['chat' | 'voice', string]
+                          const agent = agents.find(x => x.id === agentId)
+                          setEntry({ kind, agentId, label: entry?.label || agent?.name || 'Chat with us' })
+                        }}
+                        className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white min-w-[220px]"
+                      >
+                        <option value="">— empty slot —</option>
+                        {agents.map(x => (
+                          <option key={x.id} value={`${x.agentType === 'VOICE' ? 'voice' : 'chat'}:${x.id}`}>
+                            {x.agentType === 'VOICE' ? '🎤 ' : ''}{x.name}
+                          </option>
+                        ))}
+                        <option value="copilot">Live screen-share help (Co-Pilot)</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={entry?.label ?? ''}
+                        disabled={!entry}
+                        onChange={e => entry && setEntry({ ...entry, label: e.target.value })}
+                        placeholder="Button label, e.g. Support"
+                        maxLength={60}
+                        className="flex-1 min-w-[180px] bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white disabled:opacity-40"
+                      />
+                    </div>
+                  )
+                })}
               </Section>
             )}
 

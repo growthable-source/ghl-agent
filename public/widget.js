@@ -454,11 +454,14 @@
   function identityQuery() {
     var id = state.identity
     if (!id) return ''
+    // Per-widget opt-out: operators can turn off CRM auto-identity.
+    if (state.config && state.config.autoIdentify === false) return ''
     return (id.name ? '&vname=' + encodeURIComponent(id.name) : '')
       + (id.email ? '&vemail=' + encodeURIComponent(id.email) : '')
   }
   function pushIdentity() {
     if (!state.identity || !state.iframeWrap) return
+    if (state.config && state.config.autoIdentify === false) return
     var frame = state.iframeWrap.querySelector('iframe')
     if (!frame || !frame.contentWindow) return
     try {

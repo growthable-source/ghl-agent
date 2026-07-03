@@ -40,6 +40,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'defaultAgentId', 'allowedDomains', 'isActive',
     'routingMode', 'routingTargetUserIds', 'routingFallbackUserId',
     'brandId', 'agencyUrl',
+    'autoIdentify', 'launcherAgents',
   ]
   const data: Record<string, unknown> = {}
   for (const key of allowed) {
@@ -47,6 +48,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
+  }
+
+  // launcherAgents: enforce shape server-side — array of ≤2 entries with
+  // a known kind and a non-empty label; anything else is rejected.
+  if (data.launcherAgents !== undefined && data.launcherAgents !== null) {
+    const raw = data.launcherAgents
+    const valid = Array.isArray(raw) && raw.length <= 2 && raw.every((e: any) =>
+      e && typeof e === 'object'
+      && (e.kind === 'chat' || e.kind === 'voice' || e.kind === 'copilot')
+      && typeof e.label === 'string' && e.label.trim().length > 0
+      && (e.kind === 'copilot' ? true : typeof e.agentId === 'string' && e.agentId))
+    if (!valid) {
+      return NextResponse.json({ error: 'launcherAgents must be up to 2 entries of {kind, agentId, label}' }, { status: 400 })
+    }
+    data.launcherAgents = (raw as any[]).map(e => ({
+      kind: e.kind, agentId: e.kind === 'copilot' ? null : e.agentId, label: String(e.label).slice(0, 60),
+    }))
   }
 
   // Slug normalization: lowercase, alphanumeric + dash, empty string -> null
@@ -66,7 +84,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // agencyUrl ships in its own migration — tolerate it being absent so
   // the rest of the form still saves on a pre-migration DB.
   const whitelabelKeys = ['agencyUrl']
-  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys]
+  // Auto-identify + launcher ship in their own migration.
+  const launcherKeys = ['autoIdentify', 'launcherAgents']
+  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys, ...launcherKeys]
   const touchesTolerant = tolerantKeys.some(k => data[k] !== undefined)
 
   try {

@@ -92,6 +92,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     typeof body.locationId === 'string' && body.locationId.length > 0
       ? body.locationId.slice(0, 120)
       : null
+  // Launcher agent choice: only honored when the requested agent is one
+  // of the widget's configured launcher entries — the embed can't pick
+  // arbitrary workspace agents.
+  let chosenAgentId: string | null = null
+  if (typeof body.agentId === 'string' && body.agentId) {
+    const raw = (v.widget as { launcherAgents?: unknown }).launcherAgents
+    if (Array.isArray(raw) && raw.some((e: any) => e && e.agentId === body.agentId)) {
+      chosenAgentId = body.agentId
+    }
+  }
+
+  // Launcher flow: the embed peeks first — if there's no conversation to
+  // resume, it shows the help chooser BEFORE anything is created, then
+  // calls again with the chosen agentId.
+  if (body.peekOnly === true) {
+    return NextResponse.json({ conversationId: null, status: null, assignedUser: null, messages: [] }, { headers })
+  }
 
   let conv
   try {
@@ -99,7 +116,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       data: {
         widgetId,
         visitorId,
-        agentId: v.widget.defaultAgentId,
+        agentId: chosenAgentId ?? v.widget.defaultAgentId,
         initiatedUrl: startUrl,
         initiatedTitle: startTitle,
         locationId,
@@ -110,7 +127,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Degrade gracefully so live chat keeps working until the SQL runs.
     if (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')) {
       conv = await db.widgetConversation.create({
-        data: { widgetId, visitorId, agentId: v.widget.defaultAgentId },
+        data: { widgetId, visitorId, agentId: chosenAgentId ?? v.widget.defaultAgentId },
       })
     } else { throw err }
   }

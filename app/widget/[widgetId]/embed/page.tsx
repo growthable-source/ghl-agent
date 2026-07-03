@@ -21,6 +21,8 @@ interface WidgetConfig {
   askForNameEmail: boolean
   voiceEnabled: boolean
   liveHelpEnabled?: boolean
+  autoIdentify?: boolean
+  launcher?: { kind: 'chat' | 'voice' | 'copilot'; label: string; agentId: string | null }[]
   queue?: {
     enabled: boolean
     gameEnabled: boolean
@@ -80,6 +82,12 @@ export default function WidgetEmbedPage() {
   const [sending, setSending] = useState(false)
   const [typing, setTyping] = useState(false)
   const [needsIdentity, setNeedsIdentity] = useState(false)
+  // Launcher chooser: when the widget offers help options (up to 2 —
+  // e.g. Support chat vs Onboarding voice), a NEW visitor picks before
+  // any conversation is created. Returning visitors resume straight in.
+  const [needsChoice, setNeedsChoice] = useState(false)
+  const [chosenAgentId, setChosenAgentId] = useState<string | null>(null)
+  const [choiceResolved, setChoiceResolved] = useState(false)
   // Host-supplied identity (vname/vemail): widget.js forwards it when the
   // host page already knows the visitor (e.g. the CRM dashboard reads the
   // logged-in user via the app-embed script). Prefilled here so the chat
@@ -412,14 +420,24 @@ export default function WidgetEmbedPage() {
     // `loc` on the iframe URL; stamped on the conversation at create so
     // the portal can report chats per sub-account.
     const embedLocationId = searchParams.get('loc') || null
+    // Launcher flow: peek first — if there's nothing to resume, surface
+    // the chooser instead of silently creating a default conversation.
+    const launcherActive = (config?.launcher?.length ?? 0) > 0
+    const peekOnly = launcherActive && !chosenAgentId && !choiceResolved
     fetch(`/api/widget/${widgetId}/conversations?pk=${publicKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitorId, initiatedUrl, initiatedTitle, locationId: embedLocationId }),
+      body: JSON.stringify({
+        visitorId, initiatedUrl, initiatedTitle, locationId: embedLocationId,
+        agentId: chosenAgentId ?? undefined,
+        peekOnly: peekOnly || undefined,
+      }),
     })
       .then(r => r.json())
       .then(data => {
         if (data.error) { setError(data.error); return }
+        if (peekOnly && !data.conversationId) { setNeedsChoice(true); return }
+        setNeedsChoice(false)
         setConversationId(data.conversationId)
         if (data.status === 'active' || data.status === 'handed_off' || data.status === 'ended') {
           setConversationStatus(data.status)
@@ -440,7 +458,7 @@ export default function WidgetEmbedPage() {
           setMessages(existing)
         }
       })
-  }, [visitorId, widgetId, publicKey, config])
+  }, [visitorId, widgetId, publicKey, config, chosenAgentId, choiceResolved])
 
   // Step 4: connect SSE once we have a conversationId.
   //
@@ -1185,6 +1203,49 @@ export default function WidgetEmbedPage() {
             onClick={reconnectStream}
             className="font-semibold text-amber-200 hover:text-white transition-colors"
           >Try again</button>
+        </div>
+      )}
+
+      {/* Launcher chooser — pick the kind of help before the thread starts */}
+      {needsChoice && !conversationId && (config.launcher?.length ?? 0) > 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <h2 className="text-base font-semibold mb-1">What do you need help with?</h2>
+          <p className="text-xs text-zinc-400 mb-5">Pick an option and we&apos;ll get you to the right place.</p>
+          <div className="w-full max-w-[260px] space-y-2.5">
+            {config.launcher!.map(entry => (
+              <button
+                key={`${entry.kind}-${entry.agentId ?? 'x'}`}
+                type="button"
+                onClick={() => {
+                  if (entry.kind === 'chat' && entry.agentId) {
+                    setChosenAgentId(entry.agentId)
+                  } else if (entry.kind === 'voice') {
+                    // Voice rides the widget's voice channel; open it and
+                    // let the default thread back it.
+                    setChoiceResolved(true)
+                    setVoiceOpen(true)
+                  } else if (entry.kind === 'copilot') {
+                    window.open(`/widget/${widgetId}/live?pk=${encodeURIComponent(publicKey)}&cid=${encodeURIComponent(getCookieId())}`, '_blank', 'noopener')
+                    setChoiceResolved(true)
+                  }
+                  setNeedsChoice(false)
+                }}
+                className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={{ background: accent }}
+              >
+                {entry.kind === 'voice' && (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                )}
+                {entry.kind === 'copilot' && (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="2" y="4" width="20" height="13" rx="2" /><path strokeLinecap="round" d="M8 21h8M12 17v4" /></svg>
+                )}
+                {entry.kind === 'chat' && (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                )}
+                {entry.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

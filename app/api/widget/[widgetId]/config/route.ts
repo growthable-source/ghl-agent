@@ -102,6 +102,39 @@ export async function GET(req: NextRequest, { params }: Params) {
     /* defaults = queue off */
   }
 
+  // ── Launcher options ────────────────────────────────────────────────
+  // Up to 2 validated entries. chat/voice entries must point at an
+  // ACTIVE agent in the widget's workspace (stale ids drop out silently);
+  // copilot entries require the live-help plan gate to have passed.
+  let launcher: { kind: string; label: string; agentId: string | null }[] = []
+  try {
+    const raw = (w as { launcherAgents?: unknown }).launcherAgents
+    if (Array.isArray(raw) && raw.length > 0) {
+      const { db } = await import('@/lib/db')
+      const wanted = raw
+        .filter((e: any) => e && typeof e === 'object' && typeof e.label === 'string' && e.label.trim())
+        .slice(0, 2)
+      const agentIds = wanted
+        .filter((e: any) => (e.kind === 'chat' || e.kind === 'voice') && typeof e.agentId === 'string')
+        .map((e: any) => e.agentId as string)
+      const agents = agentIds.length
+        ? await db.agent.findMany({
+            where: { id: { in: agentIds }, workspaceId: w.workspaceId, isActive: true },
+            select: { id: true },
+          })
+        : []
+      const validAgent = new Set(agents.map(a => a.id))
+      launcher = wanted
+        .filter((e: any) =>
+          e.kind === 'copilot'
+            ? liveHelpEnabled
+            : (e.kind === 'chat' || e.kind === 'voice') && validAgent.has(e.agentId))
+        .map((e: any) => ({ kind: e.kind, label: String(e.label).slice(0, 60), agentId: e.agentId ?? null }))
+    }
+  } catch {
+    launcher = [] // fail open to the classic launcher
+  }
+
   return NextResponse.json({
     id: w.id,
     name: w.name,
@@ -124,5 +157,9 @@ export async function GET(req: NextRequest, { params }: Params) {
     voiceEnabled: w.voiceEnabled || w.type === 'click_to_call',
     liveHelpEnabled,
     queue,
+    // Host-page auto-identity gate (marketplace-app injected JS). Missing
+    // column (pre-migration) reads as undefined → treated as enabled.
+    autoIdentify: (w as { autoIdentify?: boolean }).autoIdentify !== false,
+    launcher,
   }, { headers })
 }

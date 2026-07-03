@@ -2148,6 +2148,15 @@ model ChatWidget {
   // page a visitor actually started the chat on is captured separately
   // on WidgetConversation.initiatedUrl.
   agencyUrl                 String?
+  // Auto-identify visitors from the CRM dashboard (the marketplace app's
+  // injected JS reads the logged-in user). Only meaningful when the
+  // widget has an agency connection; ON by default, opt-out per widget.
+  autoIdentify              Boolean              @default(true)
+  // Launcher options: up to 2 entries offering different kinds of help
+  // ("Support" chat agent, "Onboarding" voice agent, live screen-share).
+  // JSON: [{ kind: 'chat'|'voice'|'copilot', agentId?, label }]. Null =
+  // classic single-agent launcher.
+  launcherAgents            Json?
   isActive                  Boolean              @default(true)
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt

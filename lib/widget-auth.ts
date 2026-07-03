@@ -46,6 +46,7 @@ async function loadWidget(widgetId: string) {
         voiceEnabled: true, voiceAgentId: true,
         defaultAgentId: true, allowedDomains: true,
         workspaceId: true,
+        autoIdentify: true, launcherAgents: true,
       } as any,
     })
   } catch (err: any) {
@@ -82,6 +83,8 @@ async function loadWidget(widgetId: string) {
         buttonTextColor: '#ffffff',
         hostedPageHeadline: null,
         hostedPageSubtext: null,
+        autoIdentify: true,
+        launcherAgents: null,
       } as any
     }
     throw err
