@@ -81,6 +81,8 @@ export default async function PortalLayout({ children }: { children: React.React
           <NavLink href="/portal/conversations" label="Live Chats" icon="chat" />
           <NavLink href="/portal/locations" label="Locations" icon="pin" isNew />
           <NavLink href="/portal/tickets" label="Tickets" icon="ticket" />
+          <NavLink href="/portal/knowledge" label="Knowledge" icon="book" isNew newSince="2026-07-03" />
+          <NavLink href="/portal/approvals" label="Approvals" icon="check" isNew newSince="2026-07-03" />
           <NavLink href="/portal/reports" label="Reports" icon="chart" />
           <NavLink href="/portal/settings" label="Settings" icon="gear" />
           {brands.length > 0 && (
@@ -126,9 +128,11 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   chart: <><path d="M3 3v18h18" /><path d="M7 14l3-4 3 3 4-6" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
   pin: <><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>,
+  book: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>,
+  check: <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4 12 14.01l-3-3" /></>,
 }
 
-function NavLink({ href, label, icon, isNew }: { href: string; label: string; icon?: string; isNew?: boolean }) {
+function NavLink({ href, label, icon, isNew, newSince }: { href: string; label: string; icon?: string; isNew?: boolean; newSince?: string }) {
   return (
     <Link
       href={href}
@@ -140,7 +144,7 @@ function NavLink({ href, label, icon, isNew }: { href: string; label: string; ic
         </svg>
       )}
       {label}
-      {isNew && <NewBadge since="2026-07-02" className="ml-1" />}
+      {isNew && <NewBadge since={newSince ?? '2026-07-02'} className="ml-1" />}
     </Link>
   )
 }

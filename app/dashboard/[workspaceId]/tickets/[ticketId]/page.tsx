@@ -53,6 +53,19 @@ const STATUSES: Array<{ key: TicketDetail['status']; label: string; tone: string
 
 const PRIORITIES: TicketDetail['priority'][] = ['low', 'normal', 'high', 'urgent']
 
+interface SnippetRow { id: string; title: string; content: string; kind: string }
+
+interface DraftRow {
+  id: string
+  body: string
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled'
+  reviewNote: string | null
+  reviewedByEmail: string | null
+  reviewedAt: string | null
+  createdAt: string
+  submittedByUser: { name: string | null; email: string | null } | null
+}
+
 export default function TicketDetailPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
@@ -68,18 +81,29 @@ export default function TicketDetailPage() {
   const [internalNote, setInternalNote] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [suggestInfo, setSuggestInfo] = useState<string | null>(null)
+  const [suggestWarning, setSuggestWarning] = useState<string | null>(null)
+  const [snippets, setSnippets] = useState<SnippetRow[]>([])
+  const [showSnippets, setShowSnippets] = useState(false)
+  const [drafts, setDrafts] = useState<DraftRow[]>([])
+  const [submittingApproval, setSubmittingApproval] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [tRes, mRes] = await Promise.all([
+      const [tRes, mRes, sRes, dRes] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/tickets/${ticketId}`),
         fetch(`/api/workspaces/${workspaceId}/members`),
+        fetch(`/api/workspaces/${workspaceId}/tickets/${ticketId}/snippets`),
+        fetch(`/api/workspaces/${workspaceId}/tickets/${ticketId}/submit-approval`),
       ])
       const t = await tRes.json()
       const m = await mRes.json()
+      const s = await sRes.json().catch(() => ({}))
+      const d = await dRes.json().catch(() => ({}))
       if (t.ticket) setTicket(t.ticket)
       if (Array.isArray(m.members)) setMembers(m.members)
+      if (Array.isArray(s.snippets)) setSnippets(s.snippets)
+      if (Array.isArray(d.drafts)) setDrafts(d.drafts)
     } finally { setLoading(false) }
   }, [workspaceId, ticketId])
 
@@ -121,6 +145,7 @@ export default function TicketDetailPage() {
   async function suggest() {
     setSuggesting(true)
     setSuggestInfo(null)
+    setSuggestWarning(null)
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/tickets/${ticketId}/suggest-reply`, {
         method: 'POST',
@@ -130,8 +155,54 @@ export default function TicketDetailPage() {
       const data = await res.json()
       if (!res.ok) { setSuggestInfo(data.error || 'Suggestion failed.'); return }
       setReply(data.draft)
-      setSuggestInfo(`Drafted by ${data.agentName}${data.knowledgeUsed ? ` · used ${data.knowledgeUsed} knowledge passages` : ''}`)
+      const used = data.contextUsed as Record<string, number> | undefined
+      const parts = [
+        data.knowledgeUsed ? `${data.knowledgeUsed} knowledge passages` : null,
+        used?.requesterTickets ? `${used.requesterTickets} past tickets from this customer` : null,
+        used?.brandTickets ? `${used.brandTickets} brand tickets` : null,
+        used?.conversations ? `${used.conversations} chat summaries` : null,
+        used?.snippets ? `${used.snippets} snippets available` : null,
+      ].filter(Boolean)
+      setSuggestInfo(`Drafted by ${data.agentName}${parts.length ? ` · used ${parts.join(', ')}` : ''}`)
+      if (Array.isArray(data.keywordWarnings) && data.keywordWarnings.length > 0) {
+        setSuggestWarning(`Contains brand-forbidden ${data.keywordWarnings.length === 1 ? 'phrase' : 'phrases'}: ${data.keywordWarnings.map((k: string) => `"${k}"`).join(', ')} — edit before sending.`)
+      }
     } finally { setSuggesting(false) }
+  }
+
+  const pendingDraft = drafts.find(d => d.status === 'pending') ?? null
+  const lastRejected = !pendingDraft ? drafts.find(d => d.status === 'rejected') ?? null : null
+
+  async function submitForApproval() {
+    if (!reply.trim()) return
+    setSubmittingApproval(true)
+    setSendError(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/tickets/${ticketId}/submit-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: reply }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setSendError(data.error || 'Submit failed.'); return }
+      setReply('')
+      load()
+    } finally { setSubmittingApproval(false) }
+  }
+
+  async function withdrawDraft(draftId: string) {
+    const res = await fetch(`/api/workspaces/${workspaceId}/tickets/${ticketId}/submit-approval?draftId=${draftId}`, { method: 'DELETE' })
+    if (res.ok) load()
+    else setSendError((await res.json()).error || 'Withdraw failed.')
+  }
+
+  function insertSnippet(s: SnippetRow) {
+    setReply(r => {
+      if (!r.trim()) return s.content
+      const sep = r.endsWith('\n') ? '\n' : '\n\n'
+      return `${r}${sep}${s.content}`
+    })
+    setShowSnippets(false)
   }
 
   if (loading || !ticket) {
@@ -216,13 +287,65 @@ export default function TicketDetailPage() {
           ))}
         </div>
 
+        {/* Approval status banners */}
+        {pendingDraft && (
+          <div className="rounded-xl border p-4 mb-6" style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-amber)' }}>
+                  Awaiting portal approval
+                </p>
+                <p className="text-xs whitespace-pre-wrap leading-relaxed line-clamp-4" style={{ color: 'var(--text-secondary)' }}>
+                  {pendingDraft.body}
+                </p>
+                <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                  Submitted {new Date(pendingDraft.createdAt).toLocaleString()} — the customer receives nothing until a portal user approves it.
+                </p>
+              </div>
+              <button
+                onClick={() => withdrawDraft(pendingDraft.id)}
+                className="text-[11px] shrink-0 hover:underline"
+                style={{ color: 'var(--accent-amber)' }}
+              >
+                Withdraw
+              </button>
+            </div>
+          </div>
+        )}
+        {lastRejected && (
+          <div className="rounded-xl border p-4 mb-6" style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-red)' }}>
+              Reply rejected{lastRejected.reviewedByEmail ? ` by ${lastRejected.reviewedByEmail}` : ''}
+            </p>
+            {lastRejected.reviewNote && (
+              <p className="text-xs leading-relaxed mb-1.5" style={{ color: 'var(--text-secondary)' }}>“{lastRejected.reviewNote}”</p>
+            )}
+            <button
+              onClick={() => setReply(lastRejected.body)}
+              className="text-[11px] hover:underline"
+              style={{ color: 'var(--accent-red)' }}
+            >
+              Load rejected draft into composer to revise
+            </button>
+          </div>
+        )}
+
         {/* Composer */}
         <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
               {internalNote ? 'Internal note' : `Reply to ${ticket.contactEmail}`}
             </p>
             <div className="flex items-center gap-2">
+              {snippets.length > 0 && (
+                <button
+                  onClick={() => setShowSnippets(v => !v)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg border disabled:opacity-50"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)', background: 'var(--surface-secondary)' }}
+                >
+                  📎 Snippets ({snippets.length})
+                </button>
+              )}
               <button
                 onClick={suggest}
                 disabled={suggesting}
@@ -237,8 +360,29 @@ export default function TicketDetailPage() {
               </label>
             </div>
           </div>
+          {showSnippets && (
+            <div className="rounded-lg border mb-2 max-h-48 overflow-y-auto" style={{ borderColor: 'var(--border)', background: 'var(--surface-secondary)' }}>
+              <p className="text-[10px] uppercase tracking-wider font-semibold px-3 pt-2 pb-1" style={{ color: 'var(--text-tertiary)' }}>
+                Brand snippets — click to insert
+              </p>
+              {snippets.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => insertSnippet(s)}
+                  className="block w-full text-left px-3 py-2 border-t hover:opacity-80"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  <span className="text-xs font-medium block" style={{ color: 'var(--text-primary)' }}>{s.title}</span>
+                  <span className="text-[11px] block truncate" style={{ color: 'var(--text-tertiary)' }}>{s.content}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {suggestInfo && (
             <p className="text-[11px] mb-2" style={{ color: 'var(--accent-emerald)' }}>{suggestInfo}</p>
+          )}
+          {suggestWarning && (
+            <p className="text-[11px] mb-2 font-medium" style={{ color: 'var(--accent-amber)' }}>⚠ {suggestWarning}</p>
           )}
           <textarea
             value={reply}
@@ -252,6 +396,17 @@ export default function TicketDetailPage() {
             <p className="text-[11px] mb-2" style={{ color: 'var(--accent-red)' }}>{sendError}</p>
           )}
           <div className="flex items-center justify-end gap-2">
+            {!internalNote && (
+              <button
+                onClick={submitForApproval}
+                disabled={submittingApproval || !reply.trim() || !!pendingDraft}
+                title={pendingDraft ? 'A draft is already awaiting approval — withdraw it first.' : 'Send to portal users for sign-off before it reaches the customer.'}
+                className="text-sm font-semibold px-4 py-2 rounded-lg border disabled:opacity-50"
+                style={{ borderColor: 'var(--accent-amber)', color: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
+              >
+                {submittingApproval ? 'Submitting…' : 'Submit for approval'}
+              </button>
+            )}
             <button
               onClick={send}
               disabled={sending || !reply.trim()}
