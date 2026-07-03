@@ -465,10 +465,15 @@ function WhitelabelSection({
   // link. Built from the SAVED domain — an unsaved edit doesn't count.
   const savedDomain = (branding.customDomain ?? '').trim()
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://app.xovera.io'
-  const portalUrl = savedDomain ? `https://${savedDomain}` : `${appOrigin}/portal`
+  // Without a custom domain the portal has NO unique URL — /portal is
+  // shared, and which portal a customer sees is decided by their login.
+  // The honest shareable link is therefore the login page with the
+  // portal's slug (?p=) so at least the branding is right. A custom
+  // domain is what makes a portal address truly its own.
+  const portalUrl = savedDomain ? `https://${savedDomain}` : `${appOrigin}/portal/login?p=${branding.slug}`
   const embedUrl = savedDomain
     ? `https://${savedDomain}/portal?embedded=leadconnector`
-    : `${appOrigin}/portal?embedded=leadconnector`
+    : `${appOrigin}/portal/login?p=${branding.slug}&embedded=leadconnector`
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   function copyUrl(value: string) {
     navigator.clipboard.writeText(value).then(() => {
@@ -484,7 +489,7 @@ function WhitelabelSection({
         {/* Where this portal actually lives — copy-paste ready. */}
         <div className="space-y-2">
           {([
-            { label: 'Portal URL', value: portalUrl, hint: savedDomain ? 'Custom domain (serves the portal at the root)' : 'Default — no custom domain set' },
+            { label: 'Portal URL', value: portalUrl, hint: savedDomain ? 'Custom domain (serves the portal at the root)' : 'Shared login page with this portal\u2019s branding \u2014 set a custom domain for a truly unique address' },
             { label: 'CRM menu link', value: embedUrl, hint: 'Paste into a LeadConnector custom menu link to embed the portal' },
           ] as const).map(u => (
             <div key={u.label} className="flex items-center gap-2">
@@ -507,6 +512,17 @@ function WhitelabelSection({
               </button>
             </div>
           ))}
+          <div className="pt-1">
+            {/* Plain <a>: the impersonate endpoint is an API route that
+                answers with a 302 into the portal — next/link 404s on it. */}
+            <a
+              href={`/api/admin/portals/${portalId}/impersonate`}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded border border-amber-400/40 text-amber-300 hover:bg-amber-400/10 transition-colors"
+              title="Opens a 2-hour portal session scoped to this portal's brands — no portal account needed"
+            >
+              Open portal as admin →
+            </a>
+          </div>
         </div>
 
         <div className="border-t border-zinc-800" />

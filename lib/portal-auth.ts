@@ -79,7 +79,28 @@ export async function signPortalToken(user: { userId: string; portalId: string; 
     .sign(secret())
 }
 
-async function verifyPortalToken(token: string): Promise<{ userId: string; portalId: string; email: string } | null> {
+// Admin preview — a super-admin opens a portal from the admin area
+// without a PortalUser account. Short TTL (2h): this is a support /
+// inspection session, not a daily-driver login. The token carries an
+// `admin: true` claim; getPortalSession resolves it against the
+// portal's FULL brand catalog instead of per-user assignments.
+const ADMIN_PREVIEW_TTL_SECONDS = 60 * 60 * 2
+
+export async function signPortalAdminToken(portalId: string, adminEmail: string): Promise<string> {
+  return new SignJWT({
+    portalId,
+    email: adminEmail,
+    admin: true,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(`${ADMIN_PREVIEW_TTL_SECONDS}s`)
+    .setSubject('admin-preview')
+    .setAudience('portal')
+    .sign(secret())
+}
+
+async function verifyPortalToken(token: string): Promise<{ userId: string; portalId: string; email: string; admin: boolean } | null> {
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'], audience: 'portal' })
     if (!payload.sub || typeof payload.email !== 'string' || typeof payload.portalId !== 'string') return null
@@ -87,6 +108,7 @@ async function verifyPortalToken(token: string): Promise<{ userId: string; porta
       userId: String(payload.sub),
       portalId: String(payload.portalId),
       email: String(payload.email),
+      admin: payload.admin === true,
     }
   } catch {
     return null
@@ -116,6 +138,24 @@ export async function getPortalSession(): Promise<PortalSession | null> {
   if (!token) return null
   const payload = await verifyPortalToken(token)
   if (!payload) return null
+
+  // Admin preview session: no PortalUser row — scope is the portal's
+  // whole brand catalog. Refuses inactive portals like the normal path.
+  if (payload.admin) {
+    const portal = await db.portal.findUnique({
+      where: { id: payload.portalId },
+      select: { isActive: true, portalBrands: { select: { brandId: true } } },
+    })
+    if (!portal || !portal.isActive) return null
+    return {
+      userId: 'admin-preview',
+      portalId: payload.portalId,
+      email: payload.email,
+      name: 'Admin preview',
+      brandIds: portal.portalBrands.map(b => b.brandId),
+    }
+  }
+
   const user = await db.portalUser.findUnique({
     where: { id: payload.userId },
     select: {
