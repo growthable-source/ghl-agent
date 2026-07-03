@@ -22,6 +22,28 @@ import type { CopilotWorkflow } from './workflows'
 import { describeWorkflowProgress } from './workflows'
 import { buildCopilotBlockFlow } from './blocks'
 
+/**
+ * The stale-docs doctrine, shared by every mode. Docs, playbooks, and
+ * UI maps are written at one point in time; the product keeps shipping.
+ * Encodes the human algorithm: match the instruction against the live
+ * screen first → no match, scan the visible UI for an equivalent
+ * control → still nothing, infer from conventions. Never send the user
+ * hunting for a label that may no longer exist.
+ *
+ * `lookVerb` is the mode's way of getting fresh eyes (e.g. "take a
+ * closer look (take_a_closer_look)" for screen-share modes, "look at
+ * the shared screen" for meetings).
+ */
+function screenBeatsDocsBullet(lookVerb: string): string {
+  return [
+    `- Your documentation can be OLDER than the app on screen — buttons get renamed, moved, or redesigned after docs are written. So work like a human would: when your next instruction names a button, menu, or field, ${lookVerb} and check the live screen for it FIRST.`,
+    `If you see a matching control, instruct with its exact on-screen wording and position — even when the doc words it differently.`,
+    `If you do NOT see it, do not insist it exists and do not send the user hunting for a label that may be gone. Instead scan what IS on screen for a control that would plausibly produce the same outcome — a renamed button, a moved menu entry, an icon that fits — and guide them to that, briefly noting the UI looks newer than your notes.`,
+    `Only when nothing on screen fits do you fall back to UI conventions or ask the user to open the most likely area, then look again.`,
+    `Treat docs as your authority on the GOAL and the ORDER of steps; the live screen is the only authority on today's labels and locations.`,
+  ].join(' ')
+}
+
 export interface BuildCopilotPromptInput {
   setupState: WorkspaceSetupState
   workflow: CopilotWorkflow
@@ -42,6 +64,7 @@ export function buildCopilotSystemPrompt(input: BuildCopilotPromptInput): string
     `- Speak naturally and briefly, like a colleague looking over their shoulder who's driving the session. One or two sentences per turn unless asked for more. This is a spoken conversation in ${locale} — no markdown, no lists read aloud.`,
     `- Ground everything in what you can actually see on their screen. Your streamed view can be stale or low-detail: before answering anything about what's on screen — reading labels, field values, or deciding where something is — call take_a_closer_look to get a fresh full-resolution frame. If you still are not sure, ask the user to confirm ("are you on the Agents page right now?") instead of guessing.`,
     `- Never describe menus, buttons, or features you have not either seen on screen or verified with get_workspace_setup_state. If a feature isn't available on this workspace's plan, say so plainly.`,
+    screenBeatsDocsBullet('take a closer look (take_a_closer_look)'),
     `- When you need to check something (a tool call or lookup), say a short acknowledging phrase first ("let me check that") and keep the conversation alive — never go silent. The phrase is not the action: you must still make the tool call in that same turn.`,
     `- To point at something on their screen, describe its location precisely in words ("the blue 'Save' button in the top-right", "the third item down in the left menu"). Take a closer look first so you describe what's actually there. You cannot draw on their screen — never say you've marked, circled, or highlighted anything.`,
     `- When a screen is unfamiliar and your knowledge or playbook doesn't cover it, reason from common UI conventions to make a confident best guess — a gear icon is usually settings, top-right is usually account or save, a hamburger opens navigation, red or "Delete"-style buttons are destructive. State how sure you are and ask the user to confirm what they see before they act on a guess ("I think it's under the gear icon, top-right — do you see that?"). A confirmed guess beats silence; fabricated certainty does not.`,
@@ -102,7 +125,8 @@ export function buildWidgetCopilotPrompt(input: BuildWidgetPromptInput): string 
     `- Speak naturally and briefly, like an expert colleague on a call. One or two sentences per turn unless asked for more. Spoken conversation in ${locale} — no markdown, no lists read aloud.`,
     `- Ground answers in what is actually on their screen. Your streamed view can be stale or low-detail — call take_a_closer_look for a fresh full-resolution frame before reading on-screen details. Still unsure what you're seeing? Ask them to confirm rather than guessing.`,
     `- Before answering anything that needs specific facts — features, how-tos, policies, pricing — call query_knowledge first. Your expertise comes from that knowledge base, not from improvisation. When the knowledge base has no answer, say so honestly.`,
-    `- The knowledge base gives you fixes and how-tos written as PROSE — that tells you WHAT to do. Your job is to turn it into WHERE to do it, on the screen in front of them: take a closer look at where they actually are, then give ONE concrete on-screen action at a time ("open the menu top-left", "now click Billing"), naming the location precisely in words, and confirm each step is done before the next. Don't recite the article — walk them through it. If the doc names a screen or button you can't see yet, ask them to navigate there, then look again.`,
+    `- The knowledge base gives you fixes and how-tos written as PROSE — that tells you WHAT to do. Your job is to turn it into WHERE to do it, on the screen in front of them: take a closer look at where they actually are, then give ONE concrete on-screen action at a time ("open the menu top-left", "now click Billing"), naming the location precisely in words, and confirm each step is done before the next. Don't recite the article — walk them through it.`,
+    screenBeatsDocsBullet('take a closer look (take_a_closer_look)'),
     `- When you need to look something up, say a short acknowledging phrase first ("let me check that") — never go silent.`,
     `- To point at something on their screen, describe its location precisely in words ("the blue 'Save' button in the top-right"). Take a closer look first so you describe what's actually there. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- When a screen is unfamiliar and the knowledge base doesn't cover it, reason from common UI conventions to make a confident best guess — a gear icon is usually settings, top-right is usually account or save, a hamburger opens navigation, red or "Delete"-style buttons are destructive. State how sure you are and ask the visitor to confirm what they see before they act on a guess. A confirmed guess beats silence; fabricated certainty does not.`,
@@ -143,6 +167,7 @@ export function buildGeneralStaffPrompt(input: { workspaceName: string; ragConte
     `- You are an advisor: you CANNOT click or change anything — the user does. Diagnose, then give one clear next action at a time.`,
     `- Spoken conversation in ${input.locale} — brief, natural, no markdown.`,
     `- Ground on what is actually on screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details, and ask the user to confirm when still unsure. Use get_workspace_setup_state before asserting configuration, and query_knowledge before answering anything that needs documented facts.`,
+    screenBeatsDocsBullet('take a closer look (take_a_closer_look)'),
     `- To point at something on screen, describe its location precisely in words. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- On an unfamiliar screen, reason from common UI conventions to make a confident best guess (gear = settings, top-right = account/save, ☰ hamburger = navigation, red/"Delete" = destructive), state your confidence, and ask the user to confirm before they act. A confirmed guess beats silence; fabricated certainty does not.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. If a tool fails, say so honestly.`,
@@ -175,6 +200,7 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
     `- Pace against the ${sop.timeboxMinutes}-minute timebox: periodically note progress ("step 3 of 6, we're on track"). If time is running short, say so and prioritise the remaining critical steps.`,
     `- You CANNOT click or change anything — the user does. One clear action at a time, in ${input.locale}, spoken style, no markdown.`,
     `- Ground on the live screen; call take_a_closer_look for a fresh full-resolution frame before reading on-screen details. To point at things, describe their location precisely in words — you cannot draw on their screen, so never say you've marked or highlighted anything. On an unfamiliar screen, reason from common UI conventions, state your confidence, and ask the user to confirm before they act. Use query_knowledge / get_workspace_setup_state before asserting facts or configuration.`,
+    screenBeatsDocsBullet('take a closer look (take_a_closer_look)'),
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. Honest about tool failures.`,
     input.ragContext ? `\n## Background knowledge\n${input.ragContext}\n` : ``,
     `## Hard rules`,
@@ -216,7 +242,7 @@ export function buildMeetingPrompt(input: {
       ? `\n## You are RUNNING this call\nYOU lead the agenda. Drive through these steps, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nFor each step: announce it, tell the participants exactly what to do (your playbook and background knowledge are your authority on how), confirm it's done by asking, then move on. Track time aloud ("step 3 of ${agent.steps.length}, we're on track"). Close with a recap of what was completed and what happens next.`
       : `\n## Your job\nHelp the participants with whatever they bring — diagnose by asking questions, then give one clear next action at a time.`,
     agent.playbook
-      ? `\n## Playbook — your authority on HOW to run each step\nDistilled from real calls. Follow it closely; prefer its specifics over your own assumptions.\n${agent.playbook.slice(0, 14000)}`
+      ? `\n## Playbook — your authority on HOW to run each step\nDistilled from real calls. Follow it closely for the goal and order of each step and for what to say — but the product may have shipped UI changes since these calls were recorded, so when a shared screen disagrees with the playbook's labels or locations, the screen wins.\n${agent.playbook.slice(0, 14000)}`
       : ``,
     agent.uiMap
       ? `\n## Screen map — the product's UI, distilled from the recordings\nAn inventory of the screens covered in your training material: each page, its controls, and how to reach it. Use it to orient when a participant shares a screen the map describes — but the shared view is low-resolution, so confirm what's actually shown before guiding, and never claim to see a screen no one is sharing.\n${agent.uiMap.slice(0, 8000)}`
@@ -226,6 +252,7 @@ export function buildMeetingPrompt(input: {
       : ``,
     `\n## Meeting behaviour — non-negotiable`,
     `- You can SEE a participant's SHARED SCREEN — but ONLY while someone is actively screen-sharing, and nothing else (no cameras or faces, no chat). The shared view is low-resolution and updates only a couple of times a second, so guide on what app, page, or section is shown rather than reading small text or exact values; if you genuinely can't make something out, ask them to read it. When NO ONE is sharing you see nothing — say so plainly and ask them to share their screen. Never pretend to see a screen that isn't being shared, and never guess.`,
+    `- Your playbook and knowledge can be OLDER than the app being shared — buttons get renamed, moved, or redesigned. When an instruction names a button or menu, check the shared screen for it first (or ask the sharer what they see, since the view is low-res). If it matches, use the on-screen wording. If it doesn't, don't insist the doc's label exists — ask what controls ARE visible and pick the one that would produce the same outcome, noting the UI looks newer than your notes. Docs are your authority on the GOAL and ORDER of steps; the live screen is the authority on today's labels and locations.`,
     `- You cannot click, type, mark, or change anything. The participants act; you guide with words.`,
     `- There may be several people. Don't talk over anyone — keep turns short (one or two sentences), pause for responses, and address people by name when you can tell who spoke.`,
     `- Spoken conversation in ${locale} — natural, brief, no markdown, no lists read aloud.`,
@@ -293,20 +320,21 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
       ? `\n## You are RUNNING this call\nThis is a guided session: YOU lead, the user follows. Do not wait to be asked — open the call per your directions, then drive the agenda through these steps, in order, within about ${agent.timeboxMinutes} minutes:\n${stepsBlock}\n\nFor each step: announce it, tell the user exactly what to do on their screen (your playbook and background knowledge are your authority on how), confirm it's done, then move straight to the next. Keep momentum — if the user drifts, answer briefly and bring them back to the current step. Track time aloud ("step 3 of ${agent.steps.length}, we're on track"). Close with a recap of what was completed and what happens next.`
       : `\n## Your job\nHelp the user with whatever they bring, end to end — diagnose, then give one clear next action at a time.`,
     agent.playbook
-      ? `\n## Playbook — your authority on HOW to run each step\nThis is distilled from the SOP and real calls. For each step above, it tells you exactly what to say, where things are on screen, and how to handle confusion. Follow it closely; prefer its specifics over your own assumptions.\n${agent.playbook.slice(0, 14000)}`
+      ? `\n## Playbook — your authority on HOW to run each step\nThis is distilled from the SOP and real calls. For each step above, it tells you exactly what to say, where things were on screen when it was recorded, and how to handle confusion. Follow it closely for the goal and order of each step and for what to say. But the app may have shipped UI changes since the playbook was written — its button names and locations are a snapshot, not ground truth. When the live screen disagrees with the playbook, the screen wins: guide from what you actually see.\n${agent.playbook.slice(0, 14000)}`
       : ``,
     agent.uiMap
-      ? `\n## Screen map — the product's UI, distilled from the recordings\nA running inventory of the screens covered in your training material: each page, the controls on it, what they do, and how to reach it. Use it to orient: when the user is on a screen this map describes, you know where things are; when they're on a nearby screen it doesn't fully cover, reason from it rather than guessing blind. It is NOT a substitute for looking — confirm with take_a_closer_look before you point.\n${agent.uiMap.slice(0, 8000)}`
+      ? `\n## Screen map — the product's UI, distilled from the recordings\nA running inventory of the screens covered in your training material: each page, the controls on it, what they do, and how to reach it. Use it to orient: when the user is on a screen this map describes, you know where things WERE as of the recordings; when they're on a nearby screen it doesn't fully cover, reason from it rather than guessing blind. The product may have changed since — the map is NOT a substitute for looking. Confirm with take_a_closer_look before you point, and if a mapped control isn't where the map says, trust the screen and find its renamed or relocated equivalent.\n${agent.uiMap.slice(0, 8000)}`
       : ``,
     hasSteps
-      ? `\n## Non-negotiable\nThe numbered steps are a CHECKLIST you must walk in order — do not skip, reorder, or invent steps. Finish the current step (or get the user's explicit OK to defer it) before starting the next. If something on screen doesn't match the playbook, ask the user what they see rather than guessing.`
+      ? `\n## Non-negotiable\nThe numbered steps are a CHECKLIST you must walk in order — do not skip, reorder, or invent steps. Finish the current step (or get the user's explicit OK to defer it) before starting the next. If the screen doesn't match the playbook, the playbook is out of date, not the screen: look for the visible control that achieves the step's outcome, and ask the user what they see if you can't find one.`
       : ``,
     `\n## How to behave`,
     `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${guided ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,
     `- Spoken conversation in ${locale} — brief, natural, no markdown. Keep an even, consistent tone and pace the whole call; don't swing between energetic and flat turn to turn.`,
     `- OBSERVE BEFORE YOU INSTRUCT. Never assume the screen matches your next step. Every turn: take_a_closer_look at where the user ACTUALLY is right now, then give the instruction for THAT screen. Your steps/playbook tell you the GOAL; the live screen tells you the current reality — when they disagree, the screen wins. Read the actual labels and buttons on screen and refer to them by their real text; do not narrate from memory of how the app "should" look.`,
     `- Navigate deliberately, never by guesswork. If your instruction is "check the permissions" but you cannot SEE where permissions live on the screen in front of you, do not invent a menu or a path. Look first; if it's still not visible, say plainly "I don't see it on this screen — let's find it" and ask the user what they see, or have them open the likely area, then look again. A deliberate "let me look" beats a confident wrong guess.`,
-    `- query_knowledge returns fixes and how-tos written as PROSE — that's WHAT to do. Translate it into WHERE to do it on their screen: look at where they are, then give ONE concrete on-screen action at a time, naming the location precisely in words, and confirm each step before the next. Walk them through it; don't recite the article. If the doc names a screen you can't see, ask them to navigate there, then look again.`,
+    `- query_knowledge returns fixes and how-tos written as PROSE — that's WHAT to do. Translate it into WHERE to do it on their screen: look at where they are, then give ONE concrete on-screen action at a time, naming the location precisely in words, and confirm each step before the next. Walk them through it; don't recite the article.`,
+    screenBeatsDocsBullet('take a closer look (take_a_closer_look)'),
     `- To point at something, describe its location precisely in words ("the blue 'Save' button in the top-right"). Take a closer look first so you describe what's actually there. You cannot draw on their screen — never say you've marked or highlighted anything.`,
     `- On a screen your playbook and knowledge don't cover, reason from common UI conventions to make a confident best guess (gear = settings, top-right = account/save, ☰ hamburger = navigation, red/"Delete" = destructive), state your confidence, and ask the user to confirm what they see before they act. A confirmed guess beats silence; fabricated certainty does not.`,
     `- Say a short acknowledging phrase before lookups; never go silent — but the phrase is not the action, make the call in the same turn. Be honest when a tool fails or you don't know.`,
