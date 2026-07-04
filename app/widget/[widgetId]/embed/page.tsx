@@ -87,6 +87,7 @@ export default function WidgetEmbedPage() {
   // any conversation is created. Returning visitors resume straight in.
   const [needsChoice, setNeedsChoice] = useState(false)
   const [chosenAgentId, setChosenAgentId] = useState<string | null>(null)
+  const [voiceAgentChoice, setVoiceAgentChoice] = useState<string | null>(null)
   const [choiceResolved, setChoiceResolved] = useState(false)
   // Host-supplied identity (vname/vemail): widget.js forwards it when the
   // host page already knows the visitor (e.g. the CRM dashboard reads the
@@ -183,7 +184,7 @@ export default function WidgetEmbedPage() {
       const res = await fetch(`/api/widget/${widgetId}/gemini-voice/token?pk=${publicKey}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ conversationId }),
+        body: JSON.stringify({ conversationId, agentId: voiceAgentChoice ?? undefined }),
       })
       if (!res.ok) {
         const e = await res.json().catch(() => ({}))
@@ -233,7 +234,7 @@ export default function WidgetEmbedPage() {
       geminiPlayerRef.current?.stop()
       return 'error'
     }
-  }, [widgetId, publicKey, stopGeminiVoice])
+  }, [widgetId, publicKey, stopGeminiVoice, voiceAgentChoice])
   // Resume cursor — the SSE `id:` of the last persisted message we
   // received. We pass it as `?since=` on manual reconnects since the
   // browser only auto-attaches Last-Event-ID on its OWN retries, not
@@ -1220,8 +1221,10 @@ export default function WidgetEmbedPage() {
                   if (entry.kind === 'chat' && entry.agentId) {
                     setChosenAgentId(entry.agentId)
                   } else if (entry.kind === 'voice') {
-                    // Voice rides the widget's voice channel; open it and
-                    // let the default thread back it.
+                    // Open the voice channel WITH this entry's agent —
+                    // the session endpoints honor it because it's a
+                    // configured launcher entry.
+                    if (entry.agentId) setVoiceAgentChoice(entry.agentId)
                     setChoiceResolved(true)
                     setVoiceOpen(true)
                   } else if (entry.kind === 'copilot') {
@@ -1507,7 +1510,7 @@ export default function WidgetEmbedPage() {
               const res = await fetch(`/api/widget/${widgetId}/voice/start?pk=${publicKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ conversationId }),
+                body: JSON.stringify({ conversationId, agentId: voiceAgentChoice ?? undefined }),
               })
               const data = await res.json()
               if (!res.ok) throw new Error(data.error || 'Failed to start call')

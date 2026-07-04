@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
+import { validateWidgetRequest, widgetCorsHeaders, resolveVoiceAgentId } from '@/lib/widget-auth'
 import { buildGeminiVoiceSession } from '@/lib/voice/gemini/session'
 import {
   mintGeminiVoiceToken,
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Voice not enabled for this widget' }, { status: 400, headers: cors })
   }
 
-  const body = (await req.json().catch(() => ({}))) as { conversationId?: string }
+  const body = (await req.json().catch(() => ({}))) as { conversationId?: string; agentId?: string }
   const conversationId = typeof body.conversationId === 'string' ? body.conversationId : ''
   if (!conversationId) {
     return NextResponse.json({ error: 'conversationId required' }, { status: 400, headers: cors })
@@ -47,7 +47,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers: cors })
 
-  const agentId = v.widget.voiceAgentId || v.widget.defaultAgentId
+  // Launcher voice entries may name a specific agent (validated against
+  // the configured entries inside the resolver).
+  const agentId = resolveVoiceAgentId(v.widget as any, body?.agentId)
   if (!agentId) {
     return NextResponse.json({ error: 'No voice agent configured on this widget' }, { status: 400, headers: cors })
   }

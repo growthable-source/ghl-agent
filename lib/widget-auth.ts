@@ -226,3 +226,23 @@ export function generatePublicKey(): string {
   crypto.getRandomValues(bytes)
   return 'widget_pub_' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 }
+
+/**
+ * Resolve the voice agent for a widget voice session, honoring a
+ * launcher override: a requested agentId is used ONLY when it appears as
+ * a voice entry in widget.launcherAgents — the embed can't pick
+ * arbitrary workspace agents. Falls back to the widget's configured
+ * voice agent, then the default agent.
+ */
+export function resolveVoiceAgentId(
+  widget: { voiceAgentId?: string | null; defaultAgentId?: string | null; launcherAgents?: unknown },
+  requested: unknown,
+): string | null {
+  if (typeof requested === 'string' && requested) {
+    const raw = widget.launcherAgents
+    if (Array.isArray(raw) && raw.some((e: any) => e && e.kind === 'voice' && e.agentId === requested)) {
+      return requested
+    }
+  }
+  return widget.voiceAgentId || widget.defaultAgentId || null
+}
