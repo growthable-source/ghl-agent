@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 
 interface Brand { id: string; name: string; slug: string }
 interface BrandWithWorkspace { id: string; name: string; slug: string; workspace: { id: string; name: string } }
@@ -95,8 +95,49 @@ export default function PortalDetailClient({
     if (res.ok) router.refresh()
   }
 
-  async function deactivateUser(userId: string) {
-    if (!confirm('Deactivate this portal user? They will no longer be able to log in.')) return
+  // Per-row resend feedback: which invite is in flight, and the outcome
+  // of the last resend (needed to surface the copy-paste link when
+  // Resend isn't configured).
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [resendMsg, setResendMsg] = useState<{ id: string; ok: boolean; text: string } | null>(null)
+
+  async function resendInvite(inviteId: string, email: string) {
+    setResendingId(inviteId)
+    setResendMsg(null)
+    try {
+      const res = await fetch(`/api/admin/portals/${portalId}/invites/${inviteId}/resend`, { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setResendMsg({ id: inviteId, ok: false, text: body?.error ?? `Error ${res.status}` })
+      } else {
+        setResendMsg({
+          id: inviteId,
+          ok: true,
+          text: body?.emailSent
+            ? `Invite re-sent to ${email}.`
+            : `New link created. Email not sent (RESEND_API_KEY missing). Share this link: ${body?.inviteUrl ?? ''}`,
+        })
+        router.refresh()
+      }
+    } catch (err) {
+      setResendMsg({ id: inviteId, ok: false, text: err instanceof Error ? err.message : 'Network error' })
+    } finally {
+      setResendingId(null)
+    }
+  }
+
+  async function setUserActive(userId: string, isActive: boolean) {
+    if (!isActive && !confirm('Deactivate this portal user? They will no longer be able to log in.')) return
+    const res = await fetch(`/api/admin/portals/${portalId}/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive }),
+    })
+    if (res.ok) router.refresh()
+  }
+
+  async function removeUser(userId: string, email: string) {
+    if (!confirm(`Permanently remove ${email} from this portal? This deletes their account and brand assignments. You can invite them again later.`)) return
     const res = await fetch(`/api/admin/portals/${portalId}/users/${userId}`, { method: 'DELETE' })
     if (res.ok) router.refresh()
   }
@@ -192,26 +233,42 @@ export default function PortalDetailClient({
               </thead>
               <tbody>
                 {invites.map(i => (
-                  <tr key={i.id} className="border-t border-zinc-800">
-                    <td className="px-4 py-3 text-zinc-100">{i.email}</td>
-                    <td className="px-4 py-3 text-zinc-400 text-xs">
-                      {i.brandIds.map(brandLabel).join(', ') || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-500 text-xs">
-                      {new Date(i.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-500 text-xs">
-                      {new Date(i.expiresAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => revokeInvite(i.id)}
-                        className="text-zinc-500 hover:text-red-400 text-xs"
-                      >
-                        Revoke
-                      </button>
-                    </td>
-                  </tr>
+                  <Fragment key={i.id}>
+                    <tr className="border-t border-zinc-800">
+                      <td className="px-4 py-3 text-zinc-100">{i.email}</td>
+                      <td className="px-4 py-3 text-zinc-400 text-xs">
+                        {i.brandIds.map(brandLabel).join(', ') || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-500 text-xs">
+                        {new Date(i.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-500 text-xs">
+                        {new Date(i.expiresAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => resendInvite(i.id, i.email)}
+                          disabled={resendingId === i.id}
+                          className="text-zinc-400 hover:text-amber-400 text-xs disabled:opacity-50 mr-3"
+                        >
+                          {resendingId === i.id ? 'Sending…' : 'Resend'}
+                        </button>
+                        <button
+                          onClick={() => revokeInvite(i.id)}
+                          className="text-zinc-500 hover:text-red-400 text-xs"
+                        >
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                    {resendMsg?.id === i.id && (
+                      <tr className="border-t border-zinc-800/50">
+                        <td colSpan={5} className={`px-4 py-2 text-xs break-all ${resendMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {resendMsg.text}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -234,7 +291,8 @@ export default function PortalDetailClient({
                 portalId={portalId}
                 user={u}
                 brands={brands}
-                onDeactivate={() => deactivateUser(u.id)}
+                onSetActive={active => setUserActive(u.id, active)}
+                onRemove={() => removeUser(u.id, u.email)}
                 onChanged={() => router.refresh()}
               />
             ))}
@@ -246,12 +304,13 @@ export default function PortalDetailClient({
 }
 
 function UserCard({
-  portalId, user, brands, onDeactivate, onChanged,
+  portalId, user, brands, onSetActive, onRemove, onChanged,
 }: {
   portalId: string
   user: PortalUser
   brands: Brand[]
-  onDeactivate: () => void
+  onSetActive: (active: boolean) => void
+  onRemove: () => void
   onChanged: () => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -317,14 +376,27 @@ function UserCard({
               Edit brands
             </button>
           )}
-          {user.isActive && (
+          {user.isActive ? (
             <button
-              onClick={onDeactivate}
+              onClick={() => onSetActive(false)}
               className="text-xs text-zinc-500 hover:text-red-400"
             >
               Deactivate
             </button>
+          ) : (
+            <button
+              onClick={() => onSetActive(true)}
+              className="text-xs text-emerald-500 hover:text-emerald-400"
+            >
+              Reactivate
+            </button>
           )}
+          <button
+            onClick={onRemove}
+            className="text-xs text-zinc-600 hover:text-red-400"
+          >
+            Remove
+          </button>
         </div>
       </div>
 
