@@ -1,0 +1,35 @@
+{
+  "subject": "New in Growthable: your clients can now train the AI — and sign off on every reply",
+  "preheader": "Portal knowledge, smarter suggested replies, snippet libraries, and reply approvals — all live now.",
+  "title": "Your clients can now train the AI — and sign off on every reply",
+  "intro": "Five releases that turn the client portal into the brain behind your support inbox. Your clients supply the knowledge; your team replies faster, with their sign-off built in.",
+  "videoUrl": null,
+  "sections": [
+    {
+      "emoji": "📚",
+      "title": "Clients can teach the AI themselves",
+      "body": "There’s a new <strong>Knowledge</strong> page in the client portal. Your clients paste their website, help-center links, or upload documents — the AI reads them and uses them the next time it drafts a reply to one of their customers. No more chasing clients for context over email."
+    },
+    {
+      "emoji": "✨",
+      "title": "Suggested replies now know the whole story",
+      "body": "When your team hits <em>Suggest reply</em> on a ticket, the draft is written with the brand’s knowledge base, the last 100 tickets on that brand, <strong>the customer’s own open and past tickets</strong>, and recent live-chat activity already in mind. It knows what’s outstanding, what was already resolved, and what everyone’s been asking lately."
+    },
+    {
+      "emoji": "📎",
+      "title": "A snippet library for every brand",
+      "body": "Clients keep a library of approved links and blurbs — their calendar link, contact details, policy one-liners. Your agents insert them with one click, and the AI weaves the right one into suggested replies when it clearly helps. Always verbatim, never invented."
+    },
+    {
+      "emoji": "🚫",
+      "title": "Words to avoid",
+      "body": "Each brand can list words and phrases the AI must never use — competitor names, banned claims, off-brand slang. It’s enforced when drafting, and if something slips through anyway, the composer flags it before anyone hits send."
+    },
+    {
+      "emoji": "✅",
+      "title": "Nothing goes out without sign-off",
+      "body": "New approval workflow: your team can <strong>submit a reply for approval</strong> instead of sending it. The client sees it in their portal next to what the customer asked, and approves or rejects it with a note. Approved replies send instantly — so what reaches customers is always signed off."
+    }
+  ],
+  "outro": "Everything is live now — look for <span style=\"display:inline-block;padding:1px 7px;background:#e7f9f1;color:#0b9e6e;border-radius:999px;font-size:11px;font-weight:700;\">NEW</span> on <strong>Knowledge</strong> and <strong>Approvals</strong> in the portal sidebar."
+}
