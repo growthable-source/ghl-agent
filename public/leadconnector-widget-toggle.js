@@ -118,9 +118,11 @@
 
   function mount() {
     if (document.getElementById(ROW_ID)) return
+
     // The header/sidebar are re-rendered by the SPA router, so we look
     // them up fresh every time. Header strip first — it stays visible
-    // even on pages where the sidebar is collapsed.
+    // even on pages where the sidebar is collapsed, and it's a precise
+    // anchor, so we mount it even on builder screens.
     var controls = document.querySelector('.hl_header--controls')
     if (controls) {
       // Sit just left of the native circle buttons (help icon if present).
@@ -128,13 +130,39 @@
       controls.insertBefore(buildHeaderButton(), anchor)
       return
     }
+
+    // Full-screen builder apps (workflow/automation, funnels, email &
+    // form builders) are a *separate stack* that replaces LC's normal
+    // header + location sidebar with their own canvas chrome. They don't
+    // expose a header strip, so an earlier version fell through to a
+    // generic `aside nav` and dropped the full-width row into the middle
+    // of the builder canvas. Bail before the sidebar fallback on those
+    // screens — the stored show/hide preference still applies (widget.js
+    // reads it on every load); staff just flip the switch from a normal
+    // page.
+    if (inFullScreenBuilder()) return
+
+    // Sidebar fallback — LC-specific anchors ONLY. The generic
+    // `aside nav` selector was removed: it matched builder side-panels
+    // and mis-placed the switch. If none of these exist we're not on a
+    // standard LC dashboard page, so we skip rather than guess a host.
     var host =
       document.querySelector('#sidebar-v2 nav') ||
       document.querySelector('#sidebar-v2') ||
-      document.querySelector('.sidebar-v2-location') ||
-      document.querySelector('aside nav')
+      document.querySelector('.sidebar-v2-location')
     if (!host) return
     host.appendChild(buildRow())
+  }
+
+  // True on the LC builder/canvas takeovers. Kept broad + defensive:
+  // matches the node-graph canvas (react-flow / drawflow style grids GHL
+  // uses for workflows) and the builder wrappers for funnels/emails/forms.
+  // Any hit means "not a standard dashboard page" → don't inject.
+  function inFullScreenBuilder() {
+    return !!document.querySelector(
+      '.react-flow, .drawflow, [class*="workflow-builder"], [class*="builder-canvas"],' +
+      ' #builder-canvas, .hl-builder, .funnel-builder, .email-builder-content'
+    )
   }
 
   mount()
