@@ -141,28 +141,52 @@ export async function POST(req: NextRequest, { params }: Params) {
       await runWidgetAgent({ convo, content })
     } catch (err: any) {
       console.error('[widget] agent run failed:', err)
-      // Map common account-level failures to specific operator-facing
-      // messages so we don't bury a recoverable problem (low Anthropic
-      // credits, rate limits) behind a generic "try again." The
-      // visitor still sees a graceful "having trouble" — the
-      // specifics route to the operator-side system message.
-      const raw = (err?.message ?? '') as string
-      let message = 'Agent failed to respond. Please try again.'
-      if (/credit balance is too low/i.test(raw)) {
-        message = 'Agent paused: the workspace\'s Anthropic credit balance is empty. Top up at console.anthropic.com/settings/billing and the agent will resume on the next inbound.'
-      } else if (/rate.?limit|429/i.test(raw)) {
-        message = 'Agent paused: hitting Anthropic rate limits. The next inbound will retry — if this keeps happening, request a higher rate-limit tier in console.anthropic.com.'
-      } else if (/invalid.?api.?key|authentication/i.test(raw)) {
-        message = 'Agent paused: the ANTHROPIC_API_KEY env var is missing or invalid on this deployment.'
-      } else if (raw) {
-        // Surface the underlying message verbatim when we don't have a
-        // tailored mapping — easier to debug than the generic.
-        message = `Agent failed to respond: ${raw.slice(0, 240)}`
-      }
+      // The visitor only ever sees a graceful, brand-safe line — env var
+      // names, provider billing state, and raw error text must never
+      // render in a customer's widget. The specifics go to the operator
+      // via the notification pipeline (bell/Slack/email), same as the
+      // silent-agent path in widget-agent-runner.
       await broadcast(conversationId, {
         type: 'agent_error',
-        message,
+        message: 'I hit a snag on my end — let me get someone on our team to follow up.',
       }).catch(() => {})
+
+      // Map common account-level failures to actionable operator
+      // diagnostics so a recoverable problem (low Anthropic credits,
+      // rate limits) isn't buried behind a generic "agent failed."
+      // The key check matches the Anthropic SDK's 401 shape
+      // (authentication_error / invalid x-api-key) specifically — a bare
+      // /authentication/ match relabeled unrelated failures (e.g. a
+      // Postgres "password authentication failed" blip) as an Anthropic
+      // key problem.
+      const raw = (err?.message ?? '') as string
+      let detail = 'Agent failed to respond.'
+      if (/credit balance is too low/i.test(raw)) {
+        detail = 'Anthropic credit balance is empty. Top up at console.anthropic.com/settings/billing and the agent will resume on the next inbound.'
+      } else if (/rate.?limit|429/i.test(raw)) {
+        detail = 'Hitting Anthropic rate limits. The next inbound will retry — if this keeps happening, request a higher rate-limit tier in console.anthropic.com.'
+      } else if (/authentication_error|invalid x-api-key/i.test(raw)) {
+        detail = 'The ANTHROPIC_API_KEY env var is missing or invalid on this deployment.'
+      }
+      if (convo.widget.workspaceId) {
+        try {
+          await notify({
+            workspaceId: convo.widget.workspaceId,
+            event: 'agent_error',
+            title: `Agent failed to reply on ${convo.widget.name || 'a widget'}`,
+            body: `${detail}${raw ? ` Raw error: ${raw.slice(0, 240)}` : ''}`,
+            link: resolveHandoverLink({
+              workspaceId: convo.widget.workspaceId,
+              locationId: `widget:${widgetId}`,
+              conversationId,
+              channel: 'Live_Chat',
+            }),
+            severity: 'error',
+          })
+        } catch (notifyErr: any) {
+          console.warn('[widget] agent-error notify failed:', notifyErr?.message)
+        }
+      }
     }
   })
 

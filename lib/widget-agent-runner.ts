@@ -127,10 +127,29 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
   }
 
   if (!agent) {
+    // Setup problem, not the visitor's — they get a human-handoff line,
+    // the operator gets the actionable diagnostic via notifications.
     await broadcast(convo.id, {
       type: 'agent_error',
-      message: 'No agent is configured to handle this widget. Add a default agent in the widget settings.',
-    })
+      message: 'Thanks for reaching out — someone from our team will reply here shortly.',
+    }).catch(() => {})
+    if (widget.workspaceId) {
+      try {
+        await notify({
+          workspaceId: widget.workspaceId,
+          event: 'agent_error',
+          title: `No agent configured on ${widget.name || 'a widget'}`,
+          body: `A visitor messaged but no agent is configured to handle this widget. Add a default agent in the widget settings. Visitor said: "${content.slice(0, 120)}"`,
+          link: resolveHandoverLink({
+            workspaceId: widget.workspaceId,
+            locationId: `widget:${convo.widgetId}`,
+            conversationId: convo.id,
+            channel: 'Live_Chat',
+          }),
+          severity: 'warning',
+        })
+      } catch {}
+    }
     return
   }
 
