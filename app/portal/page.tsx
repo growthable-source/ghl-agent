@@ -284,11 +284,6 @@ export default async function PortalOverview() {
             )}
           </Panel>
 
-          {/* Word cloud — what visitors are asking about, in their words */}
-          <Panel title="What People Ask About" right={<span className="text-[10px] text-zinc-500">visitor questions · 30d</span>}>
-            <WordCloud terms={cloudTerms} />
-          </Panel>
-
           {/* Top topics — knowledge the AI matched to answer */}
           <Panel title="Top Topics" right={<span className="text-[10px] text-zinc-500">knowledge used · 30d</span>}>
             <TopTopics topics={topTopics} />
@@ -341,6 +336,27 @@ export default async function PortalOverview() {
               </div>
             )}
           </Panel>
+
+          {/* Word cloud — demoted to a collapsed footnote. The AI Insights
+              briefing at the top of the page carries the "what are people
+              asking" story now; this is the raw-frequency view for anyone
+              who wants to poke at the underlying words. Native <details>
+              keeps the page fully server-rendered. */}
+          <details className="rounded-xl border border-zinc-800 group" style={{ background: 'var(--surface)' }}>
+            <summary className="flex items-center justify-between p-4 cursor-pointer list-none select-none">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
+                Word Cloud <span className="normal-case font-normal text-zinc-600">— raw view</span>
+              </p>
+              <span className="text-[10px] text-zinc-500">
+                <span className="group-open:hidden">show</span>
+                <span className="hidden group-open:inline">hide</span>
+              </span>
+            </summary>
+            <div className="px-4 pb-4">
+              <p className="text-[10px] text-zinc-600 mb-2">Frequency of words in visitor questions, last 30 days. For the takeaways, see AI Insights above.</p>
+              <WordCloud terms={cloudTerms} />
+            </div>
+          </details>
 
         </div>
       </div>
