@@ -165,5 +165,17 @@ export async function GET(req: NextRequest, { params }: Params) {
     // column (pre-migration) reads as undefined → treated as enabled.
     autoIdentify: (w as { autoIdentify?: boolean }).autoIdentify !== false,
     launcher,
-  }, { headers })
+  }, {
+    headers: {
+      ...headers,
+      // This is the hottest public route — every customer-site pageview
+      // fetches it — and each invocation costs 3–5 DB queries against a
+      // pooler with a hard client-connection cap. Let the CDN absorb the
+      // fan-out; config edits propagate within ~60s. The cached body must
+      // be origin-independent, so pin ACAO to * (public, non-credentialed
+      // GET) instead of the per-origin echo.
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+    },
+  })
 }

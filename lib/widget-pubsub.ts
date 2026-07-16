@@ -58,6 +58,34 @@ let sharedClient: Client | null = null
 let connectPromise: Promise<Client> | null = null
 let heartbeat: ReturnType<typeof setInterval> | null = null
 
+// The shared LISTEN client is a SESSION-mode pooler connection, and
+// Supavisor counts it against the project-wide client cap (200 on the
+// current compute tier) alongside every instance's Prisma pool. An
+// instance that served one SSE stream must not pin that connection for
+// its whole lifetime — reap it once no subscribers remain, with a short
+// linger so visitor reconnects don't churn LISTEN setup.
+const IDLE_TEARDOWN_MS = 45_000
+let reapTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelReap() {
+  if (reapTimer) {
+    clearTimeout(reapTimer)
+    reapTimer = null
+  }
+}
+
+function scheduleReapIfIdle() {
+  if (subscribers.size > 0 || !sharedClient) return
+  cancelReap()
+  reapTimer = setTimeout(() => {
+    reapTimer = null
+    if (subscribers.size > 0) return
+    tearDownSharedClient()
+    if (pubsubState === 'available') pubsubState = 'unknown'
+  }, IDLE_TEARDOWN_MS)
+  reapTimer.unref?.()
+}
+
 // Tracks whether cross-instance pubsub is currently attemptable.
 // 'unknown'  — never tried, will attempt on first subscribe()
 // 'available' — connection open and LISTENing
@@ -280,6 +308,7 @@ export async function subscribe(
     subscribers.set(conversationId, set)
   }
   set.add(handler)
+  cancelReap()
   let errSet: Set<ErrorHandler> | undefined
   if (onError) {
     errSet = errorHandlers.get(conversationId)
@@ -309,6 +338,7 @@ export async function subscribe(
           if (es.size === 0) errorHandlers.delete(conversationId)
         }
       }
+      scheduleReapIfIdle()
     },
   }
 }
