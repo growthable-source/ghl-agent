@@ -52,11 +52,30 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   let memberId: string | null = null
   try {
-    const updated = await db.workspaceMember.update({
-      where: { userId_workspaceId: { userId, workspaceId } },
-      data: { isAvailable: body.isAvailable, availabilityChangedAt: new Date() },
-      select: { id: true },
-    })
+    // presenceSource 'self' marks this as a deliberate human choice — the
+    // auto-away heartbeat never overrides it. Toggling is also activity,
+    // so bump lastActivityAt. Both columns ship after the base presence
+    // migration, so retry without them on older DBs.
+    let updated: { id: string }
+    try {
+      updated = await db.workspaceMember.update({
+        where: { userId_workspaceId: { userId, workspaceId } },
+        data: {
+          isAvailable: body.isAvailable,
+          availabilityChangedAt: new Date(),
+          presenceSource: 'self',
+          lastActivityAt: new Date(),
+        } as any,
+        select: { id: true },
+      })
+    } catch (err: any) {
+      if (err?.code !== 'P2022' && !/column .* does not exist/i.test(err?.message ?? '')) throw err
+      updated = await db.workspaceMember.update({
+        where: { userId_workspaceId: { userId, workspaceId } },
+        data: { isAvailable: body.isAvailable, availabilityChangedAt: new Date() },
+        select: { id: true },
+      })
+    }
     memberId = updated.id
   } catch (err: any) {
     if (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? '')) {

@@ -19,6 +19,8 @@ interface Settings {
   queueMessage: string | null
   escalateAfterMinutes: number
   escalateReassign: boolean
+  autoAwayEnabled: boolean
+  autoAwayMinutes: number
 }
 
 export default function LiveChatSettingsPage() {
@@ -160,6 +162,45 @@ export default function LiveChatSettingsPage() {
               disabled={saving || s.escalateAfterMinutes <= 0}
               onChange={v => patch({ escalateReassign: v })}
             />
+          </div>
+        </div>
+
+        <div className="pt-2 border-t space-y-4" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+              Auto-away <NewBadge since="2026-07-16" className="ml-1" />
+            </p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              Routing only assigns chats to teammates marked Available, but that pill is easy to forget at the end of a shift.
+              Auto-away flips idle teammates to Away so chats never route to someone who went home — and flips them back the
+              moment they&rsquo;re active in the dashboard again. Manually going Away is always respected.
+            </p>
+          </div>
+          <Toggle
+            label="Automatically mark idle teammates Away"
+            help="Idle = no mouse or keyboard activity anywhere in the dashboard. Applies per teammate once they've been active at least once."
+            checked={s.autoAwayEnabled}
+            disabled={saving}
+            onChange={v => patch({ autoAwayEnabled: v })}
+          />
+          <div className={s.autoAwayEnabled ? '' : 'opacity-40 pointer-events-none'}>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
+              Mark Away after (minutes)
+            </label>
+            <input
+              type="number"
+              min={5}
+              max={1440}
+              value={s.autoAwayMinutes}
+              disabled={saving || !s.autoAwayEnabled}
+              onChange={e => setSettings({ ...s, autoAwayMinutes: Number(e.target.value) })}
+              onBlur={e => patch({ autoAwayMinutes: Number(e.target.value) })}
+              className="w-28 rounded-lg px-3 py-2 text-sm"
+              style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+            />
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+              Minimum 5. Coming back to the dashboard restores Available automatically.
+            </p>
           </div>
         </div>
 

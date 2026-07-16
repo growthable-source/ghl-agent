@@ -342,11 +342,23 @@ model WorkspaceMember {
   // inbox header.
   isAvailable           Boolean               @default(true)
   availabilityChangedAt DateTime?
+  // What caused the CURRENT isAvailable value. 'self' = the member
+  // toggled the inbox pill; 'system' = auto-away flipped them (and a
+  // fresh heartbeat may flip them back); 'kiosk' = kiosk admin action.
+  // Auto-return ONLY overrides 'system' — a deliberate human/admin
+  // choice is never undone by a mouse wiggle.
+  presenceSource        String                @default("self")
+  // Last time the dashboard heartbeat (or a reply) saw this member
+  // actually doing something. Null = never seen by the heartbeat —
+  // the auto-away cron skips those members entirely, so the feature
+  // self-bootstraps per member with no mass flip on rollout.
+  lastActivityAt        DateTime?
   createdAt             DateTime              @default(now())
   presenceEvents        MemberPresenceEvent[]
 
   @@unique([userId, workspaceId])
   @@index([workspaceId, isAvailable])
+  @@index([isAvailable, lastActivityAt])
 }
 
 // Audit trail of when a member toggled their availability. Powers the
@@ -3469,6 +3481,14 @@ model LiveChatSettings {
   // true also returns the chat to the queue so another operator picks it up.
   escalateAfterMinutes Int     @default(0)
   escalateReassign     Boolean @default(false)
+
+  // Auto-away: flip members to Away after this many minutes without any
+  // dashboard activity, so routing never sends chats to someone who went
+  // home with the pill still green. Members the heartbeat has never seen
+  // (lastActivityAt null) are exempt. A heartbeat from a system-flipped
+  // member restores them automatically; manual Away is never overridden.
+  autoAwayEnabled Boolean @default(true)
+  autoAwayMinutes Int     @default(15)
 
   updatedAt DateTime @updatedAt
 }

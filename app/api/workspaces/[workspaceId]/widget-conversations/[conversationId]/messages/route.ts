@@ -284,6 +284,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Your role is read-only — you can read this chat but not reply.' }, { status: 403 })
   }
 
+  // Replying is the strongest "at my desk" signal there is — feed the
+  // auto-away activity clock even if the dashboard heartbeat is blocked.
+  // Off the response path; best-effort.
+  const activityUserId = access.session.user!.id
+  after(async () => {
+    try {
+      const { recordMemberActivity } = await import('@/lib/presence')
+      await recordMemberActivity(workspaceId, activityUserId)
+    } catch { /* presence only */ }
+  })
+
   let body: any = {}
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })

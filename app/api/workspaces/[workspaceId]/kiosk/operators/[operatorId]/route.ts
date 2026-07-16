@@ -47,10 +47,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.lockedUntil = null
   } else if (body?.action === 'disable') {
     data.disabledAt = new Date()
-    await db.workspaceMember.updateMany({
-      where: { userId: operator.userId, workspaceId },
-      data: { isAvailable: false, availabilityChangedAt: new Date() },
-    })
+    // presenceSource 'kiosk' so a stray dashboard heartbeat can never
+    // auto-restore a deliberately disabled operator (only 'system' flips
+    // are heartbeat-reversible). Column may predate the auto-away
+    // migration — retry without it.
+    try {
+      await db.workspaceMember.updateMany({
+        where: { userId: operator.userId, workspaceId },
+        data: { isAvailable: false, availabilityChangedAt: new Date(), presenceSource: 'kiosk' } as any,
+      })
+    } catch {
+      await db.workspaceMember.updateMany({
+        where: { userId: operator.userId, workspaceId },
+        data: { isAvailable: false, availabilityChangedAt: new Date() },
+      })
+    }
   } else if (body?.action === 'enable') {
     data.disabledAt = null
   }

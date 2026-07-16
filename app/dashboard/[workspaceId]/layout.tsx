@@ -8,6 +8,7 @@ import HandoffAlertBanner from '@/components/dashboard/HandoffAlertBanner'
 import NewChatAlert from '@/components/dashboard/NewChatAlert'
 import EmbeddedWorkspaceBanner from '@/components/dashboard/EmbeddedWorkspaceBanner'
 import MobileNav from '@/components/dashboard/MobileNav'
+import PresenceHeartbeat from '@/components/dashboard/PresenceHeartbeat'
 
 /**
  * Workspace-level layout — enforces that the current user has access to
@@ -81,6 +82,9 @@ export default async function WorkspaceLayout({
       {/* Renders only when loaded inside a marketplace iframe — labels
           which CRM sub-account this workspace is bound to so the user
           doesn't think they've been dropped into someone else's data. */}
+      {/* Invisible — reports real input to the auto-away heartbeat so
+          routing knows who's actually at their desk. */}
+      <PresenceHeartbeat workspaceId={workspaceId} />
       <EmbeddedWorkspaceBanner workspaceId={workspaceId} />
       <TrialBanner workspaceId={workspaceId} />
       <PauseBanner />

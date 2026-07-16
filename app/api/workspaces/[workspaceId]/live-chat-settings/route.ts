@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { getLiveChatSettings } from '@/lib/livechat-settings'
+import { getLiveChatSettings, AUTO_AWAY_MIN_MINUTES, AUTO_AWAY_MAX_MINUTES } from '@/lib/livechat-settings'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -45,6 +45,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.escalateAfterMinutes = Math.max(0, Math.min(1440, Math.floor(body.escalateAfterMinutes)))
   }
   if (typeof body.escalateReassign === 'boolean') data.escalateReassign = body.escalateReassign
+  if (typeof body.autoAwayEnabled === 'boolean') data.autoAwayEnabled = body.autoAwayEnabled
+  if (typeof body.autoAwayMinutes === 'number' && Number.isFinite(body.autoAwayMinutes)) {
+    data.autoAwayMinutes = Math.max(AUTO_AWAY_MIN_MINUTES, Math.min(AUTO_AWAY_MAX_MINUTES, Math.floor(body.autoAwayMinutes)))
+  }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No mutable fields' }, { status: 400 })
   }
