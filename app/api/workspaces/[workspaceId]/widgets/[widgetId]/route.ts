@@ -41,6 +41,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'routingMode', 'routingTargetUserIds', 'routingFallbackUserId',
     'brandId', 'agencyUrl',
     'autoIdentify', 'launcherAgents',
+    'launcherIcon', 'launcherLetter',
   ]
   const data: Record<string, unknown> = {}
   for (const key of allowed) {
@@ -67,6 +68,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }))
   }
 
+  // Launcher icon: known values only; the letter is normalized to a single
+  // uppercase A–Z/0–9 character (empty/invalid -> null, which falls back to
+  // the title initial at render time).
+  if (data.launcherIcon !== undefined
+    && !['chat', 'question', 'letter', 'logo'].includes(data.launcherIcon as string)) {
+    return NextResponse.json({ error: 'launcherIcon must be one of chat | question | letter | logo' }, { status: 400 })
+  }
+  if (data.launcherLetter !== undefined && data.launcherLetter !== null) {
+    const ch = String(data.launcherLetter).trim().toUpperCase().slice(0, 1)
+    data.launcherLetter = /^[A-Z0-9]$/.test(ch) ? ch : null
+  }
+
   // Slug normalization: lowercase, alphanumeric + dash, empty string -> null
   if (typeof data.slug === 'string') {
     const cleaned = data.slug.toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
@@ -86,7 +99,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const whitelabelKeys = ['agencyUrl']
   // Auto-identify + launcher ship in their own migration.
   const launcherKeys = ['autoIdentify', 'launcherAgents']
-  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys, ...launcherKeys]
+  // Launcher icon customization ships in its own migration too.
+  const launcherIconKeys = ['launcherIcon', 'launcherLetter']
+  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys, ...launcherKeys, ...launcherIconKeys]
   const touchesTolerant = tolerantKeys.some(k => data[k] !== undefined)
 
   try {

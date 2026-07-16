@@ -187,7 +187,7 @@
       'transition:transform 0.2s ease, box-shadow 0.2s ease',
       'font-family:system-ui,-apple-system,sans-serif',
     ].join(';')
-    btn.innerHTML = svgChat()
+    btn.innerHTML = launcherIconHtml(cfg)
     btn.onmouseenter = function () { btn.style.transform = 'scale(1.05)' }
     btn.onmouseleave = function () { btn.style.transform = 'scale(1)' }
     btn.onclick = function () {
@@ -338,7 +338,7 @@
       state.iframeWrap.style.opacity = '0'
       state.iframeWrap.style.transform = 'translateY(12px)'
       setTimeout(function () { if (!state.open) state.iframeWrap.style.display = 'none' }, 220)
-      if (swapIcon && launcher) launcher.innerHTML = svgChat()
+      if (swapIcon && launcher) launcher.innerHTML = launcherIconHtml(state.config)
     }
   }
 
@@ -430,6 +430,25 @@
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
     })
+  }
+  // What the launcher bubble shows — operator-picked in the dashboard.
+  // 'logo' uses the uploaded logo image filling the circle; 'question'
+  // and 'letter' are Gmail-style glyph marks on the primary color;
+  // anything else (or a logo pick with no logo uploaded, or an old
+  // config payload without the field) falls back to the chat glyph.
+  function launcherIconHtml(cfg) {
+    var icon = (cfg && cfg.launcherIcon) || 'chat'
+    if (icon === 'logo' && cfg.logoUrl) {
+      return '<img src="' + escapeHtml(cfg.logoUrl) + '" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block"/>'
+    }
+    if (icon === 'question') {
+      return '<span style="font:700 26px/1 system-ui,-apple-system,sans-serif">?</span>'
+    }
+    if (icon === 'letter') {
+      var letter = String(cfg.launcherLetter || (cfg.title || 'C').charAt(0)).toUpperCase()
+      return '<span style="font:700 24px/1 system-ui,-apple-system,sans-serif">' + escapeHtml(letter) + '</span>'
+    }
+    return svgChat()
   }
   function svgChat() {
     return '<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>'

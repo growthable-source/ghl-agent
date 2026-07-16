@@ -2143,6 +2143,12 @@ model ChatWidget {
   // Appearance
   primaryColor              String               @default("#fa4d2e")
   logoUrl                   String?
+  // What the floating launcher bubble shows. "chat" = classic chat-bubble
+  // glyph, "question" = a "?" mark, "letter" = launcherLetter (falls back
+  // to the title's initial) as a Gmail-style letter mark, "logo" = the
+  // uploaded logoUrl image filling the circle.
+  launcherIcon              String               @default("chat") // chat | question | letter | logo
+  launcherLetter            String?
   title                     String               @default("Chat with us")
   subtitle                  String               @default("We typically reply within a minute")
   welcomeMessage            String               @default("Hi! How can we help?") @db.Text

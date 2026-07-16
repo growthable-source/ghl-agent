@@ -143,6 +143,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     slug: w.slug,
     primaryColor: w.primaryColor,
     logoUrl: w.logoUrl,
+    // Launcher bubble icon — missing columns (pre-migration) degrade to
+    // the classic chat glyph.
+    launcherIcon: (w as { launcherIcon?: string }).launcherIcon ?? 'chat',
+    launcherLetter: (w as { launcherLetter?: string | null }).launcherLetter ?? null,
     title: w.title,
     subtitle: w.subtitle,
     welcomeMessage: renderedWelcome,

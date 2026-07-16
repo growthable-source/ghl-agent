@@ -47,6 +47,7 @@ async function loadWidget(widgetId: string) {
         defaultAgentId: true, allowedDomains: true,
         workspaceId: true,
         autoIdentify: true, launcherAgents: true,
+        launcherIcon: true, launcherLetter: true,
       } as any,
     })
   } catch (err: any) {
@@ -85,6 +86,8 @@ async function loadWidget(widgetId: string) {
         hostedPageSubtext: null,
         autoIdentify: true,
         launcherAgents: null,
+        launcherIcon: 'chat',
+        launcherLetter: null,
       } as any
     }
     throw err
