@@ -74,18 +74,29 @@ export async function claimProspect(slug: string, userId: string): Promise<Claim
   }
 
   // Re-parent assets. Agent needs a Location in the NEW workspace
-  // (required FK) — create the same placeholder the wizard uses.
+  // (required FK). Mirror the normal signup path (POST /api/workspaces):
+  // auto-provision the native CRM Location — NOT a crmProvider:'none'
+  // placeholder, which would contradict the workspace's
+  // primaryCrmProvider:'native' above and make the first CRM-backed
+  // tool the customer enables throw "CRM not connected". Upsert (the
+  // route uses plain create) so a retried claim after a partial
+  // failure doesn't trip the primary-key unique.
   if (prospect.agentId) {
-    const placeholderId = `placeholder:${workspace.id}`
+    const nativeLocationId = `native:${workspace.id}`
     const location = await db.location.upsert({
-      where: { id: placeholderId },
+      where: { id: nativeLocationId },
       create: {
-        id: placeholderId,
+        id: nativeLocationId,
         workspaceId: workspace.id,
-        companyId: '', userId: '', userType: '', scope: '',
-        accessToken: '', refreshToken: '', refreshTokenId: '',
-        expiresAt: new Date(0),
-        crmProvider: 'none',
+        companyId: 'native',
+        userId: 'native',
+        userType: 'Location',
+        scope: 'native',
+        accessToken: 'native',
+        refreshToken: 'native',
+        refreshTokenId: 'native',
+        expiresAt: new Date('2099-12-31T23:59:59.000Z'),
+        crmProvider: 'native',
       },
       update: {},
       select: { id: true },
