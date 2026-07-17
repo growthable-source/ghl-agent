@@ -99,15 +99,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   if (!agent) return NextResponse.json(UNAVAILABLE, { status: 503 })
   const config = await db.geminiVoiceConfig.findUnique({ where: { agentId: agent.id } })
 
-  let ragContext = ''
+  let chunks: Awaited<ReturnType<typeof retrieveChunks>> = []
   if (prospect.knowledgeDomainId) {
-    const chunks = await retrieveChunks(
+    chunks = await retrieveChunks(
       workspaceId,
       `about ${prospect.businessName}: services, opening hours, location, pricing, contact`,
       { knowledgeDomainIds: [prospect.knowledgeDomainId], scopeToDomains: true, limit: 8 },
     )
-    ragContext = chunks.map(c => c.content).join('\n\n')
   }
+  // With no crawled content the model MUST NOT fall back to whatever its
+  // training data remembers about a business with this name — a prospect
+  // hearing stale facts about their own company kills the demo. Say so
+  // explicitly; an honest "let me take a message" reads fine on a call.
+  const ragContext = chunks.length
+    ? `The following is from ${prospect.businessName}'s own website (${prospect.websiteDomain}). Treat it as the ONLY source of truth about the business:\n\n` +
+      chunks.map(c => c.content).join('\n\n')
+    : `No content from ${prospect.businessName}'s website has been loaded yet. You know NOTHING about this business beyond its name — do not state any facts, history, services, staff, or prices, even ones you think you remember from elsewhere. If the caller asks for specifics, offer warmly to take their name and number so the team can follow up.`
 
   const session = buildGeminiVoiceSession(
     {
