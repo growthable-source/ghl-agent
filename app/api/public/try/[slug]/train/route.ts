@@ -79,7 +79,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     const latestRun = await db.ingestionRun.findUnique({ where: { id: prospect.ingestionRunId } })
     const isTerminal = latestRun && ['success', 'partial', 'failed'].includes(latestRun.status)
     if (latestRun && isTerminal && latestRun.chunksCreated === 0) {
-      const totalRuns = await db.ingestionRun.count({ where: { sourceId: latestRun.sourceId } })
+      // Infra-failed runs don't count toward the cap — a platform hiccup
+      // (missing migration, transient DB error) must not consume the
+      // visitor's limited training attempts. Completed-but-empty runs
+      // ('success'/'partial' with 0 chunks) DO count, so a genuinely
+      // unreadable site can't be re-crawled forever.
+      const totalRuns = await db.ingestionRun.count({
+        where: { sourceId: latestRun.sourceId, status: { not: 'failed' } },
+      })
       if (totalRuns < MAX_RUNS_PER_SOURCE) {
         const newRun = await db.ingestionRun.create({
           data: { sourceId: latestRun.sourceId, status: 'queued' },
