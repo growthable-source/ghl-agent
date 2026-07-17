@@ -45,6 +45,12 @@ export const POST = withApiLog(async (req: NextRequest) => {
     const businessName = (body.businessName || '').trim().slice(0, 120)
     const websiteUrl = (body.websiteUrl || '').trim()
     if (!businessName) throw new AuthError(422, 'bad_param', 'businessName required')
+    if (
+      JSON.stringify(body.templates ?? null).length > 20_000 ||
+      JSON.stringify(body.metadata ?? null).length > 20_000
+    ) {
+      throw new AuthError(422, 'bad_param', 'templates/metadata too large')
+    }
 
     let websiteDomain: string
     try {
@@ -54,8 +60,9 @@ export const POST = withApiLog(async (req: NextRequest) => {
     }
 
     // Idempotent per domain: one live demo per business at a time.
+    // `failed` is excluded so the tool can re-register after a failure.
     const existing = await db.demoProspect.findFirst({
-      where: { websiteDomain, status: { notIn: ['expired', 'claimed'] } },
+      where: { websiteDomain, status: { notIn: ['expired', 'claimed', 'failed'] } },
       select: { slug: true },
     })
     if (existing) {
@@ -97,10 +104,14 @@ export const GET = withApiLog(async (req: NextRequest) => {
 
     const url = new URL(req.url)
     const since = url.searchParams.get('since')
+    const sinceDate = since ? new Date(since) : null
+    if (sinceDate && Number.isNaN(sinceDate.getTime())) {
+      throw new AuthError(422, 'bad_param', 'since must be an ISO timestamp')
+    }
     const status = url.searchParams.get('status')
     const rows = await db.demoProspect.findMany({
       where: {
-        ...(since ? { updatedAt: { gte: new Date(since) } } : {}),
+        ...(sinceDate ? { updatedAt: { gte: sinceDate } } : {}),
         ...(status ? { status } : {}),
       },
       orderBy: { updatedAt: 'desc' },

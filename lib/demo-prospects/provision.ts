@@ -4,16 +4,23 @@
  * time, so the ~97% of cold-emailed prospects who never click cost one
  * DB row and nothing else.
  *
- * Idempotent + re-entrant: each asset creation is guarded by its
- * nullable FK on the DemoProspect row, and the registered→provisioning
- * transition is a compare-and-swap so concurrent pollers don't
- * double-provision. A crash mid-way is healed by the next poll (the
- * remaining null fields get filled in).
+ * Idempotent + re-entrant: every asset (knowledge domain, crawl
+ * source/run, agent) is claimed onto the DemoProspect row with a
+ * compare-and-swap on its nullable FK — the loser of a concurrent race
+ * deletes its just-created copy and adopts the winner's. The
+ * registered→provisioning transition is likewise a CAS so concurrent
+ * pollers don't double-provision. A crash mid-way is healed by the
+ * next poll (the remaining null fields get filled in).
+ *
+ * Failure semantics: only agent creation is load-bearing. Knowledge
+ * assets (domain + crawl) are best-effort — their failure is logged
+ * and provisioning continues, because greeting + business name carry
+ * the demo even with zero chunks landed. Only failing to produce the
+ * agent marks the prospect `failed`.
  *
  * The crawl itself is asynchronous — the every-minute ingest-queue cron
  * picks up the queued IngestionRun. Readiness is agent-existence, not
- * crawl-completion: greeting + business name carry the demo even with
- * zero chunks landed.
+ * crawl-completion.
  */
 import { db } from '@/lib/db'
 import { detectUrl } from '@/lib/ingest/detect'
@@ -55,6 +62,10 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
     prospect = (await db.demoProspect.findUnique({ where: { slug } }))!
   }
 
+  // ─── Steps 1–2: knowledge assets (best-effort — NEVER terminal) ───
+  // A failure here is logged and skipped: the demo goes ready without
+  // indexed knowledge. The null-field guards mean a later poll retries
+  // these while the prospect is still provisioning.
   try {
     // 1. Knowledge domain (per-prospect isolation for retrieval scoping)
     let knowledgeDomainId = prospect.knowledgeDomainId
@@ -67,13 +78,26 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
         },
         select: { id: true },
       })
-      knowledgeDomainId = domain.id
-      await db.demoProspect.update({ where: { id: prospect.id }, data: { knowledgeDomainId } })
+      // CAS the domain on — if another racer beat us, roll back ours
+      // and adopt theirs.
+      const won = await db.demoProspect.updateMany({
+        where: { id: prospect.id, knowledgeDomainId: null },
+        data: { knowledgeDomainId: domain.id },
+      })
+      if (won.count === 0) {
+        await db.knowledgeDomain.delete({ where: { id: domain.id } }).catch(() => {})
+        const fresh = await db.demoProspect.findUnique({
+          where: { id: prospect.id },
+          select: { knowledgeDomainId: true },
+        })
+        knowledgeDomainId = fresh?.knowledgeDomainId ?? null
+      } else {
+        knowledgeDomainId = domain.id
+      }
     }
 
     // 2. Crawl source + queued run (the ingest-queue cron does the work)
-    let ingestionRunId = prospect.ingestionRunId
-    if (!ingestionRunId) {
+    if (knowledgeDomainId && !prospect.ingestionRunId) {
       const detection = await detectUrl(prospect.websiteUrl)
       const source = await db.knowledgeSource.create({
         data: {
@@ -89,26 +113,48 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
         data: { sourceId: source.id, status: 'queued' },
         select: { id: true },
       })
-      ingestionRunId = run.id
-      await db.demoProspect.update({ where: { id: prospect.id }, data: { ingestionRunId } })
-    }
-
-    // 3. Agent + voice config from resolved templates
-    if (!prospect.agentId) {
-      const vars = buildTemplateVars(
-        {
-          businessName: prospect.businessName,
-          websiteDomain: prospect.websiteDomain,
-          vertical: prospect.vertical,
-        },
-        (prospect.metadata ?? null) as Record<string, unknown> | null,
-      )
-      const templates = resolveTemplates({
-        vertical: prospect.vertical,
-        overrides: (prospect.templates ?? null) as Partial<DemoTemplateSet> | null,
-        vars,
+      // CAS the run on — if another racer beat us, delete our source
+      // (the run cascades away with it).
+      const won = await db.demoProspect.updateMany({
+        where: { id: prospect.id, ingestionRunId: null },
+        data: { ingestionRunId: run.id },
       })
+      if (won.count === 0) {
+        await db.knowledgeSource.delete({ where: { id: source.id } }).catch(() => {})
+      }
+    }
+  } catch (err) {
+    console.error(`[demo-prospects] knowledge provisioning failed for ${slug} (continuing):`, err)
+  }
 
+  // Re-read so the agent block sees the freshest FK state — a racer may
+  // have attached the domain/agent while we worked (our domain create
+  // can even P2002 against the racer's identically-named copy, landing
+  // us in the catch above with a stale local view).
+  prospect = (await db.demoProspect.findUnique({ where: { slug } })) ?? prospect
+
+  // ─── Steps 3–4: agent + voice config, then finalize ───
+  // The agent is the only load-bearing asset: if it can't be produced,
+  // the prospect is marked failed. Once the agent exists, any later
+  // throw leaves status at provisioning so the next poll retries.
+  try {
+    const vars = buildTemplateVars(
+      {
+        businessName: prospect.businessName,
+        websiteDomain: prospect.websiteDomain,
+        vertical: prospect.vertical,
+      },
+      (prospect.metadata ?? null) as Record<string, unknown> | null,
+    )
+    const templates = resolveTemplates({
+      vertical: prospect.vertical,
+      overrides: (prospect.templates ?? null) as Partial<DemoTemplateSet> | null,
+      vars,
+    })
+
+    // 3a. Agent
+    let agentId = prospect.agentId
+    if (!agentId) {
       const location = await ensureDemoLocation(workspaceId)
       const agent = await db.agent.create({
         data: {
@@ -122,31 +168,45 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
           agentKind: 'reactive',
           voiceRuntime: 'gemini',
           knowledgeScopeAll: false,
-          knowledgeDomainIds: [knowledgeDomainId],
+          knowledgeDomainIds: prospect.knowledgeDomainId ? [prospect.knowledgeDomainId] : [],
         },
         select: { id: true },
       })
 
-      // CAS the agentId on — if another racer beat us, roll back ours.
+      // CAS the agentId on — if another racer beat us, roll back ours
+      // and adopt theirs.
       const won = await db.demoProspect.updateMany({
         where: { id: prospect.id, agentId: null },
         data: { agentId: agent.id },
       })
       if (won.count === 0) {
         await db.agent.delete({ where: { id: agent.id } }).catch(() => {})
-      } else {
-        await db.geminiVoiceConfig.create({
-          data: {
-            agentId: agent.id,
-            isActive: true,
-            model: geminiVoiceModel(),
-            firstMessage: templates.firstMessage,
-            maxDurationSecs: DEMO_TRY_MAX_SECS,
-            recordCalls: false,
-          },
+        const fresh = await db.demoProspect.findUnique({
+          where: { id: prospect.id },
+          select: { agentId: true },
         })
+        agentId = fresh?.agentId ?? null
+      } else {
+        agentId = agent.id
       }
     }
+    if (!agentId) throw new Error('agent creation raced but no winner is visible')
+
+    // 3b. Voice config — always ensured once the agent exists, so a
+    // crash between the agent CAS and the config write heals on the
+    // next poll instead of shipping a ready demo with no voice.
+    await db.geminiVoiceConfig.upsert({
+      where: { agentId },
+      create: {
+        agentId,
+        isActive: true,
+        model: geminiVoiceModel(),
+        firstMessage: templates.firstMessage,
+        maxDurationSecs: DEMO_TRY_MAX_SECS,
+        recordCalls: false,
+      },
+      update: {},
+    })
 
     // 4. Finalize: ready + TTL clock starts now
     await db.demoProspect.updateMany({
