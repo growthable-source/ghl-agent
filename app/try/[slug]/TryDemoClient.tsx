@@ -1,12 +1,27 @@
 'use client'
 
 /**
- * The prospect-facing demo page. Three phases:
- *  1. building — poll /status every 2.5s; the first poll triggers lazy
- *     provisioning server-side. Honest staged copy driven by real
- *     ingestion progress.
- *  2. ready — big call button (mic → Gemini Live) + countdown.
- *  3. done/expired — dual CTA: claim → checkout, or vertical learn-more.
+ * The prospect-facing demo page. Four phases:
+ *  1. train — hero + a website input (prefilled from registration,
+ *     editable) + "Train my AI receptionist" button. Nothing is
+ *     provisioned until this button is clicked (POST .../train).
+ *  2. training — real progress driven by polling /status every 2.5s:
+ *     a staged list (reading → training on N pages → learning your
+ *     services) built from the live IngestionRun row. 3-minute client
+ *     timeout treats the run as terminal so a visitor is never stuck.
+ *  3. ready — call UI (mic → Gemini Live) + dual CTA once a call has
+ *     happened. If the crawl landed zero chunks, an honest note says so
+ *     up front — the call is still allowed (the token route's own
+ *     guardrail keeps the model from inventing facts).
+ *  4. gone — expired/claimed: CTA-only page, unchanged from before.
+ *
+ * On mount we poll /status ONCE to decide the initial phase: already
+ * ready with real content → straight to the call UI (returning
+ * visitor); ready/provisioning with a live (queued/running) ingestion
+ * run → resume the training view; anything else (including a prior
+ * empty-chunks result, since that run is terminal and there's nothing
+ * live to resume) → the train screen, so "Train my AI receptionist"
+ * doubles as the retry/retrain action.
  *
  * Styling note: the plan draft referenced `bg-accent-primary-bg` /
  * `text-accent-primary-fg` / `text-accent-red-fg` utilities. Only the
@@ -22,29 +37,39 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePublicVoiceCall } from '@/lib/voice/use-public-voice-call'
 
-type Phase = 'building' | 'ready' | 'failed' | 'gone'
+type Phase = 'train' | 'training' | 'ready' | 'gone'
+
+type Ingestion = {
+  status: string
+  chunksCreated: number
+  pagesAttempted: number
+  pagesSucceeded: number
+} | null
 
 const POLL_MS = 2500
-const MAX_POLL_MS = 3 * 60_000 // stop polling after 3 minutes and show failed state
+const MAX_POLL_MS = 3 * 60_000 // stop polling after 3 minutes and unlock the call anyway
+const LIVE_RUN_STATUSES = ['queued', 'running']
+const TERMINAL_RUN_STATUSES = ['success', 'partial', 'failed']
 
 export default function TryDemoClient({
-  slug, businessName, websiteDomain, initialStatus, learnMoreHref,
+  slug, businessName, websiteUrl, websiteDomain, initialStatus, learnMoreHref,
 }: {
   slug: string
   businessName: string
+  websiteUrl: string
   websiteDomain: string
   initialStatus: string
   learnMoreHref: string
 }) {
-  const [phase, setPhase] = useState<Phase>(
-    initialStatus === 'ready' ? 'ready'
-    : initialStatus === 'failed' ? 'failed'
-    : ['expired', 'claimed'].includes(initialStatus) ? 'gone'
-    : 'building',
-  )
-  const [buildStep, setBuildStep] = useState(0)
+  const isGoneStatus = initialStatus === 'expired' || initialStatus === 'claimed'
+  const [phase, setPhase] = useState<Phase | null>(isGoneStatus ? 'gone' : null)
+  const [ingestion, setIngestion] = useState<Ingestion>(null)
+  const [websiteInput, setWebsiteInput] = useState(websiteUrl)
+  const [submitting, setSubmitting] = useState(false)
+  const [trainError, setTrainError] = useState<string | null>(null)
+  const [urlChangeIgnored, setUrlChangeIgnored] = useState(false)
   const [hasCalled, setHasCalled] = useState(false)
-  // Set inside the polling effect (not here) — calling Date.now() during
+  // Set inside the polling effects (not here) — calling Date.now() during
   // render trips the react-hooks purity rule (impure-function-in-render).
   const pollStartRef = useRef<number | null>(null)
 
@@ -64,9 +89,34 @@ export default function TryDemoClient({
     },
   })
 
-  // Status polling while building.
+  // One-time initial-phase decision. Runs only while phase is still
+  // unresolved (null) — the 'gone' short-circuit above skips it
+  // entirely since expired/claimed is already known server-side.
   useEffect(() => {
-    if (phase !== 'building') return
+    if (phase !== null) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/public/try/${slug}/status`)
+        const data = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (data.status === 'expired' || data.status === 'claimed') { setPhase('gone'); return }
+        const ing: Ingestion = data.ingestion ?? null
+        setIngestion(ing)
+        if (data.status === 'ready' && ing && ing.chunksCreated > 0) { setPhase('ready'); return }
+        const hasLiveRun = !!ing && LIVE_RUN_STATUSES.includes(ing.status)
+        if ((data.status === 'ready' || data.status === 'provisioning') && hasLiveRun) { setPhase('training'); return }
+        setPhase('train')
+      } catch {
+        if (!cancelled) setPhase('train')
+      }
+    })()
+    return () => { cancelled = true }
+  }, [phase, slug])
+
+  // Progress polling while training.
+  useEffect(() => {
+    if (phase !== 'training') return
     pollStartRef.current = Date.now()
     let cancelled = false
     let timer: ReturnType<typeof setTimeout>
@@ -75,39 +125,110 @@ export default function TryDemoClient({
         const res = await fetch(`/api/public/try/${slug}/status`)
         const data = await res.json().catch(() => ({}))
         if (cancelled) return
-        if (data.status === 'ready') { setPhase('ready'); return }
-        if (data.status === 'failed') { setPhase('failed'); return }
-        if (['expired', 'claimed'].includes(data.status)) { setPhase('gone'); return }
-        // Advance the visible step from real signals: run queued → 1,
-        // running → 2, chunks landing → 3.
-        const ing = data.ingestion
-        setBuildStep(ing?.chunksCreated > 0 ? 3 : ing?.status === 'running' ? 2 : 1)
+        if (data.status === 'expired' || data.status === 'claimed') { setPhase('gone'); return }
+        if (data.status === 'failed') { setPhase('train'); return }
+        const ing: Ingestion = data.ingestion ?? null
+        setIngestion(ing)
+        if (ing && TERMINAL_RUN_STATUSES.includes(ing.status)) { setPhase('ready'); return }
       } catch { /* transient — keep polling */ }
-      if (pollStartRef.current !== null && Date.now() - pollStartRef.current > MAX_POLL_MS) { setPhase('failed'); return }
+      if (pollStartRef.current !== null && Date.now() - pollStartRef.current > MAX_POLL_MS) { setPhase('ready'); return }
       if (!cancelled) timer = setTimeout(tick, POLL_MS)
     }
     timer = setTimeout(tick, 0)
     return () => { cancelled = true; clearTimeout(timer) }
   }, [phase, slug])
 
+  const handleTrain = useCallback(async () => {
+    setSubmitting(true)
+    setTrainError(null)
+    try {
+      const res = await fetch(`/api/public/try/${slug}/train`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ websiteUrl: websiteInput }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.status === 410 || data.status === 'expired' || data.status === 'claimed') { setPhase('gone'); return }
+      if (!res.ok) {
+        setTrainError(data?.message || 'Something went wrong — try again.')
+        return
+      }
+      if (data.urlChangeIgnored) setUrlChangeIgnored(true)
+      setPhase('training')
+    } catch {
+      setTrainError('Something went wrong — try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }, [slug, websiteInput])
+
   const claimHref = `/try/${slug}/claim`
   const live = state === 'live' || state === 'connecting'
+  const chunksCreated = ingestion?.chunksCreated ?? 0
+  const thinContent = chunksCreated === 0
 
   const stop = useCallback(() => { void endCall('ended') }, [endCall])
+
+  // Staged progress list — buildStep counts how many rows read as
+  // "done"; the first not-yet-done row pulses. Labels/thresholds are
+  // driven by the real IngestionRun row, not a fixed timer.
+  const pagesSucceeded = ingestion?.pagesSucceeded ?? 0
+  let buildStep = 1
+  if (ingestion?.status === 'running' && pagesSucceeded > 0) buildStep = 2
+  if (chunksCreated > 0) buildStep = 3
+  const trainingSteps = [
+    `Reading ${websiteDomain}…`,
+    `Training on ${pagesSucceeded} page${pagesSucceeded === 1 ? '' : 's'} of ${businessName}’s site…`,
+    'Learning your services…',
+  ]
 
   return (
     <main className="min-h-screen bg-black text-zinc-100 flex flex-col">
       <div className="mx-auto w-full max-w-2xl px-6 py-16 flex-1 flex flex-col items-center justify-center text-center gap-8">
 
-        {phase === 'building' && (
+        {phase === null && (
+          <div className="h-2 w-2 rounded-full bg-zinc-700 animate-pulse" />
+        )}
+
+        {phase === 'train' && (
           <>
-            <h1 className="text-3xl font-semibold">Building {businessName}&rsquo;s AI receptionist…</h1>
+            <p className="text-sm uppercase tracking-widest text-zinc-500">Live demo</p>
+            <h1 className="text-3xl font-semibold">
+              Meet {businessName}&rsquo;s AI receptionist
+            </h1>
+            <p className="text-zinc-400 max-w-md">
+              We&rsquo;ll train it on your website in under a minute — then you can call it and hear it answer like your business would.
+            </p>
+
+            <div className="w-full max-w-md flex flex-col gap-3">
+              <input
+                type="text"
+                value={websiteInput}
+                onChange={e => setWebsiteInput(e.target.value)}
+                placeholder="yourwebsite.com"
+                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-center text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent-primary"
+              />
+              {urlChangeIgnored && (
+                <p className="text-xs text-zinc-500">This demo is already trained — the new website won&rsquo;t change it in this preview.</p>
+              )}
+              {trainError && <p className="text-accent-red text-sm">{trainError}</p>}
+              <button
+                onClick={() => void handleTrain()}
+                disabled={submitting || !websiteInput.trim()}
+                className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition disabled:opacity-50"
+                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+              >
+                {submitting ? 'Starting…' : 'Train my AI receptionist'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {phase === 'training' && (
+          <>
+            <h1 className="text-3xl font-semibold">Training {businessName}&rsquo;s AI receptionist…</h1>
             <ol className="space-y-3 text-left text-zinc-400">
-              {[
-                `Reading ${websiteDomain}`,
-                'Learning your services and hours',
-                'Training your receptionist',
-              ].map((label, i) => (
+              {trainingSteps.map((label, i) => (
                 <li key={label} className={`flex items-center gap-3 ${buildStep > i ? 'text-zinc-100' : ''}`}>
                   <span className={`inline-block h-2 w-2 rounded-full ${buildStep > i ? 'bg-accent-primary' : 'bg-zinc-700 animate-pulse'}`} />
                   {label}
@@ -124,9 +245,15 @@ export default function TryDemoClient({
             <h1 className="text-3xl font-semibold">
               This is what {businessName}&rsquo;s AI receptionist sounds like
             </h1>
-            <p className="text-zinc-400 max-w-md">
-              Tap the button and ask it anything a caller would — your hours, your services, your prices. It learned them from {websiteDomain}.
-            </p>
+            {thinContent ? (
+              <p className="text-zinc-400 max-w-md">
+                We couldn&rsquo;t read much from {websiteDomain} — your receptionist will introduce itself and take a message instead of guessing at details.
+              </p>
+            ) : (
+              <p className="text-zinc-400 max-w-md">
+                Tap the button and ask it anything a caller would — your hours, your services, your prices. It learned them from {websiteDomain}.
+              </p>
+            )}
 
             {state === 'error' && error && <p className="text-accent-red text-sm">{error}</p>}
 
@@ -163,27 +290,6 @@ export default function TryDemoClient({
                 </a>
               </div>
             )}
-          </>
-        )}
-
-        {phase === 'failed' && (
-          <>
-            <h1 className="text-3xl font-semibold">We couldn&rsquo;t finish building this demo</h1>
-            <p className="text-zinc-400 max-w-md">
-              No drama — we can still show you exactly what an AI receptionist would do for {businessName}.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <a
-                href={claimHref}
-                className="rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
-                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-              >
-                Get this for {businessName}
-              </a>
-              <a href={learnMoreHref} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
-                Learn more
-              </a>
-            </div>
           </>
         )}
 

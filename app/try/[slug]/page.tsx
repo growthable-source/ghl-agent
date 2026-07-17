@@ -25,7 +25,7 @@ export default async function TryDemoPage({ params }: Params) {
   const { slug } = await params
   const prospect = await db.demoProspect.findUnique({
     where: { slug },
-    select: { slug: true, businessName: true, websiteDomain: true, vertical: true, status: true },
+    select: { slug: true, businessName: true, websiteUrl: true, websiteDomain: true, vertical: true, status: true },
   }).catch(() => null)
   if (!prospect) notFound()
 
@@ -33,6 +33,7 @@ export default async function TryDemoPage({ params }: Params) {
     <TryDemoClient
       slug={prospect.slug}
       businessName={prospect.businessName}
+      websiteUrl={prospect.websiteUrl}
       websiteDomain={prospect.websiteDomain}
       initialStatus={prospect.status}
       learnMoreHref={`${landingPathForVertical(prospect.vertical)}?demo=${prospect.slug}`}
