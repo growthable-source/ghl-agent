@@ -59,6 +59,22 @@ export function usePublicVoiceCall(options: PublicVoiceCallOptions = {}) {
   const startCall = useCallback(async () => {
     setError(null)
     setState('connecting')
+
+    // Pre-flight the mic BEFORE minting a token: getUserMedia is where a
+    // denied/dismissed permission prompt throws, and it used to run after
+    // the mint — so one fumbled prompt burned the visitor's cooldown AND
+    // a call slot, then surfaced a cryptic "Permission denied". Ask first;
+    // if the browser says no, nothing server-side is consumed and the
+    // visitor can fix the permission and retry immediately.
+    try {
+      const preflight = await navigator.mediaDevices.getUserMedia({ audio: true })
+      preflight.getTracks().forEach(t => t.stop())
+    } catch {
+      setError('Your browser blocked the microphone — click the mic icon in the address bar, allow it for this site, and try again.')
+      setState('error')
+      return
+    }
+
     try {
       const res = await fetch(options.tokenEndpoint ?? '/api/public/voice-demo/web-token', { method: 'POST' })
       const data = await res.json().catch(() => ({}))
@@ -97,7 +113,14 @@ export function usePublicVoiceCall(options: PublicVoiceCallOptions = {}) {
       }, 1000)
       setState('live')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Voice session failed.')
+      // Mic can still fail here (permission revoked between preflight and
+      // capture) — keep the friendly wording for that case too.
+      const micDenied = err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'NotFoundError')
+      setError(
+        micDenied
+          ? 'Your browser blocked the microphone — click the mic icon in the address bar, allow it for this site, and try again.'
+          : err instanceof Error ? err.message : 'Voice session failed.',
+      )
       micRef.current?.stop()
       playerRef.current?.stop()
       // If the token was already minted (startedAt set) but connect/mic
