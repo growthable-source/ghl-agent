@@ -4039,6 +4039,11 @@ model PortalInsight {
 // first /try/[slug] visit and live in the internal demos workspace
 // (DEMO_WORKSPACE_ID). Claiming re-parents those assets into the
 // prospect's real workspace.
+// agentId/knowledgeDomainId/ingestionRunId/claimedByUserId/claimedWorkspaceId
+// are deliberately loose references (no @relation): the assets live in
+// another workspace's bounded context and get re-parented on claim; a
+// dangling id after an out-of-band delete must never block or cascade
+// into demo rows.
 model DemoProspect {
   id                 String    @id @default(cuid())
   slug               String    @unique
@@ -4065,7 +4070,7 @@ model DemoProspect {
 
   @@index([status])
   @@index([websiteDomain])
-  @@index([expiresAt])
+  @@index([status, expiresAt])
 }
 
 // One row per public demo call. Powers the abuse guards on the /try
@@ -4075,13 +4080,13 @@ model DemoProspect {
 // by time alone — no reaper needed at the call level.
 model DemoTryCall {
   id         String    @id @default(cuid())
-  prospectId String
+  prospectId String // soft reference (no @relation): prospect rows are never hard-deleted — the reaper flips status instead
   ip         String
   startedAt  DateTime  @default(now())
   endedAt    DateTime?
   secs       Int       @default(0)
 
   @@index([ip, startedAt])
-  @@index([startedAt])
+  @@index([startedAt, endedAt])
   @@index([prospectId])
 }

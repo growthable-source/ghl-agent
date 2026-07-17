@@ -11,6 +11,9 @@ describe('normalizeWebsiteDomain', () => {
   it('keeps non-www subdomains', () => {
     expect(normalizeWebsiteDomain('https://shop.acme.co.uk/x')).toBe('shop.acme.co.uk')
   })
+  it('strips trailing dots so FQDN forms dedupe against the bare domain', () => {
+    expect(normalizeWebsiteDomain('acmeplumbing.com.')).toBe('acmeplumbing.com')
+  })
   it('throws on garbage', () => {
     expect(() => normalizeWebsiteDomain('not a url at all !!')).toThrow()
   })

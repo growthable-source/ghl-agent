@@ -16,6 +16,9 @@ describe('renderTemplate', () => {
   it('tolerates whitespace inside braces', () => {
     expect(renderTemplate('{{ businessName }}', { businessName: 'Acme' })).toBe('Acme')
   })
+  it('renders var values containing $& and $$ literally', () => {
+    expect(renderTemplate('Hi {{businessName}}!', { businessName: 'A$&B $$ C' })).toBe('Hi A$&B $$ C!')
+  })
 })
 
 describe('buildTemplateVars', () => {
@@ -55,6 +58,10 @@ describe('resolveTemplates', () => {
   it('unknown vertical falls back to the default template', () => {
     const t = resolveTemplates({ vertical: 'submarine-dealer', overrides: null, vars })
     expect(t.prompt).toContain('Shred Gym')
+  })
+  it('returns instructions: null when no override, preset, or default supplies them', () => {
+    const t = resolveTemplates({ vertical: 'gym', overrides: null, vars })
+    expect(t.instructions).toBeNull()
   })
   it('per-prospect overrides beat everything and still render vars', () => {
     const t = resolveTemplates({

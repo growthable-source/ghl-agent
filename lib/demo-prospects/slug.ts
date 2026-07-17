@@ -14,7 +14,7 @@ export function normalizeWebsiteDomain(input: string): string {
   const trimmed = (input || '').trim()
   if (!trimmed) throw new Error('websiteUrl required')
   const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`)
-  const host = url.hostname.toLowerCase().replace(/^www\./, '')
+  const host = url.hostname.toLowerCase().replace(/\.+$/, '').replace(/^www\./, '')
   if (!host.includes('.')) throw new Error('websiteUrl must include a domain')
   return host
 }

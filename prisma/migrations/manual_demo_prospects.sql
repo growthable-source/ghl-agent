@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS "DemoProspect" (
 CREATE UNIQUE INDEX IF NOT EXISTS "DemoProspect_slug_key" ON "DemoProspect"("slug");
 CREATE INDEX IF NOT EXISTS "DemoProspect_status_idx" ON "DemoProspect"("status");
 CREATE INDEX IF NOT EXISTS "DemoProspect_websiteDomain_idx" ON "DemoProspect"("websiteDomain");
-CREATE INDEX IF NOT EXISTS "DemoProspect_expiresAt_idx" ON "DemoProspect"("expiresAt");
+CREATE INDEX IF NOT EXISTS "DemoProspect_status_expiresAt_idx" ON "DemoProspect"("status", "expiresAt");
 
 CREATE TABLE IF NOT EXISTS "DemoTryCall" (
   "id"         TEXT NOT NULL,
@@ -43,5 +43,5 @@ CREATE TABLE IF NOT EXISTS "DemoTryCall" (
 );
 
 CREATE INDEX IF NOT EXISTS "DemoTryCall_ip_startedAt_idx" ON "DemoTryCall"("ip", "startedAt");
-CREATE INDEX IF NOT EXISTS "DemoTryCall_startedAt_idx" ON "DemoTryCall"("startedAt");
+CREATE INDEX IF NOT EXISTS "DemoTryCall_startedAt_endedAt_idx" ON "DemoTryCall"("startedAt", "endedAt");
 CREATE INDEX IF NOT EXISTS "DemoTryCall_prospectId_idx" ON "DemoTryCall"("prospectId");
