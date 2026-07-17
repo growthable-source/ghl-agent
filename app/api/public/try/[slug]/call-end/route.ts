@@ -11,11 +11,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const { slug } = await params
   const body = (await req.json().catch(() => ({}))) as { callId?: string; secs?: number }
   const callId = typeof body.callId === 'string' ? body.callId : ''
-  const secs = Math.max(0, Math.min(3600, Math.floor(Number(body.secs) || 0)))
+  let secs = Math.max(0, Math.min(3600, Math.floor(Number(body.secs) || 0)))
   if (!callId) return NextResponse.json({ ok: false }, { status: 400 })
 
   const prospect = await db.demoProspect.findUnique({ where: { slug }, select: { id: true } })
   if (!prospect) return NextResponse.json({ ok: false }, { status: 404 })
+
+  // Clamp the client-reported duration to what's plausible for THIS
+  // call: it can't exceed the wall-clock time since the token mint
+  // (+10s beacon slack) or the demo hard cap (+30s teardown slack) —
+  // otherwise a client could report 3600s for a 180s call.
+  const call = await db.demoTryCall.findFirst({
+    where: { id: callId, prospectId: prospect.id, endedAt: null },
+    select: { startedAt: true },
+  })
+  if (!call) return NextResponse.json({ ok: false }, { status: 404 })
+  const elapsed = Math.ceil((Date.now() - call.startedAt.getTime()) / 1000) + 10
+  const maxSecs = Number(process.env.DEMO_TRY_MAX_SECS) || 180
+  secs = Math.min(secs, elapsed, maxSecs + 30)
 
   // Only close a call once, and only one belonging to this prospect.
   const updated = await db.demoTryCall.updateMany({

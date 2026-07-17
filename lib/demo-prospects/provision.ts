@@ -12,6 +12,16 @@
  * pollers don't double-provision. A crash mid-way is healed by the
  * next poll (the remaining null fields get filled in).
  *
+ * Work-claim lease: only ONE poller does provisioning work at a time.
+ * The registered→provisioning CAS winner takes the first attempt;
+ * everyone who loses (or arrives while status is already provisioning)
+ * must claim an 8-second lease — a no-op updateMany conditioned on
+ * updatedAt being older than 8s, whose write bumps updatedAt — before
+ * running the steps. Claim losers just report current status. This
+ * bounds provisioning to ~1 attempt per 8s regardless of poll
+ * concurrency, and a crashed worker's lease simply expires so the next
+ * poll heals it.
+ *
  * Failure semantics: only agent creation is load-bearing. Knowledge
  * assets (domain + crawl) are best-effort — their failure is logged
  * and provisioning continues, because greeting + business name carry
@@ -51,15 +61,32 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
   // Terminal / already-done states: nothing to do.
   if (!['registered', 'provisioning'].includes(prospect.status)) return prospect
 
-  // CAS: registered → provisioning (stamps the click). Losing the race
-  // is fine — fall through and run the idempotent steps anyway; each is
-  // guarded by its own null-field check.
+  // CAS: registered → provisioning (stamps the click). The winner owns
+  // the first provisioning attempt; losers return immediately — the
+  // winner is doing the work, and this poller just reports status.
   if (prospect.status === 'registered') {
-    await db.demoProspect.updateMany({
+    const cas = await db.demoProspect.updateMany({
       where: { id: prospect.id, status: 'registered' },
       data: { status: 'provisioning', clickedAt: prospect.clickedAt ?? new Date() },
     })
     prospect = (await db.demoProspect.findUnique({ where: { slug } }))!
+    if (cas.count === 0) return prospect
+  } else {
+    // Already provisioning: claim the 8-second work lease before doing
+    // anything. The no-op write bumps updatedAt, so a successful claim
+    // locks other pollers out for the window; count === 0 means another
+    // worker holds the lease (or claimed it within the last 8s) — just
+    // report the current row.
+    const claim = await db.demoProspect.updateMany({
+      where: {
+        id: prospect.id,
+        status: 'provisioning',
+        updatedAt: { lt: new Date(Date.now() - 8_000) },
+      },
+      data: { status: 'provisioning' },
+    })
+    if (claim.count === 0) return prospect
+    prospect = (await db.demoProspect.findUnique({ where: { slug } })) ?? prospect
   }
 
   // ─── Steps 1–2: knowledge assets (best-effort — NEVER terminal) ───

@@ -100,6 +100,16 @@ export function usePublicVoiceCall(options: PublicVoiceCallOptions = {}) {
       setError(err instanceof Error ? err.message : 'Voice session failed.')
       micRef.current?.stop()
       playerRef.current?.stop()
+      // If the token was already minted (startedAt set) but connect/mic
+      // failed, endCall never runs — fire onEnded here so the caller's
+      // telemetry (e.g. the call-end beacon) still sees the call, and
+      // the refs don't go stale for the next attempt.
+      if (startedAtRef.current !== null) {
+        const secsUsed = Math.round((Date.now() - startedAtRef.current) / 1000)
+        startedAtRef.current = null
+        onEndedRef.current?.({ secsUsed, callId: callIdRef.current })
+        callIdRef.current = null
+      }
       setState('error')
     }
   }, [endCall, options.tokenEndpoint])

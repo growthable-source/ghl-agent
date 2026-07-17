@@ -23,10 +23,24 @@ const MAX_CONCURRENT = Number(process.env.DEMO_TRY_MAX_CONCURRENT) || 15
 const IP_COOLDOWN_SECS = Number(process.env.DEMO_TRY_IP_COOLDOWN_SECS) || 120
 const COOLDOWN_COOKIE = 'xv_try_demo'
 
+/**
+ * Trusted client IP. The FIRST x-forwarded-for entry is client-controlled
+ * (an attacker can prepend arbitrary IPs and mint unlimited fresh
+ * identities, gutting the per-IP guard), so the trust order is:
+ *   1. x-real-ip — Vercel sets this to the trusted client IP
+ *   2. LAST x-forwarded-for entry — appended by the trusted proxy hop
+ *   3. 'unknown'
+ */
 function clientIp(req: NextRequest): string {
+  const real = req.headers.get('x-real-ip')?.trim()
+  if (real) return real
   const fwd = req.headers.get('x-forwarded-for')
-  if (fwd) return fwd.split(',')[0].trim()
-  return req.headers.get('x-real-ip')?.trim() || 'unknown'
+  if (fwd) {
+    const parts = fwd.split(',')
+    const last = parts[parts.length - 1].trim()
+    if (last) return last
+  }
+  return 'unknown'
 }
 
 const UNAVAILABLE = { error: 'This demo isn’t available right now.', code: 'UNAVAILABLE' }
@@ -118,17 +132,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
     // Record the call (server-side truth for callCount) and free the slot
     // via call-end / the time-window ageing in the guard queries.
-    const call = await db.demoTryCall.create({
-      data: { prospectId: prospect.id, ip },
-      select: { id: true },
-    })
-    await db.demoProspect.update({
-      where: { id: prospect.id },
-      data: { callCount: { increment: 1 }, firstCallAt: prospect.firstCallAt ?? new Date() },
-    }).catch(() => {})
+    // Best-effort: the token is already minted (and paid for) — a DB
+    // hiccup here must not cost the visitor their call. On failure we
+    // log, skip the tracking row, and return callId: null (the guards
+    // age out by time regardless).
+    let callId: string | null = null
+    try {
+      const call = await db.demoTryCall.create({
+        data: { prospectId: prospect.id, ip },
+        select: { id: true },
+      })
+      callId = call.id
+      await db.demoProspect.update({
+        where: { id: prospect.id },
+        data: { callCount: { increment: 1 }, firstCallAt: prospect.firstCallAt ?? new Date() },
+      }).catch(() => {})
+    } catch (trackErr) {
+      console.error(`[demo-prospects] call tracking failed for ${slug} (continuing):`, trackErr)
+    }
 
     const res = NextResponse.json({
-      callId: call.id,
+      callId,
       connection: {
         token: minted.token,
         vendorModelId: minted.vendorModelId,
