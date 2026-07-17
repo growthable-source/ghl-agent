@@ -45,3 +45,8 @@ CREATE TABLE IF NOT EXISTS "DemoTryCall" (
 CREATE INDEX IF NOT EXISTS "DemoTryCall_ip_startedAt_idx" ON "DemoTryCall"("ip", "startedAt");
 CREATE INDEX IF NOT EXISTS "DemoTryCall_startedAt_endedAt_idx" ON "DemoTryCall"("startedAt", "endedAt");
 CREATE INDEX IF NOT EXISTS "DemoTryCall_prospectId_idx" ON "DemoTryCall"("prospectId");
+
+-- Cleanup for anyone who ran a pre-composite-index draft of this file;
+-- no-ops on a fresh database.
+DROP INDEX IF EXISTS "DemoProspect_expiresAt_idx";
+DROP INDEX IF EXISTS "DemoTryCall_startedAt_idx";
