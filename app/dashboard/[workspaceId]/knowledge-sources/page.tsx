@@ -1595,6 +1595,7 @@ function humanError(stage: string, message: string): string {
   if (stage === 'normalize') return 'This page couldn\'t be parsed (might be a scanned PDF or empty page).'
   if (stage === 'classify') return 'Classification step failed — chunk saved without tags.'
   if (stage === 'embed')    return 'Embedding step failed.'
+  if (stage === 'copy')     return 'Couldn\'t copy already-indexed content from another source — will retry on the next crawl.'
   return message.slice(0, 120)
 }
 

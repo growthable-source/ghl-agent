@@ -47,8 +47,11 @@ export interface IngestResult {
    *  the re-walk cheap: already-ingested pages skip embedding. */
   deadlineExhausted?: boolean
   /** Discovered URLs skipped because they were already crawled (already
-   *  have live chunks for this source). The reason fetch/Firecrawl cost
-   *  stays flat across recrawls instead of re-scraping the whole site. */
+   *  have live chunks ANYWHERE — this source, or another one). The reason
+   *  fetch/Firecrawl cost stays flat across recrawls instead of
+   *  re-scraping the whole site. When the existing chunks belonged to a
+   *  DIFFERENT source, they were cloned into this one rather than
+   *  skipped outright — see `chunksCreated`, which folds in cloned rows. */
   skippedAlreadyCrawled?: number
 }
 
@@ -75,7 +78,7 @@ export interface IngestOptions {
 
 interface ErrorEntry {
   url: string
-  stage: 'discover' | 'fetch' | 'normalize' | 'chunk' | 'classify' | 'embed' | 'write'
+  stage: 'discover' | 'fetch' | 'normalize' | 'chunk' | 'classify' | 'embed' | 'write' | 'copy'
   message: string
   ts: string
 }
@@ -142,41 +145,122 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     // feeds keep updating because each new item is a new URL. `force`
     // bypasses this for a deliberate full re-scrape.
     //
-    // Scope: GLOBAL by sourceUrl, matching exactly what processPage
-    // dedupes on. It used to be per-source, which meant a duplicate
-    // source pointing at an already-indexed site re-fetched every page
-    // each recrawl and then no-op'd at the hash match — full fetch cost,
-    // zero chunks, forever (the July 2026 runaway recrawl). Bounded by
-    // the discovered hosts so the query never scans unrelated URLs.
+    // Lookup scope: GLOBAL by sourceUrl (bounded to the discovered hosts
+    // so the query never scans unrelated URLs). It used to be per-source,
+    // which meant a duplicate source pointing at an already-indexed site
+    // re-fetched every page each recrawl and then no-op'd at the hash
+    // match — full fetch cost, zero chunks, forever (the July 2026
+    // runaway recrawl). Do NOT revert to per-source fetching.
+    //
+    // But the fetch decision and the OWNERSHIP decision are different
+    // questions. A URL already indexed under THIS source is a true skip
+    // (unchanged). A URL indexed ONLY under a DIFFERENT source is also
+    // skipped for fetch — but its chunks (content, embedding,
+    // classification) are CLONED into this source/domain below, so this
+    // source's own domain isn't left empty just because someone else got
+    // there first (cross-tenant knowledge isolation bug, prod incident
+    // 2026-07-17 — see prisma/migrations/manual_chunk_unique_per_source.sql).
     let toFetch = discovered
+    let chunksCopied = 0
     if (!opts.force && discovered.length > 0) {
       const hosts = Array.from(new Set(
         discovered.map(d => {
           try { return new URL(d.identifier).host.toLowerCase() } catch { return '' }
         }),
       )).filter(Boolean)
-      const indexed: Array<{ sourceUrl: string }> = hosts.length === 0 ? [] :
+      const indexed: Array<{ sourceUrl: string; sourceId: string }> = hosts.length === 0 ? [] :
         await (db as any).knowledgeChunk.findMany({
           where: {
             supersededAt: null,
             OR: hosts.map(h => ({ sourceUrl: { contains: `//${h}`, mode: 'insensitive' } })),
           },
-          distinct: ['sourceUrl'],
-          select: { sourceUrl: true },
+          select: { sourceUrl: true, sourceId: true },
         }).catch(() => [])
-      const indexedKeys = new Set(
-        indexed.map(r => canonicalUrlKey(r.sourceUrl)).filter(Boolean),
-      )
-      if (indexedKeys.size > 0) {
+
+      // Canonical URL key -> which source id(s) currently own live chunks
+      // for it, plus the exact sourceUrl string(s) on record (the clone
+      // INSERT below matches on the literal sourceUrl column, not the
+      // canonical key).
+      const ownerByKey = new Map<string, { sourceIds: Set<string>; sourceUrls: Set<string> }>()
+      for (const row of indexed) {
+        const key = canonicalUrlKey(row.sourceUrl)
+        if (!key) continue
+        let info = ownerByKey.get(key)
+        if (!info) {
+          info = { sourceIds: new Set(), sourceUrls: new Set() }
+          ownerByKey.set(key, info)
+        }
+        info.sourceIds.add(row.sourceId)
+        info.sourceUrls.add(row.sourceUrl)
+      }
+
+      if (ownerByKey.size > 0) {
+        const crossSourceUrls = new Set<string>()
         toFetch = discovered.filter(item => {
           const key = canonicalUrlKey(item.identifier)
-          if (key && indexedKeys.has(key)) { skippedAlreadyCrawled++; return false }
-          return true
+          const info = key ? ownerByKey.get(key) : undefined
+          if (!info) return true // genuinely new — fetch it
+          skippedAlreadyCrawled++
+          if (!info.sourceIds.has(source.id)) {
+            // Indexed only under other source(s) — queue for cloning.
+            for (const u of info.sourceUrls) crossSourceUrls.add(u)
+          }
+          return false
         })
+
+        if (crossSourceUrls.size > 0) {
+          try {
+            const urls = Array.from(crossSourceUrls)
+            // One INSERT ... SELECT per batch. Picks the highest
+            // contentVersion per (sourceUrl, chunkIndex) among live
+            // (supersededAt IS NULL) rows and re-parents a copy onto this
+            // source/domain. Identity + lifecycle columns are reset;
+            // content, embedding, and classification are copied verbatim
+            // — zero re-fetch, re-embed, or re-classify cost.
+            const copied = await db.$executeRaw`
+              INSERT INTO "KnowledgeChunk" (
+                "id", "knowledgeDomainId", "sourceId",
+                "content", "contentHash", "sourceUrl", "sourceType", "sourceIdentifier",
+                "chunkIndex", "totalChunks", "sourceMetadata", "embeddingModel", "embedding",
+                "primaryTopic", "taxonomyTags", "intentTags", "taxonomyVersion", "autoTopicAttempts",
+                "confidenceTier", "qualityScore", "contentVersion", "brandIdOrigin", "visibility",
+                "useCount", "lastUsedAt", "supersedesId", "supersededAt", "supersessionReason",
+                "createdAt", "indexedAt", "lastVerifiedAt"
+              )
+              SELECT
+                gen_random_uuid()::text, ${source.knowledgeDomainId}, ${source.id},
+                src."content", src."contentHash", src."sourceUrl", src."sourceType", src."sourceIdentifier",
+                src."chunkIndex", src."totalChunks", src."sourceMetadata", src."embeddingModel", src."embedding",
+                src."primaryTopic", src."taxonomyTags", src."intentTags", src."taxonomyVersion", src."autoTopicAttempts",
+                src."confidenceTier", src."qualityScore", src."contentVersion", src."brandIdOrigin", src."visibility",
+                0, NULL, NULL, NULL, NULL,
+                now(), now(), now()
+              FROM (
+                SELECT DISTINCT ON ("sourceUrl", "chunkIndex") *
+                FROM "KnowledgeChunk"
+                WHERE "sourceUrl" = ANY(${urls}::text[]) AND "supersededAt" IS NULL
+                ORDER BY "sourceUrl", "chunkIndex", "contentVersion" DESC
+              ) src
+            `
+            chunksCopied += Number(copied)
+            chunksCreated += Number(copied)
+            console.log(`[ingest] cloned ${copied} chunk(s) across ${urls.length} already-indexed URL(s) owned by other sources`)
+          } catch (err) {
+            // A clone failure must not fail the run — worst case this
+            // source's domain stays empty for these URLs, same as
+            // pre-fix behaviour, and the next recrawl retries the clone.
+            errors.push({
+              url: source.urlOrIdentifier,
+              stage: 'copy',
+              message: err instanceof Error ? err.message : 'chunk clone failed',
+              ts: new Date().toISOString(),
+            })
+          }
+        }
       }
     }
     if (skippedAlreadyCrawled > 0) {
-      console.log(`[ingest] ${skippedAlreadyCrawled}/${discovered.length} discovered URLs already crawled — skipping re-fetch`)
+      console.log(`[ingest] ${skippedAlreadyCrawled}/${discovered.length} discovered URLs already crawled — skipping re-fetch${chunksCopied > 0 ? ` (${chunksCopied} chunk(s) cloned from other sources)` : ''}`)
     }
 
     // Tell the client how many pages we'll actually fetch so it can
@@ -317,14 +401,20 @@ async function processPage(args: ProcessPageArgs): Promise<{ created: number; su
   const docTitle = (normalized.metadata?.page_title as string) || normalized.sourceUrl
   const rawChunks = chunkMarkdown(normalized.markdown, docTitle)
 
-  // Existing chunks for this URL that aren't superseded.
+  // Existing chunks for this URL UNDER THIS SOURCE that aren't superseded.
+  // Scoped by sourceId (not just sourceUrl) because a URL can now have live
+  // chunks under MULTIPLE sources — the discover sweep's copy-on-dedupe
+  // clones another source's chunks in rather than leaving this domain
+  // empty. A global lookup here would pull in another source's rows by
+  // chunkIndex and either corrupt this source's version chain or collide
+  // with the per-source unique constraint on write.
   const existing: Array<{
     id: string
     chunkIndex: number
     contentHash: string
     contentVersion: number
   }> = await (db as any).knowledgeChunk.findMany({
-    where: { sourceUrl: normalized.sourceUrl, supersededAt: null },
+    where: { sourceId: source.id, sourceUrl: normalized.sourceUrl, supersededAt: null },
     select: { id: true, chunkIndex: true, contentHash: true, contentVersion: true },
   })
   const existingByIndex = new Map(existing.map(c => [c.chunkIndex, c]))

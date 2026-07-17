@@ -1120,7 +1120,10 @@ model KnowledgeChunk {
   supersessionReason String?
   contentVersion     Int              @default(1)
 
-  @@unique([sourceUrl, chunkIndex, contentVersion])
+  // Scoped by sourceId (not just sourceUrl) so the same indexed URL can be
+  // CLONED into more than one source/domain — cross-tenant knowledge
+  // isolation fix, see prisma/migrations/manual_chunk_unique_per_source.sql.
+  @@unique([sourceId, sourceUrl, chunkIndex, contentVersion])
   @@index([knowledgeDomainId, supersededAt])
   @@index([sourceId, supersededAt])
   @@index([contentHash])
