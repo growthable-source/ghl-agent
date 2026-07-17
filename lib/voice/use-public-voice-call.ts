@@ -13,7 +13,14 @@ import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
 
 export type WebCallState = 'idle' | 'connecting' | 'live' | 'ended' | 'error' | 'unavailable'
 
-export function usePublicVoiceCall() {
+export interface PublicVoiceCallOptions {
+  /** Token mint endpoint. Default: the fixed homepage demo agent. */
+  tokenEndpoint?: string
+  /** Fired once per call on teardown with how long it ran. */
+  onEnded?: (info: { secsUsed: number; callId: string | null }) => void
+}
+
+export function usePublicVoiceCall(options: PublicVoiceCallOptions = {}) {
   const [state, setState] = useState<WebCallState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
@@ -22,6 +29,10 @@ export function usePublicVoiceCall() {
   const micRef = useRef<MicCapture | null>(null)
   const playerRef = useRef<PcmPlayer | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const callIdRef = useRef<string | null>(null)
+  const startedAtRef = useRef<number | null>(null)
+  const onEndedRef = useRef(options.onEnded)
+  onEndedRef.current = options.onEnded
 
   const teardown = useCallback(async () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
@@ -36,6 +47,12 @@ export function usePublicVoiceCall() {
   const endCall = useCallback(async (next: WebCallState = 'ended') => {
     await teardown()
     setSecondsLeft(null)
+    if (startedAtRef.current !== null) {
+      const secsUsed = Math.round((Date.now() - startedAtRef.current) / 1000)
+      startedAtRef.current = null
+      onEndedRef.current?.({ secsUsed, callId: callIdRef.current })
+      callIdRef.current = null
+    }
     setState(next)
   }, [teardown])
 
@@ -43,12 +60,14 @@ export function usePublicVoiceCall() {
     setError(null)
     setState('connecting')
     try {
-      const res = await fetch('/api/public/voice-demo/web-token', { method: 'POST' })
+      const res = await fetch(options.tokenEndpoint ?? '/api/public/voice-demo/web-token', { method: 'POST' })
       const data = await res.json().catch(() => ({}))
       if (res.status === 503) { setState('unavailable'); return }
       if (!res.ok) throw new Error(data.error || 'Could not start the voice session.')
 
       const { connection, tools, vendorConfig, maxSessionSecs } = data
+      callIdRef.current = typeof data.callId === 'string' ? data.callId : null
+      startedAtRef.current = Date.now()
 
       const provider = new GeminiLiveProvider()
       const player = new PcmPlayer()
@@ -83,7 +102,7 @@ export function usePublicVoiceCall() {
       playerRef.current?.stop()
       setState('error')
     }
-  }, [endCall])
+  }, [endCall, options.tokenEndpoint])
 
   // Tear down if the component unmounts mid-call.
   useEffect(() => () => { void teardown() }, [teardown])
