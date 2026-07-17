@@ -221,7 +221,7 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
 
   await broadcast(convo.id, { type: 'agent_typing', isTyping: true })
 
-  const baseSystemPrompt = await buildBasePrompt(agent, {
+  const { prompt: baseSystemPrompt, volatileContext } = await buildBasePrompt(agent, {
     channel: 'widget',
     incomingMessage: content,
     visitorContactId: `visitor:${convo.visitorId}`,
@@ -338,6 +338,7 @@ Never apologise for the language or mention translation — just speak naturally
       incomingAttachments: params.attachments,
       messageHistory: history,
       systemPrompt: fullPrompt,
+      volatileContext,
       enabledTools: agent.enabledTools,
       workflowPicks: {
         addTo: ((agent as any).addToWorkflowsPick ?? undefined) as any,

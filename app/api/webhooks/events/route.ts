@@ -314,7 +314,7 @@ export async function POST(req: NextRequest) {
         // Build full system prompt with RAG. Shared with the out-of-band
         // retry path (lib/model-retry.ts) so a retried reply uses the exact
         // same prompt — booking flow, RAG, memory, persona all intact.
-        const fullPrompt = await buildCrmInboundPrompt(agent, {
+        const { prompt: fullPrompt, volatileContext } = await buildCrmInboundPrompt(agent, {
           contactId: p.contactId,
           inboundMessage,
         })
@@ -368,6 +368,7 @@ export async function POST(req: NextRequest) {
             incomingMessage: inboundMessage,
             messageHistory,
             systemPrompt: fullPrompt,
+            volatileContext,
             enabledTools: agent.enabledTools,
             workflowPicks: {
               addTo: ((agent as any).addToWorkflowsPick ?? undefined) as any,

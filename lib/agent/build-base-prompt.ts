@@ -11,8 +11,16 @@
  *
  * runAgent then layers the runtime context (qualifying / detection /
  * listening / memory / persona / platform-guidelines) on top via
- * buildSystemPrompt. The string this helper returns becomes the `base`
+ * buildSystemPrompt. The `prompt` this helper returns becomes the `base`
  * passed in as runAgent's `systemPrompt` option.
+ *
+ * The result is split for prompt caching: `prompt` holds only content
+ * that is byte-identical across sequential inbound messages in the same
+ * conversation, so runAgent can put it ahead of the Anthropic cache
+ * breakpoint. Everything derived from the incoming message (objectives
+ * relevance, keyword knowledge, pgvector RAG) goes in `volatileContext`,
+ * which runAgent renders AFTER the breakpoint — a new message then
+ * re-bills only that tail instead of rewriting the whole cached prefix.
  */
 
 import { buildKnowledgeBlock } from '../rag'
@@ -108,31 +116,45 @@ The system strips the marker and renders each pipe-separated value as a
 button. Use sparingly — for clear branching ("Yes / Not yet", "Pricing /
 Booking / Other"). Don't use it for free-text answers.`
 
+/** Split base prompt: `prompt` is stable within a conversation (cacheable
+ *  prefix), `volatileContext` is derived from the incoming message and must
+ *  render after the prompt-cache breakpoint. */
+export interface BasePromptResult {
+  prompt: string
+  volatileContext: string
+}
+
 /**
  * Build the base system prompt that gets passed into runAgent's
- * `systemPrompt` option. Pure — does not touch the database.
+ * `systemPrompt` + `volatileContext` options. Pure — does not touch the
+ * database beyond the knowledge retrieval helpers.
  */
 export async function buildBasePrompt(
   agent: AgentForPrompt,
   opts: BuildBasePromptOptions,
-): Promise<string> {
+): Promise<BasePromptResult> {
   const { channel, incomingMessage, visitorContactId, channelInfoBlock, includeObjectives } = opts
 
   let prompt = agent.systemPrompt
+  // Everything keyed to the incoming message accumulates here — a
+  // different message produces different bytes, so these blocks would
+  // invalidate the Anthropic prompt cache on every turn if they sat in
+  // the prefix. runAgent renders this after the cache breakpoint.
+  let volatileContext = ''
 
-  // Objectives go right after the agent's prompt so the model treats
-  // them as primary task framing. Only the widget runner enables this
+  // Objectives are relevance-flagged against the incoming message, so
+  // they live in the volatile tail. Only the widget runner enables this
   // today; the native runner relies on the dashboard for objective
   // tracking and intentionally keeps the SMS prompt lean.
   if (includeObjectives) {
-    prompt += await buildObjectivesBlockForAgent(agent.id, incomingMessage)
+    volatileContext += await buildObjectivesBlockForAgent(agent.id, incomingMessage)
   }
 
   if (agent.instructions) {
     prompt += `\n\n## Additional Instructions\n${agent.instructions}`
   }
 
-  prompt += buildKnowledgeBlock((agent.knowledgeEntries ?? []) as any, incomingMessage)
+  volatileContext += buildKnowledgeBlock((agent.knowledgeEntries ?? []) as any, incomingMessage)
 
   // Phase 2 retrieval — pgvector chunk search over the workspace's
   // KnowledgeSources. Helper is shared with the playground, Twilio
@@ -142,7 +164,7 @@ export async function buildBasePrompt(
       { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds, knowledgeScopeAll: agent.knowledgeScopeAll },
       incomingMessage,
     )
-    prompt += block
+    volatileContext += block
   }
 
   // Calendar configuration. Widget gets a slightly more detailed block
@@ -184,7 +206,14 @@ Note: This conversation is happening on a website chat widget. When booking, use
     const { parseVocabularyRules, buildVocabularyBlock } = await import('./vocabulary')
     const rules = parseVocabularyRules((agent as any).vocabularyRules, (agent as any).neverSayList)
     prompt += buildVocabularyBlock(rules)
+    // The knowledge passages now render AFTER the vocabulary rules (they
+    // moved to the volatile tail for prompt caching), so re-assert the
+    // override there — otherwise the passages' verbatim wording reads as
+    // the final word and banned brand names leak back into replies.
+    if (rules.length > 0 && volatileContext) {
+      volatileContext += `\n\nThe Vocabulary rules in your instructions override any wording used in the knowledge passages above.`
+    }
   }
 
-  return prompt
+  return { prompt, volatileContext }
 }

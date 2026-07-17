@@ -9,6 +9,14 @@
  * live reply would have used — a retried message must not silently lose the
  * booking flow, RAG context, or persona. The webhook and the retry cron are
  * the only two callers; keep them on this single builder so they never drift.
+ *
+ * The result is split for prompt caching: `prompt` holds only content that is
+ * byte-identical across sequential inbound messages in the same conversation
+ * (runAgent puts it ahead of the Anthropic cache breakpoint). Everything that
+ * varies per message or per minute — objectives relevance, keyword knowledge,
+ * pgvector RAG, offered-slot recency, memory-summary age, qualifying state —
+ * goes in `volatileContext`, rendered AFTER the breakpoint so it never
+ * invalidates the cached prefix.
  */
 
 import { buildKnowledgeBlock } from './rag'
@@ -30,16 +38,29 @@ export interface CrmInboundPromptContext {
  * object the webhook loads). Typed broadly because the webhook reaches through
  * several optional relations with `(agent as any)`.
  */
+/** Split CRM inbound prompt: `prompt` is stable within a conversation
+ *  (cacheable prefix), `volatileContext` varies per message / per minute and
+ *  must render after the prompt-cache breakpoint. */
+export interface CrmInboundPromptResult {
+  prompt: string
+  volatileContext: string
+}
+
 export async function buildCrmInboundPrompt(
   agent: any,
   { contactId, inboundMessage }: CrmInboundPromptContext,
-): Promise<string> {
+): Promise<CrmInboundPromptResult> {
   let fullPrompt = agent.systemPrompt
-  // Primary objectives are injected FIRST (after the base prompt) so the
-  // model sees them before anything else and reaches for the right tool.
-  fullPrompt += await buildObjectivesBlockForAgent(agent.id, inboundMessage)
+  // Everything keyed to the incoming message or wall clock accumulates
+  // here — different bytes per turn would invalidate the Anthropic prompt
+  // cache if they sat in the prefix. runAgent renders this after the
+  // cache breakpoint.
+  let volatileContext = ''
+  // Objectives are relevance-flagged against the inbound message, so they
+  // ride in the volatile tail.
+  volatileContext += await buildObjectivesBlockForAgent(agent.id, inboundMessage)
   if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
-  fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, inboundMessage)
+  volatileContext += buildKnowledgeBlock(agent.knowledgeEntries, inboundMessage)
   // Phase 2 retrieval — pgvector chunk search over ingested sources.
   // Webhook-driven replies were skipping this entirely; agents
   // could ingest 500 pages but answer GHL inbound messages from
@@ -48,7 +69,7 @@ export async function buildCrmInboundPrompt(
     { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds },
     inboundMessage,
   )
-  fullPrompt += phase2Block
+  volatileContext += phase2Block
 
   // Inject calendar ID if booking tools are enabled and a calendar is configured
   if (agent.calendarId && agent.enabledTools.some((t: string) => ['get_available_slots', 'book_appointment'].includes(t))) {
@@ -100,7 +121,10 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
 1. Call \`get_calendar_events\` to find the existing appointmentId.
 2. Call \`get_available_slots\` for the new window the contact wants.
 3. Propose one specific slot; on confirmation call \`reschedule_appointment\` with the appointmentId + exact startTime from get_available_slots.
-4. Confirm the NEW time to the contact. Never say "I've moved it" without calling reschedule_appointment.${offeredBlock}`
+4. Confirm the NEW time to the contact. Never say "I've moved it" without calling reschedule_appointment.`
+    // The offered-slots block carries a "recorded Xm ago" stamp that
+    // changes every minute — it must not sit in the cacheable prefix.
+    volatileContext += offeredBlock
   }
 
   // Memory context and qualifying questions
@@ -121,9 +145,12 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
       : ageMs < 14 * day ? `${Math.round(ageMs / day)} days ago`
       : ageMs < 60 * day ? `${Math.round(ageMs / (7 * day))} weeks ago`
       : `${Math.round(ageMs / (30 * day))} months ago`
-    fullPrompt += `\n\n## Previous Conversation Context (captured ${ageStr})\n${memorySummary.summary}\n\nIf this summary is more than a few days old, treat it as background — the contact's situation may have changed.`
+    // Age stamp changes hourly and the summary regenerates mid-conversation
+    // — volatile, keep it out of the cacheable prefix.
+    volatileContext += `\n\n## Previous Conversation Context (captured ${ageStr})\n${memorySummary.summary}\n\nIf this summary is more than a few days old, treat it as background — the contact's situation may have changed.`
   }
-  fullPrompt += buildQualifyingPromptBlock(unanswered, (agent as any).qualifyingStyle ?? 'strict')
+  // Qualifying state advances as the contact answers — volatile.
+  volatileContext += buildQualifyingPromptBlock(unanswered, (agent as any).qualifyingStyle ?? 'strict')
   fullPrompt += buildPersonaBlock({
     agentPersonaName: agent.agentPersonaName,
     responseLength: agent.responseLength,
@@ -137,5 +164,5 @@ RESCHEDULE PROCEDURE — when the contact asks to move a meeting:
     languages: agent.languages,
   })
 
-  return fullPrompt
+  return { prompt: fullPrompt, volatileContext }
 }

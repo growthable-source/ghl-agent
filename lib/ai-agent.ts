@@ -105,6 +105,15 @@ export async function runAgent(opts: {
   incomingAttachments?: AgentAttachment[]
   messageHistory?: Message[]
   systemPrompt?: string
+  /**
+   * Message-dependent prompt context (RAG passages, keyword knowledge,
+   * objective relevance, offered-slot recency, …) built by the prompt
+   * builders alongside `systemPrompt`. Rendered AFTER the prompt-cache
+   * breakpoint so it can change per message without invalidating the
+   * cached tools + system prefix. Keep anything derived from the incoming
+   * message or the wall clock here, never in `systemPrompt`.
+   */
+  volatileContext?: string
   enabledTools?: string[]
   persona?: PersonaSettings
   fallback?: FallbackConfig
@@ -137,7 +146,7 @@ export async function runAgent(opts: {
     removeFrom?: Array<{ id: string; name: string }>
   }
 }): Promise<AgentResponse> {
-  const { locationId, agentId, model: agentModelKey, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend, workflowPicks } = opts
+  const { locationId, agentId, model: agentModelKey, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, volatileContext, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend, workflowPicks } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
 
   // Resolve CRM adapter: explicit override > sandbox-null > default lookup
@@ -768,6 +777,14 @@ export async function runAgent(opts: {
     }
     return [toAnthropicTool(t)]
   })
+  // ─── Cache the tool catalog independently of the system prompt ───
+  // Tools render before `system` in Anthropic's prompt order, so a
+  // breakpoint on the last tool gives the (large, per-conversation-stable)
+  // schemas their own cache entry that survives any system-prompt change.
+  // Without it, every system edit re-bills the whole catalog too.
+  if (tools.length > 0) {
+    tools[tools.length - 1] = { ...tools[tools.length - 1], cache_control: { type: 'ephemeral' } }
+  }
 
   // Agentic loop — keeps going until Claude stops calling tools
   let currentMessages = [...messages]
@@ -893,12 +910,16 @@ export async function runAgent(opts: {
     // Stable, cacheable prefix — instructions, persona, platform rules,
     // integrations, experiment/data-source/tool blocks, per-contact context.
     // Byte-identical across the loop's iterations and across sequential
-    // messages in the same conversation, so it caches cleanly.
+    // messages in the same conversation, so it caches cleanly. The prompt
+    // builders (buildBasePrompt / buildCrmInboundPrompt) keep everything
+    // message-dependent out of `systemPrompt` and hand it to us as
+    // `volatileContext` instead — don't add per-message content here.
     const stableSystem = promptParts.prefix + experimentBlock + dataSourcesBlock + brokenLabelsNotice + toolRulesBlock
-    // Volatile tail — the per-message "conversation resumed" gap notice and
-    // the current date/time. Sits AFTER the cache breakpoint so it never
-    // invalidates the cached prefix.
-    const volatileSystem = conversationGapBlock + promptParts.volatile
+    // Volatile tail — the per-message "conversation resumed" gap notice,
+    // the caller's message-dependent context (RAG / knowledge / objectives
+    // / offered slots), and the current date/time. Sits AFTER the cache
+    // breakpoint so it never invalidates the cached prefix.
+    const volatileSystem = conversationGapBlock + (volatileContext || '') + promptParts.volatile
 
     const createParams: any = {
       model: 'claude-sonnet-4-6',

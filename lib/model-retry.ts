@@ -225,7 +225,7 @@ async function replayOne(row: any, report: ModelRetryReport): Promise<void> {
   if (answeredSince > 0) { await clearRetry(row.id); report.recovered++; return }
 
   // ── Rebuild the live prompt + history and re-run the agent ──
-  const systemPrompt = await buildCrmInboundPrompt(agent, {
+  const { prompt: systemPrompt, volatileContext } = await buildCrmInboundPrompt(agent, {
     contactId: row.contactId,
     inboundMessage: row.inboundMessage,
   })
@@ -242,6 +242,7 @@ async function replayOne(row: any, report: ModelRetryReport): Promise<void> {
     incomingMessage: row.inboundMessage,
     messageHistory,
     systemPrompt,
+    volatileContext,
     enabledTools: agent.enabledTools,
     qualifyingStyle: agent.qualifyingStyle ?? 'strict',
     fallback: { behavior: agent.fallbackBehavior ?? 'message', message: agent.fallbackMessage ?? null },

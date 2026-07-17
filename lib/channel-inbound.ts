@@ -133,7 +133,7 @@ export async function runChannelInbound(params: ChannelInboundParams): Promise<C
     createdAt: m.createdAt.toISOString(),
   }))
 
-  const systemPrompt = await buildBasePrompt(agent as any, {
+  const { prompt: systemPrompt, volatileContext } = await buildBasePrompt(agent as any, {
     channel: 'native',
     incomingMessage: inboundMessage,
     channelInfoBlock,
@@ -148,6 +148,7 @@ export async function runChannelInbound(params: ChannelInboundParams): Promise<C
     incomingMessage: inboundMessage,
     messageHistory,
     systemPrompt,
+    volatileContext,
     enabledTools,
     sandbox: false,
   })

@@ -14,7 +14,7 @@ const agent = (over: Partial<AgentForPrompt> = {}): AgentForPrompt => ({
 describe('buildBasePrompt', () => {
   it('starts with the agent system prompt', async () => {
     const out = await buildBasePrompt(agent(), { channel: 'native', incomingMessage: 'hi' })
-    expect(out.startsWith('BASE_PROMPT')).toBe(true)
+    expect(out.prompt.startsWith('BASE_PROMPT')).toBe(true)
   })
 
   it('includes Additional Instructions when present', async () => {
@@ -22,13 +22,13 @@ describe('buildBasePrompt', () => {
       agent({ instructions: 'Always say hi first.' }),
       { channel: 'native', incomingMessage: 'hi' },
     )
-    expect(out).toContain('## Additional Instructions')
-    expect(out).toContain('Always say hi first.')
+    expect(out.prompt).toContain('## Additional Instructions')
+    expect(out.prompt).toContain('Always say hi first.')
   })
 
   it('omits Additional Instructions when missing', async () => {
     const out = await buildBasePrompt(agent(), { channel: 'native', incomingMessage: 'hi' })
-    expect(out).not.toContain('## Additional Instructions')
+    expect(out.prompt).not.toContain('## Additional Instructions')
   })
 
   it('appends the channel-specific tail when provided', async () => {
@@ -40,15 +40,15 @@ describe('buildBasePrompt', () => {
         channelInfoBlock: '[Caller phone: +15551234567]',
       },
     )
-    expect(out).toContain('[Caller phone: +15551234567]')
+    expect(out.prompt).toContain('[Caller phone: +15551234567]')
   })
 
   it('includes the quick-reply marker only on the widget channel', async () => {
     const widget = await buildBasePrompt(agent(), { channel: 'widget', incomingMessage: 'hi' })
     const native = await buildBasePrompt(agent(), { channel: 'native', incomingMessage: 'hi' })
-    expect(widget).toContain('## Quick replies (web widget only)')
-    expect(widget).toContain('<quickReplies>')
-    expect(native).not.toContain('## Quick replies')
+    expect(widget.prompt).toContain('## Quick replies (web widget only)')
+    expect(widget.prompt).toContain('<quickReplies>')
+    expect(native.prompt).not.toContain('## Quick replies')
   })
 
   it('injects the calendar block on widget when calendarId + booking tool present', async () => {
@@ -56,8 +56,8 @@ describe('buildBasePrompt', () => {
       agent({ calendarId: 'cal_abc', enabledTools: ['get_available_slots'] }),
       { channel: 'widget', incomingMessage: 'book me', visitorContactId: 'visitor:123' },
     )
-    expect(out).toContain('Calendar ID for booking: cal_abc')
-    expect(out).toContain('Contact ID for this conversation: visitor:123')
+    expect(out.prompt).toContain('Calendar ID for booking: cal_abc')
+    expect(out.prompt).toContain('Contact ID for this conversation: visitor:123')
   })
 
   it('does not inject the widget calendar block without a booking tool', async () => {
@@ -65,7 +65,7 @@ describe('buildBasePrompt', () => {
       agent({ calendarId: 'cal_abc', enabledTools: ['send_reply'] }),
       { channel: 'widget', incomingMessage: 'hi', visitorContactId: 'visitor:123' },
     )
-    expect(out).not.toContain('Calendar ID for booking')
+    expect(out.prompt).not.toContain('Calendar ID for booking')
   })
 
   it('does not inject the widget calendar block on the native channel', async () => {
@@ -73,7 +73,7 @@ describe('buildBasePrompt', () => {
       agent({ calendarId: 'cal_abc', enabledTools: ['get_available_slots'] }),
       { channel: 'native', incomingMessage: 'book me' },
     )
-    expect(out).not.toContain('Calendar ID for booking')
+    expect(out.prompt).not.toContain('Calendar ID for booking')
   })
 
   it('runs the objectives block only when includeObjectives=true', async () => {
@@ -85,6 +85,26 @@ describe('buildBasePrompt', () => {
       incomingMessage: 'hi',
       includeObjectives: false,
     })
-    expect(out).toBeTruthy()
+    expect(out.prompt).toBeTruthy()
+  })
+
+  // ─── Prompt-cache split ───
+  // Message-dependent content must land in `volatileContext` (rendered
+  // after the Anthropic cache breakpoint), never in `prompt` (the cached
+  // prefix). A knowledge block keyed to the incoming message in `prompt`
+  // would invalidate the whole cached prefix on every inbound message.
+  it('puts the message-keyed knowledge block in volatileContext, not the prompt', async () => {
+    const out = await buildBasePrompt(
+      agent({ knowledgeEntries: [{ title: 'Pricing', content: 'Plans start at $99/mo.' }] as any }),
+      { channel: 'native', incomingMessage: 'how much is pricing' },
+    )
+    expect(out.volatileContext).toContain('## Knowledge Base')
+    expect(out.volatileContext).toContain('Plans start at $99/mo.')
+    expect(out.prompt).not.toContain('## Knowledge Base')
+  })
+
+  it('leaves volatileContext empty when there is no message-dependent content', async () => {
+    const out = await buildBasePrompt(agent(), { channel: 'native', incomingMessage: 'hi' })
+    expect(out.volatileContext).toBe('')
   })
 })
