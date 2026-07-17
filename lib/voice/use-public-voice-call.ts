@@ -102,6 +102,12 @@ export function usePublicVoiceCall(options: PublicVoiceCallOptions = {}) {
       micRef.current = mic
       playerRef.current = player
 
+      // "Pick up the phone": Gemini Live's VAD waits for inbound speech,
+      // so without a kick the agent sits silent until the caller talks.
+      // A completed text turn makes it open with its greeting immediately,
+      // like answering a real call.
+      provider.nudge('(The caller has just connected. Answer the phone now with your opening greeting.)')
+
       const cap = Number(maxSessionSecs || connection?.maxSessionSecs || 120)
       setSecondsLeft(cap)
       timerRef.current = setInterval(() => {
