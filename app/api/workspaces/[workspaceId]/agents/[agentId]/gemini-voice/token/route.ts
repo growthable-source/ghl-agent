@@ -7,7 +7,7 @@ import {
   GeminiVoiceNotConfiguredError,
   GeminiVoiceTokenMintError,
 } from '@/lib/voice/gemini/mint'
-import { geminiVoiceModel } from '@/lib/voice/gemini/voice-config'
+import { normalizeGeminiVoiceModel } from '@/lib/voice/gemini/voice-config'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -51,7 +51,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     },
     {
       voiceName: config?.voiceName ?? null,
-      model: config?.model || geminiVoiceModel(),
+      model: normalizeGeminiVoiceModel(config?.model),
       firstMessage: config?.firstMessage ?? null,
       endCallMessage: config?.endCallMessage ?? null,
       language: config?.language ?? null,

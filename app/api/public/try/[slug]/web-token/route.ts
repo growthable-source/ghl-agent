@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { buildGeminiVoiceSession } from '@/lib/voice/gemini/session'
 import { mintGeminiVoiceToken, GeminiVoiceNotConfiguredError, GeminiVoiceTokenMintError } from '@/lib/voice/gemini/mint'
-import { geminiVoiceModel } from '@/lib/voice/gemini/voice-config'
+import { normalizeGeminiVoiceModel } from '@/lib/voice/gemini/voice-config'
 import { retrieveChunks } from '@/lib/ingest/retrieve'
 import { demoWorkspaceId } from '@/lib/demo-prospects/provision'
 
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     },
     {
       voiceName: config?.voiceName ?? null,
-      model: config?.model || geminiVoiceModel(),
+      model: normalizeGeminiVoiceModel(config?.model),
       firstMessage: config?.firstMessage ?? null,
       endCallMessage: config?.endCallMessage ?? null,
       language: config?.language ?? null,
