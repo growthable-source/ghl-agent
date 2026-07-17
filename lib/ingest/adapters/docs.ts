@@ -46,6 +46,11 @@ interface DocsCrawlConfig {
 interface RawDocsPayload {
   html: string
   finalUrl: string
+  /** Set when the fetch stage already rescued the page via Firecrawl
+   *  (plain fetch was blocked) — normalize skips extraction and uses
+   *  this directly. */
+  rescuedMarkdown?: string
+  rescuedTitle?: string | null
 }
 
 export const docsAdapter: SourceAdapter = {
@@ -92,6 +97,24 @@ export const docsAdapter: SourceAdapter = {
   async fetch(_ctx: AdapterContext, item: DiscoveredItem): Promise<RawContent> {
     const page = await fetchPage(item.identifier)
     if (page.status >= 400) {
+      // Bot-walled sites (UberEats, many franchises) 403/429 a plain
+      // fetch but often serve Firecrawl's headless browser fine. The
+      // thin-content rescue in normalize never runs when the FETCH
+      // itself is blocked, so rescue here too — same one-scrape-per-page
+      // budget, null on any failure.
+      const rescued = await firecrawlScrape(item.identifier)
+      if (rescued) {
+        return {
+          identifier: item.identifier,
+          raw: {
+            html: '',
+            finalUrl: item.identifier,
+            rescuedMarkdown: rescued.markdown,
+            rescuedTitle: rescued.title,
+          } satisfies RawDocsPayload,
+          fetchedAt: new Date(),
+        }
+      }
       throw new Error(`fetch ${page.status} for ${item.identifier}`)
     }
     return {
@@ -103,10 +126,10 @@ export const docsAdapter: SourceAdapter = {
 
   async normalize(_ctx: AdapterContext, raw: RawContent): Promise<NormalizedContent> {
     const payload = raw.raw as RawDocsPayload
-    if (!payload?.html) throw new Error('normalize: empty raw payload')
+    if (!payload?.html && !payload?.rescuedMarkdown) throw new Error('normalize: empty raw payload')
 
-    let markdown = extractMarkdownFromHtml(payload.html)
-    let title = extractTitle(payload.html)
+    let markdown = payload.rescuedMarkdown ?? extractMarkdownFromHtml(payload.html)
+    let title = payload.rescuedTitle ?? extractTitle(payload.html)
 
     // Thin result usually means a JS-rendered SPA — the HTML shell
     // carries no content. One Firecrawl scrape (headless render) per

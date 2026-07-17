@@ -246,9 +246,29 @@ export default function TryDemoClient({
               This is what {businessName}&rsquo;s AI receptionist sounds like
             </h1>
             {thinContent ? (
-              <p className="text-zinc-400 max-w-md">
-                We couldn&rsquo;t read much from {websiteDomain} — your receptionist will introduce itself and take a message instead of guessing at details.
-              </p>
+              <div className="w-full max-w-md flex flex-col gap-3">
+                <p className="text-zinc-400">
+                  {ingestion?.status === 'failed'
+                    ? `${websiteDomain} wouldn’t let us read it — some sites (and delivery platforms like UberEats) block robots. Your main website usually works best.`
+                    : `We didn’t find much text on ${websiteDomain}. A different page of your site might work better.`}
+                </p>
+                <input
+                  type="text"
+                  value={websiteInput}
+                  onChange={e => setWebsiteInput(e.target.value)}
+                  placeholder="yourwebsite.com"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-center text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent-primary"
+                />
+                {trainError && <p className="text-accent-red text-sm">{trainError}</p>}
+                <button
+                  onClick={() => void handleTrain()}
+                  disabled={submitting || !websiteInput.trim()}
+                  className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition disabled:opacity-50"
+                >
+                  {submitting ? 'Starting…' : 'Try a different website'}
+                </button>
+                <p className="text-xs text-zinc-500">Or call anyway — your receptionist will introduce itself and take a message instead of guessing at details.</p>
+              </div>
             ) : (
               <p className="text-zinc-400 max-w-md">
                 Tap the button and ask it anything a caller would — your hours, your services, your prices. It learned them from {websiteDomain}.

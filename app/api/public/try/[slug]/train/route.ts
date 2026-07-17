@@ -20,6 +20,7 @@ import { after } from 'next/server'
 import { db } from '@/lib/db'
 import { ensureProvisioned, demoWorkspaceId } from '@/lib/demo-prospects/provision'
 import { validatePublicUrl, InvalidUrlError } from '@/lib/demo-prospects/validate-url'
+import { detectUrl } from '@/lib/ingest/detect'
 import { ingestSource } from '@/lib/ingest/pipeline'
 
 export const maxDuration = 300
@@ -54,17 +55,50 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       return NextResponse.json({ error: 'invalid_url', message }, { status: 400 })
     }
     if (validated.domain !== prospect.websiteDomain) {
-      if (prospect.status === 'registered') {
-        // Nothing provisioned yet — safe to redirect the crawl target.
-        prospect = await db.demoProspect.update({
-          where: { id: prospect.id },
-          data: { websiteUrl: validated.normalizedUrl, websiteDomain: validated.domain },
+      // Retry-with-a-different-site is allowed when there's nothing to
+      // lose: not yet provisioned, OR provisioned but the latest run
+      // ended with zero chunks (bot-walled site, wrong URL, delivery
+      // platform page). A demo that already HAS knowledge keeps its
+      // domain — swapping it out from under a working agent is not v1.
+      let retryEligible = prospect.status === 'registered'
+      if (!retryEligible && prospect.status === 'ready' && prospect.ingestionRunId) {
+        const run = await db.ingestionRun.findUnique({
+          where: { id: prospect.ingestionRunId },
+          select: { status: true, chunksCreated: true },
         })
+        retryEligible = !!run && ['success', 'partial', 'failed'].includes(run.status) && run.chunksCreated === 0
+      }
+      if (retryEligible) {
+        try {
+          prospect = await db.demoProspect.update({
+            where: { id: prospect.id },
+            data: { websiteUrl: validated.normalizedUrl, websiteDomain: validated.domain },
+          })
+        } catch (err) {
+          // Partial unique index: another LIVE demo already owns the new
+          // domain. Friendly refusal beats a 500.
+          if ((err as { code?: string })?.code === 'P2002') {
+            return NextResponse.json(
+              { error: 'domain_taken', message: 'That website already has a live demo — use its original link, or try a different site.' },
+              { status: 409 },
+            )
+          }
+          throw err
+        }
+        // Point the existing crawl source at the new site so the
+        // retrain below fetches the right thing.
+        if (prospect.knowledgeDomainId) {
+          const detection = await detectUrl(prospect.websiteUrl)
+          await db.knowledgeSource.updateMany({
+            where: { knowledgeDomainId: prospect.knowledgeDomainId },
+            data: {
+              urlOrIdentifier: prospect.websiteUrl,
+              sourceType: detection.sourceType,
+              crawlConfig: detection.crawlConfig as object,
+            },
+          })
+        }
       } else {
-        // Already provisioned against the original domain — changing
-        // course mid-flight (or after) needs more than a field swap
-        // (new knowledge domain/source, agent re-template, etc). Not
-        // in v1 scope; tell the client so it can say so honestly.
         urlChangeIgnored = true
       }
     }
