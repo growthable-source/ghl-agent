@@ -4031,3 +4031,57 @@ model PortalInsight {
   windowDays  Int      @default(7)
   generatedAt DateTime @default(now())
 }
+
+// ── Voice-demo prospecting funnel ────────────────────────────────────
+// One row per cold-emailed business. Registered cheaply by the outbound
+// prospecting tool via /api/v1/demo-prospects; the heavy assets (agent,
+// voice config, knowledge domain + crawl) are provisioned lazily on the
+// first /try/[slug] visit and live in the internal demos workspace
+// (DEMO_WORKSPACE_ID). Claiming re-parents those assets into the
+// prospect's real workspace.
+model DemoProspect {
+  id                 String    @id @default(cuid())
+  slug               String    @unique
+  businessName       String
+  websiteUrl         String
+  websiteDomain      String // normalized host, e.g. "acmeplumbing.com"
+  contactEmail       String?
+  vertical           String? // maps to a landing page + template preset
+  templates          Json? // optional per-prospect {prompt,instructions,firstMessage} template overrides
+  metadata           Json? // free-form from the prospecting tool; string values become template vars
+  status             String    @default("registered") // registered | provisioning | ready | failed | expired | claimed
+  agentId            String?
+  knowledgeDomainId  String?
+  ingestionRunId     String?
+  clickedAt          DateTime?
+  firstCallAt        DateTime?
+  callCount          Int       @default(0)
+  totalCallSecs      Int       @default(0)
+  claimedByUserId    String?
+  claimedWorkspaceId String?
+  expiresAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status])
+  @@index([websiteDomain])
+  @@index([expiresAt])
+}
+
+// One row per public demo call. Powers the abuse guards on the /try
+// token route (per-IP cooldown + global concurrency) without a session
+// table: a call counts as "active" while startedAt is within the demo
+// cap and endedAt is null, so stale rows age out of the guard queries
+// by time alone — no reaper needed at the call level.
+model DemoTryCall {
+  id         String    @id @default(cuid())
+  prospectId String
+  ip         String
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  secs       Int       @default(0)
+
+  @@index([ip, startedAt])
+  @@index([startedAt])
+  @@index([prospectId])
+}
