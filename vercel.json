@@ -2,6 +2,7 @@
   "regions": [
     "icn1"
   ],
+  "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
     {
       "path": "/api/cron/follow-ups",

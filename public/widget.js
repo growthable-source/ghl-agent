@@ -45,8 +45,25 @@
     return
   }
 
+  // ─── Runtime origin ─────────────────────────────────────────────────
+  // Chat traffic (config, SSE stream, chat iframe) goes to a dedicated
+  // widget-runtime deployment that dashboard/marketing deploys never
+  // rebuild, so app releases can't interrupt live conversations. The
+  // loader script itself stays on the main domain — installed snippets
+  // never change. Empty RUNTIME_ORIGIN = disabled (everything rides the
+  // script's own origin, the pre-split behaviour). data-api-origin wins
+  // over both for testing/self-hosting.
+  var RUNTIME_ORIGIN = ''
   var hostUrl
   try { hostUrl = new URL(me.src).origin } catch (_) { hostUrl = '' }
+  var apiOverride = me.getAttribute('data-api-origin')
+  if (apiOverride) {
+    hostUrl = apiOverride.replace(/\/$/, '')
+  } else if (RUNTIME_ORIGIN && /(^|\.)(xovera\.io|voxility\.ai)$/.test((hostUrl.split('//')[1] || ''))) {
+    // Only production hosts get rerouted — localhost and preview
+    // deployments keep talking to themselves.
+    hostUrl = RUNTIME_ORIGIN
+  }
 
   var state = {
     open: false,

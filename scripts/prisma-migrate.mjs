@@ -45,6 +45,14 @@ function pickConnectionString() {
 }
 
 async function main() {
+  // The widget-runtime Vercel project sets this: the main project owns
+  // schema state, and two projects racing `migrate deploy` on the same
+  // database during concurrent builds helps nobody.
+  if (process.env.PRISMA_MIGRATE_SKIP === 'true') {
+    console.warn('[migrate] ⚠ PRISMA_MIGRATE_SKIP=true → skipping migrations entirely (widget runtime).')
+    process.exit(0)
+  }
+
   const connectionString = pickConnectionString()
 
   if (!connectionString) {

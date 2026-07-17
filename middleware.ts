@@ -48,6 +48,16 @@ function isPrimaryHost(host: string): boolean {
  *      in middleware means no caller has to change.
  */
 export function middleware(request: NextRequest) {
+  // Cron dedup for the widget-runtime deployment. vercel.json crons fire
+  // on EVERY Vercel project deploying this repo, and the xovera-widget
+  // project (IS_WIDGET_RUNTIME=1) ships the same codebase — without this
+  // guard every cron would run twice per tick, double-sending outbox
+  // messages and double-running agent recovery. The main project owns
+  // all scheduled work; the widget runtime only serves chat traffic.
+  if (process.env.IS_WIDGET_RUNTIME === '1' && request.nextUrl.pathname.startsWith('/api/cron')) {
+    return new NextResponse(null, { status: 204 })
+  }
+
   const regular = request.cookies.get(REGULAR_SESSION_COOKIE)
   const embed = request.cookies.get(EMBED_SESSION_COOKIE)
 
@@ -104,6 +114,9 @@ export const config = {
     // Root is matched so custom-domain visitors get rewritten to the
     // portal; on the primary host '/' falls through to the marketing page.
     '/',
+    // Matched ONLY for the widget-runtime cron guard above — on the main
+    // project the guard is a no-op and crons pass straight through.
+    '/api/cron/:path*',
     '/dashboard/:path*',
     '/api/workspaces/:path*',
     '/api/agents/:path*',
