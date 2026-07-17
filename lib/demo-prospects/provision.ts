@@ -252,7 +252,10 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
     if (fresh && !fresh.agentId) {
       await db.demoProspect.updateMany({
         where: { id: prospect.id, status: 'provisioning' },
-        data: { status: 'failed' },
+        // Stamp expiresAt so the reaper (whose CLAIMABLE_STATUSES list
+        // includes 'failed') actually sweeps this row later instead of
+        // it sitting around forever with expiresAt null.
+        data: { status: 'failed', expiresAt: new Date(Date.now() + TTL_DAYS * 86400_000) },
       })
     }
     return db.demoProspect.findUnique({ where: { slug } })

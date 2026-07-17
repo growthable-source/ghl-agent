@@ -20,7 +20,7 @@ import { db } from '@/lib/db'
 import { demoWorkspaceId } from './provision'
 
 export type ClaimResult =
-  | { ok: true; workspaceId: string }
+  | { ok: true; workspaceId: string; hadAgent: boolean }
   | { ok: false; reason: 'not_found' | 'claimed_by_other' | 'not_configured' }
 
 export async function claimProspect(slug: string, userId: string): Promise<ClaimResult> {
@@ -32,7 +32,7 @@ export async function claimProspect(slug: string, userId: string): Promise<Claim
 
   if (prospect.status === 'claimed') {
     if (prospect.claimedByUserId === userId && prospect.claimedWorkspaceId) {
-      return { ok: true, workspaceId: prospect.claimedWorkspaceId }
+      return { ok: true, workspaceId: prospect.claimedWorkspaceId, hadAgent: Boolean(prospect.agentId) }
     }
     return { ok: false, reason: 'claimed_by_other' }
   }
@@ -68,7 +68,7 @@ export async function claimProspect(slug: string, userId: string): Promise<Claim
   if (won.count === 0) {
     const fresh = await db.demoProspect.findUnique({ where: { slug } })
     if (fresh?.claimedByUserId === userId && fresh.claimedWorkspaceId) {
-      return { ok: true, workspaceId: fresh.claimedWorkspaceId }
+      return { ok: true, workspaceId: fresh.claimedWorkspaceId, hadAgent: Boolean(fresh.agentId) }
     }
     return { ok: false, reason: 'claimed_by_other' }
   }
@@ -124,5 +124,5 @@ export async function claimProspect(slug: string, userId: string): Promise<Claim
     }).catch(err => console.error(`[demo-claim] domain re-parent failed for ${slug}:`, err))
   }
 
-  return { ok: true, workspaceId: workspace.id }
+  return { ok: true, workspaceId: workspace.id, hadAgent: Boolean(prospect.agentId) }
 }

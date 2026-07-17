@@ -8,7 +8,10 @@
  *   - hard per-session cap DEMO_TRY_MAX_SECS baked into the token (the
  *     real cost guard — a call cannot outlive it)
  * Injects retrieval from the prospect's own crawled knowledge domain as
- * ragContext. Tools stripped; nothing writes or self-trains.
+ * ragContext. Tools stripped. This never feeds analysis/training: it's
+ * structural, not a flag someone could flip — this browser-direct path
+ * never creates the WidgetVoiceCall/CallLog rows that path posts
+ * transcripts through, so no downstream pipeline can see these sessions.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'

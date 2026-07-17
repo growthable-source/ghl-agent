@@ -4049,7 +4049,7 @@ model DemoProspect {
   slug               String    @unique
   businessName       String
   websiteUrl         String
-  websiteDomain      String // normalized host, e.g. "acmeplumbing.com"
+  websiteDomain      String // normalized host, e.g. "acmeplumbing.com" — hand-run partial UNIQUE index enforces one live (non expired/claimed/failed) demo per domain; Prisma can't express a partial unique index in this schema, see prisma/migrations/manual_demo_prospects.sql
   contactEmail       String?
   vertical           String? // maps to a landing page + template preset
   templates          Json? // optional per-prospect {prompt,instructions,firstMessage} template overrides

@@ -8,7 +8,7 @@
  * Auth: Bearer ApiKey (lib/api-auth). Accepted keys: org-scope, or a
  * workspace-scope key belonging to the internal demos workspace.
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { authenticateApiKey, AuthError, type KeyContext } from '@/lib/api-auth'
@@ -73,24 +73,46 @@ export const POST = withApiLog(async (req: NextRequest) => {
     }
 
     const slug = generateProspectSlug(businessName)
-    await db.demoProspect.create({
-      data: {
-        slug,
-        businessName,
-        websiteUrl: websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`,
-        websiteDomain,
-        contactEmail: body.contactEmail?.trim().slice(0, 320) || null,
-        vertical: body.vertical?.trim().slice(0, 60) || null,
-        templates:
-          body.templates && typeof body.templates === 'object'
-            ? (body.templates as Prisma.InputJsonValue)
-            : undefined,
-        metadata:
-          body.metadata && typeof body.metadata === 'object'
-            ? (body.metadata as Prisma.InputJsonValue)
-            : undefined,
-      },
-    })
+    try {
+      await db.demoProspect.create({
+        data: {
+          slug,
+          businessName,
+          websiteUrl: websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`,
+          websiteDomain,
+          contactEmail: body.contactEmail?.trim().slice(0, 320) || null,
+          vertical: body.vertical?.trim().slice(0, 60) || null,
+          templates:
+            body.templates && typeof body.templates === 'object'
+              ? (body.templates as Prisma.InputJsonValue)
+              : undefined,
+          metadata:
+            body.metadata && typeof body.metadata === 'object'
+              ? (body.metadata as Prisma.InputJsonValue)
+              : undefined,
+        },
+      })
+    } catch (err) {
+      // Two concurrent registrations for the same domain both pass the
+      // findFirst check above before either write lands; the partial
+      // unique index on websiteDomain (manual_demo_prospects.sql) makes
+      // the loser's create() throw P2002 instead of creating a second
+      // live row. Re-run the lookup and adopt the winner's slug rather
+      // than 500ing the race loser.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const winner = await db.demoProspect.findFirst({
+          where: { websiteDomain, status: { notIn: ['expired', 'claimed', 'failed'] } },
+          select: { slug: true },
+        })
+        if (winner) {
+          return ok(
+            { slug: winner.slug, url: `${publicBaseUrl()}/try/${winner.slug}`, existing: true },
+            { apiKeyId: key.apiKeyId },
+          )
+        }
+      }
+      throw err
+    }
     return ok({ slug, url: `${publicBaseUrl()}/try/${slug}`, existing: false }, { apiKeyId: key.apiKeyId })
   } catch (err) {
     return errorResponse(err)

@@ -6,10 +6,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { ensureProvisioned } from '@/lib/demo-prospects/provision'
+import { ensureProvisioned, demoWorkspaceId } from '@/lib/demo-prospects/provision'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  // Distinguish "feature not configured" from "no such prospect" — both
+  // would otherwise 404 identically through ensureProvisioned's null
+  // return, but only one of them means the feature is turned off.
+  if (!demoWorkspaceId()) {
+    return NextResponse.json({ error: 'not_configured' }, { status: 503 })
+  }
   const prospect = await ensureProvisioned(slug)
   if (!prospect) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 

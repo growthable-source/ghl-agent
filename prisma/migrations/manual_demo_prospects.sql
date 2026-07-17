@@ -50,3 +50,15 @@ CREATE INDEX IF NOT EXISTS "DemoTryCall_prospectId_idx" ON "DemoTryCall"("prospe
 -- no-ops on a fresh database.
 DROP INDEX IF EXISTS "DemoProspect_expiresAt_idx";
 DROP INDEX IF EXISTS "DemoTryCall_startedAt_idx";
+
+-- Partial unique index enforcing "one live demo per domain at a time"
+-- at the DB layer — Prisma's schema.prisma can't express a partial
+-- unique index (see the comment on DemoProspect.websiteDomain), so
+-- this is SQL-only. Two concurrent POSTs for the same domain both
+-- pass the app-level findFirst check before either write lands; this
+-- index makes the loser's create() throw P2002 instead of both rows
+-- landing, and the POST route's catch re-queries and adopts the
+-- winner's slug.
+CREATE UNIQUE INDEX IF NOT EXISTS "DemoProspect_live_domain_key"
+  ON "DemoProspect"("websiteDomain")
+  WHERE "status" NOT IN ('expired', 'claimed', 'failed');

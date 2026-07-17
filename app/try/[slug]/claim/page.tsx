@@ -23,7 +23,15 @@ export default async function ClaimPage({ params }: Params) {
 
   const result = await claimProspect(slug, session.user.id)
   if (result.ok) {
-    redirect(`/dashboard/${result.workspaceId}/settings/billing?fromDemo=1`)
+    // Only send them to billing when there's actually a demo agent riding
+    // along — an expired-before-claim demo still creates the workspace
+    // (name prefilled from the prospect), but there's no "your demo is in
+    // there" story to sell on the billing page, so land on the dashboard
+    // instead.
+    if (result.hadAgent) {
+      redirect(`/dashboard/${result.workspaceId}/settings/billing?fromDemo=1`)
+    }
+    redirect(`/dashboard/${result.workspaceId}?fromDemo=expired`)
   }
 
   return (
