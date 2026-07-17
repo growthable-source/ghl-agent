@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import { createMessage } from '@/lib/llm'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 
 /**
@@ -73,11 +73,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     imageSource = { type: 'url', url: imageUrl }
   }
 
-  const client = new Anthropic()
   let response: any
   try {
-    response = await client.messages.create({
-      model: 'claude-haiku-4-5',
+    response = await createMessage('claude-haiku', {
       max_tokens: 400,
       messages: [
         {
@@ -109,7 +107,7 @@ Return JSON only.`,
           ],
         },
       ],
-    })
+    }, { surface: 'logo_analysis', workspaceId })
   } catch (err: any) {
     console.warn('[brand analyze] vision call failed:', err?.message)
     return NextResponse.json({

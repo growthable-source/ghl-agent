@@ -11,11 +11,10 @@
  * pre-migration DB so callers never throw on summary work.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db'
+import { createMessage } from './llm'
 
-const client = new Anthropic()
-const MODEL = 'claude-haiku-4-5'
+const MODEL = 'claude-haiku'
 
 const SUMMARY_SYSTEM =
   'Summarise this live-chat transcript for an operator scanning the inbox. ' +
@@ -71,12 +70,11 @@ export async function generateConversationSummary(
 
   let summary = ''
   try {
-    const completion = await client.messages.create({
-      model: MODEL,
+    const completion = await createMessage(MODEL, {
       max_tokens: 220,
       system: SUMMARY_SYSTEM,
       messages: [{ role: 'user', content: transcript }],
-    })
+    }, { surface: 'conversation_summary' })
     const block = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     summary = (block?.text || '').trim()
   } catch {

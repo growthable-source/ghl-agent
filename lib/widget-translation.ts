@@ -17,12 +17,11 @@
  * their AI is saying.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db'
 import { broadcast } from './widget-sse'
+import { createMessage } from './llm'
 
-const client = new Anthropic()
-const MODEL = 'claude-haiku-4-5'
+const MODEL = 'claude-haiku'
 
 // ISO 639-1 codes we accept back from the model. We constrain the
 // output to a known set so a creative Haiku can't slip "Klingon" or
@@ -61,8 +60,7 @@ export async function detectAndTranslate(content: string): Promise<TranslationRe
   }
 
   try {
-    const completion = await client.messages.create({
-      model: MODEL,
+    const completion = await createMessage(MODEL, {
       max_tokens: 600,
       system:
         'Detect the language of the user-supplied text and translate to English if it is not English.\n' +
@@ -73,7 +71,7 @@ export async function detectAndTranslate(content: string): Promise<TranslationRe
         '- translationEn MUST be null when language is "en". Otherwise a faithful English translation.\n' +
         '- Output ONLY the JSON object. No markdown, no preamble, no explanation.',
       messages: [{ role: 'user', content: text }],
-    })
+    }, { surface: 'translation' })
     const block = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     const raw = (block?.text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim()
     const parsed = JSON.parse(raw)

@@ -29,11 +29,11 @@
  */
 
 import { GoogleGenAI, createPartFromUri } from '@google/genai'
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
+import { createMessage } from '@/lib/llm'
 
 const VIDEO_MODEL = process.env.COPILOT_RECORDING_MODEL || 'gemini-2.5-flash'
-const DISTILL_MODEL = 'claude-haiku-4-5'
+const DISTILL_MODEL = 'claude-haiku'
 const FILE_ACTIVE_TIMEOUT_MS = 90_000
 
 const MEDIA_PROMPT = `You are analysing a recording of a human running an onboarding / support call where they guide a user through a software product, often sharing or directing the user's screen.
@@ -221,9 +221,7 @@ export async function distillPlaybook(agentId: string): Promise<void> {
     .slice(0, 48_000)
 
   try {
-    const client = new Anthropic()
-    const completion = await client.messages.create({
-      model: DISTILL_MODEL,
+    const completion = await createMessage(DISTILL_MODEL, {
       max_tokens: 4000,
       system: DISTILL_SYSTEM,
       messages: [
@@ -232,7 +230,7 @@ export async function distillPlaybook(agentId: string): Promise<void> {
           content: `Agent: ${agent.name}\n\nOperator's current steps:\n${stepsBlock}\n\nSource material to learn from:\n\n${recordingsBlock}`,
         },
       ],
-    })
+    }, { surface: 'copilot_recordings', agentId })
     const block = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     const parsed = block ? parseDistill(block.text) : null
     if (!parsed) {

@@ -97,12 +97,28 @@ export async function GET(req: NextRequest) {
   // the backlog only clears when that domain next ingests something.
   if (results.length === 0) {
     try {
-      const orphan = await db.knowledgeChunk.groupBy({
+      // Only count chunks auto-topics can still work on: once a chunk has
+      // burned MAX_TOPIC_ATTEMPTS model passes without landing a tag, it's
+      // unclassifiable and must not keep the backstop firing. Before this
+      // filter, one stuck bucket meant a Haiku call every idle minute,
+      // forever. Falls back to the unfiltered query pre-migration.
+      const { MAX_TOPIC_ATTEMPTS } = await import('@/lib/ingest/auto-topics')
+      const orphanWhere = { supersededAt: null, taxonomyTags: { isEmpty: true } }
+      const orphan = await (db as any).knowledgeChunk.groupBy({
         by: ['knowledgeDomainId'],
-        where: { supersededAt: null, taxonomyTags: { isEmpty: true } },
+        where: { ...orphanWhere, autoTopicAttempts: { lt: MAX_TOPIC_ATTEMPTS } },
         _count: { _all: true },
         orderBy: { _count: { id: 'desc' } },
         take: 1,
+      }).catch((err: any) => {
+        if (err?.code !== 'P2022' && !/column .* does not exist/i.test(err?.message ?? '')) throw err
+        return db.knowledgeChunk.groupBy({
+          by: ['knowledgeDomainId'],
+          where: orphanWhere,
+          _count: { _all: true },
+          orderBy: { _count: { id: 'desc' } },
+          take: 1,
+        })
       })
       if (orphan.length > 0 && orphan[0]._count._all >= 10) {
         const { autoOrganizeTopics } = await import('@/lib/ingest/auto-topics')

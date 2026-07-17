@@ -22,11 +22,11 @@
  * record why so the UI can say so instead of failing silently.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
+import { createMessage } from '@/lib/llm'
 import { getTicketingStatus } from '@/lib/ticketing-access'
 
-const ANALYSIS_MODEL = 'claude-haiku-4-5'
+const ANALYSIS_MODEL = 'claude-haiku'
 const MAX_TRANSCRIPT_CHARS = 24_000
 
 export interface SessionAnalysis {
@@ -96,9 +96,7 @@ export async function analyzeSessionAndFollowUp(sessionId: string): Promise<Sess
       .slice(0, MAX_TRANSCRIPT_CHARS)
     if (!transcript.trim()) return null
 
-    const client = new Anthropic()
-    const completion = await client.messages.create({
-      model: ANALYSIS_MODEL,
+    const completion = await createMessage(ANALYSIS_MODEL, {
       max_tokens: 500,
       system:
         'You analyze transcripts of live screen-share support sessions between a user and an AI co-pilot. ' +
@@ -110,7 +108,7 @@ export async function analyzeSessionAndFollowUp(sessionId: string): Promise<Sess
         '"ticketSubject" (when issueResolved is false: a concise support-ticket subject line written from the user\'s perspective; otherwise null). ' +
         'Judge resolution conservatively: an abruptly ended session mid-problem is NOT resolved.',
       messages: [{ role: 'user', content: `Transcript:\n\n${transcript}\n\nAnalyze.` }],
-    })
+    }, { surface: 'copilot_analysis' })
     const block = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     const analysis = block ? parseAnalysisJson(block.text) : null
     if (!analysis) {

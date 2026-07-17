@@ -1095,6 +1095,11 @@ model KnowledgeChunk {
   taxonomyTags    String[] @default([])
   intentTags      String[] @default([])
   taxonomyVersion Int      @default(1)
+  // How many times auto-topics has shown this chunk to the model without
+  // managing to tag it. Chunks at the cap count as unclassifiable and are
+  // skipped — without this, a bucket of untaggable chunks made the idle
+  // backstop burn a Haiku call every minute, forever (Jul 2026).
+  autoTopicAttempts Int @default(0)
 
   // Quality
   confidenceTier String @default("provisional") // 'canonical' | 'provisional' | 'draft'

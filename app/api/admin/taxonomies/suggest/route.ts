@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { createMessage } from '@/lib/llm'
 
 /**
  * POST /api/admin/taxonomies/suggest
@@ -42,7 +42,7 @@ interface Suggestion {
   sampleChunks: Array<{ id: string; primaryTopic: string | null; preview: string }>
 }
 
-const MODEL = 'claude-haiku-4-5'
+const MODEL = 'claude-haiku'
 const MAX_CHUNKS = 60
 
 export async function POST(req: NextRequest) {
@@ -114,15 +114,13 @@ Rules:
 
 If nothing meaningful can be proposed, return { "suggestions": [] }.`
 
-  const client = new Anthropic()
   let parsed: { suggestions?: Array<{ key?: string; label?: string; description?: string; covers_chunk_ids?: string[] }> } = {}
   try {
-    const completion = await client.messages.create({
-      model: MODEL,
+    const completion = await createMessage(MODEL, {
       max_tokens: 1500,
       system,
       messages: [{ role: 'user', content: `Unplaced chunks:\n\n${chunkBlock}` }],
-    })
+    }, { surface: 'taxonomy_suggest' })
     const text = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     const raw = (text?.text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim()
     parsed = JSON.parse(raw)

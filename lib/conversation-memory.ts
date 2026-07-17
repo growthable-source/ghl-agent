@@ -1,7 +1,6 @@
 import { db } from './db'
-import Anthropic from '@anthropic-ai/sdk'
-
-const client = new Anthropic()
+import { createMessage } from './llm'
+import type { LlmContentBlock } from './llm/types'
 
 // Reserved roles that are persisted to ConversationMessage but excluded from
 // the chat history shown to the model. They carry structured context that
@@ -147,16 +146,15 @@ export async function updateContactMemorySummary(
       .map(m => `${m.role === 'user' ? 'Contact' : 'Agent'}: ${m.content}`)
       .join('\n')
 
-    const res = await client.messages.create({
-      model: 'claude-haiku-4-5',
+    const res = await createMessage('claude-haiku', {
       max_tokens: 200,
       messages: [{
         role: 'user',
         content: `Summarise this SMS conversation in 2-3 sentences. Focus on: what the contact wants, any key info they shared (budget, timeline, objections), and where things stand. Be factual and brief.\n\n${transcript}`,
       }],
-    })
+    }, { surface: 'contact_memory', agentId })
 
-    const summary = (res.content[0] as Anthropic.TextBlock).text
+    const summary = (res.content[0] as LlmContentBlock & { text: string }).text
 
     await db.contactMemory.upsert({
       where: { agentId_contactId: { agentId, contactId } },
@@ -210,16 +208,15 @@ export async function updateWidgetMemorySummary(params: {
       })
       .join('\n')
 
-    const res = await client.messages.create({
-      model: 'claude-haiku-4-5',
+    const res = await createMessage('claude-haiku', {
       max_tokens: 250,
       messages: [{
         role: 'user',
         content: `Summarise this chat-widget conversation in 2-4 sentences. Focus on: who the visitor is (if they shared a name/email/role), what they're trying to do, any key facts (budget, timeline, objections, what page they're on), and where things stand. Be factual and brief — this becomes long-term memory the agent uses when the same visitor returns later.\n\n${transcript}`,
       }],
-    })
+    }, { surface: 'contact_memory', workspaceId, agentId })
 
-    const summary = (res.content[0] as Anthropic.TextBlock).text
+    const summary = (res.content[0] as LlmContentBlock & { text: string }).text
     const contactId = `visitor:${visitorId}`
     // The ContactMemory schema requires a locationId. We use the
     // workspace-prefixed widget pseudo-location so the row co-exists

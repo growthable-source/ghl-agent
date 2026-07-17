@@ -20,14 +20,12 @@
  *   - Skipped for conversations with status != 'active'
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db'
 import { broadcast } from './widget-sse'
-
-const client = new Anthropic()
+import { createMessage } from './llm'
 
 // Keep the model fast + cheap — this is a one-line nudge, not a reasoning task.
-const MODEL = 'claude-haiku-4-5'
+const MODEL = 'claude-haiku'
 
 // Heuristic keywords that suggest the agent already nudged. Avoids
 // stacking "still there?" messages if the cron mis-fires across runs.
@@ -104,8 +102,7 @@ export async function sendQuietCheckIn(conversationId: string): Promise<{ sent: 
 
   let reply: string | null = null
   try {
-    const completion = await client.messages.create({
-      model: MODEL,
+    const completion = await createMessage(MODEL, {
       max_tokens: 80,
       system:
         'You are checking back in on a live-chat conversation where the visitor went quiet ' +
@@ -117,7 +114,7 @@ export async function sendQuietCheckIn(conversationId: string): Promise<{ sent: 
       messages: [
         { role: 'user', content: `Recent transcript:\n\n${transcript}\n\nSend a brief check-in.` },
       ],
-    })
+    }, { surface: 'check_in' })
     const block = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     reply = (block?.text || '').trim().replace(/^["']|["']$/g, '').slice(0, 200)
   } catch (err: any) {

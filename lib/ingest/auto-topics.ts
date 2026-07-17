@@ -22,35 +22,64 @@
  * and re-assignments.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
+import { createMessage } from '@/lib/llm'
 
-const MODEL = 'claude-haiku-4-5'
+const MODEL = 'claude-haiku'
 const CHUNKS_PER_PASS = 60
 const MAX_PASSES = 4
+/** After this many model passes over a chunk with no tag landing, it counts
+ *  as unclassifiable and drops out of every future auto-topics query. */
+export const MAX_TOPIC_ATTEMPTS = 3
+
+function isMissingColumn(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null
+  return e?.code === 'P2022' || /column .* does not exist/i.test(e?.message ?? '')
+}
 
 export async function autoOrganizeTopics(knowledgeDomainId: string): Promise<{ topicsCreated: number; chunksTagged: number }> {
   let topicsCreated = 0
   let chunksTagged = 0
+  // Flips false when the autoTopicAttempts column hasn't been migrated yet —
+  // we then run the legacy behaviour (no cap) rather than failing.
+  let attemptsTracked = true
 
   try {
     for (let pass = 0; pass < MAX_PASSES; pass++) {
-      const [domain, existing, unmatched] = await Promise.all([
+      const [domain, existing] = await Promise.all([
         db.knowledgeDomain.findUnique({
           where: { id: knowledgeDomainId },
-          select: { name: true, description: true },
+          select: { name: true, description: true, workspace: { select: { id: true } } },
         }),
         db.taxonomy.findMany({
           where: { knowledgeDomainId },
           select: { key: true, label: true },
         }),
-        db.knowledgeChunk.findMany({
+      ])
+
+      let unmatched: Array<{ id: string; primaryTopic: string | null; content: string }> = []
+      try {
+        unmatched = await (db as any).knowledgeChunk.findMany({
+          where: {
+            knowledgeDomainId,
+            supersededAt: null,
+            taxonomyTags: { isEmpty: true },
+            ...(attemptsTracked ? { autoTopicAttempts: { lt: MAX_TOPIC_ATTEMPTS } } : {}),
+          },
+          orderBy: { createdAt: 'desc' },
+          take: CHUNKS_PER_PASS,
+          select: { id: true, primaryTopic: true, content: true },
+        })
+      } catch (err) {
+        if (!attemptsTracked || !isMissingColumn(err)) throw err
+        attemptsTracked = false
+        unmatched = await db.knowledgeChunk.findMany({
           where: { knowledgeDomainId, supersededAt: null, taxonomyTags: { isEmpty: true } },
           orderBy: { createdAt: 'desc' },
           take: CHUNKS_PER_PASS,
           select: { id: true, primaryTopic: true, content: true },
-        }),
-      ])
+        })
+      }
       if (!domain || unmatched.length < 3) break
 
       const existingBlock =
@@ -77,20 +106,33 @@ Rules:
 - Output STRICT JSON only: { "suggestions": [ { "key": "...", "label": "...", "description": "...", "covers_chunk_ids": ["..."] } ] }
 - If nothing meaningful can be proposed, return { "suggestions": [] }.`
 
-      const client = new Anthropic()
       let parsed: { suggestions?: Array<{ key?: string; label?: string; covers_chunk_ids?: string[] }> }
+      let modelCallSucceeded = false
       try {
-        const completion = await client.messages.create({
-          model: MODEL,
-          max_tokens: 1500,
-          system,
-          messages: [{ role: 'user', content: `Unplaced chunks:\n\n${chunkBlock}` }],
-        })
+        const completion = await createMessage(
+          MODEL,
+          {
+            max_tokens: 1500,
+            system,
+            messages: [{ role: 'user', content: `Unplaced chunks:\n\n${chunkBlock}` }],
+          },
+          { surface: 'auto_topics', workspaceId: domain.workspace?.id ?? null },
+        )
+        modelCallSucceeded = true
         const text = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
         const raw = (text?.text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim()
         parsed = JSON.parse(raw)
       } catch (err) {
         console.warn('[auto-topics] suggestion call failed:', err instanceof Error ? err.message : err)
+        // An unparseable answer still consumed an attempt for every chunk we
+        // showed — count it, or a chronically-confusing bucket loops forever.
+        // A failed CALL (network/5xx) doesn't count against the chunks.
+        if (modelCallSucceeded && attemptsTracked) {
+          await (db as any).knowledgeChunk.updateMany({
+            where: { id: { in: unmatched.map(c => c.id) }, taxonomyTags: { isEmpty: true } },
+            data: { autoTopicAttempts: { increment: 1 } },
+          }).catch(() => {})
+        }
         break
       }
 
@@ -125,6 +167,17 @@ Rules:
         })
         chunksTagged += updated.count
         appliedThisPass += updated.count
+      }
+
+      // Whatever the model saw and left untagged burned an attempt.
+      // Chunks that hit MAX_TOPIC_ATTEMPTS drop out of future queries —
+      // this is what stops an untaggable bucket from re-running every
+      // idle cron tick forever.
+      if (attemptsTracked) {
+        await (db as any).knowledgeChunk.updateMany({
+          where: { id: { in: unmatched.map(c => c.id) }, taxonomyTags: { isEmpty: true } },
+          data: { autoTopicAttempts: { increment: 1 } },
+        }).catch(() => {})
       }
 
       // No traction this pass → the leftovers genuinely don't cluster;

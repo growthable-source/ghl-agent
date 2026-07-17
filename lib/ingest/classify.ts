@@ -16,10 +16,9 @@
  * chunk without batching gymnastics.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import { createMessage } from '@/lib/llm'
 
-const client = new Anthropic()
-const MODEL = 'claude-haiku-4-5'
+const MODEL = 'claude-haiku'
 const MAX_TOKENS = 200
 
 export interface TaxonomyRow {
@@ -104,12 +103,11 @@ ${intentBlock}`
 
   let parsed: any = null
   try {
-    const completion = await client.messages.create({
-      model: MODEL,
+    const completion = await createMessage(MODEL, {
       max_tokens: MAX_TOKENS,
       system: [{ type: 'text', text: cachedSystem, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userParts.join('\n') }],
-    })
+    }, { surface: 'ingest_classify' })
     const text = completion.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined
     const raw = (text?.text ?? '').trim()
     // Tolerate the occasional ```json fence even though we asked not to.

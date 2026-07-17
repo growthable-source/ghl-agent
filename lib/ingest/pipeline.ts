@@ -134,20 +134,36 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
       return [] as Awaited<ReturnType<SourceAdapter['discover']>>
     })
 
-    // Only follow NEW links. A URL that already has live chunks for this
-    // source was already crawled — re-fetching it buys nothing and, for
+    // Only follow NEW links. A URL that already has live chunks was
+    // already crawled — re-fetching it buys nothing and, for
     // JS-rendered pages, burns a Firecrawl scrape every recrawl (the
     // hash-match below only saves re-EMBEDDING, not the fetch). New docs
     // pages and new RSS items aren't indexed yet, so they still ingest;
     // feeds keep updating because each new item is a new URL. `force`
     // bypasses this for a deliberate full re-scrape.
+    //
+    // Scope: GLOBAL by sourceUrl, matching exactly what processPage
+    // dedupes on. It used to be per-source, which meant a duplicate
+    // source pointing at an already-indexed site re-fetched every page
+    // each recrawl and then no-op'd at the hash match — full fetch cost,
+    // zero chunks, forever (the July 2026 runaway recrawl). Bounded by
+    // the discovered hosts so the query never scans unrelated URLs.
     let toFetch = discovered
     if (!opts.force && discovered.length > 0) {
-      const indexed: Array<{ sourceUrl: string }> = await (db as any).knowledgeChunk.findMany({
-        where: { sourceId: source.id, supersededAt: null },
-        distinct: ['sourceUrl'],
-        select: { sourceUrl: true },
-      }).catch(() => [])
+      const hosts = Array.from(new Set(
+        discovered.map(d => {
+          try { return new URL(d.identifier).host.toLowerCase() } catch { return '' }
+        }),
+      )).filter(Boolean)
+      const indexed: Array<{ sourceUrl: string }> = hosts.length === 0 ? [] :
+        await (db as any).knowledgeChunk.findMany({
+          where: {
+            supersededAt: null,
+            OR: hosts.map(h => ({ sourceUrl: { contains: `//${h}`, mode: 'insensitive' } })),
+          },
+          distinct: ['sourceUrl'],
+          select: { sourceUrl: true },
+        }).catch(() => [])
       const indexedKeys = new Set(
         indexed.map(r => canonicalUrlKey(r.sourceUrl)).filter(Boolean),
       )

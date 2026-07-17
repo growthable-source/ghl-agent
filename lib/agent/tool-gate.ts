@@ -17,14 +17,26 @@
  *   - the tool's catalog `enforcement` !== 'enforced'
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from '@/lib/db'
+import { createMessage, type LlmCreateParams } from '@/lib/llm'
 
-const GATE_MODEL = 'claude-haiku-4-5'
+const GATE_MODEL = 'claude-haiku'
 const GATE_TIMEOUT_MS = 5000
 const GATE_MAX_TOKENS = 120
 
-const gateClient = new Anthropic()
+/** createMessage bounded by the gate timeout. The race doesn't cancel the
+ *  underlying HTTP call (the LLM layer owns no abort surface), but the gate
+ *  fails open at the deadline either way — same posture as before, and the
+ *  call now lands in LlmUsageDaily. */
+function gateCall(params: LlmCreateParams, agentId: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    createMessage(GATE_MODEL, params, { surface: 'tool_gate', agentId }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`gate timed out after ${GATE_TIMEOUT_MS}ms`)), GATE_TIMEOUT_MS)
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
 
 export interface GateInput {
   agentId: string
@@ -92,27 +104,17 @@ Decision?`
   let outputTokens: number | undefined
 
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), GATE_TIMEOUT_MS)
-    try {
-      const res = await gateClient.messages.create(
-        {
-          model: GATE_MODEL,
-          max_tokens: GATE_MAX_TOKENS,
-          system: GATE_SYSTEM,
-          messages: [{ role: 'user', content: userMessage }],
-        },
-        { signal: controller.signal as any },
-      )
-      inputTokens = res.usage.input_tokens
-      outputTokens = res.usage.output_tokens
-      const text = (res.content[0] as any)?.text ?? ''
-      const parsed = parseGateResponse(text)
-      allowed = parsed.allowed
-      reason = parsed.reason
-    } finally {
-      clearTimeout(timeoutId)
-    }
+    const res = await gateCall({
+      max_tokens: GATE_MAX_TOKENS,
+      system: GATE_SYSTEM,
+      messages: [{ role: 'user', content: userMessage }],
+    }, input.agentId)
+    inputTokens = res.usage.input_tokens
+    outputTokens = res.usage.output_tokens
+    const text = (res.content[0] as any)?.text ?? ''
+    const parsed = parseGateResponse(text)
+    allowed = parsed.allowed
+    reason = parsed.reason
   } catch (err: any) {
     // FAIL-OPEN: don't block the user on our gate failing.
     console.warn(`[tool-gate] failure for ${input.toolName}, failing open:`, err?.message)
@@ -249,27 +251,17 @@ Decisions (one line per item, in order)?`
   let failOpenReason: string | null = null
 
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), GATE_TIMEOUT_MS)
-    try {
-      const res = await gateClient.messages.create(
-        {
-          model: GATE_MODEL,
-          // Each verdict is one short line; scale the budget with item count
-          // but cap it so a runaway response can't balloon cost.
-          max_tokens: Math.min(GATE_MAX_TOKENS * input.items.length, 600),
-          system: GATE_SYSTEM_BATCH,
-          messages: [{ role: 'user', content: userMessage }],
-        },
-        { signal: controller.signal as any },
-      )
-      inputTokens = res.usage.input_tokens
-      outputTokens = res.usage.output_tokens
-      const text = (res.content[0] as any)?.text ?? ''
-      decisions = parseBatchGateResponse(text, input.items.length)
-    } finally {
-      clearTimeout(timeoutId)
-    }
+    const res = await gateCall({
+      // Each verdict is one short line; scale the budget with item count
+      // but cap it so a runaway response can't balloon cost.
+      max_tokens: Math.min(GATE_MAX_TOKENS * input.items.length, 600),
+      system: GATE_SYSTEM_BATCH,
+      messages: [{ role: 'user', content: userMessage }],
+    }, input.agentId)
+    inputTokens = res.usage.input_tokens
+    outputTokens = res.usage.output_tokens
+    const text = (res.content[0] as any)?.text ?? ''
+    decisions = parseBatchGateResponse(text, input.items.length)
   } catch (err: any) {
     // FAIL-OPEN: don't block the user on our gate failing.
     console.warn(`[tool-gate] batch failure for ${input.items.length} tool(s), failing open:`, err?.message)

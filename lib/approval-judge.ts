@@ -14,9 +14,8 @@
  * the operator's plate.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+import { createMessage } from '@/lib/llm'
+import type { LlmContentBlock } from '@/lib/llm/types'
 
 export type JudgeVerdict = 'safe' | 'unsafe' | 'uncertain'
 
@@ -36,9 +35,10 @@ export interface JudgeOutput {
   latencyMs: number
 }
 
+// Logical lib/llm keys — the registry owns the vendor model ids.
 const MODEL_IDS: Record<'haiku' | 'sonnet', string> = {
-  haiku: 'claude-haiku-4-5',
-  sonnet: 'claude-sonnet-4-6',
+  haiku: 'claude-haiku',
+  sonnet: 'claude-sonnet',
 }
 
 const SYSTEM_PROMPT = `You are a safety reviewer for an AI agent's draft reply before it's sent to a real person via SMS, email, or chat.
@@ -70,13 +70,12 @@ export async function judgeReply(input: JudgeInput): Promise<JudgeOutput> {
 
   let raw: string
   try {
-    const res = await client.messages.create({
-      model,
+    const res = await createMessage(model, {
       max_tokens: 120,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
-    })
-    const text = res.content.find(b => b.type === 'text') as Anthropic.TextBlock | undefined
+    }, { surface: 'approval_judge' })
+    const text = res.content.find(b => b.type === 'text') as (LlmContentBlock & { text: string }) | undefined
     raw = text?.text || ''
   } catch (err: any) {
     // Network/API error — fail open, leave in queue for human review

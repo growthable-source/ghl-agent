@@ -1,6 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db'
 import { runAgent } from './ai-agent'
+import { createMessage } from './llm'
+import type { LlmContentBlock, LlmMessageParam } from './llm/types'
 import type { Message } from '@/types'
 
 /**
@@ -22,12 +23,10 @@ import type { Message } from '@/types'
  * the transcript and proposes PlatformLearnings headlessly.
  */
 
-const client = new Anthropic()
-
 // Use a slightly cheaper model for the persona to keep cost manageable
 // across large swarms. The persona only needs to maintain a role — it's
 // not the thing under test, so smaller/faster is fine.
-const PERSONA_MODEL = 'claude-haiku-4-5'
+const PERSONA_MODEL = 'claude-haiku'
 const PERSONA_END_TOKEN = '[END_CONVERSATION]'
 const MAX_PERSONA_REPLY_CHARS = 500
 
@@ -117,7 +116,7 @@ async function personaTurn(
   // responses... but here the persona IS the role-player, so we flip:
   // persona's own prior messages are 'assistant' (what they said),
   // agent's messages are 'user' (what they're replying to).
-  const messages: Anthropic.MessageParam[] = transcript.map(t => ({
+  const messages: LlmMessageParam[] = transcript.map(t => ({
     role: t.role === 'persona' ? 'assistant' : 'user',
     content: t.content,
   }))
@@ -129,15 +128,14 @@ async function personaTurn(
     })
   }
 
-  const res = await client.messages.create({
-    model: PERSONA_MODEL,
+  const res = await createMessage(PERSONA_MODEL, {
     max_tokens: 400,
     system: buildPersonaSystemPrompt(cfg),
     messages,
-  })
+  }, { surface: 'simulation' })
 
   const raw = res.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .filter((b): b is LlmContentBlock & { text: string } => b.type === 'text')
     .map(b => b.text)
     .join('\n')
     .trim()
