@@ -6,7 +6,7 @@
 ## Overview
 
 An outbound prospecting tool (separate system) discovers business owners and cold-emails
-each one a unique link (`voxility.ai/try/<slug>`). The link opens a landing page where a
+each one a unique link (`xovera.io/try/<slug>`). The link opens a landing page where a
 Gemini voice agent answers a browser call *as that prospect's business* — greeting with
 their business name, answering questions from knowledge crawled off their own website.
 If they like it, the CTA takes them through signup → claim → Stripe checkout, and the
@@ -37,11 +37,12 @@ pattern, the Harry-demo abuse guards, and `/api/billing/checkout`.
 |---|---|
 | Demo medium | Browser click-to-call on the landing page only |
 | Provisioning timing | Lazy — on first landing-page visit, not at email-send time |
-| Prospecting tool integration | Separate tool calling a secret-keyed Voxility API |
+| Prospecting tool integration | Separate tool calling a secret-keyed Xovera API |
 | Tenancy | All demo agents live in one internal demos workspace (`DEMO_WORKSPACE_ID`) |
 | Call cap | ~3 minutes (env-tunable) |
 | Idempotency | One live demo prospect per website domain |
-| Conversion | CTA → signup (slug carried through) → claim into new workspace → Stripe checkout |
+| Conversion | Primary CTA → signup (slug carried through) → claim into new workspace → Stripe checkout; secondary "Learn more" CTA → matching vertical landing page |
+| Branding | Xovera (xovera.io) everywhere — no legacy brand names in copy, routes, or identifiers |
 
 ## Architecture
 
@@ -57,8 +58,9 @@ DemoProspect
   websiteUrl        String
   websiteDomain     String                     // normalized, unique among non-expired rows
   contactEmail      String?
-  industry          String?
-  metadata          Json?                      // free-form from the prospecting tool
+  vertical          String?                    // maps to a vertical landing page + template preset
+  templates         Json?                      // optional per-prospect prompt/instructions/firstMessage overrides
+  metadata          Json?                      // free-form from the prospecting tool (also feeds template variables)
   status            String   @default("registered")
                     // registered → provisioning → ready → failed / expired / claimed
   agentId           String?                    // set at provision time
@@ -79,7 +81,8 @@ Indexes on `status`, `websiteDomain`, `expiresAt`.
 ### 2. Provisioning API (for the prospecting tool)
 
 - `POST /api/v1/demo-prospects` — auth via existing `lib/api-key.ts` with a new
-  `demos:write` scope. Body: `{businessName, websiteUrl, contactEmail?, industry?, metadata?}`.
+  `demos:write` scope. Body: `{businessName, websiteUrl, contactEmail?, vertical?,
+  promptTemplate?, instructionsTemplate?, firstMessageTemplate?, metadata?}`.
   Returns `{slug, url}`. Idempotent on normalized website domain: if a non-expired
   prospect exists for the domain, return its existing slug instead of creating another.
   Cheap insert only — no crawl, no agent.
@@ -88,6 +91,22 @@ Indexes on `status`, `websiteDomain`, `expiresAt`.
   tool can prioritize follow-up on prospects who actually called.
 
 Naming follows house rules: no CRM-brand terms; routes/identifiers are generic.
+
+**Dynamic agent templating (the core mechanic).** The demo agent is built from
+templates with per-prospect variable substitution. Available variables:
+`{{businessName}}`, `{{websiteDomain}}`, `{{vertical}}`, plus anything the
+prospecting tool passes in `metadata` (e.g. `{{ownerFirstName}}`, `{{city}}`).
+Resolution order per field (prompt, instructions, first message):
+
+1. Per-prospect override passed in the POST body (full control per campaign).
+2. Per-vertical preset (a small in-repo map, e.g. med-spa vs gym receptionist
+   personas — tuned copy per target vertical).
+3. Global default template ("You are the AI receptionist for {{businessName}}…").
+
+Templates render at provision time into the concrete `Agent.systemPrompt` /
+`Agent.instructions` / `GeminiVoiceConfig.firstMessage`, so the voice runtime
+needs zero changes — it just sees a normal agent. Unknown variables render as
+empty; templating helpers are pure functions under `lib/` (vitest-covered).
 
 ### 3. Landing page `/try/[slug]`
 
@@ -100,10 +119,10 @@ Cloned structurally from `app/c/[slug]/page.tsx`. Server component loads the
   endpoint (`GET /api/public/try/[slug]/status`). This 60–90s moment is part of the pitch.
 - **provisioning** — same polling view (handles refresh/second visit).
 - **ready** — hero with the business name ("This is what {businessName}'s AI
-  receptionist sounds like"), big call button, and the post-call CTA. Footer
-  disclaimer: built by Voxility as a demo, not affiliated with or endorsed by the
+  receptionist sounds like"), big call button, and the CTA pair (below). Footer
+  disclaimer: built by Xovera as a demo, not affiliated with or endorsed by the
   business. Page is `noindex`.
-- **failed** — graceful copy + the same CTA (book a call / try Voxility).
+- **failed** — graceful copy + the same CTAs (book a call / learn more).
 - **expired / claimed** — no call button; CTA-only page ("Get this for {businessName}").
 
 Provisioning (server-side, idempotent, triggered by first visit):
@@ -136,11 +155,20 @@ single-agent `voice-demo/web-token` route:
   cron reaper for wall-clock enforcement.
 - On session end, increment `callCount` / `totalCallSecs`, stamp `firstCallAt`.
 
-### 5. Conversion: claim → checkout
+### 5. Conversion: dual CTA → claim → checkout
 
-CTA on ready/post-call/expired pages: **"Get this for {businessName}"** →
-`/signup?demo=<slug>` (slug also persisted in a short-lived cookie to survive the
-OAuth round-trip). After authentication and workspace creation, a claim step
+Ready/post-call/expired pages carry two CTAs:
+
+- **Primary — "Get this for {businessName}"** → `/signup?demo=<slug>` (slug also
+  persisted in a short-lived cookie to survive the OAuth round-trip) → claim →
+  checkout.
+- **Secondary — "Learn more"** → the vertical landing page matched from
+  `vertical` via a small in-repo map (e.g. med-spa → `/ai-for-med-spas`,
+  gym → `/ai-for-gyms`; fallback `/ai-receptionist`), with `?demo=<slug>`
+  appended so attribution survives and the vertical page's own CTAs can route
+  back into the same claim flow.
+
+After the primary CTA: After authentication and workspace creation, a claim step
 (`POST /api/demo-prospects/[slug]/claim`, session-authed):
 
 1. Move the demo assets into the user's new workspace: re-parent the `Agent`,
@@ -174,7 +202,7 @@ rows older than 90 days.
   visitor input — no SSRF surface on the public page.
 - Per-IP + concurrency + time caps bound worst-case Gemini/Voyage spend.
 - Demo sessions never self-train and never create tickets.
-- Clear on-page disclaimer that the page is a Voxility demo (we present the
+- Clear on-page disclaimer that the page is a Xovera demo (we present the
   prospect's brand to the prospect themselves; the page must not read as the
   business's own public site). `noindex` on all `/try/*`.
 
