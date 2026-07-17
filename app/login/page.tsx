@@ -10,6 +10,17 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const mode = searchParams.get('mode') // 'signup' or null (default = sign in)
   const isSignUp = mode === 'signup'
+  // Post-login destination. middleware.ts and several pages (e.g.
+  // getting-started, /try/[slug]/claim) already link here with
+  // ?callbackUrl=/some/path expecting signIn() to honor it — it was
+  // previously ignored (hardcoded to /dashboard). Only accept a
+  // same-origin relative path (never an absolute/protocol-relative
+  // URL) so this can't become an open redirect; NextAuth's own
+  // redirect callback double-checks the origin regardless.
+  const rawCallbackUrl = searchParams.get('callbackUrl')
+  const callbackUrl = rawCallbackUrl && rawCallbackUrl.startsWith('/') && !rawCallbackUrl.startsWith('//')
+    ? rawCallbackUrl
+    : '/dashboard'
 
   return (
     <div
@@ -33,7 +44,7 @@ function LoginForm() {
 
         <div className="space-y-3">
           <button
-            onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
+            onClick={() => signIn('google', { callbackUrl })}
             className="w-full flex items-center justify-center gap-3 h-11 rounded-lg border transition-colors text-sm font-medium"
             style={{
               background: 'var(--surface)',
