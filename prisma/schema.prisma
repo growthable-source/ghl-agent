@@ -3384,10 +3384,21 @@ model TicketMessage {
   sentByUser   User?     @relation("TicketMessageAuthor", fields: [sentByUserId], references: [id], onDelete: SetNull)
   sentAt       DateTime?
 
+  // Delivery-failure bookkeeping. Before these fields a failed Resend send
+  // was indistinguishable from a deliberate sendEmail=false (both left
+  // sentAt null), so failures were invisible in the thread and nothing ever
+  // retried them. emailNextRetryAt non-null = the retry cron owns it;
+  // null + emailError = terminal failure (non-transient, or retries
+  // exhausted) that the operator has to resolve.
+  emailError       String?
+  emailAttempts    Int       @default(0)
+  emailNextRetryAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([ticketId, createdAt])
   @@index([messageId])
+  @@index([emailNextRetryAt])
 }
 
 // A composed ticket reply held for sign-off before it reaches the customer.

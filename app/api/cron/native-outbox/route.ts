@@ -18,6 +18,19 @@ export async function GET(req: NextRequest) {
   if (!allowed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const result = await drainNativeOutbox({ limit: 50 })
+
+  // Piggyback: re-send ticket reply emails whose Resend send failed
+  // transiently (429 / 5xx / network). Same "outbound delivery" concern,
+  // same every-minute cadence — not worth its own cron slot.
+  let ticketEmails: { scanned: number; sent: number; gaveUp: number } | { error: string }
+  try {
+    const { retryFailedTicketEmails } = await import('@/lib/ticket-email-retry')
+    ticketEmails = await retryFailedTicketEmails()
+  } catch (err: any) {
+    console.warn('[native-outbox] ticket-email retry failed:', err?.message)
+    ticketEmails = { error: err?.message ?? 'unknown' }
+  }
+
   await recordCronRun('native-outbox', true)
-  return NextResponse.json(result)
+  return NextResponse.json({ ...result, ticketEmails })
 }

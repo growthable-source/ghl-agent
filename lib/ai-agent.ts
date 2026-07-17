@@ -791,6 +791,20 @@ export async function runAgent(opts: {
   }
 
   const MAX_ITERATIONS = 6
+  // Wall-clock budget for the whole tool loop. Iteration count alone doesn't
+  // bound time: 6 iterations × 3 resilient attempts × tool execution can blow
+  // past a serverless maxDuration (300s on the widget message route), and a
+  // platform kill is uncatchable — no fallback message, no operator notify,
+  // just a typing indicator that never resolves. Bailing out here instead
+  // keeps us on the visible-failure path (callers send their fallback line,
+  // or the run is retried out-of-band via skipped='wall_clock_budget').
+  //
+  // Default MUST stay under the stale-conversations cron's 3-minute window:
+  // that cron re-runs the agent on unanswered widget chats, so a run that
+  // outlives the window would race its own recovery and double-reply.
+  const WALL_CLOCK_BUDGET_MS = Number(process.env.AGENT_WALL_CLOCK_BUDGET_MS) || 150_000
+  const loopStartedAt = Date.now()
+  let wallClockExceeded = false
   const availableToolNames = tools.map(t => t.name)
   let hallucinationRetries = 0
   const MAX_HALLUCINATION_RETRIES = 2
@@ -829,6 +843,18 @@ export async function runAgent(opts: {
   }
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    // Budget check between iterations (never before the first — a fresh run
+    // always gets at least one attempt). Break, don't throw: if an earlier
+    // iteration already delivered a reply via send_reply, the run still
+    // returns it as a success.
+    if (i > 0 && Date.now() - loopStartedAt > WALL_CLOCK_BUDGET_MS) {
+      wallClockExceeded = true
+      console.error(`[Agent] wall-clock budget exceeded (${Date.now() - loopStartedAt}ms > ${WALL_CLOCK_BUDGET_MS}ms) at iteration ${i} — bailing out${smsSent ? ' (reply already sent)' : ' with no reply'}`, {
+        agentId, contactId, lastToolsCalled: toolCallTrace.slice(-3).map(t => t.tool),
+      })
+      break
+    }
+
     // Compute tool_choice for THIS iteration
     let toolChoice: { type: string; name?: string } | undefined
     if (forceToolNextIteration) {
@@ -1368,5 +1394,10 @@ export async function runAgent(opts: {
     tokensUsed: totalInputTokens + totalOutputTokens,
     toolCallTrace,
     deferredCapture: deferredSend?.captured ?? undefined,
+    // A budget bail-out with no reply is an unanswered skip — retryable
+    // out-of-band, and never stamped SUCCESS-with-no-reply.
+    ...(wallClockExceeded && !smsSent
+      ? { skipped: 'wall_clock_budget' as const, skipDetail: `wall clock budget ${WALL_CLOCK_BUDGET_MS}ms exceeded` }
+      : {}),
   }
 }

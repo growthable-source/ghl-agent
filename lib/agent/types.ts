@@ -28,8 +28,12 @@ export interface AgentResponse {
    *    after retries — retryable out-of-band.
    *  - 'model_rejected'    = PERMANENT non-retryable 4xx (bad request, auth,
    *    model-not-found) — page immediately, retrying fails identically.
-   *  - 'broken_references' = workspace config gate (own fallback path). */
-  skipped?: 'model_unavailable' | 'model_rejected' | 'broken_references'
+   *  - 'broken_references' = workspace config gate (own fallback path).
+   *  - 'wall_clock_budget'  = the tool loop ran out of wall-clock time
+   *    before producing a reply (slow provider / long tool chain) and
+   *    bailed out instead of letting the platform kill the function
+   *    uncatchably — retryable out-of-band with a fresh budget. */
+  skipped?: 'model_unavailable' | 'model_rejected' | 'broken_references' | 'wall_clock_budget'
   /** Diagnostic for an unanswered skip (HTTP status + model key that failed).
    *  Persisted into MessageLog.errorMessage so a transient outage is
    *  distinguishable from a permanent 4xx after the fact. */

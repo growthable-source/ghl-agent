@@ -141,6 +141,11 @@ export default function WidgetEmbedPage() {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
+  // De-dupes the "passed to our team" status line — `agent_paused` fires on
+  // EVERY visitor message while the AI is paused, but the visitor only needs
+  // to hear it once per pause episode. Reset when a human joins or the AI
+  // resumes so a later, separate pause announces itself again.
+  const pausedNoticeShownRef = useRef(false)
   const vapiRef = useRef<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -537,6 +542,21 @@ export default function WidgetEmbedPage() {
         setTyping(!!data.isTyping)
       } else if (data.type === 'agent_error') {
         setMessages(m => [...m, { id: 'err-' + Date.now(), role: 'system', content: data.message || 'Something went wrong.' }])
+      } else if (data.type === 'agent_paused') {
+        // The AI is paused (stop condition fired, or a takeover is in
+        // flight) and won't reply to this message. Without this handler the
+        // visitor got pure dead air — the exact "AI goes silent
+        // mid-conversation" complaint. One status line per pause episode;
+        // routing (queue banner / "X joined the chat") carries it from here.
+        if (!pausedNoticeShownRef.current) {
+          pausedNoticeShownRef.current = true
+          setTyping(false)
+          setMessages(m => [...m, {
+            id: 'sys-paused-' + Date.now(),
+            role: 'system',
+            content: "You've been passed to our team — someone will be with you shortly.",
+          }])
+        }
       } else if (data.type === 'assignment_changed') {
         // An operator just picked up (or released) the chat. Server
         // sends { assignedUserId, assigneeName, reason, at }. We don't
@@ -552,6 +572,7 @@ export default function WidgetEmbedPage() {
           const display = rawName.split(/\s+/)[0]
           setQueueInfo(null) // a human picked up — no longer waiting
           setGameOpen(false)
+          pausedNoticeShownRef.current = false // pause episode over — a human is here
           setAssignedHuman(prev => {
             if (prev && prev.name === display) return prev
             // Only inject a system message when the name actually
@@ -599,6 +620,7 @@ export default function WidgetEmbedPage() {
         // → resume normal mode (operator resumed AI after takeover).
         const next = data.status as 'active' | 'handed_off' | 'ended'
         setConversationStatus(next)
+        if (next === 'active') pausedNoticeShownRef.current = false // AI resumed
         if (next === 'ended') { setQueueInfo(null); setGameOpen(false) }
         if (next === 'ended') {
           setMessages(m => [...m, {

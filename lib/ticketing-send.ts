@@ -107,6 +107,20 @@ export async function sendTicketingEmail(p: SendArgs): Promise<SendResult> {
 }
 
 /**
+ * True when a failed send is worth retrying out-of-band: Resend was
+ * rate-limiting (429), erroring (5xx), or unreachable (network throw —
+ * no HTTP status at all). Config failures (missing key, no from-email,
+ * unverified domain, bad addresses) fail identically on retry and need
+ * an operator, not a cron.
+ */
+export function isTransientSendFailure(r: SendResult): boolean {
+  if (r.ok) return false
+  if (r.status === 429) return true
+  if (typeof r.status === 'number' && r.status >= 500) return true
+  return r.status === undefined && r.reason.startsWith("Couldn't reach Resend")
+}
+
+/**
  * Turn a Resend HTTP error body into a sentence an operator can act
  * on. Covers the failures we've actually seen + the most common docs
  * patterns. Falls through to a truncated raw snippet so even unknown

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { sendTicketingEmail } from '@/lib/ticketing-send'
+import { sendTicketingEmail, isTransientSendFailure } from '@/lib/ticketing-send'
+import { notify } from '@/lib/notifications'
 
 type Params = { params: Promise<{ workspaceId: string; ticketId: string }> }
 
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const now = new Date()
   let emailMeta: { messageId: string | null; sentAt: Date | null } = { messageId: null, sentAt: null }
   let emailError: string | null = null
+  let emailNextRetryAt: Date | null = null
 
   if (sendEmail) {
     const send = await sendTicketingEmail({
@@ -55,22 +57,52 @@ export async function POST(req: NextRequest, { params }: Params) {
     })
     if (!send.ok) {
       emailError = send.reason
+      // Transient (429/5xx/network) → hand to the retry cron. Config
+      // failures (unverified domain, no from-email, bad key) retry
+      // identically-broken, so they stay terminal and the operator is told.
+      emailNextRetryAt = isTransientSendFailure(send) ? new Date(now.getTime() + 2 * 60_000) : null
+      notify({
+        workspaceId,
+        event: 'agent_error',
+        title: `Ticket #${ticket.ticketNumber}: reply email failed to send`,
+        body: emailNextRetryAt
+          ? `${send.reason} Retrying automatically.`
+          : send.reason,
+        link: `/dashboard/${workspaceId}/tickets/${ticket.id}`,
+        severity: 'error',
+      }).catch(() => {})
     } else {
       emailMeta = { messageId: send.messageId, sentAt: now }
     }
   }
 
-  const message = await db.ticketMessage.create({
-    data: {
-      ticketId: ticket.id,
-      direction,
-      body: text,
-      sentByUserId: direction === 'outbound' || direction === 'internal_note' ? access.session.user!.id : null,
-      sentAt: emailMeta.sentAt,
-      messageId: emailMeta.messageId,
-    },
-    include: { sentByUser: { select: { id: true, name: true, email: true, image: true } } },
-  })
+  const baseData = {
+    ticketId: ticket.id,
+    direction,
+    body: text,
+    sentByUserId: direction === 'outbound' || direction === 'internal_note' ? access.session.user!.id : null,
+    sentAt: emailMeta.sentAt,
+    messageId: emailMeta.messageId,
+  }
+  const messageInclude = { sentByUser: { select: { id: true, name: true, email: true, image: true } } }
+  let message
+  try {
+    message = await db.ticketMessage.create({
+      data: {
+        ...baseData,
+        ...(emailError ? { emailError, emailAttempts: 1, emailNextRetryAt } : {}),
+      },
+      include: messageInclude,
+    })
+  } catch (err: any) {
+    // Pre-migration DB (failure-tracking columns not applied yet): the
+    // message must still be recorded, just without the retry bookkeeping.
+    if (emailError && (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? ''))) {
+      message = await db.ticketMessage.create({ data: baseData, include: messageInclude })
+    } else {
+      throw err
+    }
+  }
 
   // Bump the ticket's activity bookkeeping. Inbound messages on a
   // closed/resolved ticket trigger auto-reopen when the workspace

@@ -19,6 +19,8 @@ interface MessageRow {
   fromName: string | null
   sentByUser: { id: string; name: string | null; email: string | null; image: string | null } | null
   sentAt: string | null
+  emailError?: string | null
+  emailNextRetryAt?: string | null
   createdAt: string
 }
 
@@ -441,11 +443,25 @@ function MessageRowView({ message, contactName, contactEmail }: { message: Messa
           {isInbound ? 'Inbound' : isNote ? 'Internal' : 'Outbound'}
         </span>
         <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{who}</span>
+        {message.emailError && !message.sentAt && (
+          <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded" style={{
+            background: 'var(--accent-red-bg)', color: '#ef4444',
+          }}>
+            {message.emailNextRetryAt ? 'Email retrying' : 'Email failed'}
+          </span>
+        )}
         <span className="ml-auto text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
           {new Date(message.sentAt || message.createdAt).toLocaleString()}
         </span>
       </div>
       <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-primary)' }}>{message.body}</p>
+      {message.emailError && !message.sentAt && (
+        <p className="mt-1.5 text-xs" style={{ color: '#ef4444' }}>
+          {message.emailNextRetryAt
+            ? `Delivery failed — will retry automatically. (${message.emailError})`
+            : `This reply was NOT delivered by email: ${message.emailError}`}
+        </p>
+      )}
     </div>
   )
 }

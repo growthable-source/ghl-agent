@@ -31,6 +31,19 @@ describe('describeUnansweredSkip', () => {
     expect(n.notifyBody).toContain('status=400')
   })
 
+  it('wall_clock_budget → timed-out copy, retryable=true', () => {
+    const n = describeUnansweredSkip({
+      agentName: 'Widget Agent',
+      inboundMessage: 'Can you book me in for Tuesday?',
+      skipped: 'wall_clock_budget',
+      skipDetail: 'wall clock budget 240000ms exceeded',
+    })
+    expect(n.retryable).toBe(true)
+    expect(n.errorMessage).toContain('wall_clock_budget')
+    expect(n.errorMessage).toContain('wall-clock budget')
+    expect(n.notifyBody).toContain('retried automatically')
+  })
+
   it('tolerates a missing skipDetail without printing "[undefined]"', () => {
     const n = describeUnansweredSkip({
       agentName: 'A',

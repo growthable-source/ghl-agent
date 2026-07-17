@@ -14,7 +14,7 @@
  * Intentional skips (e.g. the agent deliberately stayed quiet) are NOT in
  * this set — only failures where we WANTED to reply but couldn't.
  */
-export const UNANSWERED_SKIP_REASONS = ['model_unavailable', 'model_rejected'] as const
+export const UNANSWERED_SKIP_REASONS = ['model_unavailable', 'model_rejected', 'wall_clock_budget'] as const
 
 export type UnansweredSkipReason = (typeof UNANSWERED_SKIP_REASONS)[number]
 
@@ -25,8 +25,12 @@ export type UnansweredSkipReason = (typeof UNANSWERED_SKIP_REASONS)[number]
  * (a non-retryable 4xx — bad request, auth, model-not-found) is deliberately
  * excluded: it fails identically on retry, so it must be paged immediately
  * rather than looped through the retry cron.
+ *
+ * 'wall_clock_budget' is retryable: the loop bailed because the provider was
+ * slow or the tool chain ran long — a later attempt starts with a fresh
+ * budget and a warm cache, so it usually succeeds.
  */
-export const RETRYABLE_SKIP_REASONS = ['model_unavailable'] as const
+export const RETRYABLE_SKIP_REASONS = ['model_unavailable', 'wall_clock_budget'] as const
 
 export type RetryableSkipReason = (typeof RETRYABLE_SKIP_REASONS)[number]
 

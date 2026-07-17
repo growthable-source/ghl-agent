@@ -405,6 +405,24 @@ Never apologise for the language or mention translation — just speak naturally
       }
       if (stopCheck.shouldPause) {
         await pauseConversation(agent.id, widgetContactId, stopCheck.reason ?? 'condition_met')
+        // A pause silences the AI for every subsequent visitor turn, and the
+        // visitor-side UI has no concept of "paused" beyond a status line —
+        // so a needs-attention pause (hostile sentiment, keyword trip,
+        // message-count cap) MUST also put a human on the thread, or the
+        // visitor is stranded talking to nobody. Success-state pauses
+        // (appointment booked, opportunity stage) are natural endings and
+        // don't need a human. forceAssignToHuman falls back to the widget's
+        // fallback owner / workspace owner, so the chat is never ownerless;
+        // at capacity it queues, and the queue banner keeps the visitor
+        // informed.
+        if (/^(SENTIMENT|KEYWORD|MESSAGE_COUNT)/.test(stopCheck.reason ?? '')) {
+          try {
+            const { forceAssignToHuman } = await import('./widget-routing')
+            await forceAssignToHuman({ workspaceId: widget.workspaceId, conversationId: convo.id })
+          } catch (err: any) {
+            console.warn('[widget] post-pause human assignment failed:', err?.message)
+          }
+        }
       }
     } catch (err: any) {
       console.warn('[widget] stop-condition check failed:', err?.message)

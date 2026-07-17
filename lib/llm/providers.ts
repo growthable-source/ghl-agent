@@ -23,6 +23,15 @@ function anthropicClient(model: ResolvedModel): Anthropic {
     c = new Anthropic({
       apiKey: process.env[model.apiKeyEnv],
       ...(model.baseURL ? { baseURL: model.baseURL } : {}),
+      // The SDK's defaults (10-minute timeout, 2 internal retries) are
+      // longer than any Vercel function budget — one stalled request could
+      // eat the whole 300s maxDuration and get the function killed mid-run,
+      // which the visitor experiences as the agent going silent with a
+      // stuck typing indicator. Bound each attempt hard and leave ALL
+      // retrying to createMessageWithRetry (lib/anthropic-resilient.ts),
+      // so worst case per call is 3 bounded attempts, not 3×(1+2) unbounded.
+      timeout: Number(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS) || 55_000,
+      maxRetries: 0,
     })
     anthropicClients.set(cacheKey, c)
   }

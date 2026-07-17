@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPortalSession } from '@/lib/portal-auth'
 import { db } from '@/lib/db'
-import { sendTicketingEmail } from '@/lib/ticketing-send'
+import { sendTicketingEmail, isTransientSendFailure } from '@/lib/ticketing-send'
+import { notify } from '@/lib/notifications'
 
 type Params = { params: Promise<{ draftId: string }> }
 
@@ -80,17 +81,52 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
   const emailError = send.ok ? null : send.reason
 
-  const message = await db.ticketMessage.create({
-    data: {
-      ticketId: draft.ticket.id,
-      direction: 'outbound',
-      body: draft.body,
-      sentByUserId: draft.submittedByUserId,
-      sentAt: send.ok ? now : null,
-      messageId: send.messageId,
-    },
-    select: { id: true },
-  })
+  if (!send.ok) {
+    // The draft gets marked 'approved' below regardless (the reviewer's
+    // decision stands) — but the send failure must not vanish: stamp the
+    // retry bookkeeping and tell the support team immediately.
+    const willRetry = isTransientSendFailure(send)
+    notify({
+      workspaceId: draft.ticket.workspaceId,
+      event: 'agent_error',
+      title: `Ticket #${draft.ticket.ticketNumber}: approved reply failed to send`,
+      body: willRetry ? `${send.reason} Retrying automatically.` : send.reason,
+      link: `/dashboard/${draft.ticket.workspaceId}/tickets/${draft.ticket.id}`,
+      severity: 'error',
+    }).catch(() => {})
+  }
+
+  const baseData = {
+    ticketId: draft.ticket.id,
+    direction: 'outbound',
+    body: draft.body,
+    sentByUserId: draft.submittedByUserId,
+    sentAt: send.ok ? now : null,
+    messageId: send.messageId,
+  }
+  let message: { id: string }
+  try {
+    message = await db.ticketMessage.create({
+      data: {
+        ...baseData,
+        ...(emailError
+          ? {
+              emailError,
+              emailAttempts: 1,
+              emailNextRetryAt: isTransientSendFailure(send) ? new Date(now.getTime() + 2 * 60_000) : null,
+            }
+          : {}),
+      },
+      select: { id: true },
+    })
+  } catch (err: any) {
+    // Pre-migration DB (failure-tracking columns not applied yet).
+    if (emailError && (err?.code === 'P2022' || /column .* does not exist/i.test(err?.message ?? ''))) {
+      message = await db.ticketMessage.create({ data: baseData, select: { id: true } })
+    } else {
+      throw err
+    }
+  }
 
   await Promise.all([
     db.ticketReplyDraft.update({

@@ -43,6 +43,16 @@ export function describeUnansweredSkip(args: {
   const detail = skipDetail ? ` [${skipDetail}]` : ''
   const snippet = inboundMessage.slice(0, 120)
 
+  if (skipped === 'wall_clock_budget') {
+    return {
+      errorMessage: `Agent produced no reply — ${skipped}: the run exceeded its wall-clock budget before finishing${detail}`,
+      notifyTitle: `${agentName}: run timed out before replying`,
+      notifyBody: `The agent ran out of time (slow model / long tool chain) before answering "${snippet}". It will be retried automatically.`,
+      severity: 'error',
+      retryable: true,
+    }
+  }
+
   if (retryable) {
     return {
       errorMessage: `Agent produced no reply — ${skipped}: the AI model was temporarily unavailable${detail}`,
