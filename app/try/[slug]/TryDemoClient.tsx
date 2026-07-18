@@ -51,14 +51,24 @@ const MAX_POLL_MS = 3 * 60_000 // stop polling after 3 minutes and unlock the ca
 const LIVE_RUN_STATUSES = ['queued', 'running']
 const TERMINAL_RUN_STATUSES = ['success', 'partial', 'failed']
 
+/** Rotating "you could ask me…" examples on the train screen — the pitch
+ *  for pressing the button. Vertical-aware with a generic fallback. */
+const ASK_ME_EXAMPLES: Record<string, string[]> = {
+  'med-spa': ['“What treatments do you offer?”', '“How much is a consultation?”', '“Can I book for Saturday?”'],
+  gym: ['“What memberships do you have?”', '“When are your classes?”', '“Do you do free trials?”'],
+  default: ['“What services do you have?”', '“What areas do you service?”', '“What’s your pricing?”'],
+}
+
 export default function TryDemoClient({
-  slug, businessName, websiteUrl, websiteDomain, initialStatus, learnMoreHref,
+  slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, checkoutHref, learnMoreHref,
 }: {
   slug: string
   businessName: string
   websiteUrl: string
   websiteDomain: string
+  vertical: string | null
   initialStatus: string
+  checkoutHref: string
   learnMoreHref: string
 }) {
   const isGoneStatus = initialStatus === 'expired' || initialStatus === 'claimed'
@@ -69,9 +79,27 @@ export default function TryDemoClient({
   const [trainError, setTrainError] = useState<string | null>(null)
   const [urlChangeIgnored, setUrlChangeIgnored] = useState(false)
   const [hasCalled, setHasCalled] = useState(false)
+  // Rotating "you could ask me…" example on the train screen.
+  const askExamples = ASK_ME_EXAMPLES[vertical ?? ''] ?? ASK_ME_EXAMPLES.default
+  const [askIndex, setAskIndex] = useState(0)
+  const [askVisible, setAskVisible] = useState(true)
   // Set inside the polling effects (not here) — calling Date.now() during
   // render trips the react-hooks purity rule (impure-function-in-render).
   const pollStartRef = useRef<number | null>(null)
+
+  // Fade each example out, swap it, fade the next in. Only ticks while
+  // the train screen is showing.
+  useEffect(() => {
+    if (phase !== 'train') return
+    const interval = setInterval(() => {
+      setAskVisible(false)
+      setTimeout(() => {
+        setAskIndex(i => (i + 1) % askExamples.length)
+        setAskVisible(true)
+      }, 350)
+    }, 2800)
+    return () => clearInterval(interval)
+  }, [phase, askExamples.length])
 
   const { state, error, secondsLeft, startCall, endCall } = usePublicVoiceCall({
     tokenEndpoint: `/api/public/try/${slug}/web-token`,
@@ -162,7 +190,6 @@ export default function TryDemoClient({
     }
   }, [slug, websiteInput])
 
-  const claimHref = `/try/${slug}/claim`
   const live = state === 'live' || state === 'connecting'
   const chunksCreated = ingestion?.chunksCreated ?? 0
   const thinContent = chunksCreated === 0
@@ -199,6 +226,15 @@ export default function TryDemoClient({
             <p className="text-zinc-400 max-w-md">
               We&rsquo;ll train it on your website in under a minute — then you can call it and hear it answer like your business would.
             </p>
+
+            <div className="h-14 flex flex-col items-center justify-center" aria-live="polite">
+              <p className="text-xs uppercase tracking-widest text-zinc-600">Some things you could ask it</p>
+              <p
+                className={`mt-1 text-lg text-zinc-200 transition-opacity duration-300 ${askVisible ? 'opacity-100' : 'opacity-0'}`}
+              >
+                {askExamples[askIndex]}
+              </p>
+            </div>
 
             <div className="w-full max-w-md flex flex-col gap-3">
               <input
@@ -278,13 +314,25 @@ export default function TryDemoClient({
             {state === 'error' && error && <p className="text-accent-red text-sm">{error}</p>}
 
             {!live ? (
-              <button
-                onClick={() => void startCall()}
-                className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition"
-                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-              >
-                📞 Answer a call at {businessName}
-              </button>
+              <div className="flex flex-col items-center gap-5">
+                {/* Ringing phone: a shaking handset inside expanding ping
+                    ripples — an incoming call the visitor's AI can take. */}
+                <div className="relative h-24 w-24">
+                  <span className="absolute inset-0 rounded-full bg-accent-primary opacity-20 animate-ping" />
+                  <span className="absolute inset-2 rounded-full bg-accent-primary opacity-30 animate-ping" style={{ animationDelay: '400ms' }} />
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 text-4xl" style={{ animation: 'xv-ring 1.1s ease-in-out infinite' }}>
+                    📞
+                  </span>
+                </div>
+                <style>{`@keyframes xv-ring { 0%, 100% { transform: rotate(0deg); } 10% { transform: rotate(-14deg); } 20% { transform: rotate(12deg); } 30% { transform: rotate(-10deg); } 40% { transform: rotate(8deg); } 50% { transform: rotate(0deg); } }`}</style>
+                <button
+                  onClick={() => void startCall()}
+                  className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition"
+                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+                >
+                  Your AI receptionist can answer this call for you!
+                </button>
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-4">
                 <div className="rounded-full border border-zinc-800 bg-zinc-900 px-8 py-4 text-lg">
@@ -297,17 +345,22 @@ export default function TryDemoClient({
             )}
 
             {(hasCalled || state === 'ended') && (
-              <div className="mt-4 flex flex-col sm:flex-row gap-3">
-                <a
-                  href={claimHref}
-                  className="rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
-                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-                >
-                  Get this for {businessName}
-                </a>
-                <a href={learnMoreHref} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
-                  Learn more
-                </a>
+              <div className="mt-4 flex flex-col items-center gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <a
+                    href={checkoutHref}
+                    className="rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
+                    style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+                  >
+                    Get this for {businessName} — start today
+                  </a>
+                  <a href={learnMoreHref} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
+                    Learn more
+                  </a>
+                </div>
+                <p className="text-sm text-zinc-400 max-w-md">
+                  You get: a Voice AI receptionist that works 24/7 + GoHighLevel Marketing &amp; Sales CRM bundle + free setup.
+                </p>
               </div>
             )}
           </>
@@ -321,16 +374,19 @@ export default function TryDemoClient({
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <a
-                href={claimHref}
+                href={checkoutHref}
                 className="rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
                 style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
               >
-                Get this for {businessName}
+                Get this for {businessName} — start today
               </a>
               <a href={learnMoreHref} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
                 Learn more
               </a>
             </div>
+            <p className="text-sm text-zinc-400 max-w-md">
+              You get: a Voice AI receptionist that works 24/7 + GoHighLevel Marketing &amp; Sales CRM bundle + free setup.
+            </p>
           </>
         )}
       </div>
