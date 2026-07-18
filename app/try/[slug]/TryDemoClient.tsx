@@ -142,7 +142,11 @@ export default function TryDemoClient({
     return () => { cancelled = true }
   }, [phase, slug])
 
-  // Progress polling while training.
+  // Progress polling while training. The agent itself exists within a
+  // couple of seconds (only the crawl takes a minute), so once the server
+  // reports status 'ready' the impatient path — "talk to it now" — is
+  // legitimate; it just answers from whatever has landed so far.
+  const [canCallEarly, setCanCallEarly] = useState(false)
   useEffect(() => {
     if (phase !== 'training') return
     pollStartRef.current = Date.now()
@@ -155,6 +159,7 @@ export default function TryDemoClient({
         if (cancelled) return
         if (data.status === 'expired' || data.status === 'claimed') { setPhase('gone'); return }
         if (data.status === 'failed') { setPhase('train'); return }
+        if (data.status === 'ready') setCanCallEarly(true)
         const ing: Ingestion = data.ingestion ?? null
         setIngestion(ing)
         if (ing && TERMINAL_RUN_STATUSES.includes(ing.status)) { setPhase('ready'); return }
@@ -195,6 +200,37 @@ export default function TryDemoClient({
   const thinContent = chunksCreated === 0
 
   const stop = useCallback(() => { void endCall('ended') }, [endCall])
+
+  // Post-call conversion modal: opens the moment a call ends (the
+  // emotional peak), dismissible, reopenable from the inline CTA row.
+  const [modalOpen, setModalOpen] = useState(false)
+  const modalShownRef = useRef(false)
+  useEffect(() => {
+    if (state === 'ended' && hasCalled && !modalShownRef.current) {
+      modalShownRef.current = true
+      setModalOpen(true)
+    }
+  }, [state, hasCalled])
+
+  // Share: the person on the demo often isn't the decision maker. One
+  // tap shares the trained demo link (native sheet on mobile, clipboard
+  // on desktop).
+  const [shareCopied, setShareCopied] = useState(false)
+  const share = useCallback(async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : ''
+    const text = `Listen to this — an AI receptionist trained on ${businessName}'s website. It answers like our front desk: ${url}`
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${businessName} — AI receptionist demo`, text, url })
+        return
+      }
+    } catch { /* user dismissed the sheet — fall through to nothing */ }
+    try {
+      await navigator.clipboard.writeText(text)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2500)
+    } catch { /* clipboard unavailable — nothing sensible left to do */ }
+  }, [businessName])
 
   // Staged progress list — buildStep counts how many rows read as
   // "done"; the first not-yet-done row pulses. Labels/thresholds are
@@ -272,6 +308,14 @@ export default function TryDemoClient({
               ))}
             </ol>
             <p className="text-sm text-zinc-500">This usually takes under a minute — we&rsquo;re building it live from your website.</p>
+            {canCallEarly && (
+              <button
+                onClick={() => setPhase('ready')}
+                className="text-sm text-zinc-300 underline underline-offset-4 hover:text-zinc-100 transition"
+              >
+                Can&rsquo;t wait? Talk to it now — it keeps learning while you chat
+              </button>
+            )}
           </>
         )}
 
@@ -347,20 +391,20 @@ export default function TryDemoClient({
             {(hasCalled || state === 'ended') && (
               <div className="mt-4 flex flex-col items-center gap-3">
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <a
-                    href={checkoutHref}
+                  <button
+                    onClick={() => setModalOpen(true)}
                     className="rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
                     style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
                   >
                     Get this for {businessName} — start today
-                  </a>
+                  </button>
+                  <button onClick={() => void share()} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
+                    {shareCopied ? 'Link copied!' : 'Share this demo'}
+                  </button>
                   <a href={learnMoreHref} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
                     Learn more
                   </a>
                 </div>
-                <p className="text-sm text-zinc-400 max-w-md">
-                  You get: a Voice AI receptionist that works 24/7 + GoHighLevel Marketing &amp; Sales CRM bundle + free setup.
-                </p>
               </div>
             )}
           </>
@@ -394,6 +438,53 @@ export default function TryDemoClient({
       <footer className="py-6 text-center text-xs text-zinc-600">
         A demo built by <Link href="/" className="underline">Xovera</Link>. Not affiliated with or endorsed by {businessName}.
       </footer>
+
+      {/* Post-call conversion modal — lands the moment the call ends. */}
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Get this for ${businessName}`}
+        >
+          <button
+            aria-label="Close"
+            onClick={() => setModalOpen(false)}
+            className="absolute inset-0 bg-black/70"
+          />
+          <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center flex flex-col items-center gap-4 shadow-2xl">
+            <p className="text-3xl">🎉</p>
+            <h2 className="text-2xl font-semibold text-zinc-100">
+              That was YOUR receptionist.
+            </h2>
+            <p className="text-zinc-400">
+              Want it answering {businessName}&rsquo;s phone 24/7 — nights, weekends, every missed call?
+            </p>
+            <a
+              href={checkoutHref}
+              className="w-full rounded-lg px-6 py-4 text-lg font-semibold hover:opacity-90 transition"
+              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+            >
+              Yes — I want this for my business
+            </a>
+            <p className="text-xs text-zinc-500">
+              You get: a Voice AI receptionist that works 24/7 + GoHighLevel Marketing &amp; Sales CRM bundle + free setup.
+            </p>
+            <button
+              onClick={() => void share()}
+              className="w-full rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-800 transition"
+            >
+              {shareCopied ? 'Link copied — send it over!' : 'Not your call to make? Share it with the decision maker'}
+            </button>
+            <button
+              onClick={() => setModalOpen(false)}
+              className="text-sm text-zinc-500 hover:text-zinc-300 transition"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
