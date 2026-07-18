@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { db } from '@/lib/db'
-import { ensureProvisioned, demoWorkspaceId } from '@/lib/demo-prospects/provision'
+import { ensureProvisioned, demoWorkspaceId, demoCrawlConfig } from '@/lib/demo-prospects/provision'
 import { validatePublicUrl, InvalidUrlError } from '@/lib/demo-prospects/validate-url'
 import { detectUrl } from '@/lib/ingest/detect'
 import { ingestSource } from '@/lib/ingest/pipeline'
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
             data: {
               urlOrIdentifier: prospect.websiteUrl,
               sourceType: detection.sourceType,
-              crawlConfig: detection.crawlConfig as object,
+              crawlConfig: demoCrawlConfig(detection.crawlConfig) as object,
             },
           })
         }

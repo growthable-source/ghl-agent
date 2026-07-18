@@ -44,6 +44,23 @@ export function demoWorkspaceId(): string | null {
   return process.env.DEMO_WORKSPACE_ID || null
 }
 
+/** Demo crawls are hard-capped well below the product's 500-page default:
+ *  a receptionist demo needs the home/services/pricing/contact pages, not
+ *  a site-wide index — and on bot-walled sites every blocked page can burn
+ *  a paid Firecrawl scrape, so the cap bounds worst-case spend per click. */
+const DEMO_CRAWL_MAX_PAGES = Number(process.env.DEMO_CRAWL_MAX_PAGES) || 25
+
+export function demoCrawlConfig(detected: unknown): Record<string, unknown> {
+  const base = (detected && typeof detected === 'object' ? detected : {}) as Record<string, unknown>
+  const detectedMax = Number(base.maxPages)
+  return {
+    ...base,
+    maxPages: Number.isFinite(detectedMax) && detectedMax > 0
+      ? Math.min(detectedMax, DEMO_CRAWL_MAX_PAGES)
+      : DEMO_CRAWL_MAX_PAGES,
+  }
+}
+
 type Prospect = NonNullable<Awaited<ReturnType<typeof db.demoProspect.findUnique>>>
 
 /**
@@ -131,7 +148,7 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
           knowledgeDomainId,
           sourceType: detection.sourceType,
           urlOrIdentifier: prospect.websiteUrl,
-          crawlConfig: detection.crawlConfig as object,
+          crawlConfig: demoCrawlConfig(detection.crawlConfig) as object,
           isActive: true,
         },
         select: { id: true },
