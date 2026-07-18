@@ -51,6 +51,22 @@ const MAX_POLL_MS = 3 * 60_000 // stop polling after 3 minutes and unlock the ca
 const LIVE_RUN_STATUSES = ['queued', 'running']
 const TERMINAL_RUN_STATUSES = ['success', 'partial', 'failed']
 
+/** A shaking handset inside expanding ping ripples — an incoming call
+ *  the visitor's AI can take. The page's hero visual on both the train
+ *  and call screens. */
+function RingingPhone() {
+  return (
+    <div className="relative h-24 w-24">
+      <span className="absolute inset-0 rounded-full bg-accent-primary opacity-20 animate-ping" />
+      <span className="absolute inset-2 rounded-full bg-accent-primary opacity-30 animate-ping" style={{ animationDelay: '400ms' }} />
+      <span className="absolute inset-0 flex items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 text-4xl" style={{ animation: 'xv-ring 1.1s ease-in-out infinite' }}>
+        📞
+      </span>
+      <style>{`@keyframes xv-ring { 0%, 100% { transform: rotate(0deg); } 10% { transform: rotate(-14deg); } 20% { transform: rotate(12deg); } 30% { transform: rotate(-10deg); } 40% { transform: rotate(8deg); } 50% { transform: rotate(0deg); } }`}</style>
+    </div>
+  )
+}
+
 /** Rotating "you could ask me…" examples on the train screen — the pitch
  *  for pressing the button. Vertical-aware with a generic fallback. */
 const ASK_ME_EXAMPLES: Record<string, string[]> = {
@@ -256,11 +272,12 @@ export default function TryDemoClient({
         {phase === 'train' && (
           <>
             <p className="text-sm uppercase tracking-widest text-zinc-500">Live demo</p>
+            <RingingPhone />
             <h1 className="text-3xl font-semibold">
-              Meet {businessName}&rsquo;s AI receptionist
+              {businessName}&rsquo;s phone is ringing…
             </h1>
             <p className="text-zinc-400 max-w-md">
-              We&rsquo;ll train it on your website in under a minute — then you can call it and hear it answer like your business would.
+              Train your AI receptionist on your website — takes under a minute — then let it answer this call for you.
             </p>
 
             <div className="h-14 flex flex-col items-center justify-center" aria-live="polite">
@@ -359,16 +376,7 @@ export default function TryDemoClient({
 
             {!live ? (
               <div className="flex flex-col items-center gap-5">
-                {/* Ringing phone: a shaking handset inside expanding ping
-                    ripples — an incoming call the visitor's AI can take. */}
-                <div className="relative h-24 w-24">
-                  <span className="absolute inset-0 rounded-full bg-accent-primary opacity-20 animate-ping" />
-                  <span className="absolute inset-2 rounded-full bg-accent-primary opacity-30 animate-ping" style={{ animationDelay: '400ms' }} />
-                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 text-4xl" style={{ animation: 'xv-ring 1.1s ease-in-out infinite' }}>
-                    📞
-                  </span>
-                </div>
-                <style>{`@keyframes xv-ring { 0%, 100% { transform: rotate(0deg); } 10% { transform: rotate(-14deg); } 20% { transform: rotate(12deg); } 30% { transform: rotate(-10deg); } 40% { transform: rotate(8deg); } 50% { transform: rotate(0deg); } }`}</style>
+                <RingingPhone />
                 <button
                   onClick={() => void startCall()}
                   className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition"
