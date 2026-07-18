@@ -452,6 +452,33 @@ body {
   .eq-bar { animation: none; height: 0.7rem; }
 }
 
+/* /try/[slug] incoming-call phone mockup: gentle wiggle on the green
+   Answer button + cycling "ringing…" dots. Ripple rings reuse Tailwind's
+   built-in animate-ping — no extra keyframe needed for those. */
+@keyframes xvPhoneWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  10%      { transform: rotate(-14deg); }
+  20%      { transform: rotate(12deg); }
+  30%      { transform: rotate(-10deg); }
+  40%      { transform: rotate(8deg); }
+  50%      { transform: rotate(0deg); }
+}
+.xv-phone-wiggle {
+  animation: xvPhoneWiggle 1.6s ease-in-out infinite;
+}
+@keyframes xvDotFlash {
+  0%, 20%  { opacity: 0.2; }
+  50%      { opacity: 1; }
+  100%     { opacity: 0.2; }
+}
+.xv-dot {
+  animation: xvDotFlash 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .xv-phone-wiggle { animation: none; }
+  .xv-dot { animation: none; opacity: 0.7; }
+}
+
 /* Slide-out drawer (demo video) + backdrop fade */
 @keyframes voxSlideInRight {
   from { transform: translateX(100%); }

@@ -2,13 +2,13 @@
 
 /**
  * The prospect-facing demo page. Four phases:
- *  1. train — hero with a primary "Answer the call" CTA (POST .../train
+ *  1. train — hero with a primary "Answer the call" action (POST .../train
  *     with { answerNow: true } — no website required, agent+voice get
  *     created with knowledge skipped) plus a visually secondary training
  *     block: a website input (prefilled from registration, editable) +
- *     "Train my AI receptionist" button. Nothing is provisioned until one
- *     of these is clicked — training was a hard gate before; answering
- *     is now the fast path and training is optional enrichment.
+ *     "Build My AI" button. Nothing is provisioned until one of these is
+ *     clicked — answering is the fast path, training is optional
+ *     enrichment.
  *  2. training — real progress driven by polling /status every 2.5s:
  *     a staged list (reading → training on N pages → learning your
  *     services) built from the live IngestionRun row. 3-minute client
@@ -17,28 +17,42 @@
  *     happened. If the crawl landed zero chunks, an honest note says so
  *     up front — the call is still allowed (the token route's own
  *     guardrail keeps the model from inventing facts).
- *  4. gone — expired/claimed: CTA-only page, unchanged from before.
+ *  4. gone — expired/claimed: CTA-only hero, unchanged behavior.
  *
  * On mount we poll /status ONCE to decide the initial phase: already
  * ready with real content → straight to the call UI (returning
  * visitor); ready/provisioning with a live (queued/running) ingestion
  * run → resume the training view; anything else (including a prior
  * empty-chunks result, since that run is terminal and there's nothing
- * live to resume) → the train screen, so "Train my AI receptionist"
- * doubles as the retry/retrain action.
+ * live to resume) → the train screen, so "Build My AI" doubles as the
+ * retry/retrain action.
  *
- * Styling note: the plan draft referenced `bg-accent-primary-bg` /
- * `text-accent-primary-fg` / `text-accent-red-fg` utilities. Only the
- * `-bg` (tinted) and un-suffixed (solid) accent tokens exist in
- * `app/globals.css`'s `@theme` block — there is no `-fg` variant.
- * Solid CTA buttons here use the same pattern as the rest of the
- * dashboard/marketing pages: `bg-accent-primary` + inline
- * `color: var(--btn-primary-text)`. The build-step dot uses solid
- * `bg-accent-primary` (a `-bg` tint would be nearly invisible on the
- * black page background). The error message uses `text-accent-red`.
+ * Layout: the visual design (Figma redesign, see components under
+ * ./sections/) is a full marketing lander — nav, hero w/ incoming-call
+ * phone mockup, features, demo-prompt chips, stats, process, testimonials,
+ * final CTA, footer. This file owns all state/data-fetching and wires
+ * three equivalent "start the call" entry points (phone Answer button,
+ * "Hear the Demo First", any prompt chip) to one handler.
+ *
+ * Styling: data-theme="soft-light" pins the page to the light palette
+ * (see app/page.tsx for the same pattern) so it renders consistently
+ * regardless of the visitor's theme cookie — matches the Figma design's
+ * cream/white aesthetic. Solid CTA buttons use `.btn-primary` (see
+ * app/globals.css); cards use `.vox-card`; the error message uses
+ * `text-accent-red`.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Nav from './sections/Nav'
+import Hero from './sections/Hero'
+import Features from './sections/Features'
+import Prompts from './sections/Prompts'
+import Stats from './sections/Stats'
+import Process from './sections/Process'
+import Testimonials from './sections/Testimonials'
+import FinalCta from './sections/FinalCta'
+import Footer from './sections/Footer'
+import ConversionModal from './sections/ConversionModal'
+import { promptChipsForVertical } from './sections/prompt-chips'
 import { usePublicVoiceCall } from '@/lib/voice/use-public-voice-call'
 
 type Phase = 'train' | 'training' | 'ready' | 'gone'
@@ -54,30 +68,6 @@ const POLL_MS = 2500
 const MAX_POLL_MS = 3 * 60_000 // stop polling after 3 minutes and unlock the call anyway
 const LIVE_RUN_STATUSES = ['queued', 'running']
 const TERMINAL_RUN_STATUSES = ['success', 'partial', 'failed']
-
-/** A shaking handset inside expanding ping ripples — an incoming call
- *  the visitor's AI can take. The page's hero visual on both the train
- *  and call screens. */
-function RingingPhone() {
-  return (
-    <div className="relative h-24 w-24">
-      <span className="absolute inset-0 rounded-full bg-accent-primary opacity-20 animate-ping" />
-      <span className="absolute inset-2 rounded-full bg-accent-primary opacity-30 animate-ping" style={{ animationDelay: '400ms' }} />
-      <span className="absolute inset-0 flex items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 text-4xl" style={{ animation: 'xv-ring 1.1s ease-in-out infinite' }}>
-        📞
-      </span>
-      <style>{`@keyframes xv-ring { 0%, 100% { transform: rotate(0deg); } 10% { transform: rotate(-14deg); } 20% { transform: rotate(12deg); } 30% { transform: rotate(-10deg); } 40% { transform: rotate(8deg); } 50% { transform: rotate(0deg); } }`}</style>
-    </div>
-  )
-}
-
-/** Rotating "you could ask me…" examples on the train screen — the pitch
- *  for pressing the button. Vertical-aware with a generic fallback. */
-const ASK_ME_EXAMPLES: Record<string, string[]> = {
-  'med-spa': ['“What treatments do you offer?”', '“How much is a consultation?”', '“Can I book for Saturday?”'],
-  gym: ['“What memberships do you have?”', '“When are your classes?”', '“Do you do free trials?”'],
-  default: ['“What services do you have?”', '“What areas do you service?”', '“What’s your pricing?”'],
-}
 
 export default function TryDemoClient({
   slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, checkoutHref, learnMoreHref,
@@ -101,27 +91,10 @@ export default function TryDemoClient({
   const [answerError, setAnswerError] = useState<string | null>(null)
   const [urlChangeIgnored, setUrlChangeIgnored] = useState(false)
   const [hasCalled, setHasCalled] = useState(false)
-  // Rotating "you could ask me…" example on the train screen.
-  const askExamples = ASK_ME_EXAMPLES[vertical ?? ''] ?? ASK_ME_EXAMPLES.default
-  const [askIndex, setAskIndex] = useState(0)
-  const [askVisible, setAskVisible] = useState(true)
+  const promptChips = useMemo(() => promptChipsForVertical(vertical), [vertical])
   // Set inside the polling effects (not here) — calling Date.now() during
   // render trips the react-hooks purity rule (impure-function-in-render).
   const pollStartRef = useRef<number | null>(null)
-
-  // Fade each example out, swap it, fade the next in. Only ticks while
-  // the train screen is showing.
-  useEffect(() => {
-    if (phase !== 'train') return
-    const interval = setInterval(() => {
-      setAskVisible(false)
-      setTimeout(() => {
-        setAskIndex(i => (i + 1) % askExamples.length)
-        setAskVisible(true)
-      }, 350)
-    }, 2800)
-    return () => clearInterval(interval)
-  }, [phase, askExamples.length])
 
   const { state, error, secondsLeft, startCall, endCall } = usePublicVoiceCall({
     tokenEndpoint: `/api/public/try/${slug}/web-token`,
@@ -217,11 +190,10 @@ export default function TryDemoClient({
     }
   }, [slug, websiteInput])
 
-  // Primary CTA on the train screen: answer the call right now, no
-  // website required. POSTs answerNow, which skips knowledge entirely
-  // (agent + voice config only) and finalizes the prospect to ready —
-  // then we jump straight to the ready phase and place the call, same
-  // as tapping "answer this call" would once ready normally.
+  // Primary CTA: answer the call right now, no website required. POSTs
+  // answerNow, which skips knowledge entirely (agent + voice config only)
+  // and finalizes the prospect to ready — then we jump straight to the
+  // ready phase and place the call.
   const handleAnswerNow = useCallback(async () => {
     setAnswering(true)
     setAnswerError(null)
@@ -247,14 +219,26 @@ export default function TryDemoClient({
     }
   }, [slug, startCall])
 
+  // Unified "start the call" handler — wired to the phone's Answer
+  // button, "Hear the Demo First", and every demo-prompt chip. Behavior
+  // depends on where provisioning currently stands.
+  const handlePrimaryCallAction = useCallback(() => {
+    if (phase === 'ready') { void startCall(); return }
+    if (phase === 'train') { void handleAnswerNow(); return }
+    if (phase === 'training' && canCallEarly) { setPhase('ready'); void startCall(); return }
+    // training-but-not-ready-yet or gone: no-op, the UI already disables these triggers
+  }, [phase, canCallEarly, startCall, handleAnswerNow])
+
   const live = state === 'live' || state === 'connecting'
+  const onCall = live || answering
+  const connecting = state === 'connecting' || answering
   const chunksCreated = ingestion?.chunksCreated ?? 0
   const thinContent = chunksCreated === 0
 
   const stop = useCallback(() => { void endCall('ended') }, [endCall])
 
   // Post-call conversion modal: opens the moment a call ends (the
-  // emotional peak), dismissible, reopenable from the inline CTA row.
+  // emotional peak), dismissible, reopenable from the hero CTA row.
   const [modalOpen, setModalOpen] = useState(false)
   const modalShownRef = useRef(false)
   useEffect(() => {
@@ -297,256 +281,87 @@ export default function TryDemoClient({
     'Learning your services…',
   ]
 
-  return (
-    <main className="min-h-screen bg-black text-zinc-100 flex flex-col">
-      <div className="mx-auto w-full max-w-2xl px-6 py-16 flex-1 flex flex-col items-center justify-center text-center gap-8">
+  // Phone / chip status line + disabled state, shared across every
+  // "start the call" trigger.
+  const statusLabel = phase === 'training' ? (canCallEarly ? 'ready — tap answer' : 'training…') : 'ringing…'
+  const primaryActionDisabled = phase === 'gone' || (phase === 'training' && !canCallEarly)
+  const chipsDisabled = primaryActionDisabled || onCall
 
-        {phase === null && (
-          <div className="h-2 w-2 rounded-full bg-zinc-700 animate-pulse" />
-        )}
+  const callError = state === 'error' ? error : null
 
-        {phase === 'train' && (
-          <>
-            <p className="text-sm uppercase tracking-widest text-zinc-500">Live demo</p>
-            <RingingPhone />
-            <h1 className="text-3xl font-semibold">
-              {businessName}&rsquo;s phone is ringing…
-            </h1>
-            <p className="text-zinc-400 max-w-md">
-              Your AI receptionist can pick it up right now — no website required.
-            </p>
-
-            <button
-              onClick={() => void handleAnswerNow()}
-              disabled={answering}
-              className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition disabled:opacity-50"
-              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-            >
-              {answering ? 'Connecting…' : '📞 Answer the call'}
-            </button>
-            {answerError && <p className="text-accent-red text-sm">{answerError}</p>}
-
-            <div className="w-full max-w-md flex flex-col items-center gap-6 pt-6 mt-2 border-t border-zinc-800">
-              <div className="h-14 flex flex-col items-center justify-center" aria-live="polite">
-                <p className="text-xs uppercase tracking-widest text-zinc-600">Some things you could ask it</p>
-                <p
-                  className={`mt-1 text-lg text-zinc-200 transition-opacity duration-300 ${askVisible ? 'opacity-100' : 'opacity-0'}`}
-                >
-                  {askExamples[askIndex]}
-                </p>
-              </div>
-
-              <div className="w-full flex flex-col gap-3">
-                <p className="text-sm text-zinc-500">
-                  Want it to know {businessName}&rsquo;s details? Train it on your website first — takes under a minute.
-                </p>
-                <input
-                  type="text"
-                  value={websiteInput}
-                  onChange={e => setWebsiteInput(e.target.value)}
-                  placeholder="yourwebsite.com"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-center text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent-primary"
-                />
-                {urlChangeIgnored && (
-                  <p className="text-xs text-zinc-500">This demo is already trained — the new website won&rsquo;t change it in this preview.</p>
-                )}
-                {trainError && <p className="text-accent-red text-sm">{trainError}</p>}
-                <button
-                  onClick={() => void handleTrain()}
-                  disabled={submitting || !websiteInput.trim()}
-                  className="rounded-lg border border-zinc-700 px-6 py-3 text-sm font-semibold text-zinc-100 hover:bg-zinc-900 transition disabled:opacity-50"
-                >
-                  {submitting ? 'Starting…' : 'Train my AI receptionist'}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-        {phase === 'training' && (
-          <>
-            <h1 className="text-3xl font-semibold">Training {businessName}&rsquo;s AI receptionist…</h1>
-            <ol className="space-y-3 text-left text-zinc-400">
-              {trainingSteps.map((label, i) => (
-                <li key={label} className={`flex items-center gap-3 ${buildStep > i ? 'text-zinc-100' : ''}`}>
-                  <span className={`inline-block h-2 w-2 rounded-full ${buildStep > i ? 'bg-accent-primary' : 'bg-zinc-700 animate-pulse'}`} />
-                  {label}
-                </li>
-              ))}
-            </ol>
-            <p className="text-sm text-zinc-500">This usually takes under a minute — we&rsquo;re building it live from your website.</p>
-            {canCallEarly && (
-              <button
-                onClick={() => setPhase('ready')}
-                className="text-sm text-zinc-300 underline underline-offset-4 hover:text-zinc-100 transition"
-              >
-                Can&rsquo;t wait? Talk to it now — it keeps learning while you chat
-              </button>
-            )}
-          </>
-        )}
-
-        {phase === 'ready' && (
-          <>
-            <p className="text-sm uppercase tracking-widest text-zinc-500">Live demo</p>
-            <h1 className="text-3xl font-semibold">
-              This is what {businessName}&rsquo;s AI receptionist sounds like
-            </h1>
-            {thinContent ? (
-              <div className="w-full max-w-md flex flex-col gap-3">
-                <p className="text-zinc-400">
-                  {ingestion === null
-                    ? `It hasn’t learned ${businessName}’s details yet — it’ll introduce itself and take messages. Train it on your website any time:`
-                    : ingestion?.status === 'failed'
-                      ? `${websiteDomain} wouldn’t let us read it — some sites (and delivery platforms like UberEats) block robots. Your main website usually works best.`
-                      : `We didn’t find much text on ${websiteDomain}. A different page of your site might work better.`}
-                </p>
-                <input
-                  type="text"
-                  value={websiteInput}
-                  onChange={e => setWebsiteInput(e.target.value)}
-                  placeholder="yourwebsite.com"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-center text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent-primary"
-                />
-                {trainError && <p className="text-accent-red text-sm">{trainError}</p>}
-                <button
-                  onClick={() => void handleTrain()}
-                  disabled={submitting || !websiteInput.trim()}
-                  className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition disabled:opacity-50"
-                >
-                  {submitting ? 'Starting…' : ingestion === null ? 'Train my AI receptionist' : 'Try a different website'}
-                </button>
-                {ingestion !== null && (
-                  <p className="text-xs text-zinc-500">Or call anyway — your receptionist will introduce itself and take a message instead of guessing at details.</p>
-                )}
-              </div>
-            ) : (
-              <p className="text-zinc-400 max-w-md">
-                Tap the button and ask it anything a caller would — your hours, your services, your prices. It learned them from {websiteDomain}.
-              </p>
-            )}
-
-            {state === 'error' && error && <p className="text-accent-red text-sm">{error}</p>}
-
-            {!live ? (
-              <div className="flex flex-col items-center gap-5">
-                <RingingPhone />
-                <button
-                  onClick={() => void startCall()}
-                  className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition"
-                  style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-                >
-                  Your AI receptionist can answer this call for you!
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-4">
-                <div className="rounded-full border border-zinc-800 bg-zinc-900 px-8 py-4 text-lg">
-                  {state === 'connecting' ? 'Connecting…' : `Live — ${secondsLeft ?? ''}s left`}
-                </div>
-                <button onClick={stop} className="text-sm text-zinc-400 underline hover:text-zinc-100">
-                  End call
-                </button>
-              </div>
-            )}
-
-            {(hasCalled || state === 'ended') && (
-              <div className="mt-4 flex flex-col items-center gap-3">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    onClick={() => setModalOpen(true)}
-                    className="rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
-                    style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-                  >
-                    Get this for {businessName} — start today
-                  </button>
-                  <button onClick={() => void share()} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
-                    {shareCopied ? 'Link copied!' : 'Share this demo'}
-                  </button>
-                  <a href={learnMoreHref} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
-                    Learn more
-                  </a>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {phase === 'gone' && (
-          <>
-            <h1 className="text-3xl font-semibold">This demo has wrapped up</h1>
-            <p className="text-zinc-400 max-w-md">
-              The live demo for {businessName} is no longer running — but getting the real thing takes minutes.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <a
-                href={checkoutHref}
-                className="rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
-                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-              >
-                Get this for {businessName} — start today
-              </a>
-              <a href={learnMoreHref} className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition">
-                Learn more
-              </a>
-            </div>
-            <p className="text-sm text-zinc-400 max-w-md">
-              You get: a Voice AI receptionist that works 24/7 + GoHighLevel Marketing &amp; Sales CRM bundle + free setup.
-            </p>
-          </>
-        )}
+  if (phase === null) {
+    // Loading — avoid flashing the full layout before we know whether
+    // the demo is expired/claimed.
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--background)' }}>
+        <div className="h-2 w-2 rounded-full animate-pulse" style={{ background: 'var(--text-muted)' }} />
       </div>
+    )
+  }
 
-      <footer className="py-6 text-center text-xs text-zinc-600">
-        A demo built by <Link href="/" className="underline">Xovera</Link>. Not affiliated with or endorsed by {businessName}.
-      </footer>
+  return (
+    <div data-theme="soft-light" className="min-h-screen overflow-x-hidden" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
+      <Nav checkoutHref={checkoutHref} />
 
-      {/* Post-call conversion modal — lands the moment the call ends. */}
-      {modalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-6"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Get this for ${businessName}`}
-        >
-          <button
-            aria-label="Close"
-            onClick={() => setModalOpen(false)}
-            className="absolute inset-0 bg-black/70"
+      <Hero
+        businessName={businessName}
+        websiteDomain={websiteDomain}
+        checkoutHref={checkoutHref}
+        learnMoreHref={learnMoreHref}
+        phase={phase}
+        ingestion={ingestion}
+        thinContent={thinContent}
+        websiteInput={websiteInput}
+        setWebsiteInput={setWebsiteInput}
+        submitting={submitting}
+        trainError={trainError}
+        urlChangeIgnored={urlChangeIgnored}
+        onTrain={() => void handleTrain()}
+        trainingSteps={trainingSteps}
+        buildStep={buildStep}
+        canCallEarly={canCallEarly}
+        onCall={onCall}
+        connecting={connecting}
+        secondsLeft={secondsLeft}
+        statusLabel={statusLabel}
+        answerDisabled={primaryActionDisabled}
+        onAnswer={handlePrimaryCallAction}
+        onHangup={stop}
+        callError={callError}
+        answerError={answerError}
+        hasCalled={hasCalled}
+        onOpenModal={() => setModalOpen(true)}
+        onShare={() => void share()}
+        shareCopied={shareCopied}
+      />
+
+      {phase !== 'gone' && (
+        <>
+          <Features />
+          <Prompts
+            businessName={businessName}
+            chips={promptChips}
+            disabled={chipsDisabled}
+            onPick={handlePrimaryCallAction}
           />
-          <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center flex flex-col items-center gap-4 shadow-2xl">
-            <p className="text-3xl">🎉</p>
-            <h2 className="text-2xl font-semibold text-zinc-100">
-              That was YOUR receptionist.
-            </h2>
-            <p className="text-zinc-400">
-              Want it answering {businessName}&rsquo;s phone 24/7 — nights, weekends, every missed call?
-            </p>
-            <a
-              href={checkoutHref}
-              className="w-full rounded-lg px-6 py-4 text-lg font-semibold hover:opacity-90 transition"
-              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-            >
-              Yes — I want this for my business
-            </a>
-            <p className="text-xs text-zinc-500">
-              You get: a Voice AI receptionist that works 24/7 + GoHighLevel Marketing &amp; Sales CRM bundle + free setup.
-            </p>
-            <button
-              onClick={() => void share()}
-              className="w-full rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-800 transition"
-            >
-              {shareCopied ? 'Link copied — send it over!' : 'Not your call to make? Share it with the decision maker'}
-            </button>
-            <button
-              onClick={() => setModalOpen(false)}
-              className="text-sm text-zinc-500 hover:text-zinc-300 transition"
-            >
-              Maybe later
-            </button>
-          </div>
-        </div>
+        </>
       )}
-    </main>
+
+      <Stats />
+      <Process />
+      <Testimonials />
+      <FinalCta checkoutHref={checkoutHref} learnMoreHref={learnMoreHref} />
+      <Footer businessName={businessName} onShare={() => void share()} shareCopied={shareCopied} />
+
+      {modalOpen && (
+        <ConversionModal
+          businessName={businessName}
+          checkoutHref={checkoutHref}
+          shareCopied={shareCopied}
+          onShare={() => void share()}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+    </div>
   )
 }
