@@ -4,7 +4,22 @@
  * provisioning + crawling now; the status route (GET .../status) is
  * read-only. See app/try/[slug]/TryDemoClient.tsx for the client flow.
  *
- * Body: { websiteUrl?: string }
+ * Body: { websiteUrl?: string, answerNow?: boolean }
+ *
+ * `answerNow: true` is the "Answer the call" primary CTA — it skips URL
+ * validation entirely (no website required) and calls
+ * ensureProvisioned(slug, { skipCrawl: true }): agent + voice config
+ * get created, no knowledge asset does, and the prospect finalizes to
+ * `ready` so the visitor can start talking immediately. It's a
+ * short-circuit at the top of this handler — it never touches the URL
+ * validation / retrain / fallthrough logic below. If the visitor later
+ * types a website into the ready-phase box, that's a normal POST with
+ * `websiteUrl` set and no `answerNow` — see the ready+null-ingestionRunId
+ * branch of the domain-change eligibility check below, which lets a
+ * `ready` prospect with nothing crawled yet pick up a website (even a
+ * different one from registration) and fall through into the same
+ * ensureProvisioned(slug) (no skip) + fast-start path a fresh prospect
+ * uses.
  *
  * Rate limiting: v1 deliberately skips a per-IP limiter here. The slug
  * itself is unguessable (8 hex chars of randomness, see
@@ -44,6 +59,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
   const body = await req.json().catch(() => ({}))
   const rawUrl = typeof body?.websiteUrl === 'string' ? body.websiteUrl.trim() : ''
+  const answerNow = body?.answerNow === true
+
+  // "Answer the call" — no website needed. Idempotent: ensureProvisioned
+  // itself no-ops (past the knowledge/agent/finalize work) once the
+  // prospect is already ready, so double-clicking this button is safe.
+  if (answerNow) {
+    const ensured = await ensureProvisioned(slug, { skipCrawl: true })
+    if (!ensured) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    if (ensured.status === 'expired' || ensured.status === 'claimed') {
+      return NextResponse.json({ error: 'gone', status: ensured.status }, { status: 410 })
+    }
+    return NextResponse.json({ status: ensured.status, answered: ensured.status === 'ready' })
+  }
 
   let urlChangeIgnored = false
   if (rawUrl) {
@@ -56,11 +84,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     }
     if (validated.domain !== prospect.websiteDomain) {
       // Retry-with-a-different-site is allowed when there's nothing to
-      // lose: not yet provisioned, OR provisioned but the latest run
-      // ended with zero chunks (bot-walled site, wrong URL, delivery
-      // platform page). A demo that already HAS knowledge keeps its
-      // domain — swapping it out from under a working agent is not v1.
+      // lose: not yet provisioned, answered instantly but never trained
+      // (ready with no ingestion run at all — the skipCrawl path), OR
+      // provisioned but the latest run ended with zero chunks (bot-walled
+      // site, wrong URL, delivery platform page). A demo that already HAS
+      // knowledge keeps its domain — swapping it out from under a working
+      // agent is not v1.
       let retryEligible = prospect.status === 'registered'
+        || (prospect.status === 'ready' && !prospect.ingestionRunId)
       if (!retryEligible && prospect.status === 'ready' && prospect.ingestionRunId) {
         const run = await db.ingestionRun.findUnique({
           where: { id: prospect.ingestionRunId },

@@ -31,6 +31,20 @@
  * The crawl itself is asynchronous — the every-minute ingest-queue cron
  * picks up the queued IngestionRun. Readiness is agent-existence, not
  * crawl-completion.
+ *
+ * `opts.skipCrawl` — the "answer instantly" path (POST .../train with
+ * `answerNow: true`). Skips the knowledge-asset block (steps 1–2)
+ * entirely so a visitor can start talking to the agent without ever
+ * supplying a website; agent + voice config are still created and the
+ * prospect still finalizes to `ready`. Because `ready` is deliberately
+ * NOT in the terminal-status bail-out below, a LATER call to
+ * `ensureProvisioned(slug)` (no skipCrawl — e.g. once the visitor does
+ * type a website into the ready-phase box) re-enters a `ready`
+ * prospect and runs the same null-field-guarded knowledge steps,
+ * filling in the domain/source/run that were skipped the first time.
+ * The per-FK CAS inside that block (not the registered→provisioning
+ * CAS/lease, which only applies to the registered/provisioning
+ * transition) is what keeps that re-entry race-safe.
  */
 import { db } from '@/lib/db'
 import { detectUrl } from '@/lib/ingest/detect'
@@ -67,16 +81,27 @@ type Prospect = NonNullable<Awaited<ReturnType<typeof db.demoProspect.findUnique
  * Ensure the prospect's demo assets exist. Returns the (possibly
  * updated) prospect row, or null if the slug doesn't exist / the
  * feature isn't configured.
+ *
+ * `opts.skipCrawl` skips the knowledge-asset block (steps 1–2) — agent
+ * + voice config are still created and the prospect still finalizes to
+ * `ready`. See the module doc comment above for how a later call
+ * without skipCrawl fills the knowledge assets back in.
  */
-export async function ensureProvisioned(slug: string): Promise<Prospect | null> {
+export async function ensureProvisioned(
+  slug: string,
+  opts: { skipCrawl?: boolean } = {},
+): Promise<Prospect | null> {
   const workspaceId = demoWorkspaceId()
   if (!workspaceId) return null
 
   let prospect = await db.demoProspect.findUnique({ where: { slug } })
   if (!prospect) return null
 
-  // Terminal / already-done states: nothing to do.
-  if (!['registered', 'provisioning'].includes(prospect.status)) return prospect
+  // Truly terminal states: nothing to do. `ready` is deliberately NOT
+  // included — the skipCrawl path finalizes a prospect to `ready` with
+  // no knowledge assets, and a later call (no skipCrawl) must be able
+  // to revisit a `ready` prospect and fill those assets in.
+  if (['expired', 'claimed', 'failed'].includes(prospect.status)) return prospect
 
   // CAS: registered → provisioning (stamps the click). The winner owns
   // the first provisioning attempt; losers return immediately — the
@@ -88,7 +113,7 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
     })
     prospect = (await db.demoProspect.findUnique({ where: { slug } }))!
     if (cas.count === 0) return prospect
-  } else {
+  } else if (prospect.status === 'provisioning') {
     // Already provisioning: claim the 8-second work lease before doing
     // anything. The no-op write bumps updatedAt, so a successful claim
     // locks other pollers out for the window; count === 0 means another
@@ -105,70 +130,78 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
     if (claim.count === 0) return prospect
     prospect = (await db.demoProspect.findUnique({ where: { slug } })) ?? prospect
   }
+  // else: status === 'ready' already (answered instantly via skipCrawl,
+  // or otherwise re-entered post-finalize). No registered→provisioning
+  // CAS/lease applies here — fall straight into the knowledge block;
+  // the per-FK CAS inside it is what keeps concurrent re-entries
+  // race-safe, same as it does for the registered/provisioning path.
 
   // ─── Steps 1–2: knowledge assets (best-effort — NEVER terminal) ───
   // A failure here is logged and skipped: the demo goes ready without
   // indexed knowledge. The null-field guards mean a later poll retries
-  // these while the prospect is still provisioning.
-  try {
-    // 1. Knowledge domain (per-prospect isolation for retrieval scoping)
-    let knowledgeDomainId = prospect.knowledgeDomainId
-    if (!knowledgeDomainId) {
-      const domain = await db.knowledgeDomain.create({
-        data: {
-          workspaceId,
-          name: `Demo: ${prospect.businessName} (${prospect.slug})`,
-          description: `Auto-crawled from ${prospect.websiteUrl} for the prospect voice demo.`,
-        },
-        select: { id: true },
-      })
-      // CAS the domain on — if another racer beat us, roll back ours
-      // and adopt theirs.
-      const won = await db.demoProspect.updateMany({
-        where: { id: prospect.id, knowledgeDomainId: null },
-        data: { knowledgeDomainId: domain.id },
-      })
-      if (won.count === 0) {
-        await db.knowledgeDomain.delete({ where: { id: domain.id } }).catch(() => {})
-        const fresh = await db.demoProspect.findUnique({
-          where: { id: prospect.id },
-          select: { knowledgeDomainId: true },
+  // these while the prospect is still provisioning (or, for the
+  // answer-instantly path, after it's already `ready`).
+  if (!opts.skipCrawl) {
+    try {
+      // 1. Knowledge domain (per-prospect isolation for retrieval scoping)
+      let knowledgeDomainId = prospect.knowledgeDomainId
+      if (!knowledgeDomainId) {
+        const domain = await db.knowledgeDomain.create({
+          data: {
+            workspaceId,
+            name: `Demo: ${prospect.businessName} (${prospect.slug})`,
+            description: `Auto-crawled from ${prospect.websiteUrl} for the prospect voice demo.`,
+          },
+          select: { id: true },
         })
-        knowledgeDomainId = fresh?.knowledgeDomainId ?? null
-      } else {
-        knowledgeDomainId = domain.id
+        // CAS the domain on — if another racer beat us, roll back ours
+        // and adopt theirs.
+        const won = await db.demoProspect.updateMany({
+          where: { id: prospect.id, knowledgeDomainId: null },
+          data: { knowledgeDomainId: domain.id },
+        })
+        if (won.count === 0) {
+          await db.knowledgeDomain.delete({ where: { id: domain.id } }).catch(() => {})
+          const fresh = await db.demoProspect.findUnique({
+            where: { id: prospect.id },
+            select: { knowledgeDomainId: true },
+          })
+          knowledgeDomainId = fresh?.knowledgeDomainId ?? null
+        } else {
+          knowledgeDomainId = domain.id
+        }
       }
-    }
 
-    // 2. Crawl source + queued run (the ingest-queue cron does the work)
-    if (knowledgeDomainId && !prospect.ingestionRunId) {
-      const detection = await detectUrl(prospect.websiteUrl)
-      const source = await db.knowledgeSource.create({
-        data: {
-          knowledgeDomainId,
-          sourceType: detection.sourceType,
-          urlOrIdentifier: prospect.websiteUrl,
-          crawlConfig: demoCrawlConfig(detection.crawlConfig) as object,
-          isActive: true,
-        },
-        select: { id: true },
-      })
-      const run = await db.ingestionRun.create({
-        data: { sourceId: source.id, status: 'queued' },
-        select: { id: true },
-      })
-      // CAS the run on — if another racer beat us, delete our source
-      // (the run cascades away with it).
-      const won = await db.demoProspect.updateMany({
-        where: { id: prospect.id, ingestionRunId: null },
-        data: { ingestionRunId: run.id },
-      })
-      if (won.count === 0) {
-        await db.knowledgeSource.delete({ where: { id: source.id } }).catch(() => {})
+      // 2. Crawl source + queued run (the ingest-queue cron does the work)
+      if (knowledgeDomainId && !prospect.ingestionRunId) {
+        const detection = await detectUrl(prospect.websiteUrl)
+        const source = await db.knowledgeSource.create({
+          data: {
+            knowledgeDomainId,
+            sourceType: detection.sourceType,
+            urlOrIdentifier: prospect.websiteUrl,
+            crawlConfig: demoCrawlConfig(detection.crawlConfig) as object,
+            isActive: true,
+          },
+          select: { id: true },
+        })
+        const run = await db.ingestionRun.create({
+          data: { sourceId: source.id, status: 'queued' },
+          select: { id: true },
+        })
+        // CAS the run on — if another racer beat us, delete our source
+        // (the run cascades away with it).
+        const won = await db.demoProspect.updateMany({
+          where: { id: prospect.id, ingestionRunId: null },
+          data: { ingestionRunId: run.id },
+        })
+        if (won.count === 0) {
+          await db.knowledgeSource.delete({ where: { id: source.id } }).catch(() => {})
+        }
       }
+    } catch (err) {
+      console.error(`[demo-prospects] knowledge provisioning failed for ${slug} (continuing):`, err)
     }
-  } catch (err) {
-    console.error(`[demo-prospects] knowledge provisioning failed for ${slug} (continuing):`, err)
   }
 
   // Re-read so the agent block sees the freshest FK state — a racer may
@@ -235,6 +268,20 @@ export async function ensureProvisioned(slug: string): Promise<Prospect | null> 
       }
     }
     if (!agentId) throw new Error('agent creation raced but no winner is visible')
+
+    // 3a-cont. The agent's knowledgeDomainIds is only stamped at agent
+    // creation time above. When the agent already existed (skipCrawl
+    // finalized it first, and the domain shows up on a later,
+    // non-skip re-entry) it needs a catch-up write — the web-token
+    // route retrieves off prospect.knowledgeDomainId directly, so this
+    // doesn't gate the demo call, but the Agent row would otherwise
+    // stay permanently out of sync with the domain it actually has.
+    if (prospect.knowledgeDomainId) {
+      await db.agent.updateMany({
+        where: { id: agentId, NOT: { knowledgeDomainIds: { has: prospect.knowledgeDomainId } } },
+        data: { knowledgeDomainIds: [prospect.knowledgeDomainId] },
+      })
+    }
 
     // 3b. Voice config — always ensured once the agent exists, so a
     // crash between the agent CAS and the config write heals on the

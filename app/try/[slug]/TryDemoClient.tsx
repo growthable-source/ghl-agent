@@ -2,9 +2,13 @@
 
 /**
  * The prospect-facing demo page. Four phases:
- *  1. train — hero + a website input (prefilled from registration,
- *     editable) + "Train my AI receptionist" button. Nothing is
- *     provisioned until this button is clicked (POST .../train).
+ *  1. train — hero with a primary "Answer the call" CTA (POST .../train
+ *     with { answerNow: true } — no website required, agent+voice get
+ *     created with knowledge skipped) plus a visually secondary training
+ *     block: a website input (prefilled from registration, editable) +
+ *     "Train my AI receptionist" button. Nothing is provisioned until one
+ *     of these is clicked — training was a hard gate before; answering
+ *     is now the fast path and training is optional enrichment.
  *  2. training — real progress driven by polling /status every 2.5s:
  *     a staged list (reading → training on N pages → learning your
  *     services) built from the live IngestionRun row. 3-minute client
@@ -93,6 +97,8 @@ export default function TryDemoClient({
   const [websiteInput, setWebsiteInput] = useState(websiteUrl)
   const [submitting, setSubmitting] = useState(false)
   const [trainError, setTrainError] = useState<string | null>(null)
+  const [answering, setAnswering] = useState(false)
+  const [answerError, setAnswerError] = useState<string | null>(null)
   const [urlChangeIgnored, setUrlChangeIgnored] = useState(false)
   const [hasCalled, setHasCalled] = useState(false)
   // Rotating "you could ask me…" example on the train screen.
@@ -211,6 +217,36 @@ export default function TryDemoClient({
     }
   }, [slug, websiteInput])
 
+  // Primary CTA on the train screen: answer the call right now, no
+  // website required. POSTs answerNow, which skips knowledge entirely
+  // (agent + voice config only) and finalizes the prospect to ready —
+  // then we jump straight to the ready phase and place the call, same
+  // as tapping "answer this call" would once ready normally.
+  const handleAnswerNow = useCallback(async () => {
+    setAnswering(true)
+    setAnswerError(null)
+    try {
+      const res = await fetch(`/api/public/try/${slug}/train`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answerNow: true }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.status === 410 || data.status === 'expired' || data.status === 'claimed') { setPhase('gone'); return }
+      if (!res.ok || data.status !== 'ready') {
+        setAnswerError(data?.message || 'Something went wrong — try again.')
+        return
+      }
+      setIngestion(null) // nothing crawled yet — drives the softer ready-phase copy
+      setPhase('ready')
+      void startCall()
+    } catch {
+      setAnswerError('Something went wrong — try again.')
+    } finally {
+      setAnswering(false)
+    }
+  }, [slug, startCall])
+
   const live = state === 'live' || state === 'connecting'
   const chunksCreated = ingestion?.chunksCreated ?? 0
   const thinContent = chunksCreated === 0
@@ -277,38 +313,52 @@ export default function TryDemoClient({
               {businessName}&rsquo;s phone is ringing…
             </h1>
             <p className="text-zinc-400 max-w-md">
-              Train your AI receptionist on your website — takes under a minute — then let it answer this call for you.
+              Your AI receptionist can pick it up right now — no website required.
             </p>
 
-            <div className="h-14 flex flex-col items-center justify-center" aria-live="polite">
-              <p className="text-xs uppercase tracking-widest text-zinc-600">Some things you could ask it</p>
-              <p
-                className={`mt-1 text-lg text-zinc-200 transition-opacity duration-300 ${askVisible ? 'opacity-100' : 'opacity-0'}`}
-              >
-                {askExamples[askIndex]}
-              </p>
-            </div>
+            <button
+              onClick={() => void handleAnswerNow()}
+              disabled={answering}
+              className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition disabled:opacity-50"
+              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+            >
+              {answering ? 'Connecting…' : '📞 Answer the call'}
+            </button>
+            {answerError && <p className="text-accent-red text-sm">{answerError}</p>}
 
-            <div className="w-full max-w-md flex flex-col gap-3">
-              <input
-                type="text"
-                value={websiteInput}
-                onChange={e => setWebsiteInput(e.target.value)}
-                placeholder="yourwebsite.com"
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-center text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent-primary"
-              />
-              {urlChangeIgnored && (
-                <p className="text-xs text-zinc-500">This demo is already trained — the new website won&rsquo;t change it in this preview.</p>
-              )}
-              {trainError && <p className="text-accent-red text-sm">{trainError}</p>}
-              <button
-                onClick={() => void handleTrain()}
-                disabled={submitting || !websiteInput.trim()}
-                className="rounded-full px-10 py-5 text-lg font-semibold shadow-lg hover:opacity-90 transition disabled:opacity-50"
-                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-              >
-                {submitting ? 'Starting…' : 'Train my AI receptionist'}
-              </button>
+            <div className="w-full max-w-md flex flex-col items-center gap-6 pt-6 mt-2 border-t border-zinc-800">
+              <div className="h-14 flex flex-col items-center justify-center" aria-live="polite">
+                <p className="text-xs uppercase tracking-widest text-zinc-600">Some things you could ask it</p>
+                <p
+                  className={`mt-1 text-lg text-zinc-200 transition-opacity duration-300 ${askVisible ? 'opacity-100' : 'opacity-0'}`}
+                >
+                  {askExamples[askIndex]}
+                </p>
+              </div>
+
+              <div className="w-full flex flex-col gap-3">
+                <p className="text-sm text-zinc-500">
+                  Want it to know {businessName}&rsquo;s details? Train it on your website first — takes under a minute.
+                </p>
+                <input
+                  type="text"
+                  value={websiteInput}
+                  onChange={e => setWebsiteInput(e.target.value)}
+                  placeholder="yourwebsite.com"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-center text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent-primary"
+                />
+                {urlChangeIgnored && (
+                  <p className="text-xs text-zinc-500">This demo is already trained — the new website won&rsquo;t change it in this preview.</p>
+                )}
+                {trainError && <p className="text-accent-red text-sm">{trainError}</p>}
+                <button
+                  onClick={() => void handleTrain()}
+                  disabled={submitting || !websiteInput.trim()}
+                  className="rounded-lg border border-zinc-700 px-6 py-3 text-sm font-semibold text-zinc-100 hover:bg-zinc-900 transition disabled:opacity-50"
+                >
+                  {submitting ? 'Starting…' : 'Train my AI receptionist'}
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -345,9 +395,11 @@ export default function TryDemoClient({
             {thinContent ? (
               <div className="w-full max-w-md flex flex-col gap-3">
                 <p className="text-zinc-400">
-                  {ingestion?.status === 'failed'
-                    ? `${websiteDomain} wouldn’t let us read it — some sites (and delivery platforms like UberEats) block robots. Your main website usually works best.`
-                    : `We didn’t find much text on ${websiteDomain}. A different page of your site might work better.`}
+                  {ingestion === null
+                    ? `It hasn’t learned ${businessName}’s details yet — it’ll introduce itself and take messages. Train it on your website any time:`
+                    : ingestion?.status === 'failed'
+                      ? `${websiteDomain} wouldn’t let us read it — some sites (and delivery platforms like UberEats) block robots. Your main website usually works best.`
+                      : `We didn’t find much text on ${websiteDomain}. A different page of your site might work better.`}
                 </p>
                 <input
                   type="text"
@@ -362,9 +414,11 @@ export default function TryDemoClient({
                   disabled={submitting || !websiteInput.trim()}
                   className="rounded-lg border border-zinc-700 px-6 py-3 font-semibold text-zinc-100 hover:bg-zinc-900 transition disabled:opacity-50"
                 >
-                  {submitting ? 'Starting…' : 'Try a different website'}
+                  {submitting ? 'Starting…' : ingestion === null ? 'Train my AI receptionist' : 'Try a different website'}
                 </button>
-                <p className="text-xs text-zinc-500">Or call anyway — your receptionist will introduce itself and take a message instead of guessing at details.</p>
+                {ingestion !== null && (
+                  <p className="text-xs text-zinc-500">Or call anyway — your receptionist will introduce itself and take a message instead of guessing at details.</p>
+                )}
               </div>
             ) : (
               <p className="text-zinc-400 max-w-md">
