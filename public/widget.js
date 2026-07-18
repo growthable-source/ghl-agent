@@ -53,7 +53,7 @@
   // never change. Empty RUNTIME_ORIGIN = disabled (everything rides the
   // script's own origin, the pre-split behaviour). data-api-origin wins
   // over both for testing/self-hosting.
-  var RUNTIME_ORIGIN = ''
+  var RUNTIME_ORIGIN = 'https://xovera-widget.vercel.app'
   var hostUrl
   try { hostUrl = new URL(me.src).origin } catch (_) { hostUrl = '' }
   var apiOverride = me.getAttribute('data-api-origin')
