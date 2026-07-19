@@ -1,6 +1,9 @@
 import Image from 'next/image'
 
-const TESTIMONIALS = [
+// Exported so app/try/[slug]/sections/purchase/OrderSummary.tsx can reuse
+// the exact same copy (single source of truth) for its one-testimonial
+// social proof slot in the checkout order summary.
+export const TESTIMONIALS = [
   {
     quote: "Feels eerily real. Our customers genuinely thought it was a person. We've not missed a single call in 4 months.",
     name: 'Luke M.',

@@ -3,8 +3,21 @@ import XoveraLogo from '@/components/XoveraLogo'
 
 /** Sticky top nav for the /try demo lander. Deliberately minimal — no
  *  announcement bar, no login link — this is a focused paid-traffic /
- *  cold-email lander, not the main marketing site. */
-export default function Nav({ checkoutHref }: { checkoutHref: string }) {
+ *  cold-email lander, not the main marketing site.
+ *
+ *  checkoutMode 'embedded' opens PurchaseModal in-page; 'external' falls
+ *  back to a plain link (real <a>, not a JS redirect, so it stays
+ *  right-clickable/open-in-new-tab-able) until Ryan sets
+ *  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY. */
+export default function Nav({
+  checkoutHref,
+  checkoutMode,
+  onOpenCheckout,
+}: {
+  checkoutHref: string
+  checkoutMode: 'embedded' | 'external'
+  onOpenCheckout: () => void
+}) {
   return (
     <nav
       className="sticky top-0 z-40 backdrop-blur-xl border-b"
@@ -25,9 +38,15 @@ export default function Nav({ checkoutHref }: { checkoutHref: string }) {
             Reviews
           </a>
         </div>
-        <a href={checkoutHref} className="btn-primary text-xs sm:text-sm py-2 px-4 sm:px-5 rounded-full shrink-0">
-          Get this for my business →
-        </a>
+        {checkoutMode === 'embedded' ? (
+          <button type="button" onClick={onOpenCheckout} className="btn-primary text-xs sm:text-sm py-2 px-4 sm:px-5 rounded-full shrink-0">
+            Get this for my business →
+          </button>
+        ) : (
+          <a href={checkoutHref} className="btn-primary text-xs sm:text-sm py-2 px-4 sm:px-5 rounded-full shrink-0">
+            Get this for my business →
+          </a>
+        )}
       </div>
     </nav>
   )

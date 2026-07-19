@@ -23,13 +23,16 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 // Default direct-checkout offer. Overridable per prospect via
 // metadata.checkoutUrl (https only) so campaigns can carry their own offer.
+// Also doubles as the fallback CTA target when embedded checkout isn't
+// configured yet (see checkoutMode below) so prod never dead-ends before
+// Ryan sets NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY.
 const DEFAULT_CHECKOUT_URL = process.env.DEMO_CHECKOUT_URL || 'https://link.funnl.me/payment-link/6a5acc857b99151a5403f3d5'
 
 export default async function TryDemoPage({ params }: Params) {
   const { slug } = await params
   const prospect = await db.demoProspect.findUnique({
     where: { slug },
-    select: { slug: true, businessName: true, websiteUrl: true, websiteDomain: true, vertical: true, status: true, metadata: true },
+    select: { slug: true, businessName: true, websiteUrl: true, websiteDomain: true, vertical: true, status: true, metadata: true, contactEmail: true },
   }).catch(() => null)
   if (!prospect) notFound()
 
@@ -39,6 +42,12 @@ export default async function TryDemoPage({ params }: Params) {
       ? metaCheckout
       : DEFAULT_CHECKOUT_URL
 
+  // Embedded in-modal checkout requires the publishable key at build/runtime.
+  // Until Ryan sets it (see the plan's "Ryan must do" list), every CTA
+  // falls back to the external checkoutHref above instead of opening a
+  // modal that can never mount Stripe Elements.
+  const checkoutMode: 'embedded' | 'external' = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ? 'embedded' : 'external'
+
   return (
     <TryDemoClient
       slug={prospect.slug}
@@ -47,7 +56,9 @@ export default async function TryDemoPage({ params }: Params) {
       websiteDomain={prospect.websiteDomain}
       vertical={prospect.vertical}
       initialStatus={prospect.status}
+      contactEmail={prospect.contactEmail}
       checkoutHref={checkoutHref}
+      checkoutMode={checkoutMode}
       learnMoreHref={`${landingPathForVertical(prospect.vertical)}?demo=${prospect.slug}`}
     />
   )

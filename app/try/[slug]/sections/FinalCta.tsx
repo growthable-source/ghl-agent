@@ -1,4 +1,14 @@
-export default function FinalCta({ checkoutHref, learnMoreHref }: { checkoutHref: string; learnMoreHref: string }) {
+export default function FinalCta({
+  checkoutHref,
+  checkoutMode,
+  onOpenCheckout,
+  learnMoreHref,
+}: {
+  checkoutHref: string
+  checkoutMode: 'embedded' | 'external'
+  onOpenCheckout: () => void
+  learnMoreHref: string
+}) {
   return (
     <section className="py-16 sm:py-20 px-6">
       <div className="max-w-[1280px] mx-auto">
@@ -20,16 +30,22 @@ export default function FinalCta({ checkoutHref, learnMoreHref }: { checkoutHref
             <p className="mb-9 leading-[1.65]" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
               No developers. No long setup. Paste your URL and your phone is covered — nights, weekends, every day.
             </p>
-            <a href={checkoutHref} className="btn-primary text-lg py-4 px-10 rounded-full">
-              📞 Get My AI Receptionist →
-            </a>
+            {checkoutMode === 'embedded' ? (
+              <button type="button" onClick={onOpenCheckout} className="btn-primary text-lg py-4 px-10 rounded-full">
+                📞 Get My AI Receptionist →
+              </button>
+            ) : (
+              <a href={checkoutHref} className="btn-primary text-lg py-4 px-10 rounded-full">
+                📞 Get My AI Receptionist →
+              </a>
+            )}
             <p className="mt-5">
               <a href={learnMoreHref} className="text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>
                 Watch a 2-min explainer
               </a>
             </p>
             <p className="mt-6 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              14-day free trial · No credit card required · Cancel anytime
+              14-day money-back guarantee · Cancel anytime
             </p>
           </div>
         </div>

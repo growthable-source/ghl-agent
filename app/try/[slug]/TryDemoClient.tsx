@@ -34,6 +34,16 @@
  * three equivalent "start the call" entry points (phone Answer button,
  * "Hear the Demo First", any prompt chip) to one handler.
  *
+ * Purchase: every "Get this for my business" CTA (Nav, Hero's post-call
+ * row, GoneHero, FinalCta) funnels through `onOpenCheckout` below, which
+ * either opens the in-modal PurchaseModal (checkoutMode 'embedded' —
+ * requires NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, see page.tsx) or falls
+ * back to the external checkoutHref link so a CTA never dead-ends before
+ * Ryan sets that env. The post-call auto-open only fires in embedded mode
+ * — there's no equivalent overlay to force open pre-env-setup, and
+ * auto-navigating a visitor off the page on call-end would be a bad
+ * (and blockable) surprise.
+ *
  * Styling: data-theme="soft-light" pins the page to the light palette
  * (see app/page.tsx for the same pattern) so it renders consistently
  * regardless of the visitor's theme cookie — matches the Figma design's
@@ -51,11 +61,12 @@ import Process from './sections/Process'
 import Testimonials from './sections/Testimonials'
 import FinalCta from './sections/FinalCta'
 import Footer from './sections/Footer'
-import ConversionModal from './sections/ConversionModal'
+import PurchaseModal from './sections/purchase/PurchaseModal'
 import { promptChipsForVertical } from './sections/prompt-chips'
 import { usePublicVoiceCall } from '@/lib/voice/use-public-voice-call'
 
 type Phase = 'train' | 'training' | 'ready' | 'gone'
+type CheckoutMode = 'embedded' | 'external'
 
 type Ingestion = {
   status: string
@@ -70,7 +81,7 @@ const LIVE_RUN_STATUSES = ['queued', 'running']
 const TERMINAL_RUN_STATUSES = ['success', 'partial', 'failed']
 
 export default function TryDemoClient({
-  slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, checkoutHref, learnMoreHref,
+  slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, contactEmail, checkoutHref, checkoutMode, learnMoreHref,
 }: {
   slug: string
   businessName: string
@@ -78,7 +89,9 @@ export default function TryDemoClient({
   websiteDomain: string
   vertical: string | null
   initialStatus: string
+  contactEmail: string | null
   checkoutHref: string
+  checkoutMode: CheckoutMode
   learnMoreHref: string
 }) {
   const isGoneStatus = initialStatus === 'expired' || initialStatus === 'claimed'
@@ -237,16 +250,27 @@ export default function TryDemoClient({
 
   const stop = useCallback(() => { void endCall('ended') }, [endCall])
 
-  // Post-call conversion modal: opens the moment a call ends (the
-  // emotional peak), dismissible, reopenable from the hero CTA row.
-  const [modalOpen, setModalOpen] = useState(false)
+  // PurchaseModal: opens on the moment a call ends (the emotional peak,
+  // step 0's hook card) in embedded mode, dismissible, reopenable from
+  // every CTA. onOpenCheckout is the single entry point every CTA calls;
+  // external mode just navigates instead of mounting the modal.
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false)
+  const [purchaseInitialStep, setPurchaseInitialStep] = useState<0 | 1>(1)
   const modalShownRef = useRef(false)
-  useEffect(() => {
-    if (state === 'ended' && hasCalled && !modalShownRef.current) {
-      modalShownRef.current = true
-      setModalOpen(true)
+  const onOpenCheckout = useCallback((initialStep: 0 | 1 = 1) => {
+    if (checkoutMode !== 'embedded') {
+      if (typeof window !== 'undefined') window.location.href = checkoutHref
+      return
     }
-  }, [state, hasCalled])
+    setPurchaseInitialStep(initialStep)
+    setPurchaseModalOpen(true)
+  }, [checkoutMode, checkoutHref])
+  useEffect(() => {
+    if (checkoutMode === 'embedded' && state === 'ended' && hasCalled && !modalShownRef.current) {
+      modalShownRef.current = true
+      onOpenCheckout(0)
+    }
+  }, [checkoutMode, state, hasCalled, onOpenCheckout])
 
   // Share: the person on the demo often isn't the decision maker. One
   // tap shares the trained demo link (native sheet on mobile, clipboard
@@ -301,12 +325,14 @@ export default function TryDemoClient({
 
   return (
     <div data-theme="soft-light" className="min-h-screen overflow-x-hidden" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
-      <Nav checkoutHref={checkoutHref} />
+      <Nav checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} />
 
       <Hero
         businessName={businessName}
         websiteDomain={websiteDomain}
         checkoutHref={checkoutHref}
+        checkoutMode={checkoutMode}
+        onOpenCheckout={onOpenCheckout}
         learnMoreHref={learnMoreHref}
         phase={phase}
         ingestion={ingestion}
@@ -330,7 +356,6 @@ export default function TryDemoClient({
         callError={callError}
         answerError={answerError}
         hasCalled={hasCalled}
-        onOpenModal={() => setModalOpen(true)}
         onShare={() => void share()}
         shareCopied={shareCopied}
       />
@@ -350,16 +375,19 @@ export default function TryDemoClient({
       <Stats />
       <Process />
       <Testimonials />
-      <FinalCta checkoutHref={checkoutHref} learnMoreHref={learnMoreHref} />
+      <FinalCta checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} learnMoreHref={learnMoreHref} />
       <Footer businessName={businessName} onShare={() => void share()} shareCopied={shareCopied} />
 
-      {modalOpen && (
-        <ConversionModal
+      {purchaseModalOpen && (
+        <PurchaseModal
+          slug={slug}
           businessName={businessName}
-          checkoutHref={checkoutHref}
-          shareCopied={shareCopied}
+          contactEmail={contactEmail}
+          initialStep={purchaseInitialStep}
+          onClose={() => setPurchaseModalOpen(false)}
           onShare={() => void share()}
-          onClose={() => setModalOpen(false)}
+          shareCopied={shareCopied}
+          externalCheckoutHref={checkoutHref}
         />
       )}
     </div>

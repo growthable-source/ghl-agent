@@ -16,6 +16,8 @@ export interface HeroProps {
   businessName: string
   websiteDomain: string
   checkoutHref: string
+  checkoutMode: 'embedded' | 'external'
+  onOpenCheckout: (initialStep?: 0 | 1) => void
   learnMoreHref: string
 
   phase: Phase
@@ -44,12 +46,23 @@ export interface HeroProps {
   answerError: string | null
 
   hasCalled: boolean
-  onOpenModal: () => void
   onShare: () => void
   shareCopied: boolean
 }
 
-function GoneHero({ businessName, checkoutHref, learnMoreHref }: { businessName: string; checkoutHref: string; learnMoreHref: string }) {
+function GoneHero({
+  businessName,
+  checkoutHref,
+  checkoutMode,
+  onOpenCheckout,
+  learnMoreHref,
+}: {
+  businessName: string
+  checkoutHref: string
+  checkoutMode: 'embedded' | 'external'
+  onOpenCheckout: (initialStep?: 0 | 1) => void
+  learnMoreHref: string
+}) {
   return (
     <section className="relative pt-16 pb-20 px-6 overflow-hidden">
       <div className="relative z-10 max-w-2xl mx-auto text-center">
@@ -62,15 +75,21 @@ function GoneHero({ businessName, checkoutHref, learnMoreHref }: { businessName:
         </p>
         <div className="vox-card p-8 md:p-10 text-left sm:text-center">
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-5">
-            <a href={checkoutHref} className="btn-primary w-full sm:w-auto justify-center">
-              📞 Get My AI Receptionist →
-            </a>
+            {checkoutMode === 'embedded' ? (
+              <button type="button" onClick={() => onOpenCheckout(1)} className="btn-primary w-full sm:w-auto justify-center">
+                📞 Get My AI Receptionist →
+              </button>
+            ) : (
+              <a href={checkoutHref} className="btn-primary w-full sm:w-auto justify-center">
+                📞 Get My AI Receptionist →
+              </a>
+            )}
             <a href={learnMoreHref} className="btn-secondary w-full sm:w-auto justify-center">
               Learn more
             </a>
           </div>
           <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            14-day free trial · No credit card required · Cancel anytime
+            14-day money-back guarantee · Cancel anytime
           </p>
         </div>
       </div>
@@ -80,16 +99,16 @@ function GoneHero({ businessName, checkoutHref, learnMoreHref }: { businessName:
 
 export default function Hero(props: HeroProps) {
   const {
-    businessName, websiteDomain, checkoutHref, learnMoreHref,
+    businessName, websiteDomain, checkoutHref, checkoutMode, onOpenCheckout, learnMoreHref,
     phase, ingestion, thinContent,
     websiteInput, setWebsiteInput, submitting, trainError, urlChangeIgnored, onTrain,
     trainingSteps, buildStep, canCallEarly,
     onCall, connecting, secondsLeft, statusLabel, answerDisabled, onAnswer, onHangup, callError, answerError,
-    hasCalled, onOpenModal, onShare, shareCopied,
+    hasCalled, onShare, shareCopied,
   } = props
 
   if (phase === 'gone') {
-    return <GoneHero businessName={businessName} checkoutHref={checkoutHref} learnMoreHref={learnMoreHref} />
+    return <GoneHero businessName={businessName} checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={onOpenCheckout} learnMoreHref={learnMoreHref} />
   }
 
   const alreadyTrained = phase === 'ready' && !thinContent
@@ -226,9 +245,15 @@ export default function Hero(props: HeroProps) {
 
           {hasCalled && (
             <div className="flex flex-col sm:flex-row gap-3 mt-7 pt-7 border-t" style={{ borderColor: 'var(--border)' }}>
-              <button type="button" onClick={onOpenModal} className="btn-primary">
-                Get this for {businessName} — start today
-              </button>
+              {checkoutMode === 'embedded' ? (
+                <button type="button" onClick={() => onOpenCheckout(0)} className="btn-primary">
+                  Get this for {businessName} — start today
+                </button>
+              ) : (
+                <a href={checkoutHref} className="btn-primary">
+                  Get this for {businessName} — start today
+                </a>
+              )}
               <button type="button" onClick={onShare} className="btn-secondary">
                 {shareCopied ? 'Link copied!' : 'Share this demo'}
               </button>
