@@ -390,8 +390,10 @@ export default function PurchaseModal({
               <StepPickNumber slug={slug} sessionId={sessionId} onDone={handleNumberDone} onNotReady={handleNotReady} />
             )}
 
-            {step === 5 && (
+            {step === 5 && sessionId && (
               <StepDone
+                slug={slug}
+                sessionId={sessionId}
                 businessName={businessName}
                 phoneNumber={finalPurchase?.phoneNumber ?? null}
                 concierge={Boolean(finalPurchase?.concierge)}

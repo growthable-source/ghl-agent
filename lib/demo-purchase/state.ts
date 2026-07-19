@@ -81,6 +81,11 @@ export interface PurchaseMetadata {
    *  — a lost race under concurrent polling just makes the cap slightly
    *  soft, never wrong in the "blocks a legitimate buyer" direction. */
   numberSearchCount?: number
+  /** Best-effort counter for resend-link/route.ts's cap (3 explicit
+   *  resends per prospect, on top of the 120s magicLinkSentAt cooldown
+   *  every send — original or resend — already enforces). Same soft-race
+   *  posture as numberSearchCount above. */
+  resendCount?: number
   updatedAt: string
 }
 
@@ -168,6 +173,40 @@ export function projectPurchase(purchase: PurchaseMetadata | null | undefined): 
     period: purchase.period,
     concierge: Boolean(purchase.concierge),
     phoneNumber: purchase.state === 'number_purchased' ? purchase.phoneNumber ?? null : null,
+  }
+}
+
+/**
+ * Internal-ops projection for the authenticated /api/v1/demo-prospects GET
+ * (Bearer ApiKey — see lib/api-auth.ts — never the public /try/[slug]
+ * routes above). The outbound prospecting tool uses `state ===
+ * 'checkout_started'` plus the row's contactEmail to drive
+ * abandoned-checkout remarketing, and `paidAt`/`concierge` to know
+ * whether a sale needs a human follow-up. Still redacts Stripe ids and
+ * internal userId/workspaceId/locationId — the tool has no use for them,
+ * and there's no reason to widen what a leaked API key exposes beyond
+ * that. contactEmail itself is intentionally NOT part of this
+ * projection — callers should prefer the row's own top-level
+ * `contactEmail` column (set at registration) and only fall back to
+ * `purchase.contactEmail` (set at checkout, which may differ) when a
+ * purchase has actually started; see app/api/v1/demo-prospects/route.ts.
+ */
+export interface PurchaseOpsProjection {
+  state: PurchaseState
+  period: PurchasePeriod
+  startedAt: string
+  paidAt: string | null
+  concierge: boolean
+}
+
+export function projectPurchaseForOps(purchase: PurchaseMetadata | null | undefined): PurchaseOpsProjection | null {
+  if (!purchase) return null
+  return {
+    state: purchase.state,
+    period: purchase.period,
+    startedAt: purchase.startedAt,
+    paidAt: purchase.paidAt ?? null,
+    concierge: Boolean(purchase.concierge),
   }
 }
 

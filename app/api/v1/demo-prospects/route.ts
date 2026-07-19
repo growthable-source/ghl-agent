@@ -16,6 +16,7 @@ import { errorResponse, ok, parseLimit } from '@/lib/api-scope'
 import { withApiLog } from '@/lib/api-log'
 import { generateProspectSlug, normalizeWebsiteDomain } from '@/lib/demo-prospects/slug'
 import { demoWorkspaceId } from '@/lib/demo-prospects/provision'
+import { getPurchase, projectPurchaseForOps } from '@/lib/demo-purchase/state'
 
 function requireDemoKey(key: KeyContext): void {
   const ws = demoWorkspaceId()
@@ -142,9 +143,29 @@ export const GET = withApiLog(async (req: NextRequest) => {
         slug: true, businessName: true, websiteDomain: true, vertical: true,
         status: true, clickedAt: true, firstCallAt: true, callCount: true,
         totalCallSecs: true, createdAt: true, updatedAt: true,
+        contactEmail: true, metadata: true,
       },
     })
-    return ok(rows, { apiKeyId: key.apiKeyId, count: rows.length })
+    // purchase: {state,period,startedAt,paidAt,concierge} | null — the
+    // engagement/purchase projection the prospecting tool uses for
+    // abandoned-checkout remarketing (state === 'checkout_started' plus
+    // contactEmail below). contactEmail prefers the checkout-time email
+    // (purchase.contactEmail, captured the moment the buyer starts
+    // checkout — may differ from whatever the tool registered originally)
+    // and falls back to the row's own registration-time contactEmail
+    // column when no purchase has started yet. See
+    // lib/demo-purchase/state.ts's projectPurchaseForOps doc comment for
+    // why userId/workspaceId/locationId/Stripe ids stay redacted even on
+    // this authenticated route.
+    const projected = rows.map(({ metadata, contactEmail, ...rest }) => {
+      const purchase = getPurchase(metadata)
+      return {
+        ...rest,
+        contactEmail: purchase?.contactEmail ?? contactEmail ?? null,
+        purchase: projectPurchaseForOps(purchase),
+      }
+    })
+    return ok(projected, { apiKeyId: key.apiKeyId, count: projected.length })
   } catch (err) {
     return errorResponse(err)
   }

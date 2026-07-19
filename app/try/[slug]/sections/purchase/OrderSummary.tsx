@@ -16,6 +16,7 @@ const MONTHLY_PRICE = 297
 const ANNUAL_PRICE = 2970
 const SETUP_PRICE = 497
 
+const OFFER_NAME = 'AI Voice Receptionist + CRM Bundle'
 const ITEMS = ['AI receptionist, answering calls 24/7', 'CRM bundle — leads, contacts & follow-up included', 'Setup & onboarding']
 
 export default function OrderSummary({
@@ -33,6 +34,7 @@ export default function OrderSummary({
   return (
     <div className="vox-card p-6 flex flex-col gap-5">
       <div>
+        <p className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>{OFFER_NAME}</p>
         <p className="section-label mb-3">Your plan</p>
         <div
           className="inline-flex items-center rounded-full border p-1 gap-1 w-full sm:w-auto"

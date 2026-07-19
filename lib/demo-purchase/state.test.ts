@@ -5,6 +5,7 @@ import {
   getPurchase,
   mergePurchaseMetadata,
   projectPurchase,
+  projectPurchaseForOps,
   type PurchaseMetadata,
 } from './state'
 
@@ -161,5 +162,67 @@ describe('projectPurchase — public projection redaction', () => {
 
     const purchased = projectPurchase({ ...fullPurchase, state: 'number_purchased', phoneNumber: '+15551234567' })
     expect(purchased?.phoneNumber).toBe('+15551234567')
+  })
+})
+
+describe('projectPurchaseForOps — /api/v1/demo-prospects internal projection', () => {
+  const fullPurchase: PurchaseMetadata = {
+    state: 'checkout_started',
+    period: 'annual',
+    contactEmail: 'buyer@example.com',
+    contactName: 'Buyer Name',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    paidAt: '2026-01-01T00:05:00.000Z',
+    stripeSessionId: 'cs_test_123',
+    stripeCustomerId: 'cus_123',
+    stripeSubscriptionId: 'sub_123',
+    userId: 'user_123',
+    workspaceId: 'ws_123',
+    locationId: 'loc_123',
+    phoneNumber: null,
+    concierge: null,
+    updatedAt: '2026-01-01T00:05:00.000Z',
+  }
+
+  it('returns null for no purchase', () => {
+    expect(projectPurchaseForOps(null)).toBeNull()
+    expect(projectPurchaseForOps(undefined)).toBeNull()
+  })
+
+  it('exposes state, period, startedAt, paidAt, and a concierge boolean', () => {
+    const projection = projectPurchaseForOps(fullPurchase)
+    expect(projection).toEqual({
+      state: 'checkout_started',
+      period: 'annual',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      paidAt: '2026-01-01T00:05:00.000Z',
+      concierge: false,
+    })
+  })
+
+  it('never leaks contact info, stripe ids, or internal ids', () => {
+    const projection = projectPurchaseForOps(fullPurchase) as unknown as Record<string, unknown>
+    expect(projection.contactEmail).toBeUndefined()
+    expect(projection.contactName).toBeUndefined()
+    expect(projection.stripeSessionId).toBeUndefined()
+    expect(projection.stripeCustomerId).toBeUndefined()
+    expect(projection.stripeSubscriptionId).toBeUndefined()
+    expect(projection.userId).toBeUndefined()
+    expect(projection.workspaceId).toBeUndefined()
+    expect(projection.locationId).toBeUndefined()
+  })
+
+  it('defaults paidAt to null when unpaid', () => {
+    const unpaid: PurchaseMetadata = { ...fullPurchase, paidAt: undefined }
+    expect(projectPurchaseForOps(unpaid)?.paidAt).toBeNull()
+  })
+
+  it('surfaces concierge as a boolean, not the raw flag object', () => {
+    const projection = projectPurchaseForOps({
+      ...fullPurchase,
+      concierge: { stage: 'leadconnector', reason: 'not_configured', flaggedAt: '2026-01-01T00:10:00.000Z' },
+    })
+    expect(projection?.concierge).toBe(true)
+    expect((projection as unknown as Record<string, unknown>).reason).toBeUndefined()
   })
 })
