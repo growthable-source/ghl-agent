@@ -20,11 +20,25 @@
  * we delete the snapshotted assets, scoped to the demos workspace as
  * a second belt-and-braces guard against ever touching a re-parented
  * asset that raced past the CAS somehow.
+ *
+ * Embedded-checkout purchase guard (lib/demo-purchase/state.ts): a paid
+ * buyer must NEVER be reaped, full stop. Two layers already keep a live
+ * purchase out of the `expiresAt < now` candidate set before it ever
+ * reaches this file — the checkout-session route extends expiresAt +14d
+ * the moment checkout starts, and fulfillDemoBundle() nulls expiresAt
+ * entirely the instant Stripe confirms payment (before claimProspect()
+ * even runs, which is what actually flips DemoProspect.status to
+ * 'claimed' and drops the row out of CLAIMABLE_STATUSES for good). This
+ * is the third, belt-and-braces layer: skip any candidate whose
+ * `metadata.purchase.state` shows they've actually paid, regardless of
+ * what expiresAt says — an abandoned `checkout_started` (never paid) is
+ * still fair game once its extended window lapses.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { recordCronRun } from '@/lib/cron-heartbeat'
 import { demoWorkspaceId } from '@/lib/demo-prospects/provision'
+import { getPurchase } from '@/lib/demo-purchase/state'
 
 const MAX_PER_RUN = 50
 const REGISTERED_MAX_AGE_DAYS = 90
@@ -48,6 +62,7 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   let reaped = 0
   let skippedRaced = 0
+  let skippedLivePurchase = 0
   let failedRows = 0
 
   try {
@@ -56,12 +71,20 @@ export async function GET(req: NextRequest) {
         status: { in: CLAIMABLE_STATUSES },
         expiresAt: { not: null, lt: now },
       },
-      select: { id: true, slug: true, agentId: true, knowledgeDomainId: true },
+      select: { id: true, slug: true, agentId: true, knowledgeDomainId: true, metadata: true },
       take: MAX_PER_RUN,
     })
 
     for (const p of expired) {
       try {
+        // Layer 3 guard — see the module doc comment. A purchase past
+        // `checkout_started` means the buyer paid; never reap it here
+        // even if expiresAt somehow wasn't cleared yet.
+        const purchase = getPurchase(p.metadata)
+        if (purchase && purchase.state !== 'checkout_started') {
+          skippedLivePurchase++
+          continue
+        }
         // CAS BEFORE deleting anything: only proceed if this row still
         // matches the same predicate we selected on. A claim that raced
         // in between flips status to 'claimed' + expiresAt to null, so
@@ -120,6 +143,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       reaped,
       skippedRaced,
+      skippedLivePurchase,
       failedRows,
       staleRegistered: stale.count,
       callsDeleted: calls.count,

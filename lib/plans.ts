@@ -59,6 +59,18 @@ export const STRIPE_PRICES = {
   voiceOverage: process.env.STRIPE_PRICE_VOICE_OVERAGE || '',
   // Quantity-based price for extra agents
   extraAgent: process.env.STRIPE_PRICE_EXTRA_AGENT || '',
+  // Prospect voice-demo purchase bundle (in-modal embedded checkout on
+  // /try/[slug]) — $497 one-time setup + $297/mo, or an annual price
+  // that waives the setup fee. Distinct from the dashboard's
+  // starter/growth/scale tiers: this is the standalone offer sold off
+  // the demo lander before a workspace even exists. Empty strings (env
+  // unset) make the checkout-session route 503 rather than silently
+  // creating a Stripe session with a bad price id.
+  demoBundle: {
+    setup: process.env.STRIPE_PRICE_DEMO_BUNDLE_SETUP || '',
+    monthly: process.env.STRIPE_PRICE_DEMO_BUNDLE_MONTHLY || '',
+    annual: process.env.STRIPE_PRICE_DEMO_BUNDLE_ANNUAL || '',
+  },
 } as const
 
 // ─── All supported channels ─────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { getPlanDefaults, type PlanId } from '@/lib/plans'
 import { resetUsageCounters } from '@/lib/usage'
 import { sendTrialEndingEmail, sendPaymentFailedEmail } from '@/lib/billing-alert-email'
+import { fulfillDemoBundle } from '@/lib/demo-purchase/fulfill'
 
 /**
  * POST /api/webhooks/stripe
@@ -37,6 +38,21 @@ export async function POST(req: NextRequest) {
       // ── Checkout completed — new subscription ───────────────────────
       case 'checkout.session.completed': {
         const session = event.data.object as any
+
+        // /try/[slug] demo-bundle purchase — a wholly different pipeline
+        // from the dashboard's /api/billing/checkout flow below (no
+        // workspaceId/plan metadata yet; fulfillDemoBundle() creates
+        // those). Checked FIRST because a demo_bundle session never has
+        // workspaceId/plan set, so it would otherwise just `break` on the
+        // next line and silently do nothing. fulfillDemoBundle never
+        // throws (every stage failure routes to concierge internally),
+        // but it's still wrapped by this handler's own try/catch as a
+        // second safety net — either way the webhook always 200s.
+        if (session.metadata?.intent === 'demo_bundle' && session.metadata?.prospectSlug) {
+          await fulfillDemoBundle(session)
+          break
+        }
+
         const { workspaceId, plan, period } = session.metadata || {}
         if (!workspaceId || !plan) break
 
