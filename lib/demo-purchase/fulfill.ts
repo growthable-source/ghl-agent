@@ -165,6 +165,27 @@ export async function fulfillDemoBundle(session: Stripe.Checkout.Session): Promi
       ...(subscriptionId ? { stripeSubscriptionId: subscriptionId } : {}),
     })
     purchase = result.purchase
+
+    // Concurrent double-webhook closure: two SEPARATELY-PAID sessions can
+    // both read state 'checkout_started' and race the paid CAS above. The
+    // loser lands here holding the WINNER's purchase object — if the
+    // winning stripeSessionId isn't ours and we carried our own live
+    // subscription, that subscription would otherwise bill forever with
+    // no paper trail (the top-of-function duplicate guard only catches
+    // the sequential ordering). Cancel our orphan and shout.
+    if (!result.ok && purchase && purchase.stripeSessionId && purchase.stripeSessionId !== session.id && subscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(subscriptionId)
+      } catch (err) {
+        console.error(`[demo-purchase] failed to cancel racing duplicate subscription ${subscriptionId}:`, (err as Error)?.message)
+      }
+      await flagConcierge(
+        slug,
+        'duplicate_payment',
+        `Concurrent double-payment race: kept subscription for session ${purchase.stripeSessionId}, cancelled racing subscription ${subscriptionId} (customer ${customerId ?? 'unknown'}). Verify whether a refund is owed.`,
+      )
+      return
+    }
   }
   if (!purchase) {
     console.error(`[demo-purchase] fulfillment: could not establish a purchase record for ${slug}`)
