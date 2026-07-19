@@ -9,6 +9,14 @@ export interface PersonaSettings {
   typingDelayMinMs: number
   typingDelayMaxMs: number
   languages: string[]
+  /**
+   * Raw Agent.vocabularyRules JSON. Parsed by runAgent into the strong
+   * VOCABULARY block (placed last, above the volatile tail so it outranks
+   * the framework guidance) AND the deterministic output rewrite. Kept as
+   * `unknown` so callers can pass the DB column straight through without
+   * importing the parser. Optional — legacy neverSayList still applies.
+   */
+  vocabularyRules?: unknown
 }
 
 export function buildPersonaBlock(persona: PersonaSettings): string {

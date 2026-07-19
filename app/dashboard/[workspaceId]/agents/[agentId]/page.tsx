@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useDirtyForm } from '@/lib/use-dirty-form'
+import NewBadge from '@/components/NewBadge'
 
 /**
  * Agent Identity / overview page — mockup-faithful sectioned layout.
@@ -20,13 +21,29 @@ import { useDirtyForm } from '@/lib/use-dirty-form'
  * sub-pages for full editing.
  */
 
+interface VocabRow {
+  never: string
+  sayInstead: string
+}
+
 interface AgentRecord {
   name: string
   systemPrompt: string
+  /** Extra operator guidance ("Additional Information" in HighLevel). */
+  instructions: string
   isActive: boolean
   enabledTools: string[]
   fallbackBehavior: 'message' | 'transfer' | 'message_and_transfer'
   agentPersonaName: string | null
+  /** Never-say guardrails — the rules that were being ignored on the CRM path. */
+  vocabularyRules: VocabRow[]
+  // ─── Auto-pilot mode ───
+  autopilotWaitSeconds: number | null
+  maxBotMessages: number | null
+  respondToImages: boolean
+  respondToVoiceNotes: boolean
+  sleepOnManualMessage: boolean
+  sleepOnWorkflowMessage: boolean
 }
 
 interface KnowledgeSource {
@@ -127,13 +144,34 @@ export default function AgentIdentityPage() {
           return
         }
         if (agent) {
+          // Vocabulary rows = saved rules + any legacy never-say terms
+          // (same merge the Persona page uses so both surfaces agree).
+          const rules: VocabRow[] = Array.isArray(agent.vocabularyRules)
+            ? agent.vocabularyRules
+                .filter((r: any) => r && typeof r.never === 'string' && r.never.trim())
+                .map((r: any) => ({ never: r.never, sayInstead: typeof r.sayInstead === 'string' ? r.sayInstead : '' }))
+            : []
+          const known = new Set(rules.map(r => r.never.toLowerCase()))
+          for (const term of (agent.neverSayList ?? []) as string[]) {
+            if (typeof term === 'string' && term.trim() && !known.has(term.trim().toLowerCase())) {
+              rules.push({ never: term.trim(), sayInstead: '' })
+            }
+          }
           setInitial({
             name: agent.name ?? '',
             systemPrompt: agent.systemPrompt ?? '',
+            instructions: agent.instructions ?? '',
             isActive: agent.isActive ?? true,
             enabledTools: agent.enabledTools ?? [],
             fallbackBehavior: agent.fallbackBehavior ?? 'message',
             agentPersonaName: agent.agentPersonaName ?? null,
+            vocabularyRules: rules,
+            autopilotWaitSeconds: agent.autopilotWaitSeconds ?? null,
+            maxBotMessages: agent.maxBotMessages ?? null,
+            respondToImages: agent.respondToImages ?? false,
+            respondToVoiceNotes: agent.respondToVoiceNotes ?? false,
+            sleepOnManualMessage: agent.sleepOnManualMessage ?? false,
+            sleepOnWorkflowMessage: agent.sleepOnWorkflowMessage ?? false,
           })
           setKind(agent.agentKind === 'procedural' ? 'procedural' : 'reactive')
           setProcMode(agent.procedureMode === 'advanced' ? 'advanced' : 'simple')
@@ -163,12 +201,42 @@ export default function AgentIdentityPage() {
         body: JSON.stringify({
           name: d.name,
           systemPrompt: d.systemPrompt,
+          instructions: d.instructions,
           agentPersonaName: d.agentPersonaName || null,
+          // vocabularyRules is the source of truth; neverSayList keeps
+          // carrying the replacement-less terms for back-compat. The PATCH
+          // route re-parses both through the single validator.
+          vocabularyRules: d.vocabularyRules
+            .filter(r => r.never.trim())
+            .map(r => ({ never: r.never.trim(), sayInstead: r.sayInstead.trim() || null })),
+          neverSayList: d.vocabularyRules
+            .filter(r => r.never.trim() && !r.sayInstead.trim())
+            .map(r => r.never.trim()),
+          autopilotWaitSeconds: d.autopilotWaitSeconds,
+          maxBotMessages: d.maxBotMessages,
+          respondToImages: d.respondToImages,
+          respondToVoiceNotes: d.respondToVoiceNotes,
+          sleepOnManualMessage: d.sleepOnManualMessage,
+          sleepOnWorkflowMessage: d.sleepOnWorkflowMessage,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'Save failed')
     },
   })
+
+  // Vocabulary (never-say) editors — mirror the Persona page helpers.
+  function updateRule(idx: number, patch: Partial<VocabRow>) {
+    if (!draft) return
+    set({ vocabularyRules: draft.vocabularyRules.map((r, i) => i === idx ? { ...r, ...patch } : r) })
+  }
+  function removeRule(idx: number) {
+    if (!draft) return
+    set({ vocabularyRules: draft.vocabularyRules.filter((_, i) => i !== idx) })
+  }
+  function addRule() {
+    if (!draft) return
+    set({ vocabularyRules: [...draft.vocabularyRules, { never: '', sayInstead: '' }] })
+  }
 
   async function toggleAutopilot() {
     if (!draft) return
@@ -351,6 +419,22 @@ export default function AgentIdentityPage() {
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    Additional instructions
+                  </label>
+                  <textarea
+                    value={draft.instructions}
+                    onChange={e => set({ instructions: e.target.value })}
+                    rows={3}
+                    placeholder="Extra rules, context, or guidance — e.g. always confirm the timezone, keep replies under 25 words…"
+                    className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-y"
+                    style={fieldStyle}
+                  />
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                    Layered on top of the persona. For hard bans, use the <strong>Guardrails</strong> section below — those are enforced on every reply.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
                     Agent type
                   </label>
                   <div className="grid grid-cols-2 gap-2">
@@ -388,6 +472,155 @@ export default function AgentIdentityPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </Section>
+
+        {/* Auto-pilot mode */}
+        <Section
+          title={<>Auto-pilot mode <NewBadge since="2026-07-19" /></>}
+          desc="How the agent paces itself, what it responds to, and when it steps back for a human."
+        >
+          <div className="rounded-2xl border p-6 space-y-6" style={cardStyle}>
+            {/* Wait time + max messages */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                  Wait time before responding
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number" min={0} max={60}
+                    value={draft.autopilotWaitSeconds ?? ''}
+                    onChange={e => set({ autopilotWaitSeconds: e.target.value === '' ? null : Math.max(0, Math.min(60, Number(e.target.value))) })}
+                    placeholder="3"
+                    className="w-24 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    style={fieldStyle}
+                  />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>seconds</span>
+                </div>
+                <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                  Batches rapid back-to-back messages into one reply. Blank = 3s default.
+                </p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                  Max messages the agent can send
+                </label>
+                <Stepper
+                  value={draft.maxBotMessages}
+                  onChange={v => set({ maxBotMessages: v })}
+                  min={0} max={999}
+                />
+                <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                  Pauses for a human after this many replies in a conversation. Blank = no cap.
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t" style={{ borderColor: 'var(--border)' }} />
+
+            {/* Respond to */}
+            <div>
+              <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>Also respond to</p>
+              <div className="space-y-3">
+                <ToggleRow
+                  label="Images"
+                  desc="Let the agent handle inbound photos / screenshots."
+                  on={draft.respondToImages}
+                  onChange={v => set({ respondToImages: v })}
+                />
+                <ToggleRow
+                  label="Voice notes"
+                  desc="Let the agent handle inbound audio messages."
+                  on={draft.respondToVoiceNotes}
+                  onChange={v => set({ respondToVoiceNotes: v })}
+                />
+              </div>
+              <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
+                When off, the agent skips these attachments instead of guessing at content it can't read.
+              </p>
+            </div>
+
+            <div className="border-t" style={{ borderColor: 'var(--border)' }} />
+
+            {/* Bot sleep — the double-booking fix */}
+            <div>
+              <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Send the agent to sleep when I send a…</p>
+              <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                Pauses the agent for that conversation until you turn it back on — so it never reacts to a booking
+                confirmation or your own takeover message and double-books.
+              </p>
+              <div className="space-y-3">
+                <ToggleRow
+                  label="Manual message"
+                  desc="You (or a teammate) reply by hand from the inbox."
+                  on={draft.sleepOnManualMessage}
+                  onChange={v => set({ sleepOnManualMessage: v })}
+                />
+                <ToggleRow
+                  label="Workflow message"
+                  desc="An automation / workflow sends a confirmation or follow-up."
+                  on={draft.sleepOnWorkflowMessage}
+                  onChange={v => set({ sleepOnWorkflowMessage: v })}
+                />
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* Guardrails — never say */}
+        <Section
+          title="Guardrails"
+          desc="Words and phrases the agent must never use — enforced on every reply, even when your knowledge sources use them."
+        >
+          <div className="rounded-2xl border p-6" style={cardStyle}>
+            {draft.vocabularyRules.length === 0 ? (
+              <p className="text-sm mb-4" style={{ color: 'var(--text-tertiary)' }}>
+                No guardrails yet. Add a term the agent should never say — optionally with a replacement it should use instead.
+              </p>
+            ) : (
+              <div className="space-y-2 mb-4">
+                <div className="grid grid-cols-[1fr_1fr_32px] gap-2 px-1">
+                  <span className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: 'var(--text-tertiary)' }}>Never say</span>
+                  <span className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: 'var(--text-tertiary)' }}>Say instead (optional)</span>
+                  <span />
+                </div>
+                {draft.vocabularyRules.map((rule, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_32px] gap-2 items-center">
+                    <input
+                      type="text" value={rule.never}
+                      onChange={e => updateRule(idx, { never: e.target.value })}
+                      placeholder="e.g. HighLevel"
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={fieldStyle}
+                    />
+                    <input
+                      type="text" value={rule.sayInstead}
+                      onChange={e => updateRule(idx, { sayInstead: e.target.value })}
+                      placeholder="e.g. your CRM"
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={fieldStyle}
+                    />
+                    <button
+                      type="button" onClick={() => removeRule(idx)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors"
+                      style={{ color: 'var(--text-tertiary)', background: 'var(--surface-tertiary)' }}
+                      title="Remove rule"
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button" onClick={addRule}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+              style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
+            >
+              <span style={{ fontSize: '15px', lineHeight: 1 }}>+</span> Add guardrail
+            </button>
+            <p className="text-[11px] mt-3" style={{ color: 'var(--text-tertiary)' }}>
+              Rules with a replacement are hard-enforced — the banned term is swapped out of the reply automatically, so it can never leak.
+            </p>
           </div>
         </Section>
 
@@ -586,14 +819,64 @@ const fieldStyle: React.CSSProperties = {
 
 // ─── Subcomponents ────────────────────────────────────────────────────────
 
-function Section({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }) {
+function Section({ title, desc, children }: { title: React.ReactNode; desc: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-x-8 gap-y-3 items-start">
       <div className="md:pt-1">
-        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+        <h2 className="text-base font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>{title}</h2>
         <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
       </div>
       <div className="min-w-0">{children}</div>
+    </div>
+  )
+}
+
+/** Interactive labelled toggle row (unlike ToggleStatic, this one flips). */
+function ToggleRow({ label, desc, on, onChange }: { label: string; desc: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{label}</p>
+        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{desc}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={() => onChange(!on)}
+        className="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors"
+        style={{ background: on ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}
+      >
+        <span
+          className={`inline-block h-4 w-4 rounded-full shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0'}`}
+          style={{ background: 'var(--btn-primary-text)' }}
+        />
+      </button>
+    </div>
+  )
+}
+
+/** Number stepper with −/+ buttons. Null value renders empty (= no cap). */
+function Stepper({ value, onChange, min, max }: { value: number | null; onChange: (v: number | null) => void; min: number; max: number }) {
+  const step = (delta: number) => {
+    const cur = value ?? 0
+    const next = Math.max(min, Math.min(max, cur + delta))
+    onChange(next)
+  }
+  return (
+    <div className="inline-flex items-stretch rounded-lg overflow-hidden" style={{ border: '1px solid var(--input-border)' }}>
+      <button type="button" onClick={() => step(-1)} className="w-9 flex items-center justify-center text-base transition-colors"
+        style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>−</button>
+      <input
+        type="number" min={min} max={max}
+        value={value ?? ''}
+        onChange={e => onChange(e.target.value === '' ? null : Math.max(min, Math.min(max, Number(e.target.value))))}
+        placeholder="∞"
+        className="w-16 text-center text-sm focus:outline-none"
+        style={{ background: 'var(--input-bg)', color: 'var(--input-text)' }}
+      />
+      <button type="button" onClick={() => step(1)} className="w-9 flex items-center justify-center text-base transition-colors"
+        style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>+</button>
     </div>
   )
 }

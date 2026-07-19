@@ -694,6 +694,45 @@ export async function executeTool(
           end.setMinutes(end.getMinutes() + 30)
           endTime = end.toISOString()
         }
+        // ─── Idempotency guard (double-booking) ─────────────────────────
+        // The GHL adapter books with ignoreFreeSlotValidation=true, so a
+        // second book_appointment for the same slot creates a DUPLICATE
+        // appointment. Before booking, check the contact's existing events
+        // on this calendar for one at (≈) the same start time and short-
+        // circuit if found. Adapter-agnostic (every CrmAdapter implements
+        // getCalendarEvents) and fully best-effort — a lookup failure never
+        // blocks a legitimate booking.
+        try {
+          const startMs = new Date(startTime).getTime()
+          if (!isNaN(startMs)) {
+            const existing = await crm.getCalendarEvents(bookContactId, input.calendarId as string)
+            const events: any[] = Array.isArray(existing)
+              ? existing
+              : (existing?.events || existing?.appointments || existing?.data || [])
+            const dup = events.find((e: any) => {
+              const s = e?.startTime || e?.start || e?.slotStart || e?.appointmentStartTime
+              if (!s) return false
+              const em = new Date(s).getTime()
+              if (isNaN(em) || Math.abs(em - startMs) > 5 * 60 * 1000) return false
+              const status = String(e?.appointmentStatus || e?.status || '').toLowerCase()
+              return status !== 'cancelled' && status !== 'canceled' && status !== 'noshow'
+            })
+            if (dup) {
+              console.log(`[book_appointment] Duplicate suppressed — contact ${bookContactId} already booked at ${startTime}`)
+              return JSON.stringify({
+                success: true,
+                appointmentId: dup.id || dup.appointmentId || null,
+                bookedStartTime: startTime,
+                bookedEndTime: endTime,
+                alreadyBooked: true,
+                message: 'This contact already has an appointment at that time — I did NOT create a duplicate. Confirm the existing booking to the contact; do not call book_appointment again.',
+              })
+            }
+          }
+        } catch (dupErr: any) {
+          console.warn(`[book_appointment] idempotency pre-check failed (booking anyway): ${dupErr?.message}`)
+        }
+
         try {
           const result = await crm.bookAppointment({
             calendarId: input.calendarId as string,

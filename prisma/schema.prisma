@@ -672,6 +672,32 @@ model Agent {
   workingDays         String[] @default(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
   timezone            String? // IANA, e.g. "America/New_York"
 
+  // ─── Auto-pilot mode (behavioural controls) ───
+  // First-class version of the HighLevel "Auto-pilot mode" card. All six
+  // are additive + gated in the PATCH route (isMissingColumn retry) and the
+  // webhook (loadAutopilotSettings returns safe defaults), so the app never
+  // 500s before the migration is applied by hand.
+  //
+  // Debounce widening: the largest value among a location's active agents
+  // becomes the inbound coalescing window (lib/message-debounce.ts), so
+  // rapid back-to-back messages batch into one reply. Null = the 3s default.
+  autopilotWaitSeconds   Int?
+  // Hard cap on agent messages per conversation before it pauses for a
+  // human. Null = uncapped. First-class equivalent of the MESSAGE_COUNT
+  // stop condition, surfaced directly on the config page.
+  maxBotMessages         Int?
+  // Attachment gating. When off (default) the agent skips inbound image /
+  // voice-note messages rather than guessing at content it can't parse.
+  respondToImages        Boolean @default(false)
+  respondToVoiceNotes    Boolean @default(false)
+  // Bot sleep — the fix for the double-booking loop. When a human operator
+  // (manual) or an automation/workflow sends an OUTBOUND message into the
+  // conversation, pause the agent so it never reacts to its own booking
+  // confirmations or an operator's takeover. Stays paused until an operator
+  // re-enables the conversation. Default off (opt-in, back-compatible).
+  sleepOnManualMessage   Boolean @default(false)
+  sleepOnWorkflowMessage Boolean @default(false)
+
   // ─── Emergency Pause ───
   isPaused Boolean   @default(false)
   pausedAt DateTime?

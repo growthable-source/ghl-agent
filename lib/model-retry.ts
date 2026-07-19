@@ -252,6 +252,7 @@ async function replayOne(row: any, report: ModelRetryReport): Promise<void> {
       formalityLevel: agent.formalityLevel,
       useEmojis: agent.useEmojis,
       neverSayList: agent.neverSayList,
+      vocabularyRules: (agent as any).vocabularyRules,
       simulateTypos: agent.simulateTypos,
       typingDelayEnabled: agent.typingDelayEnabled,
       typingDelayMinMs: agent.typingDelayMinMs,

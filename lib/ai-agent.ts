@@ -20,6 +20,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getCrmAdapter } from './crm/factory'
 import type { CrmAdapter } from './crm/types'
 import { applyTypos, calculateTypingDelay, type PersonaSettings } from './persona'
+import { parseVocabularyRules, buildVocabularyBlock, applyVocabularyRules } from './agent/vocabulary'
 import { detectFalseActionClaim, safeFallbackReply, fallbackForFailedTool } from './action-claim-detector'
 import { loadPlatformGuidelinesBlock } from './platform-learning'
 import type { AgentContext, Message } from '@/types'
@@ -148,6 +149,13 @@ export async function runAgent(opts: {
 }): Promise<AgentResponse> {
   const { locationId, agentId, model: agentModelKey, contactId, conversationId, conversationProviderId, channel = 'SMS', incomingMessage, messageHistory, systemPrompt, volatileContext, enabledTools, persona, fallback, qualifyingStyle, sandbox, adapter, deferSend, workflowPicks } = opts
   const isSandbox = sandbox || contactId.startsWith('playground-')
+
+  // Vocabulary / never-say rules. Merges the modern vocabularyRules JSON with
+  // the legacy neverSayList. Drives BOTH a strong prompt block (placed last,
+  // authoritative) and a deterministic output rewrite on every send path —
+  // the CRM/SMS runtime previously had neither, so operator bans leaked.
+  const vocabRules = parseVocabularyRules((persona as any)?.vocabularyRules, persona?.neverSayList)
+  const vocabularyBlock = buildVocabularyBlock(vocabRules)
 
   // Resolve CRM adapter: explicit override > sandbox-null > default lookup
   const crm = adapter ?? (isSandbox ? null : await getCrmAdapter(locationId))
@@ -902,6 +910,7 @@ export async function runAgent(opts: {
         platformGuidelinesBlock,
         connectedIntegrationsBlock,
         commerceBlock,
+        vocabularyBlock,
       },
     )
     const brokenLabelsNotice = brokenLabelsForPrompt.length > 0
@@ -1042,7 +1051,10 @@ export async function runAgent(opts: {
         // whichever output path we have; sandbox has no adapter but we
         // still populate smsSent so the reply surfaces in the
         // playground / simulator UI (runAgent returns `reply: smsSent`).
-        let msgToSend = finalText
+        // Enforce never-say rules deterministically before anything else —
+        // a banned term with a replacement can never leave, no matter what
+        // the model wrote. Replacement-less bans stay prompt-only.
+        let msgToSend = applyVocabularyRules(finalText, vocabRules)
         if (persona?.simulateTypos) msgToSend = applyTypos(msgToSend)
         if (persona?.typingDelayEnabled) {
           const delay = calculateTypingDelay(msgToSend, persona.typingDelayMinMs, persona.typingDelayMaxMs)
@@ -1264,6 +1276,16 @@ export async function runAgent(opts: {
           content: blockedResult,
         })
         continue
+      }
+
+      // Enforce never-say rules on the outbound text BEFORE the send tool
+      // dispatches to the CRM. Mutating the tool input here means the actual
+      // send AND the smsSent bookkeeping below both use the sanitized copy.
+      if (isSendTool && vocabRules.length > 0) {
+        const inp = toolBlock.input as Record<string, unknown>
+        if (typeof inp.message === 'string') {
+          inp.message = applyVocabularyRules(inp.message, vocabRules)
+        }
       }
 
       const result = await executeTool(

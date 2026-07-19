@@ -23,6 +23,13 @@ export async function debounceMessage(
   conversationId: string,
   body: string,
   messageId: string | null,
+  /**
+   * Coalescing window in ms. Defaults to DEBOUNCE_MS (3s). The webhook
+   * widens this to the largest per-agent "wait time before responding"
+   * configured on the location, so operators can batch rapid inbound
+   * messages into a single reply. Clamped by the caller.
+   */
+  waitMs: number = DEBOUNCE_MS,
 ): Promise<{ combinedMessage: string; messageIds: string[] } | null> {
   // 1. Insert. If `messageId` is already in the table, this is a GHL retry
   //    of a webhook we've already received — drop it. P2002 is Prisma's
@@ -44,7 +51,7 @@ export async function debounceMessage(
   }
 
   // 2. Wait for the debounce window so chatty users get coalesced.
-  await new Promise(resolve => setTimeout(resolve, DEBOUNCE_MS))
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, waitMs)))
 
   // 3. Read all unprocessed buffered messages for this contact.
   const pending = await db.messageBuffer.findMany({

@@ -21,6 +21,7 @@ import { getOrCreateConversationState, checkStopConditions, executeStopCondition
 import { saveMessages, getMessageHistory, updateContactMemorySummary } from '@/lib/conversation-memory'
 import { cancelFollowUpsForContact, scheduleFollowUp } from '@/lib/follow-up-scheduler'
 import { debounceMessage } from '@/lib/message-debounce'
+import { loadAutopilotSettings, resolveLocationWaitMs, classifyOutboundSource } from '@/lib/autopilot-settings'
 import { htmlToText } from '@/lib/html-to-text'
 
 // CRM webhooks trigger a full agent run (Anthropic loop, tool calls, CRM
@@ -113,6 +114,18 @@ export async function POST(req: NextRequest) {
 
         console.log(`[Webhook] InboundMessage — channel=${channel} messageType=${p.messageType} location=${p.locationId} contact=${p.contactId} conv=${p.conversationId} provId=${p.conversationProviderId ?? 'none'} body="${(p.body ?? '').slice(0, 80)}"`)
 
+        // ─── DIRECTION GUARD (double-booking loop breaker) ──────────────
+        // The InboundMessage handler previously ran the agent on ANYTHING
+        // typed InboundMessage without ever reading p.direction. When a
+        // booking fires CRM automations, their confirmation / opportunity
+        // messages can land back on this webhook flagged direction=outbound;
+        // the agent then "replied" to its own confirmation and booked again.
+        // Outbound is never a human turn — never run the agent on it.
+        if (p.direction === 'outbound') {
+          console.log(`[Webhook] Ignoring InboundMessage with direction=outbound (echoed automation/operator send) for contact ${p.contactId}`)
+          break
+        }
+
         // Skip channels we don't handle (e.g. raw email without a configured agent)
         if (!SUPPORTED_CHANNELS.includes(channel as any)) {
           console.log(`[Webhook] Unsupported channel: ${channel}`)
@@ -166,9 +179,12 @@ export async function POST(req: NextRequest) {
         // Debounce + idempotency. messageId is the GHL webhook's unique id;
         // if GHL retries the same delivery this returns null and we drop
         // it. (See lib/message-debounce.ts — duplicate prevention lives
-        // there, not here.)
+        // there, not here.) The window widens to the largest per-agent
+        // "wait time before responding" configured on this location, so
+        // rapid back-to-back messages coalesce into one reply.
+        const waitMs = await resolveLocationWaitMs(p.locationId, 3000)
         const debounced = await debounceMessage(
-          p.locationId, p.contactId, p.conversationId, p.body, p.messageId ?? null,
+          p.locationId, p.contactId, p.conversationId, p.body, p.messageId ?? null, waitMs,
         )
         if (!debounced) {
           console.log(`[Webhook] Message debounced/deduped for contact ${p.contactId}`)
@@ -308,6 +324,49 @@ export async function POST(req: NextRequest) {
           break
         }
 
+        // ─── Auto-pilot mode gating ─────────────────────────────────────
+        // Safe against a pre-migration DB (returns defaults on missing
+        // column). Three checks: image/voice-note attachment gating, and
+        // the hard per-conversation message cap.
+        const autopilot = await loadAutopilotSettings(agent.id)
+
+        // Attachment gating. GHL delivers media as an `attachments` URL list.
+        // When the operator hasn't opted in, skip rather than guess.
+        const attachments: string[] = Array.isArray((payload as any).attachments)
+          ? (payload as any).attachments.filter((u: unknown) => typeof u === 'string')
+          : []
+        const imageUrls = attachments.filter(u => /\.(png|jpe?g|gif|webp|heic|heif|bmp|tiff?)(\?|#|$)/i.test(u))
+        if (attachments.length > 0) {
+          const hasImage = imageUrls.length > 0
+          const hasAudio = attachments.some(u => /\.(mp3|m4a|ogg|oga|wav|amr|aac|opus|weba|3gp)(\?|#|$)/i.test(u))
+          if (hasImage && !autopilot.respondToImages) {
+            await db.messageLog.update({ where: { id: log.id }, data: { agentId: agent.id, status: 'SKIPPED', errorMessage: 'Image attachment — agent not set to respond to images' } })
+            console.log(`[Webhook] Skipping image message for ${p.contactId} — respondToImages off`)
+            break
+          }
+          if (hasAudio && !autopilot.respondToVoiceNotes) {
+            await db.messageLog.update({ where: { id: log.id }, data: { agentId: agent.id, status: 'SKIPPED', errorMessage: 'Voice-note attachment — agent not set to respond to voice notes' } })
+            console.log(`[Webhook] Skipping voice-note message for ${p.contactId} — respondToVoiceNotes off`)
+            break
+          }
+        }
+        // When "respond to images" is on, actually hand the images to the
+        // model so it can SEE them (runAgent turns these into image blocks) —
+        // not just let the message through with empty text.
+        const incomingAttachments = (autopilot.respondToImages && imageUrls.length > 0)
+          ? imageUrls.map(url => ({ kind: 'image' as const, url }))
+          : undefined
+
+        // Hard message cap: once the agent has sent maxBotMessages replies in
+        // this conversation, pause it for a human instead of continuing.
+        if (typeof autopilot.maxBotMessages === 'number' && autopilot.maxBotMessages > 0
+            && convState.messageCount >= autopilot.maxBotMessages) {
+          await pauseConversation(agent.id, p.contactId, `MAX_BOT_MESSAGES:${autopilot.maxBotMessages}`)
+          await db.messageLog.update({ where: { id: log.id }, data: { agentId: agent.id, status: 'SKIPPED', errorMessage: `Max bot messages (${autopilot.maxBotMessages}) reached — paused for human` } })
+          console.log(`[Webhook] Max bot messages (${autopilot.maxBotMessages}) reached for ${p.contactId} — paused`)
+          break
+        }
+
         // Cancel any scheduled follow-ups since contact replied
         await cancelFollowUpsForContact(p.locationId, p.contactId)
 
@@ -366,6 +425,7 @@ export async function POST(req: NextRequest) {
             conversationProviderId: p.conversationProviderId,
             channel,
             incomingMessage: inboundMessage,
+            incomingAttachments,
             messageHistory,
             systemPrompt: fullPrompt,
             volatileContext,
@@ -385,6 +445,10 @@ export async function POST(req: NextRequest) {
               formalityLevel: agent.formalityLevel,
               useEmojis: agent.useEmojis,
               neverSayList: agent.neverSayList,
+              // Modern vocabulary rules (with replacements) — runAgent builds
+              // the strong, authoritative VOCABULARY block + the deterministic
+              // output rewrite from these. Previously the CRM path had neither.
+              vocabularyRules: (agent as any).vocabularyRules,
               simulateTypos: agent.simulateTypos,
               typingDelayEnabled: agent.typingDelayEnabled,
               typingDelayMinMs: agent.typingDelayMinMs,
@@ -724,6 +788,43 @@ export async function POST(req: NextRequest) {
       case 'OpportunityStatusUpdate':
         console.log(`[Webhook] Opportunity status: ${payload.id} → ${payload.status}`)
         break
+
+      // ── Outbound message → bot sleep ───────────────────────────────────
+      // When a human operator (manual) or an automation/workflow sends an
+      // outbound message into the conversation, put the agent to sleep so it
+      // never reacts to its own booking confirmations or an operator's
+      // takeover — the HighLevel "send bot to sleep when I send a
+      // manual/workflow message" control. Opt-in per agent; stays paused
+      // until an operator re-enables the conversation. The agent's OWN sends
+      // come back as source=api and classify to null, so it never sleeps
+      // itself.
+      case 'OutboundMessage': {
+        const p = payload as WebhookMessagePayload
+        const kind = classifyOutboundSource(payload)
+        if (!kind) break
+        try {
+          const agents = await db.agent.findMany({
+            where: { locationId: p.locationId, isActive: true },
+            select: { id: true },
+          })
+          for (const a of agents) {
+            const s = await loadAutopilotSettings(a.id)
+            const shouldSleep =
+              (kind === 'manual' && s.sleepOnManualMessage) ||
+              (kind === 'workflow' && s.sleepOnWorkflowMessage)
+            if (!shouldSleep) continue
+            // Ensure a state row exists, and don't re-pause (avoids a fresh
+            // needs-attention notification on every subsequent outbound).
+            const st = await getOrCreateConversationState(a.id, p.locationId, p.contactId, p.conversationId)
+            if (st.state === 'PAUSED') continue
+            await pauseConversation(a.id, p.contactId, kind === 'manual' ? 'manual_message' : 'workflow_message')
+            console.log(`[Webhook] OutboundMessage (${kind}) — slept agent ${a.id} for contact ${p.contactId}`)
+          }
+        } catch (err: any) {
+          console.warn(`[Webhook] OutboundMessage sleep handling failed: ${err?.message}`)
+        }
+        break
+      }
 
       default:
         // Log a preview of unknown events so we can diagnose misnamed types

@@ -40,6 +40,17 @@ export interface SystemPromptOptions {
    * so the LLM treats it as high-authority.
    */
   commerceBlock?: string
+  /**
+   * User-defined vocabulary / never-say rules (lib/agent/vocabulary.ts
+   * buildVocabularyBlock output). Placed LAST in the prefix — after the
+   * framework hard-rules, persona, platform guidelines, and commerce — so
+   * the operator's bans outrank every hardcoded directive above them.
+   * These were previously injected only as one soft persona line near the
+   * TOP of the prompt, where the framework's own "NEVER" rules and the
+   * "most authoritative" platform block outranked them; that's why bans
+   * leaked on the CRM path.
+   */
+  vocabularyBlock?: string
 }
 
 /**
@@ -76,6 +87,7 @@ export function buildSystemPromptParts(ctx: AgentContext, options: SystemPromptO
     platformGuidelinesBlock,
     connectedIntegrationsBlock,
     commerceBlock,
+    vocabularyBlock,
   } = options
 
   const contactName = ctx.contact?.name || ctx.contact?.firstName || 'this contact'
@@ -229,6 +241,16 @@ Professional but warm. Match the contact's energy.`
 
   if (connectedIntegrationsBlock) {
     prompt += connectedIntegrationsBlock
+  }
+
+  // Vocabulary / never-say rules go LAST in the stable prefix — below the
+  // framework hard-rules, persona, platform guidelines, commerce, and
+  // integrations. The operator's bans are the final instruction the model
+  // reads before the volatile "## Right Now" tail, so they win any conflict
+  // with the hardcoded directives above. (Stable per conversation → safe in
+  // the cacheable prefix rather than the volatile tail.)
+  if (vocabularyBlock) {
+    prompt += vocabularyBlock
   }
 
   // Volatile tail — current date/time + the date-derived slot guidance.
