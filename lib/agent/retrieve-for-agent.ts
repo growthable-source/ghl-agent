@@ -31,6 +31,10 @@ interface AgentForRetrieval {
   /** false = read only the (possibly empty) knowledgeDomainIds set.
    *  true / undefined = read every domain in the workspace (default). */
   knowledgeScopeAll?: boolean | null
+  /** Per-source usage triggers (Agent.knowledgeConditions). Keyed by
+   *  KnowledgeDomain id here; collection-keyed entries are consumed by
+   *  the prompt-stuffed path in lib/rag, not this one. */
+  knowledgeConditions?: Record<string, string> | null
 }
 
 export interface RetrievalForAgentResult {
@@ -58,7 +62,7 @@ export async function retrieveAndFormatForAgent(
       knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
       scopeToDomains,
     })
-    return { block: buildRetrievedKnowledgeBlock(chunks), chunks }
+    return { block: buildRetrievedKnowledgeBlock(chunks, normaliseConditions(agent.knowledgeConditions)), chunks }
   } catch (err) {
     console.warn('[retrieveAndFormatForAgent] failed:', errMsg(err))
     return { block: '', chunks: [] }
@@ -118,4 +122,17 @@ export async function debugRetrieveForAgent(
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * Agent.knowledgeConditions comes straight off a Prisma Json column, so
+ * shape-check before trusting it. Non-object / non-string values drop out.
+ */
+export function normaliseConditions(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string' && v.trim()) out[k] = v.trim()
+  }
+  return Object.keys(out).length > 0 ? out : null
 }

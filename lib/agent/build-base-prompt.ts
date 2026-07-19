@@ -25,7 +25,7 @@
 
 import { buildKnowledgeBlock } from '../rag'
 import { buildObjectivesBlockForAgent } from '../agent-objectives'
-import { retrieveAndFormatForAgent } from './retrieve-for-agent'
+import { retrieveAndFormatForAgent, normaliseConditions } from './retrieve-for-agent'
 
 /**
  * Minimal shape required of the agent record. Anything broader is fine —
@@ -50,6 +50,10 @@ export interface AgentForPrompt {
   /** false = read only knowledgeDomainIds (empty = none). true /
    *  undefined = read every domain in the workspace (default). */
   knowledgeScopeAll?: boolean | null
+  /** Per-source usage triggers (Agent.knowledgeConditions). Keyed by
+   *  KnowledgeDomain id or KnowledgeCollection id → natural-language
+   *  condition. Raw Json column value; normalised before use. */
+  knowledgeConditions?: unknown
 }
 
 export type PromptChannel = 'widget' | 'native'
@@ -154,14 +158,15 @@ export async function buildBasePrompt(
     prompt += `\n\n## Additional Instructions\n${agent.instructions}`
   }
 
-  volatileContext += buildKnowledgeBlock((agent.knowledgeEntries ?? []) as any, incomingMessage)
+  const knowledgeConditions = normaliseConditions(agent.knowledgeConditions)
+  volatileContext += buildKnowledgeBlock((agent.knowledgeEntries ?? []) as any, incomingMessage, knowledgeConditions)
 
   // Phase 2 retrieval — pgvector chunk search over the workspace's
   // KnowledgeSources. Helper is shared with the playground, Twilio
   // SMS, and webhook paths so every runtime gets the same block.
   if (agent.workspaceId) {
     const { block } = await retrieveAndFormatForAgent(
-      { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds, knowledgeScopeAll: agent.knowledgeScopeAll },
+      { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds, knowledgeScopeAll: agent.knowledgeScopeAll, knowledgeConditions },
       incomingMessage,
     )
     volatileContext += block

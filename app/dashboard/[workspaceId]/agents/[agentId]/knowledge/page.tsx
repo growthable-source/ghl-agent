@@ -4,6 +4,31 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import LiveDataSourcesPanel from '@/components/dashboard/LiveDataSourcesPanel'
+import SaveBar from '@/components/dashboard/SaveBar'
+import { useDirtyForm } from '@/lib/use-dirty-form'
+
+/**
+ * Per-agent knowledge page — ONE list, ONE question: what does this
+ * agent know, and when should it use each piece?
+ *
+ * Every knowledge source in the workspace (indexed/crawled domains AND
+ * curated collections) renders as a single row: a checkbox to attach it
+ * to this agent, plus an optional usage trigger ("only use this when…")
+ * that the runtime injects as a condition the model must respect.
+ *
+ * Replaced the old page's two separate pickers ("Indexed knowledge
+ * collections" with a Read-all/Choose mode toggle + a second Collections
+ * attach list) and their two save buttons — that split leaked internal
+ * architecture (domains vs collections) into the UI. Content editing
+ * still lives on the workspace Knowledge page.
+ *
+ * Save semantics:
+ *  - all indexed sources checked → knowledgeScopeAll=true (new sources
+ *    added later are auto-included, matching the old "Read all")
+ *  - any indexed source unchecked → scopeAll=false + explicit id list
+ *  - collections → PUT the attached set (AgentCollection junction)
+ *  - triggers → Agent.knowledgeConditions map { sourceId: condition }
+ */
 
 interface CollectionLite {
   id: string
@@ -13,7 +38,6 @@ interface CollectionLite {
   color: string | null
   entryCount: number
   dataSourceCount: number
-  isAttached?: boolean
 }
 
 interface KnowledgeDomainLite {
@@ -23,41 +47,26 @@ interface KnowledgeDomainLite {
   chunkCount: number
 }
 
-/**
- * The per-agent knowledge page is now a *connection picker*. Knowledge
- * itself lives in workspace-level Collections; agents pick which
- * collections to pull from. Multi-select. Save replaces the full set.
- *
- * Creation has moved entirely to the workspace Knowledge tab — see
- * /dashboard/[workspaceId]/knowledge/[collectionId] for the full
- * editor (write, upload, crawl, FAQ, Notion, YouTube, data sources).
- */
+interface KnowledgeDraft extends Record<string, unknown> {
+  domainIds: string[]
+  collectionIds: string[]
+  /** sourceId (domain OR collection) → "only use when …" condition. */
+  conditions: Record<string, string>
+}
+
 export default function AgentKnowledgePage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
 
-  const [available, setAvailable] = useState<CollectionLite[]>([])
-  const [original, setOriginal] = useState<string[]>([])
-  const [picked, setPicked] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
-  const [notMigrated, setNotMigrated] = useState(false)
-
-  // Phase 2 knowledge-domain scope. Operators pick which crawled/
-  // indexed sources this agent reads from. Empty array = all
-  // domains in the workspace (backward-compatible default).
   const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
-  const [domainPick, setDomainPick] = useState<string[]>([])
-  const [domainOriginal, setDomainOriginal] = useState<string[]>([])
-  // scopeAll = read every collection (ignore the pick). scopeAll=false =
-  // read only the picked set, which may be empty (= no indexed knowledge).
-  // Kept separate from the pick so deselecting the only collection sticks.
-  const [scopeAll, setScopeAll] = useState(true)
-  const [scopeAllOriginal, setScopeAllOriginal] = useState(true)
-  const [domainSavedAt, setDomainSavedAt] = useState<number | null>(null)
-  const [domainSaving, setDomainSaving] = useState(false)
+  const [collections, setCollections] = useState<CollectionLite[]>([])
+  const [loading, setLoading] = useState(true)
+  const [notMigrated, setNotMigrated] = useState(false)
+  const [initial, setInitial] = useState<KnowledgeDraft | null>(null)
+  // Rows whose trigger editor is open even though the condition text is
+  // still empty (freshly clicked "+ Add a trigger").
+  const [openTriggers, setOpenTriggers] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     const [colRes, domRes, agentRes] = await Promise.all([
@@ -66,216 +75,225 @@ export default function AgentKnowledgePage() {
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`).then(r => r.json()).catch(() => ({})),
     ])
 
-    setAvailable(colRes.available || [])
-    const attachedIds = (colRes.attached || []).map((c: any) => c.id)
-    setPicked(attachedIds)
-    setOriginal(attachedIds)
+    const doms: KnowledgeDomainLite[] = domRes.domains || []
+    const cols: CollectionLite[] = colRes.available || []
+    setDomains(doms)
+    setCollections(cols)
     setNotMigrated(!!colRes.notMigrated)
 
-    setDomains(domRes.domains || [])
-    const agentDomains: string[] = agentRes.agent?.knowledgeDomainIds ?? []
-    // Default true for agents predating the scope flag.
-    const agentScopeAll: boolean = agentRes.agent?.knowledgeScopeAll ?? true
-    setDomainPick(agentDomains)
-    setDomainOriginal(agentDomains)
-    setScopeAll(agentScopeAll)
-    setScopeAllOriginal(agentScopeAll)
+    const scopeAll: boolean = agentRes.agent?.knowledgeScopeAll ?? true
+    const pickedDomains: string[] = scopeAll
+      ? doms.map(d => d.id)
+      : (agentRes.agent?.knowledgeDomainIds ?? [])
+    const attachedCollections: string[] = (colRes.attached || []).map((c: CollectionLite) => c.id)
 
+    const rawConditions = agentRes.agent?.knowledgeConditions
+    const conditions: Record<string, string> = {}
+    if (rawConditions && typeof rawConditions === 'object' && !Array.isArray(rawConditions)) {
+      for (const [k, v] of Object.entries(rawConditions)) {
+        if (typeof v === 'string' && v.trim()) conditions[k] = v
+      }
+    }
+
+    setInitial({ domainIds: pickedDomains, collectionIds: attachedCollections, conditions })
     setLoading(false)
   }, [workspaceId, agentId])
 
   useEffect(() => { load() }, [load])
 
-  function toggle(id: string) {
-    setPicked(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const { draft, set, dirty, saving, savedAt, error, save, reset } = useDirtyForm<KnowledgeDraft>({
+    initial,
+    onSave: async (d) => {
+      // Only keep conditions for sources that are still attached — an
+      // unchecked source's trigger would otherwise linger invisibly.
+      const attached = new Set([...d.domainIds, ...d.collectionIds])
+      const conditions: Record<string, string> = {}
+      for (const [id, cond] of Object.entries(d.conditions)) {
+        if (attached.has(id) && cond.trim()) conditions[id] = cond.trim()
+      }
+      // Everything ticked (or nothing to tick yet) → scopeAll, so indexed
+      // sources added later are auto-included like the old "Read all".
+      const scopeAll = domains.length === 0 || d.domainIds.length === domains.length
+
+      const [agentRes, colRes] = await Promise.all([
+        fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            knowledgeScopeAll: scopeAll,
+            knowledgeDomainIds: d.domainIds,
+            knowledgeConditions: conditions,
+          }),
+        }),
+        fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/collections`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ collectionIds: d.collectionIds }),
+        }),
+      ])
+      if (!agentRes.ok) throw new Error((await agentRes.json().catch(() => ({})))?.error || 'Failed to save knowledge settings')
+      if (!colRes.ok) throw new Error((await colRes.json().catch(() => ({})))?.error || 'Failed to save attached collections')
+    },
+  })
+
+  function toggleSource(kind: 'domain' | 'collection', id: string) {
+    const key = kind === 'domain' ? 'domainIds' : 'collectionIds'
+    const current = draft[key]
+    set({
+      [key]: current.includes(id) ? current.filter(x => x !== id) : [...current, id],
+    } as Partial<KnowledgeDraft>)
   }
 
-  function toggleDomain(id: string) {
-    setDomainPick(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  function setCondition(id: string, value: string) {
+    set({ conditions: { ...draft.conditions, [id]: value } })
   }
 
-  // Switch into "choose collections" mode. Seed the pick with everything
-  // currently indexed so flipping the toggle doesn't silently empty the
-  // agent's knowledge — the operator narrows down from there.
-  function startChoosing() {
-    setScopeAll(false)
-    if (domainPick.length === 0) setDomainPick(domains.map(d => d.id))
+  function removeCondition(id: string) {
+    const next = { ...draft.conditions }
+    delete next[id]
+    set({ conditions: next })
+    setOpenTriggers(prev => { const s = new Set(prev); s.delete(id); return s })
   }
 
-  async function saveDomainScope() {
-    setDomainSaving(true)
-    try {
-      // scopeAll=true → backend ignores the id list and reads everything.
-      // scopeAll=false → reads exactly domainPick (empty = no indexed
-      // knowledge). Send both so the two are never conflated again.
-      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ knowledgeScopeAll: scopeAll, knowledgeDomainIds: domainPick }),
-      })
-      setDomainOriginal(domainPick)
-      setScopeAllOriginal(scopeAll)
-      setDomainSavedAt(Date.now())
-      setTimeout(() => setDomainSavedAt(null), 2000)
-    } finally { setDomainSaving(false) }
+  function openTrigger(id: string) {
+    setOpenTriggers(prev => new Set(prev).add(id))
   }
 
-  const domainDirty = scopeAll !== scopeAllOriginal
-    || domainPick.length !== domainOriginal.length
-    || domainPick.some(id => !domainOriginal.includes(id))
-
-  async function save() {
-    setSaving(true)
-    try {
-      await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/collections`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collectionIds: picked }),
-      })
-      setOriginal(picked)
-      setSavedAt(Date.now())
-      setTimeout(() => setSavedAt(null), 2000)
-    } finally { setSaving(false) }
+  if (loading || !initial) {
+    return <div className="p-8 text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</div>
   }
 
-  const dirty = picked.length !== original.length || picked.some(id => !original.includes(id))
+  const hasSources = domains.length > 0 || collections.length > 0
+  const attachedCount = draft.domainIds.length + draft.collectionIds.length
 
-  if (loading) return <div className="p-8 text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</div>
+  const renderTriggerControl = (id: string) => {
+    const condition = draft.conditions[id] ?? ''
+    const editing = condition !== '' || openTriggers.has(id)
+    if (!editing) {
+      return (
+        <button
+          type="button"
+          onClick={e => { e.preventDefault(); openTrigger(id) }}
+          className="text-[11px] font-medium mt-2 hover:underline"
+          style={{ color: 'var(--text-tertiary)' }}
+        >
+          Always used — + add a trigger
+        </button>
+      )
+    }
+    return (
+      <div className="mt-2 flex items-start gap-2" onClick={e => e.preventDefault()}>
+        <div className="flex-1">
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--accent-primary)' }}>
+            Only use this knowledge when…
+          </p>
+          <input
+            type="text"
+            value={condition}
+            autoFocus={condition === ''}
+            onChange={e => setCondition(id, e.target.value)}
+            placeholder='e.g. "the visitor asks about pricing" or "the contact is NOT an existing customer"'
+            className="w-full text-xs rounded-lg px-2.5 py-2 outline-none"
+            style={{ border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={e => { e.preventDefault(); removeCondition(id) }}
+          className="text-[11px] mt-5 px-2 py-1.5 rounded-lg hover:opacity-80"
+          style={{ color: 'var(--text-tertiary)' }}
+          title="Remove trigger — always use this knowledge"
+        >
+          ✕
+        </button>
+      </div>
+    )
+  }
+
+  const renderRow = (opts: {
+    kind: 'domain' | 'collection'
+    id: string
+    icon: string
+    iconBg: string
+    name: string
+    description: string | null
+    meta: string
+    editHref?: string
+  }) => {
+    const checked = opts.kind === 'domain'
+      ? draft.domainIds.includes(opts.id)
+      : draft.collectionIds.includes(opts.id)
+    const hasTrigger = !!(draft.conditions[opts.id]?.trim())
+    return (
+      <label
+        key={opts.id}
+        className="block p-3 rounded-xl cursor-pointer transition-colors"
+        style={
+          checked
+            ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
+            : { border: '1px solid var(--border)', background: 'var(--surface)' }
+        }
+      >
+        <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => toggleSource(opts.kind, opts.id)}
+            className="mt-1 accent-orange-500"
+          />
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+            style={{ background: opts.iconBg }}
+          >
+            {opts.icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{opts.name}</p>
+              {checked && hasTrigger && (
+                <span
+                  className="text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+                  style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
+                >
+                  Conditional
+                </span>
+              )}
+            </div>
+            {opts.description && (
+              <p className="text-xs line-clamp-2 mt-0.5" style={{ color: 'var(--text-secondary)' }}>{opts.description}</p>
+            )}
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>{opts.meta}</p>
+            {checked && renderTriggerControl(opts.id)}
+          </div>
+          {opts.editHref && (
+            <Link
+              href={opts.editHref}
+              onClick={e => e.stopPropagation()}
+              className="text-[11px] flex-shrink-0 hover:opacity-80"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Edit →
+            </Link>
+          )}
+        </div>
+      </label>
+    )
+  }
 
   return (
-    <div className="p-8 max-w-3xl space-y-6">
-      <div
-        className="rounded-xl p-4 flex items-start gap-3"
-        style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
-      >
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
-        >📚</div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Knowledge lives in Collections</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            Pick which Collections this agent should pull from. To add or edit items —
-            text, FAQs, file uploads, web crawls, Notion pages, YouTube transcripts, data sources —
-            open the <Link href={`/dashboard/${workspaceId}/knowledge`} className="hover:underline" style={{ color: 'var(--accent-primary)' }}>workspace Knowledge page</Link>.
-          </p>
-        </div>
+    <div className="p-8 max-w-3xl space-y-6 pb-24">
+      <div>
+        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+          What this agent knows
+        </h2>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+          Tick the knowledge this agent should use. Add a trigger to any source to control <em>when</em> it&apos;s
+          used — otherwise it always applies. To add or edit the content itself, open the{' '}
+          <Link href={`/dashboard/${workspaceId}/knowledge`} className="hover:underline" style={{ color: 'var(--accent-primary)' }}>
+            workspace Knowledge page
+          </Link>.
+        </p>
       </div>
-
-      {/* Live data sources — Shopify (and any future integrations). Agents
-          access these via tool calls during a conversation, not via
-          indexed text. The connection lives at workspace level and applies
-          to every agent in that workspace, so this is a status panel +
-          one-click connect/disconnect, not a per-agent attach toggle. */}
-      <LiveDataSourcesPanel workspaceId={workspaceId} />
-
-      {/* Phase 2 knowledge-domain scope — pick which indexed knowledge
-          collections this agent reads from. */}
-      {domains.length > 0 && (
-        <div
-          className="rounded-xl p-5"
-          style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
-        >
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div>
-              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Indexed knowledge collections
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                Choose which crawled / uploaded collections this agent reads from. The collections live at the workspace level — this only controls what this agent uses.
-              </p>
-            </div>
-            {scopeAll && (
-              <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded whitespace-nowrap"
-                style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
-                Reading all
-              </span>
-            )}
-          </div>
-
-          {/* Mode toggle — "all" vs "choose". Decoupled from the pick so an
-              operator can turn every collection off and have it stick. */}
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => setScopeAll(true)}
-              className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-              style={scopeAll
-                ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                : { border: '1px solid var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
-            >
-              Read all collections
-            </button>
-            <button
-              onClick={startChoosing}
-              className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-              style={!scopeAll
-                ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                : { border: '1px solid var(--border)', background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
-            >
-              Choose collections
-            </button>
-          </div>
-
-          <div className="space-y-2" style={scopeAll ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
-            {domains.map(d => {
-              // In "all" mode every box reads checked but is inert (the mode
-              // toggle above governs). In "choose" mode the box reflects the
-              // live pick and toggles freely — including down to zero.
-              const checked = scopeAll || domainPick.includes(d.id)
-              return (
-                <label
-                  key={d.id}
-                  className="flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors"
-                  style={
-                    !scopeAll && checked
-                      ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
-                      : { border: '1px solid var(--border)', background: 'var(--surface-secondary)' }
-                  }
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={scopeAll}
-                    onChange={() => toggleDomain(d.id)}
-                    className="mt-0.5 accent-orange-500"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{d.name}</p>
-                    {d.description && (
-                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                        {d.description}
-                      </p>
-                    )}
-                    <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                      {d.chunkCount} indexed entries
-                    </p>
-                  </div>
-                </label>
-              )
-            })}
-          </div>
-
-          {!scopeAll && domainPick.length === 0 && (
-            <p className="text-[11px] mt-2" style={{ color: 'var(--accent-amber)' }}>
-              No collections selected — this agent won't use any indexed knowledge.
-            </p>
-          )}
-
-          <div className="flex items-center justify-end mt-3">
-            <div className="flex items-center gap-2">
-              {domainSavedAt && <span className="text-xs" style={{ color: 'var(--accent-emerald)' }}>✓ Saved</span>}
-              <button
-                onClick={saveDomainScope}
-                disabled={domainSaving || !domainDirty}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
-                style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-              >
-                {domainSaving ? 'Saving…' : 'Save scope'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {notMigrated && (
         <div
@@ -289,7 +307,7 @@ export default function AgentKnowledgePage() {
         </div>
       )}
 
-      {available.length === 0 ? (
+      {!hasSources ? (
         <div
           className="text-center py-12 rounded-xl"
           style={{ border: '1px dashed var(--border)', background: 'var(--surface)' }}
@@ -298,8 +316,8 @@ export default function AgentKnowledgePage() {
             className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-2xl"
             style={{ background: 'var(--surface-tertiary)' }}
           >📚</div>
-          <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No collections in this workspace</p>
-          <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>Build a collection first, then come back to attach it.</p>
+          <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No knowledge in this workspace yet</p>
+          <p className="text-xs mb-4" style={{ color: 'var(--text-tertiary)' }}>Add some knowledge first, then come back to connect it to this agent.</p>
           <Link
             href={`/dashboard/${workspaceId}/knowledge`}
             className="inline-block text-xs font-semibold px-3 py-1.5 rounded-lg hover:opacity-90"
@@ -309,69 +327,57 @@ export default function AgentKnowledgePage() {
           </Link>
         </div>
       ) : (
-        <div className="space-y-2">
-          {available.map(c => {
-            const checked = picked.includes(c.id)
-            const accent = c.color || '#fa4d2e'
-            return (
-              <label
-                key={c.id}
-                className="flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-colors"
-                style={
-                  checked
-                    ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)' }
-                    : { border: '1px solid var(--border)', background: 'var(--surface)' }
-                }
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggle(c.id)}
-                  className="mt-1 accent-orange-500"
-                />
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0"
-                  style={{ background: `linear-gradient(135deg, ${accent}33, ${accent}11)` }}
-                >
-                  {c.icon || '📚'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</p>
-                  {c.description && <p className="text-xs line-clamp-2 mt-0.5" style={{ color: 'var(--text-secondary)' }}>{c.description}</p>}
-                  <div className="flex items-center gap-2 mt-1.5 text-[10px] flex-wrap" style={{ color: 'var(--text-tertiary)' }}>
-                    <span>{c.entryCount} item{c.entryCount === 1 ? '' : 's'}</span>
-                    {c.dataSourceCount > 0 && <span>· {c.dataSourceCount} data source{c.dataSourceCount === 1 ? '' : 's'}</span>}
-                  </div>
-                </div>
-                <Link
-                  href={`/dashboard/${workspaceId}/knowledge/${c.id}`}
-                  onClick={e => e.stopPropagation()}
-                  className="text-[11px] flex-shrink-0 hover:opacity-80"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  Edit →
-                </Link>
-              </label>
-            )
-          })}
-        </div>
+        <>
+          <div className="space-y-2">
+            {domains.map(d => renderRow({
+              kind: 'domain',
+              id: d.id,
+              icon: '🧠',
+              iconBg: 'var(--accent-primary-bg)',
+              name: d.name,
+              description: d.description,
+              meta: `${d.chunkCount} indexed ${d.chunkCount === 1 ? 'entry' : 'entries'} · searched live as visitors ask questions`,
+            }))}
+            {collections.map(c => {
+              const accent = c.color || '#fa4d2e'
+              return renderRow({
+                kind: 'collection',
+                id: c.id,
+                icon: c.icon || '📚',
+                iconBg: `linear-gradient(135deg, ${accent}33, ${accent}11)`,
+                name: c.name,
+                description: c.description,
+                meta: [
+                  `${c.entryCount} item${c.entryCount === 1 ? '' : 's'}`,
+                  c.dataSourceCount > 0 ? `${c.dataSourceCount} data source${c.dataSourceCount === 1 ? '' : 's'}` : null,
+                ].filter(Boolean).join(' · '),
+                editHref: `/dashboard/${workspaceId}/knowledge/${c.id}`,
+              })
+            })}
+          </div>
+
+          {attachedCount === 0 && (
+            <p className="text-[11px]" style={{ color: 'var(--accent-amber)' }}>
+              Nothing selected — this agent will answer from its instructions alone, with no knowledge.
+            </p>
+          )}
+        </>
       )}
 
-      <div className="flex items-center justify-end gap-2 pt-2">
-        {savedAt && <span className="text-xs" style={{ color: 'var(--accent-emerald)' }}>✓ Saved</span>}
-        <button
-          onClick={save}
-          disabled={saving || !dirty}
-          className="px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-          style={
-            saving || !dirty
-              ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }
-              : { background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }
-          }
-        >
-          {saving ? 'Saving…' : `Save (${picked.length} selected)`}
-        </button>
-      </div>
+      {/* Live data sources (e.g. Shopify) are tools the agent calls
+          mid-conversation, not indexed text. The connection is
+          workspace-wide, so this stays a status panel rather than a
+          per-agent checkbox. */}
+      <LiveDataSourcesPanel workspaceId={workspaceId} />
+
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        savedAt={savedAt}
+        error={error}
+        onSave={save}
+        onReset={() => { reset(); setOpenTriggers(new Set()) }}
+      />
     </div>
   )
 }

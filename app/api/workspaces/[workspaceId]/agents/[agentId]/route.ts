@@ -82,7 +82,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const n = Math.floor(Number(v))
     return Number.isFinite(n) && n >= 0 ? n : null
   }
-  const buildData = (includeJudge: boolean, includeModel: boolean, includeAutopilot: boolean): Record<string, unknown> => ({
+  const buildData = (includeJudge: boolean, includeModel: boolean, includeAutopilot: boolean, includeConditions = includeAutopilot): Record<string, unknown> => ({
       ...(resolvedLocationId !== null && { locationId: resolvedLocationId }),
       ...(body.name !== undefined && { name: body.name }),
       ...(body.systemPrompt !== undefined && { systemPrompt: body.systemPrompt }),
@@ -116,6 +116,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
       }),
       ...(body.knowledgeScopeAll !== undefined && { knowledgeScopeAll: !!body.knowledgeScopeAll }),
+      // Per-source usage triggers: { [domainOrCollectionId]: "condition" }.
+      // Server-side shape check — only string→non-empty-string entries
+      // survive, capped so a runaway client can't bloat the prompt.
+      // Gated like judge/model/auto-pilot so a DB where
+      // prisma/sql/2026-07-19-knowledge-conditions.sql hasn't run yet
+      // degrades gracefully instead of failing the whole PATCH.
+      ...(includeConditions && body.knowledgeConditions !== undefined && {
+        knowledgeConditions: sanitizeKnowledgeConditions(body.knowledgeConditions) as any,
+      }),
       ...(body.qualifyingStyle !== undefined && { qualifyingStyle: body.qualifyingStyle }),
       ...(body.agentKind !== undefined && { agentKind: body.agentKind === 'procedural' ? 'procedural' : 'reactive' }),
       ...(body.procedureMode !== undefined && { procedureMode: body.procedureMode === 'advanced' ? 'advanced' : 'simple' }),
@@ -204,19 +213,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const wantsJudge = judgeKeys.some(k => body[k] !== undefined)
   const wantsModel = body.model !== undefined
   const wantsAutopilot = AUTOPILOT_KEYS.some(k => body[k] !== undefined)
+  const wantsConditions = body.knowledgeConditions !== undefined
   try {
     const agent = await db.agent.update({ where: { id: agentId }, data: buildData(true, true, true) as any })
     const referenceHealth = await loadReferenceHealth()
     return NextResponse.json({ agent, referenceHealth })
   } catch (err: any) {
-    if (isMissingColumn(err) && (wantsJudge || wantsModel || wantsAutopilot)) {
+    if (isMissingColumn(err) && (wantsJudge || wantsModel || wantsAutopilot || wantsConditions)) {
       try {
         const agent = await db.agent.update({ where: { id: agentId }, data: buildData(false, false, false) as any })
         const referenceHealth = await loadReferenceHealth()
         return NextResponse.json({
           agent,
           referenceHealth,
-          warning: 'Some optional fields (AI Judge / model / auto-pilot mode) were skipped — a column migration is pending.',
+          warning: 'Some optional fields (AI Judge / model / auto-pilot mode / knowledge triggers) were skipped — a column migration is pending.',
           code: 'JUDGE_MIGRATION_PENDING',
         })
       } catch (err2: any) {
@@ -231,6 +241,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
     return NextResponse.json({ error: err.message || 'Failed to update agent' }, { status: 500 })
   }
+}
+
+/**
+ * Shape-check the knowledge usage-trigger map. Keys are knowledge
+ * source ids (KnowledgeDomain or KnowledgeCollection); values are the
+ * natural-language conditions the prompt builders inject verbatim.
+ * Anything malformed drops out. Caps: 100 sources, 500 chars each.
+ */
+function sanitizeKnowledgeConditions(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof k !== 'string' || !k || k.length > 64) continue
+    if (typeof v !== 'string') continue
+    const cond = v.trim().slice(0, 500)
+    if (cond) out[k] = cond
+    if (Object.keys(out).length >= 100) break
+  }
+  return out
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {

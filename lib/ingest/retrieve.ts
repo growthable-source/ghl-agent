@@ -151,8 +151,22 @@ export async function retrieveChunks(
  * carries the source URLs — the reply itself should read like a
  * human wrote it.
  */
-export function buildRetrievedKnowledgeBlock(chunks: RetrievedChunk[]): string {
+export function buildRetrievedKnowledgeBlock(
+  chunks: RetrievedChunk[],
+  /** Optional per-domain usage triggers (Agent.knowledgeConditions,
+   *  keyed by KnowledgeDomain id). Passages from a conditioned domain
+   *  get an explicit "only applies when …" gate so the model skips
+   *  them when the condition doesn't hold in the conversation. */
+  conditions?: Record<string, string> | null,
+): string {
   if (chunks.length === 0) return ''
+
+  const conditionFor = (c: RetrievedChunk): string | null => {
+    if (!conditions || !c.knowledgeDomainId) return null
+    const cond = conditions[c.knowledgeDomainId]
+    return typeof cond === 'string' && cond.trim() ? cond.trim() : null
+  }
+  const hasConditioned = chunks.some(c => conditionFor(c))
 
   const formatted = chunks.map(c => {
     const meta = c.sourceMetadata
@@ -164,11 +178,17 @@ export function buildRetrievedKnowledgeBlock(chunks: RetrievedChunk[]): string {
     // Truncate per-chunk to keep token usage bounded. 1500 chars
     // ≈ ~400 tokens; 6 chunks × 400 = ~2400 tokens of context.
     const body = c.content.trim().slice(0, 1500)
+    const cond = conditionFor(c)
+    const condLine = cond ? `Applies only when: ${cond}\n` : ''
     return `### ${title}${tags}
 Source: ${c.sourceUrl}
-
+${condLine}
 ${body}`
   }).join('\n\n---\n\n')
+
+  const conditionRule = hasConditioned
+    ? `\n- Some passages carry an "Applies only when:" condition. Use those passages ONLY if the condition currently holds in this conversation; otherwise behave as if you never read them.`
+    : ''
 
   return `
 
@@ -178,7 +198,7 @@ The passages below were retrieved from the operator's knowledge base based on th
 Rules:
 - Answer in your own words, as if this is knowledge you simply have. NEVER use bracketed reference markers like [1] or [2], never say "according to passage/source N", and never mention that you're reading from retrieved passages or a knowledge base.
 - If the passages don't answer the visitor's question, SAY SO. Don't invent specifics.
-- Prefer passage facts over your prior knowledge when they conflict.
+- Prefer passage facts over your prior knowledge when they conflict.${conditionRule}
 
 ${formatted}
 `

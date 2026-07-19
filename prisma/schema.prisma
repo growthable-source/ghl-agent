@@ -654,6 +654,16 @@ model Agent {
   // scope flag carries that, so deselecting the only collection sticks.
   knowledgeScopeAll  Boolean  @default(true)
   knowledgeDomainIds String[] @default([])
+  // Per-source usage triggers. Map of knowledge source id — a
+  // KnowledgeDomain id OR a KnowledgeCollection id — to a natural-
+  // language condition ("the visitor asks about pricing or plans").
+  // A source with an entry here is only APPLIED when its condition
+  // holds in the conversation; sources without an entry always apply.
+  // Empty object = no triggers. Enforced model-side: the prompt
+  // builders annotate each conditioned source's knowledge block with
+  // its condition, so gating happens where the conversation context
+  // lives instead of via a second classifier call on the reply path.
+  knowledgeConditions Json    @default("{}")
 
   // ─── Quiet check-in ───
   // When the agent's last message has been sitting unanswered for the

@@ -20,7 +20,7 @@
  */
 
 import { buildKnowledgeBlock } from './rag'
-import { retrieveAndFormatForAgent } from './agent/retrieve-for-agent'
+import { retrieveAndFormatForAgent, normaliseConditions } from './agent/retrieve-for-agent'
 import { getMemorySummaryWithMeta, getLastOfferedSlots } from './conversation-memory'
 import { getUnansweredQuestions, buildQualifyingPromptBlock } from './qualifying'
 import { buildPersonaBlock } from './persona'
@@ -61,13 +61,14 @@ export async function buildCrmInboundPrompt(
   // ride in the volatile tail.
   volatileContext += await buildObjectivesBlockForAgent(agent.id, inboundMessage)
   if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
-  volatileContext += buildKnowledgeBlock(agent.knowledgeEntries, inboundMessage)
+  const knowledgeConditions = normaliseConditions((agent as any).knowledgeConditions)
+  volatileContext += buildKnowledgeBlock(agent.knowledgeEntries, inboundMessage, knowledgeConditions)
   // Phase 2 retrieval — pgvector chunk search over ingested sources.
   // Webhook-driven replies were skipping this entirely; agents
-  // could ingest 500 pages but answer GHL inbound messages from
+  // could ingest 500 pages but answer CRM inbound messages from
   // memory alone.
   const { block: phase2Block } = await retrieveAndFormatForAgent(
-    { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds },
+    { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds, knowledgeScopeAll: (agent as any).knowledgeScopeAll, knowledgeConditions },
     inboundMessage,
   )
   volatileContext += phase2Block

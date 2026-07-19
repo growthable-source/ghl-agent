@@ -5,7 +5,7 @@ import { buildKnowledgeBlock } from '@/lib/rag'
 import { runAgent } from '@/lib/ai-agent'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { buildObjectivesBlockForAgent } from '@/lib/agent-objectives'
-import { retrieveAndFormatForAgent, summariseRetrievedChunks, debugRetrieveForAgent } from '@/lib/agent/retrieve-for-agent'
+import { retrieveAndFormatForAgent, summariseRetrievedChunks, debugRetrieveForAgent, normaliseConditions } from '@/lib/agent/retrieve-for-agent'
 
 // Playground waits for the full agent reply before responding (single
 // turn but with tool loops). 120s covers worst case.
@@ -42,7 +42,8 @@ export async function POST(
   let fullPrompt = agent.systemPrompt
   fullPrompt += await buildObjectivesBlockForAgent(agent.id, message)
   if (agent.instructions) fullPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
-  fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, message)
+  const knowledgeConditions = normaliseConditions((agent as any).knowledgeConditions)
+  fullPrompt += buildKnowledgeBlock(agent.knowledgeEntries, message, knowledgeConditions)
 
   // Phase 2 — pgvector retrieval over ingested KnowledgeSource chunks.
   // The block lands in the system prompt the same as it does for real
@@ -53,6 +54,8 @@ export async function POST(
     id: agent.id,
     workspaceId: agent.workspaceId,
     knowledgeDomainIds: agent.knowledgeDomainIds,
+    knowledgeScopeAll: (agent as any).knowledgeScopeAll,
+    knowledgeConditions,
   }
   const [phase2, retrievalDebug] = await Promise.all([
     retrieveAndFormatForAgent(agentForRetrieval, message),

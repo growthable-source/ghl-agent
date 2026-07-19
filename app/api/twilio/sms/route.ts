@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { runAgent } from '@/lib/ai-agent'
 import { buildKnowledgeBlock } from '@/lib/rag'
-import { retrieveAndFormatForAgent } from '@/lib/agent/retrieve-for-agent'
+import { retrieveAndFormatForAgent, normaliseConditions } from '@/lib/agent/retrieve-for-agent'
 import { findMatchingAgent } from '@/lib/routing'
 import { getOrCreateConversationState, incrementMessageCount } from '@/lib/conversation-state'
 import { saveMessages, getMessageHistory } from '@/lib/conversation-memory'
@@ -228,12 +228,13 @@ export async function POST(req: NextRequest) {
     // Build prompt
     let systemPrompt = agent.systemPrompt
     if (agent.instructions) systemPrompt += `\n\n## Additional Instructions\n${agent.instructions}`
-    systemPrompt += buildKnowledgeBlock(agent.knowledgeEntries, body)
+    const knowledgeConditions = normaliseConditions((agent as any).knowledgeConditions)
+    systemPrompt += buildKnowledgeBlock(agent.knowledgeEntries, body, knowledgeConditions)
     // Phase 2 retrieval — pgvector chunk search over ingested sources.
     // Without this, an agent answering an SMS can't see anything from
     // KnowledgeSource ingestion, only legacy KnowledgeEntry rows.
     const { block: phase2Block } = await retrieveAndFormatForAgent(
-      { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds },
+      { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds, knowledgeScopeAll: (agent as any).knowledgeScopeAll, knowledgeConditions },
       body,
     )
     systemPrompt += phase2Block

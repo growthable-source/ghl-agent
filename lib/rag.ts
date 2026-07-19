@@ -42,7 +42,12 @@ export function selectRelevantChunks(
 
 export function buildKnowledgeBlock(
   entries: KnowledgeEntry[],
-  query?: string
+  query?: string,
+  /** Per-source usage triggers (Agent.knowledgeConditions, keyed by
+   *  KnowledgeCollection id). Entries from a conditioned collection get
+   *  an explicit "only applies when …" gate; the model skips them when
+   *  the condition doesn't hold in the conversation. */
+  conditions?: Record<string, string> | null,
 ): string {
   if (entries.length === 0) return ''
 
@@ -50,13 +55,30 @@ export function buildKnowledgeBlock(
 
   if (selected.length === 0) return ''
 
+  const conditionFor = (e: KnowledgeEntry): string | null => {
+    const collectionId = (e as { collectionId?: string | null }).collectionId
+    if (!conditions || !collectionId) return null
+    const cond = conditions[collectionId]
+    return typeof cond === 'string' && cond.trim() ? cond.trim() : null
+  }
+  const hasConditioned = selected.some(e => conditionFor(e))
+
   const chunks = selected
-    .map(e => `### ${e.title}\n${e.content}`)
+    .map(e => {
+      const cond = conditionFor(e)
+      return cond
+        ? `### ${e.title}\n(Applies only when: ${cond})\n${e.content}`
+        : `### ${e.title}\n${e.content}`
+    })
     .join('\n\n')
 
   const note = entries.length > FULL_INJECT_THRESHOLD
     ? ` (${selected.length} of ${entries.length} most relevant chunks selected)`
     : ''
 
-  return `\n\n## Knowledge Base${note}\nUse the following information when answering questions. Prioritise this over general knowledge:\n\n${chunks}`
+  const conditionRule = hasConditioned
+    ? ` Sections marked "Applies only when:" may be used ONLY if their condition currently holds in this conversation — otherwise behave as if you never read them.`
+    : ''
+
+  return `\n\n## Knowledge Base${note}\nUse the following information when answering questions. Prioritise this over general knowledge:${conditionRule}\n\n${chunks}`
 }
