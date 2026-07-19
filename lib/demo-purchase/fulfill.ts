@@ -53,7 +53,7 @@ import {
   type PurchasePeriod,
   type PurchaseState,
 } from './state'
-import { flagConcierge } from './concierge'
+import { flagConcierge, notifyBuyerPendingConcierge, notifyPurchase } from './concierge'
 import { createMagicLinkToken, sendMagicLinkEmail } from './magic-link'
 import {
   isLeadConnectorConfigured,
@@ -112,6 +112,43 @@ export async function fulfillDemoBundle(session: Stripe.Checkout.Session): Promi
   }
 
   let purchase = getPurchase(prospect.metadata)
+
+  // ── duplicate-payment guard ──────────────────────────────────────────
+  // A second Stripe Checkout Session completing for the same prospect
+  // AFTER the pipeline already reached `paid` (or beyond) means someone
+  // paid twice — two open tabs, a retried checkout that raced the
+  // checkout-session route's best-effort "expire the old session" call,
+  // etc. Never silently absorb a second charge: cancel the orphan
+  // subscription immediately and loop Ryan in with BOTH subscription ids
+  // (+ the incoming customer id) so he can refund the duplicate by hand.
+  // `checkout_started` is deliberately excluded — that's the normal
+  // pre-paid state every fresh session starts in, including the very
+  // first webhook delivery for THIS session before stripeSessionId has
+  // been stamped below.
+  if (purchase && purchase.state !== 'checkout_started' && session.id !== purchase.stripeSessionId) {
+    const incomingSubscriptionId = stripeIdOf(session.subscription)
+    const incomingCustomerId = stripeIdOf(session.customer)
+    if (incomingSubscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(incomingSubscriptionId)
+      } catch (err) {
+        console.error(
+          `[demo-purchase] failed to cancel duplicate subscription ${incomingSubscriptionId} for ${slug}:`,
+          err instanceof Error ? err.message : err,
+        )
+      }
+    }
+    await flagConcierge(
+      slug,
+      'duplicate_payment',
+      `Second paid Stripe session (${session.id}) completed after purchase.state was already "${purchase.state}" ` +
+        `(original session ${purchase.stripeSessionId ?? 'unknown'}). Cancelled duplicate subscription ` +
+        `${incomingSubscriptionId ?? 'unknown'} (original subscription ${purchase.stripeSubscriptionId ?? 'unknown'}), ` +
+        `duplicate customer ${incomingCustomerId ?? 'unknown'} — refund the duplicate charge by hand.`,
+    )
+    return
+  }
+
   const period: PurchasePeriod = purchase?.period === 'annual' || meta.period === 'annual' ? 'annual' : 'monthly'
 
   // ── paid ──────────────────────────────────────────────────────────
@@ -175,12 +212,54 @@ export async function fulfillDemoBundle(session: Stripe.Checkout.Session): Promi
       await flagConcierge(slug, 'claim', 'account_ready but no userId was recorded — cannot claim.')
       return
     }
-    const claim = await claimProspect(slug, purchase.userId)
-    if (!claim.ok) {
+    const claim = await claimProspect(slug, purchase.userId, { viaPurchase: true })
+    let claimedWorkspaceId: string | null = claim.ok ? claim.workspaceId : null
+
+    if (!claim.ok && claim.reason === 'claimed_by_other') {
+      // A free auth-claim (app/try/[slug]/claim/page.tsx) beat this
+      // webhook to the punch — but claim.ts's own purchase_in_progress
+      // guard only blocks that path when the claimer's account email
+      // does NOT match the checkout email, so if we're here the emails
+      // genuinely didn't match at claim time (different login vs. a
+      // manually-typed checkout email for the same real person, or a
+      // guard race). Check the ALREADY-claimed workspace's owner email
+      // against the buyer's checkout email one more time here: if it
+      // matches, this is the same buyer under a different account and we
+      // should attach the paid subscription to that workspace rather
+      // than orphaning their money. If it doesn't, someone else's free
+      // claim is genuinely sitting on this buyer's paid demo — concierge
+      // AND tell the buyer directly so they never sit in silence after
+      // paying.
+      const claimedProspect = await db.demoProspect.findUnique({
+        where: { slug },
+        select: { claimedWorkspaceId: true },
+      })
+      const existingWorkspaceId = claimedProspect?.claimedWorkspaceId ?? null
+      let ownerEmailMatches = false
+      if (existingWorkspaceId && purchase.contactEmail) {
+        const owners = await db.workspaceMember.findMany({
+          where: { workspaceId: existingWorkspaceId, role: 'owner' },
+          select: { user: { select: { email: true } } },
+        })
+        ownerEmailMatches = owners.some(
+          o => o.user?.email && o.user.email.toLowerCase() === purchase!.contactEmail!.toLowerCase(),
+        )
+      }
+      if (ownerEmailMatches && existingWorkspaceId) {
+        claimedWorkspaceId = existingWorkspaceId
+      } else {
+        await flagConcierge(slug, 'claim', `claimProspect failed: ${claim.reason}`)
+        if (purchase.contactEmail) {
+          await notifyBuyerPendingConcierge(purchase.contactEmail, prospect.businessName)
+        }
+        return
+      }
+    } else if (!claim.ok) {
       await flagConcierge(slug, 'claim', `claimProspect failed: ${claim.reason}`)
       return
     }
-    const result = await advancePurchaseState(prospect.id, 'account_ready', 'claimed', { workspaceId: claim.workspaceId })
+
+    const result = await advancePurchaseState(prospect.id, 'account_ready', 'claimed', { workspaceId: claimedWorkspaceId! })
     purchase = result.purchase ?? purchase
   }
 
@@ -297,6 +376,15 @@ export async function completeDemoPurchase(slug: string): Promise<void> {
       const magicLinkUrl = `${base}/welcome/${rawToken}`
       await sendMagicLinkEmail({ to: purchase.contactEmail, businessName: prospect.businessName, magicLinkUrl })
       await advancePurchaseState(prospect.id, fromState, 'complete', { magicLinkSentAt: new Date().toISOString() })
+      // INFO-only visibility ping to Ryan on every completed purchase —
+      // not a failure flag, just a paper trail (see notifyPurchase's doc
+      // comment on why this runs unconditionally, not just on failure).
+      await notifyPurchase(slug, {
+        contactEmail: purchase.contactEmail,
+        businessName: prospect.businessName,
+        period: purchase.period,
+        stripeSubscriptionId: purchase.stripeSubscriptionId ?? null,
+      })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`[demo-purchase] magic-link send failed for ${slug}:`, message)

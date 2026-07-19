@@ -30,6 +30,34 @@ function appBase(req: NextRequest): string {
   return (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, '')
 }
 
+/** Trusted client IP — same extraction/trust order used across the public
+ *  /try/[slug] purchase routes (see checkout-session/route.ts's
+ *  clientIp): x-real-ip (Vercel-set) first, then the LAST
+ *  x-forwarded-for hop (proxy-appended, not client-controlled). Used only
+ *  for the failed-consume warn log below — this route has no rate cap of
+ *  its own because the token itself is the defense (see FAILED_CONSUME_DELAY_MS). */
+function clientIp(req: NextRequest): string {
+  const real = req.headers.get('x-real-ip')?.trim()
+  if (real) return real
+  const fwd = req.headers.get('x-forwarded-for')
+  if (fwd) {
+    const parts = fwd.split(',')
+    const last = parts[parts.length - 1].trim()
+    if (last) return last
+  }
+  return 'unknown'
+}
+
+// The real brute-force defense here is entropy, not this delay:
+// createMagicLinkToken (lib/demo-purchase/magic-link.ts) mints 32
+// cryptographically random bytes (256 bits) — guessing a valid token by
+// brute force is infeasible regardless of request rate. This flat delay
+// is belt-and-braces: it caps the request rate an attacker (or a buggy
+// client retry loop) can throw at token-consume attempts from a single
+// connection, and the accompanying warn log gives Ryan a paper trail if
+// someone tries anyway.
+const FAILED_CONSUME_DELAY_MS = 400
+
 async function readToken(req: NextRequest): Promise<string> {
   const contentType = req.headers.get('content-type') || ''
   if (contentType.includes('application/json')) {
@@ -51,6 +79,8 @@ export async function POST(req: NextRequest) {
 
   const result = await consumeMagicLinkToken(token)
   if (!result.ok || !result.userId || !result.workspaceId) {
+    console.warn(`[demo-session] token consume failed (reason=${result.reason ?? 'unknown'}) from ip=${clientIp(req)}`)
+    await new Promise(r => setTimeout(r, FAILED_CONSUME_DELAY_MS))
     // Redirect back to the same slug — the token is now gone (or was
     // already gone), so /welcome/[token]'s peek will render the
     // used/expired state rather than silently failing here.
@@ -59,6 +89,8 @@ export async function POST(req: NextRequest) {
 
   const user = await db.user.findUnique({ where: { id: result.userId }, select: { id: true } })
   if (!user) {
+    console.warn(`[demo-session] token consumed but userId ${result.userId} no longer exists, from ip=${clientIp(req)}`)
+    await new Promise(r => setTimeout(r, FAILED_CONSUME_DELAY_MS))
     return NextResponse.redirect(`${base}/welcome/${encodeURIComponent(token)}`, { status: 303 })
   }
 

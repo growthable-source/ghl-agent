@@ -32,11 +32,9 @@
  * pre-payment bookkeeping, not state-machine advancement.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { stripe } from '@/lib/stripe'
-import { db } from '@/lib/db'
 import { STRIPE_PRICES } from '@/lib/plans'
-import { startOrUpdateCheckout, mergePurchaseMetadata, type PurchasePeriod } from '@/lib/demo-purchase/state'
+import { startOrUpdateCheckout, advancePurchaseState, type PurchasePeriod } from '@/lib/demo-purchase/state'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EXPIRES_EXTEND_MS = 14 * 24 * 60 * 60 * 1000 // 14 days — matches the reaper's normal TTL window
@@ -137,6 +135,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     )
   }
 
+  // Best-effort: expire any still-open prior Checkout Session for this
+  // prospect before minting a new one — covers both a monthly/annual
+  // toggle remint and an abandoned-then-retried checkout. Without this,
+  // an old session can still be completed by a stray browser tab AFTER a
+  // new one is minted, producing two paid sessions for one prospect (see
+  // fulfillDemoBundle's duplicate-payment guard, which is the backstop
+  // if this ever loses the race). Swallow any error — already
+  // expired/completed/consumed, or never existed, are all fine outcomes.
+  const priorSessionId = started.purchase.stripeSessionId
+  if (priorSessionId) {
+    try {
+      await stripe.checkout.sessions.expire(priorSessionId)
+    } catch { /* best-effort */ }
+  }
+
   // Server-side price allowlist ONLY — the client never supplies a price
   // id. Monthly bundles the recurring price + the one-time setup fee as a
   // second line item (Stripe invoices one-time items alongside the first
@@ -174,11 +187,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     // works immediately. A DB hiccup here must not cost the buyer their
     // checkout session — the webhook's own `paid` transition stamps
     // stripeSessionId too, so this is belt-and-braces, not the only path.
+    //
+    // Goes through the state CAS (same-state: checkout_started →
+    // checkout_started) rather than a read-then-blind-merge write, so
+    // this can never clobber a state transition that landed in the gap
+    // between minting the session above and this write — e.g. the
+    // webhook racing this request and already advancing to `paid`.
+    // advancePurchaseState only writes when the row's current state
+    // still matches `fromState`; on a lost CAS it just no-ops here
+    // (logged, not thrown) and leaves stripeSessionId to the webhook's
+    // own `paid`-transition stamp instead.
     try {
-      const row = await db.demoProspect.findUnique({ where: { id: started.prospectId }, select: { metadata: true } })
-      if (row) {
-        const merged = mergePurchaseMetadata(row.metadata, { stripeSessionId: session.id })
-        await db.demoProspect.update({ where: { id: started.prospectId }, data: { metadata: merged as Prisma.InputJsonValue } })
+      const stamp = await advancePurchaseState(started.prospectId, 'checkout_started', 'checkout_started', {
+        stripeSessionId: session.id,
+      })
+      if (!stamp.ok) {
+        console.error(
+          `[demo-purchase] pending stripeSessionId stamp lost its CAS for ${slug} (now ${stamp.purchase?.state ?? 'unknown'}) — webhook's paid transition will stamp it instead`,
+        )
       }
     } catch (err) {
       console.error(`[demo-purchase] failed to persist pending stripeSessionId for ${slug}:`, err)

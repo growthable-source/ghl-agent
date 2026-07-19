@@ -28,6 +28,11 @@ export interface SendEmailParams {
   html: string
   text: string
   from?: string
+  /** Resend `reply_to` — replies land here instead of `from`. Used e.g. by
+   *  the demo-purchase magic-link email so a stranger-email griefing case
+   *  ("this purchase used my email but I never bought anything") reaches
+   *  a human via a plain reply, not a dead notifications@ mailbox. */
+  replyTo?: string | string[]
   /** Identifier the sender uses in log messages — appears in skipped/error logs. */
   context?: string
 }
@@ -68,6 +73,7 @@ export async function sendEmail(
       subject: params.subject,
       html: params.html,
       text: params.text,
+      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
     }),
   })
 

@@ -34,6 +34,26 @@ export default async function ClaimPage({ params }: Params) {
     redirect(`/dashboard/${result.workspaceId}?fromDemo=expired`)
   }
 
+  if (result.reason === 'purchase_in_progress') {
+    return (
+      <main className="min-h-screen bg-black text-zinc-100 flex items-center justify-center px-6">
+        <div className="max-w-md text-center space-y-4">
+          <h1 className="text-2xl font-semibold">A purchase is in progress</h1>
+          <p className="text-zinc-400">
+            A purchase for this demo is being completed — if that&rsquo;s you, check your email; otherwise this demo is spoken for.
+          </p>
+          <Link
+            href="/ai-receptionist"
+            className="inline-block rounded-lg px-6 py-3 font-semibold hover:opacity-90 transition"
+            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+          >
+            See how it works
+          </Link>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-black text-zinc-100 flex items-center justify-center px-6">
       <div className="max-w-md text-center space-y-4">

@@ -58,17 +58,31 @@ interface StoredPurchase {
   name?: string
   email?: string
   period?: PurchasePeriod
+  /** Stamped on every save — a resume entry older than RESUME_TTL_MS is
+   *  treated as stale and dropped rather than resumed into. Guards
+   *  against resuming a long-abandoned localStorage entry into a Stripe
+   *  session that's since expired, or a purchase state that's moved on
+   *  in ways the visitor never saw. */
+  ts?: number
 }
+const RESUME_TTL_MS = 24 * 60 * 60 * 1000 // 24h
+
 function loadStored(slug: string): StoredPurchase | null {
   try {
     const raw = localStorage.getItem(storageKey(slug))
-    return raw ? (JSON.parse(raw) as StoredPurchase) : null
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredPurchase
+    if (parsed.ts && Date.now() - parsed.ts > RESUME_TTL_MS) {
+      clearStored(slug)
+      return null
+    }
+    return parsed
   } catch { return null }
 }
 function saveStored(slug: string, patch: StoredPurchase) {
   try {
     const existing = loadStored(slug) || {}
-    localStorage.setItem(storageKey(slug), JSON.stringify({ ...existing, ...patch }))
+    localStorage.setItem(storageKey(slug), JSON.stringify({ ...existing, ...patch, ts: Date.now() }))
   } catch { /* best-effort — private browsing / storage full */ }
 }
 function clearStored(slug: string) {
@@ -90,7 +104,7 @@ function friendlyCheckoutError(status: number, code?: string): string {
 async function mintCheckoutSession(
   slug: string,
   body: { name: string; email: string; period: PurchasePeriod },
-): Promise<{ ok: true; clientSecret: string; sessionId: string } | { ok: false; message: string }> {
+): Promise<{ ok: true; clientSecret: string; sessionId: string } | { ok: false; message: string; code?: string }> {
   try {
     const res = await fetch(`/api/public/try/${slug}/purchase/checkout-session`, {
       method: 'POST',
@@ -101,7 +115,7 @@ async function mintCheckoutSession(
     if (res.ok && data?.clientSecret && data?.sessionId) {
       return { ok: true, clientSecret: data.clientSecret, sessionId: data.sessionId }
     }
-    return { ok: false, message: friendlyCheckoutError(res.status, data?.error) }
+    return { ok: false, message: friendlyCheckoutError(res.status, data?.error), code: data?.error }
   } catch {
     return { ok: false, message: 'Something went wrong — try again.' }
   }
@@ -217,6 +231,7 @@ export default function PurchaseModal({
     setDetailsSubmitting(false)
     if (!result.ok) {
       setDetailsError(result.message)
+      if (result.code === 'gone') clearStored(slug)
       return
     }
     setClientSecret(result.clientSecret)
@@ -233,6 +248,7 @@ export default function PurchaseModal({
     setChangingPeriod(false)
     if (!result.ok) {
       setPeriodChangeError(result.message)
+      if (result.code === 'gone') clearStored(slug)
       return
     }
     setPeriod(next)
@@ -240,6 +256,13 @@ export default function PurchaseModal({
     setSessionId(result.sessionId)
     saveStored(slug, { sessionId: result.sessionId, period: next })
   }, [slug, name, email, period, changingPeriod])
+
+  // Once the flow reaches the terminal "done" screen there's nothing left
+  // to resume — clear the resume entry so a later /try/[slug] visit (or a
+  // stale tab) can't re-resolve a finished purchase back into the modal.
+  useEffect(() => {
+    if (step === 5) clearStored(slug)
+  }, [step, slug])
 
   const handlePaymentComplete = useCallback(() => setStep(3), [])
   const handleCrmReady = useCallback(() => setStep(4), [])

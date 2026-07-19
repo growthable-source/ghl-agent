@@ -18,12 +18,27 @@
  */
 import { db } from '@/lib/db'
 import { demoWorkspaceId } from './provision'
+import { getPurchase } from '@/lib/demo-purchase/state'
 
 export type ClaimResult =
   | { ok: true; workspaceId: string; hadAgent: boolean }
-  | { ok: false; reason: 'not_found' | 'claimed_by_other' | 'not_configured' }
+  | { ok: false; reason: 'not_found' | 'claimed_by_other' | 'not_configured' | 'purchase_in_progress' }
 
-export async function claimProspect(slug: string, userId: string): Promise<ClaimResult> {
+/**
+ * `opts.viaPurchase` — set by lib/demo-purchase/fulfill.ts, the ONLY
+ * caller allowed to claim a prospect that has an in-flight purchase.
+ * Every other caller (currently just app/try/[slug]/claim/page.tsx, the
+ * free auth-claim CTA) must NOT be able to claim a prospect for free
+ * while a buyer is mid-payment — the webhook's later claimProspect call
+ * would then hit claimed_by_other and the buyer's money would land
+ * nowhere. See CLAUDE.md-adjacent review notes: "free-claim can orphan
+ * a paying customer."
+ */
+export async function claimProspect(
+  slug: string,
+  userId: string,
+  opts: { viaPurchase?: boolean } = {},
+): Promise<ClaimResult> {
   const demoWs = demoWorkspaceId()
   if (!demoWs) return { ok: false, reason: 'not_configured' }
 
@@ -35,6 +50,28 @@ export async function claimProspect(slug: string, userId: string): Promise<Claim
       return { ok: true, workspaceId: prospect.claimedWorkspaceId, hadAgent: Boolean(prospect.agentId) }
     }
     return { ok: false, reason: 'claimed_by_other' }
+  }
+
+  if (!opts.viaPurchase) {
+    const purchase = getPurchase(prospect.metadata)
+    // Any purchase record at all means checkout_started-or-beyond (it's
+    // the first state the machine ever writes) — a buyer may be
+    // mid-payment right now. Only let the free-claim path through when
+    // the claiming user IS that buyer (their account email matches the
+    // checkout email); otherwise politely refuse rather than race the
+    // webhook's own claim.
+    if (purchase) {
+      let isBuyer = false
+      if (purchase.contactEmail) {
+        const claimingUser = await db.user.findUnique({ where: { id: userId }, select: { email: true } })
+        if (claimingUser?.email && claimingUser.email.toLowerCase() === purchase.contactEmail.toLowerCase()) {
+          isBuyer = true
+        }
+      }
+      if (!isBuyer) {
+        return { ok: false, reason: 'purchase_in_progress' }
+      }
+    }
   }
 
   // Create the workspace (same shape as POST /api/workspaces).

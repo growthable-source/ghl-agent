@@ -24,6 +24,7 @@ import { randomBytes, createHash } from 'node:crypto'
 import { db } from '@/lib/db'
 import { sendEmail } from '@/lib/email-send'
 import { escapeHtml, paragraphs, renderBrandedEmail } from '@/lib/email-render'
+import { DEFAULT_CONCIERGE_EMAIL } from './concierge'
 
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000 // 24h
 const IDENTIFIER_PREFIX = 'demo-purchase:'
@@ -97,7 +98,16 @@ export async function consumeMagicLinkToken(raw: string): Promise<MagicLinkValid
   return { ok: true, userId: parsed.userId, workspaceId: parsed.workspaceId }
 }
 
-/** Branded welcome email carrying the magic link. Model: lib/widget-recovery-email.ts. */
+/**
+ * Branded welcome email carrying the magic link. Model: lib/widget-recovery-email.ts.
+ *
+ * Accepted-for-v1 mitigation for stranger-email purchases (griefing /
+ * identity-planting — someone pays using a business owner's email
+ * address rather than their own): the copy below explicitly names the
+ * business and states no charge has landed on the recipient if this
+ * wasn't them, and `replyTo` routes a reply straight to the concierge
+ * inbox rather than a noreply/notifications@ address nobody reads.
+ */
 export async function sendMagicLinkEmail(p: { to: string; businessName: string; magicLinkUrl: string }): Promise<void> {
   const { html, text } = renderBrandedEmail({
     title: `${p.businessName} is ready`,
@@ -110,7 +120,8 @@ export async function sendMagicLinkEmail(p: { to: string; businessName: string; 
         html: `If the button doesn't work, paste this link into your browser:<br>
                <a href="${escapeHtml(p.magicLinkUrl)}" style="color:#fa4d2e;word-break:break-all;">${escapeHtml(p.magicLinkUrl)}</a>`,
       },
-      `This link expires in 24 hours and can only be used once. If you didn't make this purchase, please reply to this email.`,
+      `This link expires in 24 hours and can only be used once.`,
+      `This purchase was made for ${p.businessName} using this email address. If you didn't expect this, reply to this email and we'll sort it out — you haven't been charged.`,
     ]),
     cta: { label: 'Sign in to your dashboard', url: p.magicLinkUrl },
   })
@@ -120,6 +131,7 @@ export async function sendMagicLinkEmail(p: { to: string; businessName: string; 
     subject: `You're in — ${p.businessName} is ready`,
     html,
     text,
+    replyTo: process.env.CONCIERGE_ALERT_EMAIL || DEFAULT_CONCIERGE_EMAIL,
     context: 'DemoPurchaseMagicLink',
   })
 }
