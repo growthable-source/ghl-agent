@@ -23,12 +23,23 @@
  * concierge alerts (with stage + reason) landing in Ryan's inbox, not a
  * generic "Stripe Webhook Error" log line.
  *
- * LeadConnector: Task 3 replaces `provisionLeadConnector` below with a
- * real adapter (lib/leadconnector/agency-provisioning.ts). Until then it
- * always reports not_configured, which routes every purchase through the
- * concierge path for that one stage — the buyer still gets their
- * workspace, billing, and magic-link sign-in; only the sub-account +
- * phone-number steps wait on a human.
+ * LeadConnector sub-account creation goes through
+ * lib/leadconnector/agency-provisioning.ts. When LEADCONNECTOR_AGENCY_TOKEN
+ * isn't set (or the API call fails), provisionLeadConnector() reports
+ * not-ok and the pipeline routes that one stage through concierge — the
+ * buyer still gets their workspace, billing, and (via completeDemoPurchase
+ * below) magic-link sign-in; only the sub-account + phone-number steps
+ * wait on a human.
+ *
+ * completeDemoPurchase() is the shared "finish the job" tail — it's
+ * exported and reused by app/api/public/try/[slug]/purchase/number/route.ts
+ * after a buyer picks (or skips) a phone number, since that happens well
+ * after this webhook invocation has already returned (crm_ready and
+ * number_purchasing are buyer-driven states this function never re-enters
+ * on redelivery — see the early-return comment below). Splitting it out
+ * keeps exactly one code path responsible for "send the magic link once
+ * we've reached a terminal number_* state," whether the trigger was a
+ * webhook-driven crm_failed short-circuit or a buyer's number selection.
  */
 import Stripe from 'stripe'
 import { stripe } from '@/lib/stripe'
@@ -44,19 +55,38 @@ import {
 } from './state'
 import { flagConcierge } from './concierge'
 import { createMagicLinkToken, sendMagicLinkEmail } from './magic-link'
+import {
+  isLeadConnectorConfigured,
+  createSubAccount,
+  LeadConnectorError,
+  LeadConnectorNotConfiguredError,
+} from '@/lib/leadconnector/agency-provisioning'
 
-/**
- * TODO(ryan / Task 3): replace with lib/leadconnector/agency-provisioning.ts
- * createSubAccount() once the agency API details + LEADCONNECTOR_* envs
- * land. Until then this always reports not_configured so the pipeline
- * degrades to the concierge path instead of blocking a paid buyer.
- */
 async function provisionLeadConnector(input: {
   workspaceId: string
   businessName: string
+  contactEmail: string | null
+  websiteUrl: string | null
 }): Promise<{ ok: true; locationId: string } | { ok: false; reason: string }> {
-  void input // signature kept stable for Task 3's real implementation
-  return { ok: false, reason: 'LeadConnector agency provisioning is not configured yet (Task 3).' }
+  if (!isLeadConnectorConfigured()) {
+    return { ok: false, reason: 'LeadConnector agency provisioning is not configured (missing LEADCONNECTOR_AGENCY_TOKEN).' }
+  }
+  if (!input.contactEmail) {
+    return { ok: false, reason: 'No contact email on the purchase — cannot create a LeadConnector sub-account.' }
+  }
+  try {
+    const result = await createSubAccount({
+      businessName: input.businessName,
+      email: input.contactEmail,
+      ...(input.websiteUrl ? { websiteUrl: input.websiteUrl } : {}),
+    })
+    return { ok: true, locationId: result.locationId }
+  } catch (err) {
+    if (err instanceof LeadConnectorNotConfiguredError) return { ok: false, reason: err.message }
+    if (err instanceof LeadConnectorError) return { ok: false, reason: err.userMessage }
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, reason: message || 'Unknown error provisioning the LeadConnector sub-account.' }
+  }
 }
 
 function stripeIdOf(value: string | { id: string } | null | undefined): string | null {
@@ -200,9 +230,14 @@ export async function fulfillDemoBundle(session: Stripe.Checkout.Session): Promi
     purchase = result.purchase ?? purchase
   }
 
-  // ── LeadConnector sub-account (stubbed — Task 3 replaces this) ──────
+  // ── LeadConnector sub-account ────────────────────────────────────────
   if (purchase.state === 'crm_provisioning') {
-    const lc = await provisionLeadConnector({ workspaceId: purchase.workspaceId!, businessName: prospect.businessName })
+    const lc = await provisionLeadConnector({
+      workspaceId: purchase.workspaceId!,
+      businessName: prospect.businessName,
+      contactEmail: purchase.contactEmail ?? null,
+      websiteUrl: prospect.websiteUrl ?? null,
+    })
     if (lc.ok) {
       const result = await advancePurchaseState(prospect.id, 'crm_provisioning', 'crm_ready', { locationId: lc.locationId })
       purchase = result.purchase ?? purchase
@@ -213,13 +248,34 @@ export async function fulfillDemoBundle(session: Stripe.Checkout.Session): Promi
     }
   }
 
-  // crm_ready is buyer-driven (Task 3's numbers/number routes advance it
-  // to number_purchasing) — nothing more for the webhook to do here yet.
-  if (purchase?.state === 'crm_ready') return
-  if (purchase?.state === 'number_purchasing') return
+  // crm_ready and number_purchasing are buyer-driven — the buyer hasn't
+  // picked (or skipped) a phone number yet, and won't for as long as
+  // seconds to minutes after this webhook invocation returns, so there is
+  // nothing more for THIS invocation to do. completeDemoPurchase() below
+  // (called from app/api/public/try/[slug]/purchase/number/route.ts) picks
+  // up from crm_failed/number_* once the buyer's action — or the
+  // crm_failed fast-path, which needs no buyer action — lands.
+  await completeDemoPurchase(slug)
+}
+
+/**
+ * Buyer-driven completion tail, split out of fulfillDemoBundle so it can
+ * be called both from here (the crm_failed fast-path, which has no
+ * number step to offer) and from
+ * app/api/public/try/[slug]/purchase/number/route.ts once the buyer picks
+ * or skips a phone number. Re-reads current state and resumes from
+ * wherever it actually is — same philosophy as fulfillDemoBundle: no-ops
+ * cleanly on a state it doesn't recognize as ready to complete.
+ */
+export async function completeDemoPurchase(slug: string): Promise<void> {
+  const prospect = await db.demoProspect.findUnique({ where: { slug } })
+  if (!prospect) return
+
+  let purchase = getPurchase(prospect.metadata)
+  if (!purchase) return
 
   // crm_failed has no number step to offer — go straight to deferred.
-  if (purchase?.state === 'crm_failed') {
+  if (purchase.state === 'crm_failed') {
     const result = await advancePurchaseState(prospect.id, 'crm_failed', 'number_deferred', {})
     purchase = result.purchase ?? purchase
   }

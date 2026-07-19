@@ -18,11 +18,25 @@
  * + `state: 'checkout_started'` projection the prospecting tool reads via
  * GET /api/v1/demo-prospects (Task 5 wires that projection in; this
  * route's job is just to make sure the data lands).
+ *
+ * The Stripe Checkout Session id is ALSO persisted immediately (as
+ * `purchase.stripeSessionId`) rather than waiting for the webhook's
+ * `paid` transition to stamp it — Task 3's public status/numbers/number
+ * routes gate on "session_id matches stored stripeSessionId" as a
+ * possession check (the /try/[slug] link is shareable; the slug alone
+ * must not expose whether/what someone purchased), and that check has to
+ * work from PurchaseModal's very first poll, immediately after the
+ * embedded Checkout completes client-side — which can be seconds before
+ * the webhook has actually landed and run fulfillDemoBundle(). Non-CAS,
+ * last-write-wins, same posture as startOrUpdateCheckout above: this is
+ * pre-payment bookkeeping, not state-machine advancement.
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { stripe } from '@/lib/stripe'
+import { db } from '@/lib/db'
 import { STRIPE_PRICES } from '@/lib/plans'
-import { startOrUpdateCheckout, type PurchasePeriod } from '@/lib/demo-purchase/state'
+import { startOrUpdateCheckout, mergePurchaseMetadata, type PurchasePeriod } from '@/lib/demo-purchase/state'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EXPIRES_EXTEND_MS = 14 * 24 * 60 * 60 * 1000 // 14 days — matches the reaper's normal TTL window
@@ -156,7 +170,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       },
     })
 
-    return NextResponse.json({ clientSecret: session.client_secret })
+    // Best-effort: persist the session id so Task 3's possession check
+    // works immediately. A DB hiccup here must not cost the buyer their
+    // checkout session — the webhook's own `paid` transition stamps
+    // stripeSessionId too, so this is belt-and-braces, not the only path.
+    try {
+      const row = await db.demoProspect.findUnique({ where: { id: started.prospectId }, select: { metadata: true } })
+      if (row) {
+        const merged = mergePurchaseMetadata(row.metadata, { stripeSessionId: session.id })
+        await db.demoProspect.update({ where: { id: started.prospectId }, data: { metadata: merged as Prisma.InputJsonValue } })
+      }
+    } catch (err) {
+      console.error(`[demo-purchase] failed to persist pending stripeSessionId for ${slug}:`, err)
+    }
+
+    return NextResponse.json({ clientSecret: session.client_secret, sessionId: session.id })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[demo-purchase] checkout-session creation failed for ${slug}:`, message)

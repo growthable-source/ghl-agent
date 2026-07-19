@@ -76,6 +76,11 @@ export interface PurchaseMetadata {
   phoneNumber?: string | null
   concierge?: ConciergeFlag | null
   magicLinkSentAt?: string
+  /** Best-effort counter for the numbers/route.ts rate cap (~20 searches
+   *  per prospect). Bumped via re-read+merge like every other field here
+   *  — a lost race under concurrent polling just makes the cap slightly
+   *  soft, never wrong in the "blocks a legitimate buyer" direction. */
+  numberSearchCount?: number
   updatedAt: string
 }
 
