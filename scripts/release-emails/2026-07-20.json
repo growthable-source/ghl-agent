@@ -1,8 +1,8 @@
 {
-  "subject": "New in Growthable: Auto-pilot mode, no more double bookings, and knowledge that knows when to speak up",
-  "preheader": "Control exactly how your AI behaves, stop duplicate appointments, and make sure chats never route to teammates who've clocked off.",
+  "subject": "New in Xovera: Auto-pilot mode, no more double bookings, and knowledge that knows when to speak up",
+  "preheader": "This fortnight in Xovera — control exactly how your AI behaves, stop duplicate appointments, and stop chats routing to teammates who've clocked off.",
   "title": "You're now in the driver's seat of how your AI behaves",
-  "intro": "A big fortnight. This release is about control and reliability — you decide how the AI acts, when it steps back, and what it knows. Plus the fixes that stop appointments getting booked twice and chats landing with teammates who aren't there.",
+  "intro": "This is your fortnightly update on <strong>Xovera</strong> — the conversational AI platform behind your agents: the ones answering inbound calls, texts, and live chats for your clients, qualifying leads and booking appointments straight into your CRM. Everything below is live in your Xovera dashboard now. This release is about control and reliability — you decide how the AI acts, when it steps back, and what it knows. Plus the fixes that stop appointments getting booked twice and chats landing with teammates who aren't there.",
   "videoUrl": null,
   "sections": [
     {
@@ -36,5 +36,5 @@
       "body": "Three reliability fixes from your reports. Chats where the AI stalled under heavy load are now automatically retried before anyone gets paged. When the AI pauses itself — hostile sentiment, a stop keyword, a message cap — the visitor now sees <em>\"passed to our team\"</em> and a human is assigned immediately, instead of dead air. And when a ticket email fails to send, it retries on its own and the thread shows a clear <strong>Email failed / retrying</strong> badge with the reason, so you hear it from us and not from your customer."
     }
   ],
-  "outro": "Everything above is live now. Look for the <strong>NEW</strong> badges on Auto-pilot mode, Knowledge, Auto-away and the launcher icon picker as you move through the dashboard."
+  "outro": "Everything above is live in Xovera now — nothing to install or update. Look for the <strong>NEW</strong> badges on Auto-pilot mode, Knowledge, Auto-away and the launcher icon picker as you move through the dashboard."
 }
