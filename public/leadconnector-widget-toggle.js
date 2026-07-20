@@ -116,14 +116,30 @@
     return row
   }
 
-  function mount() {
-    if (document.getElementById(ROW_ID)) return
+  // A mounted switch is only legitimate inside the header strip or the
+  // real sidebar. Anything else (e.g. mounted during a route transition
+  // while the header was mid-rebuild) must be torn down and re-mounted,
+  // otherwise the early-return below pins it wherever it landed forever.
+  function isWellPlaced(el, controls) {
+    var p = el.parentElement
+    if (!p) return false
+    if (controls) return controls.contains(el)
+    return !!(p.closest && p.closest('#sidebar-v2'))
+  }
 
+  function mount() {
     // The header/sidebar are re-rendered by the SPA router, so we look
     // them up fresh every time. Header strip first — it stays visible
     // even on pages where the sidebar is collapsed, and it's a precise
     // anchor, so we mount it even on builder screens.
     var controls = document.querySelector('.hl_header--controls')
+
+    var existing = document.getElementById(ROW_ID)
+    if (existing) {
+      if (isWellPlaced(existing, controls)) return
+      existing.remove()
+    }
+
     if (controls) {
       // Sit just left of the native circle buttons (help icon if present).
       var anchor = controls.querySelector('#hl_header--help-icon') || controls.firstElementChild
@@ -144,12 +160,15 @@
 
     // Sidebar fallback — LC-specific anchors ONLY. The generic
     // `aside nav` selector was removed: it matched builder side-panels
-    // and mis-placed the switch. If none of these exist we're not on a
-    // standard LC dashboard page, so we skip rather than guess a host.
+    // and mis-placed the switch. `.sidebar-v2-location` was removed too:
+    // despite the name it's the class on LC's WHOLE-PAGE flex wrapper
+    // (sidebar + content), so appending there rendered the row as a
+    // stray full-height flex column pinned to the right edge of the
+    // screen. If neither anchor exists we're not on a standard LC
+    // dashboard page, so we skip rather than guess a host.
     var host =
       document.querySelector('#sidebar-v2 nav') ||
-      document.querySelector('#sidebar-v2') ||
-      document.querySelector('.sidebar-v2-location')
+      document.querySelector('#sidebar-v2')
     if (!host) return
     host.appendChild(buildRow())
   }
