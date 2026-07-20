@@ -1,0 +1,40 @@
+{
+  "subject": "New in Growthable: Auto-pilot mode, no more double bookings, and knowledge that knows when to speak up",
+  "preheader": "Control exactly how your AI behaves, stop duplicate appointments, and make sure chats never route to teammates who've clocked off.",
+  "title": "You're now in the driver's seat of how your AI behaves",
+  "intro": "A big fortnight. This release is about control and reliability — you decide how the AI acts, when it steps back, and what it knows. Plus the fixes that stop appointments getting booked twice and chats landing with teammates who aren't there.",
+  "videoUrl": null,
+  "sections": [
+    {
+      "emoji": "🎛️",
+      "title": "Auto-pilot mode — tune how your agent behaves",
+      "body": "A new <strong>Auto-pilot mode</strong> card on every agent's config page. Set how long the agent waits before replying so it answers a full thought instead of every fragment, cap how many messages it can send before it pauses for a human, and choose whether it responds to images and voice notes. You can also tell it to <strong>go to sleep the moment a human or an automation replies</strong>, so it never talks over your team. While we were in there, Additional Instructions became editable and there's a new inline <strong>Guardrails</strong> editor for words and phrases the agent must never say — now enforced on text and SMS conversations, not just chat."
+    },
+    {
+      "emoji": "📅",
+      "title": "Your booking agent finally reads the calendar",
+      "body": "Booking agents now check the contact's upcoming appointments <em>before every single reply</em>. If someone already has a booking, the agent confirms or reschedules it rather than quietly creating a second one — and it quotes the time they actually have. We added a booking safety net underneath too, so even a confused conversation can't produce a duplicate appointment."
+    },
+    {
+      "emoji": "🎯",
+      "title": "Knowledge that knows when to use itself",
+      "body": "The agent <strong>Knowledge</strong> page is rebuilt as one simple list: every source you've indexed or curated, with a tick to attach it. New on each source is an <strong>\"only use this knowledge when…\"</strong> trigger — plain English, like <em>only when the customer asks about pricing</em>. Untriggered sources apply as always. It's the easiest way to give one agent broad knowledge without it dragging the wrong document into every answer."
+    },
+    {
+      "emoji": "🟢",
+      "title": "Chats stop routing to teammates who've clocked off",
+      "body": "The Available toggle was a manual switch that defaulted to on, so anyone who forgot to flip it kept getting chats they'd never see. Now presence follows reality: if someone hasn't actually touched the dashboard for a while, they're automatically moved to <strong>Away</strong>, and they're brought back the moment they're active again. Manual Away is always respected. Turn it on or set the idle window under Live chat settings."
+    },
+    {
+      "emoji": "🎨",
+      "title": "Make the chat bubble yours",
+      "body": "The floating launcher no longer has to be our chat icon. Pick a <strong>question mark</strong>, a <strong>letter mark</strong> (great for clients without a logo), or upload their <strong>logo</strong> — plus one-click preset colours for the primary brand colour. The preview shows both the open panel and the closed bubble, so you can hand a client exactly what they'll see."
+    },
+    {
+      "emoji": "🛟",
+      "title": "Live chat that doesn't go quiet",
+      "body": "Three reliability fixes from your reports. Chats where the AI stalled under heavy load are now automatically retried before anyone gets paged. When the AI pauses itself — hostile sentiment, a stop keyword, a message cap — the visitor now sees <em>\"passed to our team\"</em> and a human is assigned immediately, instead of dead air. And when a ticket email fails to send, it retries on its own and the thread shows a clear <strong>Email failed / retrying</strong> badge with the reason, so you hear it from us and not from your customer."
+    }
+  ],
+  "outro": "Everything above is live now. Look for the <strong>NEW</strong> badges on Auto-pilot mode, Knowledge, Auto-away and the launcher icon picker as you move through the dashboard."
+}
