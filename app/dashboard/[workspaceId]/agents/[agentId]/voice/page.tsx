@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
 import AgentCrmCard from '@/components/agents/AgentCrmCard'
+import SaveBar from '@/components/dashboard/SaveBar'
+import { useDirtyForm } from '@/lib/use-dirty-form'
 import { voicePreviewUrl } from '@/lib/voice/preview-url'
 import { useVoicePreview } from '@/lib/voice/use-voice-preview'
 
@@ -34,6 +36,32 @@ interface VapiConfig {
   language: string | null
   voiceTools: any[] | null
   isActive: boolean
+}
+
+/**
+ * The form this page edits. VapiConfig is saved to the VapiConfig row;
+ * systemPrompt lives on Agent and is what the model actually receives on
+ * every call (lib/voice/vapi-assistant.ts). It used to be editable only in
+ * the creation wizard — after that the prompt was reachable only through
+ * Advanced → Identity, which is a read-only preview. Voice agents are
+ * mostly prompt, so it belongs on the page named "Voice & Script".
+ */
+type VoiceForm = VapiConfig & { systemPrompt: string }
+
+const DEFAULT_CONFIG: VapiConfig = {
+  phoneNumberId: null, phoneNumber: null,
+  // Default to Cartesia (Sonic) — Vapi's own default provider and the
+  // most human-sounding voice. With CARTESIA_API_KEY set, previews synth
+  // on demand AND calls run through Vapi. Katie is a warm conversational
+  // starting voice; the picker offers the rest.
+  ttsProvider: 'cartesia',
+  voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', voiceName: 'Katie',
+  stability: 0.5, similarityBoost: 0.75, speed: 1.0, style: 0.0,
+  firstMessage: '', endCallMessage: '',
+  maxDurationSecs: 600, recordCalls: true,
+  backgroundSound: null, endCallPhrases: [], language: null,
+  voiceTools: null,
+  isActive: false,
 }
 
 interface PhoneNumber {
@@ -99,34 +127,12 @@ export default function VoicePage() {
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
 
-  const [config, setConfig] = useState<VapiConfig>({
-    phoneNumberId: null, phoneNumber: null,
-    // Default to Cartesia (Sonic) — Vapi's own default provider and the
-    // most human-sounding voice. With CARTESIA_API_KEY set, previews synth
-    // on demand AND calls run through Vapi. Katie is a warm conversational
-    // starting voice; the picker offers the rest.
-    ttsProvider: 'cartesia',
-    voiceId: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', voiceName: 'Katie',
-    stability: 0.5, similarityBoost: 0.75, speed: 1.0, style: 0.0,
-    firstMessage: '', endCallMessage: '',
-    maxDurationSecs: 600, recordCalls: true,
-    backgroundSound: null, endCallPhrases: [], language: null,
-    voiceTools: null,
-    isActive: false,
-  })
+  const [initial, setInitial] = useState<VoiceForm | null>(null)
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
   const [voices, setVoices] = useState<Voice[]>([])
   const [voiceSearch, setVoiceSearch] = useState('')
   const [voiceFilter, setVoiceFilter] = useState<'all' | 'male' | 'female'>('all')
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  // Vapi sync error from the PUT response. Surfaces inline next to
-  // Save so the user sees the exact reason Vapi rejected their config
-  // (e.g. "model 'claude-sonnet-4-20250514' is not supported") instead
-  // of discovering it later as "Meeting ended due to ejection" on a
-  // test call.
-  const [syncError, setSyncError] = useState<string | null>(null)
   const [vapiReady, setVapiReady] = useState(false)
   const [vapiError, setVapiError] = useState<string | null>(null)
   // Shared with the voice wizard — see lib/voice/use-voice-preview.
@@ -191,11 +197,18 @@ export default function VoicePage() {
   // only one that gets every runtime fix. This page just links to it.
 
   useEffect(() => {
+    // Both the VapiConfig row and the agent's systemPrompt feed one form,
+    // so the baseline isn't set until both land — otherwise useDirtyForm
+    // would take an incomplete snapshot and the second arrival would read
+    // as an unsaved change.
+    let loadedConfig: VapiConfig | null = null
+    let loadedPrompt = ''
+
     Promise.all([
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`)
         .then(r => r.json())
         .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready, vapiError: ve }) => {
-          if (cfg) setConfig({ ...cfg, ttsProvider: cfg.ttsProvider ?? 'vapi', voiceTools: cfg.voiceTools || null })
+          if (cfg) loadedConfig = { ...cfg, ttsProvider: cfg.ttsProvider ?? 'vapi', voiceTools: cfg.voiceTools || null }
           setPhoneNumbers(phones || [])
           setVapiReady(ready)
           setVapiError(ve || null)
@@ -215,6 +228,7 @@ export default function VoicePage() {
         .then((d: any) => {
           if (d?.agent?.agentType) setAgentType(d.agent.agentType)
           if (typeof d?.agent?.calendarId === 'string') setCalendarId(d.agent.calendarId)
+          loadedPrompt = d?.agent?.systemPrompt ?? ''
         })
         .catch(() => {}),
       // Booking calendars available on this agent's CRM location.
@@ -222,68 +236,76 @@ export default function VoicePage() {
         .then(r => r.ok ? r.json() : { calendars: [] })
         .then((d: any) => setCalendars(Array.isArray(d.calendars) ? d.calendars : []))
         .catch(() => {}),
-    ]).finally(() => setLoading(false))
+    ]).finally(() => {
+      setInitial({ ...(loadedConfig ?? DEFAULT_CONFIG), systemPrompt: loadedPrompt })
+      setLoading(false)
+    })
   }, [workspaceId, agentId])
+
+  const { draft, set, dirty, saving, savedAt, error, save, reset } = useDirtyForm<VoiceForm>({
+    initial,
+    onSave: async (d) => {
+      const { systemPrompt, ...cfg } = d
+      // The prompt goes to the Agent row, the rest to VapiConfig. Prompt
+      // first: it's the field the operator is most likely to have just
+      // changed, and if the Vapi assistant sync then fails they haven't
+      // lost their writing.
+      const promptRes = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemPrompt }),
+      })
+      if (!promptRes.ok) {
+        const data = await promptRes.json().catch(() => ({}))
+        throw new Error(data.error || 'Could not save the instructions.')
+      }
+
+      const phone = phoneNumbers.find(p => p.id === cfg.phoneNumberId)
+      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...cfg,
+          phoneNumber: phone?.number || null,
+          voiceTools: cfg.voiceTools && cfg.voiceTools.length > 0 ? cfg.voiceTools : null,
+        }),
+      })
+      if (!res.ok) {
+        // 422 = config saved to DB but Vapi rejected the assistant sync
+        // (the validation gate). Surface the provider's reason rather than
+        // letting it show up later as "Meeting ended due to ejection".
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Voice provider rejected the config (HTTP ${res.status}).`)
+      }
+    },
+  })
 
   // Re-fetch voices whenever the TTS engine changes. Keeps the voice
   // list honest (Vapi-native catalogue vs. ElevenLabs 5000+) without
   // reloading the whole page.
   useEffect(() => {
     if (loading) return
-    fetch(`/api/voices?provider=${config.ttsProvider}`)
+    fetch(`/api/voices?provider=${draft.ttsProvider}`)
       .then(r => r.json())
       .then(({ voices: v }) => setVoices(v || []))
       .catch(() => {})
-  }, [config.ttsProvider, loading])
+  }, [draft.ttsProvider, loading])
 
   const searchVoices = useCallback((term: string) => {
-    fetch(`/api/voices?provider=${config.ttsProvider}&search=${encodeURIComponent(term)}`)
+    fetch(`/api/voices?provider=${draft.ttsProvider}&search=${encodeURIComponent(term)}`)
       .then(r => r.json())
       .then(({ voices: v }) => setVoices(v || []))
       .catch(() => {})
-  }, [config.ttsProvider])
+  }, [draft.ttsProvider])
 
   function playPreview(voiceId: string, previewUrl: string | null) {
-    preview.play(config.ttsProvider, voiceId, previewUrl)
+    preview.play(draft.ttsProvider, voiceId, previewUrl)
   }
 
   function selectVoice(v: Voice) {
-    setConfig(c => ({ ...c, voiceId: v.voice_id, voiceName: v.name }))
+    set({ voiceId: v.voice_id, voiceName: v.name })
     setShowVoicePicker(false)
     preview.stop()
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setSyncError(null)
-    const phone = phoneNumbers.find(p => p.id === config.phoneNumberId)
-    const payload = {
-      ...config,
-      phoneNumber: phone?.number || null,
-      voiceTools: config.voiceTools && config.voiceTools.length > 0 ? config.voiceTools : null,
-    }
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        // 422 = config saved to DB but Vapi rejected the assistant
-        // sync (the validation gate). Render the error inline; the
-        // operator fixes and re-saves to retry.
-        setSyncError(data.error || `Voice provider rejected the config (HTTP ${res.status}). Contact support if this keeps happening.`)
-        return
-      }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (err: any) {
-      setSyncError(err?.message ?? 'Save failed')
-    } finally {
-      setSaving(false)
-    }
   }
 
   async function buyNumber() {
@@ -299,7 +321,7 @@ export default function VoicePage() {
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to provision number')
       setPhoneNumbers(prev => [...prev, data.phone])
-      setConfig(c => ({ ...c, phoneNumberId: data.phone.id, phoneNumber: data.phone.number }))
+      set({ phoneNumberId: data.phone.id, phoneNumber: data.phone.number })
       setShowBuyForm(false)
       setAreaCode('')
     } catch (err: any) { setBuyError(err.message) }
@@ -312,12 +334,12 @@ export default function VoicePage() {
     return true
   })
 
-  const selectedVoice = voices.find(v => v.voice_id === config.voiceId)
+  const selectedVoice = voices.find(v => v.voice_id === draft.voiceId)
 
   if (loading) return <div className="flex items-center justify-center h-64"><p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p></div>
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-8 max-w-2xl pb-24">
       {agentType === 'VOICE' ? (
         <div className="mb-6">
           <h1 className="text-xl font-semibold mb-1.5" style={{ color: 'var(--text-primary)' }}>
@@ -374,7 +396,35 @@ export default function VoicePage() {
         </div>
       )}
 
-      <form onSubmit={save} className="space-y-6">
+      <div className="space-y-6">
+
+        {/* ── Instructions (the system prompt) ──────────────────────────
+            First card on the page on purpose. This is the agent's actual
+            behaviour; everything below is delivery. */}
+        <div className="rounded-xl border p-5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Instructions</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              What this agent should do on a call — its job, what to ask, what never to say. Your knowledge base and the caller&apos;s CRM details are added automatically on top of this.
+            </p>
+          </div>
+          <textarea
+            value={draft.systemPrompt || ''}
+            onChange={e => set({ systemPrompt: e.target.value })}
+            rows={14}
+            placeholder={"You answer the phone for the business.\n\nOn every call:\n- Greet the caller and find out why they're calling\n- Answer questions using the knowledge base\n- Capture their name and email before the call ends\n- If they want to book, offer times and book them in\n\nNever quote prices you're unsure about — offer to have someone call back instead."}
+            className="w-full rounded-lg px-3 py-2.5 text-sm leading-relaxed focus:outline-none resize-y font-mono"
+            style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}
+          />
+          <div className="flex items-center justify-between">
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Plain English works best. Short, specific rules beat long paragraphs.
+            </p>
+            <span className="text-[11px] font-mono shrink-0 ml-3" style={{ color: 'var(--text-muted)' }}>
+              {(draft.systemPrompt || '').length.toLocaleString()} chars
+            </span>
+          </div>
+        </div>
 
         {/* ── Enable toggle ── */}
         <div className="flex items-center justify-between rounded-xl border px-5 py-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
@@ -383,10 +433,10 @@ export default function VoicePage() {
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Answer inbound calls on the configured number</p>
           </div>
           <button type="button" disabled={!vapiReady}
-            onClick={() => setConfig(c => ({ ...c, isActive: !c.isActive }))}
+            onClick={() => set({ isActive: !draft.isActive })}
             className="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors disabled:opacity-40"
-            style={{ background: config.isActive ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}>
-            <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${config.isActive ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
+            style={{ background: draft.isActive ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}>
+            <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${draft.isActive ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
           </button>
         </div>
 
@@ -410,12 +460,12 @@ export default function VoicePage() {
               { id: 'vapi',       label: 'Standard' },
               { id: 'elevenlabs', label: 'ElevenLabs' },
             ] as const).map(opt => {
-              const active = config.ttsProvider === opt.id
+              const active = draft.ttsProvider === opt.id
               return (
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => setConfig(c => ({ ...c, ttsProvider: opt.id }))}
+                  onClick={() => set({ ttsProvider: opt.id })}
                   className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
                   style={active
                     ? { background: '#fa4d2e', color: '#ffffff' }
@@ -486,10 +536,10 @@ export default function VoicePage() {
               </div>
             )}
             {phoneNumbers.length > 0 ? (
-              <select value={config.phoneNumberId || ''}
+              <select value={draft.phoneNumberId || ''}
                 onChange={e => {
                   const phone = phoneNumbers.find(ph => ph.id === e.target.value)
-                  setConfig(c => ({ ...c, phoneNumberId: e.target.value, phoneNumber: phone?.number || null }))
+                  set({ phoneNumberId: e.target.value, phoneNumber: phone?.number || null })
                 }}
                 className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
                 style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}>
@@ -524,13 +574,13 @@ export default function VoicePage() {
           {!showVoicePicker && (
             <div className="flex items-center gap-3 rounded-lg px-4 py-3" style={{ background: 'var(--surface-secondary)' }}>
               <button type="button"
-                onClick={() => playPreview(config.voiceId, selectedVoice?.preview_url || null)}
+                onClick={() => playPreview(draft.voiceId, selectedVoice?.preview_url || null)}
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
                 style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
-                {preview.loadingId === config.voiceId ? '…' : playingId === config.voiceId ? '⏸' : '▶'}
+                {preview.loadingId === draft.voiceId ? '…' : playingId === draft.voiceId ? '⏸' : '▶'}
               </button>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{config.voiceName || config.voiceId.slice(0, 12)}</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{draft.voiceName || draft.voiceId.slice(0, 12)}</p>
                 {selectedVoice && (
                   <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                     {[selectedVoice.labels?.gender, selectedVoice.labels?.accent, selectedVoice.labels?.age?.replace('_', ' ')].filter(Boolean).join(' · ')}
@@ -566,7 +616,7 @@ export default function VoicePage() {
               </div>
               <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
                 {filteredVoices.map(v => {
-                  const isSelected = config.voiceId === v.voice_id
+                  const isSelected = draft.voiceId === v.voice_id
                   return (
                     <div key={v.voice_id}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors"
@@ -579,8 +629,8 @@ export default function VoicePage() {
                       onClick={() => selectVoice(v)}>
                       <button type="button"
                         onClick={e => { e.stopPropagation(); playPreview(v.voice_id, v.preview_url) }}
-                        disabled={!voicePreviewUrl(config.ttsProvider, v.voice_id, v.preview_url)}
-                        title={voicePreviewUrl(config.ttsProvider, v.voice_id, v.preview_url) ? 'Preview' : 'No preview available'}
+                        disabled={!voicePreviewUrl(draft.ttsProvider, v.voice_id, v.preview_url)}
+                        title={voicePreviewUrl(draft.ttsProvider, v.voice_id, v.preview_url) ? 'Preview' : 'No preview available'}
                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 transition-colors disabled:opacity-40"
                         style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
                         {preview.loadingId === v.voice_id ? '…' : playingId === v.voice_id ? '⏸' : '▶'}
@@ -637,9 +687,9 @@ export default function VoicePage() {
           <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>What the agent says</p>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Opening line</label>
-            <MergeFieldTextarea value={config.firstMessage || ''}
-              onChange={e => setConfig(c => ({ ...c, firstMessage: e.target.value }))}
-              onValueChange={v => setConfig(c => ({ ...c, firstMessage: v }))}
+            <MergeFieldTextarea value={draft.firstMessage || ''}
+              onChange={e => set({ firstMessage: e.target.value })}
+              onValueChange={v => set({ firstMessage: v })}
               placeholder="Hi {{contact.first_name|there}}! How can I help you today?"
               rows={2}
               className="w-full rounded-lg pl-3 pr-3 pt-8 pb-2.5 text-sm focus:outline-none resize-none"
@@ -650,9 +700,9 @@ export default function VoicePage() {
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Closing line</label>
-            <MergeFieldInput value={config.endCallMessage || ''}
-              onChange={e => setConfig(c => ({ ...c, endCallMessage: e.target.value }))}
-              onValueChange={v => setConfig(c => ({ ...c, endCallMessage: v }))}
+            <MergeFieldInput value={draft.endCallMessage || ''}
+              onChange={e => set({ endCallMessage: e.target.value })}
+              onValueChange={v => set({ endCallMessage: v })}
               placeholder="Thanks for calling. Have a great day!"
               className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none"
               style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }} />
@@ -689,18 +739,18 @@ export default function VoicePage() {
                   <p className="text-sm" style={{ color: 'var(--text-primary)' }}>Record calls</p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Save audio recordings with transcripts</p>
                 </div>
-                <button type="button" onClick={() => setConfig(c => ({ ...c, recordCalls: !c.recordCalls }))}
+                <button type="button" onClick={() => set({ recordCalls: !draft.recordCalls })}
                   className="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors"
-                  style={{ background: config.recordCalls ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}>
-                  <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${config.recordCalls ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
+                  style={{ background: draft.recordCalls ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}>
+                  <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${draft.recordCalls ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
                 </button>
               </div>
 
               {/* Language */}
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Language</label>
-                <select value={config.language || ''}
-                  onChange={e => setConfig(c => ({ ...c, language: e.target.value || null }))}
+                <select value={draft.language || ''}
+                  onChange={e => set({ language: e.target.value || null })}
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}>
                   {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
@@ -709,15 +759,15 @@ export default function VoicePage() {
               </div>
 
               {/* Max duration */}
-              <SliderField label="Max call length" desc="The agent hangs up automatically after this long." value={config.maxDurationSecs}
-                onChange={v => setConfig(c => ({ ...c, maxDurationSecs: v }))} min={60} max={1800} step={60}
+              <SliderField label="Max call length" desc="The agent hangs up automatically after this long." value={draft.maxDurationSecs}
+                onChange={v => set({ maxDurationSecs: v })} min={60} max={1800} step={60}
                 format={v => `${Math.floor(v / 60)} min`} />
 
               {/* Background sound */}
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Background sound</label>
-                <select value={config.backgroundSound || ''}
-                  onChange={e => setConfig(c => ({ ...c, backgroundSound: e.target.value || null }))}
+                <select value={draft.backgroundSound || ''}
+                  onChange={e => set({ backgroundSound: e.target.value || null })}
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}>
                   {BACKGROUND_SOUNDS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -729,15 +779,13 @@ export default function VoicePage() {
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>End-call phrases</label>
                 <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>If the caller says one of these, the agent will end the call.</p>
-                {config.endCallPhrases.length > 0 && (
+                {draft.endCallPhrases.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-2">
-                    {config.endCallPhrases.map((p, i) => (
+                    {draft.endCallPhrases.map((p, i) => (
                       <span key={i} className="flex items-center gap-1 text-xs rounded-full px-2.5 py-1"
                         style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>
                         {p}
-                        <button type="button" onClick={() => setConfig(c => ({
-                          ...c, endCallPhrases: c.endCallPhrases.filter((_, idx) => idx !== i)
-                        }))} className="ml-0.5 hover:text-red-400" style={{ color: 'var(--text-tertiary)' }}>×</button>
+                        <button type="button" onClick={() => set({ endCallPhrases: draft.endCallPhrases.filter((_, idx) => idx !== i) })} className="ml-0.5 hover:text-red-400" style={{ color: 'var(--text-tertiary)' }}>×</button>
                       </span>
                     ))}
                   </div>
@@ -748,7 +796,7 @@ export default function VoicePage() {
                     onKeyDown={e => {
                       if (e.key === 'Enter' && newPhrase.trim()) {
                         e.preventDefault()
-                        setConfig(c => ({ ...c, endCallPhrases: [...c.endCallPhrases, newPhrase.trim()] }))
+                        set({ endCallPhrases: [...draft.endCallPhrases, newPhrase.trim()] })
                         setNewPhrase('')
                       }
                     }}
@@ -758,7 +806,7 @@ export default function VoicePage() {
                   <button type="button" disabled={!newPhrase.trim()}
                     onClick={() => {
                       if (newPhrase.trim()) {
-                        setConfig(c => ({ ...c, endCallPhrases: [...c.endCallPhrases, newPhrase.trim()] }))
+                        set({ endCallPhrases: [...draft.endCallPhrases, newPhrase.trim()] })
                         setNewPhrase('')
                       }
                     }}
@@ -775,18 +823,7 @@ export default function VoicePage() {
           )}
         </div>
 
-        <button type="submit" disabled={saving || !vapiReady}
-          className="w-full inline-flex items-center justify-center rounded-lg font-medium text-sm h-10 transition-colors"
-          style={{
-            background: (saving || !vapiReady) ? 'var(--surface-tertiary)' : 'var(--accent-primary)',
-            color: (saving || !vapiReady) ? 'var(--text-tertiary)' : 'var(--btn-primary-text)',
-            cursor: (saving || !vapiReady) ? 'not-allowed' : 'pointer',
-            opacity: (saving || !vapiReady) ? 0.6 : 1,
-          }}>
-          {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Voice Settings'}
-        </button>
-
-        {syncError && (
+        {error && (
           <div
             className="rounded-lg border p-3 text-xs space-y-2"
             style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
@@ -804,11 +841,13 @@ export default function VoicePage() {
               {showSyncDetails ? 'Hide technical details' : 'Show technical details'}
             </button>
             {showSyncDetails && (
-              <p className="text-[11px] font-mono break-all" style={{ color: 'var(--text-tertiary)' }}>{syncError}</p>
+              <p className="text-[11px] font-mono break-all" style={{ color: 'var(--text-tertiary)' }}>{error}</p>
             )}
           </div>
         )}
-      </form>
+
+        <SaveBar dirty={dirty} saving={saving} savedAt={savedAt} error={error} onSave={save} onReset={reset} />
+      </div>
 
       {/* Test call lives on the Overview tab — one surface, one code path,
           backed by the pre-registered Vapi assistant. The inline duplicate

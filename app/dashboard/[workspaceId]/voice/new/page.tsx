@@ -49,6 +49,45 @@ const STEPS: { key: Step; label: string }[] = [
 // phone calls.
 type Engine = 'cartesia' | 'vapi' | 'elevenlabs' | 'gemini'
 
+/**
+ * The engines offered in the picker, and what each one honestly is.
+ *
+ * Gemini was wired end-to-end (submit path, try-it panel, phone bridge) but
+ * never added to this list, while the blurb above the tabs described it —
+ * so the wizard promised speech-to-speech and shipped TTS. It's listed
+ * first now because it's the best-sounding option.
+ *
+ * Cartesia stays the DEFAULT (see the `engine` useState) until a live
+ * end-to-end Gemini phone call is confirmed through the Fly relay — web
+ * voice is proven, the phone path isn't.
+ */
+const ENGINE_OPTIONS: Array<{ id: Engine; label: string; blurb: string }> = [
+  {
+    id: 'gemini',
+    label: 'Gemini — most human',
+    blurb:
+      'Gemini is a native speech-to-speech model — it hears and speaks audio directly instead of reading a script aloud, so it catches tone, interruptions and pacing the way a person does. Best quality available.',
+  },
+  {
+    id: 'cartesia',
+    label: 'Natural',
+    blurb:
+      'Natural is premium text-to-speech: your agent writes a reply and Cartesia speaks it. Very close to human on a phone line, and the most battle-tested option for inbound calls.',
+  },
+  {
+    id: 'vapi',
+    label: 'Standard',
+    blurb:
+      'Standard is the built-in phone voice set. Fastest and cheapest, noticeably more synthetic than the options above.',
+  },
+  {
+    id: 'elevenlabs',
+    label: 'ElevenLabs',
+    blurb:
+      'ElevenLabs gives you their full catalogue — thousands of voices, including any you have cloned on your own account.',
+  },
+]
+
 interface VoiceOption {
   id: string
   name: string
@@ -616,20 +655,17 @@ function VoiceStep({
       <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
         Pick a voice
       </h2>
+      {/* This paragraph used to describe Gemini no matter which engine was
+          selected — and Gemini wasn't even in the tab list below, so it sold
+          speech-to-speech and handed you TTS. Copy is per-engine now. */}
       <p className="text-sm mb-5" style={{ color: 'var(--text-tertiary)' }}>
-        Gemini is a native speech-to-speech voice — it hears and speaks audio
-        directly, so it sounds the most human. Prefer the classic phone stack?
-        Switch to Standard or ElevenLabs.
+        {ENGINE_OPTIONS.find(o => o.id === engine)?.blurb}
       </p>
       <div
         className="inline-flex items-center gap-1 p-1 rounded-lg mb-5"
         style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
       >
-        {([
-          { id: 'cartesia' as const,   label: 'Natural — most human' },
-          { id: 'vapi' as const,       label: 'Standard' },
-          { id: 'elevenlabs' as const, label: 'ElevenLabs' },
-        ]).map(opt => {
+        {ENGINE_OPTIONS.map(opt => {
           const active = engine === opt.id
           return (
             <button
