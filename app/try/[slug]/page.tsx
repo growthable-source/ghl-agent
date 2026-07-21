@@ -2,6 +2,8 @@ import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { landingPathForVertical } from '@/lib/demo-prospects/templates'
+import { offerStatus } from '@/lib/demo-purchase/offer'
+import { STRIPE_PRICES } from '@/lib/plans'
 import TryDemoClient from './TryDemoClient'
 
 type Params = { params: Promise<{ slug: string }> }
@@ -32,7 +34,7 @@ export default async function TryDemoPage({ params }: Params) {
   const { slug } = await params
   const prospect = await db.demoProspect.findUnique({
     where: { slug },
-    select: { slug: true, businessName: true, websiteUrl: true, websiteDomain: true, vertical: true, status: true, metadata: true, contactEmail: true },
+    select: { slug: true, businessName: true, websiteUrl: true, websiteDomain: true, vertical: true, status: true, metadata: true, contactEmail: true, clickedAt: true },
   }).catch(() => null)
   if (!prospect) notFound()
 
@@ -48,8 +50,19 @@ export default async function TryDemoPage({ params }: Params) {
   // modal that can never mount Stripe Elements.
   const checkoutMode: 'embedded' | 'external' = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ? 'embedded' : 'external'
 
+  // Intro offer (80% off setup), anchored to the prospect's persisted
+  // first-view timestamp so the countdown survives refreshes instead of
+  // resetting — see lib/demo-purchase/offer.ts. Null (no countdown, full
+  // price everywhere) once the window closes, and also when the
+  // discounted Stripe price isn't configured: the checkout route falls
+  // back to the full setup price in that case, and a page that advertised
+  // a discount it can't charge would be worse than no offer at all.
+  const offer = offerStatus(prospect.clickedAt)
+  const introDeadline = offer.active && STRIPE_PRICES.demoBundle.setupIntro ? offer.deadline : null
+
   return (
     <TryDemoClient
+      introDeadline={introDeadline}
       slug={prospect.slug}
       businessName={prospect.businessName}
       websiteUrl={prospect.websiteUrl}

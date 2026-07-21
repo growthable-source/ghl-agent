@@ -37,6 +37,7 @@ import StepPayment from './StepPayment'
 import StepProvisioning from './StepProvisioning'
 import StepPickNumber from './StepPickNumber'
 import StepDone from './StepDone'
+import OfferCountdown from './OfferCountdown'
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5
 
@@ -146,6 +147,7 @@ export default function PurchaseModal({
   onShare,
   shareCopied,
   externalCheckoutHref,
+  introDeadline,
 }: {
   slug: string
   businessName: string
@@ -155,6 +157,9 @@ export default function PurchaseModal({
   onShare: () => void
   shareCopied: boolean
   externalCheckoutHref: string
+  /** Server-derived intro-offer deadline (ISO), or null when the window
+   *  has closed / the discounted Stripe price isn't configured. */
+  introDeadline: string | null
 }) {
   const [step, setStep] = useState<Step>(initialStep)
   const [resolvingResume, setResolvingResume] = useState(true)
@@ -169,6 +174,10 @@ export default function PurchaseModal({
   const [periodChangeError, setPeriodChangeError] = useState<string | null>(null)
   const [finalPurchase, setFinalPurchase] = useState<PurchaseProjection | null>(null)
   const [showExitIntent, setShowExitIntent] = useState(false)
+  // Mirrors the prop, but can be cleared locally the instant the clock
+  // hits zero so the summary stops advertising a price we'd no longer
+  // quote. The server remains the authority on what's actually charged.
+  const [introDeadlineLive, setIntroDeadlineLive] = useState<string | null>(introDeadline)
   const stripePromiseRef = useRef(getStripePromise())
 
   // Resume-on-mount: a stored sessionId from a prior open (this browser
@@ -263,6 +272,24 @@ export default function PurchaseModal({
   useEffect(() => {
     if (step === 5) clearStored(slug)
   }, [step, slug])
+
+  // Clock hit zero while they were sitting on the payment step. Drop the
+  // discount from the UI immediately, then re-mint so the Stripe session
+  // they're looking at reflects the price we're now quoting. If the
+  // re-mint fails we leave the existing (discounted) session mounted
+  // rather than stranding them on a dead checkout — that session was
+  // issued legitimately in-window and Stripe will still honor it.
+  const handleIntroExpire = useCallback(() => {
+    setIntroDeadlineLive(null)
+    if (step !== 2) return
+    void (async () => {
+      const minted = await mintCheckoutSession(slug, { name, email: email.trim(), period })
+      if (!minted.ok) return
+      setClientSecret(minted.clientSecret)
+      setSessionId(minted.sessionId)
+      saveStored(slug, { sessionId: minted.sessionId })
+    })()
+  }, [slug, name, email, period, step])
 
   const handlePaymentComplete = useCallback(() => setStep(3), [])
   const handleCrmReady = useCallback(() => setStep(4), [])
@@ -364,6 +391,11 @@ export default function PurchaseModal({
                 <p style={{ color: 'var(--text-secondary)' }}>
                   Want it answering {businessName}&rsquo;s phone 24/7 — nights, weekends, every missed call?
                 </p>
+                {introDeadlineLive && (
+                  <div className="w-full">
+                    <OfferCountdown deadline={introDeadlineLive} onExpire={handleIntroExpire} />
+                  </div>
+                )}
                 <button type="button" onClick={() => setStep(1)} className="btn-primary w-full justify-center text-lg py-4">
                   Yes — I want this for my business
                 </button>
@@ -376,6 +408,12 @@ export default function PurchaseModal({
                 <button type="button" onClick={requestClose} className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
                   Maybe later
                 </button>
+              </div>
+            )}
+
+            {step === 1 && introDeadlineLive && (
+              <div className="mb-5">
+                <OfferCountdown deadline={introDeadlineLive} onExpire={handleIntroExpire} />
               </div>
             )}
 
@@ -402,6 +440,8 @@ export default function PurchaseModal({
                 onPeriodChangeError={periodChangeError}
                 changingPeriod={changingPeriod}
                 onComplete={handlePaymentComplete}
+                introDeadline={introDeadlineLive}
+                onIntroExpire={handleIntroExpire}
               />
             )}
 

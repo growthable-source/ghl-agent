@@ -62,6 +62,7 @@ import Testimonials from './sections/Testimonials'
 import FinalCta from './sections/FinalCta'
 import Footer from './sections/Footer'
 import PurchaseModal from './sections/purchase/PurchaseModal'
+import OfferCountdown from './sections/purchase/OfferCountdown'
 import { promptChipsForVertical } from './sections/prompt-chips'
 import { usePublicVoiceCall } from '@/lib/voice/use-public-voice-call'
 
@@ -81,7 +82,7 @@ const LIVE_RUN_STATUSES = ['queued', 'running']
 const TERMINAL_RUN_STATUSES = ['success', 'partial', 'failed']
 
 export default function TryDemoClient({
-  slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, contactEmail, checkoutHref, checkoutMode, learnMoreHref,
+  slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, contactEmail, checkoutHref, checkoutMode, learnMoreHref, introDeadline,
 }: {
   slug: string
   businessName: string
@@ -93,8 +94,14 @@ export default function TryDemoClient({
   checkoutHref: string
   checkoutMode: CheckoutMode
   learnMoreHref: string
+  /** Server-derived intro-offer deadline (ISO), or null when the 24h
+   *  window has closed / the discounted Stripe price isn't configured. */
+  introDeadline: string | null
 }) {
   const isGoneStatus = initialStatus === 'expired' || initialStatus === 'claimed'
+  // Cleared in place when the clock runs out, so the bar disappears
+  // without a reload. Server re-derives the real state on every request.
+  const [introDeadlineLive, setIntroDeadlineLive] = useState<string | null>(introDeadline)
   const [phase, setPhase] = useState<Phase | null>(isGoneStatus ? 'gone' : null)
   const [ingestion, setIngestion] = useState<Ingestion>(null)
   const [websiteInput, setWebsiteInput] = useState(websiteUrl)
@@ -324,8 +331,25 @@ export default function TryDemoClient({
   }
 
   return (
-    <div data-theme="soft-light" className="min-h-screen overflow-x-hidden" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
-      <Nav checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} />
+    // overflow-x-CLIP, not -hidden: `hidden` computes `overflow-y: auto`,
+    // making this a scroll container, which silently defeats `position:
+    // sticky` for every descendant — Nav has carried `sticky top-0` since
+    // the redesign and never actually stuck. `clip` suppresses the same
+    // horizontal overflow without creating a scroll container.
+    <div data-theme="soft-light" className="min-h-screen overflow-x-clip" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
+      {/* Bar + nav pin as ONE unit: Nav has its own `sticky top-0 z-40`, so
+          a separately-sticky bar would share the offset and get painted
+          over on scroll. Degrades to a plain sticky nav when no bar. */}
+      <div className="sticky top-0 z-40">
+        {introDeadlineLive && phase !== 'gone' && (
+          <OfferCountdown
+            deadline={introDeadlineLive}
+            variant="bar"
+            onExpire={() => setIntroDeadlineLive(null)}
+          />
+        )}
+        <Nav checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} />
+      </div>
 
       <Hero
         businessName={businessName}
@@ -388,6 +412,7 @@ export default function TryDemoClient({
           onShare={() => void share()}
           shareCopied={shareCopied}
           externalCheckoutHref={checkoutHref}
+          introDeadline={introDeadlineLive}
         />
       )}
     </div>

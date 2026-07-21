@@ -21,6 +21,8 @@ export default function StepPayment({
   onPeriodChangeError,
   changingPeriod,
   onComplete,
+  introDeadline,
+  onIntroExpire,
 }: {
   stripePromise: Promise<Stripe | null>
   clientSecret: string
@@ -30,11 +32,19 @@ export default function StepPayment({
   onPeriodChangeError: string | null
   changingPeriod: boolean
   onComplete: () => void
+  introDeadline: string | null
+  onIntroExpire: () => void
 }) {
   return (
     <div className="grid md:grid-cols-[1fr_1.1fr] gap-6 items-start">
       <div className="order-2 md:order-1">
-        <OrderSummary period={period} onPeriodChange={onPeriodChange} disabled={changingPeriod} />
+        <OrderSummary
+          period={period}
+          onPeriodChange={onPeriodChange}
+          disabled={changingPeriod}
+          introDeadline={introDeadline}
+          onIntroExpire={onIntroExpire}
+        />
         {onPeriodChangeError && <p className="mt-3 text-sm text-accent-red">{onPeriodChangeError}</p>}
       </div>
       <div className="order-1 md:order-2 min-h-[420px]">

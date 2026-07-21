@@ -68,6 +68,12 @@ export const STRIPE_PRICES = {
   // creating a Stripe session with a bad price id.
   demoBundle: {
     setup: process.env.STRIPE_PRICE_DEMO_BUNDLE_SETUP || '',
+    // Discounted one-time setup for the 24h intro window (see
+    // lib/demo-purchase/offer.ts). Optional: when unset, the checkout
+    // route falls back to the full `setup` price and the countdown never
+    // renders — i.e. missing config costs a discount, it never charges a
+    // price we advertised as discounted.
+    setupIntro: process.env.STRIPE_PRICE_DEMO_BUNDLE_SETUP_INTRO || '',
     monthly: process.env.STRIPE_PRICE_DEMO_BUNDLE_MONTHLY || '',
     annual: process.env.STRIPE_PRICE_DEMO_BUNDLE_ANNUAL || '',
   },

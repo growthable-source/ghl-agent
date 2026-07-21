@@ -1,21 +1,29 @@
 import Image from 'next/image'
 import { Check } from 'lucide-react'
 import type { PurchasePeriod } from '@/lib/demo-purchase/state'
+import {
+  MONTHLY_PRICE,
+  ANNUAL_PRICE,
+  SETUP_PRICE,
+  INTRO_SETUP_PRICE,
+  INTRO_DISCOUNT_PCT,
+  totalDueToday,
+} from '@/lib/demo-purchase/offer'
 import { TESTIMONIALS } from '../Testimonials'
+import OfferCountdown from './OfferCountdown'
 
 /**
  * Offer-stack order summary shown alongside Embedded Checkout in
  * StepPayment. Pricing shown here is display copy only — the actual
  * amount charged always comes from the server-side Stripe price
- * allowlist (lib/plans.ts STRIPE_PRICES.demoBundle), never from these
- * hardcoded numbers. Keep them in sync with whatever prices Ryan creates
- * in the Stripe dashboard (see the plan's "Ryan must do" list: $297/mo,
- * $2,970/yr, $497 one-time setup).
+ * allowlist (lib/plans.ts STRIPE_PRICES.demoBundle). The numbers now come
+ * from lib/demo-purchase/offer.ts, which the checkout route imports too,
+ * so what's rendered here and what's charged can't drift apart.
+ *
+ * `introDeadline` is null when the intro window has already closed (or
+ * was never configured) — in that case this renders exactly as it did
+ * before the offer existed: full setup price, no countdown.
  */
-const MONTHLY_PRICE = 297
-const ANNUAL_PRICE = 2970
-const SETUP_PRICE = 497
-
 const OFFER_NAME = 'AI Voice Receptionist + CRM Bundle'
 const ITEMS = ['AI receptionist, answering calls 24/7', 'CRM bundle — leads, contacts & follow-up included', 'Setup & onboarding']
 
@@ -23,16 +31,29 @@ export default function OrderSummary({
   period,
   onPeriodChange,
   disabled,
+  introDeadline,
+  onIntroExpire,
 }: {
   period: PurchasePeriod
   onPeriodChange: (period: PurchasePeriod) => void
   disabled?: boolean
+  introDeadline: string | null
+  onIntroExpire?: () => void
 }) {
-  const totalToday = period === 'monthly' ? MONTHLY_PRICE + SETUP_PRICE : ANNUAL_PRICE
+  const introActive = Boolean(introDeadline)
+  const totalToday = totalDueToday(period, introActive)
   const testimonial = TESTIMONIALS[0]
 
   return (
     <div className="vox-card p-6 flex flex-col gap-5">
+      {/* Countdown sits above the plan toggle — it's the reason to decide
+          now, so it should be read before the price, not after it. Only
+          shown on monthly: annual already waives setup outright, so a
+          "% off setup" clock there would be counting down to nothing. */}
+      {introDeadline && period === 'monthly' && (
+        <OfferCountdown deadline={introDeadline} onExpire={onIntroExpire} />
+      )}
+
       <div>
         <p className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>{OFFER_NAME}</p>
         <p className="section-label mb-3">Your plan</p>
@@ -91,6 +112,16 @@ export default function OrderSummary({
                         FREE
                       </span>
                     </>
+                  ) : introActive ? (
+                    <>
+                      <span className="line-through" style={{ color: 'var(--text-tertiary)' }}>
+                        ${SETUP_PRICE}
+                      </span>{' '}
+                      <span className="font-semibold" style={{ color: 'var(--accent-emerald)' }}>
+                        ${INTRO_SETUP_PRICE}
+                      </span>{' '}
+                      <span style={{ color: 'var(--text-tertiary)' }}>one-time</span>
+                    </>
                   ) : (
                     <span style={{ color: 'var(--text-tertiary)' }}>(${SETUP_PRICE}, one-time)</span>
                   )}
@@ -106,10 +137,22 @@ export default function OrderSummary({
           <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
             Total due today
           </span>
-          <span className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-            ${totalToday.toLocaleString()}
+          <span className="flex items-baseline gap-2">
+            {introActive && period === 'monthly' && (
+              <span className="text-base line-through" style={{ color: 'var(--text-tertiary)' }}>
+                ${(MONTHLY_PRICE + SETUP_PRICE).toLocaleString()}
+              </span>
+            )}
+            <span className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
+              ${totalToday.toLocaleString()}
+            </span>
           </span>
         </div>
+        {introActive && period === 'monthly' && (
+          <p className="mt-1 text-xs font-semibold" style={{ color: 'var(--accent-emerald)' }}>
+            You save ${(SETUP_PRICE - INTRO_SETUP_PRICE).toLocaleString()} — {INTRO_DISCOUNT_PCT}% off setup, today only
+          </p>
+        )}
         <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
           {period === 'monthly' ? `Then $${MONTHLY_PRICE}/mo` : `Then $${ANNUAL_PRICE.toLocaleString()}/yr`} — 14-day money-back guarantee · Cancel anytime
         </p>

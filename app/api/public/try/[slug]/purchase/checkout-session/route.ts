@@ -35,6 +35,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { STRIPE_PRICES } from '@/lib/plans'
 import { startOrUpdateCheckout, advancePurchaseState, type PurchasePeriod } from '@/lib/demo-purchase/state'
+import { offerStatus } from '@/lib/demo-purchase/offer'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EXPIRES_EXTEND_MS = 14 * 24 * 60 * 60 * 1000 // 14 days — matches the reaper's normal TTL window
@@ -150,6 +151,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     } catch { /* best-effort */ }
   }
 
+  // Intro offer (80% off setup) — decided HERE, on the server, from the
+  // prospect's persisted clickedAt. The client sends no discount flag and
+  // none would be honored if it did: the countdown the visitor sees and
+  // the price id we hand Stripe are both derived from the same DB
+  // timestamp, so they cannot disagree.
+  //
+  // Note the deliberate one-way generosity: a session minted while the
+  // offer was live keeps its discounted price even if the buyer completes
+  // payment a few minutes after the deadline. That's a session that was
+  // legitimately issued in-window, and honoring it beats charging someone
+  // $400 more than the page quoted them thirty seconds earlier. The
+  // reverse can never happen — an expired-at-mint session is always
+  // full price.
+  const introActive = offerStatus(started.clickedAt).active && Boolean(prices.setupIntro)
+  const setupPrice = introActive ? prices.setupIntro : prices.setup
+
   // Server-side price allowlist ONLY — the client never supplies a price
   // id. Monthly bundles the recurring price + the one-time setup fee as a
   // second line item (Stripe invoices one-time items alongside the first
@@ -158,7 +175,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     period === 'monthly'
       ? [
           { price: prices.monthly, quantity: 1 },
-          { price: prices.setup, quantity: 1 },
+          { price: setupPrice, quantity: 1 },
         ]
       : [{ price: prices.annual, quantity: 1 }]
 
@@ -177,9 +194,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       mode: 'subscription',
       customer_email: email,
       line_items: lineItems,
-      metadata: { intent: 'demo_bundle', prospectSlug: slug, period },
+      // `introOffer` is recorded on the Stripe objects purely so a later
+      // "why was this one $97?" question is answerable from the Stripe
+      // dashboard alone, without cross-referencing clickedAt in our DB.
+      metadata: { intent: 'demo_bundle', prospectSlug: slug, period, introOffer: String(introActive) },
       subscription_data: {
-        metadata: { intent: 'demo_bundle', prospectSlug: slug, period },
+        metadata: { intent: 'demo_bundle', prospectSlug: slug, period, introOffer: String(introActive) },
       },
     })
 

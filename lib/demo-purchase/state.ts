@@ -216,7 +216,15 @@ export function projectPurchaseForOps(purchase: PurchaseMetadata | null | undefi
 // ─────────────────────────────────────────────────────────────────────────
 
 export type StartCheckoutResult =
-  | { ok: true; prospectId: string; purchase: PurchaseMetadata }
+  | {
+      ok: true
+      prospectId: string
+      purchase: PurchaseMetadata
+      /** First-view timestamp, surfaced so the checkout route can re-derive
+       *  the intro-offer deadline server-side (lib/demo-purchase/offer.ts)
+       *  rather than trusting a client-supplied "offer still active" flag. */
+      clickedAt: Date | null
+    }
   | { ok: false; reason: 'not_found' | 'gone' | 'already_purchased' }
 
 /**
@@ -259,7 +267,7 @@ export async function startOrUpdateCheckout(
     where: { id: prospect.id },
     data: { metadata: asJsonInput(merged), expiresAt: new Date(Date.now() + extendExpiresAtMs) },
   })
-  return { ok: true, prospectId: prospect.id, purchase: merged.purchase }
+  return { ok: true, prospectId: prospect.id, purchase: merged.purchase, clickedAt: prospect.clickedAt }
 }
 
 export interface AdvanceResult {
