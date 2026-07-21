@@ -8,13 +8,20 @@
  * every synthesized voice, once into a fallback that covered Cartesia but
  * not Gemini. One hook, both pickers.
  *
- * Same-origin URLs (our /api/voices/preview synth) are fetched rather than
- * handed to the media element: synth takes a couple of seconds to first
- * byte, and an <audio> element pointed at a slow endpoint reports `stalled`
- * with no way to tell "still working" from "failed". Fetching first gives
- * us the status code, so a 502/503 becomes a message instead of a ▶ that
- * spins forever. Catalogue samples (ElevenLabs CDN) stay on the direct path
- * — they're cross-origin and already instant.
+ * Same-origin samples (our /api/voices/preview synth) are fetched and played
+ * through Web Audio rather than handed to an <audio> element. Two reasons,
+ * both observed against production:
+ *
+ *   - Media elements pointed at the synth endpoint sit in `stalled` — first
+ *     byte is a couple of seconds out — and their `error` event can't say
+ *     why. Fetching gives us the status code, so a 502 (bad voice) or 503
+ *     (no API key on this deployment) becomes text instead of a ▶ that
+ *     spins forever. decodeAudioData also fails loudly on garbage bytes.
+ *   - The same bytes that a media element refused to start decoded and
+ *     played fine through an AudioContext.
+ *
+ * Catalogue samples (ElevenLabs CDN) stay on the media element — they're
+ * cross-origin, so fetch would need CORS, and they already work.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -27,6 +34,8 @@ export function useVoicePreview() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
+  const ctxRef = useRef<AudioContext | null>(null)
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null)
   // Bumped on every play/stop so a slow in-flight sample can tell it has
   // been superseded and drop its result instead of hijacking the UI.
   const runRef = useRef(0)
@@ -34,6 +43,11 @@ export function useVoicePreview() {
   const release = useCallback(() => {
     audioRef.current?.pause()
     audioRef.current = null
+    if (sourceRef.current) {
+      sourceRef.current.onended = null
+      try { sourceRef.current.stop() } catch { /* already stopped */ }
+      sourceRef.current = null
+    }
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
@@ -65,7 +79,6 @@ export function useVoicePreview() {
       setLoadingId(voiceId)
 
       try {
-        let src = url
         if (url.startsWith('/')) {
           const res = await fetch(url)
           if (!res.ok) {
@@ -75,16 +88,34 @@ export function useVoicePreview() {
                 : 'Could not generate a sample for that voice.',
             )
           }
-          const objectUrl = URL.createObjectURL(await res.blob())
-          if (run !== runRef.current) {
-            URL.revokeObjectURL(objectUrl)
-            return
+          const bytes = await res.arrayBuffer()
+          if (run !== runRef.current) return
+
+          const ctx =
+            ctxRef.current ??
+            (ctxRef.current = new (window.AudioContext ||
+              (window as any).webkitAudioContext)())
+          if (ctx.state === 'suspended') await ctx.resume()
+          const buffer = await ctx.decodeAudioData(bytes)
+          if (run !== runRef.current) return
+
+          const source = ctx.createBufferSource()
+          source.buffer = buffer
+          source.connect(ctx.destination)
+          source.onended = () => {
+            if (run !== runRef.current) return
+            release()
+            setPlayingId(null)
+            setLoadingId(null)
           }
-          objectUrlRef.current = objectUrl
-          src = objectUrl
+          sourceRef.current = source
+          source.start()
+          setLoadingId(null)
+          setPlayingId(voiceId)
+          return
         }
 
-        const audio = new Audio(src)
+        const audio = new Audio(url)
         audioRef.current = audio
         const finish = () => {
           if (run !== runRef.current) return
