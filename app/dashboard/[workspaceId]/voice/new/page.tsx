@@ -20,7 +20,7 @@
  * lib/voice/vapi-assistant.ts — this wizard just picks the voice.
  */
 
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { VOICE_TEMPLATES, type VoiceTemplate } from '@/lib/voice/templates'
@@ -28,6 +28,7 @@ import { generateAgentName } from '@/lib/random-name'
 import VoicePhoneCallUI from '@/components/dashboard/VoicePhoneCallUI'
 import { GeminiPhoneNumberPanel } from '@/components/voice/GeminiPhoneNumberPanel'
 import { VAPI_NATIVE_DEFAULT_VOICE_ID } from '@/lib/voice/vapi-native-voices'
+import { useVoicePreview } from '@/lib/voice/use-voice-preview'
 import { voicePreviewUrl } from '@/lib/voice/preview-url'
 
 type Step = 'use_case' | 'voice' | 'personality' | 'knowledge' | 'phone' | 'try_it'
@@ -91,11 +92,8 @@ export default function VoiceWizardPage() {
   const [voiceQuery, setVoiceQuery] = useState('')
   const [accentFilter, setAccentFilter] = useState<string>('any')
   const [selectedVoice, setSelectedVoice] = useState<VoiceOption | null>(null)
-  const [previewPlaying, setPreviewPlaying] = useState<string | null>(null)
-  // Synthesized samples take a beat to come back — without a pending state
-  // the ▶ looks dead for a second or two and reads as broken.
-  const [previewLoading, setPreviewLoading] = useState<string | null>(null)
-  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+  // Shared with the agent voice config page — see lib/voice/use-voice-preview.
+  const preview = useVoicePreview()
 
   // ─── Step 3: personality ──────────────────────────────────────────
   const [agentName, setAgentName] = useState(() => generateAgentName())
@@ -245,25 +243,7 @@ export default function VoiceWizardPage() {
   }, [voices, voiceQuery, accentFilter])
 
   function playPreview(voice: VoiceOption) {
-    // voicePreviewUrl decides catalogue-sample vs on-demand synth. The
-    // button's disabled state below derives from the same call, so the two
-    // can't drift apart.
-    const url = voicePreviewUrl(engine, voice.id, voice.previewUrl)
-    if (!url) return
-    previewAudioRef.current?.pause()
-    const stop = () => { setPreviewPlaying(null); setPreviewLoading(null) }
-    if (previewPlaying === voice.id || previewLoading === voice.id) {
-      stop()
-      return
-    }
-    const audio = new Audio(url)
-    previewAudioRef.current = audio
-    setPreviewLoading(voice.id)
-    setPreviewPlaying(null)
-    audio.onplaying = () => { setPreviewLoading(null); setPreviewPlaying(voice.id) }
-    audio.onended = stop
-    audio.onerror = stop
-    audio.play().catch(stop)
+    preview.play(engine, voice.id, voice.previewUrl)
   }
 
   async function purchaseNumber() {
@@ -443,8 +423,9 @@ export default function VoiceWizardPage() {
               onAccent={setAccentFilter}
               selected={selectedVoice}
               onSelect={setSelectedVoice}
-              previewPlaying={previewPlaying}
-              previewLoading={previewLoading}
+              previewPlaying={preview.playingId}
+              previewLoading={preview.loadingId}
+              previewError={preview.error}
               onPreview={playPreview}
               engine={engine}
               onEngine={setEngine}
@@ -619,13 +600,14 @@ function UseCaseStep({ template, onPick }: { template: VoiceTemplate | null; onP
 
 function VoiceStep({
   voices, loading, query, onQuery, accents, accent, onAccent,
-  selected, onSelect, previewPlaying, previewLoading, onPreview, engine, onEngine,
+  selected, onSelect, previewPlaying, previewLoading, previewError, onPreview, engine, onEngine,
 }: {
   voices: VoiceOption[]; loading: boolean
   query: string; onQuery: (v: string) => void
   accents: string[]; accent: string; onAccent: (v: string) => void
   selected: VoiceOption | null; onSelect: (v: VoiceOption) => void
   previewPlaying: string | null; previewLoading: string | null
+  previewError: string | null
   onPreview: (v: VoiceOption) => void
   engine: Engine; onEngine: (e: Engine) => void
 }) {
@@ -733,6 +715,11 @@ function VoiceStep({
             )
           })}
         </div>
+      )}
+      {previewError && (
+        <p className="text-xs mt-3" style={{ color: 'var(--accent-red, #ef4444)' }}>
+          {previewError}
+        </p>
       )}
       {selected && (
         <p className="text-xs mt-3" style={{ color: 'var(--accent-emerald, #22c55e)' }}>

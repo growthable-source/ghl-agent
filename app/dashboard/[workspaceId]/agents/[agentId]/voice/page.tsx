@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
 import AgentCrmCard from '@/components/agents/AgentCrmCard'
 import { voicePreviewUrl } from '@/lib/voice/preview-url'
+import { useVoicePreview } from '@/lib/voice/use-voice-preview'
 
 interface VapiConfig {
   phoneNumberId: string | null
@@ -128,8 +129,9 @@ export default function VoicePage() {
   const [syncError, setSyncError] = useState<string | null>(null)
   const [vapiReady, setVapiReady] = useState(false)
   const [vapiError, setVapiError] = useState<string | null>(null)
-  const [playingId, setPlayingId] = useState<string | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  // Shared with the voice wizard — see lib/voice/use-voice-preview.
+  const preview = useVoicePreview()
+  const playingId = preview.playingId
 
 
   // Phone provisioning
@@ -242,29 +244,13 @@ export default function VoicePage() {
   }, [config.ttsProvider])
 
   function playPreview(voiceId: string, previewUrl: string | null) {
-    // ElevenLabs ships a public preview URL in the catalogue → plays
-    // instantly. Cartesia/Gemini have no pre-recorded sample, so fall back
-    // to on-demand synth (/api/voices/preview) instead of a dead button.
-    const url = voicePreviewUrl(config.ttsProvider, voiceId, previewUrl)
-    if (!url) return
-    if (playingId === voiceId) {
-      audioRef.current?.pause()
-      setPlayingId(null)
-      return
-    }
-    if (audioRef.current) audioRef.current.pause()
-    const audio = new Audio(url)
-    audio.onended = () => setPlayingId(null)
-    audio.onerror = () => setPlayingId(null)
-    audio.play().catch(() => setPlayingId(null))
-    audioRef.current = audio
-    setPlayingId(voiceId)
+    preview.play(config.ttsProvider, voiceId, previewUrl)
   }
 
   function selectVoice(v: Voice) {
     setConfig(c => ({ ...c, voiceId: v.voice_id, voiceName: v.name }))
     setShowVoicePicker(false)
-    if (audioRef.current) { audioRef.current.pause(); setPlayingId(null) }
+    preview.stop()
   }
 
   async function save(e: React.FormEvent) {
@@ -530,6 +516,10 @@ export default function VoicePage() {
             </button>
           </div>
 
+          {preview.error && (
+            <p className="text-xs mb-2" style={{ color: 'var(--accent-red, #ef4444)' }}>{preview.error}</p>
+          )}
+
           {/* Current selection */}
           {!showVoicePicker && (
             <div className="flex items-center gap-3 rounded-lg px-4 py-3" style={{ background: 'var(--surface-secondary)' }}>
@@ -537,7 +527,7 @@ export default function VoicePage() {
                 onClick={() => playPreview(config.voiceId, selectedVoice?.preview_url || null)}
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
                 style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
-                {playingId === config.voiceId ? '⏸' : '▶'}
+                {preview.loadingId === config.voiceId ? '…' : playingId === config.voiceId ? '⏸' : '▶'}
               </button>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{config.voiceName || config.voiceId.slice(0, 12)}</p>
@@ -593,7 +583,7 @@ export default function VoicePage() {
                         title={voicePreviewUrl(config.ttsProvider, v.voice_id, v.preview_url) ? 'Preview' : 'No preview available'}
                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 transition-colors disabled:opacity-40"
                         style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
-                        {playingId === v.voice_id ? '⏸' : '▶'}
+                        {preview.loadingId === v.voice_id ? '…' : playingId === v.voice_id ? '⏸' : '▶'}
                       </button>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{v.name}</p>
