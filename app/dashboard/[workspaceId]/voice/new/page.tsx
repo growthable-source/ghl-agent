@@ -20,7 +20,7 @@
  * lib/voice/vapi-assistant.ts — this wizard just picks the voice.
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { VOICE_TEMPLATES, type VoiceTemplate } from '@/lib/voice/templates'
@@ -28,6 +28,7 @@ import { generateAgentName } from '@/lib/random-name'
 import VoicePhoneCallUI from '@/components/dashboard/VoicePhoneCallUI'
 import { GeminiPhoneNumberPanel } from '@/components/voice/GeminiPhoneNumberPanel'
 import { VAPI_NATIVE_DEFAULT_VOICE_ID } from '@/lib/voice/vapi-native-voices'
+import { voicePreviewUrl } from '@/lib/voice/preview-url'
 
 type Step = 'use_case' | 'voice' | 'personality' | 'knowledge' | 'phone' | 'try_it'
 
@@ -91,6 +92,10 @@ export default function VoiceWizardPage() {
   const [accentFilter, setAccentFilter] = useState<string>('any')
   const [selectedVoice, setSelectedVoice] = useState<VoiceOption | null>(null)
   const [previewPlaying, setPreviewPlaying] = useState<string | null>(null)
+  // Synthesized samples take a beat to come back — without a pending state
+  // the ▶ looks dead for a second or two and reads as broken.
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
 
   // ─── Step 3: personality ──────────────────────────────────────────
   const [agentName, setAgentName] = useState(() => generateAgentName())
@@ -240,23 +245,25 @@ export default function VoiceWizardPage() {
   }, [voices, voiceQuery, accentFilter])
 
   function playPreview(voice: VoiceOption) {
-    // ElevenLabs (and Vapi-native) ship pre-recorded preview URLs that play
-    // instantly. Cartesia / Gemini have none, so fall back to on-demand
-    // synth via /api/voices/preview — otherwise the play button is dead.
-    const url = voice.previewUrl
-      ?? (engine === 'cartesia' || engine === 'gemini'
-        ? `/api/voices/preview?provider=${engine}&voice=${encodeURIComponent(voice.id)}`
-        : null)
+    // voicePreviewUrl decides catalogue-sample vs on-demand synth. The
+    // button's disabled state below derives from the same call, so the two
+    // can't drift apart.
+    const url = voicePreviewUrl(engine, voice.id, voice.previewUrl)
     if (!url) return
-    if (previewPlaying === voice.id) {
-      setPreviewPlaying(null)
+    previewAudioRef.current?.pause()
+    const stop = () => { setPreviewPlaying(null); setPreviewLoading(null) }
+    if (previewPlaying === voice.id || previewLoading === voice.id) {
+      stop()
       return
     }
-    setPreviewPlaying(voice.id)
     const audio = new Audio(url)
-    audio.onended = () => setPreviewPlaying(null)
-    audio.onerror = () => setPreviewPlaying(null)
-    audio.play().catch(() => setPreviewPlaying(null))
+    previewAudioRef.current = audio
+    setPreviewLoading(voice.id)
+    setPreviewPlaying(null)
+    audio.onplaying = () => { setPreviewLoading(null); setPreviewPlaying(voice.id) }
+    audio.onended = stop
+    audio.onerror = stop
+    audio.play().catch(stop)
   }
 
   async function purchaseNumber() {
@@ -437,6 +444,7 @@ export default function VoiceWizardPage() {
               selected={selectedVoice}
               onSelect={setSelectedVoice}
               previewPlaying={previewPlaying}
+              previewLoading={previewLoading}
               onPreview={playPreview}
               engine={engine}
               onEngine={setEngine}
@@ -611,13 +619,14 @@ function UseCaseStep({ template, onPick }: { template: VoiceTemplate | null; onP
 
 function VoiceStep({
   voices, loading, query, onQuery, accents, accent, onAccent,
-  selected, onSelect, previewPlaying, onPreview, engine, onEngine,
+  selected, onSelect, previewPlaying, previewLoading, onPreview, engine, onEngine,
 }: {
   voices: VoiceOption[]; loading: boolean
   query: string; onQuery: (v: string) => void
   accents: string[]; accent: string; onAccent: (v: string) => void
   selected: VoiceOption | null; onSelect: (v: VoiceOption) => void
-  previewPlaying: string | null; onPreview: (v: VoiceOption) => void
+  previewPlaying: string | null; previewLoading: string | null
+  onPreview: (v: VoiceOption) => void
   engine: Engine; onEngine: (e: Engine) => void
 }) {
   return (
@@ -692,6 +701,9 @@ function VoiceStep({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1">
           {voices.slice(0, 80).map(v => {
             const isSelected = selected?.id === v.id
+            // Same call the click handler makes — Cartesia/Gemini have no
+            // catalogue sample but are synthesizable, so they stay enabled.
+            const canPreview = !!voicePreviewUrl(engine, v.id, v.previewUrl)
             return (
               <div
                 key={v.id}
@@ -704,12 +716,12 @@ function VoiceStep({
               >
                 <button
                   onClick={(e) => { e.stopPropagation(); onPreview(v) }}
-                  disabled={!v.previewUrl}
+                  disabled={!canPreview}
                   className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors disabled:opacity-40"
                   style={{ background: 'rgba(250,77,46,0.15)', color: '#fa4d2e' }}
-                  title={v.previewUrl ? 'Preview' : 'No preview available'}
+                  title={canPreview ? 'Preview' : 'No preview available'}
                 >
-                  {previewPlaying === v.id ? '⏸' : '▶'}
+                  {previewLoading === v.id ? '…' : previewPlaying === v.id ? '⏸' : '▶'}
                 </button>
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{v.name}</div>

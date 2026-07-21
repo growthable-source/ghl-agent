@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { MergeFieldTextarea, MergeFieldInput } from '@/components/MergeFieldHelper'
 import AgentCrmCard from '@/components/agents/AgentCrmCard'
+import { voicePreviewUrl } from '@/lib/voice/preview-url'
 
 interface VapiConfig {
   phoneNumberId: string | null
@@ -244,11 +245,7 @@ export default function VoicePage() {
     // ElevenLabs ships a public preview URL in the catalogue → plays
     // instantly. Cartesia/Gemini have no pre-recorded sample, so fall back
     // to on-demand synth (/api/voices/preview) instead of a dead button.
-    const url =
-      previewUrl ??
-      (config.ttsProvider === 'cartesia'
-        ? `/api/voices/preview?provider=cartesia&voice=${encodeURIComponent(voiceId)}`
-        : null)
+    const url = voicePreviewUrl(config.ttsProvider, voiceId, previewUrl)
     if (!url) return
     if (playingId === voiceId) {
       audioRef.current?.pause()
@@ -592,7 +589,9 @@ export default function VoicePage() {
                       onClick={() => selectVoice(v)}>
                       <button type="button"
                         onClick={e => { e.stopPropagation(); playPreview(v.voice_id, v.preview_url) }}
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 transition-colors"
+                        disabled={!voicePreviewUrl(config.ttsProvider, v.voice_id, v.preview_url)}
+                        title={voicePreviewUrl(config.ttsProvider, v.voice_id, v.preview_url) ? 'Preview' : 'No preview available'}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 transition-colors disabled:opacity-40"
                         style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}>
                         {playingId === v.voice_id ? '⏸' : '▶'}
                       </button>
