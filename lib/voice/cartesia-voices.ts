@@ -29,13 +29,23 @@ export const CARTESIA_DEFAULT_VOICE_NAME = process.env.CARTESIA_DEFAULT_VOICE_NA
  * set (not the full library) so the picker is instant and every id is
  * known-good — a bad id makes Vapi reject the whole assistant. The full
  * library can be wired via the Cartesia API later if operators want more.
+ *
+ * VERIFY before adding an id — existing in the library is not enough, the
+ * voice's language must match what we label it (see the Kira note below):
+ *
+ *   curl -s https://api.cartesia.ai/voices/<id> \
+ *     -H "X-API-Key: $CARTESIA_API_KEY" -H "Cartesia-Version: 2025-04-16" \
+ *     | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['name'],d.get('language'),d.get('gender'))"
  */
 export const CARTESIA_VOICES: VoiceOption[] = [
   { id: 'f786b574-daa5-4673-aa0c-cbe3e8534c02', name: 'Katie',   language: 'en', labels: { gender: 'female', accent: 'american', description: 'Warm, conversational. A friendly default.' }, previewUrl: null },
   { id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Skylar',  language: 'en', labels: { gender: 'female', accent: 'american', description: 'Bright, upbeat, expressive.' }, previewUrl: null },
   { id: 'a5136bf9-224c-4d76-b823-52bd5efcffcc', name: 'Jameson', language: 'en', labels: { gender: 'male',   accent: 'american', description: 'Steady, confident, professional.' }, previewUrl: null },
   { id: '248be419-c632-4f23-adf1-5324ed7dbf1d', name: 'Brooke',  language: 'en', labels: { gender: 'female', accent: 'american', description: 'Calm, clear, reassuring.' }, previewUrl: null },
-  { id: '2821fd0c-35c7-4adf-9c42-32e394bf85cb', name: 'Kira',    language: 'en', labels: { gender: 'female', accent: 'american', description: 'Engaging, natural prosody.' }, previewUrl: null },
+  // Was 2821fd0c… ("Adi - Efficient Expert"), which is a HEBREW voice —
+  // sonic-2 rejected it with "Invalid language for model" on every English
+  // request, so Kira's preview 502'd and a call on Kira had no voice at all.
+  { id: '9626c31c-bec5-4cca-baa8-f8ba9e84c8bc', name: 'Kira',    language: 'en', labels: { gender: 'female', accent: 'american', description: 'Engaging, natural prosody.' }, previewUrl: null },
   { id: '62ae83ad-4f6a-430b-af41-a9bede9286ca', name: 'Gemma',   language: 'en', labels: { gender: 'female', accent: 'british',  description: 'Polished British English.' }, previewUrl: null },
   { id: 'ef191366-f52f-447a-a398-ed8c0f2943a1', name: 'Archie',  language: 'en', labels: { gender: 'male',   accent: 'british',  description: 'Friendly British English.' }, previewUrl: null },
 ]
