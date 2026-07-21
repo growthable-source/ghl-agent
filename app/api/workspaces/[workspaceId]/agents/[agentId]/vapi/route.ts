@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { listPhoneNumbers, purchasePhoneNumber } from '@/lib/vapi-client'
+import {
+  listPhoneNumbers,
+  purchasePhoneNumber,
+  VAPI_PURCHASEABLE_COUNTRIES,
+  type VapiPurchaseableCountry,
+} from '@/lib/vapi-client'
 import { getAllQuestions, buildQualifyingPromptBlock } from '@/lib/qualifying'
 import { buildPersonaBlock } from '@/lib/persona'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
@@ -213,14 +218,24 @@ export async function PUT(req: NextRequest, { params }: Params) {
 }
 
 // POST — purchase a new phone number. Accepts:
-//   { countryCode: 'US' | 'AU' | 'GB' | 'CA' | 'NZ', areaCode?: string }
+//   { countryCode: 'US', areaCode?: string }
 // Defaults to US for back-compat with older clients passing only areaCode.
+// Vapi only provisions US numbers; anything else is rejected here rather
+// than failing downstream with a raw carrier error.
 export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
   const body = await req.json()
   const countryCode = String(body.countryCode || 'US').toUpperCase()
+  if (!VAPI_PURCHASEABLE_COUNTRIES.includes(countryCode as VapiPurchaseableCountry)) {
+    return NextResponse.json(
+      {
+        error: `Only ${VAPI_PURCHASEABLE_COUNTRIES.join(', ')} numbers can be bought here. For international numbers, create a Gemini voice agent.`,
+      },
+      { status: 400 },
+    )
+  }
   const areaCode = String(body.areaCode || '').trim()
 
   try {

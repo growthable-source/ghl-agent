@@ -60,6 +60,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!phoneNumber) {
     return NextResponse.json({ error: 'phoneNumber (E.164) is required' }, { status: 400 })
   }
+  // The country the operator searched in — non-US purchases need the
+  // account's validated address / regulatory bundle attached.
+  const countryCode = body.countryCode ? String(body.countryCode).toUpperCase() : undefined
 
   // Confirm the agent belongs to this workspace before buying anything.
   const agent = await db.agent.findFirst({
@@ -71,7 +74,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const voiceUrl = `${appOrigin(req)}/api/voice/gemini/twilio`
 
   try {
-    const purchased = await purchaseNumber({ phoneNumber, voiceUrl })
+    const purchased = await purchaseNumber({ phoneNumber, voiceUrl, countryCode })
     await db.geminiVoiceConfig.upsert({
       where: { agentId },
       create: { agentId, twilioNumber: purchased.phoneNumber, twilioNumberSid: purchased.sid },

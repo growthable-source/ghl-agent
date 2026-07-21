@@ -127,14 +127,18 @@ export async function listPhoneNumbers() {
 }
 
 /**
- * ISO-3166-1 alpha-2 country codes Vapi sells provider-managed numbers
- * for. US is the only one available on free tier — the rest require
- * billing on dashboard.vapi.ai. Surface a friendly VapiError when Vapi
- * rejects a non-US purchase with a billing block (currently bubbles
- * up as an UNKNOWN 4xx; classify in a later pass once we see real
- * error bodies from production).
+ * ISO-3166-1 alpha-2 country codes Vapi sells provider-managed numbers for.
+ *
+ * US only. This previously advertised GB/CA/AU/NZ and claimed the others
+ * merely "require billing" — that was wrong on the facts. `provider:'vapi'`
+ * numbers are US-only regardless of billing tier; Vapi does not provision
+ * international numbers at all. Buying AU/GB/CA/NZ here always failed.
+ *
+ * International numbers go through the Gemini voice runtime instead, which
+ * buys from our own Twilio account with the regulatory paperwork attached
+ * (see lib/voice/gemini/twilio.ts).
  */
-export const VAPI_PURCHASEABLE_COUNTRIES = ['US', 'GB', 'CA', 'AU', 'NZ'] as const
+export const VAPI_PURCHASEABLE_COUNTRIES = ['US'] as const
 export type VapiPurchaseableCountry = typeof VAPI_PURCHASEABLE_COUNTRIES[number]
 
 export interface PurchasePhoneNumberOpts {
@@ -152,8 +156,8 @@ export interface PurchasePhoneNumberOpts {
 /**
  * Buy a Vapi-provisioned phone number. Vapi's `/phone-number` POST
  * accepts `numberDesiredCountryCode` (ISO-3166 alpha-2) alongside
- * `numberDesiredAreaCode`. Free-tier accounts get US-only; AU / GB /
- * CA / NZ require billing.
+ * `numberDesiredAreaCode`, but only ever fulfils US numbers — this is a
+ * provisioning limit, not a billing tier. See VAPI_PURCHASEABLE_COUNTRIES.
  *
  * Back-compat: the historical call site passes a bare areaCode string,
  * which still works (defaults to US).

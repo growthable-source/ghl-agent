@@ -56,7 +56,7 @@ export function GeminiPhoneNumberPanel({ workspaceId, agentId, currentNumber, on
       const res = await fetch(base, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ phoneNumber, countryCode: country }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Purchase failed')

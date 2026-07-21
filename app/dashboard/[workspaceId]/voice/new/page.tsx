@@ -189,12 +189,8 @@ export default function VoiceWizardPage() {
   // ─── Step 5: phone ────────────────────────────────────────────────
   const [phoneMode, setPhoneMode] = useState<'buy' | 'skip' | 'port'>('buy')
   const [areaCode, setAreaCode] = useState('')
-  // Vapi sells provider-managed numbers in a few countries. US is the
-  // only one on the free tier; AU / GB / CA / NZ require billing on
-  // dashboard.vapi.ai. The picker is a no-op for free-tier operators (the
-  // API rejects non-US gracefully) — we still surface the option here
-  // so customers ready for international calls don't have to drop into
-  // Vapi's dashboard to provision.
+  // Vapi provisions US numbers only — see VAPI_PURCHASEABLE_COUNTRIES.
+  // International numbers come from the Gemini engine's own Twilio path.
   const [countryCode, setCountryCode] = useState('US')
   const [purchasedNumber, setPurchasedNumber] = useState<PhoneNumberOption | null>(null)
   const [purchasing, setPurchasing] = useState(false)
@@ -1022,16 +1018,13 @@ function PhoneStep({
       </div>
     )
   }
-  // Vapi sells provider-managed numbers in these countries. US is the
-  // only one on the free tier — the rest need billing enabled at
-  // dashboard.vapi.ai. We surface them all and let the operator deal with
-  // Vapi's billing prompt if it fires.
+  // This engine buys through Vapi, which only ever provisions US numbers.
+  // AU / GB / CA / NZ used to be listed here and could never be bought —
+  // the purchase failed at the carrier with a raw regulatory error. For
+  // international numbers, the Gemini engine buys from our own Twilio
+  // account with the required address on file.
   const countryOptions = [
     { code: 'US', label: '🇺🇸 United States', areaHint: 'e.g. 415', requireArea: true,  prefix: '+1' },
-    { code: 'AU', label: '🇦🇺 Australia',     areaHint: 'optional, e.g. 02', requireArea: false, prefix: '+61' },
-    { code: 'GB', label: '🇬🇧 United Kingdom', areaHint: 'optional, e.g. 20', requireArea: false, prefix: '+44' },
-    { code: 'CA', label: '🇨🇦 Canada',         areaHint: 'e.g. 416', requireArea: true,  prefix: '+1' },
-    { code: 'NZ', label: '🇳🇿 New Zealand',    areaHint: 'optional, e.g. 9',  requireArea: false, prefix: '+64' },
   ]
   const active = countryOptions.find(c => c.code === countryCode) || countryOptions[0]
   const areaInvalid = active.requireArea && !areaCode
@@ -1058,7 +1051,7 @@ function PhoneStep({
             <div className="flex-1">
               <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Buy a new number</div>
               <div className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
-                Provision a new phone number for this agent. US numbers are included on every workspace; AU / GB / CA / NZ numbers are part of the international plan — if your workspace isn&apos;t on it yet, the request returns a friendly error with a contact-support link.
+                Provision a new US phone number for this agent. Need a number outside the US? Create this agent with the Gemini voice engine instead — it provisions international numbers, which carry local address and registration requirements. You can also skip this and add a number later.
               </div>
               {mode === 'buy' && (
                 <div>
@@ -1073,16 +1066,22 @@ function PhoneStep({
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <select
-                        value={countryCode}
-                        onChange={e => { onCountryCode(e.target.value); onAreaCode('') }}
-                        className="rounded-lg px-3 py-2 text-sm focus:outline-none"
-                        style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
-                      >
-                        {countryOptions.map(c => (
-                          <option key={c.code} value={c.code}>{c.label}</option>
-                        ))}
-                      </select>
+                      {countryOptions.length > 1 ? (
+                        <select
+                          value={countryCode}
+                          onChange={e => { onCountryCode(e.target.value); onAreaCode('') }}
+                          className="rounded-lg px-3 py-2 text-sm focus:outline-none"
+                          style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+                        >
+                          {countryOptions.map(c => (
+                            <option key={c.code} value={c.code}>{c.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-sm px-1" style={{ color: 'var(--text-secondary)' }}>
+                          {active.label}
+                        </span>
+                      )}
                       <input
                         type="text"
                         value={areaCode}
