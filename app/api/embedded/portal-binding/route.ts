@@ -19,7 +19,7 @@ import { normalizePortalEmbedUrl } from '@/lib/portal-embed-url'
 export const dynamic = 'force-dynamic'
 
 async function resolveCompanyId(req: NextRequest): Promise<
-  | { ok: true; companyId: string; body: any }
+  | { ok: true; companyId: string; body: Record<string, unknown> }
   | { ok: false; response: NextResponse }
 > {
   const sharedSecret = process.env.LEADCONNECTOR_SSO_KEY
@@ -33,18 +33,19 @@ async function resolveCompanyId(req: NextRequest): Promise<
     }
   }
 
-  let body: any
+  let body: Record<string, unknown>
   try {
     body = await req.json()
   } catch {
     return { ok: false, response: NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
   }
-  if (!body?.encryptedData || typeof body.encryptedData !== 'string') {
+  const encryptedData = body?.encryptedData
+  if (!encryptedData || typeof encryptedData !== 'string') {
     return { ok: false, response: NextResponse.json({ error: 'Missing encryptedData' }, { status: 400 }) }
   }
 
   try {
-    const payload = decryptSsoBlob(body.encryptedData, sharedSecret)
+    const payload = decryptSsoBlob(encryptedData, sharedSecret)
     if (!payload.companyId || typeof payload.companyId !== 'string') {
       return {
         ok: false,
@@ -52,8 +53,8 @@ async function resolveCompanyId(req: NextRequest): Promise<
       }
     }
     return { ok: true, companyId: payload.companyId, body }
-  } catch (err: any) {
-    console.error('[Embedded portal-binding] Decrypt failed:', err?.message)
+  } catch (err) {
+    console.error('[Embedded portal-binding] Decrypt failed:', err instanceof Error ? err.message : err)
     return {
       ok: false,
       response: NextResponse.json({ error: 'Could not verify your CRM identity.', code: 'DECRYPT_FAILED' }, { status: 401 }),
