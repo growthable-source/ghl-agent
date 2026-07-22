@@ -126,7 +126,7 @@ export default function Hero(props: HeroProps) {
             className="font-black tracking-tight leading-[1.05] mb-5"
             style={{ fontSize: 'clamp(2.25rem, 4.6vw, 3.6rem)', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
           >
-            Your business phone,{' '}
+            {businessName}&rsquo;s phone,{' '}
             <span className="text-gradient">answered perfectly</span> every single time.
           </h1>
           <p className="mb-7 leading-[1.65] max-w-md" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
