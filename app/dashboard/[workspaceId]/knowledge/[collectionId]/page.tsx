@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
+import ShareCollectionModal from '@/components/knowledge/ShareCollectionModal'
 
 interface Entry {
   id: string
@@ -117,6 +118,7 @@ export default function CollectionEditorPage() {
   const [editContent, setEditContent] = useState('')
   const [editBusy, setEditBusy] = useState(false)
   const [editErr, setEditErr] = useState<string | null>(null)
+  const [sharing, setSharing] = useState(false)
   const [mining, setMining] = useState<MiningSummary>({ runs: [], pendingCount: 0, mineableAgents: [] })
   const [gdrive, setGdrive] = useState<GoogleContentStatus>({ enabled: false, connected: false, email: null })
 
@@ -244,14 +246,37 @@ export default function CollectionEditorPage() {
               connected to {collection.connectedAgents.length} agent{collection.connectedAgents.length === 1 ? '' : 's'}
             </p>
           </div>
-          <button
-            onClick={deleteCollection}
-            className="text-[11px] px-3 py-1.5 rounded-lg hover:opacity-80 transition-colors"
-            style={{ border: '1px solid var(--border)', color: 'var(--accent-red)' }}
-          >
-            Delete collection
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setSharing(true)}
+              className="text-[11px] px-3 py-1.5 rounded-lg hover:opacity-80 transition-colors inline-flex items-center gap-1.5"
+              style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342a3 3 0 100-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684zm0-12a3 3 0 105.368-2.684A3 3 0 0015.316 6.658z" />
+              </svg>
+              Share
+              <NewBadge since="2026-07-22" />
+            </button>
+            <button
+              onClick={deleteCollection}
+              className="text-[11px] px-3 py-1.5 rounded-lg hover:opacity-80 transition-colors"
+              style={{ border: '1px solid var(--border)', color: 'var(--accent-red)' }}
+            >
+              Delete collection
+            </button>
+          </div>
         </div>
+
+        {sharing && (
+          <ShareCollectionModal
+            workspaceId={workspaceId}
+            collectionId={collectionId}
+            collectionName={collection.name}
+            dataSourceCount={collection.dataSources.length}
+            onClose={() => setSharing(false)}
+          />
+        )}
 
         <div className="flex items-center gap-2 mb-4 border-b" style={{ borderColor: 'var(--border)' }}>
           {([

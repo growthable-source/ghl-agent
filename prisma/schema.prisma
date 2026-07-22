@@ -920,9 +920,60 @@ model KnowledgeCollection {
   entries     KnowledgeEntry[]
   dataSources WorkspaceDataSource[]
   attachments AgentCollection[]
+  shares      KnowledgeCollectionShare[]
 
   @@index([workspaceId, order])
   @@index([brandId])
+}
+
+// A shareable handle on a collection, so knowledge built in one
+// workspace can be handed to another (agency → client sub-account, or
+// a partner on a different account entirely).
+//
+// Sharing COPIES. The importing workspace gets its own collection with
+// its own entries; nothing is live-linked, because the two workspaces
+// have separate brands, agents and data-source credentials and a live
+// link would leak edits across account boundaries. `imports` keeps the
+// paper trail so the sharer can see where their content landed.
+model KnowledgeCollectionShare {
+  id              String              @id @default(cuid())
+  collectionId    String
+  collection      KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  // Source workspace, denormalized so a share can be listed/revoked
+  // without loading the collection.
+  workspaceId     String
+  // Opaque, human-typable code that appears in the share URL. Unique
+  // across the install; unguessable (see lib/knowledge-sharing.ts).
+  code            String              @unique
+  createdByUserId String?
+  note            String?
+  // Optional guards. Null = unlimited / never expires.
+  maxUses         Int?
+  useCount        Int                 @default(0)
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime            @default(now())
+
+  imports KnowledgeCollectionShareImport[]
+
+  @@index([collectionId])
+  @@index([workspaceId])
+}
+
+// One redemption of a share code — which workspace took the copy, who
+// did it, and what collection it produced.
+model KnowledgeCollectionShareImport {
+  id                  String                   @id @default(cuid())
+  shareId             String
+  share               KnowledgeCollectionShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  targetWorkspaceId   String
+  createdCollectionId String?
+  importedByUserId    String?
+  entryCount          Int                      @default(0)
+  createdAt           DateTime                 @default(now())
+
+  @@index([shareId])
+  @@index([targetWorkspaceId])
 }
 
 // Junction connecting an agent to a knowledge collection. Single

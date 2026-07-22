@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import SourcesPanel from '@/components/knowledge/SourcesPanel'
+import NewBadge from '@/components/NewBadge'
 
 interface Collection {
   id: string
@@ -34,9 +35,11 @@ function relTime(iso: string): string {
 
 export default function WorkspaceKnowledgePage() {
   const params = useParams()
+  const router = useRouter()
   const workspaceId = params.workspaceId as string
 
   const [collections, setCollections] = useState<Collection[]>([])
+  const [importer, setImporter] = useState(false)
   const [brands, setBrands] = useState<Array<{ id: string; name: string; primaryColor: string | null }>>([])
   const [loading, setLoading] = useState(true)
   const [notMigrated, setNotMigrated] = useState(false)
@@ -98,13 +101,23 @@ export default function WorkspaceKnowledgePage() {
               Hand-written notes, FAQs and Q&amp;A pairs, organised into collections you can attach per agent.
             </p>
           </div>
-          <button
-            onClick={() => setCreator(true)}
-            className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-            style={{ background: 'var(--accent-primary)', color: '#fff' }}
-          >
-            + New collection
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setImporter(true)}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5"
+              style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            >
+              Import a shared collection
+              <NewBadge since="2026-07-22" />
+            </button>
+            <button
+              onClick={() => setCreator(true)}
+              className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+              style={{ background: 'var(--accent-primary)', color: '#fff' }}
+            >
+              + New collection
+            </button>
+          </div>
         </div>
 
         {notMigrated && (
@@ -201,6 +214,13 @@ export default function WorkspaceKnowledgePage() {
         )}
       </div>
 
+      {importer && (
+        <ImportCollectionModal
+          onClose={() => setImporter(false)}
+          onGo={code => router.push(`/knowledge-share/${code}`)}
+        />
+      )}
+
       {creator && (
         <CreateCollectionModal
           workspaceId={workspaceId}
@@ -209,6 +229,76 @@ export default function WorkspaceKnowledgePage() {
           onCreated={() => { setCreator(false); fetchAll() }}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * Takes a share code (or a pasted share URL) and hands off to the
+ * redeem page, which previews the collection and asks which workspace
+ * should receive the copy.
+ */
+function ImportCollectionModal({
+  onClose, onGo,
+}: {
+  onClose: () => void
+  onGo: (code: string) => void
+}) {
+  const [raw, setRaw] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function go() {
+    setError(null)
+    // Accept the bare code or the whole link someone pasted from chat.
+    const fromUrl = raw.trim().match(/knowledge-share\/([^/?#\s]+)/)
+    const candidate = fromUrl ? fromUrl[1] : raw
+    const stripped = candidate.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (stripped.length !== 12) {
+      setError('That doesn’t look like a share code. Paste the code or the full link.')
+      return
+    }
+    onGo(`${stripped.slice(0, 4)}-${stripped.slice(4, 8)}-${stripped.slice(8, 12)}`)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden">
+        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Import a shared collection</h2>
+          <button onClick={onClose} style={{ color: 'var(--text-tertiary)' }} aria-label="Close">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-5">
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Paste the share code (or link) someone sent you. You’ll see what’s inside
+            before anything is copied.
+          </p>
+          <input
+            value={raw}
+            onChange={e => setRaw(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') go() }}
+            placeholder="ABCD-EFGH-JKLM"
+            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white font-mono tracking-wider focus:outline-none focus:border-zinc-500"
+          />
+          {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ color: 'var(--text-secondary)' }}>Cancel</button>
+          <button
+            onClick={go}
+            disabled={!raw.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold"
+            style={!raw.trim()
+              ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+              : { background: 'var(--accent-primary)', color: '#fff' }}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
