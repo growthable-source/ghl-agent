@@ -3128,6 +3128,19 @@ model PortalInvite {
   @@index([email])
 }
 
+// CompanyPortalBinding — the portal URL an agency saved from the embedded
+// GHL landing page (app/embedded/leadconnector/portal). Keyed by the GHL
+// agency companyId because the marketplace app is installed at agency
+// level; deliberately a raw URL with no FK to Portal (see the 2026-07-23
+// embedded-portal-wrapper spec — approach C).
+model CompanyPortalBinding {
+  id        String   @id @default(cuid())
+  companyId String   @unique
+  portalUrl String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ─── Native CRM ──────────────────────────────────────────────────────────
 // Built-in contacts/lists/messaging for workspaces that don't connect an
 // external CRM. Each table is workspace-scoped — the Location row is just
