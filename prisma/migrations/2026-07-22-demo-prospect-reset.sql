@@ -89,19 +89,48 @@ WHERE slug IN ('desert-glow-med-spa-189e3dfc',
                'zz-outbound-integration-test-a3ce25eb');
 
 -- ─────────────────────────────────────────────────────────────────────
--- STEP 4 — for anything handled by STEP 1, run the reaper now rather
--- than waiting for the 3:20am cron, so the domain frees immediately:
+-- STEP 4 — free the domain IMMEDIATELY, without waiting for the cron
+-- and without needing CRON_SECRET.
 --
---   curl -H "Authorization: Bearer $CRON_SECRET" \
---     https://app.xovera.io/api/cron/demo-prospect-reaper
+-- STEP 1 alone leaves status 'ready', which the partial unique index
+-- still counts as a live demo — so the domain stays locked until the
+-- reaper next runs (20 3 * * *, i.e. 03:20 UTC daily). If the SQL was
+-- run after that window, that's an ~24h wait during which the
+-- prospecting tool keeps getting the stale slug back with
+-- existing:true and reasonably reads its own fix as broken.
 --
--- Then confirm the domain is released (status must read 'expired' and
--- both asset FKs must be null):
+-- Use status 'failed' to collapse the wait to zero. It is the one
+-- status that appears in BOTH sets:
 --
---   SELECT slug, status, "agentId", "knowledgeDomainId"
---   FROM "DemoProspect" WHERE "websiteDomain" = 'desertglow.com';
+--   partial unique index  → excluded by  NOT IN ('expired','claimed','failed')
+--   reaper CLAIMABLE_STATUSES →   listed in  ('ready','failed','provisioning')
 --
--- Once that reads 'expired', the prospecting tool's next POST for
--- desertglow.com creates a fresh prospect with the correct 'med-spa'
--- vertical and persona.
+-- So 'failed' releases the domain for re-registration on the spot,
+-- while KEEPING the row visible to the reaper, which then deletes the
+-- agent + voice config + knowledge domain + chunks on its next run and
+-- sets 'expired' itself. Immediate unblock, no orphaned assets, no
+-- manual asset deletion, no cron secret.
+--
+-- (Do NOT reach for status 'expired' here as a shortcut — it frees the
+-- domain too, but drops the row out of the reaper's view permanently
+-- and orphans the assets forever. That is the whole reason this file
+-- backdates expiresAt instead.)
+
+UPDATE "DemoProspect"
+SET status = 'failed',
+    "updatedAt" = NOW()
+WHERE slug IN ('desert-glow-med-spa-189e3dfc',
+               'zz-outbound-integration-test-a3ce25eb')
+  AND status IN ('ready', 'provisioning');
+
+-- Confirm the domain is released — this must return zero rows, which
+-- is what the POST route's live-demo lookup checks before reusing a slug:
+SELECT slug, status FROM "DemoProspect"
+WHERE "websiteDomain" = 'desertglow.com'
+  AND status NOT IN ('expired', 'claimed', 'failed');
+
+-- The prospecting tool's next POST for desertglow.com now creates a
+-- FRESH prospect with the corrected 'med-spa' vertical and persona.
+-- The reaper retires the old row's assets on its next scheduled run;
+-- nothing further is needed by hand.
 -- ─────────────────────────────────────────────────────────────────────
