@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { decryptSsoBlob } from '@/lib/leadconnector-sso'
+import { decryptSsoBlobAnyKey, ssoSharedSecrets } from '@/lib/leadconnector-sso'
 import { normalizePortalEmbedUrl } from '@/lib/portal-embed-url'
 
 export const dynamic = 'force-dynamic'
@@ -22,8 +22,9 @@ async function resolveCompanyId(req: NextRequest): Promise<
   | { ok: true; companyId: string; body: Record<string, unknown> }
   | { ok: false; response: NextResponse }
 > {
-  const sharedSecret = process.env.LEADCONNECTOR_SSO_KEY
-  if (!sharedSecret) {
+  // Accept any configured Shared Secret — the portal-wrapper marketplace
+  // app has its own key, separate from the dashboard app's.
+  if (ssoSharedSecrets().length === 0) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -45,7 +46,7 @@ async function resolveCompanyId(req: NextRequest): Promise<
   }
 
   try {
-    const payload = decryptSsoBlob(encryptedData, sharedSecret)
+    const payload = decryptSsoBlobAnyKey(encryptedData)
     if (!payload.companyId || typeof payload.companyId !== 'string') {
       return {
         ok: false,

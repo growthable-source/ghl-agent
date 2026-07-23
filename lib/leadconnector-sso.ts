@@ -59,6 +59,42 @@ function evpBytesToKey(password: Buffer, salt: Buffer, keyLen: number, ivLen: nu
   return { key: out.subarray(0, keyLen), iv: out.subarray(keyLen, keyLen + ivLen) }
 }
 
+/**
+ * All Shared Secrets this deployment accepts. More than one marketplace
+ * app can point at us (the original dashboard app and the agency
+ * portal-wrapper app), and each app has its own Shared Secret. Since
+ * decryption IS the authentication, accepting a blob just means trying
+ * every configured secret.
+ */
+export function ssoSharedSecrets(): string[] {
+  return [process.env.LEADCONNECTOR_SSO_KEY, process.env.LEADCONNECTOR_SSO_KEY_2]
+    .filter((s): s is string => !!s)
+}
+
+/**
+ * decryptSsoBlob over every configured secret — first one that yields a
+ * clean decrypt wins; if none do, the last failure is rethrown. Callers
+ * should check ssoSharedSecrets().length first to give a "not
+ * configured" error distinct from "bad payload".
+ */
+export function decryptSsoBlobAnyKey(
+  encryptedBase64: string,
+  secrets: string[] = ssoSharedSecrets(),
+): DecryptedSsoPayload {
+  if (secrets.length === 0) {
+    throw new Error('LEADCONNECTOR_SSO_KEY is not configured. Set it in env to the Shared Secret from your marketplace app settings.')
+  }
+  let lastErr: unknown
+  for (const secret of secrets) {
+    try {
+      return decryptSsoBlob(encryptedBase64, secret)
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr
+}
+
 export function decryptSsoBlob(encryptedBase64: string, sharedSecret: string): DecryptedSsoPayload {
   if (!sharedSecret) {
     throw new Error('LEADCONNECTOR_SSO_KEY is not configured. Set it in env to the Shared Secret from your marketplace app settings.')

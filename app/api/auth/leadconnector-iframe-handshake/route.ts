@@ -18,14 +18,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
 import { db } from '@/lib/db'
-import { decryptSsoBlob } from '@/lib/leadconnector-sso'
+import { decryptSsoBlobAnyKey, ssoSharedSecrets } from '@/lib/leadconnector-sso'
 import { EMBED_SESSION_COOKIE, EMBED_WORKSPACE_COOKIE } from '@/lib/embed-session'
 
 const SESSION_DAYS = 90
 
 export async function POST(req: NextRequest) {
-  const sharedSecret = process.env.LEADCONNECTOR_SSO_KEY
-  if (!sharedSecret) {
+  // Multiple marketplace apps (dashboard app, portal-wrapper app) share
+  // this deployment, each with its own Shared Secret — accept any.
+  if (ssoSharedSecrets().length === 0) {
     return NextResponse.json(
       { error: 'LEADCONNECTOR_SSO_KEY is not configured on this deployment.', code: 'SSO_NOT_CONFIGURED' },
       { status: 503 },
@@ -42,11 +43,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing encryptedData' }, { status: 400 })
   }
 
-  let payload: ReturnType<typeof decryptSsoBlob>
+  let payload: ReturnType<typeof decryptSsoBlobAnyKey>
   try {
-    payload = decryptSsoBlob(body.encryptedData, sharedSecret)
-  } catch (err: any) {
-    console.error('[LeadConnector SSO] Decrypt failed:', err?.message)
+    payload = decryptSsoBlobAnyKey(body.encryptedData)
+  } catch (err) {
+    console.error('[LeadConnector SSO] Decrypt failed:', err instanceof Error ? err.message : err)
     return NextResponse.json(
       { error: 'Could not verify the user data from the marketplace.', code: 'SSO_DECRYPT_FAILED' },
       { status: 400 },
