@@ -81,26 +81,14 @@ model CompanyPortalBinding {
 
 Plus a Prisma migration (new migration directory; never edit committed ones).
 
-### 4. Portal embed cookie (dependency)
+### 4. Portal embed cookie (dependency) — ALREADY SHIPPED UPSTREAM
 
-If the saved URL is a Voxility portal, login inside the nested iframe breaks
-today: the portal session cookie is `SameSite=Lax` (`lib/portal-auth.ts`),
-which browsers refuse to send in third-party iframe contexts.
-
-Mirror the established dual-cookie pattern from `lib/embed-session.ts`:
-
-- The portal login page detects that it is running inside a frame
-  (`window.self !== window.top` — a pasted URL carries no query-param signal)
-  and sends `embedded: true` in the login POST body. The login API then sets
-  an **additional** cookie `voxility_portal_embed` with `SameSite=None;
-  Secure` alongside the regular Lax cookie.
-- `middleware.ts` promotes the embed cookie's value onto the regular portal
-  cookie name **request-side only** (same promotion mechanics as the dashboard
-  embed cookie), so `getPortalSession()` and every `/portal` page work
-  unchanged.
-- The Lax cookie keeps protecting regular browser-tab sessions; the None
-  cookie exists only for iframe use, keeping the leak-radius reasoning in the
-  `portal-auth.ts` header intact.
+At implementation time this dependency turned out to already exist on
+`main`: `lib/portal-auth.ts` sets a `voxility_portal_embed`
+`SameSite=None; Secure` twin cookie on every production login, and
+`getPortalSession()` reads either cookie directly (no middleware
+promotion involved). Nothing to build here — Voxility-hosted portals
+already log in fine inside iframes.
 
 ## Error handling
 
