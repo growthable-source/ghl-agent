@@ -1958,6 +1958,11 @@ model VapiConfig {
   endCallPhrases  String[] @default([])
   language        String?
   voiceTools      Json?
+  // E.164 number the agent can hand a live call to (Vapi built-in
+  // transferCall). Null = transfer disabled, tool not registered.
+  transferPhoneNumber String?
+  // Script spoken when an outbound call hits an answering machine.
+  voicemailMessage    String? @db.Text
   isActive        Boolean  @default(false)
   // Vapi assistant id — the id of the pre-registered assistant in Vapi
   // that browser + phone calls reference by id. Replaces the previous
@@ -2020,7 +2025,9 @@ model VoiceTestCallDiagnostic {
 
 model CallLog {
   id            String   @id @default(cuid())
-  locationId    String
+  // Nullable: browser test calls and widget voice calls have no CRM
+  // location but still deserve a log row (and billable minutes).
+  locationId    String?
   agentId       String?
   contactId     String?
   contactPhone  String?

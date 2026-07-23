@@ -7,6 +7,36 @@ import { parseVocabularyRules } from '@/lib/agent/vocabulary'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
+// Fields the registered Vapi assistant bakes into its static prompt at
+// sync time. Editing any of them from THIS route (the general agent
+// editor) used to leave the Vapi-side assistant serving the old prompt
+// until someone happened to hit Save on the Voice tab — silent,
+// indefinite drift.
+const VOICE_PROMPT_FIELDS = [
+  'name', 'systemPrompt', 'instructions', 'calendarId',
+  'fallbackBehavior', 'fallbackMessage', 'agentPersonaName', 'knowledgeDomainIds',
+] as const
+
+/**
+ * Re-sync the registered Vapi assistant when a prompt-relevant field
+ * changed on a voice-enabled agent. Best-effort: a Vapi hiccup must
+ * not fail the agent save — we return a warning string for the UI
+ * instead. No-op (and no Vapi round-trip) for non-voice agents.
+ */
+async function maybeSyncVoiceAssistant(agentId: string, body: Record<string, unknown>): Promise<string | null> {
+  if (!VOICE_PROMPT_FIELDS.some(k => body[k] !== undefined)) return null
+  try {
+    const cfg = await db.vapiConfig.findUnique({ where: { agentId }, select: { vapiAssistantId: true } })
+    if (!cfg) return null
+    const { syncVapiAssistant } = await import('@/lib/voice/vapi-assistant')
+    await syncVapiAssistant(agentId)
+    return null
+  } catch (err: any) {
+    console.warn(`[agent PATCH] Vapi re-sync failed for ${agentId}:`, err?.message)
+    return err?.userMessage || err?.message || 'Voice assistant sync failed — re-save from the Voice tab.'
+  }
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const { workspaceId, agentId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
@@ -216,16 +246,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const wantsConditions = body.knowledgeConditions !== undefined
   try {
     const agent = await db.agent.update({ where: { id: agentId }, data: buildData(true, true, true) as any })
-    const referenceHealth = await loadReferenceHealth()
-    return NextResponse.json({ agent, referenceHealth })
+    const [referenceHealth, voiceSyncWarning] = await Promise.all([
+      loadReferenceHealth(),
+      maybeSyncVoiceAssistant(agentId, body),
+    ])
+    return NextResponse.json({ agent, referenceHealth, ...(voiceSyncWarning ? { voiceSyncWarning } : {}) })
   } catch (err: any) {
     if (isMissingColumn(err) && (wantsJudge || wantsModel || wantsAutopilot || wantsConditions)) {
       try {
         const agent = await db.agent.update({ where: { id: agentId }, data: buildData(false, false, false) as any })
-        const referenceHealth = await loadReferenceHealth()
+        const [referenceHealth, voiceSyncWarning] = await Promise.all([
+          loadReferenceHealth(),
+          maybeSyncVoiceAssistant(agentId, body),
+        ])
         return NextResponse.json({
           agent,
           referenceHealth,
+          ...(voiceSyncWarning ? { voiceSyncWarning } : {}),
           warning: 'Some optional fields (AI Judge / model / auto-pilot mode / knowledge triggers) were skipped — a column migration is pending.',
           code: 'JUDGE_MIGRATION_PENDING',
         })

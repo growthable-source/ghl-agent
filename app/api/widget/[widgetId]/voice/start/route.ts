@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders, resolveVoiceAgentId } from '@/lib/widget-auth'
-import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 
 type Params = { params: Promise<{ widgetId: string }> }
 
@@ -69,6 +68,18 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Agent has no voice configuration. Set up voice on the agent first.' }, { status: 400, headers })
   }
 
+  // Voice-minute quota — widget calls draw from the same workspace pool
+  // as phone calls (they used to bypass the gate entirely because their
+  // minutes were never tracked; both halves are fixed together).
+  const { checkVoiceQuota } = await import('@/lib/voice-quota')
+  const quota = await checkVoiceQuota(v.widget.workspaceId)
+  if (!quota.ok) {
+    return NextResponse.json({
+      error: 'Voice calls are temporarily unavailable. Please use chat instead.',
+      code: quota.code,
+    }, { status: 402, headers })
+  }
+
   const vapiPublicKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY || process.env.VAPI_PUBLIC_KEY
   if (!vapiPublicKey) {
     return NextResponse.json({
@@ -109,6 +120,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         widgetCallId: call.id,
         agentId: agent.id,
         workspaceId: v.widget.workspaceId,
+        direction: 'widget',
+        // Fills the registered prompt's {{callContext}} slot.
+        callContext: [
+          'This is a voice call from a visitor on the business\'s website (via the chat widget).',
+          convo.visitor.name ? `The visitor gave their name as ${convo.visitor.name}.` : 'The visitor has not given their name.',
+          convo.visitor.email ? `Their email is ${convo.visitor.email}.` : '',
+        ].filter(Boolean).join(' '),
       },
     },
   }, { headers })

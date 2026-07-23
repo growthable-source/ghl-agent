@@ -79,8 +79,10 @@ How to run the call:
    requires one.
 5. Use book_appointment to lock the slot. Read back the day/time and
    confirm.
-6. If booking fails, hand the call to a human via transfer_to_human —
-   don't promise to "get back to them".
+6. If booking fails: transfer the call to a human with the
+   transferCall tool if one is available; otherwise use
+   send_sms_followup so the request is captured — don't promise to
+   "get back to them" with no record of it.
 
 Stay conversational and quick. The whole call should feel like talking
 to a polished receptionist, not navigating a phone tree.`,

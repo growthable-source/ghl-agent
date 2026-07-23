@@ -34,6 +34,8 @@ interface VapiConfig {
   backgroundSound: string | null
   endCallPhrases: string[]
   language: string | null
+  transferPhoneNumber: string | null
+  voicemailMessage: string | null
   voiceTools: any[] | null
   isActive: boolean
 }
@@ -60,6 +62,7 @@ const DEFAULT_CONFIG: VapiConfig = {
   firstMessage: '', endCallMessage: '',
   maxDurationSecs: 600, recordCalls: true,
   backgroundSound: null, endCallPhrases: [], language: null,
+  transferPhoneNumber: null, voicemailMessage: null,
   voiceTools: null,
   isActive: false,
 }
@@ -744,6 +747,36 @@ export default function VoicePage() {
                   style={{ background: draft.recordCalls ? 'var(--accent-emerald)' : 'var(--toggle-off-bg)' }}>
                   <span className={`inline-block h-5 w-5 transform rounded-full shadow transition-transform ${draft.recordCalls ? 'translate-x-5' : 'translate-x-0'}`} style={{ background: '#fff' }} />
                 </button>
+              </div>
+
+              {/* Transfer to a human */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Transfer calls to a human</label>
+                <input
+                  type="tel"
+                  value={draft.transferPhoneNumber || ''}
+                  onChange={e => set({ transferPhoneNumber: e.target.value.trim() || null })}
+                  placeholder="+15551234567"
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}
+                />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  When set, the agent can hand a live call to this number — when the caller asks for a person, gets frustrated, or needs something the agent can&apos;t do. Include the country code (e.g. +1). Leave empty to disable transfers.
+                </p>
+              </div>
+
+              {/* Voicemail message */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Voicemail message</label>
+                <textarea
+                  value={draft.voicemailMessage || ''}
+                  onChange={e => set({ voicemailMessage: e.target.value || null })}
+                  rows={2}
+                  placeholder="Hi, sorry I missed you — I'll try you back shortly."
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+                  style={{ background: 'var(--input-bg)', borderColor: 'var(--input-border)', color: 'var(--input-text)', borderWidth: 1, borderStyle: 'solid' }}
+                />
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>What the agent says if an outbound call reaches an answering machine.</p>
               </div>
 
               {/* Language */}

@@ -1,20 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual } from 'crypto'
 import { db } from '@/lib/db'
-import { buildVoiceSystemPrompt } from '@/lib/voice-prompt'
-import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
+
+/**
+ * Authenticate the webhook. Vapi echoes an assistant's (or phone
+ * number's) `server.secret` back as the `x-vapi-secret` header on every
+ * event. Tool dispatch here has real side effects (booking, SMS,
+ * tagging), so with VAPI_WEBHOOK_SECRET set we hard-reject anything
+ * that doesn't carry it. Unset = open webhook; we allow it for
+ * back-compat but scream in the logs — set the env var, then re-save
+ * each voice agent (sync re-registers the secret onto the assistant).
+ */
+function verifyWebhookSecret(req: NextRequest): boolean {
+  const expected = process.env.VAPI_WEBHOOK_SECRET
+  if (!expected) {
+    console.error('[Vapi webhook] VAPI_WEBHOOK_SECRET is not set — webhook is UNAUTHENTICATED. Set it and re-sync voice agents.')
+    return true
+  }
+  const got = req.headers.get('x-vapi-secret') ?? ''
+  const a = Buffer.from(got)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
 
 async function findAgentByPhoneNumber(phoneNumber: string) {
-  const vapiConfig: any = await db.vapiConfig.findFirst({
+  return db.vapiConfig.findFirst({
     where: { phoneNumber, isActive: true },
     include: { agent: true },
   })
-  if (vapiConfig?.agent) {
-    // Hydrate workspace-stacked knowledge via the junction.
-    const { bulkLoadKnowledgeForAgents } = await import('@/lib/knowledge')
-    const map = await bulkLoadKnowledgeForAgents([vapiConfig.agent.id])
-    vapiConfig.agent.knowledgeEntries = map.get(vapiConfig.agent.id) ?? []
-  }
-  return vapiConfig
 }
 
 /** Per-call context shared across every voice tool dispatch. */
@@ -181,6 +194,10 @@ async function runVoiceToolInner(
 }
 
 export async function POST(req: NextRequest) {
+  if (!verifyWebhookSecret(req)) {
+    console.warn('[Vapi webhook] rejected: bad or missing x-vapi-secret. If this is a legitimate Vapi event, the assistant/phone number was registered before VAPI_WEBHOOK_SECRET was set — re-save the agent to re-sync.')
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
   const body = await req.json()
   const message = body.message || body
 
@@ -198,7 +215,15 @@ export async function POST(req: NextRequest) {
     assistantId: message?.call?.assistantId || null,
   })
 
-  // ── Assistant request — return agent config for this call ──
+  // ── Assistant request — hand the call to the REGISTERED assistant ──
+  //
+  // Historically this handler built a full inline assistant per call
+  // (Anthropic model + inline model.tools). That was the last remnant
+  // of the pre-registration architecture and diverged from every other
+  // path: different brain, and inline tools that Vapi doesn't dispatch
+  // (webhook never fired — inbound agents effectively had NO tools).
+  // Now inbound answers with the same registered assistant browser /
+  // widget / outbound use, plus per-call overrides.
   if (messageType === 'assistant-request') {
     const call = message.call
     const callerPhone: string = call?.customer?.number || ''
@@ -206,38 +231,42 @@ export async function POST(req: NextRequest) {
 
     const vapiConfig = await findAgentByPhoneNumber(toPhone)
 
-    if (!vapiConfig) {
-      return NextResponse.json({
-        assistant: {
-          model: {
-            provider: 'anthropic',
-            model: 'claude-sonnet-4-6',
-            messages: [{ role: 'system', content: 'You are a helpful assistant. This number is not configured yet.' }],
-          },
-          voice: { provider: 'elevenlabs', voiceId: 'EXAVITQu4vr4xnSDxMaL' },
-          firstMessage: 'Hello! This line is not configured yet.',
-        },
-      })
+    if (!vapiConfig?.agent) {
+      // No agent bound to this number — decline with a spoken-ish error
+      // rather than improvising an unconfigured assistant.
+      return NextResponse.json({ error: 'This number is not configured yet.' })
     }
 
     const agent = vapiConfig.agent
     const locationId = agent.locationId
-    const systemPrompt = await buildVoiceSystemPrompt(agent, agent.knowledgeEntries, callerPhone, locationId, vapiConfig.voiceTools as any[])
 
-    // Catalogue-generated tool list (knowledge + voice subset ∩ enabledTools
-    // + conditional Shopify + custom) — same set the registered-assistant
-    // path uses. No hardcoded VAPI_TOOLS.
-    const { buildVoiceFunctionTools } = await import('@/lib/voice/vapi-assistant')
-    const voiceFunctionTools = await buildVoiceFunctionTools({
-      agentId: agent.id,
-      workspaceId: agent.workspaceId,
-      enabledTools: (agent as any).enabledTools ?? [],
-      customVoiceTools: (vapiConfig.voiceTools as any[]) || [],
-    })
+    // Quota gate — inbound was the one path that never checked, so a
+    // workspace over its minutes kept receiving billable calls.
+    if (agent.workspaceId) {
+      try {
+        const { checkVoiceQuota } = await import('@/lib/voice-quota')
+        const quota = await checkVoiceQuota(agent.workspaceId)
+        if (!quota.ok) {
+          console.warn('[Vapi webhook] inbound blocked by quota:', { agentId: agent.id, code: quota.code })
+          return NextResponse.json({ error: 'This line is temporarily unavailable. Please try again later.' })
+        }
+      } catch (err: any) {
+        console.warn('[Vapi webhook] quota check failed (allowing call):', err?.message)
+      }
+    }
 
-    // Resolve the caller to a contact so merge fields in first/end messages
-    // can render. Inbound voice calls often come from unknown numbers — if
-    // the lookup fails we pass null and fallback syntax kicks in.
+    let assistantId: string
+    try {
+      const { ensureVapiAssistant } = await import('@/lib/voice/vapi-assistant')
+      assistantId = await ensureVapiAssistant(agent.id)
+    } catch (err: any) {
+      console.error('[Vapi webhook] assistant resolution failed:', err?.message)
+      return NextResponse.json({ error: 'This line is temporarily unavailable. Please try again later.' })
+    }
+
+    // Resolve the caller to a contact so merge fields in first/end
+    // messages render and the agent knows who's calling. Best-effort —
+    // unknown numbers are normal for inbound.
     let voiceContact: any = null
     try {
       const { searchContacts } = await import('@/lib/crm-client')
@@ -245,9 +274,6 @@ export async function POST(req: NextRequest) {
       voiceContact = matches.find(c => c.phone === callerPhone) ?? matches[0] ?? null
     } catch { /* non-fatal */ }
     const { renderMergeFields, resolveAssignedUser, hydrateContactCustomFields } = await import('@/lib/merge-fields')
-    // Resolve the contact's assigned team member + hydrate custom field
-    // keys so {{user.*}} and {{custom.*}} tokens render in the voice
-    // opener/closer. Both best-effort.
     let assignedUser: Awaited<ReturnType<typeof resolveAssignedUser>> = null
     let hydratedContact = voiceContact
     try {
@@ -267,24 +293,25 @@ export async function POST(req: NextRequest) {
       timezone: (agent as any).timezone ?? null,
     }
 
+    // Per-call context for the registered prompt's {{callContext}} slot.
+    const contactName = [hydratedContact?.firstName, hydratedContact?.lastName].filter(Boolean).join(' ')
+      || hydratedContact?.name || null
+    const callContext = [
+      `Inbound phone call from ${callerPhone || 'an unknown number'}.`,
+      contactName ? `The caller matches an existing contact: ${contactName}.` : 'The caller does not match any known contact.',
+    ].join(' ')
+
     return NextResponse.json({
-      assistant: {
-        name: agent.name,
-        model: {
-          provider: 'anthropic',
-          model: 'claude-sonnet-4-6',
-          messages: [{ role: 'system', content: systemPrompt }],
-          tools: voiceFunctionTools,
+      assistantId,
+      assistantOverrides: {
+        variableValues: {
+          locationId,
+          workspaceId: agent.workspaceId,
+          agentId: agent.id,
+          callerPhone,
+          direction: 'inbound',
+          callContext,
         },
-        voice: buildVapiVoiceBlock({
-          engine: resolveVoiceEngine(vapiConfig.ttsProvider),
-          voiceId: vapiConfig.voiceId,
-          stability: vapiConfig.stability,
-          similarityBoost: vapiConfig.similarityBoost,
-          speed: vapiConfig.speed,
-          style: vapiConfig.style,
-          language: vapiConfig.language,
-        }) as any,
         firstMessage: renderMergeFields(
           vapiConfig.firstMessage || `Hi there! This is ${agent.agentPersonaName || agent.name}. How can I help you today?`,
           mergeCtx,
@@ -293,19 +320,6 @@ export async function POST(req: NextRequest) {
           vapiConfig.endCallMessage || 'Thanks for calling. Have a great day!',
           mergeCtx,
         ),
-        maxDurationSeconds: vapiConfig.maxDurationSecs,
-        recordingEnabled: vapiConfig.recordCalls,
-        ...(vapiConfig.backgroundSound ? { backgroundSound: vapiConfig.backgroundSound } : {}),
-        ...(vapiConfig.endCallPhrases?.length ? { endCallPhrases: vapiConfig.endCallPhrases } : {}),
-        serverUrl: `${process.env.APP_URL}/api/vapi/webhook`,
-        serverUrlSecret: process.env.VAPI_WEBHOOK_SECRET,
-      },
-      assistantOverrides: {
-        variableValues: {
-          locationId,
-          agentId: agent.id,
-          callerPhone,
-        },
       },
     })
   }
@@ -376,7 +390,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ result })
   }
 
-  // ── End of call report — save transcript and call log ──
+  // ── End of call report — save transcript/log + count the minutes ──
+  //
+  // Every call gets a CallLog row and counts against the workspace's
+  // voice minutes — inbound, outbound, browser test, and widget alike.
+  // (Browser/widget calls used to be invisible here because logging was
+  // gated on a locationId those paths never send; test-call minutes
+  // were free, untraceable, and uncapped.)
+  //
+  // Idempotency: Vapi retries webhook deliveries. The CallLog row keyed
+  // by the unique vapiCallId is the ledger — we only call
+  // trackVoiceUsage on the write that transitions the row from
+  // "no duration yet" to finalized, so a redelivery can't double-count.
   if (messageType === 'end-of-call-report') {
     const call = message.call
     const transcript: string = message.transcript || ''
@@ -386,72 +411,88 @@ export async function POST(req: NextRequest) {
       ? (new Date(call.endedAt).getTime() - new Date(call.startedAt).getTime()) / 1000
       : 0)
 
-    const locationId: string = call?.assistantOverrides?.variableValues?.locationId
-    const agentId: string = call?.assistantOverrides?.variableValues?.agentId
-    const callerPhone: string = call?.assistantOverrides?.variableValues?.callerPhone || call?.customer?.number
-    const direction: string = call?.assistantOverrides?.variableValues?.direction || 'inbound'
+    const vars = call?.assistantOverrides?.variableValues || {}
+    const locationId: string | null = vars.locationId || null
+    const agentId: string | null = vars.agentId || null
+    const callerPhone: string = vars.callerPhone || call?.customer?.number || null
+    const direction: string = vars.direction || 'inbound'
+    let workspaceId: string | null = vars.workspaceId || null
 
-    if (locationId) {
-      try {
-        const callStatus = call?.endedReason === 'customer-ended-call' ? 'completed' : (call?.endedReason || 'completed')
+    try {
+      if (!workspaceId && agentId) {
+        const agent = await db.agent.findUnique({ where: { id: agentId }, select: { workspaceId: true } })
+        workspaceId = agent?.workspaceId ?? null
+      }
 
-        if (direction === 'outbound' && call?.id) {
-          // Outbound calls have a pre-created CallLog — update it
-          const existing = await db.callLog.findUnique({ where: { vapiCallId: call.id } })
-          if (existing) {
-            await db.callLog.update({
-              where: { vapiCallId: call.id },
-              data: { status: callStatus, durationSecs, transcript, summary, recordingUrl, endedReason: call?.endedReason },
-            })
-          } else {
-            await db.callLog.create({
-              data: {
-                locationId, agentId: agentId || null, contactPhone: callerPhone,
-                vapiCallId: call.id, direction: 'outbound', status: callStatus,
-                durationSecs, transcript, summary, recordingUrl, endedReason: call?.endedReason,
-              },
-            })
+      const callStatus = call?.endedReason === 'customer-ended-call' ? 'completed' : (call?.endedReason || 'completed')
+      const finalData = {
+        status: callStatus,
+        durationSecs,
+        transcript,
+        summary,
+        recordingUrl,
+        endedReason: call?.endedReason,
+      }
+
+      // Finalize-once ledger write. `shouldTrackUsage` is true only on
+      // the transition into the finalized state.
+      let shouldTrackUsage = false
+      if (call?.id) {
+        const existing = await db.callLog.findUnique({ where: { vapiCallId: call.id } })
+        if (existing) {
+          shouldTrackUsage = existing.durationSecs == null
+          if (shouldTrackUsage) {
+            await db.callLog.update({ where: { vapiCallId: call.id }, data: finalData })
           }
         } else {
-          await db.callLog.create({
-            data: {
-              locationId, agentId: agentId || null, contactPhone: callerPhone,
-              vapiCallId: call?.id, direction: 'inbound', status: callStatus,
-              durationSecs, transcript, summary, recordingUrl, endedReason: call?.endedReason,
-            },
-          })
-        }
-
-        // Track voice usage for billing
-        if (durationSecs > 0 && agentId) {
           try {
-            const agent = await db.agent.findUnique({ where: { id: agentId }, select: { workspaceId: true } })
-            if (agent?.workspaceId) {
-              const { trackVoiceUsage } = await import('@/lib/usage')
-              await trackVoiceUsage(agent.workspaceId, agentId, durationSecs)
-            }
-          } catch (usageErr) {
-            console.error('[Vapi] Error tracking voice usage:', usageErr)
+            await db.callLog.create({
+              data: {
+                locationId, agentId, contactPhone: callerPhone,
+                vapiCallId: call.id, direction, ...finalData,
+              },
+            })
+            shouldTrackUsage = true
+          } catch (createErr: any) {
+            // Unique-violation on vapiCallId = concurrent retry already
+            // wrote the row. Nothing to do.
+            if (createErr?.code !== 'P2002') throw createErr
           }
         }
-
-        if (summary && agentId && callerPhone) {
-          try {
-            const { searchContacts: sc4 } = await import('@/lib/crm-client')
-            const contacts = await sc4(locationId, callerPhone)
-            if (contacts && contacts.length > 0) {
-              const contactId = contacts[0].id
-              await db.contactMemory.upsert({
-                where: { agentId_contactId: { agentId, contactId } },
-                create: { agentId, locationId, contactId, summary: `[Call] ${summary}` },
-                update: { summary: `[Last call] ${summary}` },
-              })
-            }
-          } catch {}
-        }
-      } catch (err) {
-        console.error('[Vapi] Error saving call log:', err)
+      } else {
+        // No call id (shouldn't happen) — log without idempotency
+        // rather than dropping the record.
+        await db.callLog.create({
+          data: { locationId, agentId, contactPhone: callerPhone, direction, ...finalData },
+        })
+        shouldTrackUsage = true
       }
+
+      if (shouldTrackUsage && durationSecs > 0 && workspaceId) {
+        try {
+          const { trackVoiceUsage } = await import('@/lib/usage')
+          await trackVoiceUsage(workspaceId, agentId ?? 'unknown', durationSecs)
+        } catch (usageErr) {
+          console.error('[Vapi] Error tracking voice usage:', usageErr)
+        }
+      }
+
+      if (summary && agentId && callerPhone && locationId) {
+        try {
+          const { searchContacts: sc4 } = await import('@/lib/crm-client')
+          const contacts = await sc4(locationId, callerPhone)
+          if (contacts && contacts.length > 0) {
+            const contactId = contacts[0].id
+            await db.contactMemory.upsert({
+              where: { agentId_contactId: { agentId, contactId } },
+              create: { agentId, locationId, contactId, summary: `[Call] ${summary}` },
+              update: { summary: `[Last call] ${summary}` },
+            })
+          }
+        } catch {}
+      }
+    } catch (err) {
+      console.error('[Vapi] Error saving call log:', err)
     }
 
     return NextResponse.json({ received: true })

@@ -1,8 +1,5 @@
 import { db } from '@/lib/db'
 import { createOutboundCall } from '@/lib/vapi-client'
-import { buildVoiceSystemPrompt } from '@/lib/voice-prompt'
-import { buildVoiceFunctionTools } from '@/lib/voice/vapi-assistant'
-import { buildVapiVoiceBlock, resolveVoiceEngine } from '@/lib/voice/vapi-adapter'
 import { checkVoiceQuota } from '@/lib/voice-quota'
 
 /**
@@ -63,12 +60,6 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
   }
 
   const agent = vapiConfig.agent
-  // Hydrate workspace-stacked knowledge via the junction (single source
-  // of truth). Mutates the agent in place so downstream prompt-building
-  // can read agent.knowledgeEntries unchanged.
-  const { bulkLoadKnowledgeForAgents } = await import('./knowledge')
-  const knMap = await bulkLoadKnowledgeForAgents([agent.id])
-  agent.knowledgeEntries = knMap.get(agent.id) ?? []
   const agentId = agent.id
 
   // 1a. Voice-minute quota check. Block the dial if the workspace has
@@ -100,56 +91,29 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
     throw new Error('An outbound call to this number was already initiated recently')
   }
 
-  // 3. Build system prompt with outbound context
-  let systemPrompt = await buildVoiceSystemPrompt(
-    agent,
-    agent.knowledgeEntries,
-    contactPhone,
-    locationId,
-    vapiConfig.voiceTools as any[],
-    'outbound'
-  )
+  // 3. Per-call context for the registered assistant's {{callContext}}
+  //    prompt slot. This is where the call's PURPOSE travels — the
+  //    workflow's custom instructions used to be baked into a full
+  //    inline assistant config that was built and then never sent
+  //    (dead code since the registered-assistant migration), so every
+  //    outbound call ran context-blind on the inbound-flavoured prompt.
+  const callContextParts = [
+    `This is an OUTBOUND call — you called ${contactName ? `${contactName} at ${contactPhone}` : contactPhone}. They did not call you.`,
+    `Reason the call was placed: ${triggerSource === 'ghl_workflow' ? 'an automated workflow' : triggerSource === 'trigger' ? 'an automated trigger' : 'manually initiated by the business'}.`,
+  ]
   if (customInstructions) {
-    systemPrompt += `\n\n## Workflow Instructions\n${customInstructions}`
+    callContextParts.push(`Instructions for this call: ${customInstructions}`)
   }
+  const callContext = callContextParts.join('\n')
 
-  // 4. Build assistant config (same shape as inbound assistant-request response)
-  const voiceFunctionTools = await buildVoiceFunctionTools({
-    agentId: agent.id,
-    workspaceId: agent.workspaceId,
-    enabledTools: (agent as any).enabledTools ?? [],
-    customVoiceTools: (vapiConfig.voiceTools as any[]) || [],
-  })
-  const assistantConfig = {
-    name: agent.name,
-    model: {
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-6',
-      messages: [{ role: 'system', content: systemPrompt }],
-      tools: voiceFunctionTools,
-    },
-    voice: buildVapiVoiceBlock({
-      engine: resolveVoiceEngine(vapiConfig.ttsProvider),
-      voiceId: vapiConfig.voiceId,
-      stability: vapiConfig.stability,
-      similarityBoost: vapiConfig.similarityBoost,
-      speed: vapiConfig.speed,
-      style: vapiConfig.style,
-      language: vapiConfig.language,
-    }),
-    firstMessage: contactName
-      ? `Hi ${contactName}, this is ${agent.agentPersonaName || agent.name}. How are you doing today?`
-      : `Hi there, this is ${agent.agentPersonaName || agent.name}. How are you doing today?`,
-    endCallMessage: vapiConfig.endCallMessage || 'Thanks for your time. Have a great day!',
-    maxDurationSeconds: vapiConfig.maxDurationSecs,
-    recordingEnabled: vapiConfig.recordCalls,
-    ...(vapiConfig.backgroundSound ? { backgroundSound: vapiConfig.backgroundSound } : {}),
-    ...(vapiConfig.endCallPhrases?.length ? { endCallPhrases: vapiConfig.endCallPhrases } : {}),
-    serverUrl: `${process.env.APP_URL}/api/vapi/webhook`,
-    serverUrlSecret: process.env.VAPI_WEBHOOK_SECRET,
-  }
+  // Outbound-specific greeting. The registered assistant's firstMessage
+  // is written for inbound ("how can I help you today?") which sounds
+  // absurd on a call the agent placed.
+  const firstMessage = contactName
+    ? `Hi ${contactName}, this is ${agent.agentPersonaName || agent.name}. How are you doing today?`
+    : `Hi there, this is ${agent.agentPersonaName || agent.name}. How are you doing today?`
 
-  // 5. Create CallLog with status 'initiated'
+  // 4. Create CallLog with status 'initiated'
   const callLog = await db.callLog.create({
     data: {
       locationId,
@@ -162,7 +126,7 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
     },
   })
 
-  // 6. Resolve the registered Vapi assistant id for this agent.
+  // 5. Resolve the registered Vapi assistant id for this agent.
   //    Lazy-backfill: agents created before this column existed get
   //    their assistant registered on first call. New agents already
   //    have it from agent-create. After this resolves we ALWAYS
@@ -180,10 +144,12 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
     throw err
   }
 
-  // 7. Call Vapi to initiate outbound call. We pass assistantId, not
+  // 6. Call Vapi to initiate outbound call. We pass assistantId, not
   //    inline assistant config — the registered assistant has the
   //    voice block, model, tools, and server.url already validated
-  //    by Vapi at registration time.
+  //    by Vapi at registration time. Per-call context rides the
+  //    overrides: callContext fills the prompt's {{callContext}} slot,
+  //    firstMessage replaces the inbound-flavoured opener.
   try {
     const vapiResult = await createOutboundCall({
       phoneNumberId: vapiConfig.phoneNumberId!,
@@ -192,10 +158,13 @@ export async function initiateOutboundCall(opts: OutboundCallOpts): Promise<Outb
       assistantOverrides: {
         variableValues: {
           locationId,
+          workspaceId: agent.workspaceId,
           agentId,
           callerPhone: contactPhone,
           direction: 'outbound',
+          callContext,
         },
+        firstMessage,
       },
     })
 

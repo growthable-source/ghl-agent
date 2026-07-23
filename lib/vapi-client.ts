@@ -166,12 +166,22 @@ export async function purchasePhoneNumber(opts: PurchasePhoneNumberOpts | string
   // Back-compat: old callers pass a bare areaCode.
   const params: PurchasePhoneNumberOpts = typeof opts === 'string' ? { areaCode: opts } : opts
   const countryCode = (params.countryCode || 'US').toUpperCase()
-  const payload: Record<string, string> = {
+  const payload: Record<string, unknown> = {
     provider: 'vapi',
     numberDesiredCountryCode: countryCode,
   }
   if (params.areaCode) payload.numberDesiredAreaCode = params.areaCode
   if (params.name) payload.name = params.name
+  // Route this number's assistant-request straight to our webhook, with
+  // the shared secret so the handler can authenticate it. Without this
+  // the number depends on the org-level Server URL configured by hand
+  // in the Vapi dashboard.
+  if (process.env.APP_URL) {
+    payload.server = {
+      url: `${process.env.APP_URL}/api/vapi/webhook`,
+      ...(process.env.VAPI_WEBHOOK_SECRET ? { secret: process.env.VAPI_WEBHOOK_SECRET } : {}),
+    }
+  }
 
   const data = await vapiRequest('/phone-number', {
     method: 'POST',
@@ -292,7 +302,7 @@ export async function createOutboundCall(opts: {
    */
   assistant?: Record<string, unknown>
   assistantId?: string
-  assistantOverrides?: { variableValues?: Record<string, string> }
+  assistantOverrides?: { variableValues?: Record<string, string>; firstMessage?: string; endCallMessage?: string }
 }): Promise<{ id: string; status: string }> {
   if (!opts.assistant && !opts.assistantId) {
     throw new Error('createOutboundCall: must pass either `assistant` or `assistantId`')

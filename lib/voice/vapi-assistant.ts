@@ -51,15 +51,21 @@ const DEFAULT_TRANSCRIBER_LANGUAGE = process.env.VAPI_DEFAULT_TRANSCRIBER_LANGUA
  * identity, knowledge base, persona, qualifying questions catalogue,
  * commerce surface, fallback behaviour.
  *
- * Per-call context (contact name, recent history, etc.) is injected
- * by /api/vapi/webhook when Vapi calls back for each model turn.
+ * Per-call context lands through the `{{callContext}}` template slot:
+ * Vapi substitutes `{{var}}` tokens in the registered prompt from
+ * `assistantOverrides.variableValues` at call start. EVERY entry point
+ * (browser test, widget, inbound assistant-request, outbound) must pass
+ * `variableValues.callContext` — a short paragraph saying who's on the
+ * line and why — or the slot renders empty and the agent flies blind.
  */
 async function buildAssistantSystemPrompt(opts: {
   agent: { id: string; name: string; workspaceId: string; systemPrompt: string; instructions?: string | null; calendarId?: string | null; fallbackBehavior?: string | null; fallbackMessage?: string | null; agentPersonaName?: string | null }
   knowledgeEntries: Array<{ title: string; content: string; createdAt?: Date | null }>
   shopifyConnected: boolean
+  /** E.164 number live calls can be handed to; enables the transferCall tool + prompt section. */
+  transferPhoneNumber?: string | null
 }): Promise<string> {
-  const { agent, knowledgeEntries, shopifyConnected } = opts
+  const { agent, knowledgeEntries, shopifyConnected, transferPhoneNumber } = opts
 
   // ── TOOL-USE PREAMBLE (top of prompt) ─────────────────────────────
   // GPT-4.1 on a real-time voice call tends to answer from priors
@@ -83,6 +89,13 @@ async function buildAssistantSystemPrompt(opts: {
 
   prompt += `Knowledge base contents: ${knowledgeEntries.length} indexed items covering this business. Reach them via \`query_knowledge\`.\n\n`
   prompt += '---\n\n'
+
+  // ── PER-CALL CONTEXT SLOT ──────────────────────────────────────────
+  // Vapi replaces {{callContext}} from assistantOverrides.variableValues
+  // at call start. Every entry point passes it (browser test, widget,
+  // inbound, outbound) — this is how a statically-registered assistant
+  // still knows who it's talking to and why.
+  prompt += '# THIS CALL\n\n{{callContext}}\n\n---\n\n'
 
   // ── USER-DEFINED SYSTEM PROMPT ─────────────────────────────────────
   prompt += agent.systemPrompt || 'You are a helpful voice assistant.'
@@ -111,6 +124,26 @@ async function buildAssistantSystemPrompt(opts: {
     prompt += `\n\n## Booking\nNo calendar is connected. If the caller wants to schedule, capture their name + email (upsert_contact) and say a teammate will follow up.`
   }
 
+  // ── PERSONA + QUALIFYING CATALOGUE ─────────────────────────────────
+  // Ported from the deleted legacy per-call builder (voice-prompt.ts's
+  // buildVoiceSystemPrompt) so the registered assistant doesn't lose
+  // the agent's configured personality or its qualifying questions.
+  // Static catalogue only — per-contact "already answered" filtering
+  // needed a contact id we don't have at registration time.
+  try {
+    const { buildPersonaBlock } = await import('@/lib/persona')
+    prompt += buildPersonaBlock(agent as any) || ''
+  } catch (err: any) {
+    console.warn(`[vapi-assistant] persona block failed for ${agent.id}:`, err?.message)
+  }
+  try {
+    const { getAllQuestions, buildQualifyingPromptBlock } = await import('@/lib/qualifying')
+    const questions = await getAllQuestions(agent.id)
+    prompt += buildQualifyingPromptBlock(questions, (agent as any).qualifyingStyle ?? 'strict') || ''
+  } catch (err: any) {
+    console.warn(`[vapi-assistant] qualifying block failed for ${agent.id}:`, err?.message)
+  }
+
   // ── VOICE CALL INSTRUCTIONS (bottom of prompt — repeats tool rule) ──
   prompt += '\n\n## VOICE CALL INSTRUCTIONS\n'
   prompt += 'You are on a live phone call. Speak naturally and conversationally. Keep responses SHORT — 1-3 sentences max. No bullet points, no markdown.\n\n'
@@ -118,12 +151,23 @@ async function buildAssistantSystemPrompt(opts: {
   prompt += '\n### Booking and capturing the caller\n'
   prompt += 'When the caller wants to book or you\'re taking details: get their first name and email, save them to the CRM with upsert_contact (their phone is already known — include it), check real availability with get_available_slots, offer specific times with the timezone, and when they pick one call book_appointment in the same turn. Never claim something is booked without calling book_appointment.\n'
 
+  // Human transfer — only promised when a destination number actually
+  // exists (the transferCall tool is only registered then). Prompts
+  // that advertise transfer without the tool make the model narrate a
+  // hand-off it can't perform.
+  if (transferPhoneNumber) {
+    prompt += '\n\n## Transferring to a Human\n'
+    prompt += 'When the caller asks for a human, gets frustrated, or has a request you cannot handle, say you\'re connecting them now and call the `transferCall` tool. Do not describe a transfer without calling the tool.'
+  }
+
   // Fallback behaviour
   const fb = agent.fallbackBehavior ?? 'message'
   const fm = agent.fallbackMessage
   prompt += '\n\n## When Tools Return Nothing\nDo NOT guess. Do NOT invent answers from your training data.'
-  if (fb === 'transfer') {
-    prompt += ' Tell the caller you\'ll connect them with someone who can help.'
+  if (fb === 'transfer' && transferPhoneNumber) {
+    prompt += ' Offer to connect them with someone who can help, and use the `transferCall` tool if they accept.'
+  } else if (fb === 'transfer') {
+    prompt += ' Offer to have a team member follow up, and use `send_sms_followup` to capture the request.'
   } else if (fm) {
     prompt += ` Say: "${fm}"`
   } else {
@@ -268,6 +312,7 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
     agent: agent as any,
     knowledgeEntries,
     shopifyConnected,
+    transferPhoneNumber: vapiConfig.transferPhoneNumber,
   })
 
   const voiceBlock = buildVapiVoiceBlock({
@@ -299,9 +344,21 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
   // standalone Tools (Round 14) is the fix.
   const functionToolIds = await ensureVapiTools(desiredFunctionTools)
 
-  // Vapi built-in `endCall` tool — Vapi-managed, not a function. Stored
-  // as a separate Tool entity once and referenced by id.
-  const builtInToolIds = await ensureVapiTools([{ type: 'endCall' }])
+  // Vapi built-in tools — Vapi-managed, not functions. endCall is one
+  // shared entity per org; transferCall entities are keyed by their
+  // destination number (each agent's transfer target is its own tool).
+  const builtIns: Array<Record<string, unknown>> = [{ type: 'endCall' }]
+  if (vapiConfig.transferPhoneNumber) {
+    builtIns.push({
+      type: 'transferCall',
+      destinations: [{
+        type: 'number',
+        number: vapiConfig.transferPhoneNumber,
+        message: 'Connecting you now — one moment.',
+      }],
+    })
+  }
+  const builtInToolIds = await ensureVapiTools(builtIns as any)
 
   return {
     name: agent.name,
@@ -329,17 +386,22 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
     // to an answering machine. Vapi's voicemailDetection is enabled
     // by default; this is just the script. Without it, hitting a
     // voicemail box results in a silent hang-up (per Vapi's typedef).
-    // Kept simple and brand-neutral so it works for any vertical;
-    // operators can override via VapiConfig if they want a custom one.
-    voicemailMessage: (vapiConfig as any).voicemailMessage || `Hi, this is ${(agent as any).agentPersonaName || agent.name}. Sorry I missed you — I'll try you back shortly. Thanks.`,
+    voicemailMessage: vapiConfig.voicemailMessage || `Hi, this is ${(agent as any).agentPersonaName || agent.name}. Sorry I missed you — I'll try you back shortly. Thanks.`,
     maxDurationSeconds: vapiConfig.maxDurationSecs ?? 600,
+    // Call recording — VapiConfig.recordCalls was silently ignored on
+    // the registered path (only the deleted inline configs set it).
+    artifactPlan: { recordingEnabled: vapiConfig.recordCalls ?? true },
     ...(vapiConfig.backgroundSound ? { backgroundSound: vapiConfig.backgroundSound } : {}),
     ...(vapiConfig.endCallPhrases?.length ? { endCallPhrases: vapiConfig.endCallPhrases } : {}),
-    // Webhook callback — Vapi POSTs to this URL for each model turn,
-    // tool call, and lifecycle event. Same shape for browser + phone
-    // (Vapi's docs say `server` nested is what they want on the
-    // assistant object specifically, regardless of how the call started).
-    server: { url: `${APP_URL}/api/vapi/webhook` },
+    // Webhook callback — Vapi POSTs to this URL for tool calls and
+    // lifecycle events. `secret` is echoed back as the x-vapi-secret
+    // header; the webhook rejects requests without it (when the env
+    // var is configured). Assistants registered before the secret was
+    // set pick it up on their next sync.
+    server: {
+      url: `${APP_URL}/api/vapi/webhook`,
+      ...(process.env.VAPI_WEBHOOK_SECRET ? { secret: process.env.VAPI_WEBHOOK_SECRET } : {}),
+    },
   }
 }
 
@@ -359,7 +421,7 @@ export async function buildVapiAssistantConfig(opts: BuildAssistantOpts): Promis
  * from the desired shape get PATCHed in place.
  */
 async function ensureVapiTools(
-  desired: Array<{ type: string; function?: { name?: string; description?: string; parameters?: unknown } }>,
+  desired: Array<{ type: string; function?: { name?: string; description?: string; parameters?: unknown }; destinations?: unknown }>,
 ): Promise<string[]> {
   if (desired.length === 0) return []
 
@@ -372,12 +434,18 @@ async function ensureVapiTools(
   const ids: string[] = []
   for (const d of desired) {
     try {
-      // Match key: built-in tools key on `type` (one endCall per org);
-      // function tools key on `function.name`.
+      // Match key: function tools key on `function.name`; transferCall
+      // keys on its destination set (each agent's transfer target is a
+      // distinct tool — an org-wide singleton would make every agent
+      // transfer to whichever number synced last); other built-ins
+      // (endCall) are one per org, keyed on `type`.
       const isFunction = d.type === 'function'
       const match = existing.find((t: any) => {
         if (t.type !== d.type) return false
         if (isFunction) return t.function?.name === d.function?.name
+        if (d.type === 'transferCall') {
+          return JSON.stringify(t.destinations ?? null) === JSON.stringify(d.destinations ?? null)
+        }
         return true
       })
 
