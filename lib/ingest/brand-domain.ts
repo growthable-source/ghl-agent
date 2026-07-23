@@ -50,3 +50,48 @@ export async function findBrandDomainId(brandId: string | null | undefined): Pro
   }).catch(() => null) // pre-migration: brandId column missing
   return domain?.id ?? null
 }
+
+/**
+ * The COLLECTION portal-added brand knowledge belongs to. Collections
+ * are the only container operators and agents see, so brand knowledge
+ * needs one too — otherwise it's invisible on the Knowledge page and
+ * unattachable to an agent.
+ *
+ * One per brand, matched on KnowledgeCollection.brandId.
+ */
+export async function getOrCreateBrandCollection(
+  brandId: string,
+): Promise<{ id: string; workspaceId: string } | null> {
+  const existing = await db.knowledgeCollection.findFirst({
+    where: { brandId },
+    select: { id: true, workspaceId: true },
+  }).catch(() => null)
+  if (existing) return existing
+
+  const brand = await db.brand.findUnique({
+    where: { id: brandId },
+    select: { workspaceId: true, name: true },
+  })
+  if (!brand) return null
+
+  return db.knowledgeCollection.create({
+    data: {
+      workspaceId: brand.workspaceId,
+      brandId,
+      name: `${brand.name} — portal knowledge`,
+      description: 'Added by portal users for this brand. Used when drafting ticket replies and by any agent this collection is attached to.',
+      icon: '🏷️',
+    },
+    select: { id: true, workspaceId: true },
+  })
+}
+
+/** Read-only variant for the suggest-reply path. */
+export async function findBrandCollectionId(brandId: string | null | undefined): Promise<string | null> {
+  if (!brandId) return null
+  const c = await db.knowledgeCollection.findFirst({
+    where: { brandId },
+    select: { id: true },
+  }).catch(() => null)
+  return c?.id ?? null
+}

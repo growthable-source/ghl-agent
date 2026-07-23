@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -30,6 +31,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   })
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
+  const countSelect: any = await sourceCollectionsReady()
+    ? { entries: true, dataSources: true, sources: true }
+    : { entries: true, dataSources: true }
+
   let attached: any[] = []
   let available: any[] = []
   try {
@@ -39,14 +44,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
         orderBy: { attachedAt: 'asc' },
         include: {
           collection: {
-            include: { _count: { select: { entries: true, dataSources: true } } },
+            include: { _count: { select: countSelect } },
           },
         },
       }),
       db.knowledgeCollection.findMany({
         where: { workspaceId },
         orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-        include: { _count: { select: { entries: true, dataSources: true } } },
+        include: { _count: { select: countSelect } },
       }),
     ])
   } catch (err: any) {
@@ -75,6 +80,7 @@ function shape(c: any) {
     color: c.color,
     entryCount: c._count?.entries ?? 0,
     dataSourceCount: c._count?.dataSources ?? 0,
+    sourceCount: c._count?.sources ?? 0,
   }
 }
 

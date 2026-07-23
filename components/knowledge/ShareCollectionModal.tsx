@@ -48,12 +48,14 @@ export default function ShareCollectionModal({
   collectionId,
   collectionName,
   dataSourceCount,
+  sourceCount,
   onClose,
 }: {
   workspaceId: string
   collectionId: string
   collectionName: string
   dataSourceCount: number
+  sourceCount: number
   onClose: () => void
 }) {
   const [mode, setMode] = useState<Mode>('copy')
@@ -65,7 +67,7 @@ export default function ShareCollectionModal({
   const [targetId, setTargetId] = useState('')
   const [copyName, setCopyName] = useState(collectionName)
   const [copying, setCopying] = useState(false)
-  const [copyResult, setCopyResult] = useState<{ workspaceId: string; collectionId: string; entryCount: number } | null>(null)
+  const [copyResult, setCopyResult] = useState<{ workspaceId: string; collectionId: string; entryCount: number; sourceCount: number } | null>(null)
 
   // ── Link tab ──
   const [links, setLinks] = useState<ShareLink[]>([])
@@ -112,6 +114,7 @@ export default function ShareCollectionModal({
         workspaceId: targetId,
         collectionId: data.copied.collectionId,
         entryCount: data.copied.entryCount,
+        sourceCount: data.copied.sourceCount ?? 0,
       })
     } finally { setCopying(false) }
   }
@@ -203,21 +206,32 @@ export default function ShareCollectionModal({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          {dataSourceCount > 0 && (
-            <p className="text-[11px] px-3 py-2 rounded-lg" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>
-              Written items copy across. The {dataSourceCount} connected data source
-              {dataSourceCount === 1 ? '' : 's'} won’t — those hold credentials, so the
-              other workspace connects its own.
-            </p>
-          )}
+          <p className="text-[11px] px-3 py-2 rounded-lg" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>
+            {sourceCount > 0 && (
+              <>The {sourceCount} link{sourceCount === 1 ? '' : 's'} and file{sourceCount === 1 ? '' : 's'} travel
+              across and get re-read from scratch in the other workspace, so they arrive fresh
+              rather than as a stale copy. Written items come too. </>
+            )}
+            {sourceCount === 0 && <>Written items copy across. </>}
+            {dataSourceCount > 0 && (
+              <>The {dataSourceCount} connected data source{dataSourceCount === 1 ? '' : 's'} won’t —
+              those hold credentials, so the other workspace connects its own.</>
+            )}
+          </p>
 
           {mode === 'copy' && (
             copyResult ? (
               <div className="text-center py-6">
                 <div className="text-3xl mb-2">✅</div>
                 <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                  Copied {copyResult.entryCount} item{copyResult.entryCount === 1 ? '' : 's'}
+                  Copied {copyResult.entryCount} written item{copyResult.entryCount === 1 ? '' : 's'}
+                  {copyResult.sourceCount > 0 && <> and {copyResult.sourceCount} link{copyResult.sourceCount === 1 ? '' : 's'}/file{copyResult.sourceCount === 1 ? '' : 's'}</>}
                 </p>
+                {copyResult.sourceCount > 0 && (
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                    The links are being re-read now — give it a minute to finish learning.
+                  </p>
+                )}
                 <a
                   href={`/dashboard/${copyResult.workspaceId}/knowledge/${copyResult.collectionId}`}
                   className="inline-block mt-3 px-4 py-2 rounded-lg text-xs font-semibold"

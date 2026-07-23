@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
     // Without this, an agent answering an SMS can't see anything from
     // KnowledgeSource ingestion, only legacy KnowledgeEntry rows.
     const { block: phase2Block } = await retrieveAndFormatForAgent(
-      { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds, knowledgeScopeAll: (agent as any).knowledgeScopeAll, knowledgeConditions },
+      { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeScopeAll: (agent as any).knowledgeScopeAll, knowledgeConditions },
       body,
     )
     systemPrompt += phase2Block

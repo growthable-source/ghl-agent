@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
 
 type Params = { params: Promise<{ workspaceId: string; collectionId: string }> }
 
@@ -28,6 +29,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       attachments: {
         include: { agent: { select: { id: true, name: true } } },
       },
+      ...(await sourceCollectionsReady() ? { _count: { select: { sources: true } } } : {}),
     },
   }).catch(() => null)
   if (!collection) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -40,6 +42,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       icon: collection.icon,
       color: collection.color,
       order: collection.order,
+      sourceCount: collection._count?.sources ?? 0,
       createdAt: collection.createdAt.toISOString(),
       updatedAt: collection.updatedAt.toISOString(),
       entries: collection.entries.map((e: any) => ({

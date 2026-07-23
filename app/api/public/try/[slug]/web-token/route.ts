@@ -104,7 +104,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     chunks = await retrieveChunks(
       workspaceId,
       `about ${prospect.businessName}: services, opening hours, location, pricing, contact`,
-      { knowledgeDomainIds: [prospect.knowledgeDomainId], scopeToDomains: true, limit: 8 },
+      { knowledgeDomainIds: [prospect.knowledgeDomainId], limit: 8 },
     )
   }
   // With no crawled content the model MUST NOT fall back to whatever its

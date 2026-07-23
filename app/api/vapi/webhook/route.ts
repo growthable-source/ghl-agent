@@ -104,14 +104,14 @@ async function runVoiceToolInner(
       if (!ctx.agentId) return 'No agent context — try again or contact support.'
       const agent = await db.agent.findUnique({
         where: { id: ctx.agentId },
-        select: { workspaceId: true, knowledgeDomainIds: true, knowledgeScopeAll: true, knowledgeConditions: true },
+        select: { workspaceId: true, knowledgeScopeAll: true, knowledgeConditions: true },
       })
       if (!agent || !agent.workspaceId) return 'Agent not found or not assigned to a workspace.'
       const query: string = typeof params.query === 'string' ? params.query : ''
       if (!query.trim()) return 'No query provided — please ask again with a specific question.'
       const { retrieveAndFormatForAgent, normaliseConditions } = await import('@/lib/agent/retrieve-for-agent')
       const { block, chunks } = await retrieveAndFormatForAgent(
-        { id: ctx.agentId, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds, knowledgeScopeAll: agent.knowledgeScopeAll, knowledgeConditions: normaliseConditions(agent.knowledgeConditions) },
+        { id: ctx.agentId, workspaceId: agent.workspaceId, knowledgeScopeAll: agent.knowledgeScopeAll, knowledgeConditions: normaliseConditions(agent.knowledgeConditions) },
         query,
       )
       console.log('[Voice tool] query_knowledge result:', {

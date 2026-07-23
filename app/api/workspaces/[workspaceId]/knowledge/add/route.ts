@@ -14,16 +14,17 @@
  * synchronous in-request crawling/parsing that froze the UI and hit
  * function timeouts on large files.
  *
- * Everything lands in the workspace's default knowledge domain;
- * agents with no explicit domain scope read it automatically — no
- * extra wiring step.
+ * Optional `collectionId` (JSON body or form field) puts the source in
+ * a specific collection; without it everything lands in the workspace's
+ * default collection, which every agent reads unless the operator has
+ * deliberately narrowed that agent's scope.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
 import { detectUrl } from '@/lib/ingest/detect'
-import { getOrCreateWorkspaceDomain } from '@/lib/ingest/workspace-domain'
+import { resolveIngestTarget } from '@/lib/knowledge/default-collection'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB — Blob handles it; parsing is async now
 const ALLOWED_EXTENSIONS = /\.(pdf|txt|md|markdown)$/i
@@ -62,10 +63,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       addRandomSuffix: false,
     })
 
-    const domain = await getOrCreateWorkspaceDomain(workspaceId)
+    const requestedCollectionId = typeof form?.get('collectionId') === 'string'
+      ? String(form.get('collectionId'))
+      : null
+    const target = await resolveIngestTarget(workspaceId, requestedCollectionId)
+    if (!target) return NextResponse.json({ error: 'That collection is not in this workspace.' }, { status: 400 })
+
     const source = await db.knowledgeSource.create({
       data: {
-        knowledgeDomainId: domain.id,
+        knowledgeDomainId: target.knowledgeDomainId,
+        collectionId: target.collectionId,
         sourceType: 'pdf',
         urlOrIdentifier: blob.pathname,
         crawlConfig: { storageKey: blob.pathname, originalFilename: file.name },
@@ -85,7 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   }
 
   // ── URL branch ───────────────────────────────────────────────────
-  const body = (await req.json().catch(() => ({}))) as { url?: string }
+  const body = (await req.json().catch(() => ({}))) as { url?: string; collectionId?: string }
   const rawUrl = typeof body.url === 'string' ? body.url.trim() : ''
   if (!rawUrl) return NextResponse.json({ error: 'url required' }, { status: 400 })
 
@@ -98,22 +105,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   const normalizedUrl = parsed.toString()
 
   const detection = await detectUrl(normalizedUrl)
-  const domain = await getOrCreateWorkspaceDomain(workspaceId)
+  const target = await resolveIngestTarget(
+    workspaceId,
+    typeof body.collectionId === 'string' ? body.collectionId : null,
+  )
+  if (!target) return NextResponse.json({ error: 'That collection is not in this workspace.' }, { status: 400 })
 
   // Re-adding the same URL re-checks it instead of duplicating the
   // source — pasting twice is "check it again", not "two copies".
-  // Deduped across ALL the workspace's domains, not just the default
-  // one: sources created on the advanced surface live in other
-  // domains and must not get a doppelgänger here.
+  // Deduped per COLLECTION: the same help center can legitimately sit in
+  // two collections (e.g. a shared set and a brand-specific one), but
+  // never twice in the same one.
   const existing = await db.knowledgeSource.findFirst({
-    where: { domain: { workspaceId }, urlOrIdentifier: normalizedUrl },
+    where: {
+      domain: { workspaceId },
+      urlOrIdentifier: normalizedUrl,
+      collectionId: target.collectionId,
+    },
     select: { id: true },
   })
   const source =
     existing ??
     (await db.knowledgeSource.create({
       data: {
-        knowledgeDomainId: domain.id,
+        knowledgeDomainId: target.knowledgeDomainId,
+        collectionId: target.collectionId,
         sourceType: detection.sourceType,
         urlOrIdentifier: normalizedUrl,
         crawlConfig: detection.crawlConfig as object,

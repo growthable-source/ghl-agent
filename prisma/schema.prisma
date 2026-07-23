@@ -918,6 +918,10 @@ model KnowledgeCollection {
   updatedAt   DateTime  @updatedAt
 
   entries     KnowledgeEntry[]
+  // Crawled / uploaded sources that index into pgvector. A collection
+  // holds BOTH written entries (stuffed into the prompt) and live
+  // sources (retrieved per message) — one container, two item types.
+  sources     KnowledgeSource[]
   dataSources WorkspaceDataSource[]
   attachments AgentCollection[]
   shares      KnowledgeCollectionShare[]
@@ -1096,8 +1100,16 @@ model Taxonomy {
 // files with no pipeline changes.
 model KnowledgeSource {
   id                String           @id @default(cuid())
+  // Storage/tenancy anchor. Chunks hang off the domain and retrieval
+  // joins through it for the workspace filter. Operators never see or
+  // choose a domain — it's an internal container.
   knowledgeDomainId String
   domain            KnowledgeDomain  @relation(fields: [knowledgeDomainId], references: [id], onDelete: Cascade)
+  // The collection this source belongs to — the ONLY grouping an
+  // operator sees or an agent attaches to. Nullable purely so the
+  // backfill can run before every row is assigned; treat as required.
+  collectionId      String?
+  collection        KnowledgeCollection? @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   sourceType        String // 'docs' | 'pdf' | 'youtube' | 'rss' | 'community' | 'manual'
   // URL for docs/rss/youtube; opaque identifier for hosted PDFs etc.
   urlOrIdentifier   String
@@ -1112,6 +1124,7 @@ model KnowledgeSource {
   chunks            KnowledgeChunk[]
 
   @@index([knowledgeDomainId, isActive])
+  @@index([collectionId])
   @@index([lastCrawledAt])
 }
 

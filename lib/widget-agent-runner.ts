@@ -461,7 +461,7 @@ Never apologise for the language or mention translation — just speak naturally
     try {
       const { captureConversationTopics } = await import('./agent/capture-topics')
       captureConversationTopics({
-        agent: { workspaceId: widget.workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds },
+        agent: { workspaceId: widget.workspaceId },
         conversationId: convo.id,
         widgetId: convo.widgetId,
         message: content,

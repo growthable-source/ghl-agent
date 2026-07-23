@@ -1,28 +1,45 @@
 /**
  * GET /api/workspaces/[workspaceId]/knowledge/sources
  *
- * Everything the workspace is learning from, across ALL its knowledge
- * domains, with the latest run state and live chunk counts — the
- * backing data for the simple Knowledge page's source list. One
- * endpoint so the UI never has to understand the domain → source →
- * run hierarchy.
+ * Everything the workspace is learning from, with the latest run state
+ * and live chunk counts — the backing data for the Knowledge page's
+ * source list. One endpoint so the UI never has to understand the
+ * domain → source → run hierarchy.
+ *
+ * `?collectionId=` narrows to one collection (the collection detail
+ * page); without it you get the whole workspace.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
+import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
+  const collectionId = req.nextUrl.searchParams.get('collectionId')
+  const ready = await sourceCollectionsReady()
+
+  // Pre-migration there's no collectionId column: a per-collection
+  // request can't be answered, so return nothing rather than silently
+  // showing the whole workspace's sources under one collection.
+  if (collectionId && !ready) {
+    return NextResponse.json({ sources: [], notMigrated: true })
+  }
+
   const sources = await db.knowledgeSource.findMany({
-    where: { domain: { workspaceId } },
+    where: {
+      domain: { workspaceId },
+      ...(collectionId ? { collectionId } : {}),
+    },
     orderBy: { createdAt: 'desc' },
     take: 200,
     include: {
       runs: { orderBy: { startedAt: 'desc' }, take: 1 },
+      ...(ready ? { collection: { select: { id: true, name: true, icon: true, color: true } } } : {}),
     },
   })
 
@@ -41,6 +58,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ wor
       return {
         id: s.id,
         sourceType: s.sourceType,
+        collectionId: (s as any).collectionId ?? null,
+        collectionName: (s as any).collection?.name ?? null,
         url: s.urlOrIdentifier,
         displayName:
           (cfg.originalFilename as string) ||

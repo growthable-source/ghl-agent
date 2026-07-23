@@ -19,6 +19,8 @@ interface Preview {
     icon: string | null
     color: string | null
     entryCount: number
+    sourceCount: number
+    sourceLabels: string[]
     tokenEstimate: number
     sampleTitles: string[]
     skippedDataSourceCount: number
@@ -131,18 +133,22 @@ export default function KnowledgeSharePage() {
           <h1 className="text-lg font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</h1>
           {c.description && <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{c.description}</p>}
           <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-            {c.entryCount} item{c.entryCount === 1 ? '' : 's'}
+            {c.sourceCount > 0 && <>{c.sourceCount} link{c.sourceCount === 1 ? '' : 's'} and file{c.sourceCount === 1 ? '' : 's'} · </>}
+            {c.entryCount} written item{c.entryCount === 1 ? '' : 's'}
             {c.tokenEstimate > 0 && <> · ~{c.tokenEstimate.toLocaleString()} tokens</>}
           </p>
         </div>
       </div>
 
-      {c.sampleTitles.length > 0 && (
+      {(c.sampleTitles.length > 0 || c.sourceLabels.length > 0) && (
         <div className="mb-4 p-3 rounded-lg" style={{ background: 'var(--surface-tertiary)' }}>
           <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
             What’s inside
           </p>
           <ul className="space-y-0.5">
+            {c.sourceLabels.map((t, i) => (
+              <li key={`src-${i}`} className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>🔗 {t}</li>
+            ))}
             {c.sampleTitles.map((t, i) => (
               <li key={i} className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>· {t}</li>
             ))}
@@ -206,6 +212,7 @@ export default function KnowledgeSharePage() {
           </button>
           <p className="text-[10px] text-center mt-2" style={{ color: 'var(--text-tertiary)' }}>
             You get your own copy — later changes on either side stay independent.
+            {c.sourceCount > 0 && ' Links are re-read from source in your workspace, so they arrive fresh.'}
           </p>
         </>
       )}

@@ -1,5 +1,7 @@
 import { randomBytes } from 'crypto'
 import { db } from '@/lib/db'
+import { getOrCreateWorkspaceDomain } from '@/lib/ingest/workspace-domain'
+import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
 
 /**
  * Cross-workspace knowledge collection sharing.
@@ -14,6 +16,13 @@ import { db } from '@/lib/db'
  * collection and its written entries. Nothing is live-linked: brands,
  * agents and data-source credentials are workspace-local, so a live
  * link would leak edits (and secrets) across account boundaries.
+ *
+ * Live sources (crawled sites, feeds, uploaded files) copy as SOURCES,
+ * not as chunks: the destination gets the URL + crawl settings and
+ * indexes them into its own vector rows on the next ingest pass. That
+ * keeps embeddings inside one workspace's tenancy boundary and means
+ * the copy is re-read from the live site rather than inheriting a
+ * possibly-stale snapshot.
  *
  * Deliberately NOT copied:
  *  - data sources (WorkspaceDataSource) — they carry encrypted
@@ -76,6 +85,9 @@ export interface CopyResult {
   collectionId: string
   name: string
   entryCount: number
+  /** Live sources copied. Each is queued for a fresh crawl in the
+   *  destination workspace, so its content arrives within a minute. */
+  sourceCount: number
   /** Data sources present on the source that were intentionally skipped. */
   skippedDataSourceCount: number
 }
@@ -109,14 +121,20 @@ export async function copyCollectionToWorkspace(opts: {
   /** Override the copied collection's name. Falls back to the source name. */
   nameOverride?: string | null
 }): Promise<CopyResult | { error: string }> {
-  const source = await db.knowledgeCollection.findUnique({
+  // Sources only travel once the unification SQL has run; before that a
+  // collection is written entries only.
+  const canCopySources = await sourceCollectionsReady()
+
+  const source: any = await db.knowledgeCollection.findUnique({
     where: { id: opts.sourceCollectionId },
     include: {
       entries: { orderBy: { createdAt: 'asc' } },
+      ...(canCopySources ? { sources: { orderBy: { createdAt: 'asc' } } } : {}),
       _count: { select: { dataSources: true } },
     },
   })
   if (!source) return { error: 'Source collection no longer exists.' }
+  const sourceRows: any[] = source.sources ?? []
 
   const name = await uniqueName(
     opts.targetWorkspaceId,
@@ -145,7 +163,7 @@ export async function copyCollectionToWorkspace(opts: {
 
   if (source.entries.length > 0) {
     await db.knowledgeEntry.createMany({
-      data: source.entries.map(e => ({
+      data: source.entries.map((e: any) => ({
         collectionId: created.id,
         workspaceId: opts.targetWorkspaceId,
         // agentId deliberately dropped — the origin agent doesn't
@@ -163,10 +181,40 @@ export async function copyCollectionToWorkspace(opts: {
     })
   }
 
+  // Live sources: recreate the pointer, then queue an ingest run so the
+  // destination builds its OWN chunks from the live URL. Copying the
+  // sharer's chunks would move embeddings across a tenancy boundary and
+  // freeze the content at whatever the sharer last crawled.
+  let sourceCount = 0
+  if (sourceRows.length > 0) {
+    const domain = await getOrCreateWorkspaceDomain(opts.targetWorkspaceId)
+    for (const s of sourceRows) {
+      try {
+        const copy = await db.knowledgeSource.create({
+          data: {
+            knowledgeDomainId: domain.id,
+            collectionId: created.id,
+            sourceType: s.sourceType,
+            urlOrIdentifier: s.urlOrIdentifier,
+            crawlConfig: s.crawlConfig as object,
+            isActive: s.isActive,
+          },
+          select: { id: true },
+        })
+        await db.ingestionRun.create({ data: { sourceId: copy.id, status: 'queued' } })
+        sourceCount++
+      } catch {
+        // One bad source must not sink the whole import — the rest of
+        // the collection is still worth having.
+      }
+    }
+  }
+
   return {
     collectionId: created.id,
     name: created.name,
     entryCount: source.entries.length,
+    sourceCount,
     skippedDataSourceCount: source._count.dataSources,
   }
 }

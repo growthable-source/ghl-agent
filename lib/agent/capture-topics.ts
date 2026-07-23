@@ -20,7 +20,7 @@ import { db } from '@/lib/db'
 import { retrieveChunks } from '@/lib/ingest/retrieve'
 
 export interface CaptureTopicsParams {
-  agent: { workspaceId: string; knowledgeDomainIds?: string[] | null }
+  agent: { workspaceId: string }
   conversationId: string
   widgetId: string
   /** The visitor's incoming message for this turn. */
@@ -34,12 +34,10 @@ export async function captureConversationTopics(params: CaptureTopicsParams): Pr
     // would just embed to noise.
     if (message.length < 6) return
 
-    const domainIds = Array.isArray(params.agent.knowledgeDomainIds)
-      ? params.agent.knowledgeDomainIds.filter(Boolean)
-      : []
-
+    // Topic capture is a workspace-wide telemetry sweep — deliberately
+    // NOT scoped to the answering agent's collections, so the panel
+    // reports what visitors ask about, not what one agent could answer.
     const chunks = await retrieveChunks(params.agent.workspaceId, message, {
-      knowledgeDomainIds: domainIds,
       limit: 4,
       // A touch stricter than the runtime 0.25 floor — only record a topic
       // when the match is genuinely confident, so the panel isn't padded
@@ -48,18 +46,18 @@ export async function captureConversationTopics(params: CaptureTopicsParams): Pr
     })
     if (chunks.length === 0) return
 
-    // Topic label = the knowledge collection (domain) name — the
-    // human-meaningful "topic of knowledge" an operator curated. Fall back
-    // to the chunk's primaryTopic when a domain somehow has no name.
+    // Topic label = the collection name — the human-meaningful "topic of
+    // knowledge" an operator actually curated. Falls back to the domain
+    // name (pre-backfill sources) then the chunk's own primaryTopic.
     // chunks arrive best-match-first, so Map insertion order is preserved.
     const byTopic = new Map<string, string | null>() // topic label -> domainId
     for (const c of chunks) {
-      const topic = (c.domainName || c.primaryTopic || '').trim().slice(0, 120)
+      const topic = (c.collectionName || c.domainName || c.primaryTopic || '').trim().slice(0, 120)
       if (!topic) continue
       if (!byTopic.has(topic)) byTopic.set(topic, c.knowledgeDomainId)
     }
     // Cap at the 3 best distinct topics for this message so one wide-ranging
-    // question doesn't blanket every domain.
+    // question doesn't blanket every collection.
     const top = Array.from(byTopic.entries()).slice(0, 3)
     if (top.length === 0) return
 

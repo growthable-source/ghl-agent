@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -17,13 +18,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
+  // `sources` only counts once the unification SQL has run; asking for
+  // it earlier is a P2022, not an empty count.
+  const withSources = await sourceCollectionsReady()
+
   let rows: any[] = []
   try {
     rows = await db.knowledgeCollection.findMany({
       where: { workspaceId },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
       include: {
-        _count: { select: { entries: true, dataSources: true, attachments: true } },
+        _count: {
+          select: withSources
+            ? { entries: true, dataSources: true, attachments: true, sources: true }
+            : { entries: true, dataSources: true, attachments: true },
+        },
       },
     })
   } catch (err: any) {
@@ -46,6 +55,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       entryCount: c._count.entries,
       dataSourceCount: c._count.dataSources,
       agentCount: c._count.attachments,
+      sourceCount: c._count.sources ?? 0,
     })),
   })
 }

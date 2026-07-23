@@ -23,6 +23,7 @@
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { embedTexts } from './embed'
+import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
 
 export interface RetrievedChunk {
   id: string
@@ -32,11 +33,15 @@ export interface RetrievedChunk {
   primaryTopic: string | null
   taxonomyTags: string[]
   sourceMetadata: Record<string, unknown>
-  /** The KnowledgeDomain (collection) this chunk lives in. Carried so the
-   *  agent runner can record which topics a visitor question matched —
-   *  powers the portal Overview's "Top topics" panel. */
+  /** The KnowledgeDomain this chunk lives in — internal storage anchor.
+   *  Carried so the agent runner can record which topics a visitor
+   *  question matched (powers the portal Overview's "Top topics" panel). */
   knowledgeDomainId: string | null
   domainName: string | null
+  /** The KnowledgeCollection the chunk's source belongs to. This is the
+   *  operator-visible grouping — usage triggers key off it. */
+  collectionId: string | null
+  collectionName: string | null
   /** 0-1, higher is better. 1 - cosine distance. */
   similarity: number
 }
@@ -45,21 +50,25 @@ interface RetrieveOptions {
   /** Top-K to return. Default 6 — fits comfortably in the prompt
    *  budget without overwhelming Claude's attention. */
   limit?: number
-  /** Optional single-domain filter. Mostly used by the
-   *  "Try a question" debug panel; agent retrieval uses
-   *  knowledgeDomainIds below. */
+  /** Optional single-domain filter. Admin/debug surfaces only — the
+   *  agent path scopes by collection. */
   knowledgeDomainId?: string
-  /** Per-agent scope. When non-empty, retrieval is restricted to
-   *  these knowledge_domain_ids. Empty / undefined = workspace-wide
-   *  (default — backward compatible with agents that haven't picked
-   *  scopes yet). */
+  /** Raw domain scoping, for surfaces that own their own KnowledgeDomain
+   *  and never went through collections: Copilot agents (CopilotAgent
+   *  has its own knowledgeDomainIds) and the /try demo prospects, which
+   *  crawl one throwaway domain per prospect.
+   *
+   *  Text / voice / widget agents MUST NOT use this — they scope by
+   *  collection, which is the only grouping an operator can see. */
   knowledgeDomainIds?: string[]
-  /** When true, retrieval is restricted STRICTLY to knowledgeDomainIds
-   *  even when that list is empty — an empty list then means "no indexed
-   *  knowledge at all" (the operator turned every collection off for this
-   *  agent). When false/undefined, an empty list keeps the legacy
-   *  "workspace-wide" meaning. Only the per-agent path sets this. */
-  scopeToDomains?: boolean
+  /** Per-agent scope. When scopeToCollections is set, retrieval is
+   *  restricted to sources belonging to these collections. */
+  collectionIds?: string[]
+  /** When true, retrieval is restricted STRICTLY to collectionIds even
+   *  when that list is empty — an empty list then means "no indexed
+   *  knowledge at all" (the operator attached no collections to this
+   *  agent). When false/undefined, retrieval stays workspace-wide. */
+  scopeToCollections?: boolean
   /** Minimum similarity threshold. Default 0.4 — chunks below this
    *  are usually noise. Tighten when retrieval starts pulling
    *  unrelated content; loosen when sparse domains miss real hits. */
@@ -108,7 +117,7 @@ export async function retrieveChunks(
     // (default 0.25). Without this floor, queries on niche topics
     // would still pull the 6 least-bad chunks even when none are
     // useful, which the agent then quotes as authoritative.
-    const chunks = (await runVectorTopK(workspaceId, literal, buildDomainFilter(opts), limit))
+    const chunks = (await runVectorTopK(workspaceId, literal, buildScopeFilter(opts), limit))
       .filter(c => c.similarity >= minSimilarity)
 
     // Bump usage stats best-effort. Lets us cold-prune chunks
@@ -153,17 +162,22 @@ export async function retrieveChunks(
  */
 export function buildRetrievedKnowledgeBlock(
   chunks: RetrievedChunk[],
-  /** Optional per-domain usage triggers (Agent.knowledgeConditions,
-   *  keyed by KnowledgeDomain id). Passages from a conditioned domain
-   *  get an explicit "only applies when …" gate so the model skips
-   *  them when the condition doesn't hold in the conversation. */
+  /** Optional per-collection usage triggers (Agent.knowledgeConditions,
+   *  keyed by KnowledgeCollection id). Passages from a conditioned
+   *  collection get an explicit "only applies when …" gate so the model
+   *  skips them when the condition doesn't hold in the conversation. */
   conditions?: Record<string, string> | null,
 ): string {
   if (chunks.length === 0) return ''
 
   const conditionFor = (c: RetrievedChunk): string | null => {
-    if (!conditions || !c.knowledgeDomainId) return null
-    const cond = conditions[c.knowledgeDomainId]
+    if (!conditions) return null
+    // Collection is the operator-visible grouping and therefore the
+    // trigger key. Fall back to the domain id so triggers saved before
+    // the collections unification keep working until re-saved.
+    const key = c.collectionId ?? c.knowledgeDomainId
+    if (!key) return null
+    const cond = conditions[key]
     return typeof cond === 'string' && cond.trim() ? cond.trim() : null
   }
   const hasConditioned = chunks.some(c => conditionFor(c))
@@ -205,26 +219,32 @@ ${formatted}
 }
 
 /**
- * Build the AND-clause for the domain filter. Tagged-template form so
+ * Build the AND-clause for the scope filter. Tagged-template form so
  * the caller can splice it into a $queryRaw template — Prisma keeps
  * parameter binding safe across the splice. Empty filter (workspace-
  * wide) returns an empty template, which Prisma's template compositor
  * treats as a no-op.
+ *
+ * Scoping is by COLLECTION: the operator groups sources into
+ * collections and attaches collections to agents. `s` is the
+ * KnowledgeSource join in runVectorTopK.
  */
-function buildDomainFilter(opts: RetrieveOptions) {
+function buildScopeFilter(opts: RetrieveOptions) {
   // Must return a Prisma.Sql FRAGMENT (built by Prisma.sql), not an
   // EXECUTOR like db.$queryRaw. The previous code called $queryRaw which
   // returns a Promise — interpolating that into the outer $queryRaw
   // template produced bogus `$3` placeholders with no matching binding,
   // crashing every retrieve with "syntax error at or near $3".
+  if (opts.scopeToCollections) {
+    const ids = opts.collectionIds ?? []
+    // Scoped strictly to an empty set → the agent reads NO indexed
+    // knowledge. Must match nothing rather than fall through to the
+    // workspace-wide no-op below.
+    if (ids.length === 0) return Prisma.sql`AND FALSE`
+    return Prisma.sql`AND s."collectionId" = ANY(${ids}::text[])`
+  }
   if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
     return Prisma.sql`AND c."knowledgeDomainId" = ANY(${opts.knowledgeDomainIds}::text[])`
-  }
-  // Scoped strictly to an empty set → the agent reads NO indexed
-  // knowledge. Must match nothing rather than fall through to the
-  // workspace-wide no-op below (that's the bug this whole change fixes).
-  if (opts.scopeToDomains) {
-    return Prisma.sql`AND FALSE`
   }
   if (opts.knowledgeDomainId) {
     return Prisma.sql`AND c."knowledgeDomainId" = ${opts.knowledgeDomainId}`
@@ -244,17 +264,44 @@ interface VectorRow {
   sourceMetadata: Record<string, unknown> | null
   knowledgeDomainId: string | null
   domainName: string | null
+  collectionId: string | null
+  collectionName: string | null
   distance: number | string
 }
 
 /** Single source of truth for the pgvector top-K query. Shared by
- *  the runtime retriever and the diagnostic. */
+ *  the runtime retriever and the diagnostic.
+ *
+ *  The KnowledgeSource / KnowledgeCollection joins are LEFT so a source
+ *  that hasn't been assigned to a collection yet (mid-backfill) still
+ *  retrieves — knowledge must never silently vanish mid-migration. */
 async function runVectorTopK(
   workspaceId: string,
   literal: string,
-  domainFilter: ReturnType<typeof buildDomainFilter>,
+  scopeFilter: ReturnType<typeof buildScopeFilter>,
   limit: number,
 ): Promise<RetrievedChunk[]> {
+  // Pre-migration shape: no collection column to select or join on.
+  if (!(await sourceCollectionsReady())) {
+    const legacy = await db.$queryRaw<VectorRow[]>`
+      SELECT
+        c.id, c.content, c."sourceUrl", c."sourceType", c."primaryTopic",
+        c."taxonomyTags", c."sourceMetadata", c."knowledgeDomainId",
+        d.name AS "domainName",
+        NULL::text AS "collectionId",
+        NULL::text AS "collectionName",
+        (c.embedding <=> ${literal}::vector) AS distance
+      FROM "KnowledgeChunk" c
+      INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
+      WHERE d."workspaceId" = ${workspaceId}
+        AND c."supersededAt" IS NULL
+        AND c.embedding IS NOT NULL
+      ORDER BY c.embedding <=> ${literal}::vector
+      LIMIT ${limit}
+    `
+    return legacy.map(rowToChunk)
+  }
+
   const rows = await db.$queryRaw<VectorRow[]>`
     SELECT
       c.id,
@@ -266,13 +313,17 @@ async function runVectorTopK(
       c."sourceMetadata",
       c."knowledgeDomainId",
       d.name AS "domainName",
+      s."collectionId",
+      kc.name AS "collectionName",
       (c.embedding <=> ${literal}::vector) AS distance
     FROM "KnowledgeChunk" c
     INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
+    LEFT JOIN "KnowledgeSource" s ON s.id = c."sourceId"
+    LEFT JOIN "KnowledgeCollection" kc ON kc.id = s."collectionId"
     WHERE d."workspaceId" = ${workspaceId}
       AND c."supersededAt" IS NULL
       AND c.embedding IS NOT NULL
-      ${domainFilter}
+      ${scopeFilter}
     ORDER BY c.embedding <=> ${literal}::vector
     LIMIT ${limit}
   `
@@ -290,6 +341,8 @@ function rowToChunk(r: VectorRow): RetrievedChunk {
     sourceMetadata: (r.sourceMetadata ?? {}) as Record<string, unknown>,
     knowledgeDomainId: r.knowledgeDomainId ?? null,
     domainName: r.domainName ?? null,
+    collectionId: r.collectionId ?? null,
+    collectionName: r.collectionName ?? null,
     similarity: clamp01(1 - Number(r.distance)),
   }
 }
@@ -324,9 +377,9 @@ export interface RetrievalDebug {
   topSimilarity: number | null
   /** Which threshold WOULD have been applied in the agent runtime. */
   thresholdForRuntime: number
-  /** The KnowledgeDomain names this query was scoped to. Empty = all. */
+  /** The collection names this query was scoped to. Empty = all. */
   scopedDomainNames: string[]
-  /** Total domain count in this workspace, regardless of agent scope. */
+  /** Total collection count in this workspace, regardless of agent scope. */
   domainsInWorkspace: number
   /** Reason — surfaces the most likely cause of zero matches. */
   reason:
@@ -369,17 +422,17 @@ export async function debugRetrieveChunks(
         AND c.embedding IS NULL
     `.then(r => ({ count: Number(r[0]?.count ?? 0) })).catch(() => ({ count: 0 })),
     db.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*)::bigint as count FROM "KnowledgeDomain" WHERE "workspaceId" = ${workspaceId}
+      SELECT COUNT(*)::bigint as count FROM "KnowledgeCollection" WHERE "workspaceId" = ${workspaceId}
     `.then(r => ({ count: Number(r[0]?.count ?? 0) })).catch(() => ({ count: 0 })),
   ])
 
-  // Resolve scoped domain names. Empty = workspace-wide.
+  // Resolve scoped collection names. Empty = workspace-wide.
   let scopedDomainNames: string[] = []
-  if (opts.knowledgeDomainIds && opts.knowledgeDomainIds.length > 0) {
+  if (opts.collectionIds && opts.collectionIds.length > 0) {
     try {
       const names = await db.$queryRaw<Array<{ name: string }>>`
-        SELECT name FROM "KnowledgeDomain"
-        WHERE id = ANY(${opts.knowledgeDomainIds}::text[])
+        SELECT name FROM "KnowledgeCollection"
+        WHERE id = ANY(${opts.collectionIds}::text[])
           AND "workspaceId" = ${workspaceId}
       `
       scopedDomainNames = names.map(n => n.name)
@@ -446,18 +499,19 @@ export async function debugRetrieveChunks(
   const literal = `[${queryEmbedding.join(',')}]`
 
   try {
-    const domainFilter = buildDomainFilter(opts)
+    const scopeFilter = buildScopeFilter(opts)
 
-    // Count what's in scope (workspace + domain filter + non-null
+    // Count what's in scope (workspace + scope filter + non-null
     // embeddings). Cheap pre-flight so we can return 'empty_scope'
     // without paying for the main vector query.
     const scopeCountRows = await db.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*)::bigint as count FROM "KnowledgeChunk" c
       INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
+      LEFT JOIN "KnowledgeSource" s ON s.id = c."sourceId"
       WHERE d."workspaceId" = ${workspaceId}
         AND c."supersededAt" IS NULL
         AND c.embedding IS NOT NULL
-        ${domainFilter}
+        ${scopeFilter}
     `
     const chunksInScope = Number(scopeCountRows[0]?.count ?? 0)
 
@@ -467,7 +521,7 @@ export async function debugRetrieveChunks(
 
     // Same query as retrieveChunks; debug returns top-K regardless of
     // threshold so the operator can see near-misses.
-    const topChunks = await runVectorTopK(workspaceId, literal, domainFilter, limit)
+    const topChunks = await runVectorTopK(workspaceId, literal, scopeFilter, limit)
 
     const topSimilarity = topChunks.length > 0 ? topChunks[0].similarity : null
     const reason: RetrievalDebug['reason'] =

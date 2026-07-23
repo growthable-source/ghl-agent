@@ -13,6 +13,14 @@
  * Every URL source auto-checks for changes on a plain-language
  * cadence (daily for feeds, weekly for sites) the user can change
  * per row.
+ *
+ * Sources belong to a COLLECTION, the same container that holds
+ * written items:
+ *   - `collectionId` set    → adds to and lists only that collection
+ *                             (the collection detail page's Sources tab)
+ *   - `collectionId` unset  → adds to the workspace's default collection
+ *   - `showList={false}`    → just the add box, for the Knowledge index
+ *                             where the collection cards are the list
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -79,7 +87,18 @@ function statusOf(s: SourceRow): { label: string; tone: 'busy' | 'ok' | 'warn' |
   }
 }
 
-export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
+export default function SourcesPanel({
+  workspaceId,
+  collectionId,
+  showList = true,
+  onChanged,
+}: {
+  workspaceId: string
+  collectionId?: string | null
+  showList?: boolean
+  /** Fired after any add/delete so a parent page can refresh its counts. */
+  onChanged?: () => void
+}) {
   const [sources, setSources] = useState<SourceRow[]>([])
   const [loaded, setLoaded] = useState(false)
   const [input, setInput] = useState('')
@@ -91,13 +110,14 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/knowledge/sources`)
+      const qs = collectionId ? `?collectionId=${encodeURIComponent(collectionId)}` : ''
+      const res = await fetch(`/api/workspaces/${workspaceId}/knowledge/sources${qs}`)
       const body = await res.json().catch(() => ({}))
       if (Array.isArray(body.sources)) setSources(body.sources)
     } finally {
       setLoaded(true)
     }
-  }, [workspaceId])
+  }, [workspaceId, collectionId])
 
   useEffect(() => {
     void load()
@@ -129,7 +149,7 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
       const res = await fetch(`/api/workspaces/${workspaceId}/knowledge/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, collectionId: collectionId ?? undefined }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -137,6 +157,7 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
         return
       }
       setInput('')
+      onChanged?.()
       showFlash(
         'ok',
         body.alreadyExisted
@@ -147,7 +168,7 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
     } finally {
       setAdding(false)
     }
-  }, [input, workspaceId, load])
+  }, [input, workspaceId, collectionId, load, onChanged])
 
   const addFile = useCallback(
     async (file: File) => {
@@ -155,6 +176,7 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
       try {
         const form = new FormData()
         form.append('file', file)
+        if (collectionId) form.append('collectionId', collectionId)
         const res = await fetch(`/api/workspaces/${workspaceId}/knowledge/add`, {
           method: 'POST',
           body: form,
@@ -165,12 +187,13 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
           return
         }
         showFlash('ok', `Got it — reading ${file.name} in the background.`)
+        onChanged?.()
         void load()
       } finally {
         setAdding(false)
       }
     },
-    [workspaceId, load],
+    [workspaceId, collectionId, load, onChanged],
   )
 
   const act = useCallback(
@@ -189,9 +212,10 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
     async (sourceId: string, name: string) => {
       if (!confirm(`Forget everything learned from “${name}”?`)) return
       await fetch(`/api/workspaces/${workspaceId}/knowledge/sources/${sourceId}`, { method: 'DELETE' })
+      onChanged?.()
       void load()
     },
-    [workspaceId, load],
+    [workspaceId, load, onChanged],
   )
 
   return (
@@ -268,7 +292,7 @@ export default function SourcesPanel({ workspaceId }: { workspaceId: string }) {
       </div>
 
       {/* ── What it's learning from ───────────────────────────────── */}
-      {loaded && sources.length > 0 && (
+      {showList && loaded && sources.length > 0 && (
         <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800 overflow-hidden">
           {sources.map(s => {
             const meta = TYPE_META[s.sourceType] ?? { icon: '📚', noun: 'Source' }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPortalSession } from '@/lib/portal-auth'
 import { db } from '@/lib/db'
 import { detectUrl } from '@/lib/ingest/detect'
-import { getOrCreateBrandDomain } from '@/lib/ingest/brand-domain'
+import { getOrCreateBrandDomain, getOrCreateBrandCollection } from '@/lib/ingest/brand-domain'
 
 /**
  * POST — portal users teach their brand's AI, exactly the way workspace
@@ -10,9 +10,10 @@ import { getOrCreateBrandDomain } from '@/lib/ingest/brand-domain'
  *   - JSON { url, brandId }              — any link, type auto-detected
  *   - multipart { file, brandId }        — pdf / txt / md via Vercel Blob
  *
- * Sources land in the brand's own KnowledgeDomain (lazily created), so
- * everything flows through the same crawl → chunk → classify → embed
- * pipeline agents use, and ticket suggest-reply reads it for this brand.
+ * Sources land in the brand's own knowledge collection (lazily created),
+ * so everything flows through the same crawl → chunk → classify → embed
+ * pipeline agents use, shows up on the workspace Knowledge page like any
+ * other collection, and ticket suggest-reply reads it for this brand.
  *
  * Returns immediately; the ingest-queue cron claims the queued run.
  */
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     const source = await db.knowledgeSource.create({
       data: {
         knowledgeDomainId: guard.domain.id,
+        collectionId: guard.collectionId,
         sourceType: 'pdf',
         urlOrIdentifier: blob.pathname,
         crawlConfig: { storageKey: blob.pathname, originalFilename: file.name },
@@ -101,6 +103,7 @@ export async function POST(req: NextRequest) {
     (await db.knowledgeSource.create({
       data: {
         knowledgeDomainId: guard.domain.id,
+        collectionId: guard.collectionId,
         sourceType: detection.sourceType,
         urlOrIdentifier: normalizedUrl,
         crawlConfig: detection.crawlConfig as object,
@@ -129,8 +132,8 @@ async function resolveBrandDomain(
   sessionBrandIds: string[],
   brandId: string,
 ): Promise<
-  | { domain: { id: string; workspaceId: string }; error?: undefined }
-  | { domain?: undefined; error: NextResponse }
+  | { domain: { id: string; workspaceId: string }; collectionId: string | null; error?: undefined }
+  | { domain?: undefined; collectionId?: undefined; error: NextResponse }
 > {
   if (!brandId || !sessionBrandIds.includes(brandId)) {
     return { error: NextResponse.json({ error: 'Unknown brand' }, { status: 403 }) }
@@ -138,7 +141,10 @@ async function resolveBrandDomain(
   try {
     const domain = await getOrCreateBrandDomain(brandId)
     if (!domain) return { error: NextResponse.json({ error: 'Brand not found' }, { status: 404 }) }
-    return { domain }
+    // Best-effort: pre-backfill databases have no collectionId column,
+    // and a portal upload must not fail over a grouping nicety.
+    const collection = await getOrCreateBrandCollection(brandId).catch(() => null)
+    return { domain, collectionId: collection?.id ?? null }
   } catch {
     // Pre-migration: KnowledgeDomain.brandId column missing.
     return {

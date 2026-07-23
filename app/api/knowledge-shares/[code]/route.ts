@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
 import {
   normalizeShareCode,
   shareErrorMessage,
@@ -36,6 +37,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
         collection: {
           include: {
             entries: { select: { id: true, title: true, tokenEstimate: true }, orderBy: { createdAt: 'asc' } },
+            ...(await sourceCollectionsReady()
+              ? { sources: { select: { id: true, urlOrIdentifier: true, crawlConfig: true }, orderBy: { createdAt: 'asc' } } }
+              : {}),
             _count: { select: { dataSources: true } },
             workspace: { select: { id: true, name: true } },
           },
@@ -81,6 +85,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
       icon: c.icon,
       color: c.color,
       entryCount: c.entries.length,
+      sourceCount: (c.sources ?? []).length,
+      sourceLabels: (c.sources ?? []).slice(0, 6).map((s: any) => {
+        const cfg = (s.crawlConfig ?? {}) as Record<string, unknown>
+        return (cfg.originalFilename as string)
+          || String(s.urlOrIdentifier).replace(/^https?:\/\//, '').replace(/\/$/, '')
+      }),
       tokenEstimate: c.entries.reduce((s: number, e: any) => s + (e.tokenEstimate || 0), 0),
       sampleTitles: c.entries.slice(0, 8).map((e: any) => e.title),
       skippedDataSourceCount: c._count.dataSources,

@@ -4,6 +4,7 @@
  *   PATCH  { action: 'recheck' }                    → queue a re-read now
  *   PATCH  { action: 'pause' | 'resume' }           → toggle isActive
  *   PATCH  { recrawlIntervalDays: number }          → change auto-check cadence (0 = off)
+ *   PATCH  { collectionId: string }                 → move it to another collection
  *   DELETE                                           → remove the source and everything learned from it
  *
  * Chunks and runs cascade on source delete (schema-level), so a
@@ -34,6 +35,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = (await req.json().catch(() => ({}))) as {
     action?: string
     recrawlIntervalDays?: number
+    collectionId?: string
+  }
+
+  if (typeof body.collectionId === 'string' && body.collectionId) {
+    const collection = await db.knowledgeCollection.findFirst({
+      where: { id: body.collectionId, workspaceId },
+      select: { id: true },
+    })
+    if (!collection) {
+      return NextResponse.json({ error: 'That collection is not in this workspace.' }, { status: 400 })
+    }
+    await db.knowledgeSource.update({
+      where: { id: sourceId },
+      data: { collectionId: collection.id },
+    })
+    return NextResponse.json({ ok: true, collectionId: collection.id })
   }
 
   if (body.action === 'recheck') {

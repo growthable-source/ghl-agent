@@ -59,7 +59,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     },
     agent: {
       id: agent.id,
-      knowledgeDomainIds: (agent as { knowledgeDomainIds?: string[] }).knowledgeDomainIds,
       knowledgeScopeAll: (agent as { knowledgeScopeAll?: boolean | null }).knowledgeScopeAll,
     },
     question,

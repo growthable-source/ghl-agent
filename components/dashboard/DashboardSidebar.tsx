@@ -444,7 +444,12 @@ function SidebarBody() {
                       <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Library</p>
                     </div>
                     {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
-                    {navLink(`/dashboard/${workspaceId}/knowledge-sources`, '↳ Topics & indexing')}
+                    {/* "↳ Topics & indexing" (/knowledge-sources) is hidden:
+                        it exposed KnowledgeDomains as a second, parallel
+                        knowledge container next to Collections, which is
+                        exactly the split that confused operators. The page
+                        still resolves for taxonomy/run debugging — it's just
+                        not a thing you can wander into. */}
                     {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
                     {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
                     {navLink(`/dashboard/${workspaceId}/settings/brand-groups`, '↳ Priority groups')}

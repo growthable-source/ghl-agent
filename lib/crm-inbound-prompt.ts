@@ -68,7 +68,7 @@ export async function buildCrmInboundPrompt(
   // could ingest 500 pages but answer CRM inbound messages from
   // memory alone.
   const { block: phase2Block } = await retrieveAndFormatForAgent(
-    { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeDomainIds: (agent as any).knowledgeDomainIds, knowledgeScopeAll: (agent as any).knowledgeScopeAll, knowledgeConditions },
+    { id: agent.id, workspaceId: (agent as any).workspaceId, knowledgeScopeAll: (agent as any).knowledgeScopeAll, knowledgeConditions },
     inboundMessage,
   )
   volatileContext += phase2Block

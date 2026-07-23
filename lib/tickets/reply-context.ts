@@ -29,7 +29,8 @@
 
 import { db } from '@/lib/db'
 import { retrieveChunks, buildRetrievedKnowledgeBlock, type RetrievedChunk } from '@/lib/ingest/retrieve'
-import { findBrandDomainId } from '@/lib/ingest/brand-domain'
+import { findBrandCollectionId } from '@/lib/ingest/brand-domain'
+import { resolveScopedCollectionIds } from '@/lib/agent/retrieve-for-agent'
 
 const BRAND_TICKET_LIMIT = 100
 const REQUESTER_TICKET_LIMIT = 20
@@ -47,7 +48,6 @@ export interface TicketForContext {
 
 export interface AgentForContext {
   id: string
-  knowledgeDomainIds?: string[] | null
   knowledgeScopeAll?: boolean | null
 }
 
@@ -116,20 +116,27 @@ async function retrieveForTicket(
 ): Promise<RetrievedChunk[]> {
   if (!question || question.trim().length < 3) return []
   try {
-    const brandDomainId = await findBrandDomainId(ticket.brandId)
-    const scoped = agent.knowledgeScopeAll === false
-    let domainIds = agent.knowledgeDomainIds ?? []
-    // When the agent is scoped (explicit domain list, or scope-all off),
-    // the brand's portal domain still joins the pool — a brand added that
-    // knowledge specifically so ticket replies could use it. Workspace-wide
-    // agents (empty list, scope-all on) already include it implicitly.
-    if (brandDomainId && (scoped || domainIds.length > 0) && !domainIds.includes(brandDomainId)) {
-      domainIds = [...domainIds, brandDomainId]
+    const scopedIds = await resolveScopedCollectionIds({
+      id: agent.id,
+      workspaceId: ticket.workspaceId,
+      knowledgeScopeAll: agent.knowledgeScopeAll,
+    })
+    // Workspace-wide agent → nothing to narrow; the brand's own
+    // collection is already in the pool.
+    if (scopedIds === null) {
+      return await retrieveChunks(ticket.workspaceId, question, { limit: 6 })
     }
+    // Scoped agent → the brand's portal collection still joins the pool.
+    // A brand added that knowledge specifically so ticket replies could
+    // use it; an agent's scope shouldn't hide it.
+    const brandCollectionId = await findBrandCollectionId(ticket.brandId)
+    const collectionIds = brandCollectionId && !scopedIds.includes(brandCollectionId)
+      ? [...scopedIds, brandCollectionId]
+      : scopedIds
     return await retrieveChunks(ticket.workspaceId, question, {
       limit: 6,
-      knowledgeDomainIds: domainIds,
-      scopeToDomains: scoped,
+      collectionIds,
+      scopeToCollections: true,
     })
   } catch {
     return []

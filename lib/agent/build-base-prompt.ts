@@ -43,16 +43,13 @@ export interface AgentForPrompt {
    *  the new block is skipped and the agent falls back to the legacy
    *  knowledgeEntries path only. */
   workspaceId?: string | null
-  /** Per-agent knowledge scope. Empty array / undefined = retrieve
-   *  from every domain in the workspace (legacy default). Populated
-   *  = only those domain ids. */
-  knowledgeDomainIds?: string[] | null
-  /** false = read only knowledgeDomainIds (empty = none). true /
-   *  undefined = read every domain in the workspace (default). */
+  /** false = read only the collections attached via AgentCollection
+   *  (empty = no indexed knowledge). true / undefined = read every
+   *  collection in the workspace (default). */
   knowledgeScopeAll?: boolean | null
-  /** Per-source usage triggers (Agent.knowledgeConditions). Keyed by
-   *  KnowledgeDomain id or KnowledgeCollection id → natural-language
-   *  condition. Raw Json column value; normalised before use. */
+  /** Per-collection usage triggers (Agent.knowledgeConditions). Keyed by
+   *  KnowledgeCollection id → natural-language condition. Raw Json
+   *  column value; normalised before use. */
   knowledgeConditions?: unknown
 }
 
@@ -166,7 +163,7 @@ export async function buildBasePrompt(
   // SMS, and webhook paths so every runtime gets the same block.
   if (agent.workspaceId) {
     const { block } = await retrieveAndFormatForAgent(
-      { id: agent.id, workspaceId: agent.workspaceId, knowledgeDomainIds: agent.knowledgeDomainIds, knowledgeScopeAll: agent.knowledgeScopeAll, knowledgeConditions },
+      { id: agent.id, workspaceId: agent.workspaceId, knowledgeScopeAll: agent.knowledgeScopeAll, knowledgeConditions },
       incomingMessage,
     )
     volatileContext += block

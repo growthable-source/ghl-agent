@@ -22,19 +22,46 @@
  * Retrieval augments the prompt; it must never break a chat reply.
  */
 
+import { db } from '@/lib/db'
 import { retrieveChunks, buildRetrievedKnowledgeBlock, debugRetrieveChunks, type RetrievedChunk, type RetrievalDebug } from '../ingest/retrieve'
 
 interface AgentForRetrieval {
   id?: string
   workspaceId: string
-  knowledgeDomainIds?: string[] | null
-  /** false = read only the (possibly empty) knowledgeDomainIds set.
-   *  true / undefined = read every domain in the workspace (default). */
+  /** false = read only the collections attached via AgentCollection
+   *  (an empty set then means "no indexed knowledge at all").
+   *  true / undefined = read every collection in the workspace, so
+   *  collections added later are picked up automatically. */
   knowledgeScopeAll?: boolean | null
-  /** Per-source usage triggers (Agent.knowledgeConditions). Keyed by
-   *  KnowledgeDomain id here; collection-keyed entries are consumed by
-   *  the prompt-stuffed path in lib/rag, not this one. */
+  /** Per-collection usage triggers (Agent.knowledgeConditions), keyed by
+   *  KnowledgeCollection id — the same key the prompt-stuffed path uses,
+   *  because collections are now the only container an operator sees. */
   knowledgeConditions?: Record<string, string> | null
+}
+
+/**
+ * The collections this agent reads, or null for "everything in the
+ * workspace". One small query per message; the alternative was
+ * threading the id list through ten different runtime call sites and
+ * getting it wrong in at least one of them.
+ *
+ * Failure (or a pre-migration DB) resolves to null = workspace-wide,
+ * so a broken lookup can never silently blind an agent.
+ */
+export async function resolveScopedCollectionIds(
+  agent: AgentForRetrieval,
+): Promise<string[] | null> {
+  if (agent.knowledgeScopeAll !== false) return null
+  if (!agent.id) return null
+  try {
+    const rows = await db.agentCollection.findMany({
+      where: { agentId: agent.id },
+      select: { collectionId: true },
+    })
+    return rows.map(r => r.collectionId)
+  } catch {
+    return null
+  }
 }
 
 export interface RetrievalForAgentResult {
@@ -51,16 +78,16 @@ export async function retrieveAndFormatForAgent(
   if (!agent?.workspaceId) return { block: '', chunks: [] }
   if (!message || message.trim().length < 3) return { block: '', chunks: [] }
 
-  // scopeToDomains only when the operator explicitly narrowed scope
-  // (knowledgeScopeAll === false). Then an empty id list means "read no
-  // indexed knowledge"; otherwise empty stays workspace-wide.
-  const scopeToDomains = agent.knowledgeScopeAll === false
-
   try {
+    // Narrowed scope only when the operator explicitly unticked
+    // something (knowledgeScopeAll === false). Then the attached set is
+    // authoritative, empty included.
+    const collectionIds = await resolveScopedCollectionIds(agent)
+
     const chunks = await retrieveChunks(agent.workspaceId, message, {
       limit: 6,
-      knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
-      scopeToDomains,
+      collectionIds: collectionIds ?? [],
+      scopeToCollections: collectionIds !== null,
     })
     return { block: buildRetrievedKnowledgeBlock(chunks, normaliseConditions(agent.knowledgeConditions)), chunks }
   } catch (err) {
@@ -109,10 +136,11 @@ export async function debugRetrieveForAgent(
 ): Promise<RetrievalDebug | null> {
   if (!agent?.workspaceId) return null
   try {
+    const collectionIds = await resolveScopedCollectionIds(agent)
     return await debugRetrieveChunks(agent.workspaceId, message, {
       limit: 6,
-      knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
-      scopeToDomains: agent.knowledgeScopeAll === false,
+      collectionIds: collectionIds ?? [],
+      scopeToCollections: collectionIds !== null,
     })
   } catch (err) {
     console.warn('[debugRetrieveForAgent] failed:', errMsg(err))

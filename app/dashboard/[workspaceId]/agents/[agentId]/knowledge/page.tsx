@@ -11,23 +11,18 @@ import { useDirtyForm } from '@/lib/use-dirty-form'
  * Per-agent knowledge page — ONE list, ONE question: what does this
  * agent know, and when should it use each piece?
  *
- * Every knowledge source in the workspace (indexed/crawled domains AND
- * curated collections) renders as a single row: a checkbox to attach it
- * to this agent, plus an optional usage trigger ("only use this when…")
- * that the runtime injects as a condition the model must respect.
- *
- * Replaced the old page's two separate pickers ("Indexed knowledge
- * collections" with a Read-all/Choose mode toggle + a second Collections
- * attach list) and their two save buttons — that split leaked internal
- * architecture (domains vs collections) into the UI. Content editing
- * still lives on the workspace Knowledge page.
+ * Collections are the only knowledge container — each holds crawled
+ * links/files (searched live) AND hand-written notes (always in the
+ * prompt). One row per collection: a checkbox to attach it to this
+ * agent, plus an optional usage trigger ("only use this when…") that
+ * the runtime injects as a condition the model must respect.
  *
  * Save semantics:
- *  - all indexed sources checked → knowledgeScopeAll=true (new sources
- *    added later are auto-included, matching the old "Read all")
- *  - any indexed source unchecked → scopeAll=false + explicit id list
- *  - collections → PUT the attached set (AgentCollection junction)
- *  - triggers → Agent.knowledgeConditions map { sourceId: condition }
+ *  - every collection checked → knowledgeScopeAll=true, so collections
+ *    created later are auto-included ("read everything")
+ *  - any collection unchecked → scopeAll=false + the attached set is
+ *    authoritative (AgentCollection junction)
+ *  - triggers → Agent.knowledgeConditions map { collectionId: condition }
  */
 
 interface CollectionLite {
@@ -38,19 +33,12 @@ interface CollectionLite {
   color: string | null
   entryCount: number
   dataSourceCount: number
-}
-
-interface KnowledgeDomainLite {
-  id: string
-  name: string
-  description: string | null
-  chunkCount: number
+  sourceCount: number
 }
 
 interface KnowledgeDraft extends Record<string, unknown> {
-  domainIds: string[]
   collectionIds: string[]
-  /** sourceId (domain OR collection) → "only use when …" condition. */
+  /** collectionId → "only use when …" condition. */
   conditions: Record<string, string>
 }
 
@@ -59,7 +47,6 @@ export default function AgentKnowledgePage() {
   const workspaceId = params.workspaceId as string
   const agentId = params.agentId as string
 
-  const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
   const [collections, setCollections] = useState<CollectionLite[]>([])
   const [loading, setLoading] = useState(true)
   const [notMigrated, setNotMigrated] = useState(false)
@@ -69,23 +56,21 @@ export default function AgentKnowledgePage() {
   const [openTriggers, setOpenTriggers] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
-    const [colRes, domRes, agentRes] = await Promise.all([
+    const [colRes, agentRes] = await Promise.all([
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/collections`).then(r => r.json()).catch(() => ({})),
-      fetch(`/api/admin/knowledge-domains?workspaceId=${workspaceId}`).then(r => r.json()).catch(() => ({})),
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`).then(r => r.json()).catch(() => ({})),
     ])
 
-    const doms: KnowledgeDomainLite[] = domRes.domains || []
     const cols: CollectionLite[] = colRes.available || []
-    setDomains(doms)
     setCollections(cols)
     setNotMigrated(!!colRes.notMigrated)
 
+    // scopeAll means "read everything", so every box starts ticked —
+    // including collections the junction table doesn't list yet.
     const scopeAll: boolean = agentRes.agent?.knowledgeScopeAll ?? true
-    const pickedDomains: string[] = scopeAll
-      ? doms.map(d => d.id)
-      : (agentRes.agent?.knowledgeDomainIds ?? [])
-    const attachedCollections: string[] = (colRes.attached || []).map((c: CollectionLite) => c.id)
+    const attachedCollections: string[] = scopeAll
+      ? cols.map(c => c.id)
+      : (colRes.attached || []).map((c: CollectionLite) => c.id)
 
     const rawConditions = agentRes.agent?.knowledgeConditions
     const conditions: Record<string, string> = {}
@@ -95,7 +80,7 @@ export default function AgentKnowledgePage() {
       }
     }
 
-    setInitial({ domainIds: pickedDomains, collectionIds: attachedCollections, conditions })
+    setInitial({ collectionIds: attachedCollections, conditions })
     setLoading(false)
   }, [workspaceId, agentId])
 
@@ -106,14 +91,14 @@ export default function AgentKnowledgePage() {
     onSave: async (d) => {
       // Only keep conditions for sources that are still attached — an
       // unchecked source's trigger would otherwise linger invisibly.
-      const attached = new Set([...d.domainIds, ...d.collectionIds])
+      const attached = new Set(d.collectionIds)
       const conditions: Record<string, string> = {}
       for (const [id, cond] of Object.entries(d.conditions)) {
         if (attached.has(id) && cond.trim()) conditions[id] = cond.trim()
       }
-      // Everything ticked (or nothing to tick yet) → scopeAll, so indexed
-      // sources added later are auto-included like the old "Read all".
-      const scopeAll = domains.length === 0 || d.domainIds.length === domains.length
+      // Everything ticked (or nothing to tick yet) → scopeAll, so
+      // collections created later are auto-included.
+      const scopeAll = collections.length === 0 || d.collectionIds.length === collections.length
 
       const [agentRes, colRes] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
@@ -121,7 +106,6 @@ export default function AgentKnowledgePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             knowledgeScopeAll: scopeAll,
-            knowledgeDomainIds: d.domainIds,
             knowledgeConditions: conditions,
           }),
         }),
@@ -136,12 +120,11 @@ export default function AgentKnowledgePage() {
     },
   })
 
-  function toggleSource(kind: 'domain' | 'collection', id: string) {
-    const key = kind === 'domain' ? 'domainIds' : 'collectionIds'
-    const current = draft[key]
+  function toggleCollection(id: string) {
+    const current = draft.collectionIds
     set({
-      [key]: current.includes(id) ? current.filter(x => x !== id) : [...current, id],
-    } as Partial<KnowledgeDraft>)
+      collectionIds: current.includes(id) ? current.filter(x => x !== id) : [...current, id],
+    })
   }
 
   function setCondition(id: string, value: string) {
@@ -163,8 +146,8 @@ export default function AgentKnowledgePage() {
     return <div className="p-8 text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</div>
   }
 
-  const hasSources = domains.length > 0 || collections.length > 0
-  const attachedCount = draft.domainIds.length + draft.collectionIds.length
+  const hasSources = collections.length > 0
+  const attachedCount = draft.collectionIds.length
 
   const renderTriggerControl = (id: string) => {
     const condition = draft.conditions[id] ?? ''
@@ -211,7 +194,6 @@ export default function AgentKnowledgePage() {
   }
 
   const renderRow = (opts: {
-    kind: 'domain' | 'collection'
     id: string
     icon: string
     iconBg: string
@@ -220,9 +202,7 @@ export default function AgentKnowledgePage() {
     meta: string
     editHref?: string
   }) => {
-    const checked = opts.kind === 'domain'
-      ? draft.domainIds.includes(opts.id)
-      : draft.collectionIds.includes(opts.id)
+    const checked = draft.collectionIds.includes(opts.id)
     const hasTrigger = !!(draft.conditions[opts.id]?.trim())
     return (
       <label
@@ -238,7 +218,7 @@ export default function AgentKnowledgePage() {
           <input
             type="checkbox"
             checked={checked}
-            onChange={() => toggleSource(opts.kind, opts.id)}
+            onChange={() => toggleCollection(opts.id)}
             className="mt-1 accent-orange-500"
           />
           <div
@@ -287,7 +267,7 @@ export default function AgentKnowledgePage() {
           What this agent knows
         </h2>
         <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Tick the knowledge this agent should use. Add a trigger to any source to control <em>when</em> it&apos;s
+          Tick the collections this agent should use. Add a trigger to any collection to control <em>when</em> it&apos;s
           used — otherwise it always applies. To add or edit the content itself, open the{' '}
           <Link href={`/dashboard/${workspaceId}/knowledge`} className="hover:underline" style={{ color: 'var(--accent-primary)' }}>
             workspace Knowledge page
@@ -329,28 +309,21 @@ export default function AgentKnowledgePage() {
       ) : (
         <>
           <div className="space-y-2">
-            {domains.map(d => renderRow({
-              kind: 'domain',
-              id: d.id,
-              icon: '🧠',
-              iconBg: 'var(--accent-primary-bg)',
-              name: d.name,
-              description: d.description,
-              meta: `${d.chunkCount} indexed ${d.chunkCount === 1 ? 'entry' : 'entries'} · searched live as visitors ask questions`,
-            }))}
             {collections.map(c => {
               const accent = c.color || '#fa4d2e'
               return renderRow({
-                kind: 'collection',
                 id: c.id,
                 icon: c.icon || '📚',
                 iconBg: `linear-gradient(135deg, ${accent}33, ${accent}11)`,
                 name: c.name,
                 description: c.description,
                 meta: [
-                  `${c.entryCount} item${c.entryCount === 1 ? '' : 's'}`,
+                  c.sourceCount > 0
+                    ? `${c.sourceCount} link${c.sourceCount === 1 ? '' : 's'} & file${c.sourceCount === 1 ? '' : 's'} · searched live as people ask questions`
+                    : null,
+                  c.entryCount > 0 ? `${c.entryCount} written item${c.entryCount === 1 ? '' : 's'}` : null,
                   c.dataSourceCount > 0 ? `${c.dataSourceCount} data source${c.dataSourceCount === 1 ? '' : 's'}` : null,
-                ].filter(Boolean).join(' · '),
+                ].filter(Boolean).join(' · ') || 'Empty collection',
                 editHref: `/dashboard/${workspaceId}/knowledge/${c.id}`,
               })
             })}

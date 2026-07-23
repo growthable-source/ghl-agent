@@ -16,6 +16,7 @@ interface Collection {
   entryCount: number
   dataSourceCount: number
   agentCount: number
+  sourceCount: number
   createdAt: string
   updatedAt: string
 }
@@ -85,20 +86,22 @@ export default function WorkspaceKnowledgePage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Knowledge</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Paste a link or drop a file — your AI learns it in the background and keeps it fresh
-            automatically. Every agent in this workspace can use it straight away.
+            Everything your AI knows lives in a collection. Paste a link, drop a file or write
+            notes — then connect whole collections to the agents that should use them.
           </p>
         </div>
 
-        {/* The simple path: paste anything → background ingestion →
-            auto re-checking. Backed by the indexing pipeline. */}
-        <SourcesPanel workspaceId={workspaceId} />
+        {/* Quick-add straight from the index: lands in the workspace's
+            default collection. The per-collection list lives on each
+            collection's page — this page shows collections, not sources. */}
+        <SourcesPanel workspaceId={workspaceId} showList={false} onChanged={fetchAll} />
 
         <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
           <div>
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Written knowledge</h2>
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Collections</h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              Hand-written notes, FAQs and Q&amp;A pairs, organised into collections you can attach per agent.
+              Each collection holds links and files your AI keeps re-reading, plus any notes and
+              Q&amp;A you write by hand. Attach a collection to an agent to give it that knowledge.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -159,7 +162,7 @@ export default function WorkspaceKnowledgePage() {
             <p className="text-xs text-zinc-500">
               {search.trim()
                 ? 'Try a different search.'
-                : 'Build your first collection — group everything an agent needs to know about a topic, then connect it to one or more agents.'}
+                : 'Paste a link above to start one automatically, or build a collection by hand — group everything an agent needs to know about a topic, then connect it to one or more agents.'}
             </p>
           </div>
         ) : (
@@ -188,8 +191,13 @@ export default function WorkspaceKnowledgePage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 text-[10px] text-zinc-500 flex-wrap">
+                    {c.sourceCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+                        {c.sourceCount} link{c.sourceCount === 1 ? '' : 's'} &amp; file{c.sourceCount === 1 ? '' : 's'}
+                      </span>
+                    )}
                     <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
-                      {c.entryCount} item{c.entryCount === 1 ? '' : 's'}
+                      {c.entryCount} written item{c.entryCount === 1 ? '' : 's'}
                     </span>
                     {c.dataSourceCount > 0 && (
                       <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">

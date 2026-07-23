@@ -53,7 +53,6 @@ export async function POST(
   const agentForRetrieval = {
     id: agent.id,
     workspaceId: agent.workspaceId,
-    knowledgeDomainIds: agent.knowledgeDomainIds,
     knowledgeScopeAll: (agent as any).knowledgeScopeAll,
     knowledgeConditions,
   }

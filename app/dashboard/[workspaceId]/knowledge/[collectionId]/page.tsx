@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
 import ShareCollectionModal from '@/components/knowledge/ShareCollectionModal'
+import SourcesPanel from '@/components/knowledge/SourcesPanel'
 
 interface Entry {
   id: string
@@ -31,6 +32,7 @@ interface ConnectedAgent { id: string; name: string }
 interface Collection {
   id: string
   name: string
+  sourceCount: number
   description: string | null
   icon: string | null
   color: string | null
@@ -44,7 +46,7 @@ interface Collection {
 
 interface AgentLite { id: string; name: string }
 
-type Tab = 'items' | 'data_sources' | 'agents' | 'mined'
+type Tab = 'sources' | 'items' | 'data_sources' | 'agents' | 'mined'
 type AddItem = 'manual' | 'qa' | 'url' | 'file' | 'notion' | 'youtube' | 'gdrive' | null
 
 interface GoogleContentStatus { enabled: boolean; connected: boolean; email: string | null }
@@ -107,7 +109,7 @@ export default function CollectionEditorPage() {
   const [collection, setCollection] = useState<Collection | null>(null)
   const [agents, setAgents] = useState<AgentLite[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<Tab>('items')
+  const [tab, setTab] = useState<Tab>('sources')
   const [addItem, setAddItem] = useState<AddItem>(null)
   // Inline edit state. When non-null, the matching entry row swaps its
   // display for an edit form (title + content). Only one entry can be
@@ -239,7 +241,9 @@ export default function CollectionEditorPage() {
               <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{collection.description}</p>
             )}
             <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>
-              {collection.entries.length} item{collection.entries.length === 1 ? '' : 's'}
+              {collection.sourceCount} link{collection.sourceCount === 1 ? '' : 's'} and file{collection.sourceCount === 1 ? '' : 's'}
+              {' · '}
+              {collection.entries.length} written item{collection.entries.length === 1 ? '' : 's'}
               {totalTokens > 0 && <> · ~{totalTokens.toLocaleString()} tokens</>}
               {collection.dataSources.length > 0 && <> · {collection.dataSources.length} data source{collection.dataSources.length === 1 ? '' : 's'}</>}
               {' · '}
@@ -274,13 +278,15 @@ export default function CollectionEditorPage() {
             collectionId={collectionId}
             collectionName={collection.name}
             dataSourceCount={collection.dataSources.length}
+            sourceCount={collection.sourceCount}
             onClose={() => setSharing(false)}
           />
         )}
 
         <div className="flex items-center gap-2 mb-4 border-b" style={{ borderColor: 'var(--border)' }}>
           {([
-            { id: 'items',        label: `Items (${collection.entries.length})` },
+            { id: 'sources',      label: `Links & files (${collection.sourceCount})` },
+            { id: 'items',        label: `Written items (${collection.entries.length})` },
             { id: 'data_sources', label: `Data sources (${collection.dataSources.length})` },
             { id: 'agents',       label: `Connected agents (${collection.connectedAgents.length})` },
             { id: 'mined',        label: `Mined Q&A${mining.pendingCount > 0 ? ` (${mining.pendingCount})` : ''}`, badge: true },
@@ -302,6 +308,17 @@ export default function CollectionEditorPage() {
             )
           })}
         </div>
+
+        {tab === 'sources' && (
+          <div>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+              Websites, help centers, YouTube videos, feeds and files. Your AI re-reads these on a
+              schedule and searches them live as visitors ask questions — so a source can be huge
+              without bloating every prompt.
+            </p>
+            <SourcesPanel workspaceId={workspaceId} collectionId={collectionId} onChanged={fetchAll} />
+          </div>
+        )}
 
         {tab === 'items' && (
           <div>
