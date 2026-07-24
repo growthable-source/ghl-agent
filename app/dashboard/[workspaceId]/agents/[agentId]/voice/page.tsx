@@ -138,6 +138,12 @@ export default function VoicePage() {
   const [loading, setLoading] = useState(true)
   const [vapiReady, setVapiReady] = useState(false)
   const [vapiError, setVapiError] = useState<string | null>(null)
+  // Set when the settings GET itself fails (500/401), as opposed to it
+  // succeeding and reporting Vapi keys missing. Keeping the two apart
+  // stops a server fault from rendering as "add VAPI_API_KEY" — which
+  // once sent an operator chasing env vars when the real cause was an
+  // unapplied DB migration crashing the route.
+  const [loadError, setLoadError] = useState<string | null>(null)
   // Shared with the voice wizard — see lib/voice/use-voice-preview.
   const preview = useVoicePreview()
   const playingId = preview.playingId
@@ -209,13 +215,19 @@ export default function VoicePage() {
 
     Promise.all([
       fetch(`/api/workspaces/${workspaceId}/agents/${agentId}/vapi`)
-        .then(r => r.json())
-        .then(({ config: cfg, phoneNumbers: phones, vapiReady: ready, vapiError: ve }) => {
+        .then(async r => {
+          const data = await r.json().catch(() => ({}))
+          if (!r.ok) {
+            setLoadError(data?.error || `Voice settings failed to load (HTTP ${r.status}).`)
+            return
+          }
+          const { config: cfg, phoneNumbers: phones, vapiReady: ready, vapiError: ve } = data
           if (cfg) loadedConfig = { ...cfg, ttsProvider: cfg.ttsProvider ?? 'vapi', voiceTools: cfg.voiceTools || null }
           setPhoneNumbers(phones || [])
           setVapiReady(ready)
           setVapiError(ve || null)
-        }),
+        })
+        .catch(() => setLoadError('Voice settings failed to load — check your connection and refresh.')),
       // Initial voice list uses whatever provider the stored config has —
       // if it's missing we default to vapi. When the user later switches
       // providers, the provider-picker handler re-fetches.
@@ -370,7 +382,16 @@ export default function VoicePage() {
         />
       )}
 
-      {!vapiReady && (
+      {loadError && (
+        <div
+          className="mb-6 rounded-xl border p-4 space-y-1"
+          style={{ borderColor: 'var(--accent-red)', background: 'var(--accent-red-bg)' }}
+        >
+          <p className="text-sm font-semibold" style={{ color: 'var(--accent-red)' }}>Couldn&apos;t load voice settings</p>
+          <p className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{loadError}</p>
+        </div>
+      )}
+      {!loadError && !vapiReady && (
         <div
           className="mb-6 rounded-xl border p-4 space-y-2"
           style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
