@@ -12,14 +12,20 @@
  * get created, no knowledge asset does, and the prospect finalizes to
  * `ready` so the visitor can start talking immediately. It's a
  * short-circuit at the top of this handler — it never touches the URL
- * validation / retrain / fallthrough logic below. If the visitor later
- * types a website into the ready-phase box, that's a normal POST with
- * `websiteUrl` set and no `answerNow` — see the ready+null-ingestionRunId
- * branch of the domain-change eligibility check below, which lets a
- * `ready` prospect with nothing crawled yet pick up a website (even a
- * different one from registration) and fall through into the same
- * ensureProvisioned(slug) (no skip) + fast-start path a fresh prospect
- * uses.
+ * validation / retrain / fallthrough logic below.
+ *
+ * Domain changes: the page promises "paste a new URL any time", and the
+ * handler honors that. Submitting a URL on a different domain re-points
+ * the demo at the new site — including a demo that's already trained:
+ * every live chunk in the demo's (per-prospect) knowledge domain is
+ * superseded (reason 'demo domain change') so the agent never answers
+ * from a blend of two businesses, the crawl source is re-pointed, and a
+ * fresh ingestion run is queued. The ingest pipeline has no
+ * vanished-page sweep across domains, so the supersede here is
+ * load-bearing — without it the old site's knowledge stays live.
+ * The only times a domain change is refused: mid-crawl (a queued or
+ * running ingestion run — resubmit when it lands) and the per-source
+ * run cap below (bounds total crawl spend per demo).
  *
  * Rate limiting: v1 deliberately skips a per-IP limiter here. The slug
  * itself is unguessable (8 hex chars of randomness, see
@@ -40,7 +46,11 @@ import { ingestSource } from '@/lib/ingest/pipeline'
 
 export const maxDuration = 300
 
-const MAX_RUNS_PER_SOURCE = 3
+// Initial crawl + retries + domain swaps all draw from this one budget.
+// 3 was enough when a trained demo could never change its site; now that
+// domain swaps are first-class (each one costs a fresh crawl), 5 keeps
+// honest re-pointing possible while still bounding spend per prospect.
+const MAX_RUNS_PER_SOURCE = 5
 // Same soft per-invocation budget the ingest-queue cron uses, leaving
 // headroom under the 300s maxDuration for bookkeeping.
 const DEADLINE_BUDGET_MS = 240_000
@@ -74,6 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   }
 
   let urlChangeIgnored = false
+  let domainChanged = false
   if (rawUrl) {
     let validated: { normalizedUrl: string; domain: string }
     try {
@@ -83,23 +94,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       return NextResponse.json({ error: 'invalid_url', message }, { status: 400 })
     }
     if (validated.domain !== prospect.websiteDomain) {
-      // Retry-with-a-different-site is allowed when there's nothing to
-      // lose: not yet provisioned, answered instantly but never trained
-      // (ready with no ingestion run at all — the skipCrawl path), OR
-      // provisioned but the latest run ended with zero chunks (bot-walled
-      // site, wrong URL, delivery platform page). A demo that already HAS
-      // knowledge keeps its domain — swapping it out from under a working
-      // agent is not v1.
-      let retryEligible = prospect.status === 'registered'
-        || (prospect.status === 'ready' && !prospect.ingestionRunId)
-      if (!retryEligible && prospect.status === 'ready' && prospect.ingestionRunId) {
-        const run = await db.ingestionRun.findUnique({
-          where: { id: prospect.ingestionRunId },
-          select: { status: true, chunksCreated: true },
-        })
-        retryEligible = !!run && ['success', 'partial', 'failed'].includes(run.status) && run.chunksCreated === 0
-      }
-      if (retryEligible) {
+      const latestRun = prospect.ingestionRunId
+        ? await db.ingestionRun.findUnique({
+            where: { id: prospect.ingestionRunId },
+            select: { status: true, sourceId: true },
+          })
+        : null
+      const runLive = !!latestRun && ['queued', 'running'].includes(latestRun.status)
+      if (prospect.status === 'provisioning' || runLive) {
+        // Mid-crawl: swapping the source URL under a running ingest is
+        // racy (the run already loaded the old source row). The UI hides
+        // the input during training, so this only guards races.
+        urlChangeIgnored = true
+      } else {
+        if (latestRun) {
+          // This swap will need a fresh run on the existing source —
+          // enforce the cap BEFORE mutating anything, so a capped-out
+          // demo isn't left pointed at a site it never crawled.
+          const totalRuns = await db.ingestionRun.count({
+            where: { sourceId: latestRun.sourceId, status: { not: 'failed' } },
+          })
+          if (totalRuns >= MAX_RUNS_PER_SOURCE) {
+            return NextResponse.json(
+              { error: 'train_limit', message: 'This demo has used all its training runs — get in touch and we’ll point it wherever you like.' },
+              { status: 429 },
+            )
+          }
+        }
         try {
           prospect = await db.demoProspect.update({
             where: { id: prospect.id },
@@ -116,9 +137,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           }
           throw err
         }
-        // Point the existing crawl source at the new site so the
-        // retrain below fetches the right thing.
         if (prospect.knowledgeDomainId) {
+          // Point the existing crawl source at the new site so the
+          // retrain below fetches the right thing…
           const detection = await detectUrl(prospect.websiteUrl)
           await db.knowledgeSource.updateMany({
             where: { knowledgeDomainId: prospect.knowledgeDomainId },
@@ -128,22 +149,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
               crawlConfig: demoCrawlConfig(detection.crawlConfig) as object,
             },
           })
+          // …and retire the old site's knowledge. The pipeline never
+          // sweeps pages that simply stop being discovered, so without
+          // this the agent would answer from both businesses at once.
+          // The knowledge domain is per-prospect (see provision.ts), so
+          // this can't touch any other demo. No-op when nothing crawled.
+          await db.knowledgeChunk.updateMany({
+            where: { knowledgeDomainId: prospect.knowledgeDomainId, supersededAt: null },
+            data: { supersededAt: new Date(), supersessionReason: 'demo domain change' },
+          })
         }
-      } else {
-        urlChangeIgnored = true
+        domainChanged = true
       }
     }
   }
 
-  // Retrain path: prospect already went through provisioning and its
-  // latest run finished with nothing to show for it. Re-queue a fresh
+  // Retrain path: prospect already went through provisioning and either
+  // its latest run finished with nothing to show for it, or the domain
+  // was just swapped (old knowledge superseded above). Re-queue a fresh
   // run on the SAME source (capped) rather than re-provisioning from
-  // scratch. Anything else (still building, or already has chunks) is
-  // a no-op success — double-clicking "train" must be idempotent.
+  // scratch. Anything else (still building, or already has chunks on the
+  // same domain) is a no-op success — double-clicking "train" must be
+  // idempotent.
   if (prospect.status === 'ready' && prospect.ingestionRunId) {
     const latestRun = await db.ingestionRun.findUnique({ where: { id: prospect.ingestionRunId } })
     const isTerminal = latestRun && ['success', 'partial', 'failed'].includes(latestRun.status)
-    if (latestRun && isTerminal && latestRun.chunksCreated === 0) {
+    if (latestRun && isTerminal && (latestRun.chunksCreated === 0 || domainChanged)) {
       // Infra-failed runs don't count toward the cap — a platform hiccup
       // (missing migration, transient DB error) must not consume the
       // visitor's limited training attempts. Completed-but-empty runs

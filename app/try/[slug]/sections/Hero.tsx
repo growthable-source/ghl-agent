@@ -199,7 +199,7 @@ export default function Hero(props: HeroProps) {
                   </button>
                 </div>
                 {urlChangeIgnored && (
-                  <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>This demo is already trained — the new website won&rsquo;t change it in this preview.</p>
+                  <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>A training run is already in progress — once it finishes, paste the new URL again.</p>
                 )}
                 {trainError && <p className="mt-2 text-xs text-accent-red">{trainError}</p>}
                 <p className="mt-3 text-[13px]" style={{ color: 'var(--text-tertiary)' }}>

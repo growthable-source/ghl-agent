@@ -81,6 +81,21 @@ const MAX_POLL_MS = 3 * 60_000 // stop polling after 3 minutes and unlock the ca
 const LIVE_RUN_STATUSES = ['queued', 'running']
 const TERMINAL_RUN_STATUSES = ['success', 'partial', 'failed']
 
+/** Client-side mirror of normalizeWebsiteDomain (lib/demo-prospects/slug.ts)
+ *  so "Building it live from X…" / "Trained on X" can show the domain the
+ *  visitor just submitted without waiting for a reload. */
+function domainOf(raw: string): string | null {
+  const trimmed = (raw || '').trim()
+  if (!trimmed) return null
+  try {
+    const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`)
+    const host = url.hostname.toLowerCase().replace(/\.+$/, '').replace(/^www\./, '')
+    return host.includes('.') ? host : null
+  } catch {
+    return null
+  }
+}
+
 export default function TryDemoClient({
   slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, contactEmail, checkoutHref, checkoutMode, learnMoreHref, introDeadline,
 }: {
@@ -105,6 +120,10 @@ export default function TryDemoClient({
   const [phase, setPhase] = useState<Phase | null>(isGoneStatus ? 'gone' : null)
   const [ingestion, setIngestion] = useState<Ingestion>(null)
   const [websiteInput, setWebsiteInput] = useState(websiteUrl)
+  // The domain every "Reading X… / Trained on X" string renders. Starts as
+  // the registered domain, follows whatever the visitor successfully
+  // submits — the server prop only catches up on the next full load.
+  const [displayDomain, setDisplayDomain] = useState(websiteDomain)
   const [submitting, setSubmitting] = useState(false)
   const [trainError, setTrainError] = useState<string | null>(null)
   const [answering, setAnswering] = useState(false)
@@ -189,6 +208,7 @@ export default function TryDemoClient({
   const handleTrain = useCallback(async () => {
     setSubmitting(true)
     setTrainError(null)
+    setUrlChangeIgnored(false)
     try {
       const res = await fetch(`/api/public/try/${slug}/train`, {
         method: 'POST',
@@ -201,7 +221,12 @@ export default function TryDemoClient({
         setTrainError(data?.message || 'Something went wrong — try again.')
         return
       }
-      if (data.urlChangeIgnored) setUrlChangeIgnored(true)
+      if (data.urlChangeIgnored) {
+        setUrlChangeIgnored(true)
+      } else {
+        const submitted = domainOf(websiteInput)
+        if (submitted) setDisplayDomain(submitted)
+      }
       setPhase('training')
     } catch {
       setTrainError('Something went wrong — try again.')
@@ -307,7 +332,7 @@ export default function TryDemoClient({
   if (ingestion?.status === 'running' && pagesSucceeded > 0) buildStep = 2
   if (chunksCreated > 0) buildStep = 3
   const trainingSteps = [
-    `Reading ${websiteDomain}…`,
+    `Reading ${displayDomain}…`,
     `Training on ${pagesSucceeded} page${pagesSucceeded === 1 ? '' : 's'} of ${businessName}’s site…`,
     'Learning your services…',
   ]
@@ -353,7 +378,7 @@ export default function TryDemoClient({
 
       <Hero
         businessName={businessName}
-        websiteDomain={websiteDomain}
+        websiteDomain={displayDomain}
         checkoutHref={checkoutHref}
         checkoutMode={checkoutMode}
         onOpenCheckout={onOpenCheckout}
