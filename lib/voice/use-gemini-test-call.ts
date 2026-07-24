@@ -99,6 +99,13 @@ export function useGeminiTestCall(workspaceId: string, agentId: string) {
       providerRef.current = provider
       micRef.current = mic
       playerRef.current = player
+
+      // "Pick up the phone": Gemini Live's VAD waits for inbound speech, so
+      // without a kick the agent sits silent until the tester talks first.
+      // Same nudge the public /try and marketing-site demos send — makes a
+      // test call open with the agent's greeting, like a real answered call.
+      provider.nudge('(The caller has just connected. Answer the phone now with your opening greeting.)')
+
       startedAtRef.current = Date.now()
       setCallState('live')
     } catch (err) {
