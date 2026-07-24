@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
+  "buildCommand": "npm run db:migrate:deploy && npm run build",
   "regions": [
     "icn1"
   ],

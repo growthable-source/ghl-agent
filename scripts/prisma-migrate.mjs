@@ -44,6 +44,27 @@ function pickConnectionString() {
   )
 }
 
+// Env for prisma CLI child processes. prisma.config.ts reads DATABASE_URL,
+// which in prod points at Supabase's DIRECT host — that host is IPv6-only,
+// unreachable from Vercel/GitHub build containers (and most dev machines),
+// so `migrate deploy` dies with P1001 even though the raw-pg precheck above
+// connected fine via the pooler. Hand the CLI the pooler URL instead, but
+// on its session-mode port: 6543 is transaction-mode pgbouncer, which
+// breaks prisma's advisory locks. No-op when the picked URL is already
+// session-mode.
+function prismaCliEnv() {
+  let url = pickConnectionString()
+  try {
+    const u = new URL(url)
+    if (u.port === '6543') u.port = '5432'
+    u.searchParams.delete('pgbouncer')
+    url = u.toString()
+  } catch {
+    // Unparseable URL — pass it through and let prisma report it.
+  }
+  return { ...process.env, DATABASE_URL: url, DIRECT_URL: url }
+}
+
 async function main() {
   // The widget-runtime Vercel project sets this: the main project owns
   // schema state, and two projects racing `migrate deploy` on the same
@@ -110,7 +131,7 @@ async function main() {
     console.log(`[migrate] Marking ${names.length} existing migration(s) as applied:`)
     for (const name of names) {
       console.log(`[migrate]   • ${name}`)
-      execSync(`npx prisma migrate resolve --applied "${name}"`, { stdio: 'inherit' })
+      execSync(`npx prisma migrate resolve --applied "${name}"`, { stdio: 'inherit', env: prismaCliEnv() })
     }
   }
 
@@ -141,7 +162,7 @@ async function main() {
 
   console.log(`[migrate] ${pending.length} pending migration(s): ${pending.join(', ')}`)
   console.log('[migrate] Running prisma migrate deploy…')
-  execSync('npx prisma migrate deploy', { stdio: 'inherit' })
+  execSync('npx prisma migrate deploy', { stdio: 'inherit', env: prismaCliEnv() })
   console.log('[migrate] ✓ Done.')
 }
 
