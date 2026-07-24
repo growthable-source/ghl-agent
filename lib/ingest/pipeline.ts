@@ -232,7 +232,19 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
                 src."content", src."contentHash", src."sourceUrl", src."sourceType", src."sourceIdentifier",
                 src."chunkIndex", src."totalChunks", src."sourceMetadata", src."embeddingModel", src."embedding",
                 src."primaryTopic", src."taxonomyTags", src."intentTags", src."taxonomyVersion", src."autoTopicAttempts",
-                src."confidenceTier", src."qualityScore", src."contentVersion", src."brandIdOrigin", src."visibility",
+                src."confidenceTier", src."qualityScore",
+                -- The per-source unique constraint spans SUPERSEDED rows
+                -- too: if this source already holds dead rows for the same
+                -- (sourceUrl, chunkIndex) — e.g. after a demo domain swap
+                -- back onto a shared site — a verbatim version copy would
+                -- 23505. Bump past this source's own graveyard instead.
+                GREATEST(src."contentVersion", COALESCE((
+                  SELECT MAX(mine."contentVersion") FROM "KnowledgeChunk" mine
+                  WHERE mine."sourceId" = ${source.id}
+                    AND mine."sourceUrl" = src."sourceUrl"
+                    AND mine."chunkIndex" = src."chunkIndex"
+                ), 0) + 1),
+                src."brandIdOrigin", src."visibility",
                 0, NULL, NULL, NULL, NULL,
                 now(), now(), now()
               FROM (
@@ -419,6 +431,20 @@ async function processPage(args: ProcessPageArgs): Promise<{ created: number; su
   })
   const existingByIndex = new Map(existing.map(c => [c.chunkIndex, c]))
 
+  // Highest contentVersion per chunkIndex INCLUDING superseded rows. The
+  // unique constraint (sourceId, sourceUrl, chunkIndex, contentVersion)
+  // spans dead rows too, so a re-crawl after an external supersede (e.g.
+  // a demo domain swap superseding the whole knowledge domain) must
+  // version-bump past the graveyard, not restart at 1 — that exact
+  // collision made every page of a post-swap recrawl fail with 23505.
+  const versionRows: Array<{ chunkIndex: number; _max: { contentVersion: number | null } }> =
+    await (db as any).knowledgeChunk.groupBy({
+      by: ['chunkIndex'],
+      where: { sourceId: source.id, sourceUrl: normalized.sourceUrl },
+      _max: { contentVersion: true },
+    })
+  const maxVersionByIndex = new Map(versionRows.map(r => [r.chunkIndex, r._max.contentVersion ?? 0]))
+
   let created = 0
   let superseded = 0
 
@@ -518,7 +544,10 @@ async function processPage(args: ProcessPageArgs): Promise<{ created: number; su
     const w = newWork[i]
     const emb = embeddings.find(e => e.index === i)?.embedding
     const klass = classifications[i]
-    const nextVersion = (w.superseded?.contentVersion ?? 0) + 1
+    const nextVersion = Math.max(
+      w.superseded?.contentVersion ?? 0,
+      maxVersionByIndex.get(w.chunkIndex) ?? 0,
+    ) + 1
     const id = crypto.randomBytes(12).toString('hex')
 
     // Prisma's `KnowledgeChunk.create` doesn't know about the
