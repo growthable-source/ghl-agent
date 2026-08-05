@@ -66,12 +66,25 @@ export default async function RedesignPage({ params }: Params) {
         websiteDomain: true,
         contactEmail: true,
         metadata: true,
+        clickedAt: true,
         redesignRequestedAt: true,
         previewUrl: true,
       },
     })
     .catch(() => null)
   if (!prospect) notFound()
+
+  // "They opened the review" is the redesign offer's click-through signal, and
+  // the engine reads clickedAt for both offers. Deliberately not reusing
+  // /api/public/try/[slug]/status: that route 503s when voice-demo
+  // provisioning isn't configured, which would couple this offer to the other
+  // one's setup. Same idempotency guard as that route — conditioned on null so
+  // refreshes and concurrent tabs can't re-stamp it.
+  if (!prospect.clickedAt) {
+    await db.demoProspect
+      .updateMany({ where: { slug, clickedAt: null }, data: { clickedAt: new Date() } })
+      .catch(() => {})
+  }
 
   return (
     <RedesignClient
