@@ -4,6 +4,7 @@ import {
   resolveTemplates,
   landingPathForVertical,
   buildTemplateVars,
+  prospectUrlPath,
 } from './templates'
 
 describe('renderTemplate', () => {
@@ -82,5 +83,24 @@ describe('landingPathForVertical', () => {
   it('falls back to /ai-receptionist', () => {
     expect(landingPathForVertical('unknown')).toBe('/ai-receptionist')
     expect(landingPathForVertical(null)).toBe('/ai-receptionist')
+  })
+})
+
+describe('prospectUrlPath', () => {
+  it('routes the redesign offer to its own landing page', () => {
+    expect(prospectUrlPath('redesign')).toBe('/redesign')
+  })
+
+  it('sends every voice-demo vertical to /try', () => {
+    for (const v of ['med-spa', 'gym', 'receptionist', 'sdr']) {
+      expect(prospectUrlPath(v)).toBe('/try')
+    }
+  })
+
+  it('falls back to /try for unknown and missing verticals', () => {
+    // every prospect registered before the redesign offer existed
+    expect(prospectUrlPath(null)).toBe('/try')
+    expect(prospectUrlPath(undefined)).toBe('/try')
+    expect(prospectUrlPath('something-new')).toBe('/try')
   })
 })

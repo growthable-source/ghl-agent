@@ -15,6 +15,7 @@ import { authenticateApiKey, AuthError, type KeyContext } from '@/lib/api-auth'
 import { errorResponse, ok, parseLimit } from '@/lib/api-scope'
 import { withApiLog } from '@/lib/api-log'
 import { generateProspectSlug, normalizeWebsiteDomain } from '@/lib/demo-prospects/slug'
+import { prospectUrlPath } from '@/lib/demo-prospects/templates'
 import { demoWorkspaceId } from '@/lib/demo-prospects/provision'
 import { getPurchase, projectPurchaseForOps } from '@/lib/demo-purchase/state'
 
@@ -64,16 +65,19 @@ export const POST = withApiLog(async (req: NextRequest) => {
     // `failed` is excluded so the tool can re-register after a failure.
     const existing = await db.demoProspect.findFirst({
       where: { websiteDomain, status: { notIn: ['expired', 'claimed', 'failed'] } },
-      select: { slug: true },
+      select: { slug: true, vertical: true },
     })
     if (existing) {
       return ok(
-        { slug: existing.slug, url: `${publicBaseUrl()}/try/${existing.slug}`, existing: true },
+        { slug: existing.slug, url: `${publicBaseUrl()}${prospectUrlPath(existing.vertical)}/${existing.slug}`, existing: true },
         { apiKeyId: key.apiKeyId },
       )
     }
 
     const slug = generateProspectSlug(businessName)
+    // Hoisted: the vertical also decides which landing page the returned URL
+    // points at (voice demo vs website redesign), so it's needed after create.
+    const verticalValue = body.vertical?.trim().slice(0, 60) || null
     try {
       await db.demoProspect.create({
         data: {
@@ -82,7 +86,7 @@ export const POST = withApiLog(async (req: NextRequest) => {
           websiteUrl: websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`,
           websiteDomain,
           contactEmail: body.contactEmail?.trim().slice(0, 320) || null,
-          vertical: body.vertical?.trim().slice(0, 60) || null,
+          vertical: verticalValue,
           templates:
             body.templates && typeof body.templates === 'object'
               ? (body.templates as Prisma.InputJsonValue)
@@ -103,18 +107,18 @@ export const POST = withApiLog(async (req: NextRequest) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const winner = await db.demoProspect.findFirst({
           where: { websiteDomain, status: { notIn: ['expired', 'claimed', 'failed'] } },
-          select: { slug: true },
+          select: { slug: true, vertical: true },
         })
         if (winner) {
           return ok(
-            { slug: winner.slug, url: `${publicBaseUrl()}/try/${winner.slug}`, existing: true },
+            { slug: winner.slug, url: `${publicBaseUrl()}${prospectUrlPath(winner.vertical)}/${winner.slug}`, existing: true },
             { apiKeyId: key.apiKeyId },
           )
         }
       }
       throw err
     }
-    return ok({ slug, url: `${publicBaseUrl()}/try/${slug}`, existing: false }, { apiKeyId: key.apiKeyId })
+    return ok({ slug, url: `${publicBaseUrl()}${prospectUrlPath(verticalValue)}/${slug}`, existing: false }, { apiKeyId: key.apiKeyId })
   } catch (err) {
     return errorResponse(err)
   }
@@ -144,6 +148,10 @@ export const GET = withApiLog(async (req: NextRequest) => {
         status: true, clickedAt: true, firstCallAt: true, callCount: true,
         totalCallSecs: true, createdAt: true, updatedAt: true,
         contactEmail: true, metadata: true,
+        // Redesign offer: the only signal the prospecting tool can't infer
+        // from clicks. Rides the same poll as call engagement so the engine
+        // needs no second cursor.
+        redesignRequestedAt: true, previewUrl: true, redesignContact: true,
       },
     })
     // purchase: {state,period,startedAt,paidAt,concierge} | null — the
