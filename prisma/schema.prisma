@@ -4188,12 +4188,20 @@ model DemoProspect {
   claimedByUserId    String?
   claimedWorkspaceId String?
   expiresAt          DateTime?
+  // Website-redesign offer (vertical: "redesign"). The prospect asks for a
+  // free rebuild from /redesign/[slug]; we build it offline and paste the
+  // preview back, which is what turns the request into a delivery.
+  redesignRequestedAt DateTime?
+  redesignContact     Json? // {name, email, notes} from the capture form
+  previewUrl          String? // set once the rebuilt page is ready to send
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@index([status])
   @@index([websiteDomain])
   @@index([status, expiresAt])
+  // The work queue: open requests, oldest first.
+  @@index([redesignRequestedAt])
 }
 
 // One row per public demo call. Powers the abuse guards on the /try

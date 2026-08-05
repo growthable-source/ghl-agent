@@ -94,3 +94,16 @@ export function resolveTemplates(input: {
     firstMessage: renderTemplate(firstMessageTpl, input.vars),
   }
 }
+
+/**
+ * Which personalized landing page a prospect's offer lives on.
+ *
+ * The prospecting tool picks the offer per campaign and registers the
+ * prospect with a matching `vertical`; everything else about a demo prospect
+ * is identical, so the offer is a routing decision rather than a new model.
+ * Unknown verticals fall through to the voice demo, which is what every
+ * prospect registered before the redesign offer existed carries.
+ */
+export function prospectUrlPath(vertical: string | null | undefined): string {
+  return vertical === 'redesign' ? '/redesign' : '/try'
+}
