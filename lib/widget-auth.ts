@@ -155,6 +155,30 @@ function isOurOrigin(origin: string): boolean {
   try { return new URL(origin).host.toLowerCase() === new URL(app).host.toLowerCase() } catch { return false }
 }
 
+/**
+ * A request whose Origin matches the host serving it is our own embed
+ * page talking to itself, not a foreign site embedding the widget — the
+ * only thing allowedDomains exists to stop.
+ *
+ * This cannot be folded into isOurOrigin's APP_URL comparison: chat
+ * traffic is served by the widget-runtime deployment (widget.xovera.io)
+ * while APP_URL names the main app, so the embed iframe's own POSTs
+ * carry an Origin that matches neither APP_URL nor the customer's
+ * allowlist. Same-origin GETs send no Origin header at all, which is
+ * why this stayed invisible until partner provisioning shipped the
+ * first widgets with a non-empty allowlist: config loaded (GET), the
+ * launcher drew, and then every POST the panel made — visitor identify,
+ * conversation create — was refused. A widget that renders but cannot
+ * be typed into.
+ */
+function isSameHost(origin: string, req: Request): boolean {
+  const rawHost =
+    req.headers.get('x-forwarded-host') || req.headers.get('host') || ''
+  const host = rawHost.split(',')[0].trim().toLowerCase()
+  if (!host) return false
+  try { return new URL(origin).host.toLowerCase() === host } catch { return false }
+}
+
 function originMatches(origin: string, allowed: string[]): boolean {
   if (allowed.length === 0) return true
   try {
@@ -200,7 +224,12 @@ export async function validateWidgetRequest(
   // Origin check stays per-request — it's pure string comparison
   // against the cached widget.allowedDomains, no DB needed.
   const origin = req.headers.get('origin')
-  if (origin && !isOurOrigin(origin) && !originMatches(origin, widget.allowedDomains)) {
+  if (
+    origin &&
+    !isSameHost(origin, req) &&
+    !isOurOrigin(origin) &&
+    !originMatches(origin, widget.allowedDomains)
+  ) {
     return { ok: false, error: `Origin ${origin} not allowed for this widget`, status: 403 }
   }
 
