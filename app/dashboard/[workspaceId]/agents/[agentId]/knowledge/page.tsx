@@ -34,6 +34,10 @@ interface CollectionLite {
   entryCount: number
   dataSourceCount: number
   sourceCount: number
+  /** Shared canonical corpus, maintained outside this workspace. */
+  isGlobal?: boolean
+  /** Owned by another workspace — attach/detach only, no editing. */
+  isReadOnly?: boolean
 }
 
 interface KnowledgeDraft extends Record<string, unknown> {
@@ -98,7 +102,15 @@ export default function AgentKnowledgePage() {
       }
       // Everything ticked (or nothing to tick yet) → scopeAll, so
       // collections created later are auto-included.
-      const scopeAll = collections.length === 0 || d.collectionIds.length === collections.length
+      //
+      // Except when a shared corpus is attached: scopeAll means
+      // "everything in MY workspace", which excludes a collection owned
+      // by another one. Inferring it here would silently unhook the
+      // corpus the moment the operator ticked every box.
+      const globalIds = new Set(collections.filter(c => c.isGlobal).map(c => c.id))
+      const scopeAll =
+        (collections.length === 0 || d.collectionIds.length === collections.length)
+        && !d.collectionIds.some(id => globalIds.has(id))
 
       const [agentRes, colRes] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`, {

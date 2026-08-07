@@ -14,6 +14,7 @@
  */
 
 import { db } from './db'
+import { globalCollectionsReady, isMissingColumn } from './knowledge/migration-state'
 
 /**
  * Resolve the workspaceId for a given agent. Falls back through the
@@ -184,11 +185,16 @@ export async function bulkLoadKnowledgeForAgents(
   if (agentIds.length === 0) return out
   for (const id of agentIds) out.set(id, [])
   try {
+    // Explicit select, not include: `include` pulls every scalar on
+    // KnowledgeCollection, which means a deploy that lands before the
+    // shared-corpus SQL would P2022 on isGlobal and blind every agent's
+    // knowledge. Naming the columns keeps this query migration-proof.
     const rows: any[] = await db.agentCollection.findMany({
       where: { agentId: { in: agentIds } },
-      include: {
+      select: {
+        agentId: true,
         collection: {
-          include: {
+          select: {
             entries: { where: { status: 'ready' } },
           },
         },
@@ -224,17 +230,29 @@ export async function bulkLoadDataSourcesForAgents(
   if (agentIds.length === 0) return out
   for (const id of agentIds) out.set(id, [])
   try {
+    // isGlobal only exists once the shared-corpus SQL has run; select it
+    // conditionally so a deploy landing first doesn't P2022 and strip
+    // every agent's data-source tools.
+    const ready = await globalCollectionsReady()
     const rows: any[] = await db.agentCollection.findMany({
       where: { agentId: { in: agentIds } },
-      include: {
+      select: {
+        agentId: true,
         collection: {
-          include: {
+          select: {
+            ...(ready ? { isGlobal: true } : {}),
             dataSources: { where: { isActive: true } },
           },
         },
-      },
+      } as any,
     })
     for (const r of rows) {
+      // Data sources carry encrypted credentials (WorkspaceDataSource
+      // .secretEnc) and are handed to the agent as live callable tools.
+      // The shared corpus is attached by workspaces that do NOT own
+      // those credentials, so its data sources must never travel with
+      // it — a global collection contributes knowledge, never tools.
+      if (r.collection?.isGlobal) continue
       const list = out.get(r.agentId) ?? []
       for (const ds of r.collection?.dataSources ?? []) list.push(ds)
       out.set(r.agentId, list)
@@ -263,9 +281,9 @@ export async function getAttachedCollectionsForAgent(agentId: string) {
     })
     return rows.map(r => r.collection).filter(Boolean)
   } catch (err: any) {
-    if (err?.code === 'P2021' || /relation .* does not exist/i.test(err?.message ?? '')) {
-      return []
-    }
+    // P2022 too: `include` pulls every collection scalar, so a deploy
+    // landing before the shared-corpus SQL hits a missing isGlobal.
+    if (isMissingColumn(err)) return []
     throw err
   }
 }

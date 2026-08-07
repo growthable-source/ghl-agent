@@ -24,6 +24,7 @@
 
 import { db } from '@/lib/db'
 import { retrieveChunks, buildRetrievedKnowledgeBlock, debugRetrieveChunks, type RetrievedChunk, type RetrievalDebug } from '../ingest/retrieve'
+import { globalCollectionsReady } from '@/lib/knowledge/migration-state'
 
 interface AgentForRetrieval {
   id?: string
@@ -39,30 +40,66 @@ interface AgentForRetrieval {
   knowledgeConditions?: Record<string, string> | null
 }
 
+export interface AgentKnowledgeScope {
+  /** The collections this agent reads, or null for "everything in the
+   *  workspace". */
+  collectionIds: string[] | null
+  /** Subset of collectionIds living in ANOTHER workspace and flagged
+   *  KnowledgeCollection.isGlobal — the shared canonical corpus.
+   *
+   *  Always [] when collectionIds is null: a workspace-wide agent has no
+   *  explicit attachment list, and the attachment IS the authorisation
+   *  for a cross-workspace read. */
+  globalCollectionIds: string[]
+}
+
 /**
- * The collections this agent reads, or null for "everything in the
- * workspace". One small query per message; the alternative was
- * threading the id list through ten different runtime call sites and
- * getting it wrong in at least one of them.
+ * What this agent is allowed to retrieve from. One small query per
+ * message; the alternative was threading the id list through ten
+ * different runtime call sites and getting it wrong in at least one.
  *
- * Failure (or a pre-migration DB) resolves to null = workspace-wide,
- * so a broken lookup can never silently blind an agent.
+ * Failure semantics are deliberately asymmetric: the scope fails OPEN
+ * to workspace-wide (a broken lookup must never silently blind an
+ * agent) while the cross-workspace widening fails CLOSED.
  */
-export async function resolveScopedCollectionIds(
+export async function resolveAgentKnowledgeScope(
   agent: AgentForRetrieval,
-): Promise<string[] | null> {
-  if (agent.knowledgeScopeAll !== false) return null
-  if (!agent.id) return null
+): Promise<AgentKnowledgeScope> {
+  const workspaceWide: AgentKnowledgeScope = { collectionIds: null, globalCollectionIds: [] }
+  if (agent.knowledgeScopeAll !== false) return workspaceWide
+  if (!agent.id) return workspaceWide
   try {
+    // Pre-migration: no isGlobal column, so selecting it is a P2022.
+    // The agent keeps working off its own collections; it just can't
+    // see the corpus until the SQL runs.
+    if (!(await globalCollectionsReady())) {
+      const rows = await db.agentCollection.findMany({
+        where: { agentId: agent.id },
+        select: { collectionId: true },
+      })
+      return { collectionIds: rows.map(r => r.collectionId), globalCollectionIds: [] }
+    }
     const rows = await db.agentCollection.findMany({
       where: { agentId: agent.id },
-      select: { collectionId: true },
+      select: {
+        collectionId: true,
+        collection: { select: { id: true, workspaceId: true, isGlobal: true } },
+      },
     })
-    return rows.map(r => r.collectionId)
+    return {
+      collectionIds: rows.map(r => r.collectionId),
+      // Same-workspace collections need no widening — the base tenancy
+      // arm already covers them, and leaving them out keeps the fast path.
+      globalCollectionIds: rows
+        .filter(r => r.collection?.isGlobal === true
+          && r.collection.workspaceId !== agent.workspaceId)
+        .map(r => r.collection!.id),
+    }
   } catch {
-    return null
+    return workspaceWide
   }
 }
+
 
 export interface RetrievalForAgentResult {
   block: string
@@ -82,12 +119,13 @@ export async function retrieveAndFormatForAgent(
     // Narrowed scope only when the operator explicitly unticked
     // something (knowledgeScopeAll === false). Then the attached set is
     // authoritative, empty included.
-    const collectionIds = await resolveScopedCollectionIds(agent)
+    const scope = await resolveAgentKnowledgeScope(agent)
 
     const chunks = await retrieveChunks(agent.workspaceId, message, {
       limit: 6,
-      collectionIds: collectionIds ?? [],
-      scopeToCollections: collectionIds !== null,
+      collectionIds: scope.collectionIds ?? [],
+      scopeToCollections: scope.collectionIds !== null,
+      globalCollectionIds: scope.globalCollectionIds,
     })
     return { block: buildRetrievedKnowledgeBlock(chunks, normaliseConditions(agent.knowledgeConditions)), chunks }
   } catch (err) {
@@ -136,11 +174,12 @@ export async function debugRetrieveForAgent(
 ): Promise<RetrievalDebug | null> {
   if (!agent?.workspaceId) return null
   try {
-    const collectionIds = await resolveScopedCollectionIds(agent)
+    const scope = await resolveAgentKnowledgeScope(agent)
     return await debugRetrieveChunks(agent.workspaceId, message, {
       limit: 6,
-      collectionIds: collectionIds ?? [],
-      scopeToCollections: collectionIds !== null,
+      collectionIds: scope.collectionIds ?? [],
+      scopeToCollections: scope.collectionIds !== null,
+      globalCollectionIds: scope.globalCollectionIds,
     })
   } catch (err) {
     console.warn('[debugRetrieveForAgent] failed:', errMsg(err))

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
+import { sourceCollectionsReady, globalCollectionsReady } from '@/lib/knowledge/migration-state'
 
 type Params = { params: Promise<{ workspaceId: string; collectionId: string }> }
 
@@ -149,11 +149,24 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
 
+  const globalReady = await globalCollectionsReady()
   const existing = await db.knowledgeCollection.findFirst({
     where: { id: collectionId, workspaceId },
-    select: { id: true },
+    select: globalReady ? { id: true, isGlobal: true } : { id: true },
   })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // AgentCollection cascades on delete, and a collection-scoped agent
+  // left with an empty set retrieves nothing at all (buildScopeFilter
+  // returns AND FALSE). Deleting the shared corpus would therefore make
+  // every provisioned agent in every workspace answer "I don't know",
+  // permanently and silently.
+  if ((existing as { isGlobal?: boolean }).isGlobal) {
+    return NextResponse.json({
+      error: 'This is the shared canonical corpus, read by agents in other workspaces. Un-flag isGlobal via SQL before deleting it.',
+      code: 'GLOBAL_COLLECTION',
+    }, { status: 409 })
+  }
 
   await db.knowledgeCollection.delete({ where: { id: collectionId } })
   return NextResponse.json({ success: true })

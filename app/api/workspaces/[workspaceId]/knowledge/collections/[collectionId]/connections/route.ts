@@ -49,8 +49,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
   }
 
+  // Scoped to THIS workspace's agents on purpose. This is a full-replace:
+  // an unscoped read would pull in every other workspace's attachments,
+  // and they'd all land in toRemove. For the shared canonical corpus —
+  // attached by every provisioned customer — that means one save from
+  // the owning workspace silently detaches every tenant and leaves their
+  // agents answering "I don't know" forever.
   const current = await db.agentCollection.findMany({
-    where: { collectionId },
+    where: { collectionId, agent: { workspaceId } },
     select: { agentId: true },
   })
   const currentIds = new Set(current.map(c => c.agentId))
@@ -61,7 +67,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   await db.$transaction(async tx => {
     if (toRemove.length > 0) {
       await tx.agentCollection.deleteMany({
-        where: { collectionId, agentId: { in: toRemove } },
+        where: { collectionId, agentId: { in: toRemove }, agent: { workspaceId } },
       })
     }
     if (toAdd.length > 0) {

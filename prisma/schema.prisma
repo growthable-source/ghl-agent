@@ -914,6 +914,24 @@ model KnowledgeCollection {
   // it shows up only when filtering by that brand.
   brandId     String?
   brand       Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  // ── Canonical shared corpus ────────────────────────────────────────
+  // TRUE = agents in OTHER workspaces may READ this collection, but
+  // only when it's explicitly attached to them (AgentCollection) AND
+  // the retrieval SQL re-confirms this flag in the same statement.
+  // Everything else — editing, crawling, deleting, connection
+  // management — stays scoped to the owning workspace.
+  //
+  // There is deliberately NO write path: every route that creates or
+  // updates a collection builds an explicit allowlisted `data` object,
+  // and the DB carries a trigger requiring `SET LOCAL
+  // xovera.allow_global = 'on'` (which the pooled app connection never
+  // sets). Flipped by hand-run SQL only —
+  // prisma/sql/2026-08-07-global-knowledge-collections.sql.
+  isGlobal    Boolean   @default(false)
+  // Stable handle so provisioning resolves the corpus by name instead
+  // of a hardcoded cuid — the corpus can be rebuilt or renamed without
+  // a redeploy. e.g. "helpcenter-v1".
+  globalKey   String?   @unique
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -926,6 +944,7 @@ model KnowledgeCollection {
   attachments AgentCollection[]
   shares      KnowledgeCollectionShare[]
 
+  @@index([isGlobal])
   @@index([workspaceId, order])
   @@index([brandId])
 }

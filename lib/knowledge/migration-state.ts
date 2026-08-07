@@ -32,6 +32,36 @@ export async function sourceCollectionsReady(): Promise<boolean> {
   return cached
 }
 
+let globalCached: boolean | null = null
+
+/**
+ * Has the shared-corpus SQL run yet?
+ *
+ * `KnowledgeCollection.isGlobal` arrives via hand-run SQL
+ * (prisma/sql/2026-08-07-global-knowledge-collections.sql), so — same
+ * as `collectionId` above — a deploy can land before the column does.
+ * Selecting it early is a P2022, which would 500 the agent knowledge
+ * picker and blind every agent that reads the corpus.
+ *
+ * Fails closed: until the SQL runs this returns false and every caller
+ * falls back to pure workspace scoping. Nothing breaks, nothing leaks.
+ */
+export async function globalCollectionsReady(): Promise<boolean> {
+  if (globalCached !== null) return globalCached
+  try {
+    const rows = await db.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'KnowledgeCollection' AND column_name = 'isGlobal'
+      ) as exists
+    `
+    globalCached = !!rows[0]?.exists
+  } catch {
+    globalCached = false
+  }
+  return globalCached
+}
+
 /** True when a Prisma error is "that column doesn't exist yet". */
 export function isMissingColumn(err: unknown): boolean {
   const e = err as { code?: string; message?: string } | null
@@ -43,4 +73,9 @@ export function isMissingColumn(err: unknown): boolean {
 /** Test seam / manual reset after running the SQL in a long-lived process. */
 export function resetSourceCollectionsProbe(): void {
   cached = null
+}
+
+/** Test seam / manual reset after running the shared-corpus SQL. */
+export function resetGlobalCollectionsProbe(): void {
+  globalCached = null
 }

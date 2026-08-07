@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { sourceCollectionsReady } from '@/lib/knowledge/migration-state'
+import { sourceCollectionsReady, globalCollectionsReady, isMissingColumn } from '@/lib/knowledge/migration-state'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -35,6 +35,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     ? { entries: true, dataSources: true, sources: true }
     : { entries: true, dataSources: true }
 
+  // The shared canonical corpus lives in another workspace, so the
+  // picker has to admit it explicitly or the operator can never see
+  // (or detach) what their agent is actually reading.
+  const globalReady = await globalCollectionsReady()
+  const availableWhere = globalReady
+    ? { OR: [{ workspaceId }, { isGlobal: true }] }
+    : { workspaceId }
+
   let attached: any[] = []
   let available: any[] = []
   try {
@@ -49,13 +57,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
         },
       }),
       db.knowledgeCollection.findMany({
-        where: { workspaceId },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+        where: availableWhere,
+        // Corpus first — it's the one row the operator didn't create
+        // and most needs to recognise.
+        orderBy: globalReady
+          ? [{ isGlobal: 'desc' as const }, { order: 'asc' as const }, { createdAt: 'asc' as const }]
+          : [{ order: 'asc' as const }, { createdAt: 'asc' as const }],
         include: { _count: { select: countSelect } },
       }),
     ])
   } catch (err: any) {
-    if (err?.code === 'P2021' || /relation .* does not exist/i.test(err?.message ?? '')) {
+    if (isMissingColumn(err)) {
       return NextResponse.json({ attached: [], available: [], notMigrated: true })
     }
     throw err
@@ -63,15 +75,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const attachedIds = new Set(attached.map(a => a.collectionId))
   return NextResponse.json({
-    attached: attached.map(a => shape(a.collection)),
+    attached: attached.map(a => shape(a.collection, workspaceId)),
     available: available.map(c => ({
-      ...shape(c),
+      ...shape(c, workspaceId),
       isAttached: attachedIds.has(c.id),
     })),
   })
 }
 
-function shape(c: any) {
+function shape(c: any, workspaceId: string) {
   return {
     id: c.id,
     name: c.name,
@@ -81,6 +93,10 @@ function shape(c: any) {
     entryCount: c._count?.entries ?? 0,
     dataSourceCount: c._count?.dataSources ?? 0,
     sourceCount: c._count?.sources ?? 0,
+    isGlobal: c.isGlobal === true,
+    // Owned by someone else: the UI must render this as attach/detach
+    // only, with no link into the knowledge editor (which 404s by design).
+    isReadOnly: c.isGlobal === true && c.workspaceId !== workspaceId,
   }
 }
 
@@ -107,14 +123,26 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
 
   if (targetIds.length > 0) {
+    // Attachable = mine, OR the shared canonical corpus. No
+    // request-supplied value participates in the isGlobal arm, so this
+    // names one super-admin-curated collection — not "any collection in
+    // any workspace". isGlobal has no write path anywhere in the app
+    // (every route builds an explicit allowlisted `data` object) and the
+    // DB carries a trigger refusing the flip without a session GUC.
+    //
+    // Belt and braces: even if a row somehow landed in AgentCollection,
+    // retrieval re-checks kc."isGlobal" = TRUE in its own SQL, so it
+    // would still return nothing.
     const cols = await db.knowledgeCollection.findMany({
-      where: { id: { in: targetIds }, workspaceId },
+      where: (await globalCollectionsReady())
+        ? { id: { in: targetIds }, OR: [{ workspaceId }, { isGlobal: true }] }
+        : { id: { in: targetIds }, workspaceId },
       select: { id: true },
     })
     const valid = new Set(cols.map(c => c.id))
     for (const id of targetIds) {
       if (!valid.has(id)) {
-        return NextResponse.json({ error: `Collection ${id} is not in this workspace` }, { status: 400 })
+        return NextResponse.json({ error: `Collection ${id} is not available to this workspace` }, { status: 400 })
       }
     }
   }

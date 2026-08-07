@@ -69,6 +69,16 @@ interface RetrieveOptions {
    *  knowledge at all" (the operator attached no collections to this
    *  agent). When false/undefined, retrieval stays workspace-wide. */
   scopeToCollections?: boolean
+  /** Collections OUTSIDE this workspace that the agent may read, because
+   *  they're flagged KnowledgeCollection.isGlobal AND explicitly attached
+   *  to the agent. Resolved only by lib/agent/retrieve-for-agent.ts —
+   *  no other caller supplies it.
+   *
+   *  Honoured only when scopeToCollections is true, and only for ids that
+   *  also appear in collectionIds. The SQL re-checks kc."isGlobal" = TRUE
+   *  in the same statement, so a bug here still can't cross a tenancy
+   *  boundary — the DB is the enforcement point, not this list. */
+  globalCollectionIds?: string[]
   /** Minimum similarity threshold. Default 0.4 — chunks below this
    *  are usually noise. Tighten when retrieval starts pulling
    *  unrelated content; loosen when sparse domains miss real hits. */
@@ -117,8 +127,9 @@ export async function retrieveChunks(
     // (default 0.25). Without this floor, queries on niche topics
     // would still pull the 6 least-bad chunks even when none are
     // useful, which the agent then quotes as authoritative.
-    const chunks = (await runVectorTopK(workspaceId, literal, buildScopeFilter(opts), limit))
-      .filter(c => c.similarity >= minSimilarity)
+    const chunks = (await runVectorTopK(
+      workspaceId, literal, buildScopeFilter(opts), limit, normaliseGlobalIds(opts),
+    )).filter(c => c.similarity >= minSimilarity)
 
     // Bump usage stats best-effort. Lets us cold-prune chunks
     // nobody's ever retrieved.
@@ -252,6 +263,50 @@ function buildScopeFilter(opts: RetrieveOptions) {
   return Prisma.empty
 }
 
+/**
+ * Which cross-workspace collections this query may actually reach.
+ *
+ * Two reductions, both load-bearing:
+ *   1. Cross-workspace reads are permitted ONLY in collection-scoped
+ *      mode. Every knowledgeDomainIds caller (Copilot, /try demos, the
+ *      eval runner) and every workspace-wide caller therefore keeps its
+ *      SQL byte-identical to before this feature existed.
+ *   2. Intersected with the attached set, so the widened tenancy arm can
+ *      never out-reach buildScopeFilter. That intersection is what bounds
+ *      the blast radius to "collections attached to THIS agent".
+ */
+export function normaliseGlobalIds(opts: RetrieveOptions): string[] {
+  if (!opts.scopeToCollections) return []
+  const attached = new Set(opts.collectionIds ?? [])
+  return (opts.globalCollectionIds ?? []).filter(id => attached.has(id))
+}
+
+/**
+ * The tenancy predicate. Default is unchanged and unconditional: a chunk
+ * must live in a KnowledgeDomain owned by this workspace.
+ *
+ * The only widening is the canonical-corpus arm, gated three ways —
+ * collection-scoped mode (normaliseGlobalIds), explicit attachment
+ * (the intersection), and the DB's own kc."isGlobal" check below.
+ *
+ * When the global list is empty we emit the original single predicate
+ * verbatim, so existing traffic keeps identical query plans. `kc` is
+ * LEFT JOINed, so a source with no collection yields NULL = TRUE → NULL
+ * → excluded. Correct by construction.
+ */
+export function buildTenancyFilter(workspaceId: string, globalCollectionIds: string[]) {
+  if (globalCollectionIds.length === 0) {
+    return Prisma.sql`d."workspaceId" = ${workspaceId}`
+  }
+  return Prisma.sql`(
+    d."workspaceId" = ${workspaceId}
+    OR (
+      s."collectionId" = ANY(${globalCollectionIds}::text[])
+      AND kc."isGlobal" = TRUE
+    )
+  )`
+}
+
 /** Row shape returned by every vector top-K query — selected columns
  *  are identical between retrieveChunks and debugRetrieveChunks. */
 interface VectorRow {
@@ -280,8 +335,12 @@ async function runVectorTopK(
   literal: string,
   scopeFilter: ReturnType<typeof buildScopeFilter>,
   limit: number,
+  /** Already reduced by normaliseGlobalIds. Empty = today's behaviour. */
+  globalCollectionIds: string[] = [],
 ): Promise<RetrievedChunk[]> {
   // Pre-migration shape: no collection column to select or join on.
+  // Without collections a shared corpus isn't even expressible, so
+  // tenancy stays hard-scoped and globalCollectionIds is ignored.
   if (!(await sourceCollectionsReady())) {
     const legacy = await db.$queryRaw<VectorRow[]>`
       SELECT
@@ -320,7 +379,7 @@ async function runVectorTopK(
     INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
     LEFT JOIN "KnowledgeSource" s ON s.id = c."sourceId"
     LEFT JOIN "KnowledgeCollection" kc ON kc.id = s."collectionId"
-    WHERE d."workspaceId" = ${workspaceId}
+    WHERE ${buildTenancyFilter(workspaceId, globalCollectionIds)}
       AND c."supersededAt" IS NULL
       AND c.embedding IS NOT NULL
       ${scopeFilter}
@@ -381,6 +440,14 @@ export interface RetrievalDebug {
   scopedDomainNames: string[]
   /** Total collection count in this workspace, regardless of agent scope. */
   domainsInWorkspace: number
+  /** Live chunks reachable through the shared canonical corpus. Kept
+   *  separate from chunksInWorkspace, which means "your OWN indexed
+   *  content" — a provisioned workspace legitimately has zero of those
+   *  while answering perfectly from the corpus. */
+  chunksInGlobalScope: number
+  /** Names of the attached shared collections, so the UI can say
+   *  "Help Center Articles (shared, managed by Xovera)". */
+  globalCollectionNames: string[]
   /** Reason — surfaces the most likely cause of zero matches. */
   reason:
     | 'good_match'           // top chunk above threshold
@@ -405,6 +472,9 @@ export async function debugRetrieveChunks(
   const trimmed = (query || '').trim()
   const limit = Math.max(1, Math.min(20, opts.limit ?? 6))
   const thresholdForRuntime = opts.minSimilarity ?? 0.25
+  // Same reduction the runtime applies, so the diagnostic reports on
+  // exactly the scope the agent actually reads.
+  const globalIds = normaliseGlobalIds(opts)
 
   // Always count what's in the workspace so the UI can say
   // "no chunks indexed yet" vs "your agent isn't scoped to them".
@@ -422,21 +492,57 @@ export async function debugRetrieveChunks(
         AND c.embedding IS NULL
     `.then(r => ({ count: Number(r[0]?.count ?? 0) })).catch(() => ({ count: 0 })),
     db.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*)::bigint as count FROM "KnowledgeCollection" WHERE "workspaceId" = ${workspaceId}
+      SELECT COUNT(*)::bigint as count FROM "KnowledgeCollection"
+      WHERE "workspaceId" = ${workspaceId} OR id = ANY(${globalIds}::text[])
     `.then(r => ({ count: Number(r[0]?.count ?? 0) })).catch(() => ({ count: 0 })),
   ])
 
-  // Resolve scoped collection names. Empty = workspace-wide.
+  // Live chunks reachable through the shared corpus. Only queried when
+  // the agent actually attached one — otherwise it's a guaranteed zero.
+  let chunksInGlobalScope = 0
+  if (globalIds.length > 0) {
+    try {
+      const rows = await db.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint as count FROM "KnowledgeChunk" c
+        INNER JOIN "KnowledgeSource" s ON s.id = c."sourceId"
+        INNER JOIN "KnowledgeCollection" kc ON kc.id = s."collectionId"
+        WHERE s."collectionId" = ANY(${globalIds}::text[])
+          AND kc."isGlobal" = TRUE
+          AND c."supersededAt" IS NULL
+          AND c.embedding IS NOT NULL
+      `
+      chunksInGlobalScope = Number(rows[0]?.count ?? 0)
+    } catch { /* pre-migration; leave zero */ }
+  }
+
+  // Resolve scoped collection names. Empty = workspace-wide. The lookup
+  // must admit globals or the corpus silently vanishes from the
+  // "scoped to" line even though the agent is reading it.
   let scopedDomainNames: string[] = []
+  let globalCollectionNames: string[] = []
   if (opts.collectionIds && opts.collectionIds.length > 0) {
     try {
-      const names = await db.$queryRaw<Array<{ name: string }>>`
-        SELECT name FROM "KnowledgeCollection"
+      const names = await db.$queryRaw<Array<{ name: string; isGlobal: boolean; workspaceId: string }>>`
+        SELECT name, "isGlobal", "workspaceId" FROM "KnowledgeCollection"
         WHERE id = ANY(${opts.collectionIds}::text[])
-          AND "workspaceId" = ${workspaceId}
+          AND ("workspaceId" = ${workspaceId} OR "isGlobal" = TRUE)
       `
       scopedDomainNames = names.map(n => n.name)
-    } catch { /* migration not run; leave empty */ }
+      globalCollectionNames = names
+        .filter(n => n.isGlobal && n.workspaceId !== workspaceId)
+        .map(n => n.name)
+    } catch {
+      // Pre-migration: no isGlobal column. Fall back to the old shape
+      // rather than losing the names entirely.
+      try {
+        const names = await db.$queryRaw<Array<{ name: string }>>`
+          SELECT name FROM "KnowledgeCollection"
+          WHERE id = ANY(${opts.collectionIds}::text[])
+            AND "workspaceId" = ${workspaceId}
+        `
+        scopedDomainNames = names.map(n => n.name)
+      } catch { /* leave empty */ }
+    }
   }
 
   const baseEmpty: Omit<RetrievalDebug, 'reason'> = {
@@ -448,13 +554,19 @@ export async function debugRetrieveChunks(
     thresholdForRuntime,
     scopedDomainNames,
     domainsInWorkspace,
+    chunksInGlobalScope,
+    globalCollectionNames,
     errorDetail: null,
   }
 
-  if (chunksInWorkspace === 0) {
+  // Both counts must be zero. A provisioned workspace has no own chunks
+  // at all, so keying "nothing indexed yet" off chunksInWorkspace alone
+  // would tell every such operator their knowledge is broken while the
+  // agent answers fine from the corpus.
+  if (chunksInWorkspace === 0 && chunksInGlobalScope === 0) {
     return { ...baseEmpty, reason: 'no_chunks_in_workspace' }
   }
-  if (chunksInWorkspace > 0 && chunksInWorkspace === chunksWithNullEmbedding) {
+  if (chunksInGlobalScope === 0 && chunksInWorkspace > 0 && chunksInWorkspace === chunksWithNullEmbedding) {
     return { ...baseEmpty, reason: 'embeddings_failed' }
   }
   if (!trimmed || trimmed.length < 3) {
@@ -508,7 +620,8 @@ export async function debugRetrieveChunks(
       SELECT COUNT(*)::bigint as count FROM "KnowledgeChunk" c
       INNER JOIN "KnowledgeDomain" d ON d.id = c."knowledgeDomainId"
       LEFT JOIN "KnowledgeSource" s ON s.id = c."sourceId"
-      WHERE d."workspaceId" = ${workspaceId}
+      LEFT JOIN "KnowledgeCollection" kc ON kc.id = s."collectionId"
+      WHERE ${buildTenancyFilter(workspaceId, globalIds)}
         AND c."supersededAt" IS NULL
         AND c.embedding IS NOT NULL
         ${scopeFilter}
@@ -521,7 +634,7 @@ export async function debugRetrieveChunks(
 
     // Same query as retrieveChunks; debug returns top-K regardless of
     // threshold so the operator can see near-misses.
-    const topChunks = await runVectorTopK(workspaceId, literal, scopeFilter, limit)
+    const topChunks = await runVectorTopK(workspaceId, literal, scopeFilter, limit, globalIds)
 
     const topSimilarity = topChunks.length > 0 ? topChunks[0].similarity : null
     const reason: RetrievalDebug['reason'] =
@@ -538,6 +651,8 @@ export async function debugRetrieveChunks(
       thresholdForRuntime,
       scopedDomainNames,
       domainsInWorkspace,
+      chunksInGlobalScope,
+      globalCollectionNames,
       errorDetail: null,
       reason,
     }

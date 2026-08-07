@@ -30,7 +30,7 @@
 import { db } from '@/lib/db'
 import { retrieveChunks, buildRetrievedKnowledgeBlock, type RetrievedChunk } from '@/lib/ingest/retrieve'
 import { findBrandCollectionId } from '@/lib/ingest/brand-domain'
-import { resolveScopedCollectionIds } from '@/lib/agent/retrieve-for-agent'
+import { resolveAgentKnowledgeScope } from '@/lib/agent/retrieve-for-agent'
 
 const BRAND_TICKET_LIMIT = 100
 const REQUESTER_TICKET_LIMIT = 20
@@ -116,26 +116,30 @@ async function retrieveForTicket(
 ): Promise<RetrievedChunk[]> {
   if (!question || question.trim().length < 3) return []
   try {
-    const scopedIds = await resolveScopedCollectionIds({
+    const scope = await resolveAgentKnowledgeScope({
       id: agent.id,
       workspaceId: ticket.workspaceId,
       knowledgeScopeAll: agent.knowledgeScopeAll,
     })
     // Workspace-wide agent → nothing to narrow; the brand's own
     // collection is already in the pool.
-    if (scopedIds === null) {
+    if (scope.collectionIds === null) {
       return await retrieveChunks(ticket.workspaceId, question, { limit: 6 })
     }
     // Scoped agent → the brand's portal collection still joins the pool.
     // A brand added that knowledge specifically so ticket replies could
     // use it; an agent's scope shouldn't hide it.
     const brandCollectionId = await findBrandCollectionId(ticket.brandId)
-    const collectionIds = brandCollectionId && !scopedIds.includes(brandCollectionId)
-      ? [...scopedIds, brandCollectionId]
-      : scopedIds
+    const collectionIds = brandCollectionId && !scope.collectionIds.includes(brandCollectionId)
+      ? [...scope.collectionIds, brandCollectionId]
+      : scope.collectionIds
     return await retrieveChunks(ticket.workspaceId, question, {
       limit: 6,
       collectionIds,
+      // Brand collections are workspace-local, so they only ever land in
+      // collectionIds — the shared corpus still has to be threaded here
+      // or a ticket reply silently loses it.
+      globalCollectionIds: scope.globalCollectionIds,
       scopeToCollections: true,
     })
   } catch {

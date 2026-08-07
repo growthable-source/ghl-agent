@@ -4,6 +4,7 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { isMissingColumn } from '@/lib/migration-error'
 import { resolveLocationForProvider, type RequestedProvider } from '@/lib/crm/resolve-location'
 import { parseVocabularyRules } from '@/lib/agent/vocabulary'
+import { globalCollectionsReady } from '@/lib/knowledge/migration-state'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -112,6 +113,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const n = Math.floor(Number(v))
     return Number.isFinite(n) && n >= 0 ? n : null
   }
+  // knowledgeScopeAll means "read everything in MY workspace", which by
+  // definition excludes the shared canonical corpus — resolveAgentKnowledge
+  // Scope returns no global ids once it's true. An agent reading the corpus
+  // must therefore stay collection-scoped, or it goes silently blind.
+  let scopeAllValue: boolean | undefined =
+    body.knowledgeScopeAll !== undefined ? !!body.knowledgeScopeAll : undefined
+  if (scopeAllValue === true && await globalCollectionsReady()) {
+    const globalAttachments = await db.agentCollection.count({
+      where: { agentId, collection: { isGlobal: true } },
+    }).catch(() => 0)
+    if (globalAttachments > 0) scopeAllValue = false
+  }
+
   const buildData = (includeJudge: boolean, includeModel: boolean, includeAutopilot: boolean, includeConditions = includeAutopilot): Record<string, unknown> => ({
       ...(resolvedLocationId !== null && { locationId: resolvedLocationId }),
       ...(body.name !== undefined && { name: body.name }),
@@ -145,7 +159,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(Array.isArray(body.knowledgeDomainIds) && {
         knowledgeDomainIds: body.knowledgeDomainIds.filter((s: unknown) => typeof s === 'string'),
       }),
-      ...(body.knowledgeScopeAll !== undefined && { knowledgeScopeAll: !!body.knowledgeScopeAll }),
+      ...(scopeAllValue !== undefined && { knowledgeScopeAll: scopeAllValue }),
       // Per-source usage triggers: { [domainOrCollectionId]: "condition" }.
       // Server-side shape check — only string→non-empty-string entries
       // survive, capped so a runaway client can't bloat the prompt.
