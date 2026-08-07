@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { canCreateWorkspace } from '@/lib/plans'
+import { provisionWorkspace } from '@/lib/provision-workspace'
 
 /**
  * GET /api/workspaces — list workspaces for the current user
@@ -82,107 +83,24 @@ export async function POST(req: NextRequest) {
     console.warn('[Workspaces] Feature gating check failed — allowing creation')
   }
 
-  // Generate a URL-safe slug
-  const baseSlug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40)
-  const uniqueSuffix = Math.random().toString(36).slice(2, 8)
-  const slug = `${baseSlug}-${uniqueSuffix}`
-
-  // Build create data — handle case where billing columns may not exist yet
-  const createData: any = {
-    name,
-    slug,
-    icon,
-    domain,
-    // Direct signup — anyone arriving from a marketplace OAuth lands in
-    // app/api/auth/callback/route.ts, which sets installSource there.
-    // Native is the right default primary CRM because the next step
-    // auto-provisions a native:<wsId> Location below.
-    installSource: 'direct',
-    primaryCrmProvider: 'native',
-    members: {
-      create: {
-        userId: session.user.id,
-        role: 'owner',
-      },
-    },
-  }
-
-  // Try to set billing fields (may fail if migration hasn't run).
-  // Each catch logs with the Prisma error code so an unrelated failure
-  // (FK violation, unique slug collision) doesn't get reclassified as
-  // "migration pending" silently. We only swallow the column-missing
-  // case (P2022); anything else falls through to a 500.
+  // Shared with the /try demo claim and the partner provisioning API.
+  // Also auto-provisions the native CRM Location — without it a new
+  // workspace has nowhere to hang an agent (required FK) and the user is
+  // stuck at "Connect your CRM" with no way forward.
   let workspace
   try {
-    workspace = await db.workspace.create({
-      data: {
-        ...createData,
-        plan: 'trial',
-        trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
+    workspace = await provisionWorkspace({
+      name,
+      ownerUserId: session.user.id,
+      icon,
+      domain,
+      // Direct signup — anyone arriving from a marketplace OAuth lands in
+      // app/api/auth/callback/route.ts, which sets installSource there.
+      installSource: 'direct',
     })
   } catch (err: any) {
-    if (err?.code !== 'P2022' && err?.code !== 'P2021') {
-      console.error('[workspaces] create with full fields failed (non-migration error):', err?.code, err?.message)
-      return NextResponse.json({ error: err?.message ?? 'Failed to create workspace' }, { status: 500 })
-    }
-    console.warn('[workspaces] full create hit migration-pending column:', err?.code, err?.meta?.column)
-    // Strip install attribution + billing fields and retry.
-    const { installSource: _i, primaryCrmProvider: _p, ...legacyCreateData } = createData
-    try {
-      workspace = await db.workspace.create({ data: legacyCreateData })
-    } catch (err2: any) {
-      if (err2?.code !== 'P2022' && err2?.code !== 'P2021') {
-        console.error('[workspaces] create without install fields failed:', err2?.code, err2?.message)
-        return NextResponse.json({ error: err2?.message ?? 'Failed to create workspace' }, { status: 500 })
-      }
-      console.warn('[workspaces] legacy create still missing column:', err2?.code, err2?.meta?.column)
-      try {
-        workspace = await db.workspace.create({
-          data: {
-            ...legacyCreateData,
-            plan: 'trial',
-            trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          },
-        })
-      } catch (err3: any) {
-        console.error('[workspaces] final fallback create failed:', err3?.code, err3?.message)
-        return NextResponse.json({ error: err3?.message ?? 'Failed to create workspace' }, { status: 500 })
-      }
-    }
-  }
-
-  // Auto-provision the native CRM as the default. Without this, every new
-  // workspace lands with no Location row, the agent wizard has nothing
-  // selected, and the user gets stuck at "Connect your CRM" with no way
-  // forward unless they happen to know about the Integrations switch.
-  // Native is reversible (Integrations → Switch to LeadConnector), so
-  // making it the default removes the dead-end without locking anyone in.
-  try {
-    await db.location.create({
-      data: {
-        id: `native:${workspace.id}`,
-        workspaceId: workspace.id,
-        companyId: 'native',
-        userId: 'native',
-        userType: 'Location',
-        scope: 'native',
-        accessToken: 'native',
-        refreshToken: 'native',
-        refreshTokenId: 'native',
-        expiresAt: new Date('2099-12-31T23:59:59.000Z'),
-        crmProvider: 'native',
-      },
-    })
-  } catch (err: any) {
-    // NativeContact tables may not exist on the very first deploy of this
-    // change (migration not yet applied). The workspace itself is fine —
-    // the user can still switch CRMs from Integrations once tables exist.
-    console.warn('[Workspaces] Native CRM auto-provision failed (non-fatal):', err?.message)
+    console.error('[workspaces] create failed:', err?.code, err?.message)
+    return NextResponse.json({ error: err?.message ?? 'Failed to create workspace' }, { status: 500 })
   }
 
   return NextResponse.json({ workspace, workspaceId: workspace.id }, { status: 201 })

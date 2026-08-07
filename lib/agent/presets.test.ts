@@ -2,9 +2,21 @@ import { describe, it, expect } from 'vitest'
 import { AGENT_PRESETS, getPreset } from './presets'
 
 describe('AGENT_PRESETS registry', () => {
-  it('exports the four built-in presets', () => {
+  it('exports the built-in presets', () => {
     const ids = AGENT_PRESETS.map(p => p.id).sort()
-    expect(ids).toEqual(['booking', 'conversational', 'custom', 'voice'])
+    expect(ids).toEqual(['booking', 'conversational', 'custom', 'help_center', 'voice'])
+  })
+
+  it('help_center answers and escalates — no booking, commerce, or CRM writes', () => {
+    const preset = getPreset('help_center')!
+    const off = (name: string) =>
+      preset.tools.find(t => t.toolName === name)?.enabled === false
+    expect(off('book_appointment')).toBe(true)
+    expect(off('send_email')).toBe(true)
+    expect(off('upsert_opportunity')).toBe(true)
+    expect(off('create_shopify_checkout')).toBe(true)
+    // Escalation is the point of a deflection agent, not a last resort.
+    expect(preset.tools.find(t => t.toolName === 'transfer_to_human')?.enabled).toBe(true)
   })
 
   it('non-voice presets are guided; voice is autonomous (ungated booking on a live call)', () => {

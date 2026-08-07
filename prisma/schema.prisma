@@ -3702,6 +3702,44 @@ model ApiRequestLog {
   @@index([createdAt])
 }
 
+// ─── Partner-provisioned installs ───────────────────────────────────
+//
+// One row per customer that a partner product (today: the help centre)
+// has provisioned a chat widget for. Plays the role DemoProspect plays
+// for /try: the idempotency anchor and the resumable state machine, so a
+// retried POST returns the existing account instead of minting a second
+// workspace for the same person.
+//
+// The external id is the partner's own account identifier — we never
+// guess at identity from the email alone, because the same human may
+// hold accounts in several partner tenants.
+model PartnerInstall {
+  id            String   @id @default(cuid())
+  // Which partner product provisioned this. One row per (provider,
+  // externalId), so a second partner can reuse the table unchanged.
+  provider      String
+  externalId    String
+  externalEmail String
+  businessName  String
+  // Populated stage by stage as provisioning advances; all null while
+  // status is still 'provisioning' on a first attempt.
+  userId        String?
+  workspaceId   String?
+  agentId       String?
+  widgetId      String?
+  // provisioning | ready | failed | disabled
+  status        String   @default("provisioning")
+  failureReason String?
+  // Free-form partner context (help-centre URL, plan hints, locale).
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([provider, externalId])
+  @@index([workspaceId])
+  @@index([externalEmail])
+}
+
 // ─── Shared-login kiosk operators ───────────────────────────────────
 //
 // Lets a team run multiple live-chat operators off ONE shared terminal

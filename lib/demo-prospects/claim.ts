@@ -17,6 +17,7 @@
  * value.
  */
 import { db } from '@/lib/db'
+import { provisionWorkspace, ensureNativeLocation } from '@/lib/provision-workspace'
 import { demoWorkspaceId } from './provision'
 import { getPurchase } from '@/lib/demo-purchase/state'
 
@@ -74,21 +75,14 @@ export async function claimProspect(
     }
   }
 
-  // Create the workspace (same shape as POST /api/workspaces).
-  const baseSlug = prospect.businessName
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'workspace'
-  const workspace = await db.workspace.create({
-    data: {
-      name: prospect.businessName,
-      slug: `${baseSlug}-${Math.random().toString(36).slice(2, 8)}`,
-      icon: '🎙️',
-      installSource: 'direct',
-      primaryCrmProvider: 'native',
-      plan: 'trial',
-      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      members: { create: { userId, role: 'owner' } },
-    },
-    select: { id: true },
+  // Create the workspace. Shared with POST /api/workspaces and the
+  // partner provisioning API — see lib/provision-workspace.ts, which
+  // also handles the native Location the demo agent gets re-parented to
+  // below.
+  const workspace = await provisionWorkspace({
+    name: prospect.businessName,
+    ownerUserId: userId,
+    icon: '🎙️',
   })
 
   // CAS the claim BEFORE moving assets so two racing claims can't both
@@ -110,39 +104,21 @@ export async function claimProspect(
     return { ok: false, reason: 'claimed_by_other' }
   }
 
-  // Re-parent assets. Agent needs a Location in the NEW workspace
-  // (required FK). Mirror the normal signup path (POST /api/workspaces):
-  // auto-provision the native CRM Location — NOT a crmProvider:'none'
-  // placeholder, which would contradict the workspace's
-  // primaryCrmProvider:'native' above and make the first CRM-backed
-  // tool the customer enables throw "CRM not connected". Upsert (the
-  // route uses plain create) so a retried claim after a partial
-  // failure doesn't trip the primary-key unique.
+  // Re-parent assets. The agent needs a Location in the NEW workspace
+  // (required FK). provisionWorkspace already created the native one —
+  // NOT a crmProvider:'none' placeholder, which would contradict the
+  // workspace's primaryCrmProvider:'native' and make the first
+  // CRM-backed tool the customer enables throw "CRM not connected".
   if (prospect.agentId) {
-    const nativeLocationId = `native:${workspace.id}`
-    const location = await db.location.upsert({
-      where: { id: nativeLocationId },
-      create: {
-        id: nativeLocationId,
-        workspaceId: workspace.id,
-        companyId: 'native',
-        userId: 'native',
-        userType: 'Location',
-        scope: 'native',
-        accessToken: 'native',
-        refreshToken: 'native',
-        refreshTokenId: 'native',
-        expiresAt: new Date('2099-12-31T23:59:59.000Z'),
-        crmProvider: 'native',
-      },
-      update: {},
-      select: { id: true },
-    })
+    // Idempotent, so a retried claim after a partial failure is fine.
+    if (!(await ensureNativeLocation(workspace.id))) {
+      return { ok: false, reason: 'not_configured' }
+    }
     await db.agent.update({
       where: { id: prospect.agentId },
       data: {
         workspaceId: workspace.id,
-        locationId: location.id,
+        locationId: `native:${workspace.id}`,
         name: `${prospect.businessName} receptionist`,
         // Guard a rare provisioning race that can leave the agent's
         // knowledgeDomainIds empty even though the domain was created —

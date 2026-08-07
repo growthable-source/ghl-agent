@@ -29,6 +29,27 @@ import type { NextConfig } from "next";
 // decision in the response headers themselves.
 const FRAME_ANCESTORS_DIRECTIVE = "frame-ancestors *;"
 
+// ─── Partner builder embedding ───────────────────────────────────────
+// The permissive policy above exists because marketplace whitelabel
+// domains are unenumerable. That reasoning does NOT extend to the
+// partner widget builder: the help centre is our own product, served
+// from origins we control and can list. So this route gets a real
+// allowlist.
+//
+// PARTNER_FRAME_ANCESTORS is space-separated, e.g.
+//   "https://help.example.com https://admin.example.com"
+// Unset falls back to '*', which keeps local development and preview
+// deployments working rather than silently refusing to frame.
+//
+// This file is evaluated BEFORE .env.local is loaded, so a value put
+// there is NOT picked up — locally you get the '*' fallback unless you
+// export the variable in your shell. On Vercel it works, because
+// project env vars are real process-env entries at build time and
+// process.env is the first place Next looks (see "Environment Variable
+// Load Order" in the env-vars guide).
+const PARTNER_FRAME_ANCESTORS_DIRECTIVE =
+  `frame-ancestors ${(process.env.PARTNER_FRAME_ANCESTORS || '').trim() || '*'};`
+
 const nextConfig: NextConfig = {
   experimental: {
     // Client router cache for visited page segments. Next 15+ defaults
@@ -53,6 +74,22 @@ const nextConfig: NextConfig = {
     return [
       { source: "/dashboard/:path*", headers: [cspHeader] },
       { source: "/embedded/:path*", headers: [cspHeader] },
+      // MUST come AFTER the general /embedded rule. Next.js applies
+      // EVERY matching rule, and for a repeated header key the LAST one
+      // wins ("Header Overriding Behavior" in the headers docs) — so the
+      // narrow partner policy has to be written last or the broad
+      // frame-ancestors * silently overwrites it. Verified by curling
+      // the route with PARTNER_FRAME_ANCESTORS set; the earlier ordering
+      // produced '*' on the builder route.
+      {
+        source: "/embedded/widget-builder",
+        headers: [{ key: "Content-Security-Policy", value: PARTNER_FRAME_ANCESTORS_DIRECTIVE }],
+      },
+      {
+        source: "/embedded/widget-builder/:path*",
+        headers: [{ key: "Content-Security-Policy", value: PARTNER_FRAME_ANCESTORS_DIRECTIVE }],
+      },
+      { source: "/api/auth/partner-builder-handshake", headers: [cspHeader] },
       // The customer portal is embeddable in the LeadConnector menu via
       // custom menu links — same thousands-of-whitelabel-domains reality
       // as the dashboard, so the same frame-ancestors * decision applies.

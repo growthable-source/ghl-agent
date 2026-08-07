@@ -151,6 +151,47 @@ export const AGENT_PRESETS: AgentPreset[] = [
     ],
   },
   {
+    id: 'help_center',
+    label: 'Help Centre Support',
+    description: 'Deflects support questions using your help-centre articles, and hands off to a human the moment it can\'t answer. No booking, no commerce, no CRM writes — this agent answers and escalates, nothing else.',
+    // Guided, not autonomous: a support agent's failure mode should be
+    // "ask a human", not "try something clever".
+    autonomyMode: 'guided',
+    tools: [
+      // Calendar — a support deflection agent has nothing to schedule.
+      { toolName: 'get_available_slots', enabled: false },
+      { toolName: 'book_appointment', enabled: false },
+      { toolName: 'cancel_appointment', enabled: false },
+      { toolName: 'reschedule_appointment', enabled: false },
+      { toolName: 'get_calendar_events', enabled: false },
+      { toolName: 'create_appointment_note', enabled: false },
+      // Outbound sends — the visitor is already in a live chat.
+      { toolName: 'send_email', enabled: false },
+      // Opportunity/pipeline writes — this isn't a sales agent.
+      { toolName: 'move_opportunity_stage', enabled: false },
+      { toolName: 'mark_opportunity_won', enabled: false },
+      { toolName: 'mark_opportunity_lost', enabled: false },
+      { toolName: 'upsert_opportunity', enabled: false },
+      { toolName: 'add_to_workflow', enabled: false },
+      { toolName: 'remove_from_workflow', enabled: false },
+      // Commerce — off.
+      { toolName: 'search_shopify_products', enabled: false },
+      { toolName: 'check_shopify_inventory', enabled: false },
+      { toolName: 'lookup_shopify_customer', enabled: false },
+      { toolName: 'check_shopify_order_status', enabled: false },
+      { toolName: 'create_shopify_checkout', enabled: false },
+      { toolName: 'create_shopify_discount', enabled: false },
+      { toolName: 'record_back_in_stock_interest', enabled: false },
+      // Escalation is the whole point — make it eager rather than a
+      // last resort.
+      {
+        toolName: 'transfer_to_human',
+        enabled: true,
+        useWhen: 'The visitor asks something the help-centre articles do not answer, reports a problem with their account or billing, is frustrated, or explicitly asks for a person. Prefer handing off early over guessing.',
+      },
+    ],
+  },
+  {
     id: 'custom',
     label: 'Custom',
     description: 'No defaults applied — all tools enabled with catalog rules. Start here when you want to configure everything yourself.',
