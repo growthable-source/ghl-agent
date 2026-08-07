@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { EMBED_SESSION_COOKIE, REGULAR_SESSION_COOKIE } from '@/lib/embed-session'
+import {
+  EMBED_SESSION_COOKIE,
+  EMBED_WORKSPACE_COOKIE,
+  REGULAR_SESSION_COOKIE,
+} from '@/lib/embed-session'
 
 /**
  * Primary app hosts — the marketing site + dashboard. Any OTHER host
@@ -65,10 +69,33 @@ export function middleware(request: NextRequest) {
   // always uses the __Secure- prefix). On prod this branch is a no-op.
   const regularUnprefixed = request.cookies.get('authjs.session-token')
 
+  // Where the EMBED session must win even when a regular browser session
+  // is also present. An SSO handshake deliberately signed this context in
+  // as a specific user; a bystanding personal session must not shadow it.
+  //
+  // Without this, anyone who held their own Xovera session — platform
+  // staff, or a customer who also signed up directly — could never use a
+  // partner-embedded surface: auth() resolved their personal account,
+  // which isn't a member of the partner-provisioned workspace, and the
+  // builder answered "your account does not have access to this widget".
+  //
+  //   1. /embedded/*: these pages only exist behind a handshake.
+  //   2. API calls aimed at the workspace the embed session is bound to
+  //      (EMBED_WORKSPACE_COOKIE, re-asserted on every handshake) — the
+  //      builder's own saves. Scoped to that one workspace so a stale
+  //      embed cookie can't shadow normal dashboard use of anything else.
+  const path = request.nextUrl.pathname
+  const embedWorkspace = request.cookies.get(EMBED_WORKSPACE_COOKIE)?.value
+  const embedTakesPrecedence =
+    path.startsWith('/embedded') ||
+    (!!embedWorkspace &&
+      (path === `/api/workspaces/${embedWorkspace}` ||
+        path.startsWith(`/api/workspaces/${embedWorkspace}/`)))
+
   // Promote the embed cookie onto the regular cookie for the request
   // that's about to be forwarded. The DB row backing this sessionToken
   // is identical regardless of which cookie carried it.
-  if (!regular && !regularUnprefixed && embed) {
+  if (embed && (embedTakesPrecedence || (!regular && !regularUnprefixed))) {
     request.cookies.set(REGULAR_SESSION_COOKIE, embed.value)
   }
 
@@ -118,6 +145,15 @@ export const config = {
     // project the guard is a no-op and crons pass straight through.
     '/api/cron/:path*',
     '/dashboard/:path*',
+    // Without this entry the embed-cookie promotion above never ran on
+    // the partner builder pages at all: auth() reads only the regular
+    // cookie name, the regular cookie is SameSite=Lax so it never
+    // travels into the partner's iframe, and the SameSite=None embed
+    // cookie the handshake had just minted was simply never looked at.
+    // Every iframe load of /embedded/widget-builder/[widgetId] resolved
+    // no session and showed "session has expired" — indistinguishable,
+    // from outside, from the browser actually blocking cookies.
+    '/embedded/:path*',
     '/api/workspaces/:path*',
     '/api/agents/:path*',
     '/api/integrations/:path*',
