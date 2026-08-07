@@ -4,6 +4,7 @@ import { DM_Sans, DM_Mono } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import CannyIdentify from "@/components/CannyIdentify";
+import LeadConnectorChat from "@/components/LeadConnectorChat";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -144,6 +145,11 @@ export default function RootLayout({
         <SessionProvider>
           <ThemeProvider>
             <CannyIdentify />
+            {/* LeadConnector sales chat — public marketing + landing
+                pages only; the component suppresses itself on the
+                dashboard, portal, marketplace iframe, and on customer
+                widget pages. See components/LeadConnectorChat.tsx. */}
+            <LeadConnectorChat />
             {children}
           </ThemeProvider>
         </SessionProvider>
