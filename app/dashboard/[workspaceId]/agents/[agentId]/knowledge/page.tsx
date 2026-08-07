@@ -213,6 +213,8 @@ export default function AgentKnowledgePage() {
     description: string | null
     meta: string
     editHref?: string
+    /** Shared corpus owned by another workspace — attach/detach only. */
+    readOnly?: boolean
   }) => {
     const checked = draft.collectionIds.includes(opts.id)
     const hasTrigger = !!(draft.conditions[opts.id]?.trim())
@@ -242,6 +244,15 @@ export default function AgentKnowledgePage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{opts.name}</p>
+              {opts.readOnly && (
+                <span
+                  className="text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+                  style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
+                  title="Maintained for you. Tick or untick it here; the content itself is managed centrally."
+                >
+                  Shared
+                </span>
+              )}
               {checked && hasTrigger && (
                 <span
                   className="text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
@@ -336,7 +347,11 @@ export default function AgentKnowledgePage() {
                   c.entryCount > 0 ? `${c.entryCount} written item${c.entryCount === 1 ? '' : 's'}` : null,
                   c.dataSourceCount > 0 ? `${c.dataSourceCount} data source${c.dataSourceCount === 1 ? '' : 's'}` : null,
                 ].filter(Boolean).join(' · ') || 'Empty collection',
-                editHref: `/dashboard/${workspaceId}/knowledge/${c.id}`,
+                // A shared collection lives in another workspace, so the
+                // knowledge editor 404s by design — linking there would
+                // hand every customer a broken "Edit →".
+                editHref: c.isReadOnly ? undefined : `/dashboard/${workspaceId}/knowledge/${c.id}`,
+                readOnly: c.isReadOnly,
               })
             })}
           </div>
