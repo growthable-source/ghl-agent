@@ -12,7 +12,7 @@
  * model can't (vision, server-side MCP tools, outright failure).
  */
 
-/** Logical model the caller asks for. `auto` resolves to DEFAULT_AGENT_MODEL. */
+/** Logical model the caller asks for. `auto` resolves to the fleet default in registry.ts (deepseek-flash). */
 export type LlmModelKey =
   | 'auto'
   | 'claude-opus'

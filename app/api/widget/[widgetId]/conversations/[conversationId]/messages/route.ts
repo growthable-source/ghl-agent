@@ -146,9 +146,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       // render in a customer's widget. The specifics go to the operator
       // via the notification pipeline (bell/Slack/email), same as the
       // silent-agent path in widget-agent-runner.
+      const { humanHandoffAllowed, silentAgentFallback } = await import('@/lib/widget-entitlements')
       await broadcast(conversationId, {
         type: 'agent_error',
-        message: 'I hit a snag on my end — let me get someone on our team to follow up.',
+        // Same plan gate as the runner: an AI-only widget must not promise
+        // a human follow-up nobody will make.
+        message: silentAgentFallback(await humanHandoffAllowed(convo.widget.workspaceId).catch(() => true)),
       }).catch(() => {})
 
       // Map common account-level failures to actionable operator

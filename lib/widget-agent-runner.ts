@@ -22,6 +22,12 @@ import { notify } from './notifications'
 import { resolveHandoverLink } from './handover-link'
 import { broadcast } from './widget-sse'
 import { WidgetAdapter } from './widget-adapter'
+import {
+  humanHandoffAllowed,
+  NO_HANDOFF_DIRECTIVE,
+  noAgentFallback,
+  silentAgentFallback,
+} from './widget-entitlements'
 
 /**
  * Pure decision: should the AI agent generate a reply on this turn?
@@ -96,6 +102,11 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     }
   }
 
+  // Human handoff is a paid feature. Resolved once per turn and threaded
+  // through everything visitor-facing below: the tool set, the prompt,
+  // the fallback copy, and stop-condition routing.
+  const handoffAllowed = await humanHandoffAllowed(widget.workspaceId)
+
   // Resolve the agent: defaultAgentId on the widget, else findMatchingAgent.
   let agent: any = null
   if (widget.defaultAgentId) {
@@ -131,7 +142,7 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     // the operator gets the actionable diagnostic via notifications.
     await broadcast(convo.id, {
       type: 'agent_error',
-      message: 'Thanks for reaching out — someone from our team will reply here shortly.',
+      message: noAgentFallback(handoffAllowed),
     }).catch(() => {})
     if (widget.workspaceId) {
       try {
@@ -228,6 +239,11 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     includeObjectives: true,
   })
 
+  // AI-only override for unpaid plans. Appended AFTER the stored prompt
+  // because every stored prompt (including partner-provisioned ones)
+  // instructs the agent to hand off to a human — last word wins.
+  const handoffDirective = handoffAllowed ? '' : NO_HANDOFF_DIRECTIVE
+
   // Multilingual directive — ALWAYS reply in the visitor's language.
   // Claude's native multilingual ability handles detection and
   // generation; we just need to tell it to. The operator's English
@@ -240,7 +256,7 @@ Detect the language of the visitor's most recent message and respond in THAT lan
 
 If the visitor switches languages mid-conversation, switch with them.
 
-Never apologise for the language or mention translation — just speak naturally in their language. Names, brand terms, and product codes stay as written.`
+Never apologise for the language or mention translation — just speak naturally in their language. Names, brand terms, and product codes stay as written.` + handoffDirective
 
   // Build recent history. Image / file messages flow through as
   // attachmentKind so runAgent can rebuild multimodal turns.
@@ -339,7 +355,12 @@ Never apologise for the language or mention translation — just speak naturally
       messageHistory: history,
       systemPrompt: fullPrompt,
       volatileContext,
-      enabledTools: agent.enabledTools,
+      // The prompt directive alone is not enough — a tool the model can
+      // see is a tool it will eventually call. AI-only plans lose the
+      // escalation tool itself.
+      enabledTools: handoffAllowed
+        ? agent.enabledTools
+        : ((agent.enabledTools ?? []) as string[]).filter(t => t !== 'transfer_to_human'),
       workflowPicks: {
         addTo: ((agent as any).addToWorkflowsPick ?? undefined) as any,
         removeFrom: ((agent as any).removeFromWorkflowsPick ?? undefined) as any,
@@ -360,7 +381,7 @@ Never apologise for the language or mention translation — just speak naturally
     } as any)
 
     if (!result?.reply || !result.reply.trim()) {
-      const fallbackMessage = "I hit a snag on my end — let me get someone on our team to follow up."
+      const fallbackMessage = silentAgentFallback(handoffAllowed)
       try {
         await adapter.sendMessage({
           type: 'Live_Chat',
@@ -404,7 +425,29 @@ Never apologise for the language or mention translation — just speak naturally
           reason: stopCheck.reason ?? 'condition_met',
         }).catch(() => {})
       }
-      if (stopCheck.shouldPause) {
+      // A needs-attention pause exists to bring a human in. On an AI-only
+      // plan there is no human to bring, so pausing would strand the
+      // visitor talking to nobody — the AI keeps answering instead, which
+      // is the lesser evil. Success-state pauses (appointment booked,
+      // opportunity moved) are natural endings and still apply.
+      const needsHuman = /^(SENTIMENT|KEYWORD|MESSAGE_COUNT)/.test(stopCheck.reason ?? '')
+      if (stopCheck.shouldPause && needsHuman && !handoffAllowed) {
+        // Operators still hear about it — notifications are how a trial
+        // customer discovers the moments a human would have mattered.
+        notify({
+          workspaceId: widget.workspaceId,
+          event: 'agent_error',
+          title: `A chat needed attention on ${widget.name || 'a widget'}`,
+          body: `A stop condition fired (${stopCheck.reason ?? 'condition met'}) but human handoff is not included on this plan, so the AI kept answering.`,
+          link: resolveHandoverLink({
+            workspaceId: widget.workspaceId,
+            locationId: `widget:${convo.widgetId}`,
+            conversationId: convo.id,
+            channel: 'Live_Chat',
+          }),
+          severity: 'warning',
+        }).catch(() => {})
+      } else if (stopCheck.shouldPause) {
         await pauseConversation(agent.id, widgetContactId, stopCheck.reason ?? 'condition_met')
         // A pause silences the AI for every subsequent visitor turn, and the
         // visitor-side UI has no concept of "paused" beyond a status line —

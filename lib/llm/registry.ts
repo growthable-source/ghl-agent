@@ -80,10 +80,19 @@ export const REGISTRY: Record<ResolvedKey, ResolvedModel> = {
   },
 }
 
-/** What `auto` resolves to. The fleet rollout switch lives here. */
+/**
+ * What `auto` resolves to — the fleet default, hardcoded by choice
+ * (previously the DEFAULT_AGENT_MODEL env var, which nobody set, so the
+ * fleet silently ran on Claude).
+ *
+ * DeepSeek carries the routine traffic for cost; Claude stays the
+ * escalation target (CLAUDE_FALLBACK_KEY) for vision, MCP, and outright
+ * DeepSeek failure. So ANTHROPIC_API_KEY remains required, and
+ * DEEPSEEK_API_KEY must be set or every agent call pays a failed
+ * DeepSeek attempt before landing on Claude anyway.
+ */
 function defaultKey(): ResolvedKey {
-  const d = process.env.DEFAULT_AGENT_MODEL
-  return d && d in REGISTRY ? (d as ResolvedKey) : 'claude-sonnet'
+  return 'deepseek-flash'
 }
 
 /** Resolve any caller-supplied model key (incl. `auto`, unknown, null) to a concrete key. */
