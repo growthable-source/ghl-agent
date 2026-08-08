@@ -26,7 +26,7 @@ import {
   PARTNER_PROVIDER_HELP_CENTER,
 } from '@/lib/partner/provision'
 import { createBuilderToken } from '@/lib/partner/builder-token'
-import { embedSnippet, builderUrl } from '@/lib/partner/embed'
+import { embedSnippet, builderUrl, portalUrl } from '@/lib/partner/embed'
 
 // Provisioning does 5+ sequential writes plus a preset application.
 export const maxDuration = 60
@@ -90,6 +90,12 @@ export const POST = withApiLog(async (req: NextRequest) => {
       widget: { id: result.widgetId, publicKey: result.widgetPublicKey },
       embedSnippet: embedSnippet(result.widgetId, result.widgetPublicKey),
       builderUrl: token ? builderUrl(token) : null,
+      // The customer's client portal — provisioned with the widget, fully
+      // included for the trial, invite emailed to them directly. Null only
+      // when the portal stage failed; the widget works regardless.
+      portal: result.portalSlug
+        ? { slug: result.portalSlug, url: portalUrl(result.portalSlug) }
+        : null,
       trialEndsAt: result.trialEndsAt,
     }, { apiKeyId: key.apiKeyId, scope: key.scope })
   } catch (err) {

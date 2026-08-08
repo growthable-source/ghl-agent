@@ -13,7 +13,7 @@ import { errorResponse, ok } from '@/lib/api-scope'
 import { withApiLog } from '@/lib/api-log'
 import { requirePartnerKey } from '@/lib/partner/api-key'
 import { PARTNER_PROVIDER_HELP_CENTER } from '@/lib/partner/provision'
-import { embedSnippet } from '@/lib/partner/embed'
+import { embedSnippet, portalUrl } from '@/lib/partner/embed'
 import { getEffectivePlan } from '@/lib/effective-plan'
 import { invalidateWidgetAuthCache } from '@/lib/widget-auth'
 
@@ -38,9 +38,23 @@ export const GET = withApiLog(async (req: NextRequest, ctx: unknown) => {
     const widget = install.widgetId
       ? await db.chatWidget.findUnique({
           where: { id: install.widgetId },
-          select: { id: true, publicKey: true, isActive: true, name: true },
+          select: { id: true, publicKey: true, isActive: true, name: true, brandId: true },
         })
       : null
+
+    // The client portal, derived through the widget's brand rather than
+    // stored on the install — the association IS the brand link, and
+    // deriving it means installs backfilled later need no migration.
+    let portal: { slug: string; url: string } | null = null
+    if (widget?.brandId) {
+      const link = await db.portalBrand.findFirst({
+        where: { brandId: widget.brandId },
+        select: { portal: { select: { slug: true, isActive: true } } },
+      }).catch(() => null)
+      if (link?.portal?.isActive) {
+        portal = { slug: link.portal.slug, url: portalUrl(link.portal.slug) }
+      }
+    }
 
     // Gates read the OWNER's best plan across their workspaces, never
     // workspace.plan — that column is denormalized and historical.
@@ -69,6 +83,7 @@ export const GET = withApiLog(async (req: NextRequest, ctx: unknown) => {
         isActive: widget.isActive,
         embedSnippet: embedSnippet(widget.id, widget.publicKey),
       },
+      portal,
       billing: plan && {
         plan: plan.plan,
         trialEndsAt,

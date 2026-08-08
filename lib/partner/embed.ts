@@ -24,3 +24,14 @@ export function embedSnippet(widgetId: string, publicKey: string): string {
 export function builderUrl(token: string): string {
   return `${publicBaseUrl()}/embedded/widget-builder?t=${encodeURIComponent(token)}`
 }
+
+/**
+ * The customer's client-portal login. Stable, not tokenised: portal auth
+ * is its own invite/password world (PortalUser), so the partner can show
+ * this link permanently. Always the primary host — partner portals never
+ * get customDomain on trial, and by the time one does the customer knows
+ * their own domain.
+ */
+export function portalUrl(slug: string): string {
+  return `${publicBaseUrl()}/portal/login?p=${encodeURIComponent(slug)}`
+}
