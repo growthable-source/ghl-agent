@@ -1,26 +1,30 @@
 /**
  * Model registry — maps a logical key to a concrete provider + vendor
- * model id + capabilities. DeepSeek hosting is env-driven so first-party
- * (cheapest, China-hosted) ↔ Western host (Fireworks/OpenRouter/Azure,
- * data-residency safe) is a config change, never a code change.
+ * model id + capabilities.
+ *
+ * Everything non-Claude routes through OpenRouter on the ONE
+ * OPENROUTER_API_KEY — that is OpenRouter's whole point: a single key,
+ * and the model is a routing detail, not a credential decision. The
+ * per-vendor env family this file used to carry (DEEPSEEK_HOSTING /
+ * _BASE_URL / _API_KEY / _MODEL_*) is gone, and any values still set for
+ * those names are deliberately ignored — a stale first-party model id
+ * leaking into an OpenRouter request would 404 every call onto the
+ * Claude fallback and silently burn Anthropic credits.
+ *
+ * Claude stays direct-to-Anthropic: it is the escalation target for
+ * vision, MCP, and cheap-model failure, and the direct SDK path is what
+ * carries prompt caching and server-side MCP.
  */
 
 import type { LlmModelKey, ResolvedKey, ResolvedModel } from './types'
 
-const HOSTING = (process.env.DEEPSEEK_HOSTING || 'openai') as 'firstparty' | 'openai'
+const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'
 
-// First-party exposes an Anthropic-compatible endpoint (`/anthropic`);
-// Western hosts are OpenAI-compatible (`/v1`).
-const DEEPSEEK_BASE_URL =
-  process.env.DEEPSEEK_BASE_URL ||
-  (HOSTING === 'firstparty' ? 'https://api.deepseek.com/anthropic' : 'https://api.deepseek.com/v1')
-
-const DEEPSEEK_PROVIDER = HOSTING === 'firstparty' ? 'anthropic' : 'openai-compat'
-
-// Vendor ids differ per host (e.g. Fireworks prefixes the path). Override
-// via env. Defaults to the current canonical DeepSeek V4 ids.
-const DEEPSEEK_FLASH = process.env.DEEPSEEK_MODEL_FLASH || 'deepseek-v4-flash'
-const DEEPSEEK_PRO = process.env.DEEPSEEK_MODEL_PRO || 'deepseek-v4-pro'
+// OpenRouter model ids, vendor-prefixed. Hardcoded: swapping the routed
+// model is a code change reviewed like any other, not a per-environment
+// variable that can drift between deploys.
+const DEEPSEEK_FLASH = 'deepseek/deepseek-v4-flash'
+const DEEPSEEK_PRO = 'deepseek/deepseek-v4-pro'
 
 /** Claude is the escalation/fallback target — always available, full caps. */
 export const CLAUDE_FALLBACK_KEY: ResolvedKey = 'claude-sonnet'
@@ -49,18 +53,18 @@ export const REGISTRY: Record<ResolvedKey, ResolvedModel> = {
   },
   'deepseek-flash': {
     key: 'deepseek-flash',
-    provider: DEEPSEEK_PROVIDER,
+    provider: 'openai-compat',
     vendorModelId: DEEPSEEK_FLASH,
-    baseURL: DEEPSEEK_BASE_URL,
-    apiKeyEnv: 'DEEPSEEK_API_KEY',
+    baseURL: OPENROUTER_BASE_URL,
+    apiKeyEnv: 'OPENROUTER_API_KEY',
     capabilities: { vision: false, mcpServers: false, toolReliability: 'medium' },
   },
   'deepseek-pro': {
     key: 'deepseek-pro',
-    provider: DEEPSEEK_PROVIDER,
+    provider: 'openai-compat',
     vendorModelId: DEEPSEEK_PRO,
-    baseURL: DEEPSEEK_BASE_URL,
-    apiKeyEnv: 'DEEPSEEK_API_KEY',
+    baseURL: OPENROUTER_BASE_URL,
+    apiKeyEnv: 'OPENROUTER_API_KEY',
     capabilities: { vision: false, mcpServers: false, toolReliability: 'high' },
   },
   // Generic OpenRouter passthrough — pick any model via OPENROUTER_MODEL.

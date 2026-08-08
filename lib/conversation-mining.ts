@@ -38,7 +38,8 @@ const SEARCH_PAGE_SIZE = 100
 // Default precedence:
 //   1. MINING_MODEL env (explicit override),
 //   2. 'openrouter' when OPENROUTER_API_KEY is set (uses OPENROUTER_MODEL),
-//   3. 'deepseek-flash' otherwise (DEEPSEEK_BASE_URL/KEY).
+//   3. 'deepseek-flash' otherwise (also OpenRouter-served on the same key
+//      since the registry collapsed onto the single OPENROUTER_API_KEY).
 // A run's own `model` only wins if it's an explicit, non-'auto', non-Claude key.
 function miningModelKey(runModel?: string | null): string {
   if (runModel && runModel !== 'auto' && !runModel.startsWith('claude')) return runModel
