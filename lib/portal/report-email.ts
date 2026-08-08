@@ -129,8 +129,10 @@ export async function sendPortalReport(
   // The widget itself keeps answering; the report about it is the lever.
   // Any single paying (or still-in-trial) workspace gets the full report.
   if (!opts.toOverride) {
-    const expired = await allWorkspacesTrialExpired(portalId).catch(() => false)
-    if (expired) return sendTrialEndedTeaser(portalId, data, opts.context)
+    const expired = await portalTrialState(portalId).catch(() => null)
+    if (expired?.allExpired) {
+      return sendTrialEndedTeaser(portalId, data, expired.workspaceIds, opts.context)
+    }
   }
 
   let recipients = opts.toOverride
@@ -166,22 +168,25 @@ export async function sendPortalReport(
   return { sent }
 }
 
-/** True only when every workspace reachable through this portal's brands
- *  is on an expired trial. Fails CLOSED to "not expired" upstream. */
-async function allWorkspacesTrialExpired(portalId: string): Promise<boolean> {
+/** Trial state across every workspace reachable through this portal's
+ *  brands. allExpired is true only when ALL of them have lapsed —
+ *  a single paying workspace keeps the full report flowing. */
+async function portalTrialState(
+  portalId: string,
+): Promise<{ allExpired: boolean; workspaceIds: string[] }> {
   const links = await db.portalBrand.findMany({
     where: { portalId },
     select: { brand: { select: { workspaceId: true } } },
   })
   const workspaceIds = Array.from(new Set(links.map(l => l.brand.workspaceId)))
-  if (workspaceIds.length === 0) return false
+  if (workspaceIds.length === 0) return { allExpired: false, workspaceIds }
 
   const { getEffectivePlan } = await import('@/lib/effective-plan')
   for (const id of workspaceIds) {
     const plan = await getEffectivePlan(id)
-    if (!plan.trialExpired) return false
+    if (!plan.trialExpired) return { allExpired: false, workspaceIds }
   }
-  return true
+  return { allExpired: true, workspaceIds }
 }
 
 /**
@@ -194,6 +199,7 @@ async function allWorkspacesTrialExpired(portalId: string): Promise<boolean> {
 async function sendTrialEndedTeaser(
   portalId: string,
   data: NonNullable<Awaited<ReturnType<typeof gatherPortalReportData>>>,
+  workspaceIds: string[],
   context?: string,
 ): Promise<{ sent: number; skipped?: string }> {
   const users = await db.portalUser.findMany({
@@ -202,7 +208,22 @@ async function sendTrialEndedTeaser(
   })
   if (users.length === 0) return { sent: 0, skipped: 'no active portal users' }
 
+  // Partner-provisioned customers upgrade in the PARTNER's product, not
+  // ours — the partner records where at provision time
+  // (metadata.upgradeUrl). Only when this portal belongs to no partner
+  // install does the CTA fall back to our own sign-in.
+  let upgradeUrl: string | null = null
+  const install = await db.partnerInstall.findFirst({
+    where: { workspaceId: { in: workspaceIds } },
+    select: { metadata: true },
+  }).catch(() => null)
+  const rawUpgrade = (install?.metadata as { upgradeUrl?: unknown } | null)?.upgradeUrl
+  if (typeof rawUpgrade === 'string' && /^https:\/\//i.test(rawUpgrade)) {
+    upgradeUrl = rawUpgrade
+  }
+
   const appUrl = (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://xovera.io').replace(/\/$/, '')
+  const cta = upgradeUrl ?? `${appUrl}/login`
   const { renderBrandedEmail, paragraphs } = await import('@/lib/email-render')
   const saved = fmtTimeSaved(data.timeSavedMinutes)
 
@@ -214,7 +235,7 @@ async function sendTrialEndedTeaser(
       `Your free trial has ended, so the portal and these weekly reports are paused. Upgrading takes a couple of minutes and everything picks up exactly where it left off — nothing has been deleted.`,
       `Your chat widget is still live and still answering your clients.`,
     ]),
-    cta: { label: 'Upgrade and open your report', url: `${appUrl}/login` },
+    cta: { label: 'Upgrade and open your report', url: cta },
   })
 
   let sent = 0
