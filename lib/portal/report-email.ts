@@ -121,6 +121,18 @@ export async function sendPortalReport(
   const data = await gatherPortalReportData(portalId, opts.windowDays)
   if (!data) return { sent: 0, skipped: 'portal inactive or has no brands/widgets' }
 
+  // The trial cliff. When every workspace behind this portal is on an
+  // expired trial, the full report is withheld and a teaser goes instead:
+  // the headline numbers stay visible — they are the customer's own
+  // results and hiding them entirely reads as hostile — but the breakdown
+  // (CSAT, topics, per-subaccount, insights) is what upgrading unlocks.
+  // The widget itself keeps answering; the report about it is the lever.
+  // Any single paying (or still-in-trial) workspace gets the full report.
+  if (!opts.toOverride) {
+    const expired = await allWorkspacesTrialExpired(portalId).catch(() => false)
+    if (expired) return sendTrialEndedTeaser(portalId, data, opts.context)
+  }
+
   let recipients = opts.toOverride
   if (!recipients) {
     // receiveReports is the per-user include/exclude toggle (default on).
@@ -149,6 +161,74 @@ export async function sendPortalReport(
       if (id) sent++
     } catch (err: any) {
       console.warn('[PortalReport] send failed for', to, err?.message)
+    }
+  }
+  return { sent }
+}
+
+/** True only when every workspace reachable through this portal's brands
+ *  is on an expired trial. Fails CLOSED to "not expired" upstream. */
+async function allWorkspacesTrialExpired(portalId: string): Promise<boolean> {
+  const links = await db.portalBrand.findMany({
+    where: { portalId },
+    select: { brand: { select: { workspaceId: true } } },
+  })
+  const workspaceIds = Array.from(new Set(links.map(l => l.brand.workspaceId)))
+  if (workspaceIds.length === 0) return false
+
+  const { getEffectivePlan } = await import('@/lib/effective-plan')
+  for (const id of workspaceIds) {
+    const plan = await getEffectivePlan(id)
+    if (!plan.trialExpired) return false
+  }
+  return true
+}
+
+/**
+ * The report that sells the upgrade. Headline numbers in the subject and
+ * body — they did the persuading all trial, no reason to stop now — with
+ * the full breakdown named as what upgrading reopens. The CTA lands on
+ * the app sign-in, which is where billing lives; the portal itself has
+ * no checkout.
+ */
+async function sendTrialEndedTeaser(
+  portalId: string,
+  data: NonNullable<Awaited<ReturnType<typeof gatherPortalReportData>>>,
+  context?: string,
+): Promise<{ sent: number; skipped?: string }> {
+  const users = await db.portalUser.findMany({
+    where: { portalId, isActive: true, acceptedAt: { not: null } },
+    select: { email: true },
+  })
+  if (users.length === 0) return { sent: 0, skipped: 'no active portal users' }
+
+  const appUrl = (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://xovera.io').replace(/\/$/, '')
+  const { renderBrandedEmail, paragraphs } = await import('@/lib/email-render')
+  const saved = fmtTimeSaved(data.timeSavedMinutes)
+
+  const { html, text } = renderBrandedEmail({
+    title: 'Your report is ready — your trial has ended',
+    preheader: `${data.aiHandled} chats handled by AI, ~${saved} saved. Upgrade to open the full report.`,
+    intro: `Your AI assistant kept working this week: ${data.aiHandled} conversations handled and roughly ${saved} of support time saved. The full report — satisfaction scores, what your clients asked about, and the per-account breakdown — is waiting in your portal.`,
+    bodyHtml: paragraphs([
+      `Your free trial has ended, so the portal and these weekly reports are paused. Upgrading takes a couple of minutes and everything picks up exactly where it left off — nothing has been deleted.`,
+      `Your chat widget is still live and still answering your clients.`,
+    ]),
+    cta: { label: 'Upgrade and open your report', url: `${appUrl}/login` },
+  })
+
+  let sent = 0
+  for (const u of users) {
+    try {
+      const id = await sendEmail({
+        to: u.email,
+        subject: `Your support report is ready — ${data.aiHandled} chats handled, ~${saved} saved`,
+        html, text,
+        context: context ?? 'portal-report-trial-ended',
+      })
+      if (id) sent++
+    } catch (err: any) {
+      console.warn('[PortalReport] teaser send failed for', u.email, err?.message)
     }
   }
   return { sent }

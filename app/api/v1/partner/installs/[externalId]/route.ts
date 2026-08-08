@@ -14,6 +14,7 @@ import { withApiLog } from '@/lib/api-log'
 import { requirePartnerKey } from '@/lib/partner/api-key'
 import { PARTNER_PROVIDER_HELP_CENTER } from '@/lib/partner/provision'
 import { embedSnippet, portalUrl } from '@/lib/partner/embed'
+import { MINUTES_PER_HANDLED } from '@/lib/portal/report-email-render'
 import { getEffectivePlan } from '@/lib/effective-plan'
 import { invalidateWidgetAuthCache } from '@/lib/widget-auth'
 
@@ -64,6 +65,28 @@ export const GET = withApiLog(async (req: NextRequest, ctx: unknown) => {
       ? await db.widgetConversation.count({ where: { widgetId: install.widgetId } }).catch(() => 0)
       : 0
 
+    // Last-7-days numbers for the partner's own dashboard card. Same
+    // definitions as the portal report email (aiHandled = real exchange,
+    // never human-assigned; time saved = aiHandled × MINUTES_PER_HANDLED)
+    // so the number the customer sees in GKB matches the one in their
+    // report email — two different figures for "time saved" reads as one
+    // of them lying.
+    const since = new Date(Date.now() - 7 * 86_400_000)
+    const [aiHandled7d, csatAgg] = install.widgetId
+      ? await Promise.all([
+          db.widgetConversation.count({
+            where: {
+              widgetId: install.widgetId, createdAt: { gte: since },
+              assignedUserId: null, messages: { some: { role: 'agent' } },
+            },
+          }).catch(() => 0),
+          db.widgetConversation.aggregate({
+            where: { widgetId: install.widgetId, csatRating: { not: null } },
+            _avg: { csatRating: true }, _count: { csatRating: true },
+          }).catch(() => null),
+        ])
+      : [0, null]
+
     const trialEndsAt = plan?.trialEndsAt ?? null
     const trialDaysRemaining = trialEndsAt
       ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / 86400000))
@@ -90,7 +113,13 @@ export const GET = withApiLog(async (req: NextRequest, ctx: unknown) => {
         trialDaysRemaining,
         trialExpired: plan.trialExpired,
       },
-      usage: { conversationCount },
+      usage: {
+        conversationCount,
+        aiHandledLast7Days: aiHandled7d,
+        timeSavedMinutesLast7Days: aiHandled7d * MINUTES_PER_HANDLED,
+        csatAverage: csatAgg?._avg.csatRating ?? null,
+        csatCount: csatAgg?._count.csatRating ?? 0,
+      },
       createdAt: install.createdAt,
     }, { apiKeyId: key.apiKeyId, scope: key.scope })
   } catch (err) {
