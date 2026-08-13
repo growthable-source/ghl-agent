@@ -154,6 +154,20 @@ export async function executeStopConditionActions(params: {
 }): Promise<void> {
   const { matched, locationId, contactId, reason } = params
 
+  // A web-chat visitor who was never synced into the CRM is keyed by a local
+  // `visitor:<id>` sentinel (see widget-agent-runner: `crmContactId ?? \`visitor:…\``).
+  // That is our own bookkeeping id, not a CRM record, so every CRM call made
+  // with it is guaranteed to fail — it produced a steady stream of
+  // "GHL API error 401 on /contacts/visitor:…/tags" in production. Callers are
+  // expected to filter these out, but this is the boundary that actually knows
+  // what the id means, so enforce it here too.
+  if (contactId.startsWith('visitor:')) {
+    console.warn(
+      `[StopCond] ${reason} → skipping CRM side effects: ${contactId} is an unsynced web-chat visitor, not a CRM contact`,
+    )
+    return
+  }
+
   // ── Skip workflow side-effects when the referenced workflow is broken
   // (i.e. flagged by the reference-health system). The pause + tag-needs-
   // attention still fires; only the workflow enrol/remove is suppressed.
@@ -186,8 +200,14 @@ export async function executeStopConditionActions(params: {
 
   if (matched.tagNeedsAttention) {
     try {
-      const { GhlAdapter } = await import('./crm/ghl/adapter')
-      await new GhlAdapter(locationId).addTags(contactId, ['needs-attention'])
+      // Through the factory, not `new GhlAdapter(...)`: addTags is part of the
+      // CrmAdapter interface, so a HubSpot or native-CRM workspace tags its own
+      // system instead of having a GHL client built for a location GHL has
+      // never heard of. (Workflow enrol/remove below stays GHL-specific — those
+      // are not interface methods and have no cross-provider equivalent.)
+      const { getCrmAdapter } = await import('./crm/factory')
+      const adapter = await getCrmAdapter(locationId)
+      await adapter.addTags(contactId, ['needs-attention'])
     } catch (err: any) {
       console.warn(`[StopCond] addTags(needs-attention) failed for ${contactId}: ${err.message}`)
     }

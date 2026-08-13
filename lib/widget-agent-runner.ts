@@ -417,7 +417,12 @@ Never apologise for the language or mention translation — just speak naturally
         content,
         result?.actionsPerformed ?? [],
       )
-      if (stopCheck.matched && !agent.locationId.startsWith('widget:')) {
+      // Two separate questions, and only one used to be asked. `locationId`
+      // being a real CRM location does NOT mean this visitor exists in that
+      // CRM: widgetContactId falls back to a local `visitor:<id>` sentinel for
+      // anyone never synced across. Tagging that id 401'd on every match.
+      const visitorIsInCrm = !widgetContactId.startsWith('visitor:')
+      if (stopCheck.matched && !agent.locationId.startsWith('widget:') && visitorIsInCrm) {
         await executeStopConditionActions({
           matched: stopCheck.matched,
           locationId: agent.locationId,
