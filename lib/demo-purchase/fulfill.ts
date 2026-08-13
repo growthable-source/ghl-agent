@@ -54,6 +54,7 @@ import {
   type PurchaseState,
 } from './state'
 import { flagConcierge, notifyBuyerPendingConcierge, notifyPurchase } from './concierge'
+import { brandKeyFromMetadata, getBrand } from '@/lib/demo-brands'
 import { createMagicLinkToken, sendMagicLinkEmail } from './magic-link'
 import {
   isLeadConnectorConfigured,
@@ -393,7 +394,10 @@ export async function completeDemoPurchase(slug: string): Promise<void> {
     const fromState = purchase.state
     try {
       const rawToken = await createMagicLinkToken(purchase.userId, purchase.workspaceId)
-      const base = (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://xovera.io').replace(/\/$/, '')
+      // Whitelabel brands may pin their own origin; null falls through to
+      // the app's own env, which is what every brand does today.
+      const brand = getBrand(brandKeyFromMetadata(prospect.metadata))
+      const base = (brand.baseUrl || process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://xovera.io').replace(/\/$/, '')
       const magicLinkUrl = `${base}/welcome/${rawToken}`
       await sendMagicLinkEmail({ to: purchase.contactEmail, businessName: prospect.businessName, magicLinkUrl })
       await advancePurchaseState(prospect.id, fromState, 'complete', { magicLinkSentAt: new Date().toISOString() })

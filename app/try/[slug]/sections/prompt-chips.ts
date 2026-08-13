@@ -25,6 +25,16 @@ export const PROMPT_CHIPS: Record<string, string[]> = {
     'Can I speak to a manager?',
     'Do you run group classes?',
   ],
+  dealership: [
+    'What time does your service department open?',
+    'Can I book a service for Thursday morning?',
+    'Do you have any SUVs in stock under $30k?',
+    'What do I need to bring for a trade-in?',
+    'Where exactly are you located?',
+    'Do you take walk-ins for a test drive?',
+    'Can I speak to someone in finance?',
+    'Do you do loaner cars while mine is in?',
+  ],
   default: [
     'What are your opening hours?',
     'Can I book a table for 6 tonight?',

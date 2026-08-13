@@ -39,6 +39,7 @@ import { db } from '@/lib/db'
 import { getPurchase, mergePurchaseMetadata, type PurchaseState } from '@/lib/demo-purchase/state'
 import { createMagicLinkToken, sendMagicLinkEmail } from '@/lib/demo-purchase/magic-link'
 import { flagConcierge } from '@/lib/demo-purchase/concierge'
+import { brandKeyFromMetadata, getBrand } from '@/lib/demo-brands'
 
 const MAX_RESENDS = 3
 const COOLDOWN_MS = 120_000
@@ -52,6 +53,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
   const prospect = await db.demoProspect.findUnique({ where: { slug } })
   if (!prospect) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+
+  // Whitelabel brand drives the support channel named in the rate-limit
+  // copy and (when set) the magic-link origin — a buyer on a partner-
+  // branded lander must never be pointed at Xovera support.
+  const brand = getBrand(brandKeyFromMetadata(prospect.metadata))
 
   const purchase = getPurchase(prospect.metadata)
   if (!purchase || !purchase.stripeSessionId) {
@@ -77,7 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const resendCount = purchase.resendCount ?? 0
   if (resendCount >= MAX_RESENDS) {
     return NextResponse.json(
-      { error: 'rate_limited', message: "You've reached the resend limit — email support@xovera.io and we'll get you signed in." },
+      { error: 'rate_limited', message: `You've reached the resend limit — ${brand.support.contactSentence} and we'll get you signed in.` },
       { status: 429 },
     )
   }
@@ -93,7 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
   try {
     const rawToken = await createMagicLinkToken(purchase.userId, purchase.workspaceId)
-    const base = (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://xovera.io').replace(/\/$/, '')
+    const base = (brand.baseUrl || process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://xovera.io').replace(/\/$/, '')
     const magicLinkUrl = `${base}/welcome/${rawToken}`
     await sendMagicLinkEmail({ to: purchase.contactEmail, businessName: prospect.businessName, magicLinkUrl })
   } catch (err) {

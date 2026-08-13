@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import { landingPathForVertical } from '@/lib/demo-prospects/templates'
 import { offerStatus } from '@/lib/demo-purchase/offer'
 import { STRIPE_PRICES } from '@/lib/plans'
+import { brandKeyFromMetadata, getBrand } from '@/lib/demo-brands'
 import TryDemoClient from './TryDemoClient'
 
 type Params = { params: Promise<{ slug: string }> }
@@ -13,12 +14,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params
   const p = await db.demoProspect.findUnique({
     where: { slug },
-    select: { businessName: true },
+    select: { businessName: true, metadata: true },
   }).catch(() => null)
   if (!p) return { title: 'Not found', robots: { index: false, follow: false } }
+  const brand = getBrand(brandKeyFromMetadata(p.metadata))
   return {
     title: `${p.businessName} — AI receptionist demo`,
-    description: `Hear the AI receptionist Xovera built for ${p.businessName}.`,
+    description: brand.copy.metaDescription(p.businessName),
     robots: { index: false, follow: false },
   }
 }
@@ -37,6 +39,11 @@ export default async function TryDemoPage({ params }: Params) {
     select: { slug: true, businessName: true, websiteUrl: true, websiteDomain: true, vertical: true, status: true, metadata: true, contactEmail: true, clickedAt: true },
   }).catch(() => null)
   if (!prospect) notFound()
+
+  // Whitelabel identity (logo, palette, copy, social proof) — keyed off
+  // metadata.brand, which the prospecting tool sets at registration.
+  // Absent/unknown → Xovera, so every pre-existing row is unaffected.
+  const brand = getBrand(brandKeyFromMetadata(prospect.metadata))
 
   const metaCheckout = (prospect.metadata as Record<string, unknown> | null)?.checkoutUrl
   const checkoutHref =
@@ -62,6 +69,7 @@ export default async function TryDemoPage({ params }: Params) {
 
   return (
     <TryDemoClient
+      brandKey={brand.key}
       introDeadline={introDeadline}
       slug={prospect.slug}
       businessName={prospect.businessName}

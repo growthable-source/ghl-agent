@@ -359,8 +359,12 @@ body {
 }
 
 /* Gradient text */
+/* --gradient-text is tokenized (rather than the literal orange it used to
+   hardcode) so whitelabel demo landers can recolour gradient text by
+   overriding one variable on their wrapper — see lib/demo-brands.
+   The fallback is the original value, so unbranded surfaces are unchanged. */
 .text-gradient {
-  background: linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%);
+  background: var(--gradient-text, linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -368,7 +372,7 @@ body {
 
 /* Stat value */
 .stat-value {
-  background: linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%);
+  background: var(--gradient-text, linear-gradient(135deg, #fa4d2e 0%, #fb8951 50%, #fb8e6a 100%));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

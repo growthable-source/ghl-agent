@@ -65,6 +65,8 @@ import PurchaseModal from './sections/purchase/PurchaseModal'
 import OfferCountdown from './sections/purchase/OfferCountdown'
 import { promptChipsForVertical } from './sections/prompt-chips'
 import { usePublicVoiceCall } from '@/lib/voice/use-public-voice-call'
+import { brandCssVars, getBrand } from '@/lib/demo-brands'
+import type { CSSProperties } from 'react'
 
 type Phase = 'train' | 'training' | 'ready' | 'gone'
 type CheckoutMode = 'embedded' | 'external'
@@ -97,8 +99,12 @@ function domainOf(raw: string): string | null {
 }
 
 export default function TryDemoClient({
-  slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, contactEmail, checkoutHref, checkoutMode, learnMoreHref, introDeadline,
+  slug, businessName, websiteUrl, websiteDomain, vertical, initialStatus, contactEmail, checkoutHref, checkoutMode, learnMoreHref, introDeadline, brandKey,
 }: {
+  /** Whitelabel identity key (lib/demo-brands). Resolved here rather than
+   *  passed as an object — DemoBrand.copy holds functions, which don't
+   *  survive the server→client prop boundary. */
+  brandKey: string
   slug: string
   businessName: string
   websiteUrl: string
@@ -113,6 +119,7 @@ export default function TryDemoClient({
    *  window has closed / the discounted Stripe price isn't configured. */
   introDeadline: string | null
 }) {
+  const brand = useMemo(() => getBrand(brandKey), [brandKey])
   const isGoneStatus = initialStatus === 'expired' || initialStatus === 'claimed'
   // Cleared in place when the clock runs out, so the bar disappears
   // without a reload. Server re-derives the real state on every request.
@@ -310,7 +317,7 @@ export default function TryDemoClient({
   const [shareCopied, setShareCopied] = useState(false)
   const share = useCallback(async () => {
     const url = typeof window !== 'undefined' ? window.location.href : ''
-    const text = `Listen to this — an AI receptionist trained on ${businessName}'s website. It answers like our front desk: ${url}`
+    const text = brand.copy.shareText(businessName, url)
     try {
       if (navigator.share) {
         await navigator.share({ title: `${businessName} — AI receptionist demo`, text, url })
@@ -322,7 +329,7 @@ export default function TryDemoClient({
       setShareCopied(true)
       setTimeout(() => setShareCopied(false), 2500)
     } catch { /* clipboard unavailable — nothing sensible left to do */ }
-  }, [businessName])
+  }, [businessName, brand])
 
   // Staged progress list — buildStep counts how many rows read as
   // "done"; the first not-yet-done row pulses. Labels/thresholds are
@@ -361,7 +368,15 @@ export default function TryDemoClient({
     // sticky` for every descendant — Nav has carried `sticky top-0` since
     // the redesign and never actually stuck. `clip` suppresses the same
     // horizontal overflow without creating a scroll container.
-    <div data-theme="soft-light" className="min-h-screen overflow-x-clip" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
+    // brandCssVars overrides the accent/gradient/glow tokens for whitelabel
+    // brands at the wrapper, so every descendant (buttons, icon boxes,
+    // section labels, gradient text, the phone mockup) recolours at once.
+    // Empty object for Xovera — the stock soft-light palette stands.
+    <div
+      data-theme="soft-light"
+      className="min-h-screen overflow-x-clip"
+      style={{ background: 'var(--background)', color: 'var(--foreground)', ...brandCssVars(brand) } as CSSProperties}
+    >
       {/* Bar + nav pin as ONE unit: Nav has its own `sticky top-0 z-40`, so
           a separately-sticky bar would share the offset and get painted
           over on scroll. Degrades to a plain sticky nav when no bar. */}
@@ -373,10 +388,11 @@ export default function TryDemoClient({
             onExpire={() => setIntroDeadlineLive(null)}
           />
         )}
-        <Nav checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} />
+        <Nav brand={brand} checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} />
       </div>
 
       <Hero
+        brand={brand}
         businessName={businessName}
         websiteDomain={displayDomain}
         checkoutHref={checkoutHref}
@@ -411,7 +427,7 @@ export default function TryDemoClient({
 
       {phase !== 'gone' && (
         <>
-          <Features />
+          <Features brand={brand} />
           <Prompts
             businessName={businessName}
             chips={promptChips}
@@ -421,14 +437,15 @@ export default function TryDemoClient({
         </>
       )}
 
-      <Stats />
-      <Process />
-      <Testimonials />
-      <FinalCta checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} learnMoreHref={learnMoreHref} />
-      <Footer businessName={businessName} onShare={() => void share()} shareCopied={shareCopied} />
+      <Stats brand={brand} />
+      <Process brand={brand} />
+      <Testimonials brand={brand} />
+      <FinalCta brand={brand} checkoutHref={checkoutHref} checkoutMode={checkoutMode} onOpenCheckout={() => onOpenCheckout(1)} learnMoreHref={learnMoreHref} />
+      <Footer brand={brand} businessName={businessName} onShare={() => void share()} shareCopied={shareCopied} />
 
       {purchaseModalOpen && (
         <PurchaseModal
+          brand={brand}
           slug={slug}
           businessName={businessName}
           contactEmail={contactEmail}

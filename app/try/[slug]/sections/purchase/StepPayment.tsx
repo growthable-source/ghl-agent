@@ -2,6 +2,7 @@ import { EmbeddedCheckout, EmbeddedCheckoutProvider } from '@stripe/react-stripe
 import type { Stripe } from '@stripe/stripe-js'
 import type { PurchasePeriod } from '@/lib/demo-purchase/state'
 import OrderSummary from './OrderSummary'
+import type { DemoBrand } from '@/lib/demo-brands'
 
 /**
  * PurchaseModal step 2 — Embedded Checkout + the offer-stack order
@@ -13,6 +14,7 @@ import OrderSummary from './OrderSummary'
  * `stripe` docs say the clientSecret prop can't change after first mount.
  */
 export default function StepPayment({
+  brand,
   stripePromise,
   clientSecret,
   sessionId,
@@ -34,11 +36,13 @@ export default function StepPayment({
   onComplete: () => void
   introDeadline: string | null
   onIntroExpire: () => void
+  brand: DemoBrand
 }) {
   return (
     <div className="grid md:grid-cols-[1fr_1.1fr] gap-6 items-start">
       <div className="order-2 md:order-1">
         <OrderSummary
+          brand={brand}
           period={period}
           onPeriodChange={onPeriodChange}
           disabled={changingPeriod}

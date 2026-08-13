@@ -10,9 +10,10 @@ type Ingestion = {
   pagesSucceeded: number
 } | null
 
-const AVATARS = ['/try-demo/avatar-1.jpg', '/try-demo/avatar-3.jpg', '/try-demo/avatar-5.jpg', '/try-demo/avatar-8.jpg']
+import type { DemoBrand } from '@/lib/demo-brands'
 
 export interface HeroProps {
+  brand: DemoBrand
   businessName: string
   websiteDomain: string
   checkoutHref: string
@@ -99,7 +100,7 @@ function GoneHero({
 
 export default function Hero(props: HeroProps) {
   const {
-    businessName, websiteDomain, checkoutHref, checkoutMode, onOpenCheckout, learnMoreHref,
+    brand, businessName, websiteDomain, checkoutHref, checkoutMode, onOpenCheckout, learnMoreHref,
     phase, ingestion, thinContent,
     websiteInput, setWebsiteInput, submitting, trainError, urlChangeIgnored, onTrain,
     trainingSteps, buildStep, canCallEarly,
@@ -227,7 +228,7 @@ export default function Hero(props: HeroProps) {
 
           <div className="flex items-center">
             <div className="flex items-center">
-              {AVATARS.map((src, i) => (
+              {brand.heroProof.avatars.map((src, i) => (
                 <div
                   key={src}
                   className="relative rounded-full overflow-hidden shrink-0"
@@ -237,9 +238,9 @@ export default function Hero(props: HeroProps) {
                 </div>
               ))}
             </div>
-            <p className="pl-3 text-[13px]">
-              <span className="font-bold" style={{ color: 'var(--text-primary)' }}>2,400+</span>{' '}
-              <span style={{ color: 'var(--text-secondary)' }}>businesses never miss a call</span>
+            <p className={`text-[13px] ${brand.heroProof.avatars.length ? 'pl-3' : ''}`}>
+              <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{brand.heroProof.leadIn}</span>{' '}
+              <span style={{ color: 'var(--text-secondary)' }}>{brand.heroProof.text}</span>
             </p>
           </div>
 

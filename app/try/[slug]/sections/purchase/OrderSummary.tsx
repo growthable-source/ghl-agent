@@ -1,4 +1,3 @@
-import Image from 'next/image'
 import { Check } from 'lucide-react'
 import type { PurchasePeriod } from '@/lib/demo-purchase/state'
 import {
@@ -9,7 +8,8 @@ import {
   INTRO_DISCOUNT_PCT,
   totalDueToday,
 } from '@/lib/demo-purchase/offer'
-import { TESTIMONIALS } from '../Testimonials'
+import type { DemoBrand } from '@/lib/demo-brands'
+import TestimonialAvatar from '../TestimonialAvatar'
 import OfferCountdown from './OfferCountdown'
 
 /**
@@ -28,6 +28,7 @@ const OFFER_NAME = 'AI Voice Receptionist + CRM Bundle'
 const ITEMS = ['AI receptionist, answering calls 24/7', 'CRM bundle — leads, contacts & follow-up included', 'Setup & onboarding']
 
 export default function OrderSummary({
+  brand,
   period,
   onPeriodChange,
   disabled,
@@ -39,10 +40,11 @@ export default function OrderSummary({
   disabled?: boolean
   introDeadline: string | null
   onIntroExpire?: () => void
+  brand: DemoBrand
 }) {
   const introActive = Boolean(introDeadline)
   const totalToday = totalDueToday(period, introActive)
-  const testimonial = TESTIMONIALS[0]
+  const testimonial = brand.testimonials[0]
 
   return (
     <div className="vox-card p-6 flex flex-col gap-5">
@@ -164,9 +166,7 @@ export default function OrderSummary({
           &ldquo;{testimonial.quote}&rdquo;
         </p>
         <div className="flex items-center gap-2.5">
-          <div className="relative w-7 h-7 rounded-full overflow-hidden shrink-0">
-            <Image src={testimonial.avatar} alt="" width={28} height={28} className="object-cover w-full h-full" />
-          </div>
+          <TestimonialAvatar testimonial={testimonial} size={28} />
           <div>
             <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{testimonial.name}</p>
             <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{testimonial.role}</p>

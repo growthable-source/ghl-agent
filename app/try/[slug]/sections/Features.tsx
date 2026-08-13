@@ -42,31 +42,37 @@ function GlobeIcon() {
   )
 }
 
-const FEATURES = [
-  { Icon: BoltIcon, title: 'Answers in < 1 second', body: 'No hold music. No voicemail. Every call is picked up instantly, no matter the time of day.' },
-  { Icon: BrainIcon, title: 'Knows your business', body: 'Paste your URL and it learns your hours, services, prices, and FAQs in under a minute.' },
-  { Icon: CalendarIcon, title: 'Books appointments', body: 'Checks availability and locks in bookings live — synced to your calendar, no follow-up needed.' },
-  { Icon: TransferIcon, title: 'Warm transfers', body: 'When a call needs a human, it hands off seamlessly — briefing your team on what was discussed.' },
-  { Icon: ClipboardIcon, title: 'Full call summaries', body: 'Every call transcribed and summarised in your dashboard. Know what callers asked — instantly.' },
-  { Icon: GlobeIcon, title: 'Multilingual', body: "Speaks 30+ languages. Auto-detects the caller's language and responds naturally — no setup." },
-]
+import type { DemoBrand, BrandFeatureIcon } from '@/lib/demo-brands'
 
-export default function Features() {
+/** Icon components keyed by the string the brand config carries — keeps
+ *  lib/demo-brands serializable across the server→client boundary. */
+const ICONS: Record<BrandFeatureIcon, () => React.JSX.Element> = {
+  bolt: BoltIcon,
+  brain: BrainIcon,
+  calendar: CalendarIcon,
+  transfer: TransferIcon,
+  clipboard: ClipboardIcon,
+  globe: GlobeIcon,
+}
+
+export default function Features({ brand }: { brand: DemoBrand }) {
   return (
     <section id="features" className="py-16 sm:py-24 px-6 border-t" style={{ borderColor: 'var(--border)' }}>
       <div className="max-w-[1280px] mx-auto">
         <div className="text-center mb-12 sm:mb-16">
-          <span className="section-label inline-block mb-4">Why Xovera</span>
+          <span className="section-label inline-block mb-4">{brand.copy.featuresLabel}</span>
           <h2 className="font-black tracking-tight mb-4" style={{ fontSize: 'clamp(1.75rem, 4vw, 3rem)', color: 'var(--text-primary)' }}>
-            Not a bot. A brilliant receptionist.
+            {brand.copy.featuresHeading}
           </h2>
           <p className="max-w-md mx-auto" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
-            Trained on your business. Sounds human. Works like a machine.
+            {brand.copy.featuresSub}
           </p>
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {FEATURES.map(({ Icon, title, body }) => (
+          {brand.features.map(({ icon, title, body }) => {
+            const Icon = ICONS[icon]
+            return (
             <div key={title} className="vox-card p-6">
               <div className="icon-box mb-4">
                 <Icon />
@@ -74,7 +80,8 @@ export default function Features() {
               <h3 className="font-bold text-[17px] mb-2" style={{ color: 'var(--text-primary)' }}>{title}</h3>
               <p className="text-sm leading-[1.65]" style={{ color: 'var(--text-secondary)' }}>{body}</p>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </section>

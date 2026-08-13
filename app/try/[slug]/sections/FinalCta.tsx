@@ -1,9 +1,13 @@
+import type { DemoBrand } from '@/lib/demo-brands'
+
 export default function FinalCta({
+  brand,
   checkoutHref,
   checkoutMode,
   onOpenCheckout,
   learnMoreHref,
 }: {
+  brand: DemoBrand
   checkoutHref: string
   checkoutMode: 'embedded' | 'external'
   onOpenCheckout: () => void
@@ -18,34 +22,35 @@ export default function FinalCta({
         >
           <div
             className="absolute left-1/2 -translate-x-1/2 -top-10 w-[560px] h-[360px] pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse at 50% 45%, rgba(232,68,37,0.12), transparent 70%)' }}
+            style={{ background: 'radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--accent-primary) 12%, transparent), transparent 70%)' }}
           />
           <div className="relative z-10 max-w-xl mx-auto">
             <p className="font-extrabold text-xs tracking-[0.2em] uppercase mb-4" style={{ color: 'var(--text-secondary)' }}>
-              Never miss another call
+              {brand.copy.finalCtaEyebrow}
             </p>
             <h2 className="font-black tracking-tight mb-5" style={{ fontSize: 'clamp(1.9rem, 4.5vw, 3.5rem)', color: 'var(--text-primary)' }}>
-              Your AI receptionist is <span className="text-gradient">ready right now.</span>
+              {brand.copy.finalCtaHeadingLead}
+              <span className="text-gradient">{brand.copy.finalCtaHeadingAccent}</span>
             </h2>
             <p className="mb-9 leading-[1.65]" style={{ color: 'var(--text-secondary)', fontSize: '1.0625rem' }}>
-              No developers. No long setup. Paste your URL and your phone is covered — nights, weekends, every day.
+              {brand.copy.finalCtaBody}
             </p>
             {checkoutMode === 'embedded' ? (
               <button type="button" onClick={onOpenCheckout} className="btn-primary text-lg py-4 px-10 rounded-full">
-                📞 Get My AI Receptionist →
+                {brand.copy.finalCtaButton}
               </button>
             ) : (
               <a href={checkoutHref} className="btn-primary text-lg py-4 px-10 rounded-full">
-                📞 Get My AI Receptionist →
+                {brand.copy.finalCtaButton}
               </a>
             )}
             <p className="mt-5">
               <a href={learnMoreHref} className="text-sm font-medium" style={{ color: 'var(--accent-primary)' }}>
-                Watch a 2-min explainer
+                {brand.copy.finalCtaLearnMore}
               </a>
             </p>
             <p className="mt-6 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              14-day money-back guarantee · Cancel anytime
+              {brand.copy.finalCtaFootnote}
             </p>
           </div>
         </div>

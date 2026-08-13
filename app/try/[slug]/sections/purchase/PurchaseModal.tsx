@@ -38,6 +38,7 @@ import StepProvisioning from './StepProvisioning'
 import StepPickNumber from './StepPickNumber'
 import StepDone from './StepDone'
 import OfferCountdown from './OfferCountdown'
+import type { DemoBrand } from '@/lib/demo-brands'
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5
 
@@ -139,6 +140,7 @@ function stepForResume(state: PurchaseState): Step {
 }
 
 export default function PurchaseModal({
+  brand,
   slug,
   businessName,
   contactEmail,
@@ -149,6 +151,7 @@ export default function PurchaseModal({
   externalCheckoutHref,
   introDeadline,
 }: {
+  brand: DemoBrand
   slug: string
   businessName: string
   contactEmail: string | null
@@ -432,6 +435,7 @@ export default function PurchaseModal({
 
             {step === 2 && clientSecret && sessionId && (
               <StepPayment
+                brand={brand}
                 stripePromise={stripePromiseRef.current}
                 clientSecret={clientSecret}
                 sessionId={sessionId}
