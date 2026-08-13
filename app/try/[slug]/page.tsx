@@ -4,7 +4,7 @@ import type { Metadata } from 'next'
 import { landingPathForVertical } from '@/lib/demo-prospects/templates'
 import { offerStatus } from '@/lib/demo-purchase/offer'
 import { STRIPE_PRICES } from '@/lib/plans'
-import { brandKeyFromMetadata, getBrand } from '@/lib/demo-brands'
+import { brandKeyFromMetadata, getBrand, DEFAULT_BRAND_KEY } from '@/lib/demo-brands'
 import TryDemoClient from './TryDemoClient'
 
 type Params = { params: Promise<{ slug: string }> }
@@ -18,11 +18,33 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   }).catch(() => null)
   if (!p) return { title: 'Not found', robots: { index: false, follow: false } }
   const brand = getBrand(brandKeyFromMetadata(p.metadata))
-  return {
-    title: `${p.businessName} — AI receptionist demo`,
-    description: brand.copy.metaDescription(p.businessName),
+  const title = `${p.businessName} — AI receptionist demo | ${brand.name}`
+  const description = brand.copy.metaDescription(p.businessName)
+
+  // `absolute` bypasses the root layout's "%s | Xovera" title template.
+  // Without it a partner-branded lander announces Xovera in the browser
+  // tab — the one piece of chrome the prospect always sees.
+  const metadata: Metadata = {
+    title: { absolute: title },
+    description,
     robots: { index: false, follow: false },
   }
+
+  // Whitelabel brands also need the share card overridden. These links get
+  // pasted into email and Slack, and without this the unfurl inherits the
+  // root layout's og:* — Xovera's name, marketing headline and artwork on
+  // a page wearing a partner's logo. Xovera-branded landers keep
+  // inheriting exactly as they did before.
+  if (brand.key !== DEFAULT_BRAND_KEY) {
+    // The brand's own logo beats a wrong-brand hero image. A brand with no
+    // raster asset sends an empty list, which suppresses the inherited
+    // artwork rather than showing someone else's.
+    const images = brand.logo.kind === 'image' ? [{ url: brand.logo.src }] : []
+    metadata.openGraph = { title, description, siteName: brand.name, type: 'website', images }
+    metadata.twitter = { card: 'summary', title, description, images }
+  }
+
+  return metadata
 }
 
 // Default direct-checkout offer. Overridable per prospect via
