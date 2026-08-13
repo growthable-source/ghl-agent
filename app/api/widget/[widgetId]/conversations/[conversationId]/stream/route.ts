@@ -224,12 +224,26 @@ export async function GET(req: NextRequest, { params }: Params) {
         }
       }, HEARTBEAT_INTERVAL_MS)
 
+      let selfClose: ReturnType<typeof setTimeout> | undefined
       const cleanup = () => {
         clearInterval(heartbeat)
+        if (selfClose) clearTimeout(selfClose)
         subscription.close().catch(() => {})
         try { controller.close() } catch {}
       }
       req.signal.addEventListener('abort', cleanup)
+
+      // Close ourselves a few seconds before the platform would. Functionally
+      // identical for the visitor — the client reconnects and replays via
+      // Last-Event-ID either way — but when Vercel kills the function it
+      // records "Vercel Runtime Timeout Error: Task timed out after 300
+      // seconds" as an ERROR. At widget volume that was ~120 errors per 30
+      // minutes of pure noise, and it is not hypothetical that this hides
+      // real faults: during the 2026-08-11 outage investigation the entire
+      // error feed was these timeouts, and the actual agent failures were
+      // invisible until they were filtered out. A stream that ends on its
+      // own terms logs nothing.
+      selfClose = setTimeout(cleanup, (maxDuration - 10) * 1000)
     },
   })
 

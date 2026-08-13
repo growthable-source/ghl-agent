@@ -1,4 +1,5 @@
 import { db } from './db'
+import { isStormSuppressed } from './notification-storm'
 
 /**
  * Dispatch a notification to all configured channels for a workspace.
@@ -30,6 +31,8 @@ export async function notify(params: {
   // team would be noise.
   targetUserId?: string
 }) {
+  if (isStormSuppressed(params.event, params.workspaceId, params.targetUserId)) return
+
   if (!params.targetUserId) {
     let channels: Array<{ id: string; type: string; config: any; events: string[] }>
     try {
