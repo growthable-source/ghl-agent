@@ -23,6 +23,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/fleet-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/prune-audit-log",
       "schedule": "30 3 * * *"
     },

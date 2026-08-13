@@ -21,6 +21,26 @@
 
 import { isRetryableAnthropicError } from '../anthropic-resilient'
 
+/**
+ * A spent credit balance / exceeded billing cap arrives as a NON-retryable
+ * 4xx, so the rule above would file it as permanent and never retry it. That
+ * is wrong in the only sense that matters: the request was fine, the account
+ * was temporarily unfunded, and the identical request succeeds the moment
+ * somebody tops up.
+ *
+ * Filing it as permanent cost real customer messages — during the 2026-08-11
+ * outage ~114 inbounds were classified `model_rejected`, dropped, and never
+ * revisited even after billing was restored. Treat it as transient so the
+ * retry cron replays them on its own; the operator is still paged, because
+ * `model_unavailable` that persists is exactly what the fleet health check
+ * escalates on.
+ */
+export function isBillingLapse(err: unknown): boolean {
+  const e = err as { message?: string; error?: unknown } | null
+  const msg = `${e?.message ?? ''} ${typeof e?.error === 'string' ? e.error : JSON.stringify(e?.error ?? '')}`
+  return /credit balance is too low|billing|quota|insufficient[_ ]funds|payment required/i.test(msg)
+}
+
 export interface ClassifiedLlmFailure {
   /** Skip reason the agent loop returns. */
   skipped: 'model_unavailable' | 'model_rejected'
@@ -32,11 +52,14 @@ export interface ClassifiedLlmFailure {
 }
 
 export function classifyLlmFailure(err: unknown, requestedModel?: string | null): ClassifiedLlmFailure {
-  const retryable = isRetryableAnthropicError(err)
+  const billing = isBillingLapse(err)
+  const retryable = billing || isRetryableAnthropicError(err)
   const status = (err as { status?: unknown })?.status ?? 'network'
   return {
     skipped: retryable ? 'model_unavailable' : 'model_rejected',
     retryable,
-    detail: `status=${String(status)} model=${requestedModel || 'auto'} retryable=${retryable}`,
+    detail:
+      `status=${String(status)} model=${requestedModel || 'auto'} retryable=${retryable}` +
+      (billing ? ' cause=billing_lapse' : ''),
   }
 }

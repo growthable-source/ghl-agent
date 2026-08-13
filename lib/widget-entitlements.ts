@@ -59,11 +59,26 @@ No human monitors this conversation and none can be brought into it. Never offer
 
 When you cannot answer: say so plainly, suggest where in the help centre they might look, and leave it there. Do not mention plans, billing, upgrades, or why a human is unavailable.`
 
+const SILENT_FALLBACK_WITH_HANDOFF = 'I hit a snag on my end — let me get someone on our team to follow up.'
+const SILENT_FALLBACK_NO_HANDOFF = 'I hit a snag answering that just now. Mind trying again in a moment, or rephrasing?'
+
+/**
+ * Every visitor-facing line that means "the agent failed to produce a reply".
+ *
+ * Exported as ONE list because the fleet health check (lib/fleet-health.ts)
+ * counts these to decide whether the AI has stopped answering customers. A
+ * literal copied into that query would drift the first time this copy is
+ * reworded — and the detector would then report a healthy fleet through an
+ * outage, which is the exact failure mode it exists to catch.
+ */
+export const SILENT_AGENT_FALLBACKS: readonly string[] = [
+  SILENT_FALLBACK_WITH_HANDOFF,
+  SILENT_FALLBACK_NO_HANDOFF,
+]
+
 /** Visitor-facing fallback lines, chosen by whether a human can honestly be promised. */
 export function silentAgentFallback(handoffAllowed: boolean): string {
-  return handoffAllowed
-    ? 'I hit a snag on my end — let me get someone on our team to follow up.'
-    : 'I hit a snag answering that just now. Mind trying again in a moment, or rephrasing?'
+  return handoffAllowed ? SILENT_FALLBACK_WITH_HANDOFF : SILENT_FALLBACK_NO_HANDOFF
 }
 
 export function noAgentFallback(handoffAllowed: boolean): string {

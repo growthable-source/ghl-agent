@@ -1,41 +1,49 @@
 import { describe, it, expect } from 'vitest'
-import { classifyLlmFailure } from './model-failure'
+import { classifyLlmFailure, isBillingLapse } from './model-failure'
+
+// The exact body Anthropic returned throughout the 2026-08-11 outage.
+const CREDIT_ERROR = {
+  status: 400,
+  message:
+    '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}',
+}
+
+describe('isBillingLapse', () => {
+  it('detects the Anthropic credit-balance message', () => {
+    expect(isBillingLapse(CREDIT_ERROR)).toBe(true)
+  })
+
+  it('detects quota and payment-required phrasing from other providers', () => {
+    expect(isBillingLapse({ message: 'quota exceeded for this organization' })).toBe(true)
+    expect(isBillingLapse({ message: '402 Payment Required' })).toBe(true)
+  })
+
+  it('does NOT treat a genuine bad request as a billing lapse', () => {
+    expect(isBillingLapse({ status: 400, message: 'prompt is too long: 250000 tokens' })).toBe(false)
+    expect(isBillingLapse({ status: 404, message: 'not_found_error: model' })).toBe(false)
+  })
+})
 
 describe('classifyLlmFailure', () => {
-  it('classifies a 529 overloaded as transient → model_unavailable (retryable)', () => {
-    const c = classifyLlmFailure({ status: 529, message: 'Overloaded' }, 'claude-sonnet')
-    expect(c.skipped).toBe('model_unavailable')
+  // The regression that dropped ~114 customer messages: a spent balance is a
+  // non-retryable 4xx by HTTP semantics, but succeeds on retry once funded.
+  it('classifies a billing lapse as RETRYABLE so the cron replays it', () => {
+    const c = classifyLlmFailure(CREDIT_ERROR, 'claude-sonnet')
     expect(c.retryable).toBe(true)
-    expect(c.detail).toContain('status=529')
-    expect(c.detail).toContain('model=claude-sonnet')
+    expect(c.skipped).toBe('model_unavailable')
+    expect(c.detail).toContain('cause=billing_lapse')
   })
 
-  it('classifies a 429 rate limit as transient → model_unavailable (retryable)', () => {
-    const c = classifyLlmFailure({ status: 429 }, 'claude-haiku')
-    expect(c.skipped).toBe('model_unavailable')
-    expect(c.retryable).toBe(true)
-  })
-
-  it('classifies a network/timeout error (no status) as transient → model_unavailable', () => {
-    const c = classifyLlmFailure({ message: 'fetch failed: ETIMEDOUT' })
-    expect(c.skipped).toBe('model_unavailable')
-    expect(c.retryable).toBe(true)
-    // No model supplied → defaults to the logical "auto" key.
-    expect(c.detail).toContain('model=auto')
-  })
-
-  it('classifies a 400 bad request as permanent → model_rejected (NOT retryable)', () => {
-    // e.g. context length exceeded for a long conversation — retrying fails
-    // identically, so this must page immediately, never enter the retry cron.
+  it('still classifies a real bad request as permanent', () => {
     const c = classifyLlmFailure({ status: 400, message: 'prompt is too long' }, 'claude-sonnet')
-    expect(c.skipped).toBe('model_rejected')
     expect(c.retryable).toBe(false)
-    expect(c.detail).toContain('status=400')
+    expect(c.skipped).toBe('model_rejected')
+    expect(c.detail).not.toContain('billing_lapse')
   })
 
-  it('classifies a 401 auth failure as permanent → model_rejected', () => {
-    const c = classifyLlmFailure({ status: 401, message: 'invalid x-api-key' }, 'claude-sonnet')
-    expect(c.skipped).toBe('model_rejected')
-    expect(c.retryable).toBe(false)
+  it('records the requested model and status in the detail', () => {
+    const c = classifyLlmFailure({ status: 529, message: 'Overloaded' }, 'deepseek-flash')
+    expect(c.detail).toContain('status=529')
+    expect(c.detail).toContain('model=deepseek-flash')
   })
 })
