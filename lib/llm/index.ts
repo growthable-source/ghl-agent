@@ -67,6 +67,55 @@ function warnInvalidModel(badId: string, meta?: LlmCallMeta): void {
   }
 }
 
+/**
+ * True when a provider's credential env var is absent or blank on THIS
+ * deployment. Blank counts as missing: `Bearer ` reads to the provider as
+ * no credential at all.
+ */
+export function providerKeyMissing(model: Pick<ResolvedModel, 'apiKeyEnv'>): boolean {
+  return !(process.env[model.apiKeyEnv] ?? '').trim()
+}
+
+// Same throttle shape as the model-not-found alert: ONE config alert per
+// env var per warm instance per hour, not one per inbound.
+const missingKeyAlertedAt = new Map<string, number>()
+
+/**
+ * A provider whose credential is unset cannot serve a single request — every
+ * call 401s in milliseconds and lands on the Claude fallback, which in the
+ * logs is indistinguishable from "the cheap model is having a bad day."
+ *
+ * That ambiguity is expensive. Renaming this exact credential
+ * (DEEPSEEK_API_KEY → OPENROUTER_API_KEY) without creating the new name hid
+ * for five days while 100% of fleet traffic silently ran on Claude, drained
+ * the Anthropic balance, and took every agent reply down with it when the
+ * balance hit zero. So: name it as the deployment config error it is, say
+ * which variable, and say that it must exist on EVERY Vercel project that
+ * deploys this repo — the widget runtime has its own env, and a variable
+ * added only to the dashboard project reaches none of the chat traffic.
+ */
+function warnMissingProviderKey(model: ResolvedModel, meta?: LlmCallMeta): void {
+  console.error(
+    `[llm] CONFIG ERROR: ${model.apiKeyEnv} is unset on this deployment, so '${model.key}' cannot serve any ` +
+    `request — every call is falling back to ${CLAUDE_FALLBACK_KEY} and billing Anthropic. ` +
+    `SET ${model.apiKeyEnv} ON EVERY VERCEL PROJECT THAT DEPLOYS THIS REPO (dashboard AND widget runtime), then redeploy.`,
+  )
+  const now = Date.now()
+  if (now - (missingKeyAlertedAt.get(model.apiKeyEnv) ?? 0) < MODEL_ALERT_THROTTLE_MS) return
+  missingKeyAlertedAt.set(model.apiKeyEnv, now)
+  if (meta?.workspaceId) {
+    import('@/lib/notifications')
+      .then(({ notify }) => notify({
+        workspaceId: meta.workspaceId!,
+        event: 'agent_error',
+        title: `${model.apiKeyEnv} is missing — paying Anthropic prices for every reply`,
+        body: `'${model.key}' is the configured default but ${model.apiKeyEnv} is not set on this deployment, so every reply is being served by ${CLAUDE_FALLBACK_KEY} instead. Replies still work, but at several times the intended cost, and an Anthropic billing lapse would now take the agent down completely. Set ${model.apiKeyEnv} on every Vercel project that deploys this repo, then redeploy.`,
+        severity: 'error',
+      }))
+      .catch(() => { /* alert is best-effort */ })
+  }
+}
+
 export type { LlmCreateParams, LlmResponse } from './types'
 
 /** Optional attribution so cost can be rolled up per workspace/surface. */
@@ -150,6 +199,14 @@ export async function createMessage(
   }
 
   try {
+    // Fail the call BEFORE the network round-trip when the credential is
+    // simply absent. The fallback below still answers the customer, but the
+    // cause is now stated once, loudly, instead of arriving as an opaque
+    // provider 401 that reads like a transient blip.
+    if (providerKeyMissing(model)) {
+      warnMissingProviderKey(model, meta)
+      throw new Error(`[llm] ${model.apiKeyEnv} is not set — '${model.key}' cannot be called`)
+    }
     const res = await dispatch(model, params)
     logCost(requested, model.key, res.usage, reason)
     recordUsage(model.key, model.provider, res.usage, !!reason, meta)
