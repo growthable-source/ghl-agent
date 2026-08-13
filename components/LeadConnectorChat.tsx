@@ -1,8 +1,14 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { isPublicChatPath } from '@/lib/leadconnector-chat-paths'
+import {
+  subscribePublicChatSuppressed,
+  getPublicChatSuppressed,
+  getPublicChatSuppressedServer,
+  getPublicChatSuppressed as readPublicChatSuppressed,
+} from '@/lib/leadconnector-chat-suppress'
 
 /**
  * Xovera — LeadConnector chat widget on the public site
@@ -75,19 +81,35 @@ declare global {
 
 export default function LeadConnectorChat() {
   const pathname = usePathname()
-  const show = isPublicChatPath(pathname ?? '/')
+  // A page can veto the widget even on a public path — see
+  // lib/leadconnector-chat-suppress.ts. Used by the whitelabel demo
+  // landers, where a Xovera bubble on a partner-branded page is a leak.
+  const suppressed = useSyncExternalStore(
+    subscribePublicChatSuppressed,
+    getPublicChatSuppressed,
+    getPublicChatSuppressedServer,
+  )
+  const show = isPublicChatPath(pathname ?? '/') && !suppressed
 
   useEffect(() => {
+    // Re-read the store rather than trusting the `show` computed at render
+    // time: a page can mark itself suppressed DURING render (see
+    // app/try/[slug]/sections/SuppressPublicChat.tsx), which lands after
+    // this component rendered but before this effect runs. Without the
+    // re-read we would inject the loader on a whitelabel lander and only
+    // then hide it.
+    const on = show && !readPublicChatSuppressed()
+
     // Flip visibility first — on a marketing → dashboard navigation this
     // runs before anything paints the app shell, so the bubble does not
     // linger for a frame.
-    document.documentElement.dataset.lcChat = show ? 'on' : 'off'
+    document.documentElement.dataset.lcChat = on ? 'on' : 'off'
 
     const api = window.leadConnector?.chatWidget
-    if (show) api?.showWidget?.()
+    if (on) api?.showWidget?.()
     else api?.hideWidget?.()
 
-    if (!show) return
+    if (!on) return
     if (document.getElementById(SCRIPT_ID)) return
 
     const script = document.createElement('script')

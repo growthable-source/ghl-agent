@@ -62,10 +62,11 @@ import Testimonials from './sections/Testimonials'
 import FinalCta from './sections/FinalCta'
 import Footer from './sections/Footer'
 import PurchaseModal from './sections/purchase/PurchaseModal'
+import { usePublicChatSuppression } from './sections/SuppressPublicChat'
 import OfferCountdown from './sections/purchase/OfferCountdown'
 import { promptChipsForVertical } from './sections/prompt-chips'
 import { usePublicVoiceCall } from '@/lib/voice/use-public-voice-call'
-import { brandCssVars, getBrand } from '@/lib/demo-brands'
+import { brandCssVars, getBrand, DEFAULT_BRAND_KEY } from '@/lib/demo-brands'
 import type { CSSProperties } from 'react'
 
 type Phase = 'train' | 'training' | 'ready' | 'gone'
@@ -120,6 +121,10 @@ export default function TryDemoClient({
   introDeadline: string | null
 }) {
   const brand = useMemo(() => getBrand(brandKey), [brandKey])
+  // A partner-branded lander must not carry (or even load) Xovera's sales
+  // chat. Xovera's own landers keep it exactly as before. Called as a hook
+  // so it still runs during the early `phase === null` return below.
+  usePublicChatSuppression(brand.key !== DEFAULT_BRAND_KEY)
   const isGoneStatus = initialStatus === 'expired' || initialStatus === 'claimed'
   // Cleared in place when the clock runs out, so the bar disappears
   // without a reload. Server re-derives the real state on every request.
