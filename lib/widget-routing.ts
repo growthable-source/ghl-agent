@@ -498,7 +498,14 @@ async function claimSlotIfCapacity(params: {
   try {
     return await db.$transaction(async (tx) => {
       await tx.$executeRaw`SET LOCAL lock_timeout = '3000ms'`
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${QUEUE_LOCK_CLASS}::int4, hashtext(${params.workspaceId})::int4)`
+      // $executeRaw, NOT $queryRaw: pg_advisory_xact_lock() returns void, and
+      // $queryRaw tries to deserialize that column — "Failed to deserialize
+      // column of type 'void'" — which threw before the lock was ever useful
+      // and made this whole function return { claimed: false } every single
+      // time, silently disabling capacity-gated assignment for two months.
+      // We want the lock's side effect, never its value, which is exactly
+      // what $executeRaw is for.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${QUEUE_LOCK_CLASS}::int4, hashtext(${params.workspaceId})::int4)`
 
       const live = await tx.widgetConversation.count({
         where: {
@@ -529,7 +536,21 @@ async function claimSlotIfCapacity(params: {
       return { claimed: true, wasQueued: !!convo.queuedAt }
     })
   } catch (err) {
-    console.warn('[widget-routing] capacity slot claim failed:', err instanceof Error ? err.message : String(err))
+    const msg = err instanceof Error ? err.message : String(err)
+    // Contention is a DESIGNED outcome, not a fault: lock_timeout means
+    // another caller holds this workspace's lock, so we decline the claim and
+    // the caller queues / the cron retries. Anything else means the claim path
+    // itself is broken for EVERY chat, not just this one — the distinction
+    // that was missing when a void-deserialization bug disabled assignment
+    // for two months behind a routine-looking console.warn.
+    if (/lock_timeout|canceling statement due to lock timeout|deadlock detected/i.test(msg)) {
+      console.warn('[widget-routing] capacity slot contended, will retry:', msg)
+    } else {
+      console.error(
+        '[widget-routing] CAPACITY CLAIM IS BROKEN — this is not contention, so no chat can be auto-assigned ' +
+        'to a human on this deployment until it is fixed:', msg,
+      )
+    }
     return { claimed: false, wasQueued: false }
   }
 }
