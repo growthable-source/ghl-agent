@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import TicketRoutingFields, { type TicketRoutingValue } from '@/components/tickets/TicketRoutingFields'
 
 interface Brand {
   id: string
@@ -14,6 +15,9 @@ interface Brand {
   loginUrl: string | null
   aiEnabled: boolean
   brandGroupId: string | null
+  ticketRoutingMode: 'manual' | 'single' | 'pool'
+  ticketAssigneeUserId: string | null
+  ticketPoolUserIds: string[]
   widgetCount: number
   collectionCount: number
   createdAt: string
@@ -258,6 +262,11 @@ function BrandEditorModal({
   const [loginUrl, setLoginUrl] = useState(brand?.loginUrl ?? '')
   const [aiEnabled, setAiEnabled] = useState(brand?.aiEnabled !== false)
   const [brandGroupId, setBrandGroupId] = useState<string | null>(brand?.brandGroupId ?? null)
+  const [ticketRouting, setTicketRouting] = useState<TicketRoutingValue>({
+    mode: brand?.ticketRoutingMode ?? 'manual',
+    assigneeUserId: brand?.ticketAssigneeUserId ?? null,
+    poolUserIds: brand?.ticketPoolUserIds ?? [],
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [slugTouched, setSlugTouched] = useState(false)
@@ -393,6 +402,9 @@ function BrandEditorModal({
         loginUrl: loginUrl.trim() || null,
         aiEnabled,
         brandGroupId,
+        ticketRoutingMode: ticketRouting.mode,
+        ticketAssigneeUserId: ticketRouting.assigneeUserId,
+        ticketPoolUserIds: ticketRouting.poolUserIds,
       }
       const url = mode === 'create'
         ? `/api/workspaces/${workspaceId}/brands`
@@ -646,6 +658,15 @@ function BrandEditorModal({
                 : 'A brand can only live in one group at a time. Changing groups here moves it.'}
             </p>
           </div>
+
+          {/* Ticket routing — who gets this brand's tickets. Applied by
+              lib/ticket-create.ts on every creation path (chat promote,
+              visitor follow-up, inbound email when brand-tagged). */}
+          <TicketRoutingFields
+            workspaceId={workspaceId}
+            value={ticketRouting}
+            onChange={setTicketRouting}
+          />
 
           {/* AI mode — flip to human-only support for an entire brand.
               Useful for agencies whose clients prefer no AI on their

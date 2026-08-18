@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { can } from '@/lib/permissions'
 import { getTicketingStatus } from '@/lib/ticketing-access'
+import { loadRoutableMemberIds, parseTicketRoutingBody } from '@/lib/ticket-routing'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -30,6 +31,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       fromEmail: null,
       fromName: null,
       signature: null,
+      defaultTicketRoutingMode: 'manual',
+      defaultTicketAssigneeUserId: null,
+      defaultTicketPoolUserIds: [],
     },
     status,
   })
@@ -69,6 +73,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (typeof body.fromName === 'string')   data.fromName = body.fromName.trim().slice(0, 120) || null
   if (typeof body.signature === 'string')  data.signature = body.signature.slice(0, 2000) || null
+
+  // Default routing for tickets that arrive without a brand (inbound
+  // email, co-pilot escalations). Same canonical field names as the
+  // brand editor; mapped onto the defaultTicketRouting* columns.
+  if (body.ticketRoutingMode !== undefined || body.ticketAssigneeUserId !== undefined || body.ticketPoolUserIds !== undefined) {
+    const routing = parseTicketRoutingBody(body, await loadRoutableMemberIds(workspaceId))
+    if (!routing.ok) return NextResponse.json({ error: routing.error }, { status: 400 })
+    if (routing.mode !== undefined) data.defaultTicketRoutingMode = routing.mode
+    if (routing.assigneeUserId !== undefined) data.defaultTicketAssigneeUserId = routing.assigneeUserId
+    if (routing.poolUserIds !== undefined) data.defaultTicketPoolUserIds = routing.poolUserIds
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 })

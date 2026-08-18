@@ -13,11 +13,17 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 
+// Keep in sync with the full sidebar in app/portal/layout.tsx — this
+// list went stale once already (Knowledge + Approvals shipped without
+// being added here, leaving embedded users no path to the approval
+// queue).
 const EMBED_TABS = [
   { href: '/portal', label: 'Overview' },
   { href: '/portal/conversations', label: 'Live Chats' },
   { href: '/portal/locations', label: 'Locations' },
   { href: '/portal/tickets', label: 'Tickets' },
+  { href: '/portal/knowledge', label: 'Knowledge' },
+  { href: '/portal/approvals', label: 'Approvals' },
   { href: '/portal/reports', label: 'Reports' },
   { href: '/portal/settings', label: 'Settings' },
 ]

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import TicketRoutingFields from '@/components/tickets/TicketRoutingFields'
 
 interface Settings {
   enabled: boolean
@@ -18,6 +19,9 @@ interface Settings {
   fromEmail: string | null
   fromName: string | null
   signature: string | null
+  defaultTicketRoutingMode: 'manual' | 'single' | 'pool'
+  defaultTicketAssigneeUserId: string | null
+  defaultTicketPoolUserIds: string[]
 }
 
 interface Status {
@@ -216,6 +220,32 @@ export default function TicketingSettingsPage() {
                 )}
               </div>
             </div>
+          </Section>
+
+          <Section title="Default routing" description="Where tickets WITHOUT a brand land (inbound email, co-pilot escalations). Brand-tagged tickets use each brand's own routing — set that in Brands → Edit.">
+            <TicketRoutingFields
+              workspaceId={workspaceId}
+              value={{
+                mode: settings.defaultTicketRoutingMode ?? 'manual',
+                assigneeUserId: settings.defaultTicketAssigneeUserId ?? null,
+                poolUserIds: settings.defaultTicketPoolUserIds ?? [],
+              }}
+              onChange={v => {
+                setSettings({
+                  ...settings,
+                  defaultTicketRoutingMode: v.mode,
+                  defaultTicketAssigneeUserId: v.assigneeUserId,
+                  defaultTicketPoolUserIds: v.poolUserIds,
+                })
+                patch({
+                  // Canonical field names — the API maps them onto the
+                  // defaultTicketRouting* columns.
+                  ticketRoutingMode: v.mode,
+                  ticketAssigneeUserId: v.assigneeUserId,
+                  ticketPoolUserIds: v.poolUserIds,
+                } as unknown as Partial<Settings>)
+              }}
+            />
           </Section>
 
           <Section title="Email signature" description="Appended to every outbound reply. Plain text.">

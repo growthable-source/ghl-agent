@@ -2223,6 +2223,21 @@ model Brand {
   // as a hard prompt rule in ticket suggest-reply plus a post-generation
   // check that warns the composing agent about violations.
   negativeKeywords String[]           @default([])
+  // Ticket routing for this brand — where tickets created for this brand
+  // (promoted chats, visitor follow-ups, inbound email…) get assigned.
+  // Mirrors ChatWidget.routingMode naming but with ticket-specific modes:
+  //   'manual' = today's behavior, no auto-assignment
+  //   'single' = every ticket goes to ticketAssigneeUserId
+  //   'pool'   = round-robin across ticketPoolUserIds (empty = all
+  //              eligible members), cursor in ticketRoutingLastAssignedUserId
+  // Deliberately no FKs on the userId fields (same stance as
+  // ChatWidget.routingTargetUserIds): lib/ticket-routing.ts validates
+  // membership at pick time, so a departed member degrades to "skip"
+  // instead of blocking user deletion.
+  ticketRoutingMode               String   @default("manual")
+  ticketAssigneeUserId            String?
+  ticketPoolUserIds               String[] @default([])
+  ticketRoutingLastAssignedUserId String?
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
   widgets       ChatWidget[]
@@ -3125,6 +3140,7 @@ model PortalUser {
   updatedAt        DateTime          @updatedAt
   brandAssignments PortalUserBrand[]
   draftReviews     TicketReplyDraft[] @relation("TicketDraftReviewer")
+  sentTicketMessages TicketMessage[]  @relation("TicketMessagePortalAuthor")
 
   @@unique([portalId, email])
   @@index([email])
@@ -3526,6 +3542,14 @@ model TicketMessage {
   sentByUser   User?     @relation("TicketMessageAuthor", fields: [sentByUserId], references: [id], onDelete: SetNull)
   sentAt       DateTime?
 
+  // Portal provenance — set when a portal user replies directly from the
+  // portal ticket workspace (mutually exclusive with sentByUserId in
+  // practice). fromEmail/fromName are stamped alongside so attribution
+  // survives account deletion and covers the FK-less admin-preview
+  // session, same pattern as TicketReplyDraft.reviewedByEmail.
+  sentByPortalUserId String?
+  sentByPortalUser   PortalUser? @relation("TicketMessagePortalAuthor", fields: [sentByPortalUserId], references: [id], onDelete: SetNull)
+
   // Delivery-failure bookkeeping. Before these fields a failed Resend send
   // was indistinguishable from a deliberate sendEmail=false (both left
   // sentAt null), so failures were invisible in the thread and nothing ever
@@ -3606,6 +3630,15 @@ model TicketingSettings {
   // Appended to every outbound reply. Operators paste their team's
   // standard sign-off / hours / disclaimer.
   signature String? @db.Text
+
+  // Workspace-level fallback routing for tickets with no brand (inbound
+  // email and co-pilot escalations never have one). Same field semantics
+  // as the Brand.ticketRouting* columns; 'manual' preserves the historic
+  // land-unassigned behavior.
+  defaultTicketRoutingMode               String   @default("manual")
+  defaultTicketAssigneeUserId            String?
+  defaultTicketPoolUserIds               String[] @default([])
+  defaultTicketRoutingLastAssignedUserId String?
 
   updatedAt DateTime @updatedAt
 }

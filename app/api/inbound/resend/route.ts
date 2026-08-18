@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { db } from '@/lib/db'
+import { createTicket } from '@/lib/ticket-create'
 
 /**
  * Resend Inbound webhook — receives parsed inbound emails and routes
@@ -259,24 +260,20 @@ async function createTicketFromInbound(p: {
   if (settings.length === 0) return null
   const workspaceId = settings[0].workspaceId as string
 
-  return db.$transaction(async (tx) => {
-    const last = await tx.ticket.findFirst({
-      where: { workspaceId },
-      orderBy: { ticketNumber: 'desc' },
-      select: { ticketNumber: true },
-    })
-    const created = await tx.ticket.create({
-      data: {
-        workspaceId,
-        ticketNumber: (last?.ticketNumber ?? 0) + 1,
-        contactEmail: p.fromEmail,
-        contactName: p.fromName,
-        subject: p.subject.slice(0, 255),
-        priority: 'normal',
-        status: 'open',
-      },
-      select: { id: true, workspaceId: true, ticketNumber: true, status: true },
-    })
-    return created
+  // Cold inbound has no brand — 'auto' resolves the workspace-default
+  // ticket routing (TicketingSettings.defaultTicketRouting*), or lands
+  // unassigned when none is configured.
+  const created = await createTicket({
+    workspaceId,
+    contactEmail: p.fromEmail,
+    contactName: p.fromName,
+    subject: p.subject,
+    assign: { mode: 'auto' },
   })
+  return {
+    id: created.id,
+    workspaceId: created.workspaceId,
+    ticketNumber: created.ticketNumber,
+    status: created.status,
+  }
 }

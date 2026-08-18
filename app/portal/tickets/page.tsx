@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
 import { relTime } from '@/components/inbox/conversation-helpers'
@@ -76,18 +77,22 @@ export default async function PortalTickets() {
               <tbody>
                 {rows.map(t => {
                   const brand = t.brandId ? brandById.get(t.brandId) : null
+                  // Every cell is one Link so the whole row navigates to
+                  // the ticket workspace without any client JS — the
+                  // hover affordance finally goes somewhere.
+                  const href = `/portal/tickets/${t.id}`
                   return (
                     <tr key={t.id} className="border-t border-zinc-800 hover:bg-[var(--surface-secondary)] transition-colors">
-                      <Td><span className="font-mono text-[11px] text-zinc-400">#{t.ticketNumber}</span></Td>
-                      <Td><span className="text-xs text-zinc-100 line-clamp-1 max-w-[320px]">{t.subject}</span></Td>
-                      <Td>{brand ? (
+                      <TdLink href={href}><span className="font-mono text-[11px] text-zinc-400">#{t.ticketNumber}</span></TdLink>
+                      <TdLink href={href}><span className="text-xs text-zinc-100 line-clamp-1 max-w-[320px]">{t.subject}</span></TdLink>
+                      <TdLink href={href}>{brand ? (
                         <span className="inline-flex items-center gap-1.5 text-xs text-zinc-300">
                           <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: brand.primaryColor || 'var(--portal-accent)' }} />{brand.name}
                         </span>
-                      ) : <span className="text-zinc-600 text-xs">—</span>}</Td>
-                      <Td><PriorityBadge priority={t.priority} /></Td>
-                      <Td><StatusBadge status={t.status} /></Td>
-                      <Td><span className="text-[11px] text-zinc-500">{relTime(t.createdAt.toISOString())}</span></Td>
+                      ) : <span className="text-zinc-600 text-xs">—</span>}</TdLink>
+                      <TdLink href={href}><PriorityBadge priority={t.priority} /></TdLink>
+                      <TdLink href={href}><StatusBadge status={t.status} /></TdLink>
+                      <TdLink href={href}><span className="text-[11px] text-zinc-500">{relTime(t.createdAt.toISOString())} <span className="text-zinc-600 ml-1">→</span></span></TdLink>
                     </tr>
                   )
                 })}
@@ -134,4 +139,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function Th({ children }: { children: React.ReactNode }) { return <th className="text-left px-4 py-2.5 font-semibold">{children}</th> }
-function Td({ children }: { children: React.ReactNode }) { return <td className="px-4 py-2.5 align-middle">{children}</td> }
+function TdLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <td className="p-0 align-middle">
+      <Link href={href} className="block px-4 py-2.5">{children}</Link>
+    </td>
+  )
+}

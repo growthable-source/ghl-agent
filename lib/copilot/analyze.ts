@@ -14,17 +14,18 @@
  * already get the workflow-goal auto-eval; widget sessions have no
  * workflow, so the analysis IS their resolution signal).
  *
- * When the issue is NOT resolved, we open a Ticket through the same
- * transaction pattern the promote-from-conversation route uses
- * (sequential per-workspace ticketNumber, inbound TicketMessage with
- * the context) — gated on getTicketingStatus().active exactly like
- * every other ticket entry point. No email on file → no ticket; we
- * record why so the UI can say so instead of failing silently.
+ * When the issue is NOT resolved, we open a Ticket through the shared
+ * createTicket() helper (lib/ticket-create.ts — sequential ticketNumber,
+ * workspace-default routing, inbound TicketMessage with the context) —
+ * gated on getTicketingStatus().active exactly like every other ticket
+ * entry point. No email on file → no ticket; we record why so the UI
+ * can say so instead of failing silently.
  */
 
 import { db } from '@/lib/db'
 import { createMessage } from '@/lib/llm'
 import { getTicketingStatus } from '@/lib/ticketing-access'
+import { createTicket } from '@/lib/ticket-create'
 
 const ANALYSIS_MODEL = 'claude-haiku'
 const MAX_TRANSCRIPT_CHARS = 24_000
@@ -198,38 +199,24 @@ async function maybeCreateTicket(
     .join('\n')
     .slice(0, 6000)
 
-  const ticket = await db.$transaction(async tx => {
-    const last = await tx.ticket.findFirst({
-      where: { workspaceId: session.workspaceId },
-      orderBy: { ticketNumber: 'desc' },
-      select: { ticketNumber: true },
-    })
-    const created = await tx.ticket.create({
-      data: {
-        workspaceId: session.workspaceId,
-        ticketNumber: (last?.ticketNumber ?? 0) + 1,
-        contactEmail: contactEmail!,
-        contactName,
-        subject: subject.slice(0, 255),
-        priority: analysis.sentiment === 'frustrated' ? 'high' : 'normal',
-        status: 'open',
-        lastActivityAt: new Date(),
-        lastInboundAt: new Date(),
-      },
-    })
-    await tx.ticketMessage.create({
-      data: {
-        ticketId: created.id,
-        direction: 'inbound',
-        fromEmail: contactEmail,
-        fromName: contactName,
-        body:
-          `Auto-created from an unresolved Co-Pilot live session (${Math.round((session.durationSecs ?? 0) / 60)} min).\n\n` +
-          `Summary: ${analysis.summary}\n\n` +
-          `--- Transcript ---\n${transcriptExcerpt}`,
-      },
-    })
-    return created
+  // Co-pilot sessions carry no brand, so 'auto' resolves the
+  // workspace-default ticket routing (or lands unassigned).
+  const ticket = await createTicket({
+    workspaceId: session.workspaceId,
+    contactEmail: contactEmail!,
+    contactName,
+    subject,
+    priority: analysis.sentiment === 'frustrated' ? 'high' : 'normal',
+    assign: { mode: 'auto' },
+    seedMessages: [{
+      direction: 'inbound',
+      fromEmail: contactEmail,
+      fromName: contactName,
+      body:
+        `Auto-created from an unresolved Co-Pilot live session (${Math.round((session.durationSecs ?? 0) / 60)} min).\n\n` +
+        `Summary: ${analysis.summary}\n\n` +
+        `--- Transcript ---\n${transcriptExcerpt}`,
+    }],
   })
 
   console.log(`[Copilot analyze] opened ticket #${ticket.ticketNumber} for unresolved session ${session.id}`)

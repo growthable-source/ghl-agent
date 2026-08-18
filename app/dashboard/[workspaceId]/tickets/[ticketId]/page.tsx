@@ -429,7 +429,10 @@ function MessageRowView({ message, contactName, contactEmail }: { message: Messa
   const isNote = message.direction === 'internal_note'
   const who = isInbound ? (contactName || contactEmail)
     : isNote ? `Note · ${message.sentByUser?.name || message.sentByUser?.email || 'Team'}`
-    : `${message.sentByUser?.name || message.sentByUser?.email || 'Team'}`
+    // No workspace author on an outbound = it was sent from the portal
+    // ticket workspace (fromName/fromEmail carry the portal user).
+    : message.sentByUser?.name || message.sentByUser?.email
+      || (message.fromName || message.fromEmail ? `${message.fromName || message.fromEmail} · via portal` : 'Team')
   return (
     <div className="p-4 border-t first:border-t-0" style={{
       borderColor: 'var(--border)',

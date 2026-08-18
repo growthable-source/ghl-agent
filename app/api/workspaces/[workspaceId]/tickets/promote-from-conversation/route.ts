@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { getTicketingStatus } from '@/lib/ticketing-access'
+import { createTicket } from '@/lib/ticket-create'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -86,67 +87,32 @@ export async function POST(req: NextRequest, { params }: Params) {
     chatSummary = (await generateConversationSummary(conversationId))?.summary ?? null
   } catch { /* best-effort */ }
 
-  const ticket = await db.$transaction(async (tx) => {
-    const last = await tx.ticket.findFirst({
-      where: { workspaceId },
-      orderBy: { ticketNumber: 'desc' },
-      select: { ticketNumber: true },
-    })
-    const ticketNumber = (last?.ticketNumber ?? 0) + 1
-
-    // Auto-assign rule: inherit from the source chat if a human was
-    // already on it; otherwise hand the ticket to the promoter. This
-    // matches the operator's mental model — whoever owns the chat
-    // owns the follow-up, and clicking Promote on an AI-only chat is
-    // an implicit "I'll take this from here."
-    const assignedUserId = convo.assignedUserId ?? access.session.user!.id
-    const assignedAt = convo.assignedAt ?? new Date()
-
-    const created = await tx.ticket.create({
-      data: {
-        workspaceId,
-        ticketNumber,
-        conversationId,
-        brandId: convo.widget.brandId ?? null,
-        contactEmail: email,
-        contactName: convo.visitor.name,
-        contactPhone: convo.visitor.phone,
-        crmContactId,
-        subject,
-        priority: typeof body.priority === 'string' && ['low','normal','high','urgent'].includes(body.priority) ? body.priority : 'normal',
-        status: 'open',
-        assignedUserId,
-        assignedAt,
-        createdByUserId: access.session.user!.id,
-        summary: chatSummary,
-        lastActivityAt: new Date(),
-      },
-    })
-
-    // Backfill the message thread from the source conversation.
-    let lastInbound: Date | null = null
-    let lastOutbound: Date | null = null
-    const seedMessages = convo.messages.map(m => {
-      const direction: 'inbound' | 'outbound' | 'internal_note' =
-        m.role === 'visitor' ? 'inbound' : 'outbound'
-      if (direction === 'inbound' && (!lastInbound || m.createdAt > lastInbound)) lastInbound = m.createdAt
-      if (direction === 'outbound' && (!lastOutbound || m.createdAt > lastOutbound)) lastOutbound = m.createdAt
-      return {
-        ticketId: created.id,
-        direction,
-        body: m.content,
-        createdAt: m.createdAt,
-        // Preserve original chat timestamps for audit fidelity.
-      }
-    })
-    if (seedMessages.length > 0) {
-      await tx.ticketMessage.createMany({ data: seedMessages })
-    }
-
-    return tx.ticket.update({
-      where: { id: created.id },
-      data: { lastInboundAt: lastInbound, lastOutboundAt: lastOutbound },
-    })
+  // Assignment: inherit from the source chat if a human was already on
+  // it (whoever owns the chat owns the follow-up); otherwise let the
+  // brand's ticket routing pick, falling back to the promoter so a
+  // promote-initiated ticket is never ownerless.
+  const ticket = await createTicket({
+    workspaceId,
+    conversationId,
+    brandId: convo.widget.brandId ?? null,
+    contactEmail: email,
+    contactName: convo.visitor.name,
+    contactPhone: convo.visitor.phone,
+    crmContactId,
+    subject,
+    priority: typeof body.priority === 'string' && ['low','normal','high','urgent'].includes(body.priority) ? body.priority : 'normal',
+    createdByUserId: access.session.user!.id,
+    summary: chatSummary,
+    assign: convo.assignedUserId
+      ? { mode: 'explicit', userId: convo.assignedUserId, assignedAt: convo.assignedAt ?? undefined }
+      : { mode: 'auto', fallbackUserId: access.session.user!.id },
+    // Backfill the message thread from the source conversation,
+    // preserving original chat timestamps for audit fidelity.
+    seedMessages: convo.messages.map(m => ({
+      direction: m.role === 'visitor' ? 'inbound' as const : 'outbound' as const,
+      body: m.content,
+      createdAt: m.createdAt,
+    })),
   })
 
   // The chat has officially moved to email. End the conversation so

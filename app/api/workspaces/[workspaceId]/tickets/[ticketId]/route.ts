@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { notify } from '@/lib/notifications'
 
 type Params = { params: Promise<{ workspaceId: string; ticketId: string }> }
 
@@ -40,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const existing = await db.ticket.findFirst({
     where: { id: ticketId, workspaceId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, assignedUserId: true },
   })
   if (!existing) return NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
 
@@ -92,5 +93,26 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data,
     include: { assignedUser: { select: { id: true, name: true, email: true, image: true } } },
   })
+
+  // Personal heads-up when the ticket moved to a DIFFERENT person —
+  // self-assignment (claiming from the queue) isn't news to yourself.
+  // Best-effort: a notify failure never fails the PATCH.
+  const newAssignee = typeof data.assignedUserId === 'string' ? data.assignedUserId : null
+  if (newAssignee && newAssignee !== existing.assignedUserId && newAssignee !== access.session.user!.id) {
+    try {
+      await notify({
+        workspaceId,
+        event: 'ticket.assigned',
+        title: `Ticket #${ticket.ticketNumber} assigned to you: ${ticket.subject}`,
+        body: 'A teammate assigned this ticket to you.',
+        link: `/dashboard/${workspaceId}/tickets/${ticket.id}`,
+        severity: 'info',
+        targetUserId: newAssignee,
+      })
+    } catch (err) {
+      console.warn('[tickets] reassignment notify failed:', err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return NextResponse.json({ ticket })
 }

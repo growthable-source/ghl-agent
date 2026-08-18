@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { loadRoutableMemberIds, parseTicketRoutingBody } from '@/lib/ticket-routing'
 
 type Params = { params: Promise<{ workspaceId: string; brandId: string }> }
 
@@ -43,6 +44,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       logoUrl: brand.logoUrl,
       primaryColor: brand.primaryColor,
       loginUrl: brand.loginUrl,
+      ticketRoutingMode: brand.ticketRoutingMode ?? 'manual',
+      ticketAssigneeUserId: brand.ticketAssigneeUserId ?? null,
+      ticketPoolUserIds: brand.ticketPoolUserIds ?? [],
       createdAt: brand.createdAt.toISOString(),
       updatedAt: brand.updatedAt.toISOString(),
       widgets: brand.widgets,
@@ -120,6 +124,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'brandGroupId does not match a group in this workspace.' }, { status: 400 })
     }
     data.brandGroupId = body.brandGroupId
+  }
+  // Ticket routing — where new tickets for this brand get auto-assigned
+  // (lib/ticket-routing.ts). Configured userIds must be current
+  // non-viewer members: viewers are read-only, and letting a stale id
+  // in would silently break the rotation.
+  if (body.ticketRoutingMode !== undefined || body.ticketAssigneeUserId !== undefined || body.ticketPoolUserIds !== undefined) {
+    const routing = parseTicketRoutingBody(body, await loadRoutableMemberIds(workspaceId))
+    if (!routing.ok) return NextResponse.json({ error: routing.error }, { status: 400 })
+    if (routing.mode !== undefined) data.ticketRoutingMode = routing.mode
+    if (routing.assigneeUserId !== undefined) data.ticketAssigneeUserId = routing.assigneeUserId
+    if (routing.poolUserIds !== undefined) data.ticketPoolUserIds = routing.poolUserIds
   }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })

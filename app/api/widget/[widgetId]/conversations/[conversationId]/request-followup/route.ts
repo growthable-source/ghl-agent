@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { getTicketingStatus } from '@/lib/ticketing-access'
+import { createTicket } from '@/lib/ticket-create'
 
 type Params = { params: Promise<{ widgetId: string; conversationId: string }> }
 
@@ -62,26 +63,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   const subject =
     (convo.messages[0]?.content || '').trim().slice(0, 120) || 'Follow-up requested from live chat'
 
-  const ticket = await db.$transaction(async tx => {
-    const last = await tx.ticket.findFirst({
-      where: { workspaceId },
-      orderBy: { ticketNumber: 'desc' },
-      select: { ticketNumber: true },
-    })
-    return tx.ticket.create({
-      data: {
-        workspaceId,
-        ticketNumber: (last?.ticketNumber ?? 0) + 1,
-        conversationId,
-        brandId: convo.widget.brandId ?? null,
-        contactEmail: email,
-        contactName: convo.visitor.name,
-        subject,
-        status: 'open',
-        lastActivityAt: new Date(),
-        lastInboundAt: new Date(),
-      },
-    })
+  // Brand routing picks the owner (or the workspace default for
+  // untagged widgets); manual mode keeps today's land-unassigned
+  // behavior for an operator to claim.
+  const ticket = await createTicket({
+    workspaceId,
+    conversationId,
+    brandId: convo.widget.brandId ?? null,
+    contactEmail: email,
+    contactName: convo.visitor.name,
+    subject,
+    assign: { mode: 'auto' },
+    lastInboundAt: new Date(),
   })
 
   return NextResponse.json({ ok: true, ticketed: true, ticketNumber: ticket.ticketNumber }, { headers })

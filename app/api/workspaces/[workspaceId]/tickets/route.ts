@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { getTicketingStatus } from '@/lib/ticketing-access'
+import { createTicket } from '@/lib/ticket-create'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -162,31 +163,17 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const priority = typeof body.priority === 'string' && VALID_PRIORITIES.has(body.priority) ? body.priority : 'normal'
 
-  const ticket = await db.$transaction(async (tx) => {
-    // Workspace-scoped sequential number. Cheap enough at our volume;
-    // if it ever becomes a hotspot, migrate to a sequence.
-    const last = await tx.ticket.findFirst({
-      where: { workspaceId },
-      orderBy: { ticketNumber: 'desc' },
-      select: { ticketNumber: true },
-    })
-    return tx.ticket.create({
-      data: {
-        workspaceId,
-        ticketNumber: (last?.ticketNumber ?? 0) + 1,
-        contactEmail,
-        contactName: typeof body.contactName === 'string' ? body.contactName.slice(0, 120) : null,
-        contactPhone: typeof body.contactPhone === 'string' ? body.contactPhone.slice(0, 30) : null,
-        subject: subject.slice(0, 255),
-        priority,
-        status: 'open',
-        // Auto-assign a manually-created ticket to whoever created it,
-        // and record them as the creator.
-        createdByUserId: access.session.user!.id,
-        assignedUserId: access.session.user!.id,
-        assignedAt: new Date(),
-      },
-    })
+  // A manual create is an explicit claim — assign to whoever created
+  // it, and record them as the creator. Brand routing doesn't apply.
+  const ticket = await createTicket({
+    workspaceId,
+    contactEmail,
+    contactName: typeof body.contactName === 'string' ? body.contactName.slice(0, 120) : null,
+    contactPhone: typeof body.contactPhone === 'string' ? body.contactPhone.slice(0, 30) : null,
+    subject,
+    priority,
+    createdByUserId: access.session.user!.id,
+    assign: { mode: 'explicit', userId: access.session.user!.id },
   })
 
   return NextResponse.json({ ticket }, { status: 201 })

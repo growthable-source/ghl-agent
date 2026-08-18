@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { loadRoutableMemberIds, parseTicketRoutingBody } from '@/lib/ticket-routing'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -53,6 +54,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
       // behaving exactly as they did before this feature shipped.
       aiEnabled: b.aiEnabled !== false,
       brandGroupId: b.brandGroupId ?? null,
+      // Ticket routing — same pre-migration stance as aiEnabled: missing
+      // columns read as manual/empty, i.e. exactly the old behavior.
+      ticketRoutingMode: b.ticketRoutingMode ?? 'manual',
+      ticketAssigneeUserId: b.ticketAssigneeUserId ?? null,
+      ticketPoolUserIds: b.ticketPoolUserIds ?? [],
       widgetCount: b._count.widgets,
       collectionCount: b._count.collections,
       createdAt: b.createdAt.toISOString(),
@@ -84,6 +90,18 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'slug must be 2–40 lowercase letters, numbers, or dashes' }, { status: 400 })
   }
 
+  // Optional ticket routing on create — the editor modal offers it in
+  // the same form, so a brand can launch with its designated ticket
+  // owner already set.
+  const routingData: Record<string, unknown> = {}
+  if (body.ticketRoutingMode !== undefined || body.ticketAssigneeUserId !== undefined || body.ticketPoolUserIds !== undefined) {
+    const routing = parseTicketRoutingBody(body, await loadRoutableMemberIds(workspaceId))
+    if (!routing.ok) return NextResponse.json({ error: routing.error }, { status: 400 })
+    if (routing.mode !== undefined) routingData.ticketRoutingMode = routing.mode
+    if (routing.assigneeUserId !== undefined) routingData.ticketAssigneeUserId = routing.assigneeUserId
+    if (routing.poolUserIds !== undefined) routingData.ticketPoolUserIds = routing.poolUserIds
+  }
+
   try {
     const brand = await (db as any).brand.create({
       data: {
@@ -96,6 +114,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         loginUrl: typeof body.loginUrl === 'string' && /^https?:\/\//i.test(body.loginUrl.trim())
           ? body.loginUrl.trim().slice(0, 500)
           : null,
+        ...routingData,
       },
     })
     return NextResponse.json({ brand }, { status: 201 })
@@ -103,9 +122,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (err?.code === 'P2002') {
       return NextResponse.json({ error: `A brand with slug "${slug}" already exists in this workspace.` }, { status: 409 })
     }
-    if (err?.code === 'P2021' || /relation .* does not exist/i.test(err?.message ?? '')) {
+    if (err?.code === 'P2021' || err?.code === 'P2022' || /relation .* does not exist|column .* does not exist/i.test(err?.message ?? '')) {
       return NextResponse.json({
-        error: 'Brand migration pending — run prisma/migrations/20260429180000_brands/migration.sql.',
+        error: 'Brand migration pending — run the latest prisma/migrations SQL (brands / brand_ticket_routing).',
         code: 'MIGRATION_PENDING',
       }, { status: 503 })
     }

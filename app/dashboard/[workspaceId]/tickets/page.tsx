@@ -86,6 +86,37 @@ export default function TicketsPage() {
   const [customFrom, setCustomFrom] = useState<string>(daysAgoISO(30))
   const [customTo, setCustomTo] = useState<string>(todayISO())
 
+  // One-time init from the URL so deep links (assignment notifications,
+  // reports drilldowns) reproduce the exact view — the page otherwise
+  // keeps filter state purely client-side. When the URL carries NO
+  // filters, members with the inbox-only 'agent' role land on "Mine"
+  // instead of "Everyone": brand routing assigns their brand's tickets
+  // to them, so their queue IS the brand queue.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const status = q.get('status')
+    if (status && (status === 'all' || status === 'open_only' || STATUS_COLUMNS.some(c => c.key === status))) {
+      setStatusFilter(status as StatusFilter)
+    }
+    const assignee = q.get('assignee')
+    if (assignee) setAssigneeFilter(assignee as AssigneeFilter)
+    const brandId = q.get('brandId')
+    if (brandId) setBrandFilter(brandId as BrandFilter)
+    const priority = q.get('priority')
+    if (priority && ['low', 'normal', 'high', 'urgent'].includes(priority)) {
+      setPriorityFilter(priority as PriorityFilter)
+    }
+    if (!status && !assignee && !brandId && !priority) {
+      fetch('/api/workspaces')
+        .then(r => r.json())
+        .then(data => {
+          const ws = data.workspaces?.find((w: { id: string; role?: string }) => w.id === workspaceId)
+          if (ws?.role === 'agent') setAssigneeFilter('me')
+        })
+        .catch(() => {})
+    }
+  }, [workspaceId])
+
   const queryString = useMemo(() => {
     const q = new URLSearchParams()
     if (statusFilter !== 'all') q.set('status', statusFilter)
