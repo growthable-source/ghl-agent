@@ -94,6 +94,10 @@ export async function sendTicketingEmail(p: SendArgs): Promise<SendResult> {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
+    // Server log keeps the FULL raw body — the humanised message has
+    // misdiagnosed 403s before (all of Resend's authorization failures
+    // share one status), and debugging one needs Resend's exact words.
+    console.warn(`[ticketing-send] Resend ${res.status} for ${p.workspaceId} from=${fromAddr}: ${errText.slice(0, 500)}`)
     return {
       ok: false,
       messageId: null,
@@ -145,7 +149,12 @@ export function humaniseResendError(status: number, body: string, fromAddr?: str
     // already-verified domain because the old message only named the
     // first cause.
     const dom = domain ? ` \`${domain}\`` : ''
-    return `Resend won't send from${dom} with this API key. Either the domain isn't verified (https://resend.com/domains), or it's verified under a different Resend team than this deployment's RESEND_API_KEY — the key and the domain must live in the same team, and the key must not be scoped to another domain.`
+    // Quote Resend's own words — every authorization failure (domain
+    // unverified, exact-subdomain mismatch, domain-scoped key, wrong
+    // team) arrives as this same 403, and the raw message is the only
+    // thing that distinguishes them.
+    const raw = body ? ` Resend said: "${body.slice(0, 180)}"` : ''
+    return `Resend won't send from${dom} with this API key — check the domain is verified in the key's team (https://resend.com/domains), the from-address matches the verified domain exactly (subdomains verify separately), and the key isn't scoped to another domain.${raw}`
   }
   if (status === 401 || /invalid api key|unauthor/i.test(lower)) {
     return 'Resend rejected the API key. Check that RESEND_API_KEY is set correctly on this deployment.'
