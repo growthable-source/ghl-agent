@@ -137,8 +137,15 @@ export function humaniseResendError(status: number, body: string, fromAddr?: str
   const domain = fromAddr ? fromAddr.split('@')[1] : null
 
   if (status === 403 && /not authorized|not verified|verify.*domain|domain.*verify/i.test(body)) {
+    // Resend sends this same 403 in TWO situations: the domain really
+    // isn't verified, OR the domain is verified in a DIFFERENT Resend
+    // team than the one this deployment's RESEND_API_KEY belongs to
+    // (keys are per-team; a scoped key restricted to another domain
+    // fails the same way). Operators kept re-verifying an
+    // already-verified domain because the old message only named the
+    // first cause.
     const dom = domain ? ` \`${domain}\`` : ''
-    return `Your sender domain${dom} isn't verified in Resend. Verify it at https://resend.com/domains, then try again.`
+    return `Resend won't send from${dom} with this API key. Either the domain isn't verified (https://resend.com/domains), or it's verified under a different Resend team than this deployment's RESEND_API_KEY — the key and the domain must live in the same team, and the key must not be scoped to another domain.`
   }
   if (status === 401 || /invalid api key|unauthor/i.test(lower)) {
     return 'Resend rejected the API key. Check that RESEND_API_KEY is set correctly on this deployment.'

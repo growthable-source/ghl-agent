@@ -61,6 +61,12 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     defaultUserChannels: ['email', 'web_push'],
   },
   {
+    id: 'ticket.assigned',
+    label: 'Ticket assigned to you',
+    description: 'A ticket was routed to you (brand routing) or a teammate assigned one to you.',
+    defaultUserChannels: ['email', 'web_push'],
+  },
+  {
     id: 'agent_error',
     label: 'Agent error',
     description: 'An agent ran into a problem processing an inbound message.',

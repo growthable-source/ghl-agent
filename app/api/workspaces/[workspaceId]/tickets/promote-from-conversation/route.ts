@@ -87,10 +87,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     chatSummary = (await generateConversationSummary(conversationId))?.summary ?? null
   } catch { /* best-effort */ }
 
-  // Assignment: inherit from the source chat if a human was already on
-  // it (whoever owns the chat owns the follow-up); otherwise let the
-  // brand's ticket routing pick, falling back to the promoter so a
-  // promote-initiated ticket is never ownerless.
+  // Assignment: the brand's ticket routing decides FIRST — "all of this
+  // brand's tickets go to its designated person/pool" must hold no
+  // matter which operator happened to work the chat or click Promote.
+  // Only when routing picks nobody (manual mode, stale config) do we
+  // fall back to the chat's human, then the promoter, so the ticket is
+  // never ownerless.
   const ticket = await createTicket({
     workspaceId,
     conversationId,
@@ -103,9 +105,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     priority: typeof body.priority === 'string' && ['low','normal','high','urgent'].includes(body.priority) ? body.priority : 'normal',
     createdByUserId: access.session.user!.id,
     summary: chatSummary,
-    assign: convo.assignedUserId
-      ? { mode: 'explicit', userId: convo.assignedUserId, assignedAt: convo.assignedAt ?? undefined }
-      : { mode: 'auto', fallbackUserId: access.session.user!.id },
+    assign: { mode: 'auto', fallbackUserId: convo.assignedUserId ?? access.session.user!.id },
     // Backfill the message thread from the source conversation,
     // preserving original chat timestamps for audit fidelity.
     seedMessages: convo.messages.map(m => ({
