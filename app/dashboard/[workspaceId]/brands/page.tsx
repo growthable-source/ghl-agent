@@ -43,6 +43,9 @@ export default function BrandsPage() {
   const [notMigrated, setNotMigrated] = useState(false)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; brand?: Brand } | null>(null)
+  // Post-save confirmation toast — the modal closes on save, so the
+  // acknowledgment has to live on the page or the save looks silent.
+  const [toast, setToast] = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
     const [bRes, gRes] = await Promise.all([
@@ -237,8 +240,23 @@ export default function BrandsPage() {
           brand={editor.brand}
           groups={groups}
           onClose={() => setEditor(null)}
-          onSaved={() => { setEditor(null); fetchAll() }}
+          onSaved={() => {
+            const created = editor.mode === 'create'
+            setEditor(null)
+            fetchAll()
+            setToast(created ? 'Brand created.' : 'Changes saved.')
+            setTimeout(() => setToast(null), 3500)
+          }}
         />
+      )}
+
+      {toast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg"
+          style={{ background: 'var(--surface)', border: '1px solid var(--accent-emerald)', color: 'var(--text-primary)' }}
+        >
+          <span style={{ color: 'var(--accent-emerald)' }}>✓</span> {toast}
+        </div>
       )}
     </div>
   )
@@ -424,9 +442,14 @@ function BrandEditorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="rounded-2xl w-full max-w-lg overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+    // Backdrop dims + blurs the page so the dialog reads as modal; the
+    // dialog itself is a flex column capped to the viewport, with the
+    // body scrolling BETWEEN a fixed header and footer — the Save
+    // button must never scroll out of reach as sections grow (ticket
+    // routing pushed this past one screen).
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="rounded-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="px-5 py-4 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
           <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{mode === 'create' ? 'New brand' : 'Edit brand'}</h2>
           <button onClick={onClose} style={{ color: 'var(--text-muted)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -434,7 +457,7 @@ function BrandEditorModal({
             </svg>
           </button>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 flex-1 min-h-0 overflow-y-auto">
           <div>
             <label className="text-[11px] uppercase tracking-wider font-semibold block mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Name</label>
             <input
@@ -695,7 +718,7 @@ function BrandEditorModal({
 
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
-        <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="px-5 py-3 flex items-center justify-end gap-2 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ color: 'var(--text-secondary)' }}>Cancel</button>
           <button
             onClick={save}
