@@ -46,10 +46,13 @@ export default function UnlockControl({
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data.error || 'Unlock failed.'); return }
+      const syncNote = data.partnerSynced
+        ? ' Widget pushed to their help center.'
+        : ' Use "Sync from Xovera" in the GKB admin to surface the widget.'
       setDone(
         data.articleError
-          ? `Unlocked to ${data.plan}, but article sync failed: ${data.articleError}`
-          : `Unlocked to ${data.plan}.${data.articles ? ' Article crawl queued.' : ''}`,
+          ? `Unlocked to ${data.plan}, but article sync failed: ${data.articleError}${syncNote}`
+          : `Unlocked to ${data.plan}.${data.articles ? ' Article crawl queued.' : ''}${syncNote}`,
       )
       setTimeout(() => router.refresh(), 1200)
     } finally { setBusy(false) }

@@ -130,6 +130,31 @@ export async function POST(req: NextRequest, { params }: Params) {
     },
   })
 
+  // Tell the help-center product right away so the widget appears on
+  // the customer's site and their Pro features light up — no scripts,
+  // no buttons, no waiting for their next dashboard visit. Best-effort:
+  // GKB also has a manual "Sync from Xovera" button as the fallback.
+  let partnerSynced = false
+  const syncUrl = process.env.HELP_CENTER_SYNC_URL
+  const syncSecret = process.env.HELP_CENTER_SYNC_SECRET
+  if (syncUrl && syncSecret) {
+    try {
+      const res = await fetch(syncUrl, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${syncSecret}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ externalId: install.externalId }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      partnerSynced = res.ok
+      if (!res.ok) console.warn(`[help-center unlock] partner sync returned ${res.status}`)
+    } catch (err) {
+      console.warn('[help-center unlock] partner sync failed:', err instanceof Error ? err.message : String(err))
+    }
+  }
+
   logAdminActionAfter({
     admin: session,
     action: 'unlock_help_center_install',
@@ -141,6 +166,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       enableTicketing,
       syncArticles,
       articleError,
+      partnerSynced,
     },
   })
 
@@ -150,5 +176,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     ticketingEnabled: enableTicketing,
     articles,
     articleError,
+    partnerSynced,
   })
 }
