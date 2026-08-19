@@ -48,6 +48,8 @@ export default function EmbeddedWidgetBuilder({
         body: JSON.stringify({
           name: d.name,
           primaryColor: d.primaryColor,
+          backgroundColor: d.backgroundColor ?? null,
+          textColor: d.textColor ?? null,
           logoUrl: d.logoUrl,
           title: d.title,
           subtitle: d.subtitle,

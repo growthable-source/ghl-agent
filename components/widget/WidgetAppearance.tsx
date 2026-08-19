@@ -25,6 +25,10 @@ export interface WidgetAppearance {
   type: 'chat' | 'click_to_call'
   embedMode: 'floating' | 'inline'
   primaryColor: string
+  // Conversation surface + text. null/absent = the default dark theme
+  // (near-black surface, auto near-white text). See lib/widget-theme.ts.
+  backgroundColor?: string | null
+  textColor?: string | null
   logoUrl: string | null
   title: string
   subtitle: string
@@ -32,6 +36,20 @@ export interface WidgetAppearance {
   position: string
   launcherIcon?: 'chat' | 'question' | 'letter' | 'logo'
   launcherLetter?: string | null
+}
+
+/** Common conversation-surface choices — dark (default) and light. */
+export const CONVERSATION_BG_PRESETS = ['#09090b', '#ffffff', '#f4f4f5', '#1a1a2e', '#0f172a']
+
+// Pure mirror of lib/widget-theme's auto-contrast so the picker can show
+// the effective text colour without importing server code paths.
+function autoText(bg: string): string {
+  const h = bg.replace('#', '')
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return '#f4f4f5'
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+  const chan = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))
+  const lum = 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+  return lum > 0.5 ? '#0a0a0a' : '#f4f4f5'
 }
 
 /** Gmail-style quick palette for the launcher. Presets only — the colour
@@ -75,6 +93,65 @@ function ChatGlyph({ size = 20 }: { size?: number }) {
   )
 }
 
+/**
+ * Conversation surface + text pickers. Background defaults to the dark
+ * theme; text defaults to "Auto" (auto-contrast against the background,
+ * so black/white just work) with an explicit override when you want it.
+ */
+function ConversationColorFields<W extends WidgetAppearance>({
+  widget, update,
+}: { widget: W; update: <K extends keyof W>(key: K, val: W[K]) => void }) {
+  const bg = (widget.backgroundColor as string | null | undefined) || '#09090b'
+  const textOverride = (widget.textColor as string | null | undefined) || null
+  const effectiveText = textOverride ?? autoText(bg)
+
+  return (
+    <Field label="Conversation colours" helper="The chat background and text. Text auto-picks black or white for contrast unless you override it.">
+      {/* Background */}
+      <div className="flex gap-2 items-center">
+        <input type="color" value={bg} onChange={e => update('backgroundColor' as keyof W, e.target.value as W[keyof W])}
+          className="w-10 h-10 bg-transparent border border-zinc-700 rounded cursor-pointer" />
+        <input type="text" value={bg} onChange={e => update('backgroundColor' as keyof W, e.target.value as W[keyof W])}
+          className="flex-1 bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-xs text-white font-mono" />
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {CONVERSATION_BG_PRESETS.map(c => (
+          <button key={c} type="button" title={c}
+            onClick={() => update('backgroundColor' as keyof W, c as W[keyof W])}
+            className={`w-6 h-6 rounded-full border border-zinc-700 transition-transform hover:scale-110 ${
+              bg.toLowerCase() === c ? 'ring-2 ring-zinc-100 ring-offset-2 ring-offset-zinc-900' : ''
+            }`}
+            style={{ background: c }}
+            aria-label={`Use ${c}`} />
+        ))}
+      </div>
+
+      {/* Text colour — Auto vs override */}
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
+        <label className="flex items-center gap-1.5 text-[11px] text-zinc-300 cursor-pointer">
+          <input type="checkbox" checked={textOverride === null}
+            onChange={e => update('textColor' as keyof W, (e.target.checked ? null : effectiveText) as W[keyof W])}
+            className="accent-orange-500" />
+          Auto text ({effectiveText.toLowerCase()})
+        </label>
+        {textOverride !== null && (
+          <span className="flex gap-2 items-center">
+            <input type="color" value={textOverride} onChange={e => update('textColor' as keyof W, e.target.value as W[keyof W])}
+              className="w-8 h-8 bg-transparent border border-zinc-700 rounded cursor-pointer" />
+            <input type="text" value={textOverride} onChange={e => update('textColor' as keyof W, e.target.value as W[keyof W])}
+              className="w-24 bg-zinc-950 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white font-mono" />
+          </span>
+        )}
+      </div>
+
+      {/* Live swatch */}
+      <div className="mt-2 rounded-lg px-3 py-2 text-xs" style={{ background: bg, color: effectiveText, border: '1px solid #3f3f46' }}>
+        Sample conversation text
+      </div>
+    </Field>
+  )
+}
+
 export interface WidgetAppearanceFieldsProps<W extends WidgetAppearance> {
   widget: W
   update: <K extends keyof W>(key: K, val: W[K]) => void
@@ -112,6 +189,9 @@ export function WidgetAppearanceFields<W extends WidgetAppearance>({
             ))}
           </div>
         </Field>
+        {!isCallType && (
+          <ConversationColorFields widget={widget} update={update} />
+        )}
         {(!isCallType || !isInline) && (
           <Field label="Position">
             <select value={widget.position} onChange={e => update('position' as keyof W, e.target.value as W[keyof W])}
@@ -249,9 +329,18 @@ export function LauncherBubblePreview({ widget }: { widget: WidgetAppearance }) 
 }
 
 export function ChatPreview({ widget }: { widget: WidgetAppearance }) {
+  // Mirror the embed's theme so the preview matches what ships. Kept in
+  // sync with lib/widget-theme.ts (surface = bg nudged toward its
+  // opposite, muted/border mixed between bg and fg).
+  const bg = widget.backgroundColor || '#09090b'
+  const fg = widget.textColor || autoText(bg)
+  const isLight = autoText(bg) === '#0a0a0a'
+  const surface = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)'
+  const border = isLight ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.14)'
+  const muted = isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)'
   return (
-    <div className="h-full flex flex-col bg-zinc-950 text-zinc-100 text-xs">
-      <div className="px-3 py-2.5 flex items-center gap-2 border-b border-zinc-800" style={{ background: `linear-gradient(135deg, ${widget.primaryColor}25, ${widget.primaryColor}10)` }}>
+    <div className="h-full flex flex-col text-xs" style={{ background: bg, color: fg }}>
+      <div className="px-3 py-2.5 flex items-center gap-2 border-b" style={{ background: `linear-gradient(135deg, ${widget.primaryColor}25, ${widget.primaryColor}10)`, borderColor: border }}>
         {widget.logoUrl ? (
           <img src={widget.logoUrl} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
         ) : (
@@ -262,12 +351,12 @@ export function ChatPreview({ widget }: { widget: WidgetAppearance }) {
         )}
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold truncate">{widget.title}</p>
-          <p className="text-[10px] text-zinc-400 truncate">{widget.subtitle}</p>
+          <p className="text-[10px] truncate" style={{ color: muted }}>{widget.subtitle}</p>
         </div>
       </div>
       <div className="flex-1 p-3 space-y-2 overflow-y-auto">
         <div className="flex justify-start">
-          <div className="max-w-[80%] px-3 py-2 rounded-2xl rounded-tl-sm bg-zinc-800 text-xs">
+          <div className="max-w-[80%] px-3 py-2 rounded-2xl rounded-tl-sm text-xs" style={{ background: surface, color: fg }}>
             {widget.welcomeMessage}
           </div>
         </div>
@@ -278,9 +367,9 @@ export function ChatPreview({ widget }: { widget: WidgetAppearance }) {
           </div>
         </div>
       </div>
-      <div className="p-2 border-t border-zinc-800">
-        <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5">
-          <span className="text-[10px] text-zinc-600 flex-1">Type a message…</span>
+      <div className="p-2 border-t" style={{ borderColor: border }}>
+        <div className="flex items-center gap-1.5 rounded-lg px-2 py-1.5" style={{ background: surface, border: `1px solid ${border}` }}>
+          <span className="text-[10px] flex-1" style={{ color: muted }}>Type a message…</span>
           <div className="w-6 h-6 rounded-full" style={{ background: widget.primaryColor }} />
         </div>
       </div>

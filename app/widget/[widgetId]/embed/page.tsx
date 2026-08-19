@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { buildBrandPalette } from '@/lib/brand-theme'
+import { buildWidgetTheme } from '@/lib/widget-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
 import { resolveVisitorCookieId } from '@/lib/widget-iframe-cookie'
 import ChatMarkdown from '@/components/ChatMarkdown'
@@ -12,6 +13,8 @@ interface WidgetConfig {
   id: string
   name: string
   primaryColor: string
+  backgroundColor?: string | null
+  textColor?: string | null
   logoUrl: string | null
   title: string
   subtitle: string
@@ -999,6 +1002,18 @@ export default function WidgetEmbedPage() {
   }
 
   const accent = config.primaryColor
+  // Conversation theme (surface + text). Defaults reproduce the original
+  // dark look exactly; a set backgroundColor lets the widget go light or
+  // custom, textColor null = auto-contrast. Exposed as CSS vars so the
+  // markup below can reference --w-fg / --w-surface / --w-muted / --w-border.
+  const theme = buildWidgetTheme({ backgroundColor: config.backgroundColor, textColor: config.textColor })
+  const themeVars = {
+    '--w-bg': theme.bg,
+    '--w-fg': theme.fg,
+    '--w-surface': theme.surface,
+    '--w-muted': theme.muted,
+    '--w-border': theme.border,
+  } as React.CSSProperties
 
   return (
     // h-screen, not min-h-screen — we need a constrained parent so the
@@ -1006,9 +1021,9 @@ export default function WidgetEmbedPage() {
     // INTERNALLY. With min-h-screen the page grew with the transcript
     // and the entire page scrolled, taking the header + "you're chatting
     // with X · live" banner off-screen the moment you scrolled up.
-    <div className="h-screen flex flex-col bg-zinc-950 text-zinc-100">
+    <div className="h-screen flex flex-col" style={{ ...themeVars, background: theme.bg, color: theme.fg }}>
       {/* Header */}
-      <div className="px-4 py-3 flex items-center gap-3 border-b border-zinc-800" style={{ background: `linear-gradient(135deg, ${accent}25, ${accent}10)` }}>
+      <div className="px-4 py-3 flex items-center gap-3 border-b" style={{ background: `linear-gradient(135deg, ${accent}25, ${accent}10)`, borderColor: 'var(--w-border)' }}>
         {config.logoUrl ? (
           <img src={config.logoUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
         ) : (
@@ -1018,7 +1033,7 @@ export default function WidgetEmbedPage() {
         )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold truncate">{config.title}</p>
-          <p className="text-[11px] text-zinc-400 truncate">{config.subtitle}</p>
+          <p className="text-[11px] truncate" style={{ color: 'var(--w-muted)' }}>{config.subtitle}</p>
         </div>
         {config.liveHelpEnabled && (
           // Live screen-share help opens in a NEW TAB — screen-capture
@@ -1339,9 +1354,9 @@ export default function WidgetEmbedPage() {
             })}
             {typing && (
               <div className="flex gap-1.5 pl-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--w-muted)', animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--w-muted)', animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'var(--w-muted)', animationDelay: '300ms' }} />
               </div>
             )}
             {dragOver && (
@@ -1408,7 +1423,7 @@ export default function WidgetEmbedPage() {
             </div>
           ) : (
           /* Composer */
-          <form onSubmit={sendMessage} className="p-3 border-t border-zinc-800 bg-zinc-900/40">
+          <form onSubmit={sendMessage} className="p-3 border-t" style={{ borderColor: 'var(--w-border)', background: 'var(--w-surface)' }}>
             {uploadError && (
               <div className="mb-2 p-2 rounded border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
                 {uploadError}
@@ -1497,7 +1512,8 @@ export default function WidgetEmbedPage() {
                 placeholder={dictating ? 'Listening…' : 'Type a message…'}
                 rows={1}
                 disabled={!conversationId || sending}
-                className="flex-1 resize-none bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 max-h-24"
+                className="flex-1 resize-none border rounded-lg px-3 py-2 text-sm focus:outline-none max-h-24 placeholder:opacity-60"
+                style={{ background: 'var(--w-bg)', borderColor: 'var(--w-border)', color: 'var(--w-fg)' }}
               />
               <button
                 type="submit"
@@ -1510,7 +1526,7 @@ export default function WidgetEmbedPage() {
                 </svg>
               </button>
             </div>
-            <p className="text-[9px] text-zinc-600 text-center mt-2">Powered by Xovera</p>
+            <p className="text-[9px] text-center mt-2" style={{ color: 'var(--w-muted)' }}>Powered by Xovera</p>
           </form>
           )}
         </>
@@ -1777,7 +1793,7 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
   if (msg.role === 'system') {
     return (
       <div className="text-center">
-        <span className="text-[10px] text-zinc-500 italic">{msg.content}</span>
+        <span className="text-[10px] italic" style={{ color: 'var(--w-muted)' }}>{msg.content}</span>
       </div>
     )
   }
@@ -1822,18 +1838,19 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
             href={card.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="max-w-[80%] block rounded-2xl overflow-hidden border border-zinc-700 hover:border-zinc-500 transition-colors bg-zinc-900"
+            className="max-w-[80%] block rounded-2xl overflow-hidden border hover:opacity-90 transition-opacity"
+            style={{ background: 'var(--w-surface)', borderColor: 'var(--w-border)', color: 'var(--w-fg)' }}
           >
             {card.imageUrl && (
-              <div className="w-full bg-zinc-800">
+              <div className="w-full" style={{ background: 'var(--w-surface)' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={card.imageUrl} alt={card.title} className="block w-full h-auto max-h-48 object-cover" />
               </div>
             )}
             <div className="px-3 py-2.5 flex flex-col gap-1">
-              <p className="text-sm font-medium text-zinc-100 leading-snug">{card.title}</p>
+              <p className="text-sm font-medium leading-snug">{card.title}</p>
               {priceLabel && (
-                <p className="text-sm font-semibold text-zinc-100">{priceLabel}</p>
+                <p className="text-sm font-semibold">{priceLabel}</p>
               )}
               <span
                 className="mt-2 inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-xs font-medium"
@@ -1860,11 +1877,11 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
             target="_blank"
             rel="noopener noreferrer"
             className={`max-w-[80%] flex items-center gap-2 px-3 py-2 rounded-2xl text-sm border ${
-              isVisitor
-                ? 'rounded-tr-sm border-white/20'
-                : 'rounded-tl-sm border-zinc-700 bg-zinc-800 text-zinc-100'
+              isVisitor ? 'rounded-tr-sm border-white/20' : 'rounded-tl-sm'
             }`}
-            style={isVisitor ? { background: accent, color: visitorFg } : undefined}
+            style={isVisitor
+              ? { background: accent, color: visitorFg }
+              : { background: 'var(--w-surface)', borderColor: 'var(--w-border)', color: 'var(--w-fg)' }}
           >
             <span className="text-base leading-none">📎</span>
             <span className="truncate">{meta.name}</span>
@@ -1878,11 +1895,13 @@ function MessageBubble({ msg, accent }: { msg: Msg; accent: string }) {
     <div className={`flex ${isVisitor ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
-          isVisitor
-            ? 'rounded-tr-sm whitespace-pre-wrap'
-            : 'rounded-tl-sm bg-zinc-800 text-zinc-100'
+          isVisitor ? 'rounded-tr-sm whitespace-pre-wrap' : 'rounded-tl-sm'
         }`}
-        style={isVisitor ? { background: accent, color: visitorFg } : undefined}
+        style={isVisitor
+          ? { background: accent, color: visitorFg }
+          // Agent bubble: elevated conversation surface + conversation
+          // text colour, so it stays legible on light or custom themes.
+          : { background: 'var(--w-surface)', color: 'var(--w-fg)' }}
       >
         {/* Agent replies are markdown (bold, bullets, links) — render
             them properly instead of showing literal ** and collapsed

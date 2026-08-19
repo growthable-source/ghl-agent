@@ -16,6 +16,8 @@ interface Widget {
   slug: string | null
   embedMode: 'floating' | 'inline'
   primaryColor: string
+  backgroundColor?: string | null
+  textColor?: string | null
   logoUrl: string | null
   title: string
   subtitle: string

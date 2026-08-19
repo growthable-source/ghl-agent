@@ -33,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const allowed = [
     'name', 'type', 'slug', 'embedMode', 'folderId',
-    'primaryColor', 'logoUrl', 'title', 'subtitle', 'welcomeMessage',
+    'primaryColor', 'backgroundColor', 'textColor', 'logoUrl', 'title', 'subtitle', 'welcomeMessage',
     'position', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor',
     'hostedPageHeadline', 'hostedPageSubtext',
     'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
@@ -46,6 +46,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const data: Record<string, unknown> = {}
   for (const key of allowed) {
     if (body[key] !== undefined) data[key] = body[key]
+  }
+  // Conversation colours: a blank value means "reset" — store null so
+  // the widget falls back to the default dark theme / auto text.
+  for (const k of ['backgroundColor', 'textColor']) {
+    if (data[k] !== undefined && (data[k] === '' || data[k] === null)) data[k] = null
   }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
@@ -101,7 +106,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const launcherKeys = ['autoIdentify', 'launcherAgents']
   // Launcher icon customization ships in its own migration too.
   const launcherIconKeys = ['launcherIcon', 'launcherLetter']
-  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys, ...launcherKeys, ...launcherIconKeys]
+  // Conversation colours ship in their own migration.
+  const conversationColorKeys = ['backgroundColor', 'textColor']
+  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys, ...launcherKeys, ...launcherIconKeys, ...conversationColorKeys]
   const touchesTolerant = tolerantKeys.some(k => data[k] !== undefined)
 
   try {

@@ -30,7 +30,8 @@ export default async function Page({ params }: { params: Promise<{ widgetId: str
     where: { id: widgetId },
     select: {
       id: true, name: true, workspaceId: true, type: true, embedMode: true,
-      primaryColor: true, logoUrl: true, title: true, subtitle: true,
+      primaryColor: true, backgroundColor: true, textColor: true,
+      logoUrl: true, title: true, subtitle: true,
       welcomeMessage: true, position: true, launcherIcon: true,
       launcherLetter: true, isActive: true, publicKey: true,
     },

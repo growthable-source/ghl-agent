@@ -2303,6 +2303,13 @@ model ChatWidget {
   embedMode                 String               @default("floating")
   // Appearance
   primaryColor              String               @default("#fa4d2e")
+  // Conversation surface + text. Both null = the original near-black
+  // dark theme (bg #09090b, near-white text). A background colour lets
+  // the widget go light or fully custom; textColor null = auto-computed
+  // for legible contrast against the background, non-null = explicit
+  // override. See lib/widget-theme.ts (buildWidgetTheme).
+  backgroundColor           String?
+  textColor                 String?
   logoUrl                   String?
   // What the floating launcher bubble shows. "chat" = classic chat-bubble
   // glyph, "question" = a "?" mark, "letter" = launcherLetter (falls back

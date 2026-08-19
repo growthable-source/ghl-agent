@@ -142,6 +142,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     embedMode: w.embedMode,
     slug: w.slug,
     primaryColor: w.primaryColor,
+    // Conversation surface + text (pre-migration columns degrade to null →
+    // the embed's default dark theme). See lib/widget-theme.ts.
+    backgroundColor: (w as { backgroundColor?: string | null }).backgroundColor ?? null,
+    textColor: (w as { textColor?: string | null }).textColor ?? null,
     logoUrl: w.logoUrl,
     // Launcher bubble icon — missing columns (pre-migration) degrade to
     // the classic chat glyph.
