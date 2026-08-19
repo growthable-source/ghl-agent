@@ -61,6 +61,16 @@ export const GET = withApiLog(async (req: NextRequest, ctx: unknown) => {
     // workspace.plan — that column is denormalized and historical.
     const plan = install.workspaceId ? await getEffectivePlan(install.workspaceId).catch(() => null) : null
 
+    // The install's OWN workspace plan, distinct from `plan` above.
+    // getEffectivePlan takes the owner's best across every workspace
+    // they own, so a help-centre owner who also owns an unrelated paid
+    // workspace would read back "paid" for this install. The partner
+    // keys entitlements (e.g. GKB Pro) on THIS field so one customer's
+    // other business can't light up a different centre's features.
+    const workspacePlan = install.workspaceId
+      ? (await db.workspace.findUnique({ where: { id: install.workspaceId }, select: { plan: true } }).catch(() => null))?.plan ?? null
+      : null
+
     const conversationCount = install.widgetId
       ? await db.widgetConversation.count({ where: { widgetId: install.widgetId } }).catch(() => 0)
       : 0
@@ -113,6 +123,8 @@ export const GET = withApiLog(async (req: NextRequest, ctx: unknown) => {
       portal,
       billing: plan && {
         plan: plan.plan,
+        // This install's OWN plan — key entitlements on this, not `plan`.
+        workspacePlan,
         trialEndsAt,
         trialDaysRemaining,
         trialExpired: plan.trialExpired,
