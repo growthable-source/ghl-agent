@@ -147,6 +147,7 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                         r.status === 'ready' ? 'bg-emerald-500/10 text-emerald-400'
+                        : r.status === 'registered' ? 'bg-sky-500/10 text-sky-400'
                         : r.status === 'failed' ? 'bg-red-500/10 text-red-400'
                         : r.status === 'disabled' ? 'bg-zinc-700/40 text-zinc-400'
                         : 'bg-amber-500/10 text-amber-400'
@@ -172,11 +173,12 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {r.status === 'ready' && r.workspaceId ? (
+                      {(r.status === 'ready' && r.workspaceId) || r.status === 'registered' ? (
                         <UnlockControl
                           installId={r.id}
                           currentPlan={ws?.plan ?? 'trial'}
                           helpCenterUrl={meta.helpCenterUrl ?? ''}
+                          registered={r.status === 'registered'}
                         />
                       ) : (
                         <span className="text-zinc-600 text-xs">not ready</span>

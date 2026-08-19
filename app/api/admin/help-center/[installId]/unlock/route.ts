@@ -3,8 +3,12 @@ import { db } from '@/lib/db'
 import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
 import { getPlanDefaults, type PlanId } from '@/lib/plans'
 import { syncHelpCenterArticles } from '@/lib/partner/article-sync'
+import { provisionPartnerInstall } from '@/lib/partner/provision'
 
 type Params = { params: Promise<{ installId: string }> }
+
+// Registered installs get provisioned inline (5+ sequential writes).
+export const maxDuration = 60
 
 const PAID_PLANS = new Set(['starter', 'growth', 'scale'])
 
@@ -32,11 +36,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { installId } = await params
-  const install = await db.partnerInstall.findUnique({ where: { id: installId } })
+  let install = await db.partnerInstall.findUnique({ where: { id: installId } })
   if (!install) return NextResponse.json({ error: 'Install not found' }, { status: 404 })
-  if (!install.workspaceId || !install.agentId) {
-    return NextResponse.json({ error: 'This install has not finished provisioning — retry it first.' }, { status: 409 })
-  }
 
   const body = await req.json().catch(() => ({}))
   const plan = typeof body.plan === 'string' ? body.plan : ''
@@ -52,6 +53,30 @@ export async function POST(req: NextRequest, { params }: Params) {
     : typeof meta.helpCenterUrl === 'string' ? meta.helpCenterUrl : null
   if (syncArticles && !helpCenterUrl) {
     return NextResponse.json({ error: 'No help center URL on record — pass helpCenterUrl to sync articles.' }, { status: 400 })
+  }
+
+  // Register-only rows (and stuck retries) have no tenant yet — build it
+  // now through the same idempotent path the partner's upsell uses, so
+  // an unlock is one action regardless of whether the customer ever
+  // clicked "Add AI chat widget."
+  if (!install.workspaceId || !install.agentId) {
+    try {
+      await provisionPartnerInstall({
+        provider: install.provider,
+        externalId: install.externalId,
+        email: install.externalEmail,
+        businessName: install.businessName,
+        helpCenterUrl,
+        metadata: meta,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return NextResponse.json({ error: `Provisioning failed: ${msg}` }, { status: 502 })
+    }
+    install = await db.partnerInstall.findUnique({ where: { id: installId } })
+    if (!install?.workspaceId || !install.agentId) {
+      return NextResponse.json({ error: 'Provisioning did not complete — check the install row and retry.' }, { status: 502 })
+    }
   }
 
   await db.workspace.update({

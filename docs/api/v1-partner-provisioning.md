@@ -35,6 +35,21 @@ This is deliberate. A widget that greets visitors and then can't answer
 anything is worse for the customer, and for the upsell, than a failed
 call the partner can retry.
 
+## `POST /api/v1/partner/registrations`
+
+Makes a help center KNOWN to Xovera without provisioning anything — no
+user, no workspace, no widget, no trial clock, no emails. Call it
+fire-and-forget when a customer claims a free help center, so the
+account appears on Xovera's admin Help Center page where staff can
+provision + unlock it later. Idempotent in every state: re-registering
+an already-provisioned install changes nothing and reports its current
+status.
+
+Body: `{ externalId, email, businessName, helpCenterUrl?, metadata? }`
+(same field semantics as `/installs`). Response:
+`{ installId, status }` where status is `registered` on first call, or
+whatever the install already is (`ready`, `provisioning`, …).
+
 ## `POST /api/v1/partner/installs`
 
 Creates User → Workspace (+ native Location) → Agent (attached to the

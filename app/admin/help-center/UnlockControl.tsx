@@ -11,11 +11,14 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function UnlockControl({
-  installId, currentPlan, helpCenterUrl,
+  installId, currentPlan, helpCenterUrl, registered = false,
 }: {
   installId: string
   currentPlan: string
   helpCenterUrl: string
+  // Register-only rows have no tenant yet — the unlock provisions one
+  // first, so the button says what it's really about to do.
+  registered?: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -60,7 +63,7 @@ export default function UnlockControl({
         onClick={() => setOpen(true)}
         className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30"
       >
-        {currentPlan === 'trial' ? 'Unlock…' : 'Change unlock…'}
+        {registered ? 'Provision + unlock…' : currentPlan === 'trial' ? 'Unlock…' : 'Change unlock…'}
       </button>
     )
   }

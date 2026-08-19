@@ -104,6 +104,10 @@ export const GET = withApiLog(async (req: NextRequest, ctx: unknown) => {
         id: widget.id,
         name: widget.name,
         isActive: widget.isActive,
+        // publicKey is also baked into the snippet; exposed here as a
+        // field so partners reconciling install state (e.g. after an
+        // admin-side provision) don't have to parse it back out of HTML.
+        publicKey: widget.publicKey,
         embedSnippet: embedSnippet(widget.id, widget.publicKey),
       },
       portal,
