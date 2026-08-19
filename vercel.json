@@ -7,6 +7,10 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
     {
+      "path": "/api/cron/help-center-trial-ending",
+      "schedule": "0 13 * * *"
+    },
+    {
       "path": "/api/cron/follow-ups",
       "schedule": "0 8 * * *"
     },
