@@ -74,12 +74,27 @@ export const POST = withApiLog(async (req: NextRequest) => {
       })
     } catch (err) {
       if ((err as { code?: string })?.code !== 'P2002') throw err
-      // Already known (registered, provisioning, ready, …) — report the
-      // current state, change nothing.
-      install = await db.partnerInstall.findUnique({
+      // Already known (registered, provisioning, ready, …) — keep the
+      // row and its state, but REFRESH the partner-supplied facts:
+      // email, name, and especially helpCenterUrl. A re-register is how
+      // the partner corrects a wrong URL (it has already happened), and
+      // silently keeping stale metadata made that impossible.
+      const existing = await db.partnerInstall.findUnique({
         where: { provider_externalId: { provider, externalId } },
       })
-      if (!install) throw err
+      if (!existing) throw err
+      const mergedMeta = {
+        ...((existing.metadata as Record<string, unknown> | null) ?? {}),
+        ...metadata,
+      }
+      install = await db.partnerInstall.update({
+        where: { id: existing.id },
+        data: {
+          externalEmail: email,
+          businessName,
+          metadata: (Object.keys(mergedMeta).length > 0 ? mergedMeta : undefined) as never,
+        },
+      })
     }
 
     return ok(
