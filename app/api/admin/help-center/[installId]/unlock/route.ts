@@ -1,35 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
-import { getPlanDefaults, type PlanId } from '@/lib/plans'
+import { getPlanDefaults } from '@/lib/plans'
 import { syncHelpCenterArticles } from '@/lib/partner/article-sync'
 import { provisionPartnerInstall } from '@/lib/partner/provision'
+import { isGrowthablePlan } from '@/lib/partner/growthable-plans'
 
 type Params = { params: Promise<{ installId: string }> }
 
 // Registered installs get provisioned inline (5+ sequential writes).
 export const maxDuration = 60
 
-const PAID_PLANS = new Set(['starter', 'growth', 'scale'])
+// Every unlock grants the full internal capability set — the
+// GROWTHABLE plan is the commercial fact we record; Xovera tiers are
+// an implementation detail of our own support engine.
+const XOVERA_PLAN = 'scale'
 
 /**
  * POST — super-admin "unlock" for a free Help Center install.
  *
  * Body: {
- *   plan: 'starter' | 'growth' | 'scale',
- *   enableTicketing?: boolean,   // meaningful on 'scale' (the only tier
- *                                // whose plan gate includes ticketing)
- *   syncArticles?: boolean,      // crawl their help center into the
- *                                // agent's knowledge
- *   helpCenterUrl?: string,      // override/supply the URL to crawl
+ *   growthablePlan: GrowthablePlanId,  // the plan the customer is on
+ *                                      // (growthable.io/pricing)
+ *   syncArticles?: boolean,            // crawl their help center into
+ *                                      // the agent's knowledge
+ *   helpCenterUrl?: string,            // override/supply the crawl URL
  * }
  *
- * The comped equivalent of the partner's PUT /installs/{id}/plan:
- * writes the plan + defaults, clears the trial clock, and deliberately
- * never touches stripe* fields — no Stripe rows is how support tells
- * manually-unlocked (and partner-billed) workspaces apart from
- * Xovera-billed ones. The unlock is recorded in install.metadata for
- * the admin list, and in the admin audit trail.
+ * Grants everything: internal 'scale' entitlement, ticketing on, and
+ * (via the post-unlock push) GKB Pro. The comped equivalent of the
+ * partner's PUT /installs/{id}/plan: writes the plan + defaults,
+ * clears the trial clock, and deliberately never touches stripe*
+ * fields — no Stripe rows is how support tells manually-unlocked
+ * workspaces apart from Xovera-billed ones.
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await requireAdminRole('admin')
@@ -40,11 +43,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!install) return NextResponse.json({ error: 'Install not found' }, { status: 404 })
 
   const body = await req.json().catch(() => ({}))
-  const plan = typeof body.plan === 'string' ? body.plan : ''
-  if (!PAID_PLANS.has(plan)) {
-    return NextResponse.json({ error: 'plan must be starter, growth, or scale.' }, { status: 400 })
+  if (!isGrowthablePlan(body.growthablePlan)) {
+    return NextResponse.json({ error: 'growthablePlan must be one of the plans on growthable.io/pricing.' }, { status: 400 })
   }
-  const enableTicketing = body.enableTicketing === true
+  const growthablePlan = body.growthablePlan
+  const plan = XOVERA_PLAN
   const syncArticles = body.syncArticles === true
 
   const meta = (install.metadata ?? {}) as Record<string, unknown>
@@ -83,19 +86,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     where: { id: install.workspaceId },
     data: {
       plan,
-      ...getPlanDefaults(plan as PlanId),
+      ...getPlanDefaults(plan),
       trialEndsAt: null,
       planSelectedDuringTrial: null,
     },
   })
 
-  if (enableTicketing) {
-    await db.ticketingSettings.upsert({
-      where: { workspaceId: install.workspaceId },
-      create: { workspaceId: install.workspaceId, enabled: true },
-      update: { enabled: true },
-    })
-  }
+  // Ticketing is part of every unlock — these customers can't reach the
+  // settings page to flip it themselves.
+  await db.ticketingSettings.upsert({
+    where: { workspaceId: install.workspaceId },
+    create: { workspaceId: install.workspaceId, enabled: true },
+    update: { enabled: true },
+  })
 
   let articles: Awaited<ReturnType<typeof syncHelpCenterArticles>> | null = null
   let articleError: string | null = null
@@ -120,8 +123,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         ...meta,
         ...(helpCenterUrl ? { helpCenterUrl } : {}),
         unlock: {
+          growthablePlan,
           plan,
-          enableTicketing,
           articlesSynced: !!articles,
           by: session.email,
           at: new Date().toISOString(),
@@ -162,8 +165,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     meta: {
       businessName: install.businessName,
       workspaceId: install.workspaceId,
+      growthablePlan,
       plan,
-      enableTicketing,
       syncArticles,
       articleError,
       partnerSynced,
@@ -172,8 +175,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     ok: true,
+    growthablePlan,
     plan,
-    ticketingEnabled: enableTicketing,
     articles,
     articleError,
     partnerSynced,

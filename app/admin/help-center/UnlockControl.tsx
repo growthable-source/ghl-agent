@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { GROWTHABLE_PLANS, type GrowthablePlanId } from '@/lib/partner/growthable-plans'
 
 export default function UnlockControl({
   installId, currentPlan, helpCenterUrl, registered = false,
@@ -22,8 +23,7 @@ export default function UnlockControl({
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [plan, setPlan] = useState<'starter' | 'growth' | 'scale'>('scale')
-  const [enableTicketing, setEnableTicketing] = useState(true)
+  const [plan, setPlan] = useState<GrowthablePlanId>('agency_ai')
   const [syncArticles, setSyncArticles] = useState(true)
   const [url, setUrl] = useState(helpCenterUrl)
   const [busy, setBusy] = useState(false)
@@ -38,21 +38,21 @@ export default function UnlockControl({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          plan,
-          enableTicketing: plan === 'scale' && enableTicketing,
+          growthablePlan: plan,
           syncArticles,
           ...(syncArticles && url.trim() ? { helpCenterUrl: url.trim() } : {}),
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setError(data.error || 'Unlock failed.'); return }
+      const planLabel = GROWTHABLE_PLANS.find(p => p.id === data.growthablePlan)?.label ?? data.growthablePlan
       const syncNote = data.partnerSynced
         ? ' Widget pushed to their help center.'
-        : ' Use "Sync from Xovera" in the GKB admin to surface the widget.'
+        : ' Use "Sync from Xovera" on their help center admin page to surface the widget.'
       setDone(
         data.articleError
-          ? `Unlocked to ${data.plan}, but article sync failed: ${data.articleError}${syncNote}`
-          : `Unlocked to ${data.plan}.${data.articles ? ' Article crawl queued.' : ''}${syncNote}`,
+          ? `Unlocked on ${planLabel}, but article sync failed: ${data.articleError}${syncNote}`
+          : `Unlocked on ${planLabel}.${data.articles ? ' Article crawl queued.' : ''}${syncNote}`,
       )
       setTimeout(() => router.refresh(), 1200)
     } finally { setBusy(false) }
@@ -73,21 +73,17 @@ export default function UnlockControl({
 
   return (
     <div className="w-[250px] space-y-2 text-xs">
+      {/* The GROWTHABLE plan the customer is on — every unlock grants
+          the full capability set; this is the commercial record. */}
       <select
         value={plan}
-        onChange={e => setPlan(e.target.value as typeof plan)}
+        onChange={e => setPlan(e.target.value as GrowthablePlanId)}
         className="w-full rounded px-2 py-1.5 bg-zinc-900 text-zinc-200 border border-zinc-700"
       >
-        <option value="starter">Starter — handoff + 2 seats</option>
-        <option value="growth">Growth — handoff + 5 seats</option>
-        <option value="scale">Scale — everything + ticketing</option>
+        {GROWTHABLE_PLANS.map(p => (
+          <option key={p.id} value={p.id}>{p.label}</option>
+        ))}
       </select>
-      {plan === 'scale' && (
-        <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
-          <input type="checkbox" checked={enableTicketing} onChange={e => setEnableTicketing(e.target.checked)} className="accent-amber-500" />
-          Enable ticketing
-        </label>
-      )}
       <label className="flex items-center gap-2 text-zinc-300 cursor-pointer">
         <input type="checkbox" checked={syncArticles} onChange={e => setSyncArticles(e.target.checked)} className="accent-amber-500" />
         Crawl their help center articles

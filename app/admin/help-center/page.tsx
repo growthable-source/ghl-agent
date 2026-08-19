@@ -2,8 +2,19 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
+import { growthablePlanLabel } from '@/lib/partner/growthable-plans'
 import UnlockControl from './UnlockControl'
 import BuilderLinkButton from './BuilderLinkButton'
+
+// The help-center product's own admin (GKB) — where a centre's delete
+// danger-zone, domain state, and "Sync from Xovera" button live.
+// Derived from the sync-push URL so there's one source of truth for
+// the partner host.
+function helpCenterAdminBase(): string | null {
+  const url = process.env.HELP_CENTER_SYNC_URL
+  if (!url) return null
+  try { return new URL(url).origin } catch { return null }
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -153,8 +164,12 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                 const ws = r.workspaceId ? wsById.get(r.workspaceId) : null
                 const meta = (r.metadata ?? {}) as {
                   helpCenterUrl?: string
-                  unlock?: { plan?: string; by?: string; at?: string; articlesSynced?: boolean }
+                  unlock?: { growthablePlan?: string; plan?: string; by?: string; at?: string; articlesSynced?: boolean }
                 }
+                const adminBase = helpCenterAdminBase()
+                const gkbAdminUrl = adminBase && r.externalId.startsWith('hc_')
+                  ? `${adminBase}/admin/centers/${r.externalId.slice(3)}`
+                  : null
                 const trialExpired = !!ws?.trialEndsAt && ws.trialEndsAt < new Date()
                 const widget = r.widgetId ? widgetById.get(r.widgetId) : null
                 const portal = widget?.brandId ? portalByBrand.get(widget.brandId) : null
@@ -186,9 +201,11 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {meta.unlock?.plan ? (
+                      {meta.unlock?.growthablePlan || meta.unlock?.plan ? (
                         <div>
-                          <p className="text-emerald-400 text-xs font-semibold capitalize">✓ {meta.unlock.plan}</p>
+                          <p className="text-emerald-400 text-xs font-semibold">
+                            ✓ {growthablePlanLabel(meta.unlock.growthablePlan) ?? meta.unlock.plan}
+                          </p>
                           <p className="text-[10px] text-zinc-500">
                             by {meta.unlock.by ?? '?'}{meta.unlock.at ? ` · ${new Date(meta.unlock.at).toLocaleDateString()}` : ''}
                             {meta.unlock.articlesSynced ? ' · articles synced' : ''}
@@ -199,28 +216,38 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {r.workspaceId ? (
-                        <div className="flex flex-col items-start gap-1.5">
+                      <div className="flex flex-col items-start gap-1.5">
+                        {gkbAdminUrl && (
+                          <a
+                            href={gkbAdminUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] px-2 py-1 rounded border border-amber-500/40 text-amber-300"
+                            title="The help center product's admin for this centre — edit, sync from Xovera, and DELETE live here"
+                          >
+                            Help center admin ↗
+                          </a>
+                        )}
+                        {r.workspaceId && (
                           <Link
                             href={`/admin/workspaces/${r.workspaceId}`}
                             className="text-[11px] px-2 py-1 rounded border border-zinc-700 text-zinc-300"
                           >
                             Workspace →
                           </Link>
-                          {r.widgetId && <BuilderLinkButton installId={r.id} />}
-                          {portal && (
-                            <Link
-                              href={`/admin/portals/${portal.id}`}
-                              className="text-[11px] px-2 py-1 rounded border border-zinc-700 text-zinc-300"
-                              title={`Portal "${portal.slug}" — impersonate from its detail page`}
-                            >
-                              Portal →
-                            </Link>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-zinc-600 text-xs">—</span>
-                      )}
+                        )}
+                        {r.widgetId && <BuilderLinkButton installId={r.id} />}
+                        {portal && (
+                          <Link
+                            href={`/admin/portals/${portal.id}`}
+                            className="text-[11px] px-2 py-1 rounded border border-zinc-700 text-zinc-300"
+                            title={`Portal "${portal.slug}" — impersonate from its detail page`}
+                          >
+                            Portal →
+                          </Link>
+                        )}
+                        {!gkbAdminUrl && !r.workspaceId && <span className="text-zinc-600 text-xs">—</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       {(r.status === 'ready' && r.workspaceId) || r.status === 'registered' ? (
