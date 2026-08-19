@@ -266,6 +266,14 @@ export async function provisionPartnerInstall(
   // the unique constraint; the loser reads the winner's row.
   let install
   try {
+    // Fold helpCenterUrl into the stored metadata: it used to be
+    // consumed transiently (allowedDomains hostname) and thrown away,
+    // which left the admin unlock flow unable to know where the
+    // customer's help center lives without asking.
+    const metadata = {
+      ...((input.metadata as Record<string, unknown> | null) ?? {}),
+      ...(input.helpCenterUrl ? { helpCenterUrl: input.helpCenterUrl } : {}),
+    }
     install = await db.partnerInstall.create({
       data: {
         provider: input.provider,
@@ -273,7 +281,7 @@ export async function provisionPartnerInstall(
         externalEmail: email,
         businessName,
         status: 'provisioning',
-        metadata: (input.metadata ?? undefined) as never,
+        metadata: (Object.keys(metadata).length > 0 ? metadata : undefined) as never,
       },
     })
   } catch (err: unknown) {
