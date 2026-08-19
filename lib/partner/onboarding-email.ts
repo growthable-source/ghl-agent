@@ -64,9 +64,9 @@ function buildSections(links: OnboardingLinks): Section[] {
   if (d) {
     sections.push({
       eyebrow: 'Your AI chat widget',
-      title: 'Customise it and grab the install code',
-      body: 'The AI chat widget is already on your help centre — nothing to paste there. On this page you can change its look and welcome message, and copy the embed snippet to drop into your HighLevel agency (or anywhere else you want it). The page walks you through where the code goes.',
-      buttons: [{ label: 'Configure widget & get install code', url: `${d}/dashboard/ai-agent` }],
+      title: 'Change its look & get the install code',
+      body: 'The AI chat widget is already live on your help centre — nothing to paste there. Here you can customise its colours, logo and greeting, and copy the embed code to add the same widget to your HighLevel agency (or anywhere else you can paste a script). The page shows you exactly where the code goes.',
+      buttons: [{ label: 'Customise look & get install code', url: `${d}/dashboard/ai-agent` }],
     })
   }
 
