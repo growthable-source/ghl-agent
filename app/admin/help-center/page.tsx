@@ -5,6 +5,7 @@ import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
 import { growthablePlanLabel } from '@/lib/partner/growthable-plans'
 import UnlockControl from './UnlockControl'
 import BuilderLinkButton from './BuilderLinkButton'
+import OnboardingEmailButton from './OnboardingEmailButton'
 
 // The help-center product's own admin (GKB) — where a centre's delete
 // danger-zone, domain state, and "Sync from Xovera" button live.
@@ -245,6 +246,9 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                           >
                             Portal →
                           </Link>
+                        )}
+                        {r.workspaceId && (
+                          <OnboardingEmailButton installId={r.id} defaultRecipient={r.externalEmail} />
                         )}
                         {!gkbAdminUrl && !r.workspaceId && <span className="text-zinc-600 text-xs">—</span>}
                       </div>
