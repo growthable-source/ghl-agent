@@ -1,7 +1,9 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getAdminSession, logAdminAction } from '@/lib/admin-auth'
 import UnlockControl from './UnlockControl'
+import BuilderLinkButton from './BuilderLinkButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +47,7 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
     businessName: string
     status: string
     workspaceId: string | null
+    widgetId: string | null
     metadata: unknown
     createdAt: Date
   }> = []
@@ -76,6 +79,26 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
       })
     : []
   const wsById = new Map(workspaces.map(w => [w.id, w]))
+
+  // Portal + brand per install, resolved through the widget's brand —
+  // same derivation the partner GET uses. Batched: widgets → brandIds →
+  // portalBrand links.
+  const widgetIds = rows.map(r => r.widgetId).filter((id): id is string => !!id)
+  const widgets = widgetIds.length > 0
+    ? await db.chatWidget.findMany({
+        where: { id: { in: widgetIds } },
+        select: { id: true, brandId: true, workspaceId: true },
+      })
+    : []
+  const brandIds = widgets.map(w => w.brandId).filter((id): id is string => !!id)
+  const portalLinks = brandIds.length > 0
+    ? await db.portalBrand.findMany({
+        where: { brandId: { in: brandIds } },
+        select: { brandId: true, portal: { select: { id: true, slug: true } } },
+      }).catch(() => [])
+    : []
+  const widgetById = new Map(widgets.map(w => [w.id, w]))
+  const portalByBrand = new Map(portalLinks.map(p => [p.brandId, p.portal]))
 
   logAdminAction({
     admin: session,
@@ -121,6 +144,7 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                 <th className="text-left px-4 py-2.5 font-semibold">Status</th>
                 <th className="text-left px-4 py-2.5 font-semibold">Plan</th>
                 <th className="text-left px-4 py-2.5 font-semibold">Unlocked</th>
+                <th className="text-left px-4 py-2.5 font-semibold">Configure</th>
                 <th className="text-left px-4 py-2.5 font-semibold">Unlock</th>
               </tr>
             </thead>
@@ -132,6 +156,8 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                   unlock?: { plan?: string; by?: string; at?: string; articlesSynced?: boolean }
                 }
                 const trialExpired = !!ws?.trialEndsAt && ws.trialEndsAt < new Date()
+                const widget = r.widgetId ? widgetById.get(r.widgetId) : null
+                const portal = widget?.brandId ? portalByBrand.get(widget.brandId) : null
                 return (
                   <tr key={r.id} className="border-t border-zinc-800 align-top">
                     <td className="px-4 py-3">
@@ -167,6 +193,30 @@ export default async function AdminHelpCenterPage({ searchParams }: { searchPara
                             by {meta.unlock.by ?? '?'}{meta.unlock.at ? ` · ${new Date(meta.unlock.at).toLocaleDateString()}` : ''}
                             {meta.unlock.articlesSynced ? ' · articles synced' : ''}
                           </p>
+                        </div>
+                      ) : (
+                        <span className="text-zinc-600 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.workspaceId ? (
+                        <div className="flex flex-col items-start gap-1.5">
+                          <Link
+                            href={`/admin/workspaces/${r.workspaceId}`}
+                            className="text-[11px] px-2 py-1 rounded border border-zinc-700 text-zinc-300"
+                          >
+                            Workspace →
+                          </Link>
+                          {r.widgetId && <BuilderLinkButton installId={r.id} />}
+                          {portal && (
+                            <Link
+                              href={`/admin/portals/${portal.id}`}
+                              className="text-[11px] px-2 py-1 rounded border border-zinc-700 text-zinc-300"
+                              title={`Portal "${portal.slug}" — impersonate from its detail page`}
+                            >
+                              Portal →
+                            </Link>
+                          )}
                         </div>
                       ) : (
                         <span className="text-zinc-600 text-xs">—</span>
