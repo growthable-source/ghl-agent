@@ -35,6 +35,7 @@ interface Widget {
   voiceEnabled: boolean
   voiceAgentId: string | null
   defaultAgentId: string | null
+  aiEnabled?: boolean
   allowedDomains: string[]
   isActive: boolean
   routingMode?: 'manual' | 'round_robin' | 'first_available'
@@ -396,6 +397,29 @@ export default function WidgetEditorPage() {
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
                 />
               </Field>
+              {!isCallType && (
+                // Explicit AI on/off. When off the widget is a pure
+                // human inbox — visitor messages arrive for operators
+                // but the AI never replies, even with a default agent
+                // set. This is the reliable "human support only" switch
+                // (the earlier "just leave the agent blank" trick was
+                // ambiguous and could still trigger the AI).
+                <Field label="AI replies" helper="Turn off to run this widget as human-only support — messages reach your inbox but the AI never replies.">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={widget.aiEnabled !== false}
+                    onClick={() => update('aiEnabled', (widget.aiEnabled === false) as any)}
+                    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                    style={{ background: widget.aiEnabled !== false ? 'var(--accent-emerald, #10b981)' : '#3f3f46' }}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${widget.aiEnabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="ml-3 text-xs align-middle" style={{ color: 'var(--text-secondary)' }}>
+                    {widget.aiEnabled !== false ? 'AI answers visitors' : 'Human-only — AI is off'}
+                  </span>
+                </Field>
+              )}
               <Field
                 label={isCallType ? 'Voice agent' : 'Default agent'}
                 helper={
@@ -409,19 +433,20 @@ export default function WidgetEditorPage() {
                   <option value="">— select an agent —</option>
                   {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
-                {!widget.defaultAgentId && !isCallType && (
-                  // Banner: empty default-agent is the #1 silent failure
-                  // mode — widget appears installed, visitors send
-                  // messages, but the AI never replies because there's
-                  // no agent to run. Make it visually impossible to
-                  // miss while configuring the widget.
+                {!widget.defaultAgentId && !isCallType && widget.aiEnabled !== false && (
+                  // No default agent set. This is NOT the same as
+                  // human-only: with no default, replies fall back to
+                  // whichever of your other agents' routing rules match
+                  // this widget — which may be none. Pick one for a
+                  // dedicated AI, or use the "AI replies" toggle for a
+                  // deliberate human-only widget.
                   <div
                     className="mt-2 rounded-lg border px-3 py-2 text-xs"
                     style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
                   >
-                    <p className="font-semibold mb-0.5">No agent connected</p>
+                    <p className="font-semibold mb-0.5">No default agent</p>
                     <p style={{ color: 'var(--text-secondary)' }}>
-                      Visitors can open this widget but nothing will reply. Pick an agent above to deploy.{' '}
+                      Pick an agent so a specific AI handles this widget. Without one, replies depend on your other agents&apos; routing rules — which may not match. For a deliberate human-only widget, switch off &ldquo;AI replies&rdquo; above instead.{' '}
                       {agents.length === 0 && (
                         <>
                           You don&apos;t have any agents yet —{' '}

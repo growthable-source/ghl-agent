@@ -102,12 +102,23 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
     }
   }
 
+  // Per-widget AI on/off. An operator can turn a single widget into a
+  // human-only inbox (Dan's "disable AI for a chat widget" ask) without
+  // touching the whole brand. Only an explicit false disables — a
+  // missing column (pre-migration) reads undefined → AI stays on, i.e.
+  // today's behaviour. Same silent-return as the brand gate.
+  if (widget.aiEnabled === false) return
+
   // Human handoff is a paid feature. Resolved once per turn and threaded
   // through everything visitor-facing below: the tool set, the prompt,
   // the fallback copy, and stop-condition routing.
   const handoffAllowed = await humanHandoffAllowed(widget.workspaceId)
 
   // Resolve the agent: defaultAgentId on the widget, else findMatchingAgent.
+  // A null defaultAgentId is NOT "no AI" — multi-agent workspaces (and
+  // launcher widgets) legitimately leave it null and resolve via routing
+  // rules here. To run a widget human-only, use the explicit aiEnabled
+  // gate above; that's the reliable switch (see the "No Agent" UI note).
   let agent: any = null
   if (widget.defaultAgentId) {
     agent = await db.agent.findFirst({
@@ -466,8 +477,13 @@ Never apologise for the language or mention translation — just speak naturally
         // informed.
         if (/^(SENTIMENT|KEYWORD|MESSAGE_COUNT)/.test(stopCheck.reason ?? '')) {
           try {
-            const { forceAssignToHuman } = await import('./widget-routing')
-            await forceAssignToHuman({ workspaceId: widget.workspaceId, conversationId: convo.id })
+            // Same shared handoff path as transfer_to_human: assign a
+            // human AND (on a fresh online assignment) flip status to
+            // 'handed_off' + emit SSE, so an escalated chat surfaces in
+            // the inbox "needs human" tab instead of masquerading as
+            // AI-handled.
+            const { handoffToHuman } = await import('./widget-routing')
+            await handoffToHuman({ workspaceId: widget.workspaceId, conversationId: convo.id })
           } catch (err: any) {
             console.warn('[widget] post-pause human assignment failed:', err?.message)
           }

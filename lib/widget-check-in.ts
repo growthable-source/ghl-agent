@@ -43,12 +43,40 @@ export async function sendQuietCheckIn(conversationId: string): Promise<{ sent: 
   const convo = await db.widgetConversation.findUnique({
     where: { id: conversationId },
     include: {
-      widget: { select: { name: true, primaryColor: true } },
+      // brandId is an existing column (safe); aiEnabled is queried
+      // separately below so a pre-migration DB doesn't P2022 the whole
+      // check-in pass.
+      widget: { select: { name: true, primaryColor: true, brandId: true } },
       visitor: { select: { name: true } },
     },
   })
   if (!convo) return { sent: false, reason: 'not_found' }
   if (convo.status !== 'active') return { sent: false, reason: `status_${convo.status}` }
+
+  // This check-in is an AI-generated message, so it must respect the
+  // same AI-off gates as runWidgetAgent — otherwise a human-only widget
+  // (or brand) would still emit "still there?" nudges under role
+  // 'agent'. Both reads are wrapped so a missing column (pre-migration)
+  // degrades to "enabled" rather than throwing, matching the sibling
+  // enableQuietCheckIn gate below.
+  try {
+    const w = await db.chatWidget.findUnique({
+      where: { id: convo.widgetId },
+      select: { aiEnabled: true } as any,
+    }) as { aiEnabled?: boolean } | null
+    if (w?.aiEnabled === false) return { sent: false, reason: 'ai_disabled_on_widget' }
+  } catch (err: any) {
+    if (err?.code !== 'P2022' && !/column .* does not exist/i.test(err?.message ?? '')) throw err
+  }
+  const brandId = (convo.widget as { brandId?: string | null })?.brandId
+  if (brandId) {
+    try {
+      const brand = await (db as any).brand.findUnique({ where: { id: brandId }, select: { aiEnabled: true } })
+      if (brand && brand.aiEnabled === false) return { sent: false, reason: 'ai_disabled_on_brand' }
+    } catch (err: any) {
+      if (err?.code !== 'P2022' && !/column .* does not exist/i.test(err?.message ?? '')) throw err
+    }
+  }
 
   // Per-agent opt-out. Defaults to true at the column level so the
   // migration doesn't change behaviour, but operators can flip it off

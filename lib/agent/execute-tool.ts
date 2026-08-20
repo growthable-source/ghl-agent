@@ -1246,6 +1246,19 @@ export async function executeTool(
         }
         const summary = String((input as any).summary || '').slice(0, 500)
         const { db: prisma } = await import('../db')
+        // Guard: a handover is being set up THIS turn. If the model
+        // called transfer_to_human and then end_conversation in the same
+        // run, the WidgetConversation status hasn't flipped to
+        // 'handed_off' yet (that happens post-loop), so the status guard
+        // below wouldn't catch it — and the chat would close out from
+        // under the human being assigned. Refuse: you don't hand off AND
+        // close in the same breath.
+        if (handoverCapture?.captured) {
+          return JSON.stringify({
+            error:
+              'Cannot end this conversation — you just handed it to a human. Leave it open for your teammate; do not close it.',
+          })
+        }
         // Guard: never close a chat that's waiting in the human queue.
         // When a visitor asks for a human and the team is at capacity (or
         // nobody is online), the chat is enqueued — queuedAt set,
@@ -1261,13 +1274,26 @@ export async function executeTool(
         const convoState = await prisma.widgetConversation
           .findUnique({
             where: { id: widgetConvId },
-            select: { queuedAt: true, assignedUserId: true },
+            select: { queuedAt: true, assignedUserId: true, status: true },
           })
           .catch(() => null)
         if (convoState?.queuedAt && !convoState.assignedUserId) {
           return JSON.stringify({
             error:
               'Cannot end this conversation — the visitor is waiting in the queue for a human teammate to take over. Keep helping until a teammate picks it up; do not close it.',
+          })
+        }
+        // A human currently owns this chat (took over / was handed off).
+        // The AI must not close it out from under them — that's the
+        // "AI closes the chat after it's assigned to an agent" bug.
+        // Key on the LIVE status, not assignedUserId: assignedUserId is
+        // never cleared when an operator hands the chat BACK to the AI
+        // (status → 'active'), so guarding on it would permanently lock
+        // the AI out of ever closing a once-taken-over chat.
+        if (convoState?.status === 'handed_off') {
+          return JSON.stringify({
+            error:
+              'Cannot end this conversation — a human teammate has taken it over. Leave it open for them; do not close it.',
           })
         }
         await prisma.widgetConversation.update({

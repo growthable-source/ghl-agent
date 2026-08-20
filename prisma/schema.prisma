@@ -2336,6 +2336,13 @@ model ChatWidget {
   // Voice
   voiceEnabled              Boolean              @default(false)
   voiceAgentId              String?
+  // Per-widget AI on/off. false = human-only support: visitor messages
+  // still reach the inbox for operators to answer, but no AI reply ever
+  // fires — even when a defaultAgentId is set. The explicit counterpart
+  // to the per-brand Brand.aiEnabled gate, so a single widget can be
+  // human-only without disabling AI for the whole brand. Checked in
+  // lib/widget-agent-runner.ts alongside the brand gate.
+  aiEnabled                 Boolean              @default(true)
   // Routing
   defaultAgentId            String?
   // Operator assignment routing. Determines who the chat lands on when

@@ -37,7 +37,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'position', 'buttonLabel', 'buttonShape', 'buttonSize', 'buttonIcon', 'buttonTextColor',
     'hostedPageHeadline', 'hostedPageSubtext',
     'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
-    'defaultAgentId', 'allowedDomains', 'isActive',
+    'defaultAgentId', 'aiEnabled', 'allowedDomains', 'isActive',
     'routingMode', 'routingTargetUserIds', 'routingFallbackUserId',
     'brandId', 'agencyUrl',
     'autoIdentify', 'launcherAgents',
@@ -108,7 +108,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const launcherIconKeys = ['launcherIcon', 'launcherLetter']
   // Conversation colours ship in their own migration.
   const conversationColorKeys = ['backgroundColor', 'textColor']
-  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys, ...launcherKeys, ...launcherIconKeys, ...conversationColorKeys]
+  // Per-widget AI on/off ships in its own migration.
+  const aiToggleKeys = ['aiEnabled']
+  const tolerantKeys = [...ctcKeys, ...routingKeys, ...brandKeys, ...whitelabelKeys, ...launcherKeys, ...launcherIconKeys, ...conversationColorKeys, ...aiToggleKeys]
   const touchesTolerant = tolerantKeys.some(k => data[k] !== undefined)
 
   try {

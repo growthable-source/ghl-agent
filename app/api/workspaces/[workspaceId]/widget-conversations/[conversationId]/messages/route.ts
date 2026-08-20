@@ -200,7 +200,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (next === 'active') {
     try {
       await db.conversationStateRecord.updateMany({
-        where: { conversationId, state: 'PAUSED', pauseReason: 'human_takeover' },
+        // Clear ANY pause for this conversation, not just formal
+        // 'human_takeover' ones. transfer_to_human pauses with reason
+        // "Transfer to human: …" and stop-conditions with their own
+        // reasons; filtering to human_takeover left those PAUSED, so
+        // clicking "Resume AI" appeared to do nothing — the AI stayed
+        // silent (shouldAgentReply still saw PAUSED).
+        where: { conversationId, state: 'PAUSED' },
         data: { state: 'ACTIVE', pauseReason: null, resumedAt: new Date() },
       })
     } catch (err: any) {

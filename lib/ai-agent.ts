@@ -1419,8 +1419,13 @@ export async function runAgent(opts: {
         // channels (SMS / web phone) don't have an inbox queue concept yet.
         if (channel === 'Live_Chat' && conversationId) {
           try {
-            const { forceAssignToHuman } = await import('./widget-routing')
-            await forceAssignToHuman({ workspaceId: agentRow.workspaceId, conversationId })
+            // Shared handoff path — assigns a human and, on a fresh
+            // online assignment, flips status to 'handed_off' + emits SSE
+            // so the AI reliably stops and the inbox reflects it. Same
+            // helper the stop-condition escalation uses, so both routes
+            // land the conversation in an identical state.
+            const { handoffToHuman } = await import('./widget-routing')
+            await handoffToHuman({ workspaceId: agentRow.workspaceId, conversationId })
           } catch (err: any) {
             console.warn('[Handover] force-assign failed:', err?.message)
           }

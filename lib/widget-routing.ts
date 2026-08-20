@@ -447,6 +447,49 @@ export async function forceAssignToHuman(params: {
   return { assigned: true, userId, viaFallback }
 }
 
+/**
+ * The single "AI hands the chat to a human" path — used by BOTH
+ * agent-initiated handoffs (the transfer_to_human tool and stop-condition
+ * escalations) so they produce the SAME conversation state.
+ *
+ * Force-assigns a human, then — only for a FRESH assignment to an online
+ * human via normal routing — flips the conversation to 'handed_off' and
+ * broadcasts status_changed. That status is what shouldAgentReply() gates
+ * on (so the AI reliably stops even when a per-contact PAUSE record was
+ * keyed on an id that didn't match an anonymous visitor) AND what the
+ * inbox "needs human" tab filters on.
+ *
+ * Deliberately NOT flipped: queued chats (assigned:false — the AI keeps
+ * helping while they wait), the fallback-owner path (may be offline), and
+ * an already-assigned chat (its owner may have since gone offline). Those
+ * keep status 'active' so a visitor is never stranded talking to a silent
+ * widget with an absent owner.
+ */
+export async function handoffToHuman(params: {
+  workspaceId: string
+  conversationId: string
+}): Promise<{ assigned: boolean; handedOff: boolean }> {
+  const before = await db.widgetConversation
+    .findUnique({ where: { id: params.conversationId }, select: { assignedUserId: true } })
+    .catch(() => null)
+  const wasAlreadyAssigned = !!before?.assignedUserId
+
+  const outcome = await forceAssignToHuman(params)
+
+  let handedOff = false
+  if (outcome.assigned && !outcome.viaFallback && !wasAlreadyAssigned) {
+    const flipped = await db.widgetConversation.updateMany({
+      where: { id: params.conversationId, status: { notIn: ['handed_off', 'ended'] } },
+      data: { status: 'handed_off' },
+    }).catch(() => ({ count: 0 }))
+    if (flipped.count > 0) {
+      handedOff = true
+      await broadcast(params.conversationId, { type: 'status_changed', status: 'handed_off' }).catch(() => {})
+    }
+  }
+  return { assigned: outcome.assigned, handedOff }
+}
+
 // ─── Queue (workspace-total capacity) ───────────────────────────────
 
 const QUEUE_STATUSES_OPEN = ['active', 'handed_off'] as const
