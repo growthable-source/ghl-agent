@@ -3,11 +3,13 @@ import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { isMissingColumn } from '@/lib/migration-error'
 import { stageChatCsatLearningFromConversation } from '@/lib/tickets/brand-knowledge'
+import { emailPortalPositiveChatFeedback } from '@/lib/portal/feedback-email'
 
-// A rating this high or above means the conversation resolved well enough to
-// learn from. Lower ratings are NOT turned into knowledge — we never teach the
-// agent to repeat a mediocre or unhelpful interaction.
-const CSAT_LEARN_THRESHOLD = 4
+// A rating this high or above counts as positive: it feeds agent learning AND
+// triggers a "great feedback" email to the brand's portal admins. Ratings are
+// 1–5 integers, so this is the practical form of the "3.5 or more" cutoff.
+// Lower ratings train nothing and send no email.
+const CSAT_GOOD_RATING = 4
 
 type Params = { params: Promise<{ widgetId: string; conversationId: string }> }
 
@@ -58,14 +60,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: err.message || 'Could not save rating' }, { status: 500, headers })
   }
 
-  // A well-rated conversation feeds the brand agent: distil it into a Q&A and
-  // stage it for review (nothing goes live without an operator approving it).
-  // Wrapped in after() so Vercel keeps the runtime alive past the JSON response
-  // — a bare fire-and-forget promise (Haiku call + DB writes) is killed when
-  // the function suspends. Never delays or fails the rating.
-  if (rating >= CSAT_LEARN_THRESHOLD) {
+  // A well-rated conversation (a) feeds the brand agent — distilled into a Q&A
+  // staged for review — and (b) emails the brand's portal admins a "great
+  // feedback" heads-up. Wrapped in after() so Vercel keeps the runtime alive
+  // past the JSON response — bare fire-and-forget promises (Haiku call, DB
+  // writes, email) are killed when the function suspends. Never delays or
+  // fails the rating.
+  if (rating >= CSAT_GOOD_RATING) {
     after(async () => {
       await stageChatCsatLearningFromConversation(conversationId).catch(() => {})
+      await emailPortalPositiveChatFeedback(conversationId, rating, comment).catch(() => {})
     })
   }
 
