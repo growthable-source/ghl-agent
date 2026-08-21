@@ -71,7 +71,9 @@ interface MinedPair {
   answer: string
   confidence: number
   status: string
+  source: string
   sourceConversationId: string | null
+  sourceTicketId: string | null
   sourceSnippet: string | null
   createdAt: string
 }
@@ -1107,6 +1109,11 @@ function MinedPairRow({ pair, onAct }: { pair: MinedPair; onAct: (id: string, a:
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{pair.question}</h3>
             <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>{conf}% confident</span>
+            {pair.source === 'ticket_approval' && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-primary-bg, var(--surface-tertiary))', color: 'var(--accent-primary)' }}>
+                From an approved ticket reply
+              </span>
+            )}
           </div>
           <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{pair.answer}</p>
           {pair.sourceSnippet && (

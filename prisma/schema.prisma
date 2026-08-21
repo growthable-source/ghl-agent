@@ -3597,7 +3597,15 @@ model TicketReplyDraft {
   ticketId String
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
+  // The reply as SUBMITTED by the support team/AI — immutable, so the
+  // diff against editedBody is always meaningful.
   body String @db.Text
+
+  // The reviewer's edited version, when they changed the wording before
+  // approving. Null = approved verbatim. The text actually emailed is
+  // `editedBody ?? body`, and "approved WITH CHANGES" is derived as
+  // `status='approved' && editedBody != null && editedBody != body`.
+  editedBody String? @db.Text
 
   // 'pending' | 'approved' | 'rejected' | 'cancelled'
   status String @default("pending")
@@ -4140,27 +4148,45 @@ model ConversationMiningRun {
 // in the target collection) or rejects it.
 model MinedQaPair {
   id                   String   @id @default(cuid())
-  runId                String
+  // Conversation-mining pairs point back to the ConversationMiningRun that
+  // produced them. Ticket-approval pairs (source='ticket_approval') have no
+  // run, so this is nullable.
+  runId                String?
   workspaceId          String
   collectionId         String
   question             String   @db.Text
   answer               String   @db.Text
+  // Where this candidate came from:
+  //   'mining'          — extracted from CRM conversation history (default)
+  //   'ticket_approval' — distilled from a reply released via the approval
+  //                       queue; promoting it embeds a brand-knowledge chunk
+  //                       (not a KnowledgeEntry) so ticket suggest-reply —
+  //                       which retrieves chunks only — learns from it too.
+  source               String   @default("mining")
   // Provenance so a reviewer can audit the source thread.
   sourceConversationId String?
+  // Set for source='ticket_approval': the ticket whose released reply seeded
+  // this pair.
+  sourceTicketId       String?
   sourceSnippet        String?  @db.Text
   // Model's self-reported 0..1 confidence the pair is a genuine,
   // reusable human answer (not chit-chat / one-off).
   confidence           Float    @default(0)
-  // pending → approved | rejected. Approval creates the KnowledgeEntry.
+  // pending → approved | rejected. Approval promotes to live knowledge.
   status               String   @default("pending")
-  // Set once approved so the staging row links to its live entry.
+  // Set once approved so the staging row links to its live entry
+  // (mining pairs → KnowledgeEntry).
   knowledgeEntryId     String?
+  // Set once approved for ticket-approval pairs, linking to the ingested
+  // brand KnowledgeSource whose chunk the agent retrieves.
+  knowledgeSourceId    String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
   @@index([collectionId, status])
   @@index([runId])
   @@index([workspaceId])
+  @@index([sourceTicketId])
 }
 
 // ─── Google content connector (Drive now, Gmail later) ──────────────────────

@@ -40,6 +40,7 @@ export async function GET() {
 const draftSelect = {
   id: true,
   body: true,
+  editedBody: true,
   status: true,
   reviewNote: true,
   reviewedByEmail: true,
@@ -68,6 +69,7 @@ const draftSelect = {
 type DraftRow = {
   id: string
   body: string
+  editedBody: string | null
   status: string
   reviewNote: string | null
   reviewedByEmail: string | null
@@ -90,6 +92,7 @@ function shape(d: DraftRow) {
   return {
     id: d.id,
     body: d.body,
+    editedBody: d.editedBody,
     status: d.status,
     reviewNote: d.reviewNote,
     reviewedByEmail: d.reviewedByEmail,

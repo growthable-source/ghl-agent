@@ -67,6 +67,12 @@ export const NOTIFICATION_EVENTS: NotificationEventDef[] = [
     defaultUserChannels: ['email', 'web_push'],
   },
   {
+    id: 'ticket.approval_decided',
+    label: 'Your reply was reviewed',
+    description: 'A reply you submitted for approval was approved, approved with edits, or rejected by the brand reviewer.',
+    defaultUserChannels: ['email', 'web_push'],
+  },
+  {
     id: 'agent_error',
     label: 'Agent error',
     description: 'An agent ran into a problem processing an inbound message.',

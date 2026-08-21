@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { createKnowledgeInCollection } from '@/lib/knowledge'
 import { estimateTokens } from '@/lib/chunker'
+import { embedQaIntoBrandKnowledge } from '@/lib/tickets/brand-knowledge'
 
 type Params = { params: Promise<{ workspaceId: string; collectionId: string; pairId: string }> }
 
@@ -43,6 +44,42 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   if (action === 'approve') {
+    // Ticket-approval learnings must reach the ticket suggest-reply path,
+    // which retrieves CHUNKS only (never KnowledgeEntry rows). So embed the
+    // pair into the brand's knowledge domain instead of creating a
+    // prompt-stuffed-only entry; the ingest cron chunks + embeds it shortly
+    // after, and both the widget chat and suggest-reply then retrieve it.
+    if (pair.source === 'ticket_approval') {
+      const collection = await db.knowledgeCollection
+        .findUnique({ where: { id: collectionId }, select: { brandId: true } })
+        .catch(() => null)
+      if (collection?.brandId) {
+        const embedded = await embedQaIntoBrandKnowledge({
+          brandId: collection.brandId,
+          collectionId,
+          question,
+          answer,
+          identifier: `ticket-resolution:${pair.id}`,
+        })
+        // Only consume the pair once it's actually queued for embedding.
+        // If embedding failed (missing brand / transient DB error) leave it
+        // pending so the operator can retry — otherwise the learning is lost.
+        if (!embedded) {
+          return NextResponse.json(
+            { error: 'Could not queue this answer for embedding — please try again.' },
+            { status: 503 },
+          )
+        }
+        await db.minedQaPair.update({
+          where: { id: pairId },
+          data: { status: 'approved', question, answer, knowledgeSourceId: embedded.sourceId },
+        })
+        return NextResponse.json({ ok: true, status: 'approved', embedded: true })
+      }
+      // Brandless collection (shouldn't happen for ticket pairs) → fall
+      // through to the standard entry promotion.
+    }
+
     const title = question.slice(0, 80)
     const content = `Q: ${question}\nA: ${answer}`
     const entry = await createKnowledgeInCollection({

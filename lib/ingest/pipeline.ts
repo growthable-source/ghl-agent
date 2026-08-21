@@ -23,6 +23,7 @@ import { docsAdapter } from './adapters/docs'
 import { pdfAdapter } from './adapters/pdf'
 import { youtubeAdapter } from './adapters/youtube'
 import { rssAdapter } from './adapters/rss'
+import { qaAdapter } from './adapters/qa'
 import type { SourceAdapter, AdapterContext, NormalizedContent } from './adapters/types'
 import { chunkMarkdown } from './chunker'
 import { classifyChunk, type TaxonomyRow } from './classify'
@@ -33,6 +34,7 @@ const ADAPTERS: Record<string, SourceAdapter> = {
   pdf:     pdfAdapter,
   youtube: youtubeAdapter,
   rss:     rssAdapter,
+  qa:      qaAdapter,
 }
 
 export interface IngestResult {
