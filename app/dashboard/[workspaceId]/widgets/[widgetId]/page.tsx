@@ -43,6 +43,7 @@ interface Widget {
   routingFallbackUserId?: string | null
   brandId?: string | null
   agencyUrl?: string | null
+  poweredByText?: string | null
   autoIdentify?: boolean
   launcherAgents?: { kind: 'chat' | 'voice' | 'copilot'; agentId: string | null; label: string }[] | null
   launcherIcon?: 'chat' | 'question' | 'letter' | 'logo'
@@ -394,6 +395,19 @@ export default function WidgetEditorPage() {
                   value={widget.agencyUrl || ''}
                   onChange={e => update('agencyUrl', (e.target.value || null) as any)}
                   placeholder="https://client-brand.com"
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
+                />
+              </Field>
+              <Field
+                label="Footer “Powered by” text"
+                helper="Shown to visitors in the widget footer. Set your own on any paid plan; the free plan always shows “Powered by Growthable”. Leave blank for the default."
+              >
+                <input
+                  type="text"
+                  maxLength={60}
+                  value={widget.poweredByText ?? ''}
+                  onChange={e => update('poweredByText', (e.target.value || null) as any)}
+                  placeholder="Powered by Growthable"
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
                 />
               </Field>

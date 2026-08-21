@@ -319,6 +319,15 @@ export function canUseCopilot(plan: string, workspaceId: string | null | undefin
   return !!workspaceId && allowlist.includes(workspaceId)
 }
 
+/**
+ * Whether the widget's "Powered by" line can be customized (custom text, or
+ * removed entirely). Any paid tier can; the free plan is locked to the
+ * default "Powered by Growthable".
+ */
+export function canCustomizeBranding(plan: string): boolean {
+  return plan !== 'free'
+}
+
 /** Check if a specific tool is available on this plan */
 export function canUseTool(plan: string, toolSlug: string): boolean {
   return getPlanFeatures(plan).tools.includes(toolSlug)

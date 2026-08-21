@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'requireEmail', 'askForNameEmail', 'voiceEnabled', 'voiceAgentId',
     'defaultAgentId', 'aiEnabled', 'allowedDomains', 'isActive',
     'routingMode', 'routingTargetUserIds', 'routingFallbackUserId',
-    'brandId', 'agencyUrl',
+    'brandId', 'agencyUrl', 'poweredByText',
     'autoIdentify', 'launcherAgents',
     'launcherIcon', 'launcherLetter',
   ]
@@ -51,6 +51,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // the widget falls back to the default dark theme / auto text.
   for (const k of ['backgroundColor', 'textColor']) {
     if (data[k] !== undefined && (data[k] === '' || data[k] === null)) data[k] = null
+  }
+  // Powered-by branding: cap length, keep '' (means "remove branding") and
+  // null (means "use the default") distinct. Plan enforcement happens at
+  // render time in the widget config route, so a free plan setting this is
+  // simply ignored there.
+  if (typeof data.poweredByText === 'string') {
+    data.poweredByText = data.poweredByText.slice(0, 60)
   }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })
@@ -101,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const brandKeys = ['brandId']
   // agencyUrl ships in its own migration — tolerate it being absent so
   // the rest of the form still saves on a pre-migration DB.
-  const whitelabelKeys = ['agencyUrl']
+  const whitelabelKeys = ['agencyUrl', 'poweredByText']
   // Auto-identify + launcher ship in their own migration.
   const launcherKeys = ['autoIdentify', 'launcherAgents']
   // Launcher icon customization ships in its own migration too.

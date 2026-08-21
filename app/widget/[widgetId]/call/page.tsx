@@ -13,6 +13,7 @@ interface CallConfig {
   buttonLabel: string
   hostedPageHeadline?: string | null
   hostedPageSubtext?: string | null
+  poweredBy?: string
 }
 
 // cookieId resolution lives in lib/widget-iframe-cookie.ts now.
@@ -207,7 +208,9 @@ export default function CallEmbedPage() {
           </button>
         )}
       </div>
-      <p className="text-[10px] text-zinc-600 text-center pb-4">Powered by Xovera</p>
+      {config.poweredBy !== '' && (
+        <p className="text-[10px] text-zinc-600 text-center pb-4">{config.poweredBy || 'Powered by Growthable'}</p>
+      )}
     </div>
   )
 }

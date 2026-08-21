@@ -2385,6 +2385,11 @@ model ChatWidget {
   // page a visitor actually started the chat on is captured separately
   // on WidgetConversation.initiatedUrl.
   agencyUrl                 String?
+  // Visitor-facing "Powered by" line in the widget footer. Paid plans only
+  // (canCustomizeBranding): null = the default "Powered by Growthable", a set
+  // string = custom text, an empty string = branding removed entirely. Free
+  // plans always render "Powered by Growthable" regardless of this value.
+  poweredByText             String?
   // Auto-identify visitors from the CRM dashboard (the marketplace app's
   // injected JS reads the logged-in user). Only meaningful when the
   // widget has an agency connection; ON by default, opt-out per widget.

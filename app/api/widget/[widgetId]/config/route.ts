@@ -65,14 +65,21 @@ export async function GET(req: NextRequest, { params }: Params) {
   // embed only renders the button when this is true; the session
   // endpoint re-checks server-side.
   let liveHelpEnabled = false
+  // Visitor-facing footer branding. Default for everyone; paid plans may
+  // override with custom text or remove it ('' = hidden).
+  let poweredBy = 'Powered by Growthable'
   try {
     const { db } = await import('@/lib/db')
-    const { canUseCopilot } = await import('@/lib/plans')
+    const { canUseCopilot, canCustomizeBranding } = await import('@/lib/plans')
     const workspace = await db.workspace.findUnique({
       where: { id: w.workspaceId },
       select: { plan: true },
     })
     liveHelpEnabled = !!workspace && canUseCopilot(workspace.plan, w.workspaceId)
+    const custom = (w as { poweredByText?: string | null }).poweredByText
+    if (workspace && canCustomizeBranding(workspace.plan) && custom !== null && custom !== undefined) {
+      poweredBy = String(custom)
+    }
   } catch {
     liveHelpEnabled = false
   }
@@ -169,6 +176,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     // column (pre-migration) reads as undefined → treated as enabled.
     autoIdentify: (w as { autoIdentify?: boolean }).autoIdentify !== false,
     launcher,
+    poweredBy,
   }, {
     headers: {
       ...headers,

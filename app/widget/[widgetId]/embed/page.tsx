@@ -32,6 +32,8 @@ interface WidgetConfig {
     emailTicketEnabled: boolean
     message: string | null
   }
+  /** Footer branding line; '' when removed. Defaults to "Powered by Growthable". */
+  poweredBy?: string
 }
 
 interface Msg {
@@ -1532,7 +1534,9 @@ export default function WidgetEmbedPage() {
                 </svg>
               </button>
             </div>
-            <p className="text-[9px] text-center mt-2" style={{ color: 'var(--w-muted)' }}>Powered by Xovera</p>
+            {config.poweredBy !== '' && (
+              <p className="text-[9px] text-center mt-2" style={{ color: 'var(--w-muted)' }}>{config.poweredBy || 'Powered by Growthable'}</p>
+            )}
           </form>
           )}
         </>
