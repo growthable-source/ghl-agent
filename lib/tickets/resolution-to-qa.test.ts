@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildResolutionQaPrompt, parseResolutionQa } from './resolution-to-qa'
+import { buildResolutionQaPrompt, parseResolutionQa, formatChatTranscript, buildTranscriptQaPrompt } from './resolution-to-qa'
 
 describe('buildResolutionQaPrompt', () => {
   it('embeds the question, reply and brand, and asks for JSON + PII stripping', () => {
@@ -46,5 +46,51 @@ describe('parseResolutionQa', () => {
   it('returns null on non-JSON garbage', () => {
     expect(parseResolutionQa('the model said no')).toBeNull()
     expect(parseResolutionQa('')).toBeNull()
+  })
+})
+
+describe('formatChatTranscript', () => {
+  it('labels visitor vs agent turns and drops empties', () => {
+    const t = formatChatTranscript([
+      { role: 'visitor', content: 'How do I export?' },
+      { role: 'agent', content: '' },
+      { role: 'agent', content: 'Settings → Export.' },
+    ])
+    expect(t).toBe('CUSTOMER: How do I export?\nAGENT: Settings → Export.')
+  })
+
+  it('treats user/contact roles as the customer', () => {
+    expect(formatChatTranscript([{ role: 'user', content: 'hi' }])).toBe('CUSTOMER: hi')
+    expect(formatChatTranscript([{ role: 'contact', content: 'hi' }])).toBe('CUSTOMER: hi')
+  })
+
+  it('keeps only the most recent messages', () => {
+    const msgs = Array.from({ length: 50 }, (_, i) => ({ role: 'visitor', content: `m${i}` }))
+    const t = formatChatTranscript(msgs, { maxMessages: 3 })
+    expect(t).toBe('CUSTOMER: m47\nCUSTOMER: m48\nCUSTOMER: m49')
+  })
+
+  it('caps total length from the end', () => {
+    const t = formatChatTranscript([{ role: 'visitor', content: 'x'.repeat(100) }], { maxChars: 20 })
+    expect(t.length).toBe(20)
+  })
+
+  it('drops system notes and non-text card messages', () => {
+    const t = formatChatTranscript([
+      { role: 'visitor', content: 'Do you sell shoes?' },
+      { role: 'system', content: 'calendar misconfiguration' },
+      { role: 'agent', content: '{"gid":"1","title":"Shoe"}', kind: 'product' },
+      { role: 'agent', content: 'Yes, here are our shoes.', kind: 'text' },
+    ])
+    expect(t).toBe('CUSTOMER: Do you sell shoes?\nAGENT: Yes, here are our shoes.')
+  })
+})
+
+describe('buildTranscriptQaPrompt', () => {
+  it('embeds the transcript + brand and asks for JSON', () => {
+    const { system, user } = buildTranscriptQaPrompt({ transcript: 'CUSTOMER: hi\nAGENT: hello', brandName: 'Acme' })
+    expect(system.toLowerCase()).toContain('json')
+    expect(user).toContain('CUSTOMER: hi')
+    expect(user).toContain('Acme')
   })
 })

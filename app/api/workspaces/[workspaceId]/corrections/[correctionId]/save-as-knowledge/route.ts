@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { createKnowledgeForAgent } from '@/lib/knowledge'
+import { embedQaAsChunk } from '@/lib/tickets/brand-knowledge'
 
 type Params = { params: Promise<{ workspaceId: string; correctionId: string }> }
 
@@ -44,6 +45,19 @@ export async function POST(req: NextRequest, { params }: Params) {
       title,
       content: `When a contact asks something like: "${correction.messageLog.inboundMessage}"\n\nRespond: ${correction.correctedText}`,
       source: 'correction',
+    })
+    // The entry above is prompt-stuffed for the widget chat; also embed a chunk
+    // so the correction reaches ticket suggest-reply (chunks only). Wrapped in
+    // after() so the source/run creation survives Vercel's post-response
+    // teardown. Best-effort.
+    after(async () => {
+      await embedQaAsChunk({
+        collectionId: entry.collectionId,
+        question: correction.messageLog.inboundMessage,
+        answer: correction.correctedText,
+        identifier: `correction:${correctionId}`,
+        workspaceId,
+      }).catch(() => {})
     })
     await db.messageCorrection.update({
       where: { id: correctionId },

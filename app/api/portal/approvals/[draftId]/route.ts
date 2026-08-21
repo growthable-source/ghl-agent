@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { getPortalSession } from '@/lib/portal-auth'
 import { db } from '@/lib/db'
 import { sendTicketingEmail, isTransientSendFailure } from '@/lib/ticketing-send'
@@ -196,24 +196,29 @@ export async function POST(req: NextRequest, { params }: Params) {
     body: activityBody,
   })
 
-  notifyAuthor(draft.submittedByUserId, draft.ticket.workspaceId, {
-    title: editedBody
-      ? `Your reply for #${draft.ticket.ticketNumber} was approved with edits`
-      : `Your reply for #${draft.ticket.ticketNumber} was approved & sent`,
-    body: editedBody && diff
-      ? `The reviewer edited it before sending (+${diff.addedLines}/-${diff.removedLines} lines). Open the ticket to see what changed.`
-      : 'It was approved and sent as drafted.',
-    link: dashLink(draft.ticket.workspaceId, draft.ticket.id),
-  })
-
-  // Learn from the released reply — stage a brand-knowledge candidate.
+  // notify + learning are best-effort AND do post-response async work (the
+  // learning runs a Haiku distill + DB writes). Wrap in after() so Vercel
+  // keeps the runtime alive past the JSON response instead of tearing the
+  // detached promises down mid-flight.
   const question = draft.ticket.messages[0]?.body ?? draft.ticket.subject
-  stageTicketResolutionLearning({
-    ticket: { id: draft.ticket.id, brandId: draft.ticket.brandId, workspaceId: draft.ticket.workspaceId },
-    question,
-    answer: sentText,
-    brandName: draft.ticket.brand?.name ?? null,
-  }).catch(() => {})
+  after(async () => {
+    notifyAuthor(draft.submittedByUserId, draft.ticket.workspaceId, {
+      title: editedBody
+        ? `Your reply for #${draft.ticket.ticketNumber} was approved with edits`
+        : `Your reply for #${draft.ticket.ticketNumber} was approved & sent`,
+      body: editedBody && diff
+        ? `The reviewer edited it before sending (+${diff.addedLines}/-${diff.removedLines} lines). Open the ticket to see what changed.`
+        : 'It was approved and sent as drafted.',
+      link: dashLink(draft.ticket.workspaceId, draft.ticket.id),
+    })
+    // Learn from the released reply — stage a brand-knowledge candidate.
+    await stageTicketResolutionLearning({
+      ticket: { id: draft.ticket.id, brandId: draft.ticket.brandId, workspaceId: draft.ticket.workspaceId },
+      question,
+      answer: sentText,
+      brandName: draft.ticket.brand?.name ?? null,
+    }).catch(() => {})
+  })
 
   return NextResponse.json({
     ok: true,

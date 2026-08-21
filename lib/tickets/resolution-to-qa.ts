@@ -67,6 +67,83 @@ export function parseResolutionQa(raw: string): ResolutionQa | null {
   return { question, answer }
 }
 
+// ── Live-chat transcript → Q&A ──────────────────────────────────────────
+// A highly-rated chat isn't one question + one reply; it's a multi-turn
+// exchange. We ask the model for the single most reusable Q&A in it.
+
+const TRANSCRIPT_SYSTEM = `You read a resolved customer-support CHAT transcript that the customer rated highly, and extract the ONE most reusable FAQ pair that would help an AI assistant answer the SAME question for a FUTURE customer.
+
+Rules:
+- Pick the customer's main question and the answer that actually resolved it. Ignore greetings, small talk, and scheduling back-and-forth.
+- Rewrite the question into a clean, general form. Strip names, emails, phone numbers, order/account numbers, addresses — from BOTH question and answer.
+- The answer must be the business's actual, self-contained answer, generalized.
+- If the chat has no reusable Q&A (pure chit-chat, unresolved, or too thin), return {"question":"","answer":""}.
+- Reply with ONLY a JSON object, no prose, no code fence:
+{"question": "<general question>", "answer": "<general answer>"}`
+
+/** Turn ordered chat messages into a compact CUSTOMER/AGENT transcript.
+ *  Pure + testable; caps length so the prompt stays cheap. Drops
+ *  non-conversational turns — operator system notes (role 'system') and
+ *  non-text cards (kind != 'text', e.g. product-card JSON) — so internal text
+ *  and raw JSON never reach the distiller. */
+export function formatChatTranscript(
+  messages: Array<{ role: string; content: string; kind?: string | null }>,
+  opts: { maxMessages?: number; maxChars?: number } = {},
+): string {
+  const maxMessages = opts.maxMessages ?? 40
+  const maxChars = opts.maxChars ?? 6000
+  const lines: string[] = []
+  for (const m of messages) {
+    if (m.role === 'system') continue
+    if (m.kind && m.kind !== 'text') continue
+    const text = (m.content ?? '').trim()
+    if (!text) continue
+    const who = m.role === 'visitor' || m.role === 'user' || m.role === 'contact' ? 'CUSTOMER' : 'AGENT'
+    lines.push(`${who}: ${text}`)
+  }
+  const recent = lines.slice(-maxMessages)
+  const joined = recent.join('\n')
+  return joined.length > maxChars ? joined.slice(joined.length - maxChars) : joined
+}
+
+export function buildTranscriptQaPrompt(input: {
+  transcript: string
+  brandName?: string | null
+}): { system: string; user: string } {
+  const brandLine = input.brandName ? `Brand: ${input.brandName}\n\n` : ''
+  return {
+    system: TRANSCRIPT_SYSTEM,
+    user: `${brandLine}Chat transcript:\n"""\n${input.transcript.trim()}\n"""`,
+  }
+}
+
+/**
+ * Distil the best reusable Q&A from a rated chat. Returns null when the model
+ * finds nothing reusable or the call fails — the caller then simply doesn't
+ * stage a learning (unlike the ticket path there's no sensible raw fallback
+ * for a whole transcript).
+ */
+export async function distillTranscriptToQa(input: {
+  transcript: string
+  brandName?: string | null
+}): Promise<DistilledResolution | null> {
+  if (input.transcript.trim().length < 20) return null
+  const { system, user } = buildTranscriptQaPrompt(input)
+  try {
+    const res = await createMessage(
+      'claude-haiku',
+      { max_tokens: 500, temperature: 0, system, messages: [{ role: 'user', content: user }] },
+      { surface: 'chat_csat_qa' },
+    )
+    const text = res.content.find(b => b.type === 'text') as (LlmContentBlock & { text: string }) | undefined
+    const parsed = parseResolutionQa(text?.text ?? '')
+    if (parsed) return { ...parsed, confidence: 0.7, distilled: true }
+  } catch {
+    /* nothing reusable / call failed → skip */
+  }
+  return null
+}
+
 export async function distillResolutionToQa(input: {
   question: string
   reply: string
