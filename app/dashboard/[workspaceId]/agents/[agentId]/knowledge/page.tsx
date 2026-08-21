@@ -38,6 +38,10 @@ interface CollectionLite {
   isGlobal?: boolean
   /** Owned by another workspace — attach/detach only, no editing. */
   isReadOnly?: boolean
+  /** Presentation grouping: 'help_center' vs 'knowledge'. */
+  kind?: 'help_center' | 'knowledge'
+  /** Who maintains it — 'Xovera', a brand name, or 'Workspace'. */
+  ownerLabel?: string
 }
 
 interface KnowledgeDraft extends Record<string, unknown> {
@@ -215,6 +219,9 @@ export default function AgentKnowledgePage() {
     editHref?: string
     /** Shared corpus owned by another workspace — attach/detach only. */
     readOnly?: boolean
+    /** Who maintains it — shown as a chip (Xovera / a brand). */
+    ownerLabel?: string
+    isGlobal?: boolean
   }) => {
     const checked = draft.collectionIds.includes(opts.id)
     const hasTrigger = !!(draft.conditions[opts.id]?.trim())
@@ -244,13 +251,17 @@ export default function AgentKnowledgePage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{opts.name}</p>
-              {opts.readOnly && (
+              {opts.ownerLabel && (
                 <span
                   className="text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
-                  style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
-                  title="Maintained for you. Tick or untick it here; the content itself is managed centrally."
+                  style={opts.isGlobal
+                    ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                    : { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
+                  title={opts.readOnly
+                    ? 'Maintained for you. Tick or untick it here; the content itself is managed centrally.'
+                    : undefined}
                 >
-                  Shared
+                  {opts.ownerLabel}
                 </span>
               )}
               {checked && hasTrigger && (
@@ -283,6 +294,32 @@ export default function AgentKnowledgePage() {
     )
   }
 
+  const renderCollection = (c: CollectionLite) =>
+    renderRow({
+      id: c.id,
+      icon: c.icon || (c.kind === 'help_center' ? '📖' : '📚'),
+      iconBg: `linear-gradient(135deg, ${(c.color || '#fa4d2e')}33, ${(c.color || '#fa4d2e')}11)`,
+      name: c.name,
+      description: c.description,
+      meta: [
+        c.sourceCount > 0
+          ? `${c.sourceCount} link${c.sourceCount === 1 ? '' : 's'} & file${c.sourceCount === 1 ? '' : 's'} · searched live as people ask questions`
+          : null,
+        c.entryCount > 0 ? `${c.entryCount} written item${c.entryCount === 1 ? '' : 's'}` : null,
+        c.dataSourceCount > 0 ? `${c.dataSourceCount} data source${c.dataSourceCount === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(' · ') || 'Empty collection',
+      // A shared collection lives in another workspace, so the knowledge
+      // editor 404s by design — no "Edit →" for it.
+      editHref: c.isReadOnly ? undefined : `/dashboard/${workspaceId}/knowledge/${c.id}`,
+      readOnly: c.isReadOnly,
+      // Chip only when it isn't the plain workspace (Xovera / a brand).
+      ownerLabel: c.ownerLabel && c.ownerLabel !== 'Workspace' ? c.ownerLabel : undefined,
+      isGlobal: c.isGlobal,
+    })
+
+  const helpCenters = collections.filter(c => c.kind === 'help_center')
+  const knowledge = collections.filter(c => c.kind !== 'help_center')
+
   return (
     <div className="p-8 max-w-3xl space-y-6 pb-24">
       <div>
@@ -290,7 +327,7 @@ export default function AgentKnowledgePage() {
           What this agent knows
         </h2>
         <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Tick the collections this agent should use. Add a trigger to any collection to control <em>when</em> it&apos;s
+          Tick the help centers and knowledge this agent should use. Add a trigger to any item to control <em>when</em> it&apos;s
           used — otherwise it always applies. To add or edit the content itself, open the{' '}
           <Link href={`/dashboard/${workspaceId}/knowledge`} className="hover:underline" style={{ color: 'var(--accent-primary)' }}>
             workspace Knowledge page
@@ -331,30 +368,29 @@ export default function AgentKnowledgePage() {
         </div>
       ) : (
         <>
-          <div className="space-y-2">
-            {collections.map(c => {
-              const accent = c.color || '#fa4d2e'
-              return renderRow({
-                id: c.id,
-                icon: c.icon || '📚',
-                iconBg: `linear-gradient(135deg, ${accent}33, ${accent}11)`,
-                name: c.name,
-                description: c.description,
-                meta: [
-                  c.sourceCount > 0
-                    ? `${c.sourceCount} link${c.sourceCount === 1 ? '' : 's'} & file${c.sourceCount === 1 ? '' : 's'} · searched live as people ask questions`
-                    : null,
-                  c.entryCount > 0 ? `${c.entryCount} written item${c.entryCount === 1 ? '' : 's'}` : null,
-                  c.dataSourceCount > 0 ? `${c.dataSourceCount} data source${c.dataSourceCount === 1 ? '' : 's'}` : null,
-                ].filter(Boolean).join(' · ') || 'Empty collection',
-                // A shared collection lives in another workspace, so the
-                // knowledge editor 404s by design — linking there would
-                // hand every customer a broken "Edit →".
-                editHref: c.isReadOnly ? undefined : `/dashboard/${workspaceId}/knowledge/${c.id}`,
-                readOnly: c.isReadOnly,
-              })
-            })}
-          </div>
+          {helpCenters.length > 0 && (
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Help centers</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                  Article sets the agent can lean on — the Xovera base and any help centers you&apos;ve added.
+                </p>
+              </div>
+              {helpCenters.map(renderCollection)}
+            </section>
+          )}
+
+          {knowledge.length > 0 && (
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Knowledge</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                  Everything else — uploaded docs, FAQs, and answers learned from tickets &amp; chats.
+                </p>
+              </div>
+              {knowledge.map(renderCollection)}
+            </section>
+          )}
 
           {attachedCount === 0 && (
             <p className="text-[11px]" style={{ color: 'var(--accent-amber)' }}>

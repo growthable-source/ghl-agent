@@ -37,6 +37,7 @@ interface Collection {
   icon: string | null
   color: string | null
   order: number
+  kind?: 'help_center' | 'knowledge'
   createdAt: string
   updatedAt: string
   entries: Entry[]
@@ -207,6 +208,19 @@ export default function CollectionEditorPage() {
     router.push(`/dashboard/${workspaceId}/knowledge`)
   }
 
+  // Flip whether this collection presents as a "help center" in the agent
+  // knowledge picker (grouping only — retrieval is unaffected).
+  async function toggleKind() {
+    if (!collection) return
+    const next = collection.kind === 'help_center' ? 'knowledge' : 'help_center'
+    await fetch(`/api/workspaces/${workspaceId}/knowledge/collections/${collectionId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: next }),
+    })
+    await fetchAll()
+  }
+
   if (loading) return (
     <div className="flex-1 p-8">
       <div className="max-w-4xl mx-auto space-y-3">
@@ -253,6 +267,16 @@ export default function CollectionEditorPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={toggleKind}
+              className="text-[11px] px-3 py-1.5 rounded-lg hover:opacity-80 transition-colors inline-flex items-center gap-1.5"
+              style={collection.kind === 'help_center'
+                ? { border: '1px solid var(--accent-primary)', background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
+                : { border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+              title="Group this under 'Help centers' in the agent knowledge picker. Doesn't change what the agent retrieves."
+            >
+              {collection.kind === 'help_center' ? '📖 Help center' : 'Mark as help center'}
+            </button>
             <button
               onClick={() => setSharing(true)}
               className="text-[11px] px-3 py-1.5 rounded-lg hover:opacity-80 transition-colors inline-flex items-center gap-1.5"

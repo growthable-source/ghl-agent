@@ -52,7 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         orderBy: { attachedAt: 'asc' },
         include: {
           collection: {
-            include: { _count: { select: countSelect } },
+            include: { _count: { select: countSelect }, brand: { select: { name: true } } },
           },
         },
       }),
@@ -63,7 +63,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         orderBy: globalReady
           ? [{ isGlobal: 'desc' as const }, { order: 'asc' as const }, { createdAt: 'asc' as const }]
           : [{ order: 'asc' as const }, { createdAt: 'asc' as const }],
-        include: { _count: { select: countSelect } },
+        include: { _count: { select: countSelect }, brand: { select: { name: true } } },
       }),
     ])
   } catch (err: any) {
@@ -84,6 +84,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 function shape(c: any, workspaceId: string) {
+  const isGlobal = c.isGlobal === true
   return {
     id: c.id,
     name: c.name,
@@ -93,10 +94,17 @@ function shape(c: any, workspaceId: string) {
     entryCount: c._count?.entries ?? 0,
     dataSourceCount: c._count?.dataSources ?? 0,
     sourceCount: c._count?.sources ?? 0,
-    isGlobal: c.isGlobal === true,
+    isGlobal,
+    // 'help_center' | 'knowledge' — the picker groups on this. Default
+    // 'knowledge' if the column isn't populated (pre-backfill row).
+    kind: c.kind === 'help_center' ? 'help_center' : 'knowledge',
+    // Who maintains it, for the picker's owner chip. The Xovera-managed
+    // global corpus vs a brand's own vs the plain workspace.
+    ownerLabel: isGlobal ? 'Xovera' : (c.brand?.name ?? 'Workspace'),
+    brandId: c.brandId ?? null,
     // Owned by someone else: the UI must render this as attach/detach
     // only, with no link into the knowledge editor (which 404s by design).
-    isReadOnly: c.isGlobal === true && c.workspaceId !== workspaceId,
+    isReadOnly: isGlobal && c.workspaceId !== workspaceId,
   }
 }
 

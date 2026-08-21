@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
-import { sourceCollectionsReady, globalCollectionsReady } from '@/lib/knowledge/migration-state'
+import { sourceCollectionsReady, globalCollectionsReady, isMissingColumn } from '@/lib/knowledge/migration-state'
 
 type Params = { params: Promise<{ workspaceId: string; collectionId: string }> }
 
@@ -42,6 +42,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       icon: collection.icon,
       color: collection.color,
       order: collection.order,
+      kind: (collection as any).kind === 'help_center' ? 'help_center' : 'knowledge',
       sourceCount: collection._count?.sources ?? 0,
       createdAt: collection.createdAt.toISOString(),
       updatedAt: collection.updatedAt.toISOString(),
@@ -111,6 +112,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (typeof body.order === 'number' && Number.isFinite(body.order)) data.order = Math.trunc(body.order)
 
+  // kind: 'help_center' vs 'knowledge' — presentation grouping in the agent
+  // knowledge picker. Anything but 'help_center' normalises to 'knowledge'.
+  if (body.kind !== undefined) {
+    data.kind = body.kind === 'help_center' ? 'help_center' : 'knowledge'
+  }
+
   // brandId: explicit null clears the tag (back to "shared across
   // brands"); a non-empty string sets it after verifying it's a real
   // brand in this workspace.
@@ -137,10 +144,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const collection = await db.knowledgeCollection.update({
-    where: { id: collectionId },
-    data,
-  })
+  let collection
+  try {
+    collection = await db.knowledgeCollection.update({
+      where: { id: collectionId },
+      data,
+    })
+  } catch (err) {
+    // Pre-migration deploy window: the `kind` column may not exist yet, and
+    // Prisma's UPDATE ... RETURNING references every model scalar — so even a
+    // plain rename would P2022 until the migration lands. Fail soft rather
+    // than 500; it self-heals the moment the migration runs.
+    if (isMissingColumn(err)) {
+      return NextResponse.json(
+        { error: 'Knowledge is finishing an update — try again in a moment.', code: 'MIGRATION_PENDING' },
+        { status: 503 },
+      )
+    }
+    throw err
+  }
   return NextResponse.json({ collection })
 }
 

@@ -932,6 +932,14 @@ model KnowledgeCollection {
   // of a hardcoded cuid — the corpus can be rebuilt or renamed without
   // a redeploy. e.g. "helpcenter-v1".
   globalKey   String?   @unique
+  // How this collection presents in the agent knowledge picker:
+  //   'help_center' — an article set the agent can lean on (the Xovera/GHL
+  //                   base help center, or a customer's own help center).
+  //   'knowledge'   — everything else (uploaded docs, FAQs, mined Q&A…).
+  // Purely a presentation grouping; retrieval treats all collections the
+  // same. Backfill marks the global corpus + brand collections as help
+  // centers; operators can flip any collection with the toggle.
+  kind        String    @default("knowledge")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
