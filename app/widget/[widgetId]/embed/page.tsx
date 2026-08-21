@@ -1035,10 +1035,16 @@ export default function WidgetEmbedPage() {
           <p className="text-sm font-semibold truncate">{config.title}</p>
           <p className="text-[11px] truncate" style={{ color: 'var(--w-muted)' }}>{config.subtitle}</p>
         </div>
-        {config.liveHelpEnabled && (
-          // Live screen-share help opens in a NEW TAB — screen-capture
-          // permission prompts inside the embed iframe depend on each
-          // host site's iframe allow-list; a tab we own always works.
+        {config.launcher?.some(e => e.kind === 'copilot') && (
+          // Live screen-share help — shown only when the operator added
+          // Co-Pilot as a launcher option (their explicit opt-in). Gating on
+          // the launcher entry, not the raw plan flag, is what keeps an empty
+          // "Launcher options" config from surfacing a copilot icon at all.
+          // (config.launcher copilot entries are already plan-gated server-side.)
+          //
+          // Opens in a NEW TAB — screen-capture permission prompts inside the
+          // embed iframe depend on each host site's iframe allow-list; a tab
+          // we own always works.
           <a
             href={`/widget/${widgetId}/live?pk=${encodeURIComponent(publicKey)}&cid=${encodeURIComponent(getCookieId())}`}
             target="_blank"
