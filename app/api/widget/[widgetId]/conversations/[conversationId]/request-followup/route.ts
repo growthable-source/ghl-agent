@@ -31,13 +31,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widgetId },
     include: {
-      visitor: { select: { id: true, name: true, email: true } },
+      visitor: { select: { id: true, name: true, email: true, blockedAt: true } },
       ticket: { select: { id: true, ticketNumber: true } },
       widget: { select: { workspaceId: true, brandId: true } },
       messages: { orderBy: { createdAt: 'asc' }, take: 1, select: { content: true } },
     },
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers })
+  // Conduct block — a blocked visitor can't file tickets / push their email in.
+  if (convo.visitor?.blockedAt) {
+    return NextResponse.json({ error: 'This chat has been closed.', code: 'BLOCKED' }, { status: 403, headers })
+  }
 
   const workspaceId = convo.widget.workspaceId
   const status = await getTicketingStatus(workspaceId)

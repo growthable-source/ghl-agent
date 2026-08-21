@@ -103,6 +103,7 @@ export default async function PortalConversationsPage({
             widgetId: true,
             status: true,
             csatRating: true,
+            sentiment: true,
             lastMessageAt: true,
             assignedUserId: true,
             assignedUser: { select: { name: true, email: true } },
@@ -195,7 +196,16 @@ export default async function PortalConversationsPage({
                             {(c.visitor.name || c.visitor.email || 'V').charAt(0).toUpperCase()}
                           </span>
                           <div className="min-w-0">
-                            <p className="text-zinc-100 text-xs font-medium truncate max-w-[160px]">{c.visitor.name || 'Anonymous'}</p>
+                            <p className="text-zinc-100 text-xs font-medium truncate max-w-[160px] flex items-center gap-1.5">
+                              {(c.sentiment === 'red' || c.sentiment === 'amber') && (
+                                <span
+                                  className="inline-block w-2 h-2 rounded-full shrink-0"
+                                  style={{ background: c.sentiment === 'red' ? 'var(--accent-red)' : 'var(--accent-amber)' }}
+                                  title={c.sentiment === 'red' ? 'Flagged: hostile / abusive' : 'Frustrated'}
+                                />
+                              )}
+                              <span className="truncate">{c.visitor.name || 'Anonymous'}</span>
+                            </p>
                             {c.visitor.email && <p className="text-[10px] text-zinc-500 truncate max-w-[160px]">{c.visitor.email}</p>}
                           </div>
                         </div>

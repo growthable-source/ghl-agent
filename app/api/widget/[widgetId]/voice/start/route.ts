@@ -42,9 +42,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widgetId },
-    include: { visitor: { select: { id: true, name: true, email: true, phone: true } } },
+    include: { visitor: { select: { id: true, name: true, email: true, phone: true, blockedAt: true } } },
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers })
+  // Conduct block — a blocked visitor can't reach the team over voice either.
+  if (convo.visitor?.blockedAt) {
+    return NextResponse.json({ error: 'This chat has been closed.', code: 'BLOCKED' }, { status: 403, headers })
+  }
 
   // Pick the voice agent: widget.voiceAgentId > widget.defaultAgentId
   // Launcher voice entries may name a specific agent (validated against

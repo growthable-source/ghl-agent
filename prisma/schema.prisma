@@ -2459,6 +2459,12 @@ model WidgetVisitor {
   // to walk the full timeline.
   currentUrl     String?
   currentTitle   String?
+  // Conduct block — set when an operator/portal user ends a chat for abusive
+  // behaviour. A blocked visitor's new messages are refused. Human-gated only
+  // (never auto-set from sentiment) and reversible by clearing blockedAt.
+  blockedAt      DateTime?
+  blockReason    String?
+  blockedByEmail String?
   conversations  WidgetConversation[]
   events         WidgetVisitorEvent[]
   recoveryTokens VisitorRecoveryToken[]
@@ -2500,6 +2506,15 @@ model WidgetConversation {
   locationId          String?
   agentId             String?
   status              String             @default("active")
+  // AI conduct/sentiment traffic light for the visitor's messages:
+  //   'green' — happy / polite / respectful
+  //   'amber' — moderately negative / frustrated
+  //   'red'   — irate / rude / offensive / aggressive
+  // Classified from the recent transcript on each inbound message. Surfaced
+  // in the portal so the team can spot (and stop) abuse. Null = not yet scored.
+  sentiment           String?
+  sentimentReason     String?
+  sentimentUpdatedAt  DateTime?
   lastMessageAt       DateTime           @default(now())
   // Cron debounce for conversation.stale — set when we've already paged
   // about this thread so we don't notify again until the visitor replies.

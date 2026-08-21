@@ -3,12 +3,24 @@ import { redirect, notFound } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
 import { getSuggestedArticles } from '@/lib/portal/suggested-articles'
+import ConversationModeration from '@/components/portal/ConversationModeration'
 
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
   title: 'Session · Customer Portal',
   robots: { index: false, follow: false },
+}
+
+const SENT_COLOR: Record<'red' | 'amber' | 'green', string> = {
+  red: 'var(--accent-red)',
+  amber: 'var(--accent-amber)',
+  green: 'var(--accent-emerald)',
+}
+const SENT_LABEL: Record<'red' | 'amber' | 'green', string> = {
+  red: 'Red — hostile / abusive',
+  amber: 'Amber — frustrated',
+  green: 'Green — polite',
 }
 
 type Params = { params: Promise<{ id: string }> }
@@ -23,10 +35,11 @@ export default async function PortalConversationPage({ params }: Params) {
     where: { id },
     select: {
       id: true, status: true, csatRating: true, csatComment: true, visitorId: true,
+      sentiment: true, sentimentReason: true, sentimentUpdatedAt: true,
       lastMessageAt: true, createdAt: true, initiatedUrl: true, initiatedTitle: true,
       assignedUserId: true,
       assignedUser: { select: { name: true, email: true } },
-      visitor: { select: { name: true, email: true, phone: true, firstSeenAt: true } },
+      visitor: { select: { name: true, email: true, phone: true, firstSeenAt: true, blockedAt: true } },
       widget: { select: { name: true, workspaceId: true, brandId: true, brand: { select: { name: true, primaryColor: true } } } },
       messages: { orderBy: { createdAt: 'asc' }, select: { id: true, role: true, content: true, createdAt: true, kind: true } },
     },
@@ -50,7 +63,8 @@ export default async function PortalConversationPage({ params }: Params) {
   const durationMs = c.lastMessageAt.getTime() - c.createdAt.getTime()
   const human = !!c.assignedUserId
   const accent = c.widget.brand?.primaryColor || 'var(--portal-accent)'
-  const sentiment = c.csatRating == null ? null : c.csatRating >= 4 ? 'positive' : c.csatRating <= 2 ? 'negative' : 'neutral'
+  const aiSentiment = (c.sentiment === 'red' || c.sentiment === 'amber' || c.sentiment === 'green') ? c.sentiment : null
+  const blocked = !!c.visitor.blockedAt
 
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
@@ -151,26 +165,28 @@ export default async function PortalConversationPage({ params }: Params) {
             </div>
           </Card>
 
-          <Card title="Sentiment">
-            {sentiment ? (
+          <Card title="Conduct &amp; sentiment">
+            {aiSentiment ? (
               <>
-                <div className="h-2 rounded-full overflow-hidden flex">
-                  <div className="flex-1" style={{ background: 'var(--accent-red)' }} />
-                  <div className="flex-1" style={{ background: 'var(--accent-amber)' }} />
-                  <div className="flex-1" style={{ background: 'var(--accent-emerald)' }} />
+                <div className="flex items-center gap-2">
+                  {(['red', 'amber', 'green'] as const).map(lvl => (
+                    <span key={lvl} className="w-3.5 h-3.5 rounded-full" style={{ background: SENT_COLOR[lvl], opacity: aiSentiment === lvl ? 1 : 0.18 }} />
+                  ))}
+                  <span className="text-sm font-semibold ml-1" style={{ color: SENT_COLOR[aiSentiment] }}>{SENT_LABEL[aiSentiment]}</span>
                 </div>
-                <div className="relative h-0">
-                  <div className="absolute -top-3 w-2 h-2 rotate-45 bg-white" style={{ left: `calc(${((c.csatRating! - 1) / 4) * 100}% - 4px)` }} />
-                </div>
-                <p className="text-sm font-semibold mt-3" style={{ color: sentiment === 'positive' ? 'var(--accent-emerald)' : sentiment === 'negative' ? 'var(--accent-red)' : 'var(--accent-amber)' }}>
-                  {sentiment === 'positive' ? 'Positive' : sentiment === 'negative' ? 'Negative' : 'Neutral'}
-                </p>
-                <p className="text-[10px] text-zinc-500">Derived from the {c.csatRating}★ CSAT rating.</p>
+                {c.sentimentReason && <p className="text-[11px] text-zinc-400 mt-2">{c.sentimentReason}</p>}
+                <p className="text-[10px] text-zinc-600 mt-1.5">AI-scored from the visitor's messages.</p>
               </>
             ) : (
-              <p className="text-xs text-zinc-500">No rating yet — AI sentiment scoring for every chat is a planned enhancement.</p>
+              <p className="text-xs text-zinc-500">Not scored yet — updates once the visitor has written a message or two.</p>
             )}
           </Card>
+
+          {(aiSentiment === 'red' || aiSentiment === 'amber' || blocked || c.status !== 'ended') && (
+            <Card title="Moderation">
+              <ConversationModeration conversationId={c.id} sentiment={aiSentiment} blocked={blocked} />
+            </Card>
+          )}
 
           <Card title="Agent Involvement">
             <div className="space-y-2">

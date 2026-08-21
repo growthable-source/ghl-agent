@@ -67,6 +67,45 @@ export async function sendPositiveFeedbackEmail(input: {
   return { sent }
 }
 
+/**
+ * Report to the brand's portal admins that a visitor was blocked for conduct.
+ * Best-effort. `blockedBy` is the person who took the action.
+ */
+export async function sendConductBlockEmail(input: {
+  brandId: string
+  brandName: string | null
+  visitorLabel: string
+  reason: string | null
+  blockedBy: string
+  excerpt: string | null
+}): Promise<{ sent: number }> {
+  const emails = await brandPortalRecipients(input.brandId)
+  if (emails.length === 0) return { sent: 0 }
+
+  const brand = input.brandName || 'your brand'
+  const { html, text } = renderBrandedEmail({
+    title: 'A visitor was blocked for conduct',
+    preheader: `${input.visitorLabel} was blocked on ${brand}`,
+    intro: `${escapeHtml(input.blockedBy)} ended and blocked a live chat with ${escapeHtml(brand)} because of the visitor's conduct.`,
+    bodyHtml: paragraphs([
+      { html: `<strong>Visitor:</strong> ${escapeHtml(input.visitorLabel)}` },
+      input.reason ? { html: `<strong>Reason:</strong> ${escapeHtml(input.reason)}` } : '',
+      input.excerpt ? { html: `<strong>What they said</strong><br>“${escapeHtml(input.excerpt).slice(0, 500)}”` } : '',
+      `The visitor can no longer send messages on this widget. You can reverse this from the conversation if it was a mistake.`,
+    ].filter(Boolean) as Array<string | { html: string }>),
+    cta: { label: 'Review conversations', url: `${appUrl()}/portal/conversations` },
+  })
+
+  let sent = 0
+  await Promise.all(emails.map(async to => {
+    const id = await sendEmail(
+      { to, subject: `Visitor blocked for conduct — ${brand}`, html, text, from: process.env.PORTAL_FROM_EMAIL || undefined, context: 'conduct-block' },
+    ).catch(() => null)
+    if (id) sent++
+  }))
+  return { sent }
+}
+
 /** Load a rated conversation and email the brand's portal admins. */
 export async function emailPortalPositiveChatFeedback(
   conversationId: string,

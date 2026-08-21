@@ -6,6 +6,7 @@ import { notify } from '@/lib/notifications'
 import { resolveHandoverLink } from '@/lib/handover-link'
 import { runWidgetAgent } from '@/lib/widget-agent-runner'
 import { translateMessageInBackground } from '@/lib/widget-translation'
+import { classifyConversationSentiment } from '@/lib/widget-sentiment'
 
 export const maxDuration = 300
 
@@ -48,6 +49,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers })
 
+  // Conduct block — a visitor an operator blocked for abusive behaviour can't
+  // keep messaging. Refuse quietly (no agent run, no persistence).
+  if ((convo.visitor as { blockedAt?: Date | null } | null)?.blockedAt) {
+    return NextResponse.json({ error: 'This chat has been closed.', code: 'BLOCKED' }, { status: 403, headers })
+  }
+
   // Detect "new conversation" BEFORE persisting the visitor message so the
   // count reflects prior visitor messages, not this one. First visitor
   // message on an unclaimed thread fires widget.new_conversation so whoever
@@ -69,6 +76,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     // so a re-stalled chat can escalate again.
     data: { lastMessageAt: new Date(), staleNotifiedAt: null, escalatedNotifiedAt: null },
   })
+
+  // Re-score the conduct/sentiment traffic light from the visitor's recent
+  // messages. after() so the Haiku call survives Vercel's post-response
+  // teardown; advisory only (never auto-blocks).
+  after(async () => { await classifyConversationSentiment(conversationId).catch(() => {}) })
 
   // Fire new-conversation notification after the response so the widget
   // never waits on Slack/Discord/etc. Wrapped in after() so the work

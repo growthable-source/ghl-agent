@@ -59,6 +59,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     include: { widget: true, visitor: true },
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers })
+  // Conduct block — a blocked visitor can't bypass the chat block via uploads.
+  if ((convo.visitor as { blockedAt?: Date | null } | null)?.blockedAt) {
+    return NextResponse.json({ error: 'This chat has been closed.', code: 'BLOCKED' }, { status: 403, headers })
+  }
 
   let form: FormData
   try { form = await req.formData() } catch {
