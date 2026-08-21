@@ -118,3 +118,37 @@ export async function syncHelpCenterArticles(params: {
     detected: detection.kind,
   }
 }
+
+/**
+ * Re-crawl a help center's already-synced articles, on demand — the
+ * push-on-publish path. Finds the workspace's "Help center articles"
+ * collection and its active sources, and enqueues a FORCED IngestionRun
+ * for each (force so EDITS to existing article pages are re-fetched, not
+ * just brand-new URLs). Deduped against a queued/running run so repeated
+ * pushes coalesce. Returns how many runs it queued; 0 = nothing synced
+ * for this workspace yet (they were never unlocked with articles).
+ */
+export async function refreshHelpCenterArticles(workspaceId: string): Promise<{ queued: number; sources: number }> {
+  const collection = await db.knowledgeCollection.findFirst({
+    where: { workspaceId, name: HELP_CENTER_COLLECTION_NAME },
+    select: { id: true },
+  })
+  if (!collection) return { queued: 0, sources: 0 }
+
+  const sources = await db.knowledgeSource.findMany({
+    where: { collectionId: collection.id, domain: { workspaceId }, isActive: true },
+    select: { id: true },
+  })
+
+  let queued = 0
+  for (const source of sources) {
+    const pending = await db.ingestionRun.findFirst({
+      where: { sourceId: source.id, status: { in: ['queued', 'running'] } },
+      select: { id: true },
+    })
+    if (pending) continue
+    await db.ingestionRun.create({ data: { sourceId: source.id, status: 'queued', force: true } })
+    queued++
+  }
+  return { queued, sources: sources.length }
+}

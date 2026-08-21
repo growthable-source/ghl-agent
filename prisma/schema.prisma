@@ -1157,6 +1157,12 @@ model IngestionRun {
   startedAt        DateTime        @default(now())
   completedAt      DateTime?
   status           String          @default("running") // 'running' | 'success' | 'partial' | 'failed'
+  // Force a full re-fetch (bypass the skip-unchanged filter) when this
+  // run is claimed. A normal recrawl only fetches NEW urls, so an EDIT
+  // to an existing article page wouldn't be picked up — a push-on-
+  // publish refresh sets this so edits land. The ingest-queue cron
+  // threads it into ingestSource's `force` option.
+  force            Boolean         @default(false)
   pagesAttempted   Int             @default(0)
   pagesSucceeded   Int             @default(0)
   chunksCreated    Int             @default(0)

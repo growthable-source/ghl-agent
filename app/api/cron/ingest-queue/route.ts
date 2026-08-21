@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     const next = await db.ingestionRun.findFirst({
       where: { status: 'queued' },
       orderBy: { startedAt: 'asc' },
-      select: { id: true, sourceId: true },
+      select: { id: true, sourceId: true, force: true },
     })
     if (!next) break
 
@@ -67,11 +67,13 @@ export async function GET(req: NextRequest) {
       // run slot + bookkeeping. Big sites finish across ticks: a
       // deadline-cut run queues a continuation, and hash-matching
       // makes re-walked pages nearly free (no re-embed).
-      const result = await ingestSource(next.sourceId, { runId: next.id, deadlineAt: tickStart + 240_000 })
+      const result = await ingestSource(next.sourceId, { runId: next.id, deadlineAt: tickStart + 240_000, force: next.force })
       results.push({ runId: next.id, status: result.status })
       if (result.deadlineExhausted) {
         await db.ingestionRun
-          .create({ data: { sourceId: next.sourceId, status: 'queued' } })
+          // Carry `force` onto the continuation so a big forced refresh
+          // stays forced across ticks instead of reverting to skip-unchanged.
+          .create({ data: { sourceId: next.sourceId, status: 'queued', force: next.force } })
           .catch(() => undefined)
         console.log(`[ingest-queue] queued continuation for source ${next.sourceId}`)
       }

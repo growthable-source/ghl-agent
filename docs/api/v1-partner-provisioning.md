@@ -50,6 +50,22 @@ Body: `{ externalId, email, businessName, helpCenterUrl?, metadata? }`
 `{ installId, status }` where status is `registered` on first call, or
 whatever the install already is (`ready`, `provisioning`, …).
 
+## `POST /api/v1/partner/installs/{externalId}/refresh-knowledge`
+
+Call this when a customer publishes or edits help-center content, so the
+AI widget's knowledge reflects it within ~a minute instead of waiting
+out the ~7-day auto-recrawl. Enqueues a forced re-crawl of the install's
+"Help center articles" source(s) — forced so edits to existing pages are
+re-fetched, deduped against any in-flight run. Cheap and coalescing.
+
+Response: `{ queued, sources }` — how many re-crawl runs were queued and
+how many article sources exist. `queued:0, sources:0` means the install
+was never unlocked with an article crawl (nothing to refresh yet). 409
+`not_ready` if provisioning hasn't finished.
+
+Debounce per-centre on your side (a few minutes) — every call counts
+against the org key's 60-writes/10-min budget.
+
 ## `POST /api/v1/partner/installs`
 
 Creates User → Workspace (+ native Location) → Agent (attached to the
