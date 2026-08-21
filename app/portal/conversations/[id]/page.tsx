@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
+import { getSuggestedArticles } from '@/lib/portal/suggested-articles'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,18 +22,28 @@ export default async function PortalConversationPage({ params }: Params) {
   const c = await db.widgetConversation.findUnique({
     where: { id },
     select: {
-      id: true, status: true, csatRating: true, csatComment: true,
+      id: true, status: true, csatRating: true, csatComment: true, visitorId: true,
       lastMessageAt: true, createdAt: true, initiatedUrl: true, initiatedTitle: true,
       assignedUserId: true,
       assignedUser: { select: { name: true, email: true } },
       visitor: { select: { name: true, email: true, phone: true, firstSeenAt: true } },
-      widget: { select: { name: true, brandId: true, brand: { select: { name: true, primaryColor: true } } } },
+      widget: { select: { name: true, workspaceId: true, brandId: true, brand: { select: { name: true, primaryColor: true } } } },
       messages: { orderBy: { createdAt: 'asc' }, select: { id: true, role: true, content: true, createdAt: true, kind: true } },
     },
   })
   if (!c) notFound()
   const brandId = c.widget.brandId
   if (!brandId || !session.brandIds.includes(brandId)) notFound()
+
+  // Help-center articles that match what this visitor is asking (this session +
+  // their past sessions) — a research aid for the agent handling the chat.
+  const suggestedArticles = await getSuggestedArticles({
+    brandId,
+    workspaceId: c.widget.workspaceId,
+    visitorId: c.visitorId,
+    currentConversationId: c.id,
+    currentMessages: c.messages,
+  })
 
   const visitorMsgs = c.messages.filter(m => m.role === 'visitor' || m.role === 'user').length
   const agentMsgs = c.messages.length - visitorMsgs
@@ -94,6 +105,35 @@ export default async function PortalConversationPage({ params }: Params) {
             <Field label="First seen" value={new Date(c.visitor.firstSeenAt).toLocaleDateString()} />
             {c.initiatedUrl && <Field label="Started on" value={c.initiatedTitle || c.initiatedUrl} />}
           </Card>
+
+          {suggestedArticles.length > 0 && (
+            <Card title="Suggested help articles">
+              <p className="text-[10px] text-zinc-500 mb-2">
+                Matched to what this customer has asked — here and in past sessions.
+              </p>
+              <div className="space-y-2.5">
+                {suggestedArticles.map((a, i) => {
+                  const isLink = /^https?:\/\//i.test(a.sourceUrl)
+                  const pct = Math.round(a.similarity * 100)
+                  return (
+                    <div key={a.sourceUrl || i} className="rounded-lg border border-zinc-800 p-2.5" style={{ background: 'var(--surface-secondary)' }}>
+                      <div className="flex items-start justify-between gap-2">
+                        {isLink ? (
+                          <a href={a.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-zinc-100 hover:underline line-clamp-2">
+                            {a.title}
+                          </a>
+                        ) : (
+                          <p className="text-xs font-medium text-zinc-100 line-clamp-2">{a.title}</p>
+                        )}
+                        <span className="text-[9px] text-zinc-500 flex-shrink-0 mt-0.5">{pct}%</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 mt-1 line-clamp-3">{a.preview}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
 
           <Card title="Session Metrics">
             <div className="grid grid-cols-2 gap-3">
