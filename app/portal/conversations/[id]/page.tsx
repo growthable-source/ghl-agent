@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
 import { getSuggestedArticles } from '@/lib/portal/suggested-articles'
 import ConversationModeration from '@/components/portal/ConversationModeration'
+import ChatMarkdown from '@/components/ChatMarkdown'
 
 export const dynamic = 'force-dynamic'
 
@@ -280,9 +281,13 @@ function Bubble({ message, accent }: { message: { role: string; content: string;
           // eslint-disable-next-line @next/next/no-img-element
           <a href={message.content} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg overflow-hidden border border-zinc-700 max-w-[60%]"><img src={message.content} alt="attachment" className="block w-full" /></a>
         ) : (
-          <div className={'inline-block px-3 py-2 rounded-lg text-sm whitespace-pre-wrap text-left ' + (isVisitor ? 'text-zinc-100' : 'text-zinc-100 border')}
+          <div className={'inline-block px-3 py-2 rounded-lg text-sm text-left ' + (isVisitor ? 'text-zinc-100 whitespace-pre-wrap' : 'text-zinc-100 border')}
             style={isVisitor ? { background: 'var(--surface-tertiary)' } : { background: `color-mix(in srgb, ${accent} 12%, transparent)`, borderColor: `color-mix(in srgb, ${accent} 25%, transparent)` }}>
-            {message.content}
+            {/* Support/agent replies are markdown (bold, bullets, links) —
+                render them the same way the widget and operator inbox do,
+                instead of showing literal ** and collapsed lists. Visitor
+                messages stay verbatim plain text. */}
+            {isVisitor ? message.content : <ChatMarkdown text={message.content} />}
           </div>
         )}
       </div>
