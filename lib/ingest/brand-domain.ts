@@ -99,11 +99,15 @@ export async function getOrCreateBrandCollection(
  * the widget never reads it. (Workspace-wide agents — knowledgeScopeAll:
  * true — already pick it up; the scoped/provisioned agents are the gap.)
  *
- * We attach to every distinct ChatWidget.defaultAgentId for the brand —
- * that's the agent lib/widget-agent-runner.ts resolves for the widget. A
- * widget that leaves defaultAgentId null routes to a fallback agent, which
- * is workspace-wide and already reads the collection, so there's nothing
- * to attach there.
+ * We attach to the agent behind each of the brand's widgets —
+ * ChatWidget.defaultAgentId, the same agent lib/widget-agent-runner.ts
+ * resolves — but ONLY when that id points at a live, active agent in the
+ * widget's workspace (the runner's own gate). defaultAgentId has no
+ * foreign key, so it can be stale (point at a deleted agent), whereas
+ * AgentCollection.agentId DOES have an FK — attaching to a ghost id would
+ * throw a constraint error. A widget with a null or dead defaultAgentId
+ * routes to a fallback agent, which is workspace-wide and already reads
+ * the collection, so there's nothing to attach there.
  *
  * Idempotent (upsert on the AgentCollection unique) and meant to be
  * called best-effort: a throw must never fail the portal add that
@@ -115,10 +119,26 @@ export async function attachBrandCollectionToAgents(
 ): Promise<number> {
   const widgets = await db.chatWidget.findMany({
     where: { brandId, defaultAgentId: { not: null } },
-    select: { defaultAgentId: true },
+    select: { defaultAgentId: true, workspaceId: true },
   })
+  if (widgets.length === 0) return 0
+
+  // defaultAgentId has no FK and can be stale, so resolve which referenced
+  // agents actually exist, are active, and live in the widget's workspace
+  // — the same gate widget-agent-runner applies — before attaching. This
+  // keeps us off deleted agents (AgentCollection.agentId would violate its
+  // FK) and off agents the widget wouldn't actually use.
+  const ids = [...new Set(widgets.map(w => w.defaultAgentId!).filter(Boolean))]
+  const live = await db.agent.findMany({
+    where: { id: { in: ids }, isActive: true },
+    select: { id: true, workspaceId: true },
+  })
+  const workspaceById = new Map(live.map(a => [a.id, a.workspaceId]))
+
   const agentIds = [...new Set(
-    widgets.map(w => w.defaultAgentId).filter((id): id is string => !!id),
+    widgets
+      .filter(w => workspaceById.get(w.defaultAgentId!) === w.workspaceId)
+      .map(w => w.defaultAgentId!),
   )]
   for (const agentId of agentIds) {
     await db.agentCollection.upsert({
