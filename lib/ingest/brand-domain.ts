@@ -86,6 +86,50 @@ export async function getOrCreateBrandCollection(
   })
 }
 
+/**
+ * Wire a brand's portal-knowledge collection into the agent(s) that
+ * actually answer that brand's chat.
+ *
+ * Why this exists: portal users add knowledge into the brand collection,
+ * but a provisioned brand agent runs knowledgeScopeAll:false (scoped) — it
+ * retrieves ONLY collections explicitly attached via AgentCollection (the
+ * canonical corpus + crawled help-center articles, see lib/partner/
+ * article-sync.ts). Without this link the brand's own portal knowledge is
+ * orphaned: the Knowledge page shows the collection "not connected" and
+ * the widget never reads it. (Workspace-wide agents — knowledgeScopeAll:
+ * true — already pick it up; the scoped/provisioned agents are the gap.)
+ *
+ * We attach to every distinct ChatWidget.defaultAgentId for the brand —
+ * that's the agent lib/widget-agent-runner.ts resolves for the widget. A
+ * widget that leaves defaultAgentId null routes to a fallback agent, which
+ * is workspace-wide and already reads the collection, so there's nothing
+ * to attach there.
+ *
+ * Idempotent (upsert on the AgentCollection unique) and meant to be
+ * called best-effort: a throw must never fail the portal add that
+ * triggered it — teaching the AI can't break over a wiring nicety.
+ */
+export async function attachBrandCollectionToAgents(
+  brandId: string,
+  collectionId: string,
+): Promise<number> {
+  const widgets = await db.chatWidget.findMany({
+    where: { brandId, defaultAgentId: { not: null } },
+    select: { defaultAgentId: true },
+  })
+  const agentIds = [...new Set(
+    widgets.map(w => w.defaultAgentId).filter((id): id is string => !!id),
+  )]
+  for (const agentId of agentIds) {
+    await db.agentCollection.upsert({
+      where: { agentId_collectionId: { agentId, collectionId } },
+      create: { agentId, collectionId },
+      update: {},
+    })
+  }
+  return agentIds.length
+}
+
 /** Read-only variant for the suggest-reply path. */
 export async function findBrandCollectionId(brandId: string | null | undefined): Promise<string | null> {
   if (!brandId) return null

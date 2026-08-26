@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPortalSession } from '@/lib/portal-auth'
 import { db } from '@/lib/db'
 import { detectUrl } from '@/lib/ingest/detect'
-import { getOrCreateBrandDomain, getOrCreateBrandCollection } from '@/lib/ingest/brand-domain'
+import { getOrCreateBrandDomain, getOrCreateBrandCollection, attachBrandCollectionToAgents } from '@/lib/ingest/brand-domain'
 
 /**
  * POST — portal users teach their brand's AI, exactly the way workspace
@@ -14,6 +14,11 @@ import { getOrCreateBrandDomain, getOrCreateBrandCollection } from '@/lib/ingest
  * so everything flows through the same crawl → chunk → classify → embed
  * pipeline agents use, shows up on the workspace Knowledge page like any
  * other collection, and ticket suggest-reply reads it for this brand.
+ *
+ * The brand collection is also auto-connected to the brand's widget
+ * agent(s) here (attachBrandCollectionToAgents) so scoped/provisioned
+ * agents — which read only explicitly-attached collections — actually
+ * use what portal users teach, instead of leaving it "not connected".
  *
  * Returns immediately; the ingest-queue cron claims the queued run.
  */
@@ -144,6 +149,13 @@ async function resolveBrandDomain(
     // Best-effort: pre-backfill databases have no collectionId column,
     // and a portal upload must not fail over a grouping nicety.
     const collection = await getOrCreateBrandCollection(brandId).catch(() => null)
+    // Auto-connect: attach the brand's portal-knowledge collection to the
+    // brand's widget agent(s) so scoped (provisioned) agents actually read
+    // what portal users teach — otherwise the collection sits "not
+    // connected" and the widget ignores it. Best-effort; never fail the add.
+    if (collection) {
+      await attachBrandCollectionToAgents(brandId, collection.id).catch(() => {})
+    }
     return { domain, collectionId: collection?.id ?? null }
   } catch {
     // Pre-migration: KnowledgeDomain.brandId column missing.
