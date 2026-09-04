@@ -19,6 +19,7 @@
  */
 
 import { humaniseResendError } from '@/lib/ticketing-send'
+import { sanitizeEmailSubject } from '@/lib/email-subject'
 
 export { humaniseResendError }
 
@@ -70,7 +71,7 @@ export async function sendEmail(
     body: JSON.stringify({
       from,
       to: Array.isArray(params.to) ? params.to : [params.to],
-      subject: params.subject,
+      subject: sanitizeEmailSubject(params.subject),
       html: params.html,
       text: params.text,
       ...(params.replyTo ? { reply_to: params.replyTo } : {}),

@@ -28,6 +28,7 @@ import type { Ticket } from '@prisma/client'
 import { db } from './db'
 import { notify } from './notifications'
 import { resolveTicketAssignee, type TicketAssignmentReason } from './ticket-routing'
+import { sanitizeEmailSubject } from './email-subject'
 
 export type TicketAssignDirective =
   | { mode: 'explicit'; userId: string; assignedAt?: Date }
@@ -52,7 +53,8 @@ export interface CreateTicketInput {
   contactName?: string | null
   contactPhone?: string | null
   crmContactId?: string | null
-  // Caller pre-validates/derives; helper only enforces the 255 cap.
+  // Caller pre-validates/derives; helper flattens it to a single
+  // line (email subjects are headers) and enforces the 255 cap.
   subject: string
   priority?: string
   summary?: string | null
@@ -105,7 +107,7 @@ export async function createTicket(input: CreateTicketInput): Promise<Ticket> {
         contactName: input.contactName ?? null,
         contactPhone: input.contactPhone ?? null,
         crmContactId: input.crmContactId ?? null,
-        subject: input.subject.slice(0, 255),
+        subject: sanitizeEmailSubject(input.subject, { maxLength: 255 }),
         priority: input.priority ?? 'normal',
         status: 'open',
         assignedUserId,

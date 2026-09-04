@@ -14,6 +14,7 @@
  */
 
 import { db } from './db'
+import { sanitizeEmailSubject } from './email-subject'
 
 interface SendArgs {
   workspaceId: string
@@ -69,7 +70,11 @@ export async function sendTicketingEmail(p: SendArgs): Promise<SendResult> {
     }
   }
   const from = fromAddr.includes('<') ? fromAddr : `${fromName} <${fromAddr}>`
-  const subjectWithRef = p.ticketRef ? `[#${p.ticketRef.number}] ${p.subject}` : p.subject
+  // Flatten BEFORE prefixing so the `[#N]` marker (which inbound
+  // threading parses back out) can never be pushed past the length
+  // cap or split across a line break.
+  const subject = sanitizeEmailSubject(p.subject)
+  const subjectWithRef = p.ticketRef ? `[#${p.ticketRef.number}] ${subject}` : subject
   const bodyWithSig = p.includeSignature !== false && settings?.signature
     ? `${p.text}\n\n--\n${settings.signature}`
     : p.text
@@ -164,6 +169,12 @@ export function humaniseResendError(status: number, body: string, fromAddr?: str
   }
   if (status === 422 && /invalid.*to|to.*required/i.test(lower)) {
     return 'Resend rejected the recipient address. Double-check the email format.'
+  }
+  if (status === 422 && /subject/i.test(lower)) {
+    // Subjects are one-lined by sanitizeEmailSubject before we POST, so
+    // reaching this means something new offends Resend's header
+    // validator — quote its words rather than guessing.
+    return `Resend rejected the subject line. Resend said: "${body.slice(0, 180)}"`
   }
   if (status === 429) {
     return 'Resend is rate-limiting this account right now. Wait a minute and try again.'

@@ -15,6 +15,7 @@
  */
 
 import { db } from './db'
+import { sanitizeEmailSubject } from './email-subject'
 
 interface SendResult {
   ok: boolean
@@ -216,7 +217,7 @@ async function sendViaResend(args: {
     body: JSON.stringify({
       from,
       to: args.to,
-      subject: args.subject || '(no subject)',
+      subject: sanitizeEmailSubject(args.subject),
       text: args.body,
       html,
     }),
