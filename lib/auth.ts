@@ -1,9 +1,22 @@
-import NextAuth from 'next-auth'
+import NextAuth, { type NextAuthConfig } from 'next-auth'
+import { Auth } from '@auth/core'
 import Google from 'next-auth/providers/google'
 import { PrismaAdapter } from '@auth/prisma-adapter'
+import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
+import { authRequestHref } from '@/lib/auth-host'
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+/**
+ * Operator Google sign-in.
+ *
+ * Absolute Auth.js URLs follow the request host (`authRequestHref`).
+ * The stock `handlers` from `NextAuth()` rewrite the request to
+ * AUTH_URL / NEXTAUTH_URL, which pinned both app.xovera.io and
+ * app.voxility.ai to one callback. `auth` / `signIn` / `signOut`
+ * still come from NextAuth — server session reads pass the cookie
+ * through and do not build the OAuth redirect_uri.
+ */
+const authConfig: NextAuthConfig = {
   trustHost: true,
   adapter: PrismaAdapter(db) as any,
   // Explicit session settings. NextAuth's silent defaults (30d / 24h
@@ -164,4 +177,32 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   debug: process.env.NODE_ENV === 'development',
-})
+}
+
+// Initializes secret / basePath / provider defaults on `authConfig`.
+// The returned HTTP handlers are not used — see `handlers` below.
+const { signIn, signOut, auth } = NextAuth(authConfig)
+
+function handleAuthRequest(req: NextRequest) {
+  const href = authRequestHref({
+    requestHref: req.nextUrl.href,
+    authUrl: process.env.AUTH_URL,
+    nextAuthUrl: process.env.NEXTAUTH_URL,
+    appUrl: process.env.APP_URL,
+  })
+  // Same reconstruction next-auth uses in reqWithEnvURL, without
+  // swapping the origin for AUTH_URL. Skip the copy when the URL
+  // already matches so the POST body is not consumed twice.
+  const request = req.url === href ? req : new NextRequest(href, req)
+  // next-auth depends on @auth/core 0.41.0, which stays nested because a
+  // newer copy is hoisted. The objects are the same AuthConfig; the
+  // duplicate type identity is what TypeScript rejects.
+  return Auth(request, authConfig as unknown as Parameters<typeof Auth>[1])
+}
+
+export const handlers = {
+  GET: handleAuthRequest,
+  POST: handleAuthRequest,
+}
+
+export { signIn, signOut, auth }
