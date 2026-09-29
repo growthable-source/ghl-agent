@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
+import { normalizeStoredCopilotLanguage } from '@/lib/copilot/language'
+import { normalizeStoredCopilotVoice } from '@/lib/copilot/voices'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -63,7 +65,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const b = body as Record<string, unknown>
   const type = b.type === 'onboarding' || b.type === 'other' ? (b.type as string) : 'support'
-  const voice = typeof b.voice === 'string' ? (b.voice as string).slice(0, 40) || null : null
+  const voice = normalizeStoredCopilotVoice(b.voice)
+  const language = normalizeStoredCopilotLanguage(b.language)
   const appContext = typeof b.appContext === 'string' ? (b.appContext as string).slice(0, 600) || null : null
   const { normalizeBlocks } = await import('@/lib/copilot/blocks')
   const procedureMode = b.procedureMode === 'advanced' ? 'advanced' : 'simple'
@@ -81,6 +84,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       blocks: blocks as any,
       knowledgeDomainIds,
       voice,
+      language,
       appContext,
       timeboxMinutes: Math.max(5, Math.min(120, Math.round(Number(body.timeboxMinutes) || 30))),
     } as any,

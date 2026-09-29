@@ -19,7 +19,8 @@ import { COPILOT_DEFAULTS } from './config'
 import { getWorkspaceSetupState } from './setup-state'
 import { getWorkflow, DEFAULT_WORKFLOW_KEY } from './workflows'
 import { buildCopilotSystemPrompt, buildWidgetCopilotPrompt } from './prompt'
-import { resolveCopilotVoice } from './voices'
+import { coerceCopilotVoiceName, readPinnedCopilotVoice, resolveCopilotVoice } from './voices'
+import { readPinnedCopilotLanguage, resolveCopilotLanguage } from './language'
 import { COPILOT_TOOL_DEFS, WIDGET_TOOL_DEFS, executeCopilotTool } from './tools'
 import { analyzeSessionAndFollowUp, type SessionAnalysis } from './analyze'
 import type { CopilotSessionDTO, RealtimeToolDef } from './types'
@@ -100,8 +101,8 @@ async function mintEphemeralToken(
    *  meeting-bot sessions pass a higher one (meetings run long). */
   ceilingSecs?: number,
   /** Per-session voice (already resolved from the agent's setting /
-   *  rotation). Falls back to the COPILOT_VOICE env, then Gemini's
-   *  default. Pinning any value stops the accent from drifting. */
+   *  rotation, or a session pin). Coerced to a catalog id — omitting
+   *  speechConfig is what lets native-audio drift mid-call. */
   voiceOverride?: string | null,
 ) {
   const geminiKey = process.env.GEMINI_API_KEY
@@ -114,10 +115,9 @@ async function mintEphemeralToken(
     maxSessionSecsOverride && maxSessionSecsOverride > 60 ? maxSessionSecsOverride : ceiling,
   )
 
-  // Voice: an explicit per-session choice wins (pins the voice, so the
-  // accent can't drift), then the COPILOT_VOICE env, else null = Gemini's
-  // own default. Locale still steers the accent.
-  const voiceName = voiceOverride || process.env.COPILOT_VOICE || null
+  // Always a catalog voice. Native-audio changes timbre when this is
+  // absent; 'rotate' is resolved by the caller before we get here.
+  const voiceName = coerceCopilotVoiceName(voiceOverride)
 
   const liveConfig = {
     responseModalities: [Modality.AUDIO],
@@ -133,9 +133,7 @@ async function mintEphemeralToken(
     outputAudioTranscription: {},
     contextWindowCompression: { slidingWindow: {} },
     sessionResumption: {},
-    ...(voiceName
-      ? { speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } }
-      : {}),
+    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
   }
 
   const now = Date.now()
@@ -216,12 +214,14 @@ export async function createStaffSession(opts: {
     const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
     const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
     voiceOverride = voiceName
+    const spoken = resolveCopilotLanguage(agent.language)
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
       agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
+      language: spoken.code,
     })
     const blocksLen = Array.isArray((agent as any).blocks) ? (agent as any).blocks.length : 0
     if (steps.length > 0 || blocksLen > 0) maxSecsOverride = (agent.timeboxMinutes + 5) * 60
@@ -589,12 +589,14 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
   })
   const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
   const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
+  const spoken = resolveCopilotLanguage(agent.language)
   const { buildAgentPrompt } = await import('./prompt')
   const systemPrompt = buildAgentPrompt({
     agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace.name ?? 'this workspace',
     ragContext,
     locale,
+    language: spoken.code,
   })
 
   const maxSecs = (steps.length > 0 || (Array.isArray((agent as any).blocks) && (agent as any).blocks.length > 0)) ? (agent.timeboxMinutes + 5) * 60 : undefined
@@ -644,6 +646,26 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
 
 const MEETING_CEILING_SECS = Number(process.env.COPILOT_MEETING_MAX_SECS) || 3600
 
+/**
+ * Voice + language locked for one meeting. Resolved at dispatch and
+ * stored on the session so connect (and a bot-page reload) cannot
+ * roll a new voice. 'rotate' rolls here, once.
+ *
+ * The agent's language wins over any request locale. A browser
+ * language used to be written into the prompt ("spoken conversation
+ * in en-AU"), which neither pinned the voice nor selected Spanish.
+ */
+function meetingSpeechPin(agent: { voice: string | null; name: string; language: string | null }) {
+  const voice = resolveCopilotVoice(agent.voice, agent.name)
+  const language = resolveCopilotLanguage(agent.language)
+  return {
+    locale: language.locale,
+    pinnedVoice: voice.voiceName,
+    pinnedDisplayName: voice.displayName,
+    pinnedLanguage: language.code,
+  }
+}
+
 function appOrigin(): string {
   const explicit = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL
   if (explicit) return explicit.replace(/\/$/, '')
@@ -681,13 +703,14 @@ export async function createMeetingSession(opts: {
   const maxSessionSecs = Math.min(MEETING_CEILING_SECS, Math.max(1800, (agent.timeboxMinutes + 10) * 60))
   const { randomBytes } = await import('crypto')
   const botToken = randomBytes(24).toString('base64url')
+  const pin = meetingSpeechPin(agent)
 
   const created = await db.copilotSession.create({
     data: {
       workspaceId: opts.workspaceId,
       startedByUserId: opts.userId,
       channel: 'recall_meeting_bot',
-      locale: normalizeLocale(opts.locale),
+      locale: pin.locale,
       workflowKey: null,
       model: 'gemini-live',
       metadata: {
@@ -701,6 +724,9 @@ export async function createMeetingSession(opts: {
         // Self-learning loop: after the call, the cron pulls Recall's
         // recording into the agent's learn-from-recordings pipeline.
         recordingPending: true,
+        pinnedVoice: pin.pinnedVoice,
+        pinnedDisplayName: pin.pinnedDisplayName,
+        pinnedLanguage: pin.pinnedLanguage,
       },
     },
   })
@@ -725,6 +751,9 @@ export async function createMeetingSession(opts: {
           knowledgeDomainIds: agent.knowledgeDomainIds ?? [],
           maxSessionSecs,
           recordingPending: true,
+          pinnedVoice: pin.pinnedVoice,
+          pinnedDisplayName: pin.pinnedDisplayName,
+          pinnedLanguage: pin.pinnedLanguage,
           botId: bot.id,
         },
       },
@@ -831,6 +860,7 @@ export async function createPublicMeetingSession(publicKey: string, opts: {
 
   const { randomBytes } = await import('crypto')
   const botToken = randomBytes(24).toString('base64url')
+  const pin = meetingSpeechPin(agent)
   const baseMeta = {
     mode: 'widget', // visitor-grade tool gating — the bot page is token-auth
     copilotMode: 'meeting',
@@ -842,13 +872,16 @@ export async function createPublicMeetingSession(publicKey: string, opts: {
     demo: true,
     demoIp: opts.ip ?? null,
     recordingPending: false, // never train on random public demos
+    pinnedVoice: pin.pinnedVoice,
+    pinnedDisplayName: pin.pinnedDisplayName,
+    pinnedLanguage: pin.pinnedLanguage,
   }
 
   const created = await db.copilotSession.create({
     data: {
       workspaceId: agent.workspaceId,
       channel: 'recall_meeting_bot',
-      locale: normalizeLocale(opts.locale),
+      locale: pin.locale,
       model: 'gemini-live',
       metadata: baseMeta,
     },
@@ -912,13 +945,21 @@ export async function connectMeetingSession(botToken: string) {
   })
   const ragContext = ragChunks.map((c, i) => `[${i + 1}] ${c.content}`).join('\n\n').slice(0, 5000)
 
-  const { voiceName, displayName } = resolveCopilotVoice(agent.voice, agent.name)
+  // Prefer the pin written at dispatch. Falling back to a fresh resolve
+  // only covers sessions created before pinning existed; we write the
+  // result back below so a second connect cannot roll again.
+  const pinnedVoice = readPinnedCopilotVoice(meta)
+  const resolvedVoice = pinnedVoice
+    ? { voiceName: pinnedVoice.voiceName, displayName: pinnedVoice.displayName ?? agent.name }
+    : resolveCopilotVoice(agent.voice, agent.name)
+  const languageCode = readPinnedCopilotLanguage(meta) ?? resolveCopilotLanguage(agent.language).code
   const { buildMeetingPrompt } = await import('./prompt')
   const systemPrompt = buildMeetingPrompt({
-    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+    agent: { name: resolvedVoice.displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace?.name ?? 'this workspace',
     ragContext,
     locale,
+    language: languageCode,
   })
 
   // Remaining budget after waiting-room time; refuse a connect with
@@ -929,11 +970,20 @@ export async function connectMeetingSession(botToken: string) {
   if (remaining < 120) throw new CopilotSopNotFoundError('meeting session expired')
 
   const { MEETING_TOOL_DEFS } = await import('./tools')
-  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, MEETING_TOOL_DEFS, remaining, remaining, voiceName)
+  const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, MEETING_TOOL_DEFS, remaining, remaining, resolvedVoice.voiceName)
 
   await db.copilotSession.update({
     where: { id: session.id },
-    data: { metadata: { ...meta, vendorModelId: realtime.vendorModelId, connectedAt: new Date().toISOString() } },
+    data: {
+      metadata: {
+        ...meta,
+        vendorModelId: realtime.vendorModelId,
+        connectedAt: new Date().toISOString(),
+        pinnedVoice: resolvedVoice.voiceName,
+        pinnedDisplayName: resolvedVoice.displayName,
+        pinnedLanguage: languageCode,
+      },
+    },
   })
 
   const videoRelayHost = process.env.RECALL_VIDEO_WORKER_WS_HOST

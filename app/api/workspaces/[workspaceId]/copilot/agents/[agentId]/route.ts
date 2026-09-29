@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
+import { normalizeStoredCopilotLanguage } from '@/lib/copilot/language'
+import { normalizeStoredCopilotVoice } from '@/lib/copilot/voices'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -40,6 +42,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       timeboxMinutes: agent.timeboxMinutes,
       knowledgeDomainIds: agent.knowledgeDomainIds,
       voice: agent.voice,
+      language: agent.language,
       appContext: agent.appContext,
       playbook: agent.playbook,
       recordings: agent.recordings.map(r => ({
@@ -85,9 +88,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const { normalizeBlocks } = await import('@/lib/copilot/blocks')
     data.blocks = normalizeBlocks(body.blocks).slice(0, 40) as any
   }
-  // Voice: a Gemini voice name, 'rotate', or '' to clear (= default).
-  // Validated against the catalog at resolve time, so store as-is.
-  if (typeof body.voice === 'string') data.voice = body.voice.slice(0, 40) || null
+  // Voice: a catalog id, 'rotate', or anything else → the pinned default.
+  // Empty used to store null, which omitted speechConfig and let the
+  // voice drift. Always persist a concrete choice.
+  if ('voice' in body) data.voice = normalizeStoredCopilotVoice(body.voice)
+  if ('language' in body) data.language = normalizeStoredCopilotLanguage(body.language)
   if (typeof body.appContext === 'string') data.appContext = body.appContext.slice(0, 600) || null
 
   // Publish: mint the publicKey server-side (never client-supplied).
