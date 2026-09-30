@@ -97,7 +97,6 @@ export class TurnLifecycle {
   /** Permit a deliberate opening/proactive turn. It is not user-latency data. */
   beginSystemTurn(): void {
     this.responseAllowed = true
-    this.lastAddressedInputAt = this.now()
     this.setState('ADDRESSED')
   }
 
@@ -125,6 +124,7 @@ export class TurnLifecycle {
     this.activation = this.requireDirectAddress ? (direct ? 'direct' : 'follow_up') : 'one_to_one'
     this.language = detectTurnLanguage(text)
     this.responseAllowed = true
+    this.lastAddressedInputAt = this.now()
     this.currentUtteranceActivated = true
     if (followUp || serverInterrupted) this.followUpAvailable = false
     this.setState('ADDRESSED')
