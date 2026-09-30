@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
 import { normalizeStoredCopilotLanguage } from '@/lib/copilot/language'
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       collectInfo: typeof b.collectInfo === 'string' ? (b.collectInfo as string).slice(0, 1500) : null,
       steps,
       procedureMode,
-      blocks,
+      blocks: blocks as unknown as Prisma.InputJsonValue,
       knowledgeDomainIds,
       voice,
       language,
