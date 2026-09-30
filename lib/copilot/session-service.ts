@@ -22,6 +22,7 @@ import { getWorkflow, DEFAULT_WORKFLOW_KEY } from './workflows'
 import { buildCopilotSystemPrompt, buildWidgetCopilotPrompt } from './prompt'
 import { coerceCopilotVoiceName, readPinnedCopilotVoice, resolveCopilotVoice } from './voices'
 import { readPinnedCopilotLanguage, resolveCopilotLanguage } from './language'
+import { normalizeBlocks } from './blocks'
 import { COPILOT_TOOL_DEFS, WIDGET_TOOL_DEFS, executeCopilotTool } from './tools'
 import { analyzeSessionAndFollowUp, type SessionAnalysis } from './analyze'
 import type { CopilotSessionDTO, RealtimeToolDef } from './types'
@@ -223,13 +224,13 @@ export async function createStaffSession(opts: {
     const spoken = resolveCopilotLanguage(agent.language)
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
-      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray(agent.blocks) ? agent.blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: normalizeBlocks(agent.blocks), timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
       language: spoken.code,
     })
-    const blocksLen = Array.isArray(agent.blocks) ? agent.blocks.length : 0
+    const blocksLen = normalizeBlocks(agent.blocks).length
     if (steps.length > 0 || blocksLen > 0) maxSecsOverride = (agent.timeboxMinutes + 5) * 60
   } else if (mode === 'sop') {
     const sop = opts.sopId
@@ -723,14 +724,14 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
   const spoken = resolveCopilotLanguage(agent.language)
   const { buildAgentPrompt } = await import('./prompt')
   const systemPrompt = buildAgentPrompt({
-    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray(agent.blocks) ? agent.blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: normalizeBlocks(agent.blocks), timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace.name ?? 'this workspace',
     ragContext,
     locale,
     language: spoken.code,
   })
 
-  const maxSecs = (steps.length > 0 || (Array.isArray(agent.blocks) && agent.blocks.length > 0)) ? (agent.timeboxMinutes + 5) * 60 : undefined
+  const maxSecs = (steps.length > 0 || normalizeBlocks(agent.blocks).length > 0) ? (agent.timeboxMinutes + 5) * 60 : undefined
   const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, WIDGET_TOOL_DEFS, maxSecs, undefined, voiceName)
 
   const created = await db.copilotSession.create({
@@ -1086,7 +1087,7 @@ export async function connectMeetingSession(botToken: string) {
   const languageCode = readPinnedCopilotLanguage(meta) ?? resolveCopilotLanguage(agent.language).code
   const { buildMeetingPrompt } = await import('./prompt')
   const systemPrompt = buildMeetingPrompt({
-    agent: { name: resolvedVoice.displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray(agent.blocks) ? agent.blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+    agent: { name: resolvedVoice.displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: normalizeBlocks(agent.blocks), timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace?.name ?? 'this workspace',
     ragContext,
     locale,
