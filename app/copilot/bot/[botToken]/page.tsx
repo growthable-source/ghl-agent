@@ -153,7 +153,12 @@ export default function MeetingBotPage() {
           realtime?: RealtimeConnectionInfo
           liveConfig?: Record<string, unknown>
           tools?: RealtimeToolDef[]
-          display?: { agentName?: string; workspaceName?: string }
+          display?: {
+            agentName?: string
+            pinnedDisplayName?: string
+            addressNames?: string[]
+            workspaceName?: string
+          }
           videoRelayUrl?: string | null
         }
         if (!res.ok || !body.ok || !body.realtime) {
@@ -162,7 +167,11 @@ export default function MeetingBotPage() {
           return
         }
         setAgentName(body.display?.agentName || 'Assistant')
-        lifecycleRef.current?.setAddressNames([body.display?.agentName || 'Assistant'])
+        lifecycleRef.current?.setAddressNames([
+          body.display?.agentName || 'Assistant',
+          body.display?.pinnedDisplayName || '',
+          ...(body.display?.addressNames ?? []),
+        ])
         setWorkspaceName(body.display?.workspaceName || '')
 
         const player = new PcmPlayer()

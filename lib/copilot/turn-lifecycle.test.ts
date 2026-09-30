@@ -74,9 +74,10 @@ describe('TurnLifecycle', () => {
     })
     lifecycle.userTranscript('Please check pricing', true)
     now = 10
+    // Provider dispatches tool callbacks before audio from the same message.
+    lifecycle.toolCallStarted()
     lifecycle.responseAudio()
     lifecycle.playbackScheduled(11)
-    lifecycle.toolCallStarted()
     now = 100
     lifecycle.turnComplete()
     expect(events).toEqual([])
@@ -126,6 +127,8 @@ describe('direct-address classification', () => {
     expect(isDirectAddress('Oye Nova, ¿puedes ayudarme?', ['Nova'])).toBe(true)
     expect(isDirectAddress('I told Nova about this yesterday', ['Nova'])).toBe(false)
     expect(isDirectAddress('Le dije a Nova que volviera mañana', ['Nova'])).toBe(false)
+    expect(isDirectAddress('Sofia, please summarize', ['Enterprise Helper', 'Sofia', 'Sofía'])).toBe(true)
+    expect(isDirectAddress('Oye Sofía, ¿qué sigue?', ['Enterprise Helper', 'Sofia', 'Sofía'])).toBe(true)
   })
 
   it('detects trace language without storing transcript text', () => {

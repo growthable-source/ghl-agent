@@ -3923,8 +3923,22 @@ model CopilotSession {
   events    CopilotScreenEvent[]
   toolCalls CopilotToolCall[]
   evals     CopilotEvalRecord[]
+  telemetryBatches CopilotTelemetryBatch[]
 
   @@index([workspaceId, startedAt(sort: Desc)])
+}
+
+/// Idempotency claim for one client telemetry batch. The claim is inserted
+/// in the same transaction as its turns/events/counter increments.
+model CopilotTelemetryBatch {
+  sessionId String
+  batchId   String
+  createdAt DateTime @default(now())
+
+  session CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, batchId])
+  @@index([createdAt])
 }
 
 model CopilotTranscriptTurn {
@@ -4078,6 +4092,9 @@ model CopilotAgent {
   /// it speaks unless someone on the call explicitly asks it to
   /// switch. See lib/copilot/language.ts.
   language           String?
+  /// Optional spoken aliases/pronunciations that should directly address
+  /// this agent in a multi-party meeting.
+  addressAliases     String[]           @default([])
   /// The one application/product this agent operates inside (e.g. "the
   /// Acme CRM dashboard"). Boxes the agent to that app so it grounds in
   /// the real UI instead of guessing across arbitrary screens.

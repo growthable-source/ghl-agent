@@ -81,6 +81,7 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
   private pendingSetupCancel: (() => void) | null = null
   private pendingAudio = new RollingPreActivationAudio(MAX_PENDING_AUDIO_BYTES)
   private pendingVideo: { data: string; mimeType: string } | null = null
+  private pendingToolResponses = new Map<string, Record<string, unknown>>()
   private responseEpoch = 0
   private activeResponseEpoch = 0
   private responseActive = false
@@ -138,6 +139,7 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
         this.pendingSetupCancel = null
         this.flushPendingAudio()
         this.flushPendingVideo()
+        this.flushPendingToolResponses()
         resolve()
       }
       const rejectCurrent = (error: Error) => {
@@ -306,15 +308,14 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
 
   private executeToolCall(
     fc: { id?: string; name?: string; args?: Record<string, unknown> },
-    connectionEpoch: number,
+    _connectionEpoch: number,
   ): void {
     if (!this.onToolCall) return
     const id = fc.id ?? ''
     const name = fc.name ?? ''
     void this.onToolCall({ id, name, args: fc.args ?? {} })
       .then(response => {
-        if (connectionEpoch !== this.connectionEpoch || this.closing) return
-        this.session?.sendToolResponse({
+        this.deliverOrQueueToolResponse(id, {
           functionResponses: [
             {
               id,
@@ -325,13 +326,21 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
         })
       })
       .catch(err => {
-        if (connectionEpoch !== this.connectionEpoch || this.closing) return
-        this.session?.sendToolResponse({
+        this.deliverOrQueueToolResponse(id, {
           functionResponses: [
             { id, name, response: { error: String(err), scheduling: 'WHEN_IDLE' } },
           ],
         })
       })
+  }
+
+  private deliverOrQueueToolResponse(id: string, payload: Record<string, unknown>): void {
+    if (this.closing) return
+    if (this.session && this.setupComplete) {
+      this.session.sendToolResponse(payload)
+      return
+    }
+    this.pendingToolResponses.set(id, payload)
   }
 
   private handleClose(connectionEpoch: number, closedSession: LiveSessionLike | null) {
@@ -351,9 +360,11 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
       this.reconnects++
       void this.openSession().catch(err => {
         console.error('[Copilot] reconnect failed:', err)
+        this.pendingToolResponses.clear()
         this.onEnded?.('connection_lost')
       })
     } else {
+      this.pendingToolResponses.clear()
       this.onEnded?.(this.resumptionHandle ? 'connection_lost' : 'connection_closed')
     }
   }
@@ -421,6 +432,7 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     this.setupComplete = false
     this.pendingAudio.clear()
     this.pendingVideo = null
+    this.pendingToolResponses.clear()
   }
 
   private sendAudioNow(data: string): void {
@@ -445,5 +457,12 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     this.session.sendRealtimeInput({
       video: { data: frame.data, mimeType: frame.mimeType },
     })
+  }
+
+  private flushPendingToolResponses(): void {
+    if (!this.session || !this.setupComplete) return
+    const pending = [...this.pendingToolResponses.values()]
+    this.pendingToolResponses.clear()
+    for (const payload of pending) this.session.sendToolResponse(payload)
   }
 }

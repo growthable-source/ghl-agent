@@ -43,6 +43,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       knowledgeDomainIds: agent.knowledgeDomainIds,
       voice: agent.voice,
       language: agent.language,
+      addressAliases: agent.addressAliases,
       appContext: agent.appContext,
       playbook: agent.playbook,
       recordings: agent.recordings.map(r => ({
@@ -93,6 +94,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // voice drift. Always persist a concrete choice.
   if ('voice' in body) data.voice = normalizeStoredCopilotVoice(body.voice)
   if ('language' in body) data.language = normalizeStoredCopilotLanguage(body.language)
+  if (Array.isArray(body.addressAliases)) {
+    data.addressAliases = body.addressAliases
+      .filter((alias): alias is string => typeof alias === 'string' && alias.trim().length > 0)
+      .map(alias => alias.trim().slice(0, 80))
+      .slice(0, 12)
+  }
   if (typeof body.appContext === 'string') data.appContext = body.appContext.slice(0, 600) || null
 
   // Publish: mint the publicKey server-side (never client-supplied).

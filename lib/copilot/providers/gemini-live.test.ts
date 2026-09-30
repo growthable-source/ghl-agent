@@ -120,6 +120,44 @@ describe('GeminiLiveProvider connection epochs', () => {
     expect(output).not.toHaveBeenCalled()
     connections[1].callbacks.onmessage({ setupComplete: {} })
   })
+
+  it('queues an async tool result across reconnect and delivers it once after resumption', async () => {
+    const provider = new GeminiLiveProvider()
+    let resolveTool!: (value: Record<string, unknown>) => void
+    provider.onToolCall = () =>
+      new Promise(resolve => {
+        resolveTool = resolve
+      })
+    const connected = provider.connect(cfg)
+    await settle()
+    connections[0].callbacks.onmessage({ setupComplete: {} })
+    await connected
+    connections[0].callbacks.onmessage({
+      sessionResumptionUpdate: { resumable: true, newHandle: 'resume-tool' },
+    })
+    connections[0].callbacks.onmessage({
+      toolCall: { functionCalls: [{ id: 'tool-1', name: 'query_knowledge', args: {} }] },
+    })
+    connections[0].callbacks.onclose()
+    await settle()
+    resolveTool({ result: 'ready' })
+    await settle()
+    expect(connections[0].session.sendToolResponse).not.toHaveBeenCalled()
+    expect(connections[1].session.sendToolResponse).not.toHaveBeenCalled()
+
+    connections[1].callbacks.onmessage({ setupComplete: {} })
+    await settle()
+    expect(connections[1].session.sendToolResponse).toHaveBeenCalledTimes(1)
+    expect(connections[1].session.sendToolResponse).toHaveBeenCalledWith({
+      functionResponses: [
+        {
+          id: 'tool-1',
+          name: 'query_knowledge',
+          response: { result: 'ready', scheduling: 'INTERRUPT' },
+        },
+      ],
+    })
+  })
 })
 
 describe('GeminiLiveProvider response epochs and echo', () => {

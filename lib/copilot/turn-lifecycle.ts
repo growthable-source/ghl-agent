@@ -160,6 +160,10 @@ export class TurnLifecycle {
 
   toolCallStarted(): void {
     if (!this.canOutput) return
+    if (!this.traceId && this.lastAddressedInputAt > 0) {
+      this.ensureTrace(this.lastAddressedInputAt)
+      this.record('input_vad_end', this.lastAddressedInputAt)
+    }
     this.pendingTools++
     this.toolUsed = true
     // Audio before a tool call is acknowledgement/filler, not answer onset.

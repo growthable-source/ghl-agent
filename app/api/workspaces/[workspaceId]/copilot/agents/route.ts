@@ -51,6 +51,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     steps?: unknown[]
     timeboxMinutes?: number
     knowledgeDomainIds?: unknown[]
+    addressAliases?: unknown[]
   }
   const name = (body.name ?? '').trim().slice(0, 120)
   if (!name) return NextResponse.json({ error: 'A name is required.' }, { status: 400 })
@@ -62,6 +63,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const knowledgeDomainIds = (Array.isArray(body.knowledgeDomainIds) ? body.knowledgeDomainIds : [])
     .filter((d): d is string => typeof d === 'string')
     .slice(0, 50)
+  const addressAliases = (Array.isArray(body.addressAliases) ? body.addressAliases : [])
+    .filter((alias): alias is string => typeof alias === 'string' && alias.trim().length > 0)
+    .map(alias => alias.trim().slice(0, 80))
+    .slice(0, 12)
 
   const b = body as Record<string, unknown>
   const type = b.type === 'onboarding' || b.type === 'other' ? (b.type as string) : 'support'
@@ -85,6 +90,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       knowledgeDomainIds,
       voice,
       language,
+      addressAliases,
       appContext,
       timeboxMinutes: Math.max(5, Math.min(120, Math.round(Number(body.timeboxMinutes) || 30))),
     } as any,
