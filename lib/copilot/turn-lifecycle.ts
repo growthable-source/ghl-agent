@@ -72,7 +72,8 @@ export class TurnLifecycle {
   userTranscript(final: boolean): void {
     this.ensureTrace()
     this.setState('ADDRESSED')
-    this.emit(final ? 'input_transcript_final' : 'input_transcript_first')
+    this.emit('input_transcript_first')
+    if (final) this.emit('input_transcript_final')
   }
 
   responseAudio(): void {
