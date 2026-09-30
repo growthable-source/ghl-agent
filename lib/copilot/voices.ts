@@ -1,17 +1,21 @@
 /**
  * Co-Pilot voice + intro-name selection.
  *
- * Why this exists: with no voice pinned, Gemini's native-audio output
- * drifts in accent within and across calls ("the voice changes accents
- * for some reason"). A named agent can now PIN one voice and keep it, or
- * choose 'rotate' to behave like a real team of humans — a different
- * voice AND a different human intro name each session.
+ * Why this exists: with no voice pinned, Gemini Live native-audio
+ * (the meeting bot's model) drifts timbre and accent within a call
+ * and picks a different one next time. CopilotAgent.voice used to
+ * default to null, and null omitted speechConfig entirely — that
+ * unpinned path was the random voice. 'rotate' compounded it on
+ * Meet/Zoom: connectMeetingSession rolled again every time the bot
+ * page loaded, so a reload mid-call changed who was speaking.
  *
- * Safety: we only ever send Gemini a voiceName the operator explicitly
- * chose (or one drawn from the validated pool below). An unset voice
- * stays null → Gemini's built-in default, which is always valid for the
- * model. We never invent a default voiceName that might be rejected and
- * break the session.
+ * Every session now sends a concrete prebuilt voiceName from the
+ * catalog below. Unset or unknown → DEFAULT_COPILOT_VOICE_ID (or
+ * COPILOT_VOICE when that env value is itself a catalog id).
+ * 'rotate' still rolls a voice and a human intro name, but only
+ * once per session; the caller persists pinnedVoice /
+ * pinnedDisplayName and reuses them for reconnects. We never send
+ * Gemini a name outside COPILOT_VOICES.
  */
 
 export interface CopilotVoiceOption {
@@ -33,6 +37,9 @@ export const COPILOT_VOICES: CopilotVoiceOption[] = [
   { id: 'Zephyr', label: 'Zephyr — light, airy' },
 ]
 
+/** Pinned when the operator has not chosen a voice. Always a catalog id. */
+export const DEFAULT_COPILOT_VOICE_ID = COPILOT_VOICES[0].id
+
 /** Sentinel stored in CopilotAgent.voice for team-of-humans rotation. */
 export const ROTATE_VOICE = 'rotate'
 
@@ -45,33 +52,68 @@ export const COPILOT_INTRO_NAMES = [
   'Iris', 'Ravi', 'Nora', 'Elena', 'Omar', 'Cleo', 'Mateo', 'Yuki',
 ]
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
+export function isCopilotVoiceId(voice: string | null | undefined): voice is string {
+  return !!voice && COPILOT_VOICES.some(v => v.id === voice)
+}
+
+/**
+ * A voiceName safe to put in speechConfig. Catalog id, else a valid
+ * COPILOT_VOICE env, else the default. Never null, never 'rotate'.
+ */
+export function coerceCopilotVoiceName(voice: string | null | undefined): string {
+  if (isCopilotVoiceId(voice)) return voice
+  const env = process.env.COPILOT_VOICE
+  if (isCopilotVoiceId(env)) return env
+  return DEFAULT_COPILOT_VOICE_ID
+}
+
+/** Value safe to persist on CopilotAgent.voice. */
+export function normalizeStoredCopilotVoice(raw: unknown): string {
+  if (raw === ROTATE_VOICE) return ROTATE_VOICE
+  if (typeof raw === 'string' && isCopilotVoiceId(raw)) return raw
+  return DEFAULT_COPILOT_VOICE_ID
 }
 
 export interface ResolvedCopilotVoice {
-  /** Gemini prebuiltVoiceConfig voiceName, or null = Gemini's default. */
-  voiceName: string | null
+  /** Gemini prebuiltVoiceConfig voiceName. Always a catalog id. */
+  voiceName: string
   /** Name the agent introduces itself with this session. */
   displayName: string
+  /** True when this call rolled the rotate pool — persist both fields. */
+  rotated: boolean
 }
 
 /**
  * Resolve the voice + intro name for ONE session.
- *  - 'rotate'         → random pool voice + random human name
- *  - a valid voice id → that voice pinned, the agent keeps its own name
- *  - null / unknown   → COPILOT_VOICE env if set, else null (Gemini default)
+ *  - 'rotate'         → one pool voice + one human name (caller must persist)
+ *  - a valid voice id → that voice, the agent keeps its own name
+ *  - null / unknown   → coerced catalog voice (env, else Kore)
  */
 export function resolveCopilotVoice(
   voice: string | null | undefined,
   agentName: string,
+  rng: () => number = Math.random,
 ): ResolvedCopilotVoice {
   if (voice === ROTATE_VOICE) {
-    return { voiceName: pick(COPILOT_VOICES).id, displayName: pick(COPILOT_INTRO_NAMES) }
+    const voiceName = COPILOT_VOICES[Math.min(COPILOT_VOICES.length - 1, Math.floor(rng() * COPILOT_VOICES.length))].id
+    const displayName = COPILOT_INTRO_NAMES[Math.min(COPILOT_INTRO_NAMES.length - 1, Math.floor(rng() * COPILOT_INTRO_NAMES.length))]
+    return { voiceName, displayName, rotated: true }
   }
-  const valid = COPILOT_VOICES.some(v => v.id === voice)
   return {
-    voiceName: valid ? (voice as string) : (process.env.COPILOT_VOICE || null),
+    voiceName: coerceCopilotVoiceName(voice),
     displayName: agentName,
+    rotated: false,
   }
+}
+
+/** Voice already chosen for this session, if the metadata pin is a catalog id. */
+export function readPinnedCopilotVoice(
+  meta: Record<string, unknown> | null | undefined,
+): { voiceName: string; displayName: string | null } | null {
+  const voiceName = typeof meta?.pinnedVoice === 'string' ? meta.pinnedVoice : ''
+  if (!isCopilotVoiceId(voiceName)) return null
+  const displayName = typeof meta?.pinnedDisplayName === 'string' && meta.pinnedDisplayName.trim()
+    ? meta.pinnedDisplayName.trim()
+    : null
+  return { voiceName, displayName }
 }

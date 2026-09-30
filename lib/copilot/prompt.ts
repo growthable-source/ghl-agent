@@ -21,6 +21,7 @@ import { describeSetupState } from './setup-state'
 import type { CopilotWorkflow } from './workflows'
 import { describeWorkflowProgress } from './workflows'
 import { buildCopilotBlockFlow } from './blocks'
+import { copilotLanguageDirective } from './language'
 
 /**
  * The stale-docs doctrine, shared by every mode. Docs, playbooks, and
@@ -243,8 +244,10 @@ export function buildMeetingPrompt(input: {
   workspaceName: string
   ragContext: string
   locale: string
+  /** Operator-selected spoken language ('en' | 'es'). Wins over locale. */
+  language?: string | null
 }): string {
-  const { agent, ragContext, locale } = input
+  const { agent, ragContext } = input
   const blockFlow = buildCopilotBlockFlow(agent.blocks ?? [])
   const hasBlocks = !!blockFlow
   const hasSteps = !hasBlocks && agent.steps.length > 0
@@ -276,7 +279,7 @@ export function buildMeetingPrompt(input: {
     `- Your playbook and knowledge can be OLDER than the app being shared — buttons get renamed, moved, or redesigned. When an instruction names a button or menu, check the shared screen for it first (or ask the sharer what they see, since the view is low-res). If it matches, use the on-screen wording. If it doesn't, don't insist the doc's label exists — ask what controls ARE visible and pick the one that would produce the same outcome, noting the UI looks newer than your notes. Docs are your authority on the GOAL and ORDER of steps; the live screen is the authority on today's labels and locations.`,
     `- You cannot click, type, mark, or change anything. The participants act; you guide with words.`,
     `- There may be several people. Don't talk over anyone — keep turns short (one or two sentences), pause for responses, and address people by name when you can tell who spoke.`,
-    `- Spoken conversation in ${locale} — natural, brief, no markdown, no lists read aloud.`,
+    copilotLanguageDirective(input.language ?? input.locale),
     `- Before answering anything that needs specific facts — features, how-tos, policies, pricing — call query_knowledge first; say a short acknowledging phrase ("let me check that") while you do, but the phrase is not the action: make the call in the same turn. If the knowledge base has no answer, say so honestly.`,
     `- If the room goes quiet for a long stretch, briefly check in ("still with me?"). If asked to leave or stop, say a short goodbye and stay silent.`,
     ragContext ? `\n## Background knowledge\n${ragContext}` : ``,
@@ -319,8 +322,15 @@ export interface AgentForPrompt {
  * behaves like a guided procedure; without, like a general expert —
  * one builder, both shapes.
  */
-export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: string; ragContext: string; locale: string }): string {
-  const { agent, ragContext, locale } = input
+export function buildAgentPrompt(input: {
+  agent: AgentForPrompt
+  workspaceName: string
+  ragContext: string
+  locale: string
+  /** Operator-selected spoken language ('en' | 'es'). Wins over locale. */
+  language?: string | null
+}): string {
+  const { agent, ragContext } = input
   const blockFlow = buildCopilotBlockFlow(agent.blocks ?? [])
   const hasBlocks = !!blockFlow
   const hasSteps = !hasBlocks && agent.steps.length > 0
@@ -351,7 +361,8 @@ export function buildAgentPrompt(input: { agent: AgentForPrompt; workspaceName: 
       : ``,
     `\n## How to behave`,
     `- The user's hands are on the keyboard — you CANNOT click or change anything yourself. ${guided ? 'But the call is YOURS to run: your voice sets the agenda and the pace.' : 'One clear action at a time.'}`,
-    `- Spoken conversation in ${locale} — brief, natural, no markdown. Keep an even, consistent tone and pace the whole call; don't swing between energetic and flat turn to turn.`,
+    copilotLanguageDirective(input.language ?? input.locale),
+    `- Keep an even, consistent tone and pace the whole call; don't swing between energetic and flat turn to turn.`,
     `- OBSERVE BEFORE YOU INSTRUCT. Never assume the screen matches your next step. Every turn: take_a_closer_look at where the user ACTUALLY is right now, then give the instruction for THAT screen. Your steps/playbook tell you the GOAL; the live screen tells you the current reality — when they disagree, the screen wins. Read the actual labels and buttons on screen and refer to them by their real text; do not narrate from memory of how the app "should" look.`,
     `- Navigate deliberately, never by guesswork. If your instruction is "check the permissions" but you cannot SEE where permissions live on the screen in front of you, do not invent a menu or a path. Look first; if it's still not visible, say plainly "I don't see it on this screen — let's find it" and ask the user what they see, or have them open the likely area, then look again. A deliberate "let me look" beats a confident wrong guess.`,
     `- query_knowledge returns fixes and how-tos written as PROSE — that's WHAT to do. Translate it into WHERE to do it on their screen: look at where they are, then give ONE concrete on-screen action at a time, naming the location precisely in words, and confirm each step before the next. Walk them through it; don't recite the article.`,

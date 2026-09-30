@@ -14,7 +14,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { COPILOT_VOICES, ROTATE_VOICE } from '@/lib/copilot/voices'
+import { COPILOT_LANGUAGES } from '@/lib/copilot/language'
+import { COPILOT_VOICES, DEFAULT_COPILOT_VOICE_ID, ROTATE_VOICE } from '@/lib/copilot/voices'
 import CopilotBlockBuilder from '@/components/copilot/CopilotBlockBuilder'
 import type { CopilotBlock } from '@/lib/copilot/blocks'
 
@@ -94,7 +95,8 @@ export default function NewCopilotAgentPage() {
   const [minutes, setMinutes] = useState('30')
   const [procedureMode, setProcedureMode] = useState<'simple' | 'advanced'>('simple')
   const [blocks, setBlocks] = useState<CopilotBlock[]>([])
-  const [voice, setVoice] = useState('')
+  const [voice, setVoice] = useState(DEFAULT_COPILOT_VOICE_ID)
+  const [language, setLanguage] = useState('en')
   const [appContext, setAppContext] = useState('')
   const [domains, setDomains] = useState<KnowledgeDomainLite[]>([])
   const [domainPick, setDomainPick] = useState<string[]>([])
@@ -168,6 +170,7 @@ export default function NewCopilotAgentPage() {
           blocks: template.type === 'support' ? [] : (procedureMode === 'advanced' ? blocks : []),
           timeboxMinutes: Number(minutes) || 30,
           voice,
+          language,
           appContext,
           knowledgeDomainIds: domainPick,
         }),
@@ -181,7 +184,7 @@ export default function NewCopilotAgentPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, procedureMode, blocks, voice, appContext, domainPick, router])
+  }, [workspaceId, name, template, persona, openingLine, collectInfo, stepsText, minutes, procedureMode, blocks, voice, language, appContext, domainPick, router])
 
   if (!workspaceId) return null
 
@@ -255,11 +258,10 @@ export default function NewCopilotAgentPage() {
               onChange={e => { setVoice(e.target.value); setPreviewError(null) }}
               className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
             >
-              <option value="">Default voice</option>
-              <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
               {COPILOT_VOICES.map(v => (
                 <option key={v.id} value={v.id}>{v.label}</option>
               ))}
+              <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
             </select>
             <button
               type="button"
@@ -273,10 +275,27 @@ export default function NewCopilotAgentPage() {
             </button>
           </div>
           <p className="text-[11px] text-zinc-500 mt-1">
-            Pick one and the agent keeps that voice every call; choose <strong>Rotate</strong> and each session opens
-            with a different voice and human name, like a real team. Hit <strong>Preview</strong> to hear it first.
+            The agent keeps this voice for every call and for the whole call. Choose <strong>Rotate</strong> only if
+            each new session should open as a different person — that choice is locked once the call starts, so a
+            reconnect cannot change it. Hit <strong>Preview</strong> to hear a voice first.
           </p>
           {previewError && <p className="text-[11px] mt-1" style={{ color: 'var(--accent-red)' }}>{previewError}</p>}
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Spoken language</label>
+          <select
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+          >
+            {COPILOT_LANGUAGES.map(l => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            The agent understands both English and Spanish on every call, and speaks the language you pick. During a
+            live call someone can ask it to switch — for example &ldquo;speak Spanish&rdquo; or &ldquo;habla en español&rdquo; — and it stays in that language until asked again.
+          </p>
         </div>
         <div>
           <label className="block text-xs font-medium text-zinc-400 mb-1">How to start the call</label>

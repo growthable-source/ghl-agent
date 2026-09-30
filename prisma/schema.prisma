@@ -4066,11 +4066,18 @@ model CopilotAgent {
   /// bridge from recordings to educated UI guesses. Markdown prose,
   /// operator-inspectable; distilled alongside `playbook`.
   uiMap              String?            @db.Text
-  /// Voice selection. A Gemini prebuilt voice name (pinned, kills accent
-  /// drift), or 'rotate' = a different voice + human intro name each
-  /// session (team-of-humans). Null = Gemini's default voice. See
+  /// Voice selection. A Gemini prebuilt voice name, pinned into
+  /// speechConfig for the whole call, or 'rotate' = roll once per
+  /// session and store that roll on the session (a reconnect must
+  /// not re-roll). Null is resolved to the default catalog voice —
+  /// never left unset, which is what made native-audio drift. See
   /// lib/copilot/voices.ts.
   voice              String?
+  /// Spoken language. 'en' | 'es'. Null resolves to English. The
+  /// agent understands both English and Spanish; this is the language
+  /// it speaks unless someone on the call explicitly asks it to
+  /// switch. See lib/copilot/language.ts.
+  language           String?
   /// The one application/product this agent operates inside (e.g. "the
   /// Acme CRM dashboard"). Boxes the agent to that app so it grounds in
   /// the real UI instead of guessing across arbitrary screens.

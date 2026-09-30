@@ -15,7 +15,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
-import { COPILOT_VOICES, ROTATE_VOICE } from '@/lib/copilot/voices'
+import { COPILOT_LANGUAGES } from '@/lib/copilot/language'
+import { COPILOT_VOICES, DEFAULT_COPILOT_VOICE_ID, ROTATE_VOICE, isCopilotVoiceId } from '@/lib/copilot/voices'
 import CopilotBlockBuilder from '@/components/copilot/CopilotBlockBuilder'
 import type { CopilotBlock } from '@/lib/copilot/blocks'
 
@@ -42,6 +43,7 @@ interface AgentDetail {
   timeboxMinutes: number
   knowledgeDomainIds: string[]
   voice: string | null
+  language: string | null
   appContext: string | null
   playbook: string | null
   recordings: Recording[]
@@ -67,7 +69,8 @@ export default function CopilotAgentEditor() {
   const [procedureMode, setProcedureMode] = useState<'simple' | 'advanced'>('simple')
   const [blocks, setBlocks] = useState<CopilotBlock[]>([])
   const [minutes, setMinutes] = useState('30')
-  const [voice, setVoice] = useState('')
+  const [voice, setVoice] = useState(DEFAULT_COPILOT_VOICE_ID)
+  const [language, setLanguage] = useState('en')
   const [previewing, setPreviewing] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -106,7 +109,8 @@ export default function CopilotAgentEditor() {
     setProcedureMode(a.procedureMode === 'advanced' ? 'advanced' : 'simple')
     setBlocks(Array.isArray(a.blocks) ? a.blocks : [])
     setMinutes(String(a.timeboxMinutes))
-    setVoice(a.voice ?? '')
+    setVoice(a.voice === ROTATE_VOICE || isCopilotVoiceId(a.voice) ? a.voice : DEFAULT_COPILOT_VOICE_ID)
+    setLanguage(a.language === 'es' ? 'es' : 'en')
     setAppContext(a.appContext ?? '')
     setPlaybook(a.playbook ?? '')
     setDomains(domRes.domains ?? [])
@@ -164,6 +168,7 @@ export default function CopilotAgentEditor() {
           blocks: procedureMode === 'advanced' ? blocks : [],
           timeboxMinutes: Number(minutes) || 30,
           voice,
+          language,
           appContext,
           playbook,
           knowledgeDomainIds: domainPick,
@@ -174,7 +179,7 @@ export default function CopilotAgentEditor() {
     } finally {
       setSaving(false)
     }
-  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, procedureMode, blocks, minutes, voice, appContext, playbook, domainPick])
+  }, [workspaceId, agentId, name, persona, openingLine, collectInfo, stepsText, procedureMode, blocks, minutes, voice, language, appContext, playbook, domainPick])
 
   const upload = useCallback(
     async (file: File) => {
@@ -368,11 +373,10 @@ export default function CopilotAgentEditor() {
               onChange={e => { setVoice(e.target.value); setPreviewError(null) }}
               className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
             >
-              <option value="">Default voice</option>
-              <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
               {COPILOT_VOICES.map(v => (
                 <option key={v.id} value={v.id}>{v.label}</option>
               ))}
+              <option value={ROTATE_VOICE}>Rotate — a new voice &amp; name each session (like a team of people)</option>
             </select>
             <button
               type="button"
@@ -387,9 +391,26 @@ export default function CopilotAgentEditor() {
           </div>
           {previewError && <p className="text-[11px] mt-1" style={{ color: 'var(--accent-red)' }}>{previewError}</p>}
           <p className="text-[11px] text-zinc-500 mt-1">
-            Pick one voice and the agent keeps it every call (this stops the accent drifting). Choose{' '}
-            <strong>Rotate</strong> and each session opens with a different voice and a different human name — so a
-            stream of sessions feels like a real team rather than one bot.
+            Pick one voice and the agent keeps it for every call and for the whole call (this stops the accent
+            drifting mid-conversation). Choose <strong>Rotate</strong> and each new session opens with a different
+            voice and human name — that pick is locked when the meeting is dispatched, so a reconnect cannot change it.
+          </p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1">Spoken language</label>
+          <select
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+          >
+            {COPILOT_LANGUAGES.map(l => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            Understands both English and Spanish. Speaks the language you pick. On a live call, an explicit request
+            (&ldquo;speak Spanish&rdquo;, &ldquo;habla en español&rdquo;) switches the spoken language and keeps it
+            until someone asks to switch back. The voice stays the one selected above.
           </p>
         </div>
 
