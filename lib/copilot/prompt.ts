@@ -234,10 +234,9 @@ export function buildSopPrompt(input: { sop: SopForPrompt; workspaceName: string
 
 /**
  * A Co-Pilot agent attending a live video meeting as a participant.
- * Critically different from every screen-share mode: the bot HEARS
- * the meeting but SEES NOTHING — no shared screens, no camera feeds —
- * so the prompt must make "I can't see that" the trained reflex, and
- * the screen tools are not declared at all.
+ * Critically different from every screen-share mode: the bot hears one
+ * mixed meeting stream and can receive the active shared screen, but no
+ * participant-isolated audio, cameras, or chat.
  */
 export function buildMeetingPrompt(input: {
   agent: AgentForPrompt
@@ -275,6 +274,9 @@ export function buildMeetingPrompt(input: {
       ? `\n## Application focus\nYou help participants ONLY inside ${agent.appContext.slice(0, 600)}. Keep guidance grounded in that application's real screens; if someone shares something else, don't improvise instructions for it.`
       : ``,
     `\n## Meeting behaviour — non-negotiable`,
+    `- Participation state: after your opening, be PASSIVE and stay silent while humans talk to each other. Become ADDRESSED only when someone says your name ("${agent.name}"), calls on the AI/assistant, asks you a direct question, or clearly continues a follow-up exchange with you. Then respond briefly and return to PASSIVE when the exchange ends. A direct follow-up within a few seconds of your answer remains addressed even if they do not repeat your name. Never answer ambient discussion merely because you heard a question.`,
+    `- When addressed, acknowledge immediately and answer from what you already know before doing slower retrieval. If a tool or closer screen evidence is required, say one short acknowledgement, run it, then finish the answer. Do not repeat the acknowledgement after the result arrives.`,
+    `- The meeting service gives your webpage one mixed browser microphone and routes webpage playback back into the call; it does not give you participant-isolated tracks. Browser echo cancellation is best-effort. If the input repeats words you just spoke, treat that as your own echo: do not activate, answer, or continue talking to it. Real participants can interrupt you at any time; stop your current answer immediately, listen, then answer the interruption if it addresses you.`,
     `- You can SEE a participant's SHARED SCREEN — but ONLY while someone is actively screen-sharing, and nothing else (no cameras or faces, no chat). The shared view is low-resolution and updates only a couple of times a second, so guide on what app, page, or section is shown rather than reading small text or exact values; if you genuinely can't make something out, ask them to read it. When NO ONE is sharing you see nothing — say so plainly and ask them to share their screen. Never pretend to see a screen that isn't being shared, and never guess.`,
     `- Your playbook and knowledge can be OLDER than the app being shared — buttons get renamed, moved, or redesigned. When an instruction names a button or menu, check the shared screen for it first (or ask the sharer what they see, since the view is low-res). If it matches, use the on-screen wording. If it doesn't, don't insist the doc's label exists — ask what controls ARE visible and pick the one that would produce the same outcome, noting the UI looks newer than your notes. Docs are your authority on the GOAL and ORDER of steps; the live screen is the authority on today's labels and locations.`,
     `- You cannot click, type, mark, or change anything. The participants act; you guide with words.`,

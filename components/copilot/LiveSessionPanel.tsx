@@ -20,6 +20,11 @@ import type { RealtimeModelProvider, RealtimeToolDef, RealtimeConnectionInfo } f
 import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
 import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
 import { ScreenFrameCapture, NAV_CHANGE_THRESHOLD } from '@/lib/copilot/frame-capture'
+import {
+  TurnLifecycle,
+  type CopilotParticipationState,
+} from '@/lib/copilot/turn-lifecycle'
+import { TelemetryBuffer } from '@/lib/copilot/telemetry-buffer'
 
 export interface CopilotCreateResult {
   ok: boolean
@@ -121,6 +126,7 @@ export default function LiveSessionPanel({
   const [partial, setPartial] = useState<{ user: string; agent: string }>({ user: '', agent: '' })
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [participationState, setParticipationState] = useState<CopilotParticipationState>('PASSIVE')
   const userSpeakingRef = useRef(false)
   // Proactive turn engine bookkeeping.
   const lastNudgeAtRef = useRef(0)
@@ -139,9 +145,16 @@ export default function LiveSessionPanel({
   const displayStreamRef = useRef<MediaStream | null>(null)
   const previewVideoRef = useRef<HTMLVideoElement | null>(null)
   const feedEndRef = useRef<HTMLDivElement | null>(null)
-  const turnBufferRef = useRef<Array<{ role: string; text: string; ts: string }>>([])
-  const screenBufferRef = useRef<Array<{ detectedContext: Record<string, unknown>; ts: string }>>([])
-  const flushedCountersRef = useRef({ audioIn: 0, audioOut: 0, frames: 0 })
+  const telemetryRef = useRef(new TelemetryBuffer())
+  const playbackEpochsRef = useRef(new Map<number, number>())
+  const lifecycleRef = useRef<TurnLifecycle | null>(null)
+  if (!lifecycleRef.current) {
+    lifecycleRef.current = new TurnLifecycle({
+      onEvent: event => telemetryRef.current.latencyEvents.push(event),
+      onStateChange: setParticipationState,
+    })
+  }
+  const flushInFlightRef = useRef<Promise<void> | null>(null)
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const maxSecsRef = useRef(1800)
@@ -158,21 +171,20 @@ export default function LiveSessionPanel({
 
   const flushEvents = useCallback(
     async (final = false) => {
+      if (flushInFlightRef.current) {
+        await flushInFlightRef.current
+        if (!final) return
+      }
       const sessionId = sessionIdRef.current
       if (!sessionId) return
-      const turns = turnBufferRef.current.splice(0)
-      const screenEvents = screenBufferRef.current.splice(0)
       const audioIn = micRef.current?.capturedSecs ?? 0
       const audioOut = playerRef.current?.playedSecs ?? 0
       const frames = framesRef.current?.sentFrames ?? 0
-      const sent = flushedCountersRef.current
-      const counters = {
-        audioInSecs: Math.max(0, Math.round((audioIn - sent.audioIn) * 100) / 100),
-        audioOutSecs: Math.max(0, Math.round((audioOut - sent.audioOut) * 100) / 100),
-        videoFrames: Math.max(0, frames - sent.frames),
-      }
+      const snapshot = telemetryRef.current.snapshot({ audioIn, audioOut, frames })
+      const { turns, latencyEvents, screenEvents, counters } = snapshot
       if (
         turns.length === 0 &&
+        latencyEvents.length === 0 &&
         screenEvents.length === 0 &&
         counters.audioInSecs === 0 &&
         counters.audioOutSecs === 0 &&
@@ -180,12 +192,21 @@ export default function LiveSessionPanel({
       ) {
         return
       }
-      flushedCountersRef.current = { audioIn, audioOut, frames }
-      try {
-        await transport.events(sessionId, { turns, screenEvents, counters }, final)
-      } catch {
-        // Best-effort telemetry: a missed flush never kills the session.
-      }
+      const pending = (async () => {
+        try {
+          await transport.events(
+            sessionId,
+            { batchId: snapshot.batchId, turns, latencyEvents, screenEvents, counters },
+            final,
+          )
+          telemetryRef.current.commit(snapshot)
+        } catch {
+          // Retain the snapshot prefix for the next flush.
+        }
+      })()
+      flushInFlightRef.current = pending
+      await pending
+      if (flushInFlightRef.current === pending) flushInFlightRef.current = null
     },
     [transport],
   )
@@ -246,7 +267,13 @@ export default function LiveSessionPanel({
     setFeed([])
     setPartial({ user: '', agent: '' })
     setElapsed(0)
-    flushedCountersRef.current = { audioIn: 0, audioOut: 0, frames: 0 }
+    setParticipationState('PASSIVE')
+    telemetryRef.current = new TelemetryBuffer()
+    playbackEpochsRef.current.clear()
+    lifecycleRef.current = new TurnLifecycle({
+      onEvent: event => telemetryRef.current.latencyEvents.push(event),
+      onStateChange: setParticipationState,
+    })
     pendingCueRef.current = null
     lastNudgeAtRef.current = 0
     lastModelSpokeAtRef.current = 0
@@ -288,20 +315,35 @@ export default function LiveSessionPanel({
       await mic.start()
       micRef.current = mic
 
-      provider.onAudioOutput = b64 => {
+      provider.onAudioOutput = (b64, meta) => {
         // Track the model's speech so proactive nudges never talk over it
         // or crowd it the instant it finishes. Audio chunks stream while
         // speaking, so "last chunk < cooldown ago" covers both cases.
         lastModelSpokeAtRef.current = Date.now()
-        player.enqueue(b64)
+        const lifecycle = lifecycleRef.current
+        if (!lifecycle?.responseAudio()) return
+        let generation = playbackEpochsRef.current.get(meta.responseEpoch)
+        if (generation === undefined) {
+          generation = player.currentGeneration()
+          playbackEpochsRef.current.set(meta.responseEpoch, generation)
+        }
+        const scheduled = player.enqueue(b64, generation)
+        if (scheduled) lifecycle.playbackScheduled(scheduled.scheduledAtMs)
       }
-      provider.onInterrupted = () => player.flush()
+      provider.onInterrupted = responseEpoch => {
+        playbackEpochsRef.current.delete(responseEpoch)
+        player.interrupt()
+        lifecycleRef.current?.interrupted()
+      }
+      provider.onTurnComplete = () => lifecycleRef.current?.turnComplete()
+      provider.onSelfEchoSuppressed = () => lifecycleRef.current?.selfEchoSuppressed()
       provider.onTranscript = turn => {
+        if (turn.role === 'user') lifecycleRef.current?.userTranscript(turn.text, turn.final)
         if (turn.final) {
           if (turn.role === 'user') userSpeakingRef.current = false
           setPartial(p => ({ ...p, [turn.role === 'user' ? 'user' : 'agent']: '' }))
           pushFeed(turn.role, turn.text)
-          turnBufferRef.current.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
+          telemetryRef.current.turns.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
         } else {
           // First fragment of a new user utterance → ship a fresh frame
           // immediately, so the model answers "what am I looking at?"
@@ -314,31 +356,36 @@ export default function LiveSessionPanel({
         }
       }
       provider.onToolCall = async call => {
+        lifecycleRef.current?.toolCallStarted()
         // EVERY tool call gets logged into the event stream — including
         // the client-executed ones. Without this we cannot distinguish
         // "the model never called the tool" from "the call happened but
         // the user missed it" when sessions go wrong.
-        turnBufferRef.current.push({
+        telemetryRef.current.turns.push({
           role: 'tool',
           text: `${call.name}(${JSON.stringify(call.args)})`,
           ts: new Date().toISOString(),
         })
 
-        // take_a_closer_look is client-only: force an immediate
-        // full-resolution frame so the model can read fine UI detail.
-        if (call.name === 'take_a_closer_look') {
-          pushFeed('tool', 'Taking a closer look…')
-          const sent = framesRef.current?.captureNow('closer_look') ?? false
-          return {
-            result: sent
-              ? 'Fresh full-resolution frame sent — it shows the screen as of right now. Ground your next statement in it.'
-              : 'Could not capture a frame right now (screen share may be paused). Ask the user what they see instead of guessing.',
+        try {
+          // take_a_closer_look is client-only: force an immediate
+          // full-resolution frame so the model can read fine UI detail.
+          if (call.name === 'take_a_closer_look') {
+            pushFeed('tool', 'Taking a closer look…')
+            const sent = framesRef.current?.captureNow('closer_look') ?? false
+            return {
+              result: sent
+                ? 'Fresh full-resolution frame sent — it shows the screen as of right now. Ground your next statement in it.'
+                : 'Could not capture a frame right now (screen share may be paused). Ask the user what they see instead of guessing.',
+            }
           }
-        }
 
-        pushFeed('tool', call.name === 'query_knowledge' ? 'Searching the knowledge base…' : 'Checking…')
-        const result = await transport.tool(sessionIdRef.current!, call.name, call.args)
-        return { result }
+          pushFeed('tool', call.name === 'query_knowledge' ? 'Searching the knowledge base…' : 'Checking…')
+          const result = await transport.tool(sessionIdRef.current!, call.name, call.args)
+          return { result }
+        } finally {
+          lifecycleRef.current?.toolCallCompleted()
+        }
       }
       provider.onError = message => console.error('[Copilot] provider error:', message)
       provider.onEnded = reason => void endSession(reason)
@@ -360,6 +407,7 @@ export default function LiveSessionPanel({
         if (now - lastModelSpokeAtRef.current < MODEL_SPEAK_COOLDOWN_MS) return false
         if (now - lastNudgeAtRef.current < NUDGE_MIN_INTERVAL_MS) return false
         lastNudgeAtRef.current = now
+        lifecycleRef.current?.beginSystemTurn()
         provider.nudge(cue)
         return true
       }
@@ -382,7 +430,8 @@ export default function LiveSessionPanel({
 
       const frames = new ScreenFrameCapture(displayStream, created.realtime.frameFpsCap, frame => {
         provider.sendVideoFrame(frame.base64Jpeg)
-        screenBufferRef.current.push({
+        lifecycleRef.current?.screenFrameReceived()
+        telemetryRef.current.screenEvents.push({
           detectedContext: { trigger: frame.trigger, diffScore: frame.diffScore },
           ts: new Date().toISOString(),
         })
@@ -407,6 +456,7 @@ export default function LiveSessionPanel({
         // streamed frame hasn't landed yet. Bypass the debounce — this is
         // the opening turn, and nothing has spoken yet.
         lastNudgeAtRef.current = Date.now()
+        lifecycleRef.current?.beginSystemTurn()
         provider.nudge(CUE_KICKOFF)
         // The watching loop: retry any pended look-cue until it lands.
         watcherTickRef.current = setInterval(flushPendingCue, WATCHER_TICK_MS)
@@ -552,9 +602,12 @@ export default function LiveSessionPanel({
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium text-zinc-100">Session</span>
-                <span className="font-mono text-sm text-zinc-400">
-                  {mmss(elapsed)} / {mmss(maxSecsRef.current)}
-                </span>
+                <div className="text-right">
+                  <div className="text-[10px] font-semibold tracking-wide text-zinc-500">{participationState}</div>
+                  <span className="font-mono text-sm text-zinc-400">
+                    {mmss(elapsed)} / {mmss(maxSecsRef.current)}
+                  </span>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button

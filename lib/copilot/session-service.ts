@@ -13,6 +13,7 @@
  */
 
 import { GoogleGenAI, Modality, Behavior, Type, MediaResolution } from '@google/genai'
+import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { retrieveChunks } from '@/lib/ingest/retrieve'
 import { COPILOT_DEFAULTS } from './config'
@@ -21,9 +22,19 @@ import { getWorkflow, DEFAULT_WORKFLOW_KEY } from './workflows'
 import { buildCopilotSystemPrompt, buildWidgetCopilotPrompt } from './prompt'
 import { coerceCopilotVoiceName, readPinnedCopilotVoice, resolveCopilotVoice } from './voices'
 import { readPinnedCopilotLanguage, resolveCopilotLanguage } from './language'
+import { normalizeBlocks } from './blocks'
 import { COPILOT_TOOL_DEFS, WIDGET_TOOL_DEFS, executeCopilotTool } from './tools'
 import { analyzeSessionAndFollowUp, type SessionAnalysis } from './analyze'
 import type { CopilotSessionDTO, RealtimeToolDef } from './types'
+import type {
+  CopilotLatencyEvent,
+  CopilotLatencyStage,
+  CopilotParticipationState,
+} from './turn-lifecycle'
+import {
+  persistTelemetryBatchAtomically,
+  type TelemetryDatabase,
+} from './telemetry-persistence'
 
 // ─── DTO ────────────────────────────────────────────────────────────
 
@@ -217,13 +228,13 @@ export async function createStaffSession(opts: {
     const spoken = resolveCopilotLanguage(agent.language)
     const { buildAgentPrompt } = await import('./prompt')
     systemPrompt = buildAgentPrompt({
-      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+      agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: normalizeBlocks(agent.blocks), timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
       workspaceName: setupState.workspaceName,
       ragContext,
       locale,
       language: spoken.code,
     })
-    const blocksLen = Array.isArray((agent as any).blocks) ? (agent as any).blocks.length : 0
+    const blocksLen = normalizeBlocks(agent.blocks).length
     if (steps.length > 0 || blocksLen > 0) maxSecsOverride = (agent.timeboxMinutes + 5) * 60
   } else if (mode === 'sop') {
     const sop = opts.sopId
@@ -428,12 +439,31 @@ export async function runSessionTool(
 // ─── Event sink ─────────────────────────────────────────────────────
 
 export interface EventBatch {
+  batchId?: string
   turns?: Array<{ role?: string; text?: string; tokens?: number; ts?: string }>
   screenEvents?: Array<{ visionSummary?: string; detectedContext?: Record<string, unknown>; ts?: string }>
+  latencyEvents?: CopilotLatencyEvent[]
   counters?: { audioInSecs?: number; audioOutSecs?: number; videoFrames?: number }
 }
 
 const VALID_ROLES = new Set(['user', 'agent', 'system', 'tool'])
+const VALID_LATENCY_STAGES = new Set<CopilotLatencyStage>([
+  'input_vad_end',
+  'response_audio_received',
+  'playback_scheduled',
+  'tool_call_started',
+  'tool_call_completed',
+  'screen_frame_received',
+  'interrupted',
+  'turn_complete',
+  'self_echo_suppressed',
+])
+const VALID_PARTICIPATION_STATES = new Set<CopilotParticipationState>([
+  'PASSIVE',
+  'ADDRESSED',
+  'RESPONDING',
+  'INTERRUPTED',
+])
 
 function parseTs(ts: string | undefined): Date {
   const d = ts ? new Date(ts) : new Date()
@@ -441,57 +471,130 @@ function parseTs(ts: string | undefined): Date {
 }
 
 export async function recordSessionEvents(session: ActiveSession, batch: EventBatch) {
-  const turns = (batch.turns ?? []).filter(t => t.text && VALID_ROLES.has(t.role ?? '')).slice(0, 200)
-  const screenEvents = (batch.screenEvents ?? [])
-    .filter(e => e.visionSummary || e.detectedContext)
+  const batchId =
+    typeof batch.batchId === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(batch.batchId)
+      ? batch.batchId
+      : `legacy-${createHash('sha256')
+          .update(`${session.id}:${JSON.stringify(batch)}`)
+          .digest('hex')
+          .slice(0, 32)}`
+
+  const earliestAt = session.startedAt.getTime() - 60_000
+  const latestAt = Date.now() + 60_000
+  const timestampInRange = (ts: string | undefined) => {
+    if (!ts) return false
+    const value = new Date(ts).getTime()
+    return Number.isFinite(value) && value >= earliestAt && value <= latestAt
+  }
+  let lastTurnAt = earliestAt
+  const turns = (batch.turns ?? [])
+    .filter(t => t.text && VALID_ROLES.has(t.role ?? '') && timestampInRange(t.ts))
+    .filter(t => {
+      const at = new Date(t.ts as string).getTime()
+      if (at < lastTurnAt) return false
+      lastTurnAt = at
+      return true
+    })
     .slice(0, 200)
+  let lastScreenAt = earliestAt
+  const screenEvents = (batch.screenEvents ?? [])
+    .filter(e => (e.visionSummary || e.detectedContext) && timestampInRange(e.ts))
+    .filter(e => {
+      const at = new Date(e.ts as string).getTime()
+      if (at < lastScreenAt) return false
+      lastScreenAt = at
+      return true
+    })
+    .slice(0, 200)
+  const latencyEvents = (batch.latencyEvents ?? [])
+    .filter(
+      event =>
+        typeof event.traceId === 'string' &&
+        /^[a-zA-Z0-9-]{8,80}$/.test(event.traceId) &&
+        VALID_LATENCY_STAGES.has(event.stage) &&
+        VALID_PARTICIPATION_STATES.has(event.state) &&
+        Number.isFinite(event.atMs) &&
+        Number.isFinite(event.elapsedMs) &&
+        event.atMs >= earliestAt &&
+        event.atMs <= latestAt &&
+        event.elapsedMs >= 0 &&
+        event.elapsedMs <= event.atMs - earliestAt &&
+        ['en', 'es', 'code-switch', 'unknown'].includes(event.language) &&
+        ['direct', 'follow_up', 'one_to_one'].includes(event.activation),
+    )
+    .filter((event, index, events) => {
+      const previous = events.slice(0, index).filter(item => item.traceId === event.traceId).at(-1)
+      return !previous || (event.atMs >= previous.atMs && event.elapsedMs >= previous.elapsedMs)
+    })
+    .slice(0, 500)
   const counters = batch.counters ?? {}
 
-  const writes: Promise<unknown>[] = []
-  if (turns.length > 0) {
-    writes.push(
-      db.copilotTranscriptTurn.createMany({
-        data: turns.map(t => ({
-          sessionId: session.id,
-          workspaceId: session.workspaceId,
-          role: t.role as string,
-          text: (t.text as string).slice(0, 8000),
-          tokens: typeof t.tokens === 'number' ? t.tokens : null,
-          ts: parseTs(t.ts),
-        })),
-      }),
-    )
-  }
-  if (screenEvents.length > 0) {
-    writes.push(
-      db.copilotScreenEvent.createMany({
-        data: screenEvents.map(e => ({
-          sessionId: session.id,
-          workspaceId: session.workspaceId,
-          visionSummary: e.visionSummary ? e.visionSummary.slice(0, 4000) : null,
-          detectedContext: (e.detectedContext ?? {}) as object,
-          ts: parseTs(e.ts),
-        })),
-      }),
-    )
-  }
   const audioIn = Number(counters.audioInSecs) || 0
   const audioOut = Number(counters.audioOutSecs) || 0
   const frames = Math.max(0, Math.round(Number(counters.videoFrames) || 0))
-  if (audioIn > 0 || audioOut > 0 || frames > 0) {
-    writes.push(
-      db.copilotSession.update({
-        where: { id: session.id },
-        data: {
-          ...(audioIn > 0 ? { audioInSecs: { increment: audioIn } } : {}),
-          ...(audioOut > 0 ? { audioOutSecs: { increment: audioOut } } : {}),
-          ...(frames > 0 ? { videoFrames: { increment: frames } } : {}),
-        },
-      }),
-    )
+  const persistence = await persistTelemetryBatchAtomically(
+    db as unknown as TelemetryDatabase,
+    {
+      sessionId: session.id,
+      batchId,
+      turns: turns.map(t => ({
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        role: t.role as string,
+        text: (t.text as string).slice(0, 8000),
+        tokens: typeof t.tokens === 'number' ? t.tokens : null,
+        ts: parseTs(t.ts),
+      })),
+      screenEvents: screenEvents.map(e => ({
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        visionSummary: e.visionSummary ? e.visionSummary.slice(0, 4000) : null,
+        detectedContext: (e.detectedContext ?? {}) as object,
+        ts: parseTs(e.ts),
+      })),
+      counters: { audioIn, audioOut, frames },
+    },
+  )
+
+  if (persistence.accepted && latencyEvents.length > 0) {
+    let platform = 'in_app'
+    if (session.metadata.copilotMode === 'meeting') {
+      try {
+        const host = new URL(String(session.metadata.meetingUrl ?? '')).hostname
+        platform = host.includes('zoom') ? 'zoom' : host.includes('meet.google') ? 'google_meet' : 'other_meeting'
+      } catch {
+        platform = 'other_meeting'
+      }
+    }
+    for (const event of latencyEvents) {
+      // Intentionally content-free: no transcript, audio, tool args, URL,
+      // participant name, or screen material belongs in latency logs.
+      console.info(
+        '[Copilot latency]',
+        JSON.stringify({
+          sessionCorrelation: createHash('sha256')
+            .update(`${process.env.COPILOT_TRACE_SALT || 'copilot'}:${session.id}`)
+            .digest('hex')
+            .slice(0, 16),
+          traceId: event.traceId,
+          platform,
+          model: session.metadata.vendorModelId ?? COPILOT_DEFAULTS.vendorModelId,
+          stage: event.stage,
+          state: event.state,
+          language: event.language,
+          activation: event.activation,
+          atMs: Math.round(event.atMs),
+          elapsedMs: Math.max(0, Math.round(event.elapsedMs)),
+        }),
+      )
+    }
   }
-  await Promise.all(writes)
-  return { turns: turns.length, screenEvents: screenEvents.length }
+  return {
+    turns: persistence.accepted ? turns.length : 0,
+    screenEvents: persistence.accepted ? screenEvents.length : 0,
+    latencyEvents: persistence.accepted ? latencyEvents.length : 0,
+    duplicate: persistence.duplicate,
+  }
 }
 
 // ─── End ────────────────────────────────────────────────────────────
@@ -592,14 +695,14 @@ export async function createPublicAgentSession(publicKey: string, opts: { locale
   const spoken = resolveCopilotLanguage(agent.language)
   const { buildAgentPrompt } = await import('./prompt')
   const systemPrompt = buildAgentPrompt({
-    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+    agent: { name: displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: normalizeBlocks(agent.blocks), timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace.name ?? 'this workspace',
     ragContext,
     locale,
     language: spoken.code,
   })
 
-  const maxSecs = (steps.length > 0 || (Array.isArray((agent as any).blocks) && (agent as any).blocks.length > 0)) ? (agent.timeboxMinutes + 5) * 60 : undefined
+  const maxSecs = (steps.length > 0 || normalizeBlocks(agent.blocks).length > 0) ? (agent.timeboxMinutes + 5) * 60 : undefined
   const { realtime, liveConfig } = await mintEphemeralToken(systemPrompt, WIDGET_TOOL_DEFS, maxSecs, undefined, voiceName)
 
   const created = await db.copilotSession.create({
@@ -655,14 +758,25 @@ const MEETING_CEILING_SECS = Number(process.env.COPILOT_MEETING_MAX_SECS) || 360
  * language used to be written into the prompt ("spoken conversation
  * in en-AU"), which neither pinned the voice nor selected Spanish.
  */
-function meetingSpeechPin(agent: { voice: string | null; name: string; language: string | null }) {
+function meetingSpeechPin(agent: {
+  voice: string | null
+  name: string
+  language: string | null
+  addressAliases?: string[]
+}) {
   const voice = resolveCopilotVoice(agent.voice, agent.name)
   const language = resolveCopilotLanguage(agent.language)
+  const addressNames = [...new Set([
+    agent.name.trim(),
+    voice.displayName.trim(),
+    ...(agent.addressAliases ?? []).map(alias => alias.trim()),
+  ].filter(Boolean))]
   return {
     locale: language.locale,
     pinnedVoice: voice.voiceName,
     pinnedDisplayName: voice.displayName,
     pinnedLanguage: language.code,
+    addressNames,
   }
 }
 
@@ -727,6 +841,7 @@ export async function createMeetingSession(opts: {
         pinnedVoice: pin.pinnedVoice,
         pinnedDisplayName: pin.pinnedDisplayName,
         pinnedLanguage: pin.pinnedLanguage,
+        addressNames: pin.addressNames,
       },
     },
   })
@@ -754,6 +869,7 @@ export async function createMeetingSession(opts: {
           pinnedVoice: pin.pinnedVoice,
           pinnedDisplayName: pin.pinnedDisplayName,
           pinnedLanguage: pin.pinnedLanguage,
+          addressNames: pin.addressNames,
           botId: bot.id,
         },
       },
@@ -875,6 +991,7 @@ export async function createPublicMeetingSession(publicKey: string, opts: {
     pinnedVoice: pin.pinnedVoice,
     pinnedDisplayName: pin.pinnedDisplayName,
     pinnedLanguage: pin.pinnedLanguage,
+    addressNames: pin.addressNames,
   }
 
   const created = await db.copilotSession.create({
@@ -953,9 +1070,15 @@ export async function connectMeetingSession(botToken: string) {
     ? { voiceName: pinnedVoice.voiceName, displayName: pinnedVoice.displayName ?? agent.name }
     : resolveCopilotVoice(agent.voice, agent.name)
   const languageCode = readPinnedCopilotLanguage(meta) ?? resolveCopilotLanguage(agent.language).code
+  const addressNames = [...new Set([
+    agent.name.trim(),
+    resolvedVoice.displayName.trim(),
+    ...(Array.isArray(meta.addressNames) ? meta.addressNames : []),
+    ...agent.addressAliases,
+  ].filter((name): name is string => typeof name === 'string' && name.trim().length > 0).map(name => name.trim()))]
   const { buildMeetingPrompt } = await import('./prompt')
   const systemPrompt = buildMeetingPrompt({
-    agent: { name: resolvedVoice.displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [], timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
+    agent: { name: resolvedVoice.displayName, type: agent.type, persona: agent.persona, goal: null, openingLine: agent.openingLine, collectInfo: agent.collectInfo, steps, blocks: normalizeBlocks(agent.blocks), timeboxMinutes: agent.timeboxMinutes, playbook: agent.playbook, uiMap: agent.uiMap, appContext: agent.appContext },
     workspaceName: workspace?.name ?? 'this workspace',
     ragContext,
     locale,
@@ -994,7 +1117,12 @@ export async function connectMeetingSession(botToken: string) {
     realtime,
     liveConfig,
     tools: MEETING_TOOL_DEFS,
-    display: { agentName: agent.name, workspaceName: workspace?.name ?? '' },
+    display: {
+      agentName: agent.name,
+      pinnedDisplayName: resolvedVoice.displayName,
+      addressNames,
+      workspaceName: workspace?.name ?? '',
+    },
     videoRelayUrl,
   }
 }

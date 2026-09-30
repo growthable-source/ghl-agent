@@ -130,6 +130,7 @@ export class PcmPlayer {
   private ctx: AudioContext | null = null
   private nextStartTime = 0
   private sources = new Set<AudioBufferSourceNode>()
+  private generation = 0
   /** Seconds of model audio enqueued — feeds the cost telemetry. */
   playedSecs = 0
 
@@ -139,10 +140,10 @@ export class PcmPlayer {
     this.nextStartTime = this.ctx.currentTime
   }
 
-  enqueue(base64Pcm16: string) {
-    if (!this.ctx) return
+  enqueue(base64Pcm16: string, generation = this.generation): { scheduledAtMs: number; generation: number } | null {
+    if (!this.ctx || generation !== this.generation) return null
     const samples = base64ToPcm16(base64Pcm16)
-    if (samples.length === 0) return
+    if (samples.length === 0) return null
     const buffer = this.ctx.createBuffer(1, samples.length, PLAYBACK_SAMPLE_RATE)
     const channel = buffer.getChannelData(0)
     for (let i = 0; i < samples.length; i++) channel[i] = samples[i] / 0x8000
@@ -155,10 +156,31 @@ export class PcmPlayer {
     this.playedSecs += buffer.duration
     this.sources.add(source)
     source.onended = () => this.sources.delete(source)
+    return {
+      // This is an AudioContext schedule estimate, not evidence that an
+      // independent Meet/Zoom participant heard the sample.
+      scheduledAtMs: performance.timeOrigin + performance.now() + Math.max(0, startAt - this.ctx.currentTime) * 1000,
+      generation,
+    }
   }
 
-  /** Barge-in: drop everything queued immediately. */
-  flush() {
+  /** Barge-in: invalidate old callbacks and drop queued audio immediately. */
+  interrupt(): number {
+    this.generation++
+    this.stopSources()
+    return this.generation
+  }
+
+  currentGeneration(): number {
+    return this.generation
+  }
+
+  /** Backwards-compatible barge-in entrypoint used by the voice surfaces. */
+  flush(): void {
+    this.interrupt()
+  }
+
+  private stopSources() {
     for (const s of this.sources) {
       try {
         s.stop()
@@ -171,7 +193,7 @@ export class PcmPlayer {
   }
 
   stop() {
-    this.flush()
+    this.interrupt()
     void this.ctx?.close()
     this.ctx = null
   }

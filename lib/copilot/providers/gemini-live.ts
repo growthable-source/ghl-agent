@@ -23,6 +23,7 @@ import type {
   RealtimeModelProvider,
   RealtimeProviderConfig,
 } from '../types'
+import { RollingPreActivationAudio, splitSelfEcho } from '../turn-lifecycle'
 
 /** Minimal structural view of LiveServerMessage — we only read these
  *  fields, and tolerating absence beats pinning the SDK's full type. */
@@ -50,14 +51,21 @@ interface LiveSessionLike {
 }
 
 const MAX_RECONNECTS = 5
+const SETUP_TIMEOUT_MS = 20_000
+/** Two seconds of 16 kHz mono PCM16. Bounds memory while preserving the
+ *  beginning of speech that lands during setup or a resumable reconnect. */
+const MAX_PENDING_AUDIO_BYTES = 16_000 * 2 * 2
+const SELF_ECHO_WINDOW_MS = 2_000
 
 export class GeminiLiveProvider implements RealtimeModelProvider {
   readonly name: CopilotModel = 'gemini-live'
 
-  onAudioOutput?: (base64Pcm: string) => void
+  onAudioOutput?: (base64Pcm: string, meta: { responseEpoch: number }) => void
   onTranscript?: (turn: { role: 'user' | 'agent'; text: string; final: boolean }) => void
   onToolCall?: (call: { id: string; name: string; args: Record<string, unknown> }) => Promise<Record<string, unknown>>
-  onInterrupted?: () => void
+  onInterrupted?: (responseEpoch: number) => void
+  onTurnComplete?: () => void
+  onSelfEchoSuppressed?: () => void
   onError?: (message: string) => void
   onEnded?: (reason: string) => void
 
@@ -67,6 +75,21 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
   private resumptionHandle: string | null = null
   private reconnects = 0
   private closing = false
+  private setupComplete = false
+  private connectionEpoch = 0
+  private sessionsByEpoch = new Map<number, LiveSessionLike>()
+  private pendingSetupCancel: (() => void) | null = null
+  private pendingAudio = new RollingPreActivationAudio(MAX_PENDING_AUDIO_BYTES)
+  private pendingVideo: { data: string; mimeType: string } | null = null
+  private pendingToolResponses = new Map<string, Record<string, unknown>>()
+  private responseEpoch = 0
+  private activeResponseEpoch = 0
+  private responseActive = false
+  private awaitingFreshInputAfterInterrupt = false
+  private freshInputAfterInterrupt = false
+  private serverInterruptedForInput = false
+  private recentAgentOutput = ''
+  private lastAgentOutputAt = 0
   private userBuffer = ''
   private agentBuffer = ''
 
@@ -81,6 +104,8 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
 
   private async openSession(): Promise<void> {
     if (!this.ai || !this.cfg) throw new Error('connect() not called')
+    const epoch = ++this.connectionEpoch
+    this.setupComplete = false
     const vendorConfig = { ...(this.cfg.vendorConfig ?? {}) }
     if (this.resumptionHandle) {
       vendorConfig.sessionResumption = { handle: this.resumptionHandle }
@@ -88,56 +113,121 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false
+      let sdkSessionReady = false
+      let liveSetupReady = false
+      let openedSession: LiveSessionLike | null = null
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          try {
+            openedSession?.close()
+          } catch {
+            // already closed
+          }
+          this.sessionsByEpoch.delete(epoch)
+          this.pendingSetupCancel = null
+          if (this.connectionEpoch === epoch) this.connectionEpoch++
+          reject(new Error('realtime setup timed out'))
+        }
+      }, SETUP_TIMEOUT_MS)
+      const settleReady = () => {
+        if (settled || !sdkSessionReady || !liveSetupReady || this.connectionEpoch !== epoch) return
+        settled = true
+        clearTimeout(timeout)
+        this.session = openedSession
+        this.setupComplete = true
+        this.pendingSetupCancel = null
+        this.flushPendingAudio()
+        this.flushPendingVideo()
+        this.flushPendingToolResponses()
+        resolve()
+      }
+      const rejectCurrent = (error: Error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        try {
+          openedSession?.close()
+        } catch {
+          // already closed
+        }
+        this.sessionsByEpoch.delete(epoch)
+        this.pendingSetupCancel = null
+        if (this.connectionEpoch === epoch) this.connectionEpoch++
+        reject(error)
+      }
+      this.pendingSetupCancel = () => rejectCurrent(new Error('realtime connection closed'))
       void this.ai!.live
         .connect({
           model: this.cfg!.connection.vendorModelId,
           config: vendorConfig as never,
           callbacks: {
             onopen: () => {
-              if (!settled) {
-                settled = true
-                resolve()
-              }
+              // WebSocket open is not session readiness. Audio is held until
+              // both the SDK session and Live API setupComplete are present.
             },
-            onmessage: (msg: unknown) => this.handleMessage(msg as LiveMessage),
+            onmessage: (msg: unknown) => {
+              if (this.connectionEpoch !== epoch || this.closing) return
+              const liveMessage = msg as LiveMessage
+              if (liveMessage.setupComplete) {
+                liveSetupReady = true
+                settleReady()
+              }
+              this.handleMessage(liveMessage, epoch)
+            },
             onerror: (e: { message?: string }) => {
+              if (this.connectionEpoch !== epoch || this.closing) return
               const message = e?.message || 'realtime connection error'
               if (!settled) {
-                settled = true
-                reject(new Error(message))
+                rejectCurrent(new Error(message))
               } else {
                 this.onError?.(message)
               }
             },
             onclose: () => {
+              if (this.connectionEpoch !== epoch) return
               if (!settled) {
-                settled = true
-                reject(new Error('connection closed during setup'))
+                rejectCurrent(new Error('connection closed during setup'))
                 return
               }
-              this.handleClose()
+              this.handleClose(epoch, openedSession)
             },
           },
         })
         .then(session => {
-          this.session = session as unknown as LiveSessionLike
+          openedSession = session as unknown as LiveSessionLike
+          this.sessionsByEpoch.set(epoch, openedSession)
+          if (this.connectionEpoch !== epoch || this.closing) {
+            try {
+              openedSession.close()
+            } catch {
+              // already closed
+            }
+            this.sessionsByEpoch.delete(epoch)
+            return
+          }
+          sdkSessionReady = true
+          settleReady()
         })
         .catch(err => {
-          if (!settled) {
-            settled = true
-            reject(err instanceof Error ? err : new Error(String(err)))
-          }
+          rejectCurrent(err instanceof Error ? err : new Error(String(err)))
         })
     })
   }
 
-  private handleMessage(msg: LiveMessage) {
+  private handleMessage(msg: LiveMessage, connectionEpoch: number) {
+    if (connectionEpoch !== this.connectionEpoch || this.closing) return
     const sc = msg.serverContent
 
     if (sc?.interrupted) {
       // Barge-in: the model was cut off. Flush playback queues and
       // close out whatever partial agent speech we transcribed.
-      this.onInterrupted?.()
+      const canceledEpoch = this.activeResponseEpoch
+      this.onInterrupted?.(canceledEpoch)
+      this.responseActive = false
+      this.awaitingFreshInputAfterInterrupt = true
+      this.freshInputAfterInterrupt = false
+      this.serverInterruptedForInput = true
       if (this.agentBuffer.trim()) {
         this.onTranscript?.({ role: 'agent', text: this.agentBuffer.trim(), final: true })
         this.agentBuffer = ''
@@ -145,18 +235,49 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     }
 
     if (sc?.inputTranscription?.text) {
-      this.userBuffer += sc.inputTranscription.text
-      this.onTranscript?.({ role: 'user', text: this.userBuffer.trim(), final: false })
+      const fragment = sc.inputTranscription.text
+      this.freshInputAfterInterrupt = this.freshInputAfterInterrupt || this.awaitingFreshInputAfterInterrupt
+      const candidate = `${this.userBuffer}${fragment}`
+      const withinEchoWindow = Date.now() - this.lastAgentOutputAt <= SELF_ECHO_WINDOW_MS
+      const split = withinEchoWindow
+        ? splitSelfEcho(candidate, this.recentAgentOutput, this.serverInterruptedForInput)
+        : { echoDetected: false, suffix: candidate }
+      if (split.echoDetected) {
+        this.onSelfEchoSuppressed?.()
+        this.userBuffer = split.suffix
+      } else {
+        this.userBuffer = candidate
+      }
+      if (this.userBuffer.trim()) {
+        this.onTranscript?.({ role: 'user', text: this.userBuffer.trim(), final: false })
+      }
     }
     if (sc?.outputTranscription?.text) {
       this.agentBuffer += sc.outputTranscription.text
+      this.recentAgentOutput = this.agentBuffer.trim()
+      this.lastAgentOutputAt = Date.now()
       this.onTranscript?.({ role: 'agent', text: this.agentBuffer.trim(), final: false })
+    }
+
+    // Start tool tracking before processing audio in the same server message,
+    // so acknowledgement/filler audio cannot become the measured answer.
+    if (msg.toolCall?.functionCalls?.length && this.onToolCall) {
+      for (const fc of msg.toolCall.functionCalls) this.executeToolCall(fc)
     }
 
     const parts = sc?.modelTurn?.parts ?? []
     for (const part of parts) {
       if (part.inlineData?.data && (part.inlineData.mimeType ?? '').startsWith('audio/')) {
-        this.onAudioOutput?.(part.inlineData.data)
+        if (this.awaitingFreshInputAfterInterrupt && !this.freshInputAfterInterrupt) continue
+        if (!this.responseActive) {
+          this.activeResponseEpoch = ++this.responseEpoch
+          this.responseActive = true
+          if (this.awaitingFreshInputAfterInterrupt) {
+            this.awaitingFreshInputAfterInterrupt = false
+            this.freshInputAfterInterrupt = false
+          }
+        }
+        this.onAudioOutput?.(part.inlineData.data, { responseEpoch: this.activeResponseEpoch })
       }
     }
 
@@ -169,34 +290,9 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
         this.onTranscript?.({ role: 'agent', text: this.agentBuffer.trim(), final: true })
         this.agentBuffer = ''
       }
-    }
-
-    if (msg.toolCall?.functionCalls?.length && this.onToolCall) {
-      for (const fc of msg.toolCall.functionCalls) {
-        const id = fc.id ?? ''
-        const name = fc.name ?? ''
-        void this.onToolCall({ id, name, args: fc.args ?? {} })
-          .then(response => {
-            this.session?.sendToolResponse({
-              functionResponses: [
-                {
-                  id,
-                  name,
-                  // INTERRUPT: deliver the result as soon as it's ready —
-                  // the user is usually waiting on exactly this answer.
-                  response: { ...response, scheduling: 'INTERRUPT' },
-                },
-              ],
-            })
-          })
-          .catch(err => {
-            this.session?.sendToolResponse({
-              functionResponses: [
-                { id, name, response: { error: String(err), scheduling: 'WHEN_IDLE' } },
-              ],
-            })
-          })
-      }
+      this.responseActive = false
+      this.serverInterruptedForInput = false
+      this.onTurnComplete?.()
     }
 
     if (msg.sessionResumptionUpdate?.resumable && msg.sessionResumptionUpdate.newHandle) {
@@ -210,7 +306,48 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     }
   }
 
-  private handleClose() {
+  private executeToolCall(
+    fc: { id?: string; name?: string; args?: Record<string, unknown> },
+  ): void {
+    if (!this.onToolCall) return
+    const id = fc.id ?? ''
+    const name = fc.name ?? ''
+    void this.onToolCall({ id, name, args: fc.args ?? {} })
+      .then(response => {
+        this.deliverOrQueueToolResponse(id, {
+          functionResponses: [
+            {
+              id,
+              name,
+              response: { ...response, scheduling: 'INTERRUPT' },
+            },
+          ],
+        })
+      })
+      .catch(err => {
+        this.deliverOrQueueToolResponse(id, {
+          functionResponses: [
+            { id, name, response: { error: String(err), scheduling: 'WHEN_IDLE' } },
+          ],
+        })
+      })
+  }
+
+  private deliverOrQueueToolResponse(id: string, payload: Record<string, unknown>): void {
+    if (this.closing) return
+    if (this.session && this.setupComplete) {
+      this.session.sendToolResponse(payload)
+      return
+    }
+    this.pendingToolResponses.set(id, payload)
+  }
+
+  private handleClose(connectionEpoch: number, closedSession: LiveSessionLike | null) {
+    if (connectionEpoch !== this.connectionEpoch) return
+    this.connectionEpoch++
+    this.sessionsByEpoch.delete(connectionEpoch)
+    this.setupComplete = false
+    if (this.session === closedSession) this.session = null
     if (this.closing) {
       this.onEnded?.('user_ended')
       return
@@ -222,21 +359,29 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
       this.reconnects++
       void this.openSession().catch(err => {
         console.error('[Copilot] reconnect failed:', err)
+        this.pendingToolResponses.clear()
         this.onEnded?.('connection_lost')
       })
     } else {
+      this.pendingToolResponses.clear()
       this.onEnded?.(this.resumptionHandle ? 'connection_lost' : 'connection_closed')
     }
   }
 
   sendAudioChunk(base64Pcm16: string): void {
-    this.session?.sendRealtimeInput({
-      audio: { data: base64Pcm16, mimeType: 'audio/pcm;rate=16000' },
-    })
+    if (!this.session || !this.setupComplete) {
+      this.queuePendingAudio(base64Pcm16)
+      return
+    }
+    this.sendAudioNow(base64Pcm16)
   }
 
   sendVideoFrame(base64Image: string, mimeType: string = 'image/jpeg'): void {
-    this.session?.sendRealtimeInput({
+    if (!this.session || !this.setupComplete) {
+      this.pendingVideo = { data: base64Image, mimeType }
+      return
+    }
+    this.session.sendRealtimeInput({
       video: { data: base64Image, mimeType },
     })
   }
@@ -267,16 +412,56 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     // Gemini Live runs server-side VAD on the mic stream, so true
     // barge-in happens automatically when the user speaks. A manual
     // interrupt is purely local: stop playback now.
-    this.onInterrupted?.()
+    this.onInterrupted?.(this.activeResponseEpoch)
   }
 
   async close(): Promise<void> {
     this.closing = true
-    try {
-      this.session?.close()
-    } catch {
-      // already closed
-    }
+    this.pendingSetupCancel?.()
+    this.connectionEpoch++
     this.session = null
+    for (const session of this.sessionsByEpoch.values()) {
+      try {
+        session.close()
+      } catch {
+        // already closed
+      }
+    }
+    this.sessionsByEpoch.clear()
+    this.setupComplete = false
+    this.pendingAudio.clear()
+    this.pendingVideo = null
+    this.pendingToolResponses.clear()
+  }
+
+  private sendAudioNow(data: string): void {
+    this.session?.sendRealtimeInput({
+      audio: { data, mimeType: 'audio/pcm;rate=16000' },
+    })
+  }
+
+  private queuePendingAudio(data: string): void {
+    this.pendingAudio.push(data)
+  }
+
+  private flushPendingAudio(): void {
+    if (!this.session || !this.setupComplete) return
+    for (const chunk of this.pendingAudio.drain()) this.sendAudioNow(chunk)
+  }
+
+  private flushPendingVideo(): void {
+    if (!this.session || !this.setupComplete || !this.pendingVideo) return
+    const frame = this.pendingVideo
+    this.pendingVideo = null
+    this.session.sendRealtimeInput({
+      video: { data: frame.data, mimeType: frame.mimeType },
+    })
+  }
+
+  private flushPendingToolResponses(): void {
+    if (!this.session || !this.setupComplete) return
+    const pending = [...this.pendingToolResponses.values()]
+    this.pendingToolResponses.clear()
+    for (const payload of pending) this.session.sendToolResponse(payload)
   }
 }

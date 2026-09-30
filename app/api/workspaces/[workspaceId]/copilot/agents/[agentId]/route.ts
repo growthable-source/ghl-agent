@@ -12,6 +12,7 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
 import { normalizeStoredCopilotLanguage } from '@/lib/copilot/language'
 import { normalizeStoredCopilotVoice } from '@/lib/copilot/voices'
+import { normalizeBlocks } from '@/lib/copilot/blocks'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -37,12 +38,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
       publicKey: agent.publicKey,
       published: agent.published,
       steps: Array.isArray(agent.steps) ? agent.steps : [],
-      procedureMode: (agent as any).procedureMode === 'advanced' ? 'advanced' : 'simple',
-      blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [],
+      procedureMode: agent.procedureMode === 'advanced' ? 'advanced' : 'simple',
+      blocks: normalizeBlocks(agent.blocks),
       timeboxMinutes: agent.timeboxMinutes,
       knowledgeDomainIds: agent.knowledgeDomainIds,
       voice: agent.voice,
       language: agent.language,
+      addressAliases: agent.addressAliases,
       appContext: agent.appContext,
       playbook: agent.playbook,
       recordings: agent.recordings.map(r => ({
@@ -85,14 +87,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (body.procedureMode === 'simple' || body.procedureMode === 'advanced') data.procedureMode = body.procedureMode
   if (Array.isArray(body.blocks)) {
-    const { normalizeBlocks } = await import('@/lib/copilot/blocks')
-    data.blocks = normalizeBlocks(body.blocks).slice(0, 40) as any
+    data.blocks = normalizeBlocks(body.blocks).slice(0, 40)
   }
   // Voice: a catalog id, 'rotate', or anything else → the pinned default.
   // Empty used to store null, which omitted speechConfig and let the
   // voice drift. Always persist a concrete choice.
   if ('voice' in body) data.voice = normalizeStoredCopilotVoice(body.voice)
   if ('language' in body) data.language = normalizeStoredCopilotLanguage(body.language)
+  if (Array.isArray(body.addressAliases)) {
+    data.addressAliases = body.addressAliases
+      .filter((alias): alias is string => typeof alias === 'string' && alias.trim().length > 0)
+      .map(alias => alias.trim().slice(0, 80))
+      .slice(0, 12)
+  }
   if (typeof body.appContext === 'string') data.appContext = body.appContext.slice(0, 600) || null
 
   // Publish: mint the publicKey server-side (never client-supplied).
