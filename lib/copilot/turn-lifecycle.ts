@@ -9,8 +9,7 @@
 export type CopilotParticipationState = 'PASSIVE' | 'ADDRESSED' | 'RESPONDING' | 'INTERRUPTED'
 
 export type CopilotLatencyStage =
-  | 'input_transcript_first'
-  | 'input_transcript_final'
+  | 'input_vad_end'
   | 'response_audio_received'
   | 'playback_scheduled'
   | 'tool_call_started'
@@ -26,12 +25,16 @@ export interface CopilotLatencyEvent {
   atMs: number
   elapsedMs: number
   state: CopilotParticipationState
+  language: 'en' | 'es' | 'code-switch' | 'unknown'
+  activation: 'direct' | 'follow_up' | 'one_to_one'
 }
 
 export interface TurnLifecycleOptions {
   now?: () => number
   createTraceId?: () => string
   followUpWindowMs?: number
+  requireDirectAddress?: boolean
+  addressNames?: string[]
   onEvent?: (event: CopilotLatencyEvent) => void
   onStateChange?: (state: CopilotParticipationState) => void
 }
@@ -45,18 +48,30 @@ export class TurnLifecycle {
   private readonly now: () => number
   private readonly createTraceId: () => string
   private readonly followUpWindowMs: number
+  private readonly requireDirectAddress: boolean
+  private addressNames: string[]
   private readonly onEvent?: (event: CopilotLatencyEvent) => void
   private readonly onStateChange?: (state: CopilotParticipationState) => void
   private traceId: string | null = null
   private traceStartedAt = 0
-  private emitted = new Set<CopilotLatencyStage>()
+  private events = new Map<CopilotLatencyStage, Omit<CopilotLatencyEvent, 'elapsedMs'>>()
   private followUpUntil = 0
+  private followUpAvailable = false
+  private pendingTools = 0
+  private toolUsed = false
+  private awaitingPostToolAudio = false
+  private responseAllowed = false
+  private responded = false
+  private language: CopilotLatencyEvent['language'] = 'unknown'
+  private activation: CopilotLatencyEvent['activation'] = 'one_to_one'
   private currentState: CopilotParticipationState = 'PASSIVE'
 
   constructor(options: TurnLifecycleOptions = {}) {
     this.now = options.now ?? Date.now
     this.createTraceId = options.createTraceId ?? defaultTraceId
     this.followUpWindowMs = options.followUpWindowMs ?? 8_000
+    this.requireDirectAddress = options.requireDirectAddress ?? false
+    this.addressNames = options.addressNames ?? []
     this.onEvent = options.onEvent
     this.onStateChange = options.onStateChange
   }
@@ -66,57 +81,112 @@ export class TurnLifecycle {
   }
 
   get followUpActive(): boolean {
-    return this.now() <= this.followUpUntil
+    return this.followUpAvailable && this.now() <= this.followUpUntil
   }
 
-  userTranscript(final: boolean): void {
-    this.ensureTrace()
+  get canOutput(): boolean {
+    return this.responseAllowed && (this.currentState === 'ADDRESSED' || this.currentState === 'RESPONDING')
+  }
+
+  setAddressNames(names: string[]): void {
+    this.addressNames = names
+  }
+
+  /** Permit a deliberate opening/proactive turn. It is not user-latency data. */
+  beginSystemTurn(): void {
+    this.responseAllowed = true
     this.setState('ADDRESSED')
-    this.emit('input_transcript_first')
-    if (final) this.emit('input_transcript_final')
   }
 
-  responseAudio(): void {
-    this.ensureTrace()
+  userTranscript(text: string, final: boolean, serverInterrupted = false): 'direct' | 'follow_up' | 'incidental' {
+    const direct = !this.requireDirectAddress || isDirectAddress(text, this.addressNames)
+    const followUp = this.requireDirectAddress && !direct && this.followUpActive && isLikelyFollowUp(text)
+    if (!direct && !followUp) {
+      if (final) this.setState('PASSIVE')
+      return 'incidental'
+    }
+
+    this.activation = this.requireDirectAddress ? (direct ? 'direct' : 'follow_up') : 'one_to_one'
+    this.language = detectTurnLanguage(text)
+    this.responseAllowed = true
+    if (followUp || serverInterrupted) this.followUpAvailable = false
+    this.setState('ADDRESSED')
+    if (final) {
+      this.ensureTrace()
+      this.record('input_vad_end', this.now())
+    }
+    return this.activation
+  }
+
+  responseAudio(atMs = this.now()): boolean {
+    if (!this.canOutput) return false
     this.setState('RESPONDING')
-    this.emit('response_audio_received')
+    this.responded = true
+    if (this.traceId && this.pendingTools === 0 && !this.awaitingPostToolAudio) {
+      this.record('response_audio_received', atMs)
+    } else if (this.traceId && this.awaitingPostToolAudio) {
+      this.awaitingPostToolAudio = false
+      this.record('response_audio_received', atMs)
+    }
+    return true
   }
 
-  playbackScheduled(): void {
-    this.ensureTrace()
-    this.emit('playback_scheduled')
+  playbackScheduled(scheduledAtMs: number): void {
+    if (this.traceId && this.pendingTools === 0 && !this.awaitingPostToolAudio) {
+      this.record('playback_scheduled', scheduledAtMs)
+    }
   }
 
   toolCallStarted(): void {
-    this.ensureTrace()
-    this.emit('tool_call_started')
+    if (!this.canOutput) return
+    this.pendingTools++
+    this.toolUsed = true
+    // Audio before a tool call is acknowledgement/filler, not answer onset.
+    this.events.delete('response_audio_received')
+    this.events.delete('playback_scheduled')
+    if (this.traceId) this.record('tool_call_started', this.now())
   }
 
   toolCallCompleted(): void {
-    if (this.traceId) this.emit('tool_call_completed')
+    this.pendingTools = Math.max(0, this.pendingTools - 1)
+    this.awaitingPostToolAudio = this.toolUsed
+    if (this.traceId) this.record('tool_call_completed', this.now())
   }
 
   screenFrameReceived(): void {
-    if (this.traceId) this.emit('screen_frame_received')
+    if (this.traceId) this.record('screen_frame_received', this.now())
   }
 
   interrupted(): void {
-    this.ensureTrace()
+    if (!this.responseAllowed) return
     this.setState('INTERRUPTED')
-    this.emit('interrupted')
+    if (this.traceId) this.record('interrupted', this.now())
+    this.responseAllowed = false
   }
 
   selfEchoSuppressed(): void {
-    this.ensureTrace()
-    this.emit('self_echo_suppressed')
+    if (this.traceId) this.record('self_echo_suppressed', this.now())
   }
 
   turnComplete(): void {
-    if (!this.traceId) return
-    this.emit('turn_complete')
-    this.followUpUntil = this.now() + this.followUpWindowMs
+    if (this.pendingTools > 0) return
+    this.awaitingPostToolAudio = false
+    const completedAt = this.now()
+    if (this.traceId) {
+      this.record('turn_complete', completedAt)
+      this.flushEvents()
+    }
+    if (this.responded) {
+      this.followUpUntil = completedAt + this.followUpWindowMs
+      this.followUpAvailable = true
+    }
     this.traceId = null
-    this.emitted.clear()
+    this.events.clear()
+    this.pendingTools = 0
+    this.toolUsed = false
+    this.awaitingPostToolAudio = false
+    this.responseAllowed = false
+    this.responded = false
     this.setState('PASSIVE')
   }
 
@@ -124,20 +194,29 @@ export class TurnLifecycle {
     if (this.traceId) return
     this.traceId = this.createTraceId()
     this.traceStartedAt = this.now()
-    this.emitted.clear()
+    this.events.clear()
   }
 
-  private emit(stage: CopilotLatencyStage): void {
-    if (!this.traceId || this.emitted.has(stage)) return
-    this.emitted.add(stage)
-    const atMs = this.now()
-    this.onEvent?.({
+  private record(stage: CopilotLatencyStage, atMs: number): void {
+    if (!this.traceId) return
+    this.events.set(stage, {
       traceId: this.traceId,
       stage,
       atMs,
-      elapsedMs: Math.max(0, atMs - this.traceStartedAt),
       state: this.currentState,
+      language: this.language,
+      activation: this.activation,
     })
+  }
+
+  private flushEvents(): void {
+    const ordered = [...this.events.values()].sort((a, b) => a.atMs - b.atMs)
+    for (const event of ordered) {
+      this.onEvent?.({
+        ...event,
+        elapsedMs: Math.max(0, event.atMs - this.traceStartedAt),
+      })
+    }
   }
 
   private setState(state: CopilotParticipationState): void {
@@ -147,6 +226,57 @@ export class TurnLifecycle {
   }
 }
 
+const normalizeWords = (value: string): string[] =>
+  value
+    .toLocaleLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .match(/[\p{L}\p{N}]+/gu) ?? []
+
+const DIRECT_CUE_WORDS = new Set([
+  'hey', 'hi', 'hello', 'okay', 'ok', 'please', 'can', 'could', 'would', 'what', 'how', 'why',
+  'tell', 'help', 'show', 'hola', 'oye', 'por', 'favor', 'puedes', 'podrias', 'que', 'como',
+  'dime', 'ayuda', 'explica',
+])
+
+/** Conservative vocative classifier: a bare incidental name mention does not activate. */
+export function isDirectAddress(text: string, names: string[]): boolean {
+  const words = normalizeWords(text)
+  if (words.length === 0) return false
+  const aliases = [...names, 'assistant', 'ai assistant', 'copilot', 'co pilot', 'asistente', 'ia']
+    .map(normalizeWords)
+    .filter(alias => alias.length > 0)
+
+  for (const alias of aliases) {
+    for (let i = 0; i <= words.length - alias.length; i++) {
+      if (!alias.every((word, offset) => words[i + offset] === word)) continue
+      const before = words[i - 1]
+      const after = words[i + alias.length]
+      const atEdge = i === 0 || i + alias.length === words.length
+      const hasCue = (before && DIRECT_CUE_WORDS.has(before)) || (after && DIRECT_CUE_WORDS.has(after))
+      if (atEdge && (hasCue || words.length === alias.length || /[?!¿¡]/u.test(text))) return true
+      if (hasCue && i <= 2) return true
+    }
+  }
+  return false
+}
+
+export function isLikelyFollowUp(text: string): boolean {
+  const words = normalizeWords(text)
+  if (words.length === 0 || words.length > 24) return false
+  return /[?¿]/u.test(text) || DIRECT_CUE_WORDS.has(words[0]) || ['and', 'but', 'also', 'y', 'pero', 'tambien'].includes(words[0])
+}
+
+export function detectTurnLanguage(text: string): CopilotLatencyEvent['language'] {
+  const words = normalizeWords(text)
+  const spanish = words.some(word => ['hola', 'oye', 'puedes', 'podrias', 'que', 'como', 'dime', 'ayuda', 'gracias'].includes(word))
+  const english = words.some(word => ['hey', 'hello', 'can', 'could', 'what', 'how', 'tell', 'help', 'please', 'thanks'].includes(word))
+  if (spanish && english) return 'code-switch'
+  if (spanish || /[¿¡ñ]/iu.test(text)) return 'es'
+  if (english) return 'en'
+  return 'unknown'
+}
+
 /** Best-effort echo classification for mixed meeting audio.
  *
  * Recall exposes one mixed browser microphone to the webpage, not
@@ -154,24 +284,35 @@ export class TurnLifecycle {
  * textual check prevents recent assistant output echoed back through that
  * mixed route from activating the application state a second time.
  */
+export interface SelfEchoSplit {
+  echoDetected: boolean
+  /** Non-echo speech following the aligned echo prefix. */
+  suffix: string
+}
+
+export function splitSelfEcho(input: string, recentOutput: string, serverInterrupted = false): SelfEchoSplit {
+  const heard = normalizeWords(input)
+  const spoken = normalizeWords(recentOutput)
+  if (heard.length < 3 || spoken.length < 3) return { echoDetected: false, suffix: input }
+
+  let matched = 0
+  while (matched < heard.length && matched < spoken.length && heard[matched] === spoken[matched]) matched++
+  const required = Math.max(3, Math.ceil(spoken.length * 0.75))
+  if (matched < required) return { echoDetected: false, suffix: input }
+
+  const suffixWords = heard.slice(matched)
+  // Preserve a real barge-in after echoed words. Server interruption is
+  // strong evidence, but a substantive unmatched suffix is preserved too.
+  const preserveSuffix = serverInterrupted || suffixWords.length >= 2
+  return {
+    echoDetected: true,
+    suffix: preserveSuffix ? suffixWords.join(' ') : '',
+  }
+}
+
 export function isLikelySelfEcho(input: string, recentOutput: string): boolean {
-  const normalize = (value: string) =>
-    value
-      .toLocaleLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-  const heard = normalize(input)
-  const spoken = normalize(recentOutput)
-  if (heard.length < 8 || spoken.length < 8) return false
-  if (spoken.includes(heard) || heard.includes(spoken)) return true
-
-  const heardTokens = new Set(heard.split(' '))
-  const spokenTokens = new Set(spoken.split(' '))
-  let overlap = 0
-  for (const token of heardTokens) if (spokenTokens.has(token)) overlap++
-  return overlap / Math.max(heardTokens.size, spokenTokens.size) >= 0.8
+  const split = splitSelfEcho(input, recentOutput)
+  return split.echoDetected && split.suffix.length === 0
 }
 
 /**

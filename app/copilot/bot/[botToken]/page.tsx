@@ -26,9 +26,9 @@ import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
 import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
 import {
   TurnLifecycle,
-  type CopilotLatencyEvent,
   type CopilotParticipationState,
 } from '@/lib/copilot/turn-lifecycle'
+import { TelemetryBuffer } from '@/lib/copilot/telemetry-buffer'
 
 const FLUSH_INTERVAL_MS = 5000
 const SPEAKING_HOLD_MS = 700
@@ -50,16 +50,18 @@ export default function MeetingBotPage() {
   const micRef = useRef<MicCapture | null>(null)
   const playerRef = useRef<PcmPlayer | null>(null)
   const videoSocketRef = useRef<WebSocket | null>(null)
-  const turnBufferRef = useRef<Array<{ role: string; text: string; ts: string }>>([])
-  const latencyBufferRef = useRef<CopilotLatencyEvent[]>([])
+  const telemetryRef = useRef(new TelemetryBuffer())
+  const flushInFlightRef = useRef<Promise<void> | null>(null)
+  const playbackEpochsRef = useRef(new Map<number, number>())
   const lifecycleRef = useRef<TurnLifecycle | null>(null)
   if (!lifecycleRef.current) {
     lifecycleRef.current = new TurnLifecycle({
-      onEvent: event => latencyBufferRef.current.push(event),
+      requireDirectAddress: true,
+      addressNames: ['Assistant'],
+      onEvent: event => telemetryRef.current.latencyEvents.push(event),
       onStateChange: setParticipationState,
     })
   }
-  const flushedRef = useRef({ audioIn: 0, audioOut: 0 })
   const lastAudioAtRef = useRef(0)
   const endedRef = useRef(false)
   const startedRef = useRef(false)
@@ -71,53 +73,67 @@ export default function MeetingBotPage() {
 
   const flushEvents = useCallback(async () => {
     if (!botToken) return
-    const turns = turnBufferRef.current.splice(0)
-    const latencyEvents = latencyBufferRef.current.splice(0)
+    if (flushInFlightRef.current) return flushInFlightRef.current
     const audioIn = micRef.current?.capturedSecs ?? 0
     const audioOut = playerRef.current?.playedSecs ?? 0
-    const sent = flushedRef.current
-    const counters = {
-      audioInSecs: Math.max(0, Math.round((audioIn - sent.audioIn) * 100) / 100),
-      audioOutSecs: Math.max(0, Math.round((audioOut - sent.audioOut) * 100) / 100),
-    }
+    const snapshot = telemetryRef.current.snapshot({ audioIn, audioOut, frames: 0 })
+    const { turns, latencyEvents, counters } = snapshot
     if (turns.length === 0 && latencyEvents.length === 0 && counters.audioInSecs === 0 && counters.audioOutSecs === 0) return
-    flushedRef.current = { audioIn, audioOut }
-    try {
-      await fetch(api('events'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turns, latencyEvents, counters }),
-      })
-    } catch {
-      // Best-effort telemetry — never kills the call.
-    }
+    const pending = (async () => {
+      try {
+        const response = await fetch(api('events'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchId: snapshot.batchId, turns, latencyEvents, counters }),
+        })
+        if (response.ok) telemetryRef.current.commit(snapshot)
+      } catch {
+        // Retain for the next periodic flush.
+      }
+    })()
+    flushInFlightRef.current = pending
+    await pending
+    if (flushInFlightRef.current === pending) flushInFlightRef.current = null
   }, [api, botToken])
 
   const endSession = useCallback(
-    (reason: string) => {
+    async (reason: string) => {
       if (endedRef.current) return
       endedRef.current = true
+      if (flushInFlightRef.current) await flushInFlightRef.current
       micRef.current?.stop()
       playerRef.current?.stop()
       videoSocketRef.current?.close()
-      void providerRef.current?.close().catch(() => undefined)
-      void flushEvents()
+      await providerRef.current?.close().catch(() => undefined)
+      const snapshots = telemetryRef.current.finalSnapshots({
+        audioIn: micRef.current?.capturedSecs ?? 0,
+        audioOut: playerRef.current?.playedSecs ?? 0,
+        frames: 0,
+      })
       try {
-        navigator.sendBeacon(
-          api('end'),
-          new Blob([JSON.stringify({ endedReason: reason })], { type: 'application/json' }),
-        )
-      } catch {
-        void fetch(api('end'), {
+        const response = await fetch(api('end'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endedReason: reason }),
+          body: JSON.stringify({
+            endedReason: reason,
+            eventBatches: snapshots.map(snapshot => ({
+              batchId: snapshot.batchId,
+              turns: snapshot.turns,
+              latencyEvents: snapshot.latencyEvents,
+              counters: snapshot.counters,
+            })),
+          }),
           keepalive: true,
-        }).catch(() => undefined)
+        })
+        if (response.ok) {
+          for (const snapshot of snapshots) telemetryRef.current.commit(snapshot)
+        }
+      } catch {
+        // The server-side stale-session sweep remains the final fallback.
       }
       setPhase('ended')
     },
-    [api, flushEvents],
+    [api],
   )
 
   useEffect(() => {
@@ -146,6 +162,7 @@ export default function MeetingBotPage() {
           return
         }
         setAgentName(body.display?.agentName || 'Assistant')
+        lifecycleRef.current?.setAddressNames([body.display?.agentName || 'Assistant'])
         setWorkspaceName(body.display?.workspaceName || '')
 
         const player = new PcmPlayer()
@@ -161,28 +178,39 @@ export default function MeetingBotPage() {
         await mic.start()
         micRef.current = mic
 
-        provider.onAudioOutput = b64 => {
-          lifecycleRef.current?.responseAudio()
-          const scheduled = player.enqueue(b64, player.currentGeneration())
-          if (scheduled) lifecycleRef.current?.playbackScheduled()
+        provider.onAudioOutput = (b64, meta) => {
+          const lifecycle = lifecycleRef.current
+          if (!lifecycle?.responseAudio()) return
+          let generation = playbackEpochsRef.current.get(meta.responseEpoch)
+          if (generation === undefined) {
+            generation = player.currentGeneration()
+            playbackEpochsRef.current.set(meta.responseEpoch, generation)
+          }
+          const scheduled = player.enqueue(b64, generation)
+          if (scheduled) lifecycle.playbackScheduled(scheduled.scheduledAtMs)
           lastAudioAtRef.current = Date.now()
         }
-        provider.onInterrupted = () => {
+        provider.onInterrupted = responseEpoch => {
+          playbackEpochsRef.current.delete(responseEpoch)
           player.interrupt()
           lifecycleRef.current?.interrupted()
         }
         provider.onTurnComplete = () => lifecycleRef.current?.turnComplete()
         provider.onSelfEchoSuppressed = () => lifecycleRef.current?.selfEchoSuppressed()
         provider.onTranscript = turn => {
-          if (turn.role === 'user') lifecycleRef.current?.userTranscript(turn.final)
-          if (turn.role === 'agent') setCaption(turn.text)
+          if (turn.role === 'user') {
+            const lifecycle = lifecycleRef.current
+            lifecycle?.userTranscript(turn.text, turn.final, lifecycle.state === 'INTERRUPTED')
+          }
+          if (turn.role === 'agent' && lifecycleRef.current?.canOutput) setCaption(turn.text)
           if (turn.final) {
-            turnBufferRef.current.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
+            telemetryRef.current.turns.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
           }
         }
         provider.onToolCall = async call => {
+          if (!lifecycleRef.current?.canOutput) return { result: 'Remain silent; the room did not address you.' }
           lifecycleRef.current?.toolCallStarted()
-          turnBufferRef.current.push({
+          telemetryRef.current.turns.push({
             role: 'tool',
             text: `${call.name}(${JSON.stringify(call.args)})`,
             ts: new Date().toISOString(),
@@ -200,13 +228,14 @@ export default function MeetingBotPage() {
           }
         }
         provider.onError = message => console.error('[MeetingBot] provider error:', message)
-        provider.onEnded = reason => endSession(reason)
+        provider.onEnded = reason => void endSession(reason)
 
         await provider.connect({
           connection: body.realtime,
           tools: body.tools ?? [],
           vendorConfig: body.liveConfig,
         })
+        lifecycleRef.current?.beginSystemTurn()
         provider.nudge(
           '[The meeting connection is ready. Open the call now according to your opening instructions, then listen passively until addressed.]',
         )
@@ -268,7 +297,7 @@ export default function MeetingBotPage() {
     // the bot leaves the call. Deliberately NOT ending the session in
     // the effect cleanup: React dev double-mounting would end it before
     // the call even starts, and this component never unmounts otherwise.
-    const onPageHide = () => endSession('meeting_ended')
+    const onPageHide = () => void endSession('meeting_ended')
     window.addEventListener('pagehide', onPageHide)
     return () => {
       window.removeEventListener('pagehide', onPageHide)

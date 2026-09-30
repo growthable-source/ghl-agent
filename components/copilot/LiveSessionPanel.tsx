@@ -22,9 +22,9 @@ import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
 import { ScreenFrameCapture, NAV_CHANGE_THRESHOLD } from '@/lib/copilot/frame-capture'
 import {
   TurnLifecycle,
-  type CopilotLatencyEvent,
   type CopilotParticipationState,
 } from '@/lib/copilot/turn-lifecycle'
+import { TelemetryBuffer } from '@/lib/copilot/telemetry-buffer'
 
 export interface CopilotCreateResult {
   ok: boolean
@@ -145,17 +145,16 @@ export default function LiveSessionPanel({
   const displayStreamRef = useRef<MediaStream | null>(null)
   const previewVideoRef = useRef<HTMLVideoElement | null>(null)
   const feedEndRef = useRef<HTMLDivElement | null>(null)
-  const turnBufferRef = useRef<Array<{ role: string; text: string; ts: string }>>([])
-  const latencyBufferRef = useRef<CopilotLatencyEvent[]>([])
+  const telemetryRef = useRef(new TelemetryBuffer())
+  const playbackEpochsRef = useRef(new Map<number, number>())
   const lifecycleRef = useRef<TurnLifecycle | null>(null)
   if (!lifecycleRef.current) {
     lifecycleRef.current = new TurnLifecycle({
-      onEvent: event => latencyBufferRef.current.push(event),
+      onEvent: event => telemetryRef.current.latencyEvents.push(event),
       onStateChange: setParticipationState,
     })
   }
-  const screenBufferRef = useRef<Array<{ detectedContext: Record<string, unknown>; ts: string }>>([])
-  const flushedCountersRef = useRef({ audioIn: 0, audioOut: 0, frames: 0 })
+  const flushInFlightRef = useRef<Promise<void> | null>(null)
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const maxSecsRef = useRef(1800)
@@ -172,20 +171,17 @@ export default function LiveSessionPanel({
 
   const flushEvents = useCallback(
     async (final = false) => {
+      if (flushInFlightRef.current) {
+        await flushInFlightRef.current
+        if (!final) return
+      }
       const sessionId = sessionIdRef.current
       if (!sessionId) return
-      const turns = turnBufferRef.current.splice(0)
-      const latencyEvents = latencyBufferRef.current.splice(0)
-      const screenEvents = screenBufferRef.current.splice(0)
       const audioIn = micRef.current?.capturedSecs ?? 0
       const audioOut = playerRef.current?.playedSecs ?? 0
       const frames = framesRef.current?.sentFrames ?? 0
-      const sent = flushedCountersRef.current
-      const counters = {
-        audioInSecs: Math.max(0, Math.round((audioIn - sent.audioIn) * 100) / 100),
-        audioOutSecs: Math.max(0, Math.round((audioOut - sent.audioOut) * 100) / 100),
-        videoFrames: Math.max(0, frames - sent.frames),
-      }
+      const snapshot = telemetryRef.current.snapshot({ audioIn, audioOut, frames })
+      const { turns, latencyEvents, screenEvents, counters } = snapshot
       if (
         turns.length === 0 &&
         latencyEvents.length === 0 &&
@@ -196,12 +192,21 @@ export default function LiveSessionPanel({
       ) {
         return
       }
-      flushedCountersRef.current = { audioIn, audioOut, frames }
-      try {
-        await transport.events(sessionId, { turns, latencyEvents, screenEvents, counters }, final)
-      } catch {
-        // Best-effort telemetry: a missed flush never kills the session.
-      }
+      const pending = (async () => {
+        try {
+          await transport.events(
+            sessionId,
+            { batchId: snapshot.batchId, turns, latencyEvents, screenEvents, counters },
+            final,
+          )
+          telemetryRef.current.commit(snapshot)
+        } catch {
+          // Retain the snapshot prefix for the next flush.
+        }
+      })()
+      flushInFlightRef.current = pending
+      await pending
+      if (flushInFlightRef.current === pending) flushInFlightRef.current = null
     },
     [transport],
   )
@@ -263,12 +268,12 @@ export default function LiveSessionPanel({
     setPartial({ user: '', agent: '' })
     setElapsed(0)
     setParticipationState('PASSIVE')
-    latencyBufferRef.current = []
+    telemetryRef.current = new TelemetryBuffer()
+    playbackEpochsRef.current.clear()
     lifecycleRef.current = new TurnLifecycle({
-      onEvent: event => latencyBufferRef.current.push(event),
+      onEvent: event => telemetryRef.current.latencyEvents.push(event),
       onStateChange: setParticipationState,
     })
-    flushedCountersRef.current = { audioIn: 0, audioOut: 0, frames: 0 }
     pendingCueRef.current = null
     lastNudgeAtRef.current = 0
     lastModelSpokeAtRef.current = 0
@@ -310,28 +315,35 @@ export default function LiveSessionPanel({
       await mic.start()
       micRef.current = mic
 
-      provider.onAudioOutput = b64 => {
+      provider.onAudioOutput = (b64, meta) => {
         // Track the model's speech so proactive nudges never talk over it
         // or crowd it the instant it finishes. Audio chunks stream while
         // speaking, so "last chunk < cooldown ago" covers both cases.
         lastModelSpokeAtRef.current = Date.now()
-        lifecycleRef.current?.responseAudio()
-        const scheduled = player.enqueue(b64, player.currentGeneration())
-        if (scheduled) lifecycleRef.current?.playbackScheduled()
+        const lifecycle = lifecycleRef.current
+        if (!lifecycle?.responseAudio()) return
+        let generation = playbackEpochsRef.current.get(meta.responseEpoch)
+        if (generation === undefined) {
+          generation = player.currentGeneration()
+          playbackEpochsRef.current.set(meta.responseEpoch, generation)
+        }
+        const scheduled = player.enqueue(b64, generation)
+        if (scheduled) lifecycle.playbackScheduled(scheduled.scheduledAtMs)
       }
-      provider.onInterrupted = () => {
+      provider.onInterrupted = responseEpoch => {
+        playbackEpochsRef.current.delete(responseEpoch)
         player.interrupt()
         lifecycleRef.current?.interrupted()
       }
       provider.onTurnComplete = () => lifecycleRef.current?.turnComplete()
       provider.onSelfEchoSuppressed = () => lifecycleRef.current?.selfEchoSuppressed()
       provider.onTranscript = turn => {
-        if (turn.role === 'user') lifecycleRef.current?.userTranscript(turn.final)
+        if (turn.role === 'user') lifecycleRef.current?.userTranscript(turn.text, turn.final)
         if (turn.final) {
           if (turn.role === 'user') userSpeakingRef.current = false
           setPartial(p => ({ ...p, [turn.role === 'user' ? 'user' : 'agent']: '' }))
           pushFeed(turn.role, turn.text)
-          turnBufferRef.current.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
+          telemetryRef.current.turns.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
         } else {
           // First fragment of a new user utterance → ship a fresh frame
           // immediately, so the model answers "what am I looking at?"
@@ -349,7 +361,7 @@ export default function LiveSessionPanel({
         // the client-executed ones. Without this we cannot distinguish
         // "the model never called the tool" from "the call happened but
         // the user missed it" when sessions go wrong.
-        turnBufferRef.current.push({
+        telemetryRef.current.turns.push({
           role: 'tool',
           text: `${call.name}(${JSON.stringify(call.args)})`,
           ts: new Date().toISOString(),
@@ -395,6 +407,7 @@ export default function LiveSessionPanel({
         if (now - lastModelSpokeAtRef.current < MODEL_SPEAK_COOLDOWN_MS) return false
         if (now - lastNudgeAtRef.current < NUDGE_MIN_INTERVAL_MS) return false
         lastNudgeAtRef.current = now
+        lifecycleRef.current?.beginSystemTurn()
         provider.nudge(cue)
         return true
       }
@@ -418,7 +431,7 @@ export default function LiveSessionPanel({
       const frames = new ScreenFrameCapture(displayStream, created.realtime.frameFpsCap, frame => {
         provider.sendVideoFrame(frame.base64Jpeg)
         lifecycleRef.current?.screenFrameReceived()
-        screenBufferRef.current.push({
+        telemetryRef.current.screenEvents.push({
           detectedContext: { trigger: frame.trigger, diffScore: frame.diffScore },
           ts: new Date().toISOString(),
         })
@@ -443,6 +456,7 @@ export default function LiveSessionPanel({
         // streamed frame hasn't landed yet. Bypass the debounce — this is
         // the opening turn, and nothing has spoken yet.
         lastNudgeAtRef.current = Date.now()
+        lifecycleRef.current?.beginSystemTurn()
         provider.nudge(CUE_KICKOFF)
         // The watching loop: retry any pended look-cue until it lands.
         watcherTickRef.current = setInterval(flushPendingCue, WATCHER_TICK_MS)

@@ -13,6 +13,7 @@
  */
 
 import { GoogleGenAI, Modality, Behavior, Type, MediaResolution } from '@google/genai'
+import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { retrieveChunks } from '@/lib/ingest/retrieve'
 import { COPILOT_DEFAULTS } from './config'
@@ -433,6 +434,7 @@ export async function runSessionTool(
 // ─── Event sink ─────────────────────────────────────────────────────
 
 export interface EventBatch {
+  batchId?: string
   turns?: Array<{ role?: string; text?: string; tokens?: number; ts?: string }>
   screenEvents?: Array<{ visionSummary?: string; detectedContext?: Record<string, unknown>; ts?: string }>
   latencyEvents?: CopilotLatencyEvent[]
@@ -441,8 +443,7 @@ export interface EventBatch {
 
 const VALID_ROLES = new Set(['user', 'agent', 'system', 'tool'])
 const VALID_LATENCY_STAGES = new Set<CopilotLatencyStage>([
-  'input_transcript_first',
-  'input_transcript_final',
+  'input_vad_end',
   'response_audio_received',
   'playback_scheduled',
   'tool_call_started',
@@ -465,9 +466,47 @@ function parseTs(ts: string | undefined): Date {
 }
 
 export async function recordSessionEvents(session: ActiveSession, batch: EventBatch) {
-  const turns = (batch.turns ?? []).filter(t => t.text && VALID_ROLES.has(t.role ?? '')).slice(0, 200)
+  const batchId =
+    typeof batch.batchId === 'string' && /^[a-zA-Z0-9-]{8,80}$/.test(batch.batchId)
+      ? batch.batchId
+      : null
+  const currentRow = batchId
+    ? await db.copilotSession.findUnique({ where: { id: session.id }, select: { metadata: true } })
+    : null
+  const currentMetadata = (currentRow?.metadata ?? session.metadata) as Record<string, unknown>
+  const processedIds = Array.isArray(currentMetadata.telemetryBatchIds)
+    ? (currentMetadata.telemetryBatchIds as unknown[]).filter((id): id is string => typeof id === 'string')
+    : []
+  if (batchId && processedIds.includes(batchId)) {
+    return { turns: 0, screenEvents: 0, latencyEvents: 0, duplicate: true }
+  }
+
+  const earliestAt = session.startedAt.getTime() - 60_000
+  const latestAt = Date.now() + 60_000
+  const timestampInRange = (ts: string | undefined) => {
+    if (!ts) return false
+    const value = new Date(ts).getTime()
+    return Number.isFinite(value) && value >= earliestAt && value <= latestAt
+  }
+  let lastTurnAt = earliestAt
+  const turns = (batch.turns ?? [])
+    .filter(t => t.text && VALID_ROLES.has(t.role ?? '') && timestampInRange(t.ts))
+    .filter(t => {
+      const at = new Date(t.ts as string).getTime()
+      if (at < lastTurnAt) return false
+      lastTurnAt = at
+      return true
+    })
+    .slice(0, 200)
+  let lastScreenAt = earliestAt
   const screenEvents = (batch.screenEvents ?? [])
-    .filter(e => e.visionSummary || e.detectedContext)
+    .filter(e => (e.visionSummary || e.detectedContext) && timestampInRange(e.ts))
+    .filter(e => {
+      const at = new Date(e.ts as string).getTime()
+      if (at < lastScreenAt) return false
+      lastScreenAt = at
+      return true
+    })
     .slice(0, 200)
   const latencyEvents = (batch.latencyEvents ?? [])
     .filter(
@@ -477,8 +516,18 @@ export async function recordSessionEvents(session: ActiveSession, batch: EventBa
         VALID_LATENCY_STAGES.has(event.stage) &&
         VALID_PARTICIPATION_STATES.has(event.state) &&
         Number.isFinite(event.atMs) &&
-        Number.isFinite(event.elapsedMs),
+        Number.isFinite(event.elapsedMs) &&
+        event.atMs >= earliestAt &&
+        event.atMs <= latestAt &&
+        event.elapsedMs >= 0 &&
+        event.elapsedMs <= event.atMs - earliestAt &&
+        ['en', 'es', 'code-switch', 'unknown'].includes(event.language) &&
+        ['direct', 'follow_up', 'one_to_one'].includes(event.activation),
     )
+    .filter((event, index, events) => {
+      const previous = events.slice(0, index).filter(item => item.traceId === event.traceId).at(-1)
+      return !previous || (event.atMs >= previous.atMs && event.elapsedMs >= previous.elapsedMs)
+    })
     .slice(0, 500)
   const counters = batch.counters ?? {}
 
@@ -498,12 +547,17 @@ export async function recordSessionEvents(session: ActiveSession, batch: EventBa
       console.info(
         '[Copilot latency]',
         JSON.stringify({
-          sessionId: session.id,
+          sessionCorrelation: createHash('sha256')
+            .update(`${process.env.COPILOT_TRACE_SALT || 'copilot'}:${session.id}`)
+            .digest('hex')
+            .slice(0, 16),
           traceId: event.traceId,
           platform,
           model: session.metadata.vendorModelId ?? COPILOT_DEFAULTS.vendorModelId,
           stage: event.stage,
           state: event.state,
+          language: event.language,
+          activation: event.activation,
           atMs: Math.round(event.atMs),
           elapsedMs: Math.max(0, Math.round(event.elapsedMs)),
         }),
@@ -550,6 +604,19 @@ export async function recordSessionEvents(session: ActiveSession, batch: EventBa
           ...(audioIn > 0 ? { audioInSecs: { increment: audioIn } } : {}),
           ...(audioOut > 0 ? { audioOutSecs: { increment: audioOut } } : {}),
           ...(frames > 0 ? { videoFrames: { increment: frames } } : {}),
+        },
+      }),
+    )
+  }
+  if (batchId) {
+    writes.push(
+      db.copilotSession.update({
+        where: { id: session.id },
+        data: {
+          metadata: {
+            ...currentMetadata,
+            telemetryBatchIds: [...processedIds, batchId].slice(-50),
+          },
         },
       }),
     )
