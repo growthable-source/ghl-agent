@@ -167,7 +167,7 @@ export class PcmPlayer {
   /** Barge-in: invalidate old callbacks and drop queued audio immediately. */
   interrupt(): number {
     this.generation++
-    this.flush()
+    this.stopSources()
     return this.generation
   }
 
@@ -175,7 +175,12 @@ export class PcmPlayer {
     return this.generation
   }
 
-  private flush() {
+  /** Backwards-compatible barge-in entrypoint used by the voice surfaces. */
+  flush(): void {
+    this.interrupt()
+  }
+
+  private stopSources() {
     for (const s of this.sources) {
       try {
         s.stop()
