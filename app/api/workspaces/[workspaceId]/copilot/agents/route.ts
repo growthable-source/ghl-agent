@@ -86,14 +86,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       collectInfo: typeof b.collectInfo === 'string' ? (b.collectInfo as string).slice(0, 1500) : null,
       steps,
       procedureMode,
-      blocks: blocks as any,
+      blocks,
       knowledgeDomainIds,
       voice,
       language,
       addressAliases,
       appContext,
       timeboxMinutes: Math.max(5, Math.min(120, Math.round(Number(body.timeboxMinutes) || 30))),
-    } as any,
+    },
   })
   return NextResponse.json({ agentId: agent.id })
 }

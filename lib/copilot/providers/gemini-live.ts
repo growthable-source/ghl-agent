@@ -262,7 +262,7 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     // Start tool tracking before processing audio in the same server message,
     // so acknowledgement/filler audio cannot become the measured answer.
     if (msg.toolCall?.functionCalls?.length && this.onToolCall) {
-      for (const fc of msg.toolCall.functionCalls) this.executeToolCall(fc, connectionEpoch)
+      for (const fc of msg.toolCall.functionCalls) this.executeToolCall(fc)
     }
 
     const parts = sc?.modelTurn?.parts ?? []
@@ -308,7 +308,6 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
 
   private executeToolCall(
     fc: { id?: string; name?: string; args?: Record<string, unknown> },
-    _connectionEpoch: number,
   ): void {
     if (!this.onToolCall) return
     const id = fc.id ?? ''

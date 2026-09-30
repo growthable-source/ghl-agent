@@ -12,6 +12,7 @@ import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { db } from '@/lib/db'
 import { normalizeStoredCopilotLanguage } from '@/lib/copilot/language'
 import { normalizeStoredCopilotVoice } from '@/lib/copilot/voices'
+import { normalizeBlocks } from '@/lib/copilot/blocks'
 
 type Params = { params: Promise<{ workspaceId: string; agentId: string }> }
 
@@ -37,8 +38,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       publicKey: agent.publicKey,
       published: agent.published,
       steps: Array.isArray(agent.steps) ? agent.steps : [],
-      procedureMode: (agent as any).procedureMode === 'advanced' ? 'advanced' : 'simple',
-      blocks: Array.isArray((agent as any).blocks) ? (agent as any).blocks : [],
+      procedureMode: agent.procedureMode === 'advanced' ? 'advanced' : 'simple',
+      blocks: normalizeBlocks(agent.blocks),
       timeboxMinutes: agent.timeboxMinutes,
       knowledgeDomainIds: agent.knowledgeDomainIds,
       voice: agent.voice,
@@ -86,8 +87,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (body.procedureMode === 'simple' || body.procedureMode === 'advanced') data.procedureMode = body.procedureMode
   if (Array.isArray(body.blocks)) {
-    const { normalizeBlocks } = await import('@/lib/copilot/blocks')
-    data.blocks = normalizeBlocks(body.blocks).slice(0, 40) as any
+    data.blocks = normalizeBlocks(body.blocks).slice(0, 40)
   }
   // Voice: a catalog id, 'rotate', or anything else → the pinned default.
   // Empty used to store null, which omitted speechConfig and let the
