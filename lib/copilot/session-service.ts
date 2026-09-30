@@ -24,6 +24,11 @@ import { readPinnedCopilotLanguage, resolveCopilotLanguage } from './language'
 import { COPILOT_TOOL_DEFS, WIDGET_TOOL_DEFS, executeCopilotTool } from './tools'
 import { analyzeSessionAndFollowUp, type SessionAnalysis } from './analyze'
 import type { CopilotSessionDTO, RealtimeToolDef } from './types'
+import type {
+  CopilotLatencyEvent,
+  CopilotLatencyStage,
+  CopilotParticipationState,
+} from './turn-lifecycle'
 
 // ─── DTO ────────────────────────────────────────────────────────────
 
@@ -430,10 +435,29 @@ export async function runSessionTool(
 export interface EventBatch {
   turns?: Array<{ role?: string; text?: string; tokens?: number; ts?: string }>
   screenEvents?: Array<{ visionSummary?: string; detectedContext?: Record<string, unknown>; ts?: string }>
+  latencyEvents?: CopilotLatencyEvent[]
   counters?: { audioInSecs?: number; audioOutSecs?: number; videoFrames?: number }
 }
 
 const VALID_ROLES = new Set(['user', 'agent', 'system', 'tool'])
+const VALID_LATENCY_STAGES = new Set<CopilotLatencyStage>([
+  'input_transcript_first',
+  'input_transcript_final',
+  'response_audio_received',
+  'playback_scheduled',
+  'tool_call_started',
+  'tool_call_completed',
+  'screen_frame_received',
+  'interrupted',
+  'turn_complete',
+  'self_echo_suppressed',
+])
+const VALID_PARTICIPATION_STATES = new Set<CopilotParticipationState>([
+  'PASSIVE',
+  'ADDRESSED',
+  'RESPONDING',
+  'INTERRUPTED',
+])
 
 function parseTs(ts: string | undefined): Date {
   const d = ts ? new Date(ts) : new Date()
@@ -445,7 +469,47 @@ export async function recordSessionEvents(session: ActiveSession, batch: EventBa
   const screenEvents = (batch.screenEvents ?? [])
     .filter(e => e.visionSummary || e.detectedContext)
     .slice(0, 200)
+  const latencyEvents = (batch.latencyEvents ?? [])
+    .filter(
+      event =>
+        typeof event.traceId === 'string' &&
+        /^[a-zA-Z0-9-]{8,80}$/.test(event.traceId) &&
+        VALID_LATENCY_STAGES.has(event.stage) &&
+        VALID_PARTICIPATION_STATES.has(event.state) &&
+        Number.isFinite(event.atMs) &&
+        Number.isFinite(event.elapsedMs),
+    )
+    .slice(0, 500)
   const counters = batch.counters ?? {}
+
+  if (latencyEvents.length > 0) {
+    let platform = 'in_app'
+    if (session.metadata.copilotMode === 'meeting') {
+      try {
+        const host = new URL(String(session.metadata.meetingUrl ?? '')).hostname
+        platform = host.includes('zoom') ? 'zoom' : host.includes('meet.google') ? 'google_meet' : 'other_meeting'
+      } catch {
+        platform = 'other_meeting'
+      }
+    }
+    for (const event of latencyEvents) {
+      // Intentionally content-free: no transcript, audio, tool args, URL,
+      // participant name, or screen material belongs in latency logs.
+      console.info(
+        '[Copilot latency]',
+        JSON.stringify({
+          sessionId: session.id,
+          traceId: event.traceId,
+          platform,
+          model: session.metadata.vendorModelId ?? COPILOT_DEFAULTS.vendorModelId,
+          stage: event.stage,
+          state: event.state,
+          atMs: Math.round(event.atMs),
+          elapsedMs: Math.max(0, Math.round(event.elapsedMs)),
+        }),
+      )
+    }
+  }
 
   const writes: Promise<unknown>[] = []
   if (turns.length > 0) {
@@ -491,7 +555,7 @@ export async function recordSessionEvents(session: ActiveSession, batch: EventBa
     )
   }
   await Promise.all(writes)
-  return { turns: turns.length, screenEvents: screenEvents.length }
+  return { turns: turns.length, screenEvents: screenEvents.length, latencyEvents: latencyEvents.length }
 }
 
 // ─── End ────────────────────────────────────────────────────────────

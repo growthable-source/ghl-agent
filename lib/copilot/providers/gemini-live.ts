@@ -23,6 +23,7 @@ import type {
   RealtimeModelProvider,
   RealtimeProviderConfig,
 } from '../types'
+import { isLikelySelfEcho, RollingPreActivationAudio } from '../turn-lifecycle'
 
 /** Minimal structural view of LiveServerMessage — we only read these
  *  fields, and tolerating absence beats pinning the SDK's full type. */
@@ -50,6 +51,11 @@ interface LiveSessionLike {
 }
 
 const MAX_RECONNECTS = 5
+const SETUP_TIMEOUT_MS = 20_000
+/** Two seconds of 16 kHz mono PCM16. Bounds memory while preserving the
+ *  beginning of speech that lands during setup or a resumable reconnect. */
+const MAX_PENDING_AUDIO_BYTES = 16_000 * 2 * 2
+const SELF_ECHO_WINDOW_MS = 2_000
 
 export class GeminiLiveProvider implements RealtimeModelProvider {
   readonly name: CopilotModel = 'gemini-live'
@@ -58,6 +64,8 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
   onTranscript?: (turn: { role: 'user' | 'agent'; text: string; final: boolean }) => void
   onToolCall?: (call: { id: string; name: string; args: Record<string, unknown> }) => Promise<Record<string, unknown>>
   onInterrupted?: () => void
+  onTurnComplete?: () => void
+  onSelfEchoSuppressed?: () => void
   onError?: (message: string) => void
   onEnded?: (reason: string) => void
 
@@ -67,6 +75,12 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
   private resumptionHandle: string | null = null
   private reconnects = 0
   private closing = false
+  private setupComplete = false
+  private pendingAudio = new RollingPreActivationAudio(MAX_PENDING_AUDIO_BYTES)
+  private suppressAudioAfterInterrupt = false
+  private suppressCurrentInputEcho = false
+  private recentAgentOutput = ''
+  private lastAgentOutputAt = 0
   private userBuffer = ''
   private agentBuffer = ''
 
@@ -81,6 +95,7 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
 
   private async openSession(): Promise<void> {
     if (!this.ai || !this.cfg) throw new Error('connect() not called')
+    this.setupComplete = false
     const vendorConfig = { ...(this.cfg.vendorConfig ?? {}) }
     if (this.resumptionHandle) {
       vendorConfig.sessionResumption = { handle: this.resumptionHandle }
@@ -88,22 +103,44 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false
+      let sdkSessionReady = false
+      let liveSetupReady = false
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          reject(new Error('realtime setup timed out'))
+        }
+      }, SETUP_TIMEOUT_MS)
+      const settleReady = () => {
+        if (settled || !sdkSessionReady || !liveSetupReady) return
+        settled = true
+        clearTimeout(timeout)
+        this.setupComplete = true
+        this.flushPendingAudio()
+        resolve()
+      }
       void this.ai!.live
         .connect({
           model: this.cfg!.connection.vendorModelId,
           config: vendorConfig as never,
           callbacks: {
             onopen: () => {
-              if (!settled) {
-                settled = true
-                resolve()
-              }
+              // WebSocket open is not session readiness. Audio is held until
+              // both the SDK session and Live API setupComplete are present.
             },
-            onmessage: (msg: unknown) => this.handleMessage(msg as LiveMessage),
+            onmessage: (msg: unknown) => {
+              const liveMessage = msg as LiveMessage
+              if (liveMessage.setupComplete) {
+                liveSetupReady = true
+                settleReady()
+              }
+              this.handleMessage(liveMessage)
+            },
             onerror: (e: { message?: string }) => {
               const message = e?.message || 'realtime connection error'
               if (!settled) {
                 settled = true
+                clearTimeout(timeout)
                 reject(new Error(message))
               } else {
                 this.onError?.(message)
@@ -112,6 +149,7 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
             onclose: () => {
               if (!settled) {
                 settled = true
+                clearTimeout(timeout)
                 reject(new Error('connection closed during setup'))
                 return
               }
@@ -121,10 +159,13 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
         })
         .then(session => {
           this.session = session as unknown as LiveSessionLike
+          sdkSessionReady = true
+          settleReady()
         })
         .catch(err => {
           if (!settled) {
             settled = true
+            clearTimeout(timeout)
             reject(err instanceof Error ? err : new Error(String(err)))
           }
         })
@@ -138,6 +179,7 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
       // Barge-in: the model was cut off. Flush playback queues and
       // close out whatever partial agent speech we transcribed.
       this.onInterrupted?.()
+      this.suppressAudioAfterInterrupt = true
       if (this.agentBuffer.trim()) {
         this.onTranscript?.({ role: 'agent', text: this.agentBuffer.trim(), final: true })
         this.agentBuffer = ''
@@ -145,18 +187,37 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
     }
 
     if (sc?.inputTranscription?.text) {
-      this.userBuffer += sc.inputTranscription.text
-      this.onTranscript?.({ role: 'user', text: this.userBuffer.trim(), final: false })
+      const fragment = sc.inputTranscription.text
+      if (!this.suppressCurrentInputEcho) {
+        const withinEchoWindow = Date.now() - this.lastAgentOutputAt <= SELF_ECHO_WINDOW_MS
+        const candidate = `${this.userBuffer}${fragment}`
+        const echoed = withinEchoWindow && isLikelySelfEcho(candidate, this.recentAgentOutput)
+        if (echoed) {
+          this.userBuffer = ''
+          this.suppressCurrentInputEcho = true
+          this.onSelfEchoSuppressed?.()
+        } else {
+          this.userBuffer = candidate
+          // During the echo-risk window, wait for enough text to classify.
+          // Short genuine replies still emit as final at turnComplete.
+          if (!withinEchoWindow || candidate.trim().length >= 8) {
+            this.onTranscript?.({ role: 'user', text: this.userBuffer.trim(), final: false })
+          }
+        }
+      }
     }
     if (sc?.outputTranscription?.text) {
+      this.suppressAudioAfterInterrupt = false
       this.agentBuffer += sc.outputTranscription.text
+      this.recentAgentOutput = this.agentBuffer.trim()
+      this.lastAgentOutputAt = Date.now()
       this.onTranscript?.({ role: 'agent', text: this.agentBuffer.trim(), final: false })
     }
 
     const parts = sc?.modelTurn?.parts ?? []
     for (const part of parts) {
       if (part.inlineData?.data && (part.inlineData.mimeType ?? '').startsWith('audio/')) {
-        this.onAudioOutput?.(part.inlineData.data)
+        if (!this.suppressAudioAfterInterrupt) this.onAudioOutput?.(part.inlineData.data)
       }
     }
 
@@ -169,6 +230,8 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
         this.onTranscript?.({ role: 'agent', text: this.agentBuffer.trim(), final: true })
         this.agentBuffer = ''
       }
+      this.suppressCurrentInputEcho = false
+      this.onTurnComplete?.()
     }
 
     if (msg.toolCall?.functionCalls?.length && this.onToolCall) {
@@ -211,6 +274,8 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
   }
 
   private handleClose() {
+    this.setupComplete = false
+    this.session = null
     if (this.closing) {
       this.onEnded?.('user_ended')
       return
@@ -230,9 +295,11 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
   }
 
   sendAudioChunk(base64Pcm16: string): void {
-    this.session?.sendRealtimeInput({
-      audio: { data: base64Pcm16, mimeType: 'audio/pcm;rate=16000' },
-    })
+    if (!this.session || !this.setupComplete) {
+      this.queuePendingAudio(base64Pcm16)
+      return
+    }
+    this.sendAudioNow(base64Pcm16)
   }
 
   sendVideoFrame(base64Image: string, mimeType: string = 'image/jpeg'): void {
@@ -278,5 +345,22 @@ export class GeminiLiveProvider implements RealtimeModelProvider {
       // already closed
     }
     this.session = null
+    this.setupComplete = false
+    this.pendingAudio.clear()
+  }
+
+  private sendAudioNow(data: string): void {
+    this.session?.sendRealtimeInput({
+      audio: { data, mimeType: 'audio/pcm;rate=16000' },
+    })
+  }
+
+  private queuePendingAudio(data: string): void {
+    this.pendingAudio.push(data)
+  }
+
+  private flushPendingAudio(): void {
+    if (!this.session || !this.setupComplete) return
+    for (const chunk of this.pendingAudio.drain()) this.sendAudioNow(chunk)
   }
 }

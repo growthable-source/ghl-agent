@@ -24,6 +24,11 @@ import { useParams } from 'next/navigation'
 import type { RealtimeModelProvider, RealtimeToolDef, RealtimeConnectionInfo } from '@/lib/copilot/types'
 import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
 import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
+import {
+  TurnLifecycle,
+  type CopilotLatencyEvent,
+  type CopilotParticipationState,
+} from '@/lib/copilot/turn-lifecycle'
 
 const FLUSH_INTERVAL_MS = 5000
 const SPEAKING_HOLD_MS = 700
@@ -39,12 +44,21 @@ export default function MeetingBotPage() {
   const [workspaceName, setWorkspaceName] = useState('')
   const [caption, setCaption] = useState('')
   const [speaking, setSpeaking] = useState(false)
+  const [participationState, setParticipationState] = useState<CopilotParticipationState>('PASSIVE')
 
   const providerRef = useRef<RealtimeModelProvider | null>(null)
   const micRef = useRef<MicCapture | null>(null)
   const playerRef = useRef<PcmPlayer | null>(null)
   const videoSocketRef = useRef<WebSocket | null>(null)
   const turnBufferRef = useRef<Array<{ role: string; text: string; ts: string }>>([])
+  const latencyBufferRef = useRef<CopilotLatencyEvent[]>([])
+  const lifecycleRef = useRef<TurnLifecycle | null>(null)
+  if (!lifecycleRef.current) {
+    lifecycleRef.current = new TurnLifecycle({
+      onEvent: event => latencyBufferRef.current.push(event),
+      onStateChange: setParticipationState,
+    })
+  }
   const flushedRef = useRef({ audioIn: 0, audioOut: 0 })
   const lastAudioAtRef = useRef(0)
   const endedRef = useRef(false)
@@ -58,6 +72,7 @@ export default function MeetingBotPage() {
   const flushEvents = useCallback(async () => {
     if (!botToken) return
     const turns = turnBufferRef.current.splice(0)
+    const latencyEvents = latencyBufferRef.current.splice(0)
     const audioIn = micRef.current?.capturedSecs ?? 0
     const audioOut = playerRef.current?.playedSecs ?? 0
     const sent = flushedRef.current
@@ -65,13 +80,13 @@ export default function MeetingBotPage() {
       audioInSecs: Math.max(0, Math.round((audioIn - sent.audioIn) * 100) / 100),
       audioOutSecs: Math.max(0, Math.round((audioOut - sent.audioOut) * 100) / 100),
     }
-    if (turns.length === 0 && counters.audioInSecs === 0 && counters.audioOutSecs === 0) return
+    if (turns.length === 0 && latencyEvents.length === 0 && counters.audioInSecs === 0 && counters.audioOutSecs === 0) return
     flushedRef.current = { audioIn, audioOut }
     try {
       await fetch(api('events'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turns, counters }),
+        body: JSON.stringify({ turns, latencyEvents, counters }),
       })
     } catch {
       // Best-effort telemetry — never kills the call.
@@ -147,29 +162,42 @@ export default function MeetingBotPage() {
         micRef.current = mic
 
         provider.onAudioOutput = b64 => {
-          player.enqueue(b64)
+          lifecycleRef.current?.responseAudio()
+          const scheduled = player.enqueue(b64, player.currentGeneration())
+          if (scheduled) lifecycleRef.current?.playbackScheduled()
           lastAudioAtRef.current = Date.now()
         }
-        provider.onInterrupted = () => player.flush()
+        provider.onInterrupted = () => {
+          player.interrupt()
+          lifecycleRef.current?.interrupted()
+        }
+        provider.onTurnComplete = () => lifecycleRef.current?.turnComplete()
+        provider.onSelfEchoSuppressed = () => lifecycleRef.current?.selfEchoSuppressed()
         provider.onTranscript = turn => {
+          if (turn.role === 'user') lifecycleRef.current?.userTranscript(turn.final)
           if (turn.role === 'agent') setCaption(turn.text)
           if (turn.final) {
             turnBufferRef.current.push({ role: turn.role, text: turn.text, ts: new Date().toISOString() })
           }
         }
         provider.onToolCall = async call => {
+          lifecycleRef.current?.toolCallStarted()
           turnBufferRef.current.push({
             role: 'tool',
             text: `${call.name}(${JSON.stringify(call.args)})`,
             ts: new Date().toISOString(),
           })
-          const r = await fetch(api('tool'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: call.name, args: call.args }),
-          })
-          const data = (await r.json().catch(() => ({}))) as { result?: string }
-          return { result: data.result ?? 'The tool call failed — be honest about not being able to check.' }
+          try {
+            const r = await fetch(api('tool'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: call.name, args: call.args }),
+            })
+            const data = (await r.json().catch(() => ({}))) as { result?: string }
+            return { result: data.result ?? 'The tool call failed — be honest about not being able to check.' }
+          } finally {
+            lifecycleRef.current?.toolCallCompleted()
+          }
         }
         provider.onError = message => console.error('[MeetingBot] provider error:', message)
         provider.onEnded = reason => endSession(reason)
@@ -179,6 +207,9 @@ export default function MeetingBotPage() {
           tools: body.tools ?? [],
           vendorConfig: body.liveConfig,
         })
+        provider.nudge(
+          '[The meeting connection is ready. Open the call now according to your opening instructions, then listen passively until addressed.]',
+        )
 
         // Screen vision: the relay worker (recall-video-worker) forwards the
         // meeting's shared-screen frames here over a websocket; feed each to
@@ -203,6 +234,7 @@ export default function MeetingBotPage() {
                 }
                 if (m.type === 'frame' && typeof m.data === 'string') {
                   providerRef.current?.sendVideoFrame(m.data, m.mime || 'image/png')
+                  lifecycleRef.current?.screenFrameReceived()
                 }
               } catch {
                 // ignore malformed relay frames
@@ -250,7 +282,19 @@ export default function MeetingBotPage() {
 
   const initial = (agentName || 'A').trim().charAt(0).toUpperCase()
   const statusText =
-    phase === 'connecting' ? 'Joining…' : phase === 'live' ? (speaking ? 'Speaking' : 'Listening') : phase === 'ended' ? 'Call ended' : 'Connection problem'
+    phase === 'connecting'
+      ? 'Joining…'
+      : phase === 'live'
+        ? participationState === 'RESPONDING' || speaking
+          ? 'Responding'
+          : participationState === 'ADDRESSED'
+            ? 'Addressed'
+            : participationState === 'INTERRUPTED'
+              ? 'Interrupted'
+              : 'Passive · listening'
+        : phase === 'ended'
+          ? 'Call ended'
+          : 'Connection problem'
   const statusColor = phase === 'error' ? '#f87171' : speaking ? '#fa4d2e' : phase === 'live' ? '#34d399' : '#a1a1aa'
 
   return (

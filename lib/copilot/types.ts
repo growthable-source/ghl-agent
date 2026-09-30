@@ -141,6 +141,10 @@ export interface RealtimeModelProvider {
   onToolCall?: (call: { id: string; name: string; args: Record<string, unknown> }) => Promise<Record<string, unknown>>
   /** Model speech was interrupted by the user (flush playback queues). */
   onInterrupted?: () => void
+  /** Provider declared the current input/output turn complete. */
+  onTurnComplete?: () => void
+  /** Recent model output re-entered the mixed meeting input and was ignored for UI activation. */
+  onSelfEchoSuppressed?: () => void
   onError?: (message: string) => void
   /** Connection ended (vendor-side close, goAway exhaustion, or close()). */
   onEnded?: (reason: string) => void

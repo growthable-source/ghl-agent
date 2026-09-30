@@ -20,6 +20,11 @@ import type { RealtimeModelProvider, RealtimeToolDef, RealtimeConnectionInfo } f
 import { GeminiLiveProvider } from '@/lib/copilot/providers/gemini-live'
 import { MicCapture, PcmPlayer } from '@/lib/copilot/audio-client'
 import { ScreenFrameCapture, NAV_CHANGE_THRESHOLD } from '@/lib/copilot/frame-capture'
+import {
+  TurnLifecycle,
+  type CopilotLatencyEvent,
+  type CopilotParticipationState,
+} from '@/lib/copilot/turn-lifecycle'
 
 export interface CopilotCreateResult {
   ok: boolean
@@ -121,6 +126,7 @@ export default function LiveSessionPanel({
   const [partial, setPartial] = useState<{ user: string; agent: string }>({ user: '', agent: '' })
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
+  const [participationState, setParticipationState] = useState<CopilotParticipationState>('PASSIVE')
   const userSpeakingRef = useRef(false)
   // Proactive turn engine bookkeeping.
   const lastNudgeAtRef = useRef(0)
@@ -140,6 +146,14 @@ export default function LiveSessionPanel({
   const previewVideoRef = useRef<HTMLVideoElement | null>(null)
   const feedEndRef = useRef<HTMLDivElement | null>(null)
   const turnBufferRef = useRef<Array<{ role: string; text: string; ts: string }>>([])
+  const latencyBufferRef = useRef<CopilotLatencyEvent[]>([])
+  const lifecycleRef = useRef<TurnLifecycle | null>(null)
+  if (!lifecycleRef.current) {
+    lifecycleRef.current = new TurnLifecycle({
+      onEvent: event => latencyBufferRef.current.push(event),
+      onStateChange: setParticipationState,
+    })
+  }
   const screenBufferRef = useRef<Array<{ detectedContext: Record<string, unknown>; ts: string }>>([])
   const flushedCountersRef = useRef({ audioIn: 0, audioOut: 0, frames: 0 })
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -161,6 +175,7 @@ export default function LiveSessionPanel({
       const sessionId = sessionIdRef.current
       if (!sessionId) return
       const turns = turnBufferRef.current.splice(0)
+      const latencyEvents = latencyBufferRef.current.splice(0)
       const screenEvents = screenBufferRef.current.splice(0)
       const audioIn = micRef.current?.capturedSecs ?? 0
       const audioOut = playerRef.current?.playedSecs ?? 0
@@ -173,6 +188,7 @@ export default function LiveSessionPanel({
       }
       if (
         turns.length === 0 &&
+        latencyEvents.length === 0 &&
         screenEvents.length === 0 &&
         counters.audioInSecs === 0 &&
         counters.audioOutSecs === 0 &&
@@ -182,7 +198,7 @@ export default function LiveSessionPanel({
       }
       flushedCountersRef.current = { audioIn, audioOut, frames }
       try {
-        await transport.events(sessionId, { turns, screenEvents, counters }, final)
+        await transport.events(sessionId, { turns, latencyEvents, screenEvents, counters }, final)
       } catch {
         // Best-effort telemetry: a missed flush never kills the session.
       }
@@ -246,6 +262,12 @@ export default function LiveSessionPanel({
     setFeed([])
     setPartial({ user: '', agent: '' })
     setElapsed(0)
+    setParticipationState('PASSIVE')
+    latencyBufferRef.current = []
+    lifecycleRef.current = new TurnLifecycle({
+      onEvent: event => latencyBufferRef.current.push(event),
+      onStateChange: setParticipationState,
+    })
     flushedCountersRef.current = { audioIn: 0, audioOut: 0, frames: 0 }
     pendingCueRef.current = null
     lastNudgeAtRef.current = 0
@@ -293,10 +315,18 @@ export default function LiveSessionPanel({
         // or crowd it the instant it finishes. Audio chunks stream while
         // speaking, so "last chunk < cooldown ago" covers both cases.
         lastModelSpokeAtRef.current = Date.now()
-        player.enqueue(b64)
+        lifecycleRef.current?.responseAudio()
+        const scheduled = player.enqueue(b64, player.currentGeneration())
+        if (scheduled) lifecycleRef.current?.playbackScheduled()
       }
-      provider.onInterrupted = () => player.flush()
+      provider.onInterrupted = () => {
+        player.interrupt()
+        lifecycleRef.current?.interrupted()
+      }
+      provider.onTurnComplete = () => lifecycleRef.current?.turnComplete()
+      provider.onSelfEchoSuppressed = () => lifecycleRef.current?.selfEchoSuppressed()
       provider.onTranscript = turn => {
+        if (turn.role === 'user') lifecycleRef.current?.userTranscript(turn.final)
         if (turn.final) {
           if (turn.role === 'user') userSpeakingRef.current = false
           setPartial(p => ({ ...p, [turn.role === 'user' ? 'user' : 'agent']: '' }))
@@ -314,6 +344,7 @@ export default function LiveSessionPanel({
         }
       }
       provider.onToolCall = async call => {
+        lifecycleRef.current?.toolCallStarted()
         // EVERY tool call gets logged into the event stream — including
         // the client-executed ones. Without this we cannot distinguish
         // "the model never called the tool" from "the call happened but
@@ -324,21 +355,25 @@ export default function LiveSessionPanel({
           ts: new Date().toISOString(),
         })
 
-        // take_a_closer_look is client-only: force an immediate
-        // full-resolution frame so the model can read fine UI detail.
-        if (call.name === 'take_a_closer_look') {
-          pushFeed('tool', 'Taking a closer look…')
-          const sent = framesRef.current?.captureNow('closer_look') ?? false
-          return {
-            result: sent
-              ? 'Fresh full-resolution frame sent — it shows the screen as of right now. Ground your next statement in it.'
-              : 'Could not capture a frame right now (screen share may be paused). Ask the user what they see instead of guessing.',
+        try {
+          // take_a_closer_look is client-only: force an immediate
+          // full-resolution frame so the model can read fine UI detail.
+          if (call.name === 'take_a_closer_look') {
+            pushFeed('tool', 'Taking a closer look…')
+            const sent = framesRef.current?.captureNow('closer_look') ?? false
+            return {
+              result: sent
+                ? 'Fresh full-resolution frame sent — it shows the screen as of right now. Ground your next statement in it.'
+                : 'Could not capture a frame right now (screen share may be paused). Ask the user what they see instead of guessing.',
+            }
           }
-        }
 
-        pushFeed('tool', call.name === 'query_knowledge' ? 'Searching the knowledge base…' : 'Checking…')
-        const result = await transport.tool(sessionIdRef.current!, call.name, call.args)
-        return { result }
+          pushFeed('tool', call.name === 'query_knowledge' ? 'Searching the knowledge base…' : 'Checking…')
+          const result = await transport.tool(sessionIdRef.current!, call.name, call.args)
+          return { result }
+        } finally {
+          lifecycleRef.current?.toolCallCompleted()
+        }
       }
       provider.onError = message => console.error('[Copilot] provider error:', message)
       provider.onEnded = reason => void endSession(reason)
@@ -382,6 +417,7 @@ export default function LiveSessionPanel({
 
       const frames = new ScreenFrameCapture(displayStream, created.realtime.frameFpsCap, frame => {
         provider.sendVideoFrame(frame.base64Jpeg)
+        lifecycleRef.current?.screenFrameReceived()
         screenBufferRef.current.push({
           detectedContext: { trigger: frame.trigger, diffScore: frame.diffScore },
           ts: new Date().toISOString(),
@@ -552,9 +588,12 @@ export default function LiveSessionPanel({
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium text-zinc-100">Session</span>
-                <span className="font-mono text-sm text-zinc-400">
-                  {mmss(elapsed)} / {mmss(maxSecsRef.current)}
-                </span>
+                <div className="text-right">
+                  <div className="text-[10px] font-semibold tracking-wide text-zinc-500">{participationState}</div>
+                  <span className="font-mono text-sm text-zinc-400">
+                    {mmss(elapsed)} / {mmss(maxSecsRef.current)}
+                  </span>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button
