@@ -97,6 +97,27 @@ describe('TurnLifecycle', () => {
     expect(new Set(events.map(event => event.traceId))).toEqual(new Set(['trace-3']))
     expect(events.find(event => event.stage === 'response_audio_received')?.atMs).toBe(250)
   })
+
+  it('uses the last input fragment as VAD-end estimate when audio starts before final transcription', () => {
+    let now = 100
+    const events: CopilotLatencyEvent[] = []
+    const lifecycle = new TurnLifecycle({
+      now: () => now,
+      createTraceId: () => 'trace-vad',
+      onEvent: event => events.push(event),
+    })
+    lifecycle.userTranscript('Can you', false)
+    now = 180
+    lifecycle.userTranscript('Can you help?', false)
+    now = 300
+    lifecycle.responseAudio()
+    now = 350
+    lifecycle.userTranscript('Can you help?', true)
+    now = 400
+    lifecycle.turnComplete()
+    expect(events.find(event => event.stage === 'input_vad_end')?.atMs).toBe(180)
+    expect(events.find(event => event.stage === 'response_audio_received')?.elapsedMs).toBe(120)
+  })
 })
 
 describe('direct-address classification', () => {

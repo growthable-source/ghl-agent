@@ -62,6 +62,8 @@ export class TurnLifecycle {
   private awaitingPostToolAudio = false
   private responseAllowed = false
   private responded = false
+  private lastAddressedInputAt = 0
+  private currentUtteranceActivated = false
   private language: CopilotLatencyEvent['language'] = 'unknown'
   private activation: CopilotLatencyEvent['activation'] = 'one_to_one'
   private currentState: CopilotParticipationState = 'PASSIVE'
@@ -95,6 +97,7 @@ export class TurnLifecycle {
   /** Permit a deliberate opening/proactive turn. It is not user-latency data. */
   beginSystemTurn(): void {
     this.responseAllowed = true
+    this.lastAddressedInputAt = this.now()
     this.setState('ADDRESSED')
   }
 
@@ -103,6 +106,15 @@ export class TurnLifecycle {
     final: boolean,
     serverInterrupted = false,
   ): 'direct' | 'follow_up' | 'one_to_one' | 'incidental' {
+    if (this.currentUtteranceActivated) {
+      this.language = detectTurnLanguage(text)
+      this.lastAddressedInputAt = this.now()
+      if (final) {
+        this.ensureTrace(this.lastAddressedInputAt)
+        if (!this.events.has('input_vad_end')) this.record('input_vad_end', this.lastAddressedInputAt)
+      }
+      return this.activation
+    }
     const direct = !this.requireDirectAddress || isDirectAddress(text, this.addressNames)
     const followUp = this.requireDirectAddress && !direct && this.followUpActive && isLikelyFollowUp(text)
     if (!direct && !followUp) {
@@ -113,17 +125,22 @@ export class TurnLifecycle {
     this.activation = this.requireDirectAddress ? (direct ? 'direct' : 'follow_up') : 'one_to_one'
     this.language = detectTurnLanguage(text)
     this.responseAllowed = true
+    this.currentUtteranceActivated = true
     if (followUp || serverInterrupted) this.followUpAvailable = false
     this.setState('ADDRESSED')
     if (final) {
-      this.ensureTrace()
-      this.record('input_vad_end', this.now())
+      this.ensureTrace(this.lastAddressedInputAt)
+      if (!this.events.has('input_vad_end')) this.record('input_vad_end', this.lastAddressedInputAt)
     }
     return this.activation
   }
 
   responseAudio(atMs = this.now()): boolean {
     if (!this.canOutput) return false
+    if (!this.traceId && this.lastAddressedInputAt > 0) {
+      this.ensureTrace(this.lastAddressedInputAt)
+      this.record('input_vad_end', this.lastAddressedInputAt)
+    }
     this.setState('RESPONDING')
     this.responded = true
     if (this.traceId && this.pendingTools === 0 && !this.awaitingPostToolAudio) {
@@ -166,6 +183,7 @@ export class TurnLifecycle {
     this.setState('INTERRUPTED')
     if (this.traceId) this.record('interrupted', this.now())
     this.responseAllowed = false
+    this.currentUtteranceActivated = false
   }
 
   selfEchoSuppressed(): void {
@@ -191,13 +209,15 @@ export class TurnLifecycle {
     this.awaitingPostToolAudio = false
     this.responseAllowed = false
     this.responded = false
+    this.lastAddressedInputAt = 0
+    this.currentUtteranceActivated = false
     this.setState('PASSIVE')
   }
 
-  private ensureTrace(): void {
+  private ensureTrace(startedAt = this.now()): void {
     if (this.traceId) return
     this.traceId = this.createTraceId()
-    this.traceStartedAt = this.now()
+    this.traceStartedAt = startedAt
     this.events.clear()
   }
 
