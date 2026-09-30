@@ -98,7 +98,11 @@ export class TurnLifecycle {
     this.setState('ADDRESSED')
   }
 
-  userTranscript(text: string, final: boolean, serverInterrupted = false): 'direct' | 'follow_up' | 'incidental' {
+  userTranscript(
+    text: string,
+    final: boolean,
+    serverInterrupted = false,
+  ): 'direct' | 'follow_up' | 'one_to_one' | 'incidental' {
     const direct = !this.requireDirectAddress || isDirectAddress(text, this.addressNames)
     const followUp = this.requireDirectAddress && !direct && this.followUpActive && isLikelyFollowUp(text)
     if (!direct && !followUp) {
@@ -269,7 +273,9 @@ export function isLikelyFollowUp(text: string): boolean {
 
 export function detectTurnLanguage(text: string): CopilotLatencyEvent['language'] {
   const words = normalizeWords(text)
-  const spanish = words.some(word => ['hola', 'oye', 'puedes', 'podrias', 'que', 'como', 'dime', 'ayuda', 'gracias'].includes(word))
+  const spanish = words.some(word =>
+    ['hola', 'oye', 'puedes', 'podrias', 'que', 'como', 'dime', 'ayuda', 'gracias', 'por', 'favor'].includes(word),
+  )
   const english = words.some(word => ['hey', 'hello', 'can', 'could', 'what', 'how', 'tell', 'help', 'please', 'thanks'].includes(word))
   if (spanish && english) return 'code-switch'
   if (spanish || /[¿¡ñ]/iu.test(text)) return 'es'
