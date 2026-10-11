@@ -43,3 +43,12 @@ optional `DOMAINS_CNAME_TARGET`, `PRIMARY_HOSTS`. Prefixed so they can't collide
 the Vercel CLI's own `VERCEL_*` variables. The domain is attached to the project named
 by `DOMAINS_VERCEL_PROJECT_ID` — use the MAIN project (widget.xovera.io skips builds
 unless widget files change, so its code goes stale).
+
+## Decision: chat traffic on custom hosts runs on main (branding first)
+`public/widget.js` reroutes chat traffic to `widget.xovera.io` only when the loader
+is served from `xovera.io` / `voxility.ai`. Loaders served from a white-label host
+deliberately stay on that host, so every URL a visitor can see (including the
+"live help" tab opened from the chat iframe) shows the customer's domain. The cost:
+custom-host chat runs on the main project, without the widget runtime's isolation
+from main deploys. Revisit if custom-domain chat volume grows or main deploys start
+cutting off live chats. See `docs/copilot-runtime-design.md` for the future runtime.
