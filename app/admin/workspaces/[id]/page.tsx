@@ -182,6 +182,7 @@ export default async function WorkspaceDrillDown({ params }: Params) {
           </div>
           {canMutate && (
             <form action={`/api/admin/workspaces/${workspace.id}/whitelabel`} method="post">
+              <input type="hidden" name="unlock" value={workspace.whitelabelUnlocked ? '0' : '1'} />
               <button
                 type="submit"
                 className={`text-xs font-medium border rounded-lg px-3 py-2 transition-colors ${

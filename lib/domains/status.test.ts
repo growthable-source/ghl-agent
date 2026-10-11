@@ -27,3 +27,16 @@ describe('deriveDomainState', () => {
     expect(r.dnsRecords[0].value).toBe('x.example')
   })
 })
+
+import { hostAccess } from './status'
+
+describe('hostAccess', () => {
+  it('allows unknown hosts (runtime projects, proxies, portal domains)', () => {
+    expect(hostAccess(null, 'ws1')).toBe(true)
+  })
+  it('allows a registered host only for its own workspace while serving', () => {
+    expect(hostAccess({ workspaceId: 'ws1', serving: true }, 'ws1')).toBe(true)
+    expect(hostAccess({ workspaceId: 'ws1', serving: true }, 'ws2')).toBe(false)
+    expect(hostAccess({ workspaceId: 'ws1', serving: false }, 'ws1')).toBe(false)
+  })
+})

@@ -40,6 +40,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       if (!normalized) {
         return NextResponse.json({ error: 'That domain looks invalid. Use a hostname like support.acme.com.' }, { status: 400 })
       }
+      // One host, one owner: workspace white-label domains share the
+      // namespace (the Portal unique index can't see that table).
+      const wsOwned = await db.workspaceDomain.findUnique({ where: { hostname: normalized }, select: { id: true } })
+      if (wsOwned) {
+        return NextResponse.json({ error: 'That domain is already used as a workspace white-label domain.' }, { status: 409 })
+      }
       data.customDomain = normalized
     }
   }

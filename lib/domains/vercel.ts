@@ -4,7 +4,7 @@
  * at it) and routes the host to this deployment; the app then resolves
  * host → workspace itself (lib/domains/workspace-domain.ts).
  *
- * Env: VERCEL_API_TOKEN, VERCEL_PROJECT_ID, optional VERCEL_TEAM_ID.
+ * Env: DOMAINS_VERCEL_TOKEN, DOMAINS_VERCEL_PROJECT_ID, optional DOMAINS_VERCEL_TEAM_ID.
  * Unconfigured → VercelNotConfiguredError, which routes turn into a clear
  * 503 rather than a stack trace. Failures surface as typed VercelError
  * with a stable `.code` — branch on that, don't parse messages.
@@ -14,7 +14,7 @@ const API = 'https://api.vercel.com'
 
 export class VercelNotConfiguredError extends Error {
   constructor() {
-    super('Custom domains are not configured on this deployment (missing VERCEL_API_TOKEN / VERCEL_PROJECT_ID).')
+    super('Custom domains are not configured on this deployment (missing DOMAINS_VERCEL_TOKEN / DOMAINS_VERCEL_PROJECT_ID).')
     this.name = 'VercelNotConfiguredError'
   }
 }
@@ -40,17 +40,17 @@ export interface VercelDomainState {
 }
 
 export function isVercelDomainsConfigured(): boolean {
-  return !!(process.env.VERCEL_API_TOKEN && process.env.VERCEL_PROJECT_ID)
+  return !!(process.env.DOMAINS_VERCEL_TOKEN && process.env.DOMAINS_VERCEL_PROJECT_ID)
 }
 
 function qs(): string {
-  const team = process.env.VERCEL_TEAM_ID
+  const team = process.env.DOMAINS_VERCEL_TEAM_ID
   return team ? `?teamId=${encodeURIComponent(team)}` : ''
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = process.env.VERCEL_API_TOKEN
-  const project = process.env.VERCEL_PROJECT_ID
+  const token = process.env.DOMAINS_VERCEL_TOKEN
+  const project = process.env.DOMAINS_VERCEL_PROJECT_ID
   if (!token || !project) throw new VercelNotConfiguredError()
 
   const res = await fetch(`${API}${path.replace('{project}', encodeURIComponent(project))}${qs()}`, {

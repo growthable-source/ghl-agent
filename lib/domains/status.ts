@@ -43,3 +43,14 @@ export function deriveDomainState(input: {
   if (!records.length) records.push({ type: 'CNAME', name: hostname, value: cname })
   return { status: 'pending', dnsRecords: records }
 }
+
+/**
+ * Host gate decision. `owner` = who registered the request host as a
+ * workspace domain (null = nobody: runtime projects, proxies, portal
+ * domains). Unknown hosts pass; a registered host passes only for its own
+ * workspace and only while it is actually serving.
+ */
+export function hostAccess(owner: { workspaceId: string; serving: boolean } | null, workspaceId: string): boolean {
+  if (!owner) return true
+  return owner.serving && owner.workspaceId === workspaceId
+}

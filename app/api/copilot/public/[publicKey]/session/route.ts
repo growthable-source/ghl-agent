@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isPrimaryHost } from '@/lib/domains/primary-hosts'
 import { hostMayServeWorkspace } from '@/lib/domains/workspace-domain'
 import {
   createPublicAgentSession,
@@ -46,8 +47,12 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { publicKey } = await params
   const body = (await req.json().catch(() => ({}))) as { locale?: string }
-  const owner = await db.copilotAgent.findFirst({ where: { publicKey, published: true }, select: { workspaceId: true } })
-  if (owner && !(await hostMayServeWorkspace(req.headers.get('host'), owner.workspaceId))) {
+  // Only worth a lookup on a non-primary host (the common path skips it).
+  const host = req.headers.get('host')
+  const owner = isPrimaryHost((host || '').toLowerCase().split(':')[0])
+    ? null
+    : await db.copilotAgent.findFirst({ where: { publicKey, published: true }, select: { workspaceId: true } })
+  if (owner && !(await hostMayServeWorkspace(host, owner.workspaceId))) {
     return NextResponse.json({ error: 'This co-pilot link is invalid or unpublished.' }, { status: 404, headers: CORS })
   }
   try {

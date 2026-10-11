@@ -6,7 +6,7 @@ import {
   REGULAR_SESSION_COOKIE,
 } from '@/lib/embed-session'
 import { isPrimaryHost } from '@/lib/domains/primary-hosts'
-import { isAllowedOnCustomHost } from '@/lib/domains/hostname'
+import { isBlockedOnCustomHost } from '@/lib/domains/hostname'
 
 /**
  * Two responsibilities, both centralised here so the rest of the
@@ -54,7 +54,7 @@ export function middleware(request: NextRequest) {
   // Customer-branded hosts (portal + workspace white-label) serve a fixed
   // allowlist of public surfaces; everything else — dashboard, auth,
   // admin, workspace APIs — is a 404 there. See lib/domains/hostname.ts.
-  if (onCustomHost && !isAllowedOnCustomHost(pathname)) {
+  if (isBlockedOnCustomHost(hostHeader, pathname)) {
     return new NextResponse('Not found', { status: 404 })
   }
   if (!onCustomHost && !isLegacyMatchedPath(pathname)) {
@@ -147,10 +147,22 @@ export const config = {
   // callbacks shouldn't be touched, and the embed handshake route
   // doesn't need a session to run.
   matcher: [
-    // Everything except Next's static assets: custom hosts need an
-    // allowlist check on EVERY path (see middleware body), and the primary
-    // host short-circuits non-legacy paths via isLegacyMatchedPath().
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    // Everything except Next's static assets, for NON-primary hosts only:
+    // custom hosts need an allowlist check on EVERY path (see middleware
+    // body). The entries below remain for primary hosts' legacy paths.
+    // `missing` host skips our own hosts at the routing layer so the app's
+    // normal traffic (widget SSE, assets, APIs) doesn't pay for an Edge
+    // invocation. Hosts the regex doesn't know (env-added PRIMARY_HOSTS)
+    // still run middleware and are classified in code by isPrimaryHost().
+    {
+      source: '/((?!_next/static|_next/image|favicon.ico).*)',
+      missing: [
+        {
+          type: 'host',
+          value: '(.*\\.)?(xovera\\.io|voxility\\.ai)|localhost(:\\d+)?|127\\.0\\.0\\.1(:\\d+)?|.*\\.vercel\\.app',
+        },
+      ],
+    },
     // Root is matched so custom-domain visitors get rewritten to the
     // portal; on the primary host '/' falls through to the marketing page.
     '/',

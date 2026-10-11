@@ -14,7 +14,7 @@
 import { db } from '@/lib/db'
 import { isPrimaryHost, PRIMARY_HOSTS } from './primary-hosts'
 import { validateWorkspaceDomain } from './hostname'
-import { deriveDomainState, type DnsRecord } from './status'
+import { deriveDomainState, hostAccess, type DnsRecord } from './status'
 import {
   addProjectDomain,
   getProjectDomain,
@@ -30,6 +30,9 @@ export class DomainError extends Error {
     this.name = 'DomainError'
   }
 }
+
+/** How long the cron keeps polling a domain whose DNS never resolves. */
+const PENDING_GIVE_UP_MS = 7 * 86_400_000
 
 const cnameTarget = () => process.env.DOMAINS_CNAME_TARGET || undefined
 
@@ -84,14 +87,27 @@ export async function addWorkspaceDomain(workspaceId: string, input: string): Pr
   ])
   if (wsTaken || portalTaken) throw new DomainError('taken', 'That domain is already in use.')
 
+  // Attach to Vercel. If the host is ALREADY on our project but has no row
+  // (a previous add that died before its DB insert), adopt it instead of
+  // reporting it "taken" forever. `weAdded` gates rollback below: never
+  // remove a domain we didn't create in this call.
+  let weAdded = false
   let state
   try {
-    state = await addProjectDomain(v.hostname)
+    state = await getProjectDomain(v.hostname)
+    if (!state) {
+      state = await addProjectDomain(v.hostname)
+      weAdded = true
+    }
   } catch (e) {
     if (e instanceof VercelError) {
+      console.error('[domains] vercel add failed', e.code, e.status, e.message)
+      const taken = e.code.includes('domain_taken') || e.code.includes('already') || e.status === 409
       throw new DomainError(
-        e.code.includes('domain_taken') || e.code.includes('already') ? 'taken' : 'vercel',
-        e.message,
+        taken ? 'taken' : 'vercel',
+        taken
+          ? 'That domain is already in use by another account.'
+          : "We couldn't set up that domain right now. Please try again, or contact support.",
       )
     }
     throw e
@@ -104,16 +120,33 @@ export async function addWorkspaceDomain(workspaceId: string, input: string): Pr
     verification: state.verification,
     cnameTarget: cnameTarget(),
   })
-  const row = await db.workspaceDomain.create({
-    data: { workspaceId, hostname: v.hostname, status: derived.status, dnsRecords: derived.dnsRecords as object[], lastCheckedAt: new Date() },
-  })
-  return view(row)
+  try {
+    const row = await db.workspaceDomain.create({
+      data: { workspaceId, hostname: v.hostname, status: derived.status, dnsRecords: derived.dnsRecords as object[], lastCheckedAt: new Date() },
+    })
+    invalidateHostCache(v.hostname)
+    return view(row)
+  } catch (e) {
+    // Don't strand the host on our Vercel project with no row pointing at it.
+    if (weAdded) await removeProjectDomain(v.hostname).catch(err => console.error('[domains] rollback failed', err))
+    if (typeof e === 'object' && e && (e as { code?: string }).code === 'P2002') {
+      // Lost a race: another request claimed the hostname or this workspace's single slot.
+      throw new DomainError('taken', 'That domain is already in use.')
+    }
+    throw e
+  }
 }
 
 /** Re-read Vercel's view and persist it. Safe to call repeatedly. */
 export async function refreshWorkspaceDomain(workspaceId: string): Promise<WorkspaceDomainView | null> {
-  const row = await db.workspaceDomain.findUnique({ where: { workspaceId } })
+  const row = await db.workspaceDomain.findUnique({
+    where: { workspaceId },
+    include: { workspace: { select: { whitelabelUnlocked: true } } },
+  })
   if (!row) return null
+  // Locked workspaces aren't served; don't touch Vercel (a refresh can
+  // re-attach a missing domain) until they're unlocked again.
+  if (!row.workspace.whitelabelUnlocked) return view(row)
 
   try {
     let state = await getProjectDomain(row.hostname)
@@ -131,12 +164,15 @@ export async function refreshWorkspaceDomain(workspaceId: string): Promise<Works
       verification: state.verification,
       cnameTarget: cnameTarget(),
     })
+    // DNS never showed up: stop the cron polling forever. A manual
+    // Re-check still works and moves it back to pending/active.
+    const stale = derived.status === 'pending' && Date.now() - row.createdAt.getTime() > PENDING_GIVE_UP_MS
     const updated = await db.workspaceDomain.update({
       where: { id: row.id },
       data: {
-        status: derived.status,
+        status: stale ? 'error' : derived.status,
         dnsRecords: derived.dnsRecords as object[],
-        lastError: null,
+        lastError: stale ? 'DNS was not detected after 7 days. Check the records below, then press Re-check.' : null,
         lastCheckedAt: new Date(),
         verifiedAt: derived.status === 'active' ? (row.verifiedAt ?? new Date()) : null,
       },
@@ -165,35 +201,45 @@ export async function removeWorkspaceDomain(workspaceId: string): Promise<void> 
 // ─── Host → workspace routing ──────────────────────────────────────────
 
 const HOST_TTL_MS = 60_000
-const hostCache = new Map<string, { workspaceId: string | null; at: number }>()
-function invalidateHostCache(host: string) { hostCache.delete(host) }
+interface HostOwner { workspaceId: string; serving: boolean }
+const hostCache = new Map<string, { owner: HostOwner | null; at: number }>()
+/** Drop cached host lookups (this instance only; others age out within HOST_TTL_MS). */
+export function invalidateHostCache(host?: string) { if (host) hostCache.delete(host); else hostCache.clear() }
 
-/** Workspace that owns this request host, or null (primary host / unknown / not serving). */
-export async function resolveWorkspaceIdForHost(host: string | null | undefined): Promise<string | null> {
-  const h = (host || '').toLowerCase().split(':')[0]
-  if (!h || isPrimaryHost(h)) return null
+/** Who (if anyone) has registered this host as a workspace domain. */
+async function lookupHostOwner(h: string): Promise<HostOwner | null> {
   const hit = hostCache.get(h)
-  if (hit && Date.now() - hit.at < HOST_TTL_MS) return hit.workspaceId
-
+  if (hit && Date.now() - hit.at < HOST_TTL_MS) return hit.owner
   const row = await db.workspaceDomain.findUnique({
     where: { hostname: h },
     select: { status: true, workspaceId: true, workspace: { select: { whitelabelUnlocked: true } } },
   })
-  const workspaceId = row && row.status === 'active' && row.workspace.whitelabelUnlocked ? row.workspaceId : null
-  hostCache.set(h, { workspaceId, at: Date.now() })
-  return workspaceId
+  const owner = row
+    ? { workspaceId: row.workspaceId, serving: row.status === 'active' && row.workspace.whitelabelUnlocked }
+    : null
+  hostCache.set(h, { owner, at: Date.now() })
+  return owner
+}
+
+/** Workspace that is actively serving on this request host, or null. */
+export async function resolveWorkspaceIdForHost(host: string | null | undefined): Promise<string | null> {
+  const h = (host || '').toLowerCase().split(':')[0]
+  if (!h || isPrimaryHost(h)) return null
+  const owner = await lookupHostOwner(h)
+  return owner?.serving ? owner.workspaceId : null
 }
 
 /**
- * Gate for public (key-authenticated) entry points: on the primary host
- * anything goes; on a workspace custom host the resource must belong to
- * THAT workspace, so one tenant's domain can't front another's agent.
- * Portal custom domains never serve these surfaces.
+ * Gate for public (key-authenticated) entry points. Only blocks when the
+ * host is REGISTERED as some workspace's domain and this resource isn't
+ * served by it (other workspace, still pending, or locked). Primary hosts
+ * and unknown hosts (runtime projects, proxies, portal domains) are never
+ * blocked here — middleware's allowlist already constrains custom hosts.
  */
 export async function hostMayServeWorkspace(host: string | null | undefined, workspaceId: string): Promise<boolean> {
   const h = (host || '').toLowerCase().split(':')[0]
   if (!h || isPrimaryHost(h)) return true
-  return (await resolveWorkspaceIdForHost(h)) === workspaceId
+  return hostAccess(await lookupHostOwner(h), workspaceId)
 }
 
 /** Origin used when generating shareable links/snippets for this workspace. */

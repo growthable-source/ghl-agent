@@ -5,12 +5,18 @@ import { isVercelDomainsConfigured } from '@/lib/domains/vercel'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
+// 50 rows x up to 3 Vercel calls each — leave headroom over the 10s default.
+export const maxDuration = 60
 
 /**
- * Polls Vercel for white-label domains still waiting on DNS so customers
- * who add the CNAME and walk away end up 'active' without clicking
- * Re-check. Only 'pending'/'error' rows are touched; active domains are
- * not re-polled here. Bounded per run.
+ * Keeps white-label domain status honest:
+ *   - 'pending' rows are polled so customers who add the CNAME and walk away
+ *     go 'active' without clicking Re-check. refreshWorkspaceDomain flips a
+ *     row that never resolves to 'error' after 7 days, which ends polling.
+ *   - 'active' rows are re-verified at most daily, so a removed/broken CNAME
+ *     demotes the domain instead of silently serving a dead host.
+ *   - Locked workspaces are skipped entirely (no Vercel calls).
+ * Bounded per run.
  *
  * Secured by CRON_SECRET (query `secret` or Bearer header).
  */
@@ -24,8 +30,15 @@ export async function GET(req: NextRequest) {
 
   if (!isVercelDomainsConfigured()) return NextResponse.json({ ok: true, skipped: 'vercel not configured' })
 
+  const dayAgo = new Date(Date.now() - 86_400_000)
   const rows = await db.workspaceDomain.findMany({
-    where: { status: { not: 'active' } },
+    where: {
+      workspace: { whitelabelUnlocked: true },
+      OR: [
+        { status: 'pending' },
+        { status: 'active', OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: dayAgo } }] },
+      ],
+    },
     orderBy: { lastCheckedAt: 'asc' },
     take: 50,
     select: { workspaceId: true },

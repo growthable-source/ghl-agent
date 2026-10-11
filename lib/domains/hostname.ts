@@ -8,6 +8,8 @@
  * would pull the customer's whole website onto us if they mis-pointed it.
  */
 
+import { isPrimaryHost, OWN_DOMAINS } from './primary-hosts'
+
 /**
  * Operator-entered custom domain → a clean hostname, or null when blank
  * or not a valid public hostname. Strips protocol/path/port, lowercases,
@@ -38,8 +40,8 @@ export function normalizeCustomDomain(input: string | null | undefined): string 
  */
 const SECOND_LEVEL_SLDS = new Set(['co', 'com', 'org', 'net', 'gov', 'edu', 'ac', 'or', 'ne', 'go'])
 
-/** Hosts (and parents) customers may never claim: ours + preview infra. */
-const RESERVED_SUFFIXES = ['xovera.io', 'vercel.app', 'vercel.dev', 'vercel-dns.com', 'localhost']
+/** Hosts (and parents) customers may never claim: every domain we own + preview infra. */
+const RESERVED_SUFFIXES = [...OWN_DOMAINS, 'vercel.app', 'vercel.dev', 'vercel-dns.com', 'localhost']
 
 export type DomainValidation =
   | { ok: true; hostname: string }
@@ -86,6 +88,8 @@ const CUSTOM_HOST_ALLOWED_PREFIXES = [
   '/_next/',
   '/portal',
   '/api/portal',
+  // Portal "install into your CRM" flow (app/portal/locations/page.tsx)
+  '/api/auth/leadconnector-agency/portal-install',
   // Co-Pilot "no meeting" links + embed button script
   '/copilot/live/',
   '/api/copilot/public/',
@@ -100,12 +104,31 @@ const CUSTOM_HOST_ALLOWED_PREFIXES = [
   '/api/voice/gemini/tool',
   // Static assets the pages above reference
   '/favicon',
+  '/icon.svg',
+  '/apple-icon.png',
+  '/manifest.webmanifest',
+  '/robots.txt',
+  '/opengraph-image',
+  '/sw.js',
   '/logo-',
+  '/brands/',
   '/images/',
   '/fonts/',
+  '/api/health',
 ]
 
 export function isAllowedOnCustomHost(pathname: string): boolean {
   if (pathname === '/') return true // rewritten to the portal root by middleware
   return CUSTOM_HOST_ALLOWED_PREFIXES.some(p => pathname === p || pathname.startsWith(p))
+}
+
+/**
+ * Middleware verdict: should this request be 404'd? True only for a
+ * NON-primary host asking for a path outside the custom-host allowlist.
+ * Primary hosts (incl. app.voxility.ai, widget.xovera.io, previews) are
+ * never blocked, whatever the path.
+ */
+export function isBlockedOnCustomHost(host: string, pathname: string): boolean {
+  if (!host || isPrimaryHost(host)) return false
+  return !isAllowedOnCustomHost(pathname)
 }
