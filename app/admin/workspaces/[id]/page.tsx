@@ -15,6 +15,7 @@ export default async function WorkspaceDrillDown({ params }: Params) {
   const workspace = await db.workspace.findUnique({
     where: { id },
     include: {
+      whitelabelDomain: { select: { hostname: true, status: true } },
       members: {
         include: { user: { select: { id: true, email: true, name: true, createdAt: true } } },
         orderBy: { createdAt: 'asc' },
@@ -149,6 +150,47 @@ export default async function WorkspaceDrillDown({ params }: Params) {
                 }`}
               >
                 {workspace.disableGlobalLearnings ? 'Enable platform guidelines' : 'Disable (opt out)'}
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
+
+      {/* White-label domain */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="max-w-xl">
+            <h2 className="text-sm font-medium text-zinc-200 mb-1">White-label domain</h2>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Lets this workspace serve Co-Pilot links and the widget from its own subdomain. Unlock after the
+              commercial deal is agreed; locking stops an attached domain from being served (it is kept, so
+              re-unlocking restores it).
+            </p>
+            <p className="text-[11px] text-zinc-500 mt-2">
+              Status:{' '}
+              {workspace.whitelabelUnlocked ? (
+                <span className="text-emerald-400 font-medium">
+                  unlocked{workspace.whitelabelUnlockedBy ? ` by ${workspace.whitelabelUnlockedBy}` : ''}
+                </span>
+              ) : (
+                <span className="text-zinc-400 font-medium">locked</span>
+              )}
+              {workspace.whitelabelDomain && (
+                <> · <span className="font-mono">{workspace.whitelabelDomain.hostname}</span> ({workspace.whitelabelDomain.status})</>
+              )}
+            </p>
+          </div>
+          {canMutate && (
+            <form action={`/api/admin/workspaces/${workspace.id}/whitelabel`} method="post">
+              <button
+                type="submit"
+                className={`text-xs font-medium border rounded-lg px-3 py-2 transition-colors ${
+                  workspace.whitelabelUnlocked
+                    ? 'text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20'
+                    : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20'
+                }`}
+              >
+                {workspace.whitelabelUnlocked ? 'Lock white-labelling' : 'Unlock white-labelling'}
               </button>
             </form>
           )}

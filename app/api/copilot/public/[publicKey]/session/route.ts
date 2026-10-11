@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { hostMayServeWorkspace } from '@/lib/domains/workspace-domain'
 import {
   createPublicAgentSession,
   CopilotNotConfiguredError,
@@ -28,12 +29,16 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const { publicKey } = await params
   const agent = await db.copilotAgent.findFirst({
     where: { publicKey, published: true },
-    select: { name: true, type: true },
+    select: { name: true, type: true, workspaceId: true },
   })
+  // A workspace's white-label host may only front that workspace's agents.
+  if (agent && !(await hostMayServeWorkspace(req.headers.get('host'), agent.workspaceId))) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404, headers: CORS })
+  }
   if (!agent) return NextResponse.json({ error: 'not_found' }, { status: 404, headers: CORS })
   return NextResponse.json({ name: agent.name, type: agent.type }, { headers: CORS })
 }
@@ -41,6 +46,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { publicKey } = await params
   const body = (await req.json().catch(() => ({}))) as { locale?: string }
+  const owner = await db.copilotAgent.findFirst({ where: { publicKey, published: true }, select: { workspaceId: true } })
+  if (owner && !(await hostMayServeWorkspace(req.headers.get('host'), owner.workspaceId))) {
+    return NextResponse.json({ error: 'This co-pilot link is invalid or unpublished.' }, { status: 404, headers: CORS })
+  }
   try {
     const result = await createPublicAgentSession(publicKey, { locale: body.locale })
     return NextResponse.json(result, { headers: CORS })

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
+import { useWorkspacePublicOrigin } from '@/lib/domains/use-public-origin'
 import {
   WidgetAppearanceFields, Section, Field, LauncherBubblePreview, ChatPreview,
 } from '@/components/widget/WidgetAppearance'
@@ -70,6 +71,7 @@ export default function WidgetEditorPage() {
   const params = useParams()
   const router = useRouter()
   const workspaceId = params.workspaceId as string
+  const origin = useWorkspacePublicOrigin(workspaceId)
   const widgetId = params.widgetId as string
 
   const [widget, setWidget] = useState<Widget | null>(null)
@@ -173,7 +175,6 @@ export default function WidgetEditorPage() {
   if (loading) return <div className="p-8"><div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" /></div>
   if (!widget) return <div className="p-8 text-zinc-500">Widget not found</div>
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const isCallType = widget.type === 'click_to_call'
   const isInline = widget.embedMode === 'inline'
 

@@ -115,6 +115,16 @@ model Workspace {
   stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
 
+  // ─── White-label domain ───
+  // Commercial deal happens outside the product, so a super-admin flips
+  // this per workspace from /admin/workspaces/[id]. Until unlocked, the
+  // workspace sees the feature (so they can ask for it) but cannot add a
+  // domain; re-locking stops an existing domain from being served.
+  whitelabelUnlocked   Boolean         @default(false)
+  whitelabelUnlockedAt DateTime?
+  whitelabelUnlockedBy String?
+  whitelabelDomain     WorkspaceDomain?
+
   // ─── Install provenance + primary CRM ───
   // installSource records where this workspace was created from — set
   // once at signup, never rewritten. Drives onboarding copy, marketplace
@@ -4391,4 +4401,28 @@ model DemoTryCall {
   @@index([ip, startedAt])
   @@index([startedAt, endedAt])
   @@index([prospectId])
+}
+
+// A workspace's white-label hostname (e.g. live.acme.com) for Co-Pilot
+// links and the chat/voice widget. ONE per workspace (workspaceId is
+// unique), SUBDOMAINS ONLY (enforced in lib/domains/hostname.ts). The row
+// mirrors the domain's state on our Vercel project; `status` flips to
+// 'active' only after Vercel reports it verified AND correctly pointed.
+// Hostnames are also kept unique against Portal.customDomain in the API.
+model WorkspaceDomain {
+  id            String    @id @default(cuid())
+  workspaceId   String    @unique
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  hostname      String    @unique
+  /// 'pending' (added, DNS not yet right) | 'active' | 'error'
+  status        String    @default("pending")
+  /// DNS records the customer must create: [{ type, name, value, reason? }]
+  dnsRecords    Json      @default("[]")
+  lastError     String?   @db.Text
+  lastCheckedAt DateTime?
+  verifiedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
 }

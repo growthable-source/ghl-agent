@@ -24,26 +24,7 @@ export function normalizeHost(host: string | null | undefined): string | null {
   return bare || null
 }
 
-/**
- * Operator-entered custom domain → a clean hostname, or null when blank
- * or not a valid public hostname. Strips protocol/path/port, lowercases,
- * and requires at least one dot (rejects "localhost"/"acme").
- */
-export function normalizeCustomDomain(input: string | null | undefined): string | null {
-  if (!input) return null
-  let v = input.trim().toLowerCase()
-  if (!v) return null
-  v = v.replace(/^[a-z]+:\/\//, '') // strip protocol
-  v = v.split('/')[0] // strip path
-  v = v.split(':')[0] // strip port
-  v = v.replace(/\.$/, '') // strip trailing dot
-  // Hostname: dot-separated labels, letters/digits/hyphen, 2+ labels,
-  // TLD ≥ 2 letters. Deliberately rejects single-label hosts.
-  if (!/^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(v)) {
-    return null
-  }
-  return v
-}
+export { normalizeCustomDomain } from '@/lib/domains/hostname'
 
 /** Look up the portal that owns this request host (custom domain). */
 export async function getPortalBranding(host: string | null | undefined): Promise<PortalBranding | null> {

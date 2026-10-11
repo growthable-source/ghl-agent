@@ -1,3 +1,4 @@
+import { hostMayServeWorkspace } from '@/lib/domains/workspace-domain'
 import { db } from './db'
 
 /**
@@ -219,6 +220,12 @@ export async function validateWidgetRequest(
     }
     setCachedWidget(widgetId, providedKey, loaded)
     widget = loaded
+  }
+
+  // White-label host check: on a workspace custom domain this widget must
+  // belong to THAT workspace. No-op (no DB) on the primary host.
+  if (!(await hostMayServeWorkspace(req.headers.get('host'), widget.workspaceId))) {
+    return { ok: false, error: 'Widget not found', status: 404 }
   }
 
   // Origin check stays per-request — it's pure string comparison

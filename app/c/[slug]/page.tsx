@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
+import { hostMayServeWorkspace } from '@/lib/domains/workspace-domain'
 import HostedCallClient from './HostedCallClient'
 import type { Metadata } from 'next'
 
@@ -22,7 +24,7 @@ export default async function HostedCallPage({ params }: Params) {
   const widget = await db.chatWidget.findUnique({
     where: { slug },
     select: {
-      id: true, publicKey: true, name: true, type: true, isActive: true,
+      id: true, workspaceId: true, publicKey: true, name: true, type: true, isActive: true,
       primaryColor: true, logoUrl: true,
       buttonLabel: true, buttonShape: true, buttonSize: true, buttonIcon: true, buttonTextColor: true,
       hostedPageHeadline: true, hostedPageSubtext: true,
@@ -30,6 +32,7 @@ export default async function HostedCallPage({ params }: Params) {
   }).catch(() => null)
 
   if (!widget || !widget.isActive) notFound()
+  if (!(await hostMayServeWorkspace((await headers()).get('host'), widget.workspaceId))) notFound()
 
   return (
     <HostedCallClient

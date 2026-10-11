@@ -5,31 +5,8 @@ import {
   EMBED_WORKSPACE_COOKIE,
   REGULAR_SESSION_COOKIE,
 } from '@/lib/embed-session'
-
-/**
- * Primary app hosts — the marketing site + dashboard. Any OTHER host
- * that reaches our server is a portal custom domain (the dashboard's
- * iframe-embedding whitelabel domains never route requests here; their
- * iframe src points at the primary host). Derived from the public URL
- * envs, with localhost + *.vercel.app for dev/preview.
- */
-function hostnameOf(url: string | undefined): string | null {
-  if (!url) return null
-  try { return new URL(url).hostname.toLowerCase() } catch { return null }
-}
-const PRIMARY_HOSTS = new Set(
-  [
-    hostnameOf(process.env.NEXT_PUBLIC_SITE_URL),
-    hostnameOf(process.env.NEXT_PUBLIC_APP_URL),
-    'xovera.io',
-    'app.xovera.io',
-    'localhost',
-    '127.0.0.1',
-  ].filter((h): h is string => !!h),
-)
-function isPrimaryHost(host: string): boolean {
-  return PRIMARY_HOSTS.has(host) || host.endsWith('.vercel.app')
-}
+import { isPrimaryHost } from '@/lib/domains/primary-hosts'
+import { isAllowedOnCustomHost } from '@/lib/domains/hostname'
 
 /**
  * Two responsibilities, both centralised here so the rest of the
@@ -51,7 +28,39 @@ function isPrimaryHost(host: string): boolean {
  *      session resolution is hard-bound to one cookie name. Promoting
  *      in middleware means no caller has to change.
  */
+/**
+ * Paths the middleware handled BEFORE white-label domains existed (the
+ * original matcher). The matcher is now broad so custom hosts can be
+ * allowlisted; on the primary host everything outside this set returns
+ * immediately, i.e. behaves exactly as it did when it never matched.
+ */
+function isLegacyMatchedPath(path: string): boolean {
+  return (
+    path === '/' ||
+    path.startsWith('/api/cron/') ||
+    path.startsWith('/dashboard') ||
+    path.startsWith('/embedded') ||
+    path.startsWith('/api/workspaces/') ||
+    path.startsWith('/api/agents/') ||
+    path.startsWith('/api/integrations/')
+  )
+}
+
 export function middleware(request: NextRequest) {
+  const hostHeader = (request.headers.get('host') || '').toLowerCase().split(':')[0]
+  const onCustomHost = !!hostHeader && !isPrimaryHost(hostHeader)
+  const pathname = request.nextUrl.pathname
+
+  // Customer-branded hosts (portal + workspace white-label) serve a fixed
+  // allowlist of public surfaces; everything else — dashboard, auth,
+  // admin, workspace APIs — is a 404 there. See lib/domains/hostname.ts.
+  if (onCustomHost && !isAllowedOnCustomHost(pathname)) {
+    return new NextResponse('Not found', { status: 404 })
+  }
+  if (!onCustomHost && !isLegacyMatchedPath(pathname)) {
+    return NextResponse.next()
+  }
+
   // Cron dedup for the widget-runtime deployment. vercel.json crons fire
   // on EVERY Vercel project deploying this repo, and the xovera-widget
   // project (IS_WIDGET_RUNTIME=1) ships the same codebase — without this
@@ -138,6 +147,10 @@ export const config = {
   // callbacks shouldn't be touched, and the embed handshake route
   // doesn't need a session to run.
   matcher: [
+    // Everything except Next's static assets: custom hosts need an
+    // allowlist check on EVERY path (see middleware body), and the primary
+    // host short-circuits non-legacy paths via isLegacyMatchedPath().
+    '/((?!_next/static|_next/image|favicon.ico).*)',
     // Root is matched so custom-domain visitors get rewritten to the
     // portal; on the primary host '/' falls through to the marketing page.
     '/',

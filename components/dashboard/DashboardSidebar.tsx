@@ -473,6 +473,7 @@ function SidebarBody() {
                     {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
                     {navLink(`/dashboard/${workspaceId}/settings/ticketing`, 'Ticketing')}
                     {navLink(`/dashboard/${workspaceId}/settings/live-chat`, 'Live chat queue', null, '2026-06-15')}
+                    {navLink(`/dashboard/${workspaceId}/settings/domain`, 'Custom domain', null, '2026-10-11')}
                   </div>
                 </div>
                 </>)}

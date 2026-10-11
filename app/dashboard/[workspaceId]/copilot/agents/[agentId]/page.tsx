@@ -17,6 +17,7 @@ import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
 import { COPILOT_LANGUAGES } from '@/lib/copilot/language'
 import { COPILOT_VOICES, DEFAULT_COPILOT_VOICE_ID, ROTATE_VOICE, isCopilotVoiceId } from '@/lib/copilot/voices'
+import { useWorkspacePublicOrigin } from '@/lib/domains/use-public-origin'
 import CopilotBlockBuilder from '@/components/copilot/CopilotBlockBuilder'
 import type { CopilotBlock } from '@/lib/copilot/blocks'
 
@@ -58,6 +59,7 @@ interface KnowledgeDomainLite {
 export default function CopilotAgentEditor() {
   const params = useParams<{ workspaceId: string; agentId: string }>()
   const workspaceId = params?.workspaceId
+  const publicOrigin = useWorkspacePublicOrigin(workspaceId)
   const agentId = params?.agentId
 
   const [agent, setAgent] = useState<AgentDetail | null>(null)
@@ -666,16 +668,20 @@ export default function CopilotAgentEditor() {
             Publish to launch this agent from a shareable link, a button on any site, or a JavaScript snippet inside
             your app. Unpublishing disables all of them instantly (the key is kept, so re-publishing restores them).
           </p>
+          <p className="text-[11px] text-zinc-500 mb-3">
+            Links use your own domain once one is connected.{' '}
+            <Link href={`/dashboard/${workspaceId}/settings/domain`} className="underline hover:text-zinc-300">Custom domain settings →</Link>
+          </p>
           {agent.published && agent.publicKey && (
             <div className="space-y-3">
-              <DeployField label="Shareable link" value={`${window.location.origin}/copilot/live/${agent.publicKey}`} />
+              <DeployField label="Shareable link" value={`${publicOrigin}/copilot/live/${agent.publicKey}`} />
               <DeployField
                 label="Button (HTML)"
-                value={`<a href="${window.location.origin}/copilot/live/${agent.publicKey}" target="_blank" rel="noopener">Get live help</a>`}
+                value={`<a href="${publicOrigin}/copilot/live/${agent.publicKey}" target="_blank" rel="noopener">Get live help</a>`}
               />
               <DeployField
                 label="JavaScript snippet (floating button + window.XoveraCopilot.launch())"
-                value={`<script src="${window.location.origin}/copilot.js" data-copilot-key="${agent.publicKey}" async></script>`}
+                value={`<script src="${publicOrigin}/copilot.js" data-copilot-key="${agent.publicKey}" async></script>`}
               />
             </div>
           )}
