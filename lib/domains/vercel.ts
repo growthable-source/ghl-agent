@@ -91,7 +91,11 @@ export async function verifyProjectDomain(hostname: string): Promise<VercelDomai
 /** True when the host's DNS does NOT yet resolve to Vercel. */
 export async function isDomainMisconfigured(hostname: string): Promise<boolean> {
   const r = await call<{ misconfigured?: boolean }>('GET', `/v6/domains/${encodeURIComponent(hostname)}/config`)
-  return r.misconfigured !== false
+  // A missing/odd field is an unknown, NOT "misconfigured": throwing keeps
+  // the stored status (the caller records lastError) instead of letting one
+  // flaky response demote a working domain.
+  if (typeof r.misconfigured !== 'boolean') throw new VercelError('bad_response', 'Unexpected domain config response', 502)
+  return r.misconfigured
 }
 
 export async function removeProjectDomain(hostname: string): Promise<void> {

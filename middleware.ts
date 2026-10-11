@@ -159,7 +159,11 @@ export const config = {
       missing: [
         {
           type: 'host',
-          value: '(.*\\.)?(xovera\\.io|voxility\\.ai)|localhost(:\\d+)?|127\\.0\\.0\\.1(:\\d+)?|.*\\.vercel\\.app',
+          // ONE outer group: Next wraps the value as ^value$, so top-level
+          // alternation would anchor only the first/last branch and let
+          // hosts like localhost.acme.com or live.xovera.io.acme.com skip
+          // middleware. Ports are stripped by Next before matching.
+          value: '((.*\\.)?(xovera\\.io|voxility\\.ai)|localhost|127\\.0\\.0\\.1|.*\\.vercel\\.app)',
         },
       ],
     },

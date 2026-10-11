@@ -21,6 +21,9 @@ describe('validateWorkspaceDomain', () => {
     expect(validateWorkspaceDomain('foo.xovera.io').ok).toBe(false)
     expect(validateWorkspaceDomain('live.voxility.ai').ok).toBe(false)
     expect(validateWorkspaceDomain('app.voxility.ai').ok).toBe(false)
+    for (const h of ['live.xovera.io.acme.com', 'x.localhost.acme.com', 'a.voxility.ai.evil.com', 'x.vercel.app.acme.com']) {
+      expect(validateWorkspaceDomain(h).ok, h).toBe(false)
+    }
     expect(validateWorkspaceDomain('x.vercel.app').ok).toBe(false)
     expect(validateWorkspaceDomain('app.ours.example', ['ours.example']).ok).toBe(false)
   })

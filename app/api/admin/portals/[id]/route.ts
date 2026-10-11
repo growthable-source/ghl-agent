@@ -1,3 +1,4 @@
+import { isPrimaryHost } from '@/lib/domains/primary-hosts'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
@@ -39,6 +40,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       const normalized = normalizeCustomDomain(raw)
       if (!normalized) {
         return NextResponse.json({ error: 'That domain looks invalid. Use a hostname like support.acme.com.' }, { status: 400 })
+      }
+      // Our own hosts are "primary": a portal there would lose the
+      // / → /portal rewrite and shadow the app. Customer domains only.
+      if (isPrimaryHost(normalized)) {
+        return NextResponse.json({ error: 'That is one of our own domains. Use a domain the customer owns.' }, { status: 400 })
       }
       // One host, one owner: workspace white-label domains share the
       // namespace (the Portal unique index can't see that table).

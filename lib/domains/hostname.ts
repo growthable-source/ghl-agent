@@ -67,6 +67,17 @@ export function validateWorkspaceDomain(
     }
   }
 
+  // Look-alikes that embed our domains or localhost anywhere in the name
+  // (live.xovera.io.acme.com, x.localhost.acme.com) would confuse host
+  // classification; they're never legitimate customer subdomains.
+  if (
+    OWN_DOMAINS.some(d => hostname.includes(d)) ||
+    labels.includes('localhost') || hostname.includes('127.0.0.1') ||
+    hostname.includes('vercel.app')
+  ) {
+    return { ok: false, error: 'That domain is reserved. Please use a domain you own.' }
+  }
+
   const reserved = [...RESERVED_SUFFIXES, ...primaryHosts.map(h => h.toLowerCase())]
   if (reserved.some(r => hostname === r || hostname.endsWith(`.${r}`))) {
     return { ok: false, error: 'That domain is reserved. Please use a domain you own.' }

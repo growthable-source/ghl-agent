@@ -25,6 +25,7 @@ import {
   hostMayServeWorkspace,
   invalidateHostCache,
   refreshWorkspaceDomain,
+  removeWorkspaceDomain,
   resolveWorkspaceIdForHost,
 } from './workspace-domain'
 import { VercelError } from './vercel'
@@ -32,7 +33,8 @@ import { VercelError } from './vercel'
 const unlockedWs = { whitelabelUnlocked: true, whitelabelDomain: null }
 const rowFor = (over = {}) => ({
   id: 'd1', workspaceId: 'ws1', hostname: 'live.acme.com', status: 'pending', dnsRecords: [],
-  lastError: null, lastCheckedAt: null, verifiedAt: null, createdAt: new Date(), ...over,
+  lastError: null, lastCheckedAt: null, verifiedAt: null, createdAt: new Date(),
+  addedByUs: true, pendingSince: new Date(), failedChecks: 0, ...over,
 })
 
 beforeEach(() => {
@@ -90,6 +92,12 @@ describe('addWorkspaceDomain', () => {
     expect(vercel.removeProjectDomain).not.toHaveBeenCalled()
   })
 
+  it('records whether we added the host (adopted hosts are marked addedByUs=false)', async () => {
+    vercel.getProjectDomain.mockResolvedValue({ name: 'live.acme.com', verified: true, verification: [] })
+    await addWorkspaceDomain('ws1', 'live.acme.com')
+    expect(dbMock.workspaceDomain.create.mock.calls[0][0].data.addedByUs).toBe(false)
+  })
+
   it('does not leak Vercel error text to the caller', async () => {
     vercel.addProjectDomain.mockRejectedValue(new VercelError('internal_error', 'secret upstream detail', 500))
     const err = await addWorkspaceDomain('ws1', 'live.acme.com').catch(e => e)
@@ -114,13 +122,62 @@ describe('refreshWorkspaceDomain', () => {
     expect((await refreshWorkspaceDomain('ws1'))?.status).toBe('active')
   })
 
-  it('gives up (status error) when DNS never appears for 7+ days', async () => {
+  it('gives up (status error) when DNS has been missing for 7+ days (from pendingSince)', async () => {
     const old = new Date(Date.now() - 8 * 86_400_000)
-    dbMock.workspaceDomain.findUnique.mockResolvedValue({ ...rowFor({ createdAt: old }), workspace: { whitelabelUnlocked: true } })
+    dbMock.workspaceDomain.findUnique.mockResolvedValue({ ...rowFor({ pendingSince: old }), workspace: { whitelabelUnlocked: true } })
     vercel.getProjectDomain.mockResolvedValue({ name: 'live.acme.com', verified: true, verification: [] })
     vercel.isDomainMisconfigured.mockResolvedValue(true)
     dbMock.workspaceDomain.update.mockImplementation(async ({ data }) => rowFor(data))
     expect((await refreshWorkspaceDomain('ws1'))?.status).toBe('error')
+  })
+
+  it('recovers an error domain to active when DNS finally resolves', async () => {
+    dbMock.workspaceDomain.findUnique.mockResolvedValue({
+      ...rowFor({ status: 'error', createdAt: new Date(Date.now() - 30 * 86_400_000), pendingSince: new Date(Date.now() - 20 * 86_400_000) }),
+      workspace: { whitelabelUnlocked: true },
+    })
+    vercel.getProjectDomain.mockResolvedValue({ name: 'live.acme.com', verified: true, verification: [] })
+    vercel.isDomainMisconfigured.mockResolvedValue(false)
+    dbMock.workspaceDomain.update.mockImplementation(async ({ data }) => rowFor(data))
+    expect((await refreshWorkspaceDomain('ws1'))?.status).toBe('active')
+  })
+
+  it('keeps an active domain active after ONE failed check, demotes after two', async () => {
+    const active = (failedChecks: number) => ({ ...rowFor({ status: 'active', failedChecks, pendingSince: null }), workspace: { whitelabelUnlocked: true } })
+    vercel.getProjectDomain.mockResolvedValue({ name: 'live.acme.com', verified: true, verification: [] })
+    vercel.isDomainMisconfigured.mockResolvedValue(true)
+    dbMock.workspaceDomain.update.mockImplementation(async ({ data }) => rowFor(data))
+
+    dbMock.workspaceDomain.findUnique.mockResolvedValue(active(0))
+    expect((await refreshWorkspaceDomain('ws1'))?.status).toBe('active')
+    expect(dbMock.workspaceDomain.update.mock.calls[0][0].data.failedChecks).toBe(1)
+
+    dbMock.workspaceDomain.findUnique.mockResolvedValue(active(1))
+    expect((await refreshWorkspaceDomain('ws1'))?.status).toBe('pending')
+  })
+
+  it('a flaky/odd Vercel config response does not change the stored status', async () => {
+    dbMock.workspaceDomain.findUnique.mockResolvedValue({ ...rowFor({ status: 'active', pendingSince: null }), workspace: { whitelabelUnlocked: true } })
+    vercel.getProjectDomain.mockResolvedValue({ name: 'live.acme.com', verified: true, verification: [] })
+    vercel.isDomainMisconfigured.mockRejectedValue(new VercelError('bad_response', 'Unexpected', 502))
+    dbMock.workspaceDomain.update.mockImplementation(async ({ data }) => rowFor({ status: 'active', ...data }))
+    await refreshWorkspaceDomain('ws1')
+    expect(dbMock.workspaceDomain.update.mock.calls[0][0].data.status).toBeUndefined()
+  })
+})
+
+describe('removeWorkspaceDomain', () => {
+  it('detaches a host we added from Vercel', async () => {
+    dbMock.workspaceDomain.findUnique.mockResolvedValue(rowFor({ addedByUs: true }))
+    await removeWorkspaceDomain('ws1')
+    expect(vercel.removeProjectDomain).toHaveBeenCalledWith('live.acme.com')
+    expect(dbMock.workspaceDomain.delete).toHaveBeenCalled()
+  })
+  it('never detaches an ADOPTED host from Vercel, only drops our row', async () => {
+    dbMock.workspaceDomain.findUnique.mockResolvedValue(rowFor({ addedByUs: false }))
+    await removeWorkspaceDomain('ws1')
+    expect(vercel.removeProjectDomain).not.toHaveBeenCalled()
+    expect(dbMock.workspaceDomain.delete).toHaveBeenCalled()
   })
 })
 

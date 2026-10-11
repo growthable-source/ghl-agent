@@ -4421,6 +4421,14 @@ model WorkspaceDomain {
   lastError     String?   @db.Text
   lastCheckedAt DateTime?
   verifiedAt    DateTime?
+  /// False when we ADOPTED a host that was already on the Vercel project
+  /// without a row. Removing the workspace domain then must NOT detach it
+  /// from Vercel (it may be a hand-added portal/partner host).
+  addedByUs     Boolean   @default(true)
+  /// When the domain last became non-active; the 7-day give-up counts from here.
+  pendingSince  DateTime?
+  /// Consecutive failed checks while 'active' (demote at 2).
+  failedChecks  Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

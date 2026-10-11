@@ -12,10 +12,14 @@ subdomain (e.g. `live.acme.com`). One domain per workspace, subdomains only.
 3. Customer adds `CNAME live → cname.vercel-dns.com` (plus a TXT only if Vercel asks).
    Cloudflare users: **DNS only** (grey cloud), or Vercel can't issue the cert.
 4. `/api/cron/check-workspace-domains` (every 10 min) and the **Re-check** button
-   move `pending → active`. Pending domains whose DNS never resolves go to `error`
-   after 7 days (polling stops; Re-check still works). Active domains are re-verified
-   daily and demoted if DNS breaks. Locked workspaces are skipped. Active domains are
+   move `pending → active`. If DNS is still missing 7 days after the domain went
+   pending (`pendingSince`), it is marked `error` — but it keeps being checked daily
+   and goes `active` as soon as DNS resolves. An `active` domain is re-verified daily
+   and only demoted after 2 consecutive failed checks (one flaky Vercel response never
+   takes a working domain down). Locked workspaces are skipped. Active domains are
    used for all generated links.
+5. Removing a domain detaches it from Vercel only if we added it (`addedByUs`). A host
+   that was already on the project (adopted) is never detached by a workspace admin.
 
 ## Security model
 - **Primary hosts** (`lib/domains/primary-hosts.ts`) are every host the app itself
@@ -52,3 +56,20 @@ deliberately stay on that host, so every URL a visitor can see (including the
 custom-host chat runs on the main project, without the widget runtime's isolation
 from main deploys. Revisit if custom-domain chat volume grows or main deploys start
 cutting off live chats. See `docs/copilot-runtime-design.md` for the future runtime.
+
+## Preview / production checklist
+1. Confirm which DB the preview's `db:migrate:deploy` points at.
+2. Set `DOMAINS_VERCEL_*` on main only. Smoke-test dashboard, Google login and a
+   webhook on the vercel.app URL; confirm `PRIMARY_HOSTS` reaches middleware.
+3. Widget + a Copilot link via app.xovera.io and widget.xovera.io; `/api/health` on the widget host.
+4. On a throwaway subdomain: add → DNS → active. `/dashboard`, `/admin`, `/login`,
+   `/api/auth/session` must 404 there; another workspace's widget key 404s; a lock
+   takes effect within ~60s.
+5. `x.localhost.<test-domain>/admin` must 404 (matcher look-alike regression).
+6. Read-only: `SELECT "customDomain" FROM "Portal" WHERE "customDomain" ~ '(xovera\.io|voxility\.ai)$' OR "customDomain" <> lower("customDomain");`
+   then list the real Vercel project's domains.
+7. Cron logs on both projects (204 on widget, 200 on main).
+
+Note: the matcher in `middleware.ts` must be a static literal, so its host regex cannot
+read `PRIMARY_HOSTS`; env-added hosts still run middleware and are classified in code.
+`lib/domains/matcher.test.ts` runs the real matcher through Next's own matcher.

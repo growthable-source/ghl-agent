@@ -5,14 +5,15 @@ import { isVercelDomainsConfigured } from '@/lib/domains/vercel'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
-// 50 rows x up to 3 Vercel calls each — leave headroom over the 10s default.
-export const maxDuration = 60
+// Up to 50 rows, 5 at a time, each up to 3 Vercel calls.
+export const maxDuration = 300
 
 /**
  * Keeps white-label domain status honest:
  *   - 'pending' rows are polled so customers who add the CNAME and walk away
- *     go 'active' without clicking Re-check. refreshWorkspaceDomain flips a
- *     row that never resolves to 'error' after 7 days, which ends polling.
+ *     go 'active' without clicking Re-check. A row that never resolves is
+ *     marked 'error' after 7 days (from pendingSince) and from then on is
+ *     polled daily, so it still recovers when the customer fixes DNS.
  *   - 'active' rows are re-verified at most daily, so a removed/broken CNAME
  *     demotes the domain instead of silently serving a dead host.
  *   - Locked workspaces are skipped entirely (no Vercel calls).
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
       workspace: { whitelabelUnlocked: true },
       OR: [
         { status: 'pending' },
-        { status: 'active', OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: dayAgo } }] },
+        { status: { in: ['active', 'error'] }, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: dayAgo } }] },
       ],
     },
     orderBy: { lastCheckedAt: 'asc' },
@@ -44,9 +45,10 @@ export async function GET(req: NextRequest) {
     select: { workspaceId: true },
   })
   let activated = 0
-  for (const r of rows) {
-    const v = await refreshWorkspaceDomain(r.workspaceId)
-    if (v?.status === 'active') activated++
+  const CONCURRENCY = 5
+  for (let i = 0; i < rows.length; i += CONCURRENCY) {
+    const results = await Promise.all(rows.slice(i, i + CONCURRENCY).map(r => refreshWorkspaceDomain(r.workspaceId)))
+    activated += results.filter(v => v?.status === 'active').length
   }
   return NextResponse.json({ ok: true, checked: rows.length, activated })
 }

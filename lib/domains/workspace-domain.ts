@@ -14,7 +14,7 @@
 import { db } from '@/lib/db'
 import { isPrimaryHost, PRIMARY_HOSTS } from './primary-hosts'
 import { validateWorkspaceDomain } from './hostname'
-import { deriveDomainState, hostAccess, type DnsRecord } from './status'
+import { deriveDomainState, hostAccess, nextLifecycle, type DnsRecord } from './status'
 import {
   addProjectDomain,
   getProjectDomain,
@@ -30,9 +30,6 @@ export class DomainError extends Error {
     this.name = 'DomainError'
   }
 }
-
-/** How long the cron keeps polling a domain whose DNS never resolves. */
-const PENDING_GIVE_UP_MS = 7 * 86_400_000
 
 const cnameTarget = () => process.env.DOMAINS_CNAME_TARGET || undefined
 
@@ -122,7 +119,8 @@ export async function addWorkspaceDomain(workspaceId: string, input: string): Pr
   })
   try {
     const row = await db.workspaceDomain.create({
-      data: { workspaceId, hostname: v.hostname, status: derived.status, dnsRecords: derived.dnsRecords as object[], lastCheckedAt: new Date() },
+      data: { workspaceId, hostname: v.hostname, status: derived.status, dnsRecords: derived.dnsRecords as object[], lastCheckedAt: new Date(),
+        addedByUs: weAdded, pendingSince: derived.status === 'active' ? null : new Date() },
     })
     invalidateHostCache(v.hostname)
     return view(row)
@@ -164,17 +162,18 @@ export async function refreshWorkspaceDomain(workspaceId: string): Promise<Works
       verification: state.verification,
       cnameTarget: cnameTarget(),
     })
-    // DNS never showed up: stop the cron polling forever. A manual
-    // Re-check still works and moves it back to pending/active.
-    const stale = derived.status === 'pending' && Date.now() - row.createdAt.getTime() > PENDING_GIVE_UP_MS
+    const next = nextLifecycle(row, derived.status, new Date())
     const updated = await db.workspaceDomain.update({
       where: { id: row.id },
       data: {
-        status: stale ? 'error' : derived.status,
-        dnsRecords: derived.dnsRecords as object[],
-        lastError: stale ? 'DNS was not detected after 7 days. Check the records below, then press Re-check.' : null,
+        status: next.status,
+        // Still active but one check failed: keep the records we last showed.
+        ...(next.keepRecords ? {} : { dnsRecords: derived.dnsRecords as object[] }),
+        pendingSince: next.pendingSince,
+        failedChecks: next.failedChecks,
+        lastError: next.lastError,
         lastCheckedAt: new Date(),
-        verifiedAt: derived.status === 'active' ? (row.verifiedAt ?? new Date()) : null,
+        verifiedAt: next.status === 'active' ? (row.verifiedAt ?? new Date()) : null,
       },
     })
     invalidateHostCache(row.hostname)
@@ -193,7 +192,10 @@ export async function removeWorkspaceDomain(workspaceId: string): Promise<void> 
   if (!row) return
   // Vercel first: if it fails we keep the row so the operator can retry,
   // instead of orphaning a host on our project with no record of it.
-  await removeProjectDomain(row.hostname)
+  // Only detach hosts WE attached. An adopted host (addedByUs=false) was on
+  // the project before this workspace claimed it — it may be a hand-added
+  // portal/partner domain — so we drop our row and leave Vercel alone.
+  if (row.addedByUs) await removeProjectDomain(row.hostname)
   await db.workspaceDomain.delete({ where: { id: row.id } })
   invalidateHostCache(row.hostname)
 }
