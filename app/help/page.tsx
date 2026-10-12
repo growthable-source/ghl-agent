@@ -2,7 +2,9 @@ import Link from 'next/link'
 import { db } from '@/lib/db'
 import HelpSearch from './HelpSearch'
 
-export const revalidate = 60  // ISR — pages refresh every minute
+// Rendered per request, never at build time: this page reads the DB, and
+// the widget-runtime build has no database to prerender against.
+export const dynamic = 'force-dynamic'
 
 /**
  * Help center landing. Big search up top, category grid below. Crawlable;

@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { envPresence } from '@/lib/auth-host'
 
+// Must reflect the RUNNING environment (env vars, DB reachability), never
+// a snapshot baked at build time.
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const checks: Record<string, string> = {}
 

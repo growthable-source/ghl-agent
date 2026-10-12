@@ -10,6 +10,10 @@ function slugify(s: string): string {
     .slice(0, 60)
 }
 
+// Rendered per request, never at build time: this route reads the DB, and
+// the widget-runtime build has no database to prerender against.
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const categories = await db.helpCategory.findMany({
     orderBy: [{ order: 'asc' }, { name: 'asc' }],

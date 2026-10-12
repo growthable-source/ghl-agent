@@ -8,7 +8,9 @@ import { db } from '@/lib/db'
  * article page.
  */
 
-export const revalidate = 600    // 10 min
+// Rendered per request, never at build time: this route reads the DB, and
+// the widget-runtime build has no database to prerender against.
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const base = process.env.APP_URL?.replace(/\/$/, '') || ''
