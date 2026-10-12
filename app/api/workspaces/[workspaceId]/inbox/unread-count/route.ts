@@ -44,6 +44,7 @@ async function countUnreadWidgets(workspaceId: string): Promise<number> {
       FROM "WidgetConversation" wc
       JOIN "ChatWidget" w ON w.id = wc."widgetId"
       WHERE w."workspaceId" = ${workspaceId}
+        AND w."humanEnabled" = true
         AND wc."status" != 'ended'
         AND EXISTS (
           SELECT 1 FROM "WidgetMessage" m

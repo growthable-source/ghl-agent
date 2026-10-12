@@ -76,7 +76,7 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
   let conversations: any[]
   try {
     conversations = await db.widgetConversation.findMany({
-      where: { widget: { workspaceId } },
+      where: { widget: { workspaceId, humanEnabled: true } },
       orderBy: { lastMessageAt: 'desc' },
       take: 150,
       include: fullInclude as any,

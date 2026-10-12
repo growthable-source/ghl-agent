@@ -30,7 +30,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   try {
     rows = await db.widgetConversation.findMany({
       where: {
-        widget: { workspaceId },
+        widget: { workspaceId, humanEnabled: true },
         createdAt: { gte: since },
         status: { in: ['active', 'handed_off'] },
         // A real chat — the visitor actually said something, not just an

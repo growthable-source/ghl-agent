@@ -71,10 +71,10 @@ async function resolveBrand(workspaceId: string, slug: string | null | undefined
 function buildBaseWhere(workspaceId: string, brand: string | null | 'untagged', status: string | null | undefined, from: string | null | undefined, to: string | null | undefined): any {
   const where: any = {
     widget: brand === 'untagged'
-      ? { workspaceId, brandId: null }
+      ? { workspaceId, humanEnabled: true, brandId: null }
       : brand
-        ? { workspaceId, brandId: brand }
-        : { workspaceId },
+        ? { workspaceId, humanEnabled: true, brandId: brand }
+        : { workspaceId, humanEnabled: true },
   }
   if (status && ['active', 'handed_off', 'ended'].includes(status)) {
     where.status = status

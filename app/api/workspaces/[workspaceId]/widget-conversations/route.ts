@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
   try {
     conversations = await db.widgetConversation.findMany({
-      where: { widget: { workspaceId } },
+      where: { widget: { workspaceId, humanEnabled: true } },
       orderBy: { lastMessageAt: 'desc' },
       take: 100,
       include: fullInclude as any,

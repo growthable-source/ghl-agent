@@ -32,15 +32,15 @@ export async function GET(req: NextRequest, { params }: Params) {
   const idsParam = url.searchParams.get('ids')
   const explicitIds = idsParam ? idsParam.split(',').filter(Boolean).slice(0, MAX_CONVERSATIONS) : null
 
-  const where: any = { widget: { workspaceId } }
+  const where: any = { widget: { workspaceId, humanEnabled: true } }
   if (explicitIds && explicitIds.length > 0) {
     where.id = { in: explicitIds }
   } else {
     const status = url.searchParams.get('status')
     if (status && ['active', 'handed_off', 'ended'].includes(status)) where.status = status
     const brand = url.searchParams.get('brand')
-    if (brand === 'untagged') where.widget = { workspaceId, brandId: null }
-    else if (brand) where.widget = { workspaceId, brand: { slug: brand } }
+    if (brand === 'untagged') where.widget = { workspaceId, humanEnabled: true, brandId: null }
+    else if (brand) where.widget = { workspaceId, humanEnabled: true, brand: { slug: brand } }
     const assignee = url.searchParams.get('assignee')
     if (assignee === 'unassigned') where.assignedUserId = null
     else if (assignee) where.assignedUserId = assignee
