@@ -14,7 +14,9 @@ import { db } from '@/lib/db'
  * invalidation. We don't ship drafts.
  */
 
-export const revalidate = 300   // cache for 5 min — reduces crawl load
+// Rendered per request, never at build time: this route reads the DB, and
+// the widget-runtime build has no database to prerender against.
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const articles = await db.helpArticle.findMany({
