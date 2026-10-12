@@ -112,7 +112,7 @@ export async function runWidgetAgent(params: RunWidgetAgentParams) {
   // Human handoff is a paid feature. Resolved once per turn and threaded
   // through everything visitor-facing below: the tool set, the prompt,
   // the fallback copy, and stop-condition routing.
-  const handoffAllowed = await humanHandoffAllowed(widget.workspaceId)
+  const handoffAllowed = await humanHandoffAllowed(widget.workspaceId, widget)
 
   // Resolve the agent: defaultAgentId on the widget, else findMatchingAgent.
   // A null defaultAgentId is NOT "no AI" — multi-agent workspaces (and
@@ -454,7 +454,7 @@ Never apologise for the language or mention translation — just speak naturally
           workspaceId: widget.workspaceId,
           event: 'agent_error',
           title: `A chat needed attention on ${widget.name || 'a widget'}`,
-          body: `A stop condition fired (${stopCheck.reason ?? 'condition met'}) but human handoff is not included on this plan, so the AI kept answering.`,
+          body: `A stop condition fired (${stopCheck.reason ?? 'condition met'}) but human handoff is off for this widget (AI-only widget or plan), so the AI kept answering.`,
           link: resolveHandoverLink({
             workspaceId: widget.workspaceId,
             locationId: `widget:${convo.widgetId}`,

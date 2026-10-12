@@ -2367,6 +2367,13 @@ model ChatWidget {
   // human-only without disabling AI for the whole brand. Checked in
   // lib/widget-agent-runner.ts alongside the brand gate.
   aiEnabled                 Boolean              @default(true)
+  // Per-widget human support on/off — the mirror of aiEnabled for
+  // AI-only clients. false = no human is ever offered: the transfer
+  // tool is stripped, the prompt forbids promising a follow-up, and
+  // stop-condition pauses don't assign an operator. Same runtime path
+  // as the plan-level AI-only gate (humanHandoffAllowed in
+  // lib/widget-entitlements.ts); operators can still read the inbox.
+  humanEnabled              Boolean              @default(true)
   // Routing
   defaultAgentId            String?
   // Operator assignment routing. Determines who the chat lands on when

@@ -163,7 +163,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         type: 'agent_error',
         // Same plan gate as the runner: an AI-only widget must not promise
         // a human follow-up nobody will make.
-        message: silentAgentFallback(await humanHandoffAllowed(convo.widget.workspaceId).catch(() => true)),
+        message: silentAgentFallback(await humanHandoffAllowed(convo.widget.workspaceId, convo.widget).catch(() => true)),
       }).catch(() => {})
 
       // Map common account-level failures to actionable operator

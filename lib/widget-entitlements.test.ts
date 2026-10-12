@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   NO_HANDOFF_DIRECTIVE,
   noAgentFallback,
+  humanHandoffAllowed,
   planAllowsHumanHandoff,
   silentAgentFallback,
 } from './widget-entitlements'
@@ -45,5 +46,12 @@ describe('NO_HANDOFF_DIRECTIVE', () => {
   it('forbids both the offer and the promise', () => {
     expect(NO_HANDOFF_DIRECTIVE).toMatch(/never offer/i)
     expect(NO_HANDOFF_DIRECTIVE).toMatch(/never promise/i)
+  })
+})
+
+describe('humanHandoffAllowed per-widget switch', () => {
+  it('denies handoff when the widget is AI-only, before any plan lookup', async () => {
+    // Short-circuits ahead of getEffectivePlan, so no DB is touched.
+    expect(await humanHandoffAllowed('ws_1', { humanEnabled: false })).toBe(false)
   })
 })

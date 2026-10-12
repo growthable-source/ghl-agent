@@ -37,6 +37,7 @@ interface Widget {
   voiceAgentId: string | null
   defaultAgentId: string | null
   aiEnabled?: boolean
+  humanEnabled?: boolean
   allowedDomains: string[]
   isActive: boolean
   routingMode?: 'manual' | 'round_robin' | 'first_available'
@@ -435,6 +436,27 @@ export default function WidgetEditorPage() {
                   </span>
                 </Field>
               )}
+              {!isCallType && (
+                // Mirror of "AI replies" for AI-only clients. Off = the
+                // AI never offers or promises a person, and escalations
+                // (stop conditions, transfer tool) don't hand the chat to
+                // an operator. The inbox still shows every conversation.
+                <Field label="Human support" helper="Turn off to run this widget as AI-only — the AI never offers a person or promises a follow-up, and chats are never handed to your team.">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={widget.humanEnabled !== false}
+                    onClick={() => update('humanEnabled', (widget.humanEnabled === false) as any)}
+                    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                    style={{ background: widget.humanEnabled !== false ? 'var(--accent-emerald, #10b981)' : '#3f3f46' }}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${widget.humanEnabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="ml-3 text-xs align-middle" style={{ color: 'var(--text-secondary)' }}>
+                    {widget.humanEnabled !== false ? 'Team can take over chats' : 'AI-only — no human handoff'}
+                  </span>
+                </Field>
+              )}
               <Field
                 label={isCallType ? 'Voice agent' : 'Default agent'}
                 helper={
@@ -482,7 +504,7 @@ export default function WidgetEditorPage() {
                 />
               </Field>
 
-              {!isCallType && (
+              {!isCallType && widget.humanEnabled !== false && (
                 <>
                   <Field
                     label="Operator routing"

@@ -23,7 +23,8 @@ export function planAllowsHumanHandoff(plan: string): boolean {
 }
 
 /**
- * Whether this workspace's widgets may involve a human.
+ * Whether this widget may involve a human: the widget's own
+ * `humanEnabled` switch AND the workspace plan must both allow it.
  *
  * Fails OPEN on a lookup blip, matching resolveAgentKnowledgeScope's
  * asymmetry rationale: briefly offering handoff to a trial visitor is a
@@ -32,8 +33,12 @@ export function planAllowsHumanHandoff(plan: string): boolean {
  */
 export async function humanHandoffAllowed(
   workspaceId: string | null | undefined,
+  widget?: { humanEnabled?: boolean | null } | null,
 ): Promise<boolean> {
   if (!workspaceId) return false
+  // Per-widget AI-only switch. Only an explicit false disables — a
+  // missing column (pre-migration) reads undefined → plan decides.
+  if (widget?.humanEnabled === false) return false
   try {
     const effective = await getEffectivePlan(workspaceId)
     return planAllowsHumanHandoff(effective.plan)
