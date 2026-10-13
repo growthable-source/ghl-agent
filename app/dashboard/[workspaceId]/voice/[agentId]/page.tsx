@@ -241,8 +241,7 @@ export default function VoiceAgentOverview() {
           </div>
         ) : (
           <div
-            className="rounded-xl overflow-hidden"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+            className="xv-card overflow-hidden p-4"
           >
             {calls.slice(0, 5).map((c, i) => (
               <Link
@@ -294,8 +293,7 @@ function PhoneCard({ phoneNumber }: { phoneNumber: string | null }) {
   }
   return (
     <div
-      className="rounded-xl p-5"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      className="xv-card p-5"
     >
       <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>
         Phone number
@@ -369,8 +367,7 @@ function VoiceCard({
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div
-      className="rounded-xl px-4 py-4"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      className="xv-card px-4 py-4"
     >
       <p className="text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
         {label}
