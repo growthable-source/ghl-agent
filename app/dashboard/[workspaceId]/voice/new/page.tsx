@@ -403,47 +403,26 @@ export default function VoiceWizardPage() {
             ← Back to voice agents
           </Link>
         </div>
-        <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-          New voice agent
-        </h1>
-        <p className="text-sm mb-8" style={{ color: 'var(--text-tertiary)' }}>
-          Build a voice agent in six short steps. Pick a use case, a voice, a phone
-          number, and you&apos;re live. The default stack ships a built-in voice
-          with industry-grade transcription baked in — you can test on a real call
-          at the end.
-        </p>
-
-        <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2">
-          {visibleSteps.map((s, i) => {
-            const isActive = s.key === step
-            const isDone = i < currentIdx
-            return (
-              <div key={s.key} className="flex items-center gap-2 flex-shrink-0">
-                <span
-                  className="text-xs font-medium px-3 py-1.5 rounded-full"
-                  style={{
-                    background: isActive
-                      ? 'rgba(250,77,46,0.15)'
-                      : isDone
-                        ? 'rgba(34,197,94,0.12)'
-                        : 'var(--surface-secondary)',
-                    color: isActive ? '#fa4d2e' : isDone ? '#22c55e' : 'var(--text-tertiary)',
-                  }}
-                >
-                  {i + 1}. {s.label}
-                </span>
-                {i < visibleSteps.length - 1 && (
-                  <span style={{ color: 'var(--text-muted)' }}>→</span>
-                )}
-              </div>
-            )
-          })}
+        <div className="flex flex-col items-center gap-3 mb-8 text-center">
+          <span className="inline-flex items-center h-6 px-3 rounded-full border border-brand-200 bg-brand-50 text-[12px] font-medium text-brand-700">
+            Step {currentIdx + 1} of {visibleSteps.length}
+          </span>
+          <h1 className="text-[26px] leading-tight font-semibold tracking-tight text-text-primary">New voice agent</h1>
+          <p className="text-[13.5px] text-text-tertiary max-w-xl">
+            Pick a use case, a voice and a phone number, and you&apos;re live. The default stack ships a built-in voice
+            with industry-grade transcription — you can test on a real call at the end.
+          </p>
+          <ol className="flex items-center gap-1.5 w-full max-w-lg mt-1" aria-label="Progress">
+            {visibleSteps.map((s, i) => (
+              <li key={s.key} className="flex-1" title={s.label} aria-current={s.key === step ? 'step' : undefined}>
+                <div className={`h-1 rounded-full ${i < currentIdx ? 'bg-emerald-500' : s.key === step ? 'bg-brand-500' : 'bg-surface-tertiary'}`} />
+                <span className={`mt-1.5 hidden sm:block text-[11px] ${i <= currentIdx ? 'text-text-primary font-medium' : 'text-text-muted'}`}>{s.label}</span>
+              </li>
+            ))}
+          </ol>
         </div>
 
-        <div
-          className="rounded-2xl p-6 lg:p-8 mb-6"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-        >
+        <div className="xv-card p-6 lg:p-8 mb-6">
           {step === 'use_case' && (
             <UseCaseStep template={template} onPick={setTemplate} />
           )}

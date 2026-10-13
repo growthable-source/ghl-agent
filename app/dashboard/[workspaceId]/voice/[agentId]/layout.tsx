@@ -20,6 +20,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import * as Lucide from 'lucide-react'
+import { SplitDeployButton, StatusBadge } from '@/components/ui/primitives'
+import { cx } from '@/lib/ui-classes'
 
 type Tab = { key: string; label: string; path: string }
 
@@ -69,7 +72,7 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
   const agentId = params.agentId as string
   const base = `/dashboard/${workspaceId}/voice/${agentId}`
 
-  const [agent, setAgent] = useState<{ name: string; isActive: boolean; agentType: string } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; isActive: boolean; agentType: string; phone: string | null } | null>(null)
   const [toggling, setToggling] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
@@ -84,6 +87,7 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
           name: a.name as string,
           isActive: !!a.isActive,
           agentType: typeof a.agentType === 'string' ? a.agentType : 'SIMPLE',
+          phone: typeof a.vapiConfig?.phoneNumber === 'string' ? a.vapiConfig.phoneNumber : null,
         }
         // Guard: non-voice agents shouldn't be at /voice/[id]/* —
         // bounce them to the text-agent detail to keep IA consistent.
@@ -114,94 +118,64 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
   const activeTab = resolveActiveTab(suffix)
   const activeIsAdvanced = ADVANCED_TABS.some(t => t.key === activeTab.key)
 
+  const MicIcon = Lucide.Mic
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-8 pt-6 pb-0 shrink-0">
+      {/* Header: mic tile · name + status · meta  |  actions */}
+      <div className="flex items-center justify-between gap-4 px-6 py-4 shrink-0 bg-surface border-b-0">
         <div className="flex items-center gap-3 min-w-0">
-          <Link
-            href={`/dashboard/${workspaceId}/voice`}
-            className="transition-colors text-sm shrink-0"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            ← Voice agents
-          </Link>
-          <span style={{ color: 'var(--text-muted)' }}>/</span>
           {agent ? (
-            <div className="flex items-center gap-2 min-w-0">
-              <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0"
-                style={{
-                  background: agent.isActive
-                    ? 'linear-gradient(135deg, #fa4d2e 0%, #fb8e6a 100%)'
-                    : 'var(--surface-secondary)',
-                  color: agent.isActive ? '#fff' : 'var(--text-tertiary)',
-                }}
-                aria-hidden
-              >
-                🎤
-              </div>
-              <h1 className="text-lg font-semibold tracking-tight truncate" style={{ color: 'var(--text-primary)' }}>
-                {agent.name}
-              </h1>
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium shrink-0"
-                style={
-                  agent.isActive
-                    ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
-                    : { background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }
-                }
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: agent.isActive ? 'var(--accent-emerald)' : 'var(--text-tertiary)' }}
-                />
-                {agent.isActive ? 'Live' : 'Paused'}
+            <>
+              <span className="h-11 w-11 shrink-0 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                <MicIcon className="w-5 h-5" strokeWidth={1.8} />
               </span>
-            </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-[20px] leading-tight font-semibold tracking-tight text-text-primary truncate">{agent.name}</h1>
+                  <StatusBadge status={agent.isActive ? 'live' : 'paused'} />
+                </div>
+                <p className="mt-0.5 text-[12px] text-text-tertiary truncate">
+                  Voice agent{agent.phone ? <> · <span className="font-mono">{agent.phone}</span></> : null}
+                  {/* TODO(redesign-followup): version + "draft changes" chip, as on text agents — voice config has no draft state. */}
+                </p>
+              </div>
+            </>
           ) : (
-            <div className="h-5 w-32 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
+            <div className="h-11 w-56 rounded-lg animate-pulse bg-surface-tertiary" />
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
+          <Link href={`${base}/configuration`} className="inline-flex items-center h-8 px-3 rounded-md border border-border-theme bg-surface text-[12.5px] font-medium text-text-primary hover:bg-surface-secondary">
+            ▷ Test call
+          </Link>
+          <SplitDeployButton
+            label={agent?.isActive ? 'Pause' : 'Activate'}
+            variant={agent?.isActive ? 'secondary' : 'primary'}
+            busy={toggling}
+            disabled={!agent}
             onClick={toggleActive}
-            disabled={toggling || !agent}
-            title={agent?.isActive ? 'Pause this voice agent' : 'Activate this voice agent'}
-            className="text-xs border rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
-            style={
-              agent?.isActive
-                ? { color: 'var(--text-secondary)', borderColor: 'var(--border)' }
-                : { color: 'var(--accent-emerald)', borderColor: 'var(--accent-emerald)' }
-            }
-          >
-            {toggling ? '...' : agent?.isActive ? 'Pause' : 'Activate'}
-          </button>
+            items={[
+              { label: 'Voice & script…', hint: 'Voice, prompt and phone number', href: `${base}/configuration` },
+              { label: 'Schedule…', hint: 'Coming soon', disabled: true },
+            ]}
+          />
         </div>
       </div>
 
-      {/* Tab strip — primary tabs + an Advanced menu for power-user pages. */}
-      <div className="flex items-stretch px-8 mt-4 shrink-0">
-        <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
+      {/* Underline tabs — primary tabs + an Advanced menu for power-user pages. */}
+      <div className="flex items-stretch px-6 shrink-0 bg-surface border-b border-border-theme">
+        <div className="flex items-stretch gap-5 overflow-x-auto min-w-0 flex-1">
           {PRIMARY_TABS.map(t => {
             const isActive = activeTab.key === t.key
             return (
               <Link
                 key={t.key}
                 href={`${base}${t.path}`}
-                className="relative px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors"
-                style={isActive
-                  ? { color: 'var(--accent-primary)' }
-                  : { color: 'var(--text-tertiary)' }
-                }
+                aria-current={isActive ? 'page' : undefined}
+                className={cx('-mb-px h-10 inline-flex items-center whitespace-nowrap text-[13px] font-medium border-b-2 transition-colors',
+                  isActive ? 'border-brand-500 text-text-primary' : 'border-transparent text-text-tertiary hover:text-text-primary')}
               >
                 {t.label}
-                {isActive && (
-                  <span
-                    className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"
-                    style={{ background: 'var(--accent-primary)' }}
-                  />
-                )}
               </Link>
             )
           })}
@@ -211,29 +185,15 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
             <button
               type="button"
               onClick={() => setAdvancedOpen(o => !o)}
-              className="relative px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors inline-flex items-center gap-1"
-              style={activeIsAdvanced
-                ? { color: 'var(--accent-primary)' }
-                : { color: 'var(--text-tertiary)' }
-              }
+              className={cx('-mb-px h-10 inline-flex items-center gap-1 whitespace-nowrap text-[13px] font-medium border-b-2 transition-colors cursor-pointer',
+                activeIsAdvanced ? 'border-brand-500 text-text-primary' : 'border-transparent text-text-tertiary hover:text-text-primary')}
             >
-              Advanced
-              <span aria-hidden style={{ fontSize: '0.6rem' }}>▾</span>
-              {activeIsAdvanced && (
-                <span
-                  className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"
-                  style={{ background: 'var(--accent-primary)' }}
-                />
-              )}
+              Advanced <span aria-hidden className="text-[10px]">▾</span>
             </button>
             {advancedOpen && (
               <>
-                {/* click-away catcher */}
                 <div className="fixed inset-0 z-10" onClick={() => setAdvancedOpen(false)} />
-                <div
-                  className="absolute right-0 mt-1 z-20 rounded-lg border py-1 min-w-[160px] shadow-lg"
-                  style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
-                >
+                <div className="absolute left-0 top-10 z-20 xv-card shadow-xl py-1 min-w-[170px]">
                   {ADVANCED_TABS.map(t => {
                     const isActive = activeTab.key === t.key
                     return (
@@ -241,8 +201,7 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
                         key={t.key}
                         href={`${base}${t.path}`}
                         onClick={() => setAdvancedOpen(false)}
-                        className="block px-3 py-2 text-xs font-medium transition-colors"
-                        style={{ color: isActive ? 'var(--accent-primary)' : 'var(--text-secondary)' }}
+                        className={cx('block px-3 py-2 text-[12.5px] font-medium hover:bg-surface-secondary', isActive ? 'text-brand-600' : 'text-text-secondary')}
                       >
                         {t.label}
                       </Link>
@@ -253,10 +212,6 @@ export default function VoiceAgentLayout({ children }: { children: React.ReactNo
             )}
           </div>
         </div>
-      </div>
-
-      <div className="shrink-0">
-        <div className="h-px" style={{ background: 'var(--border)' }} />
       </div>
 
       <div className="flex-1 overflow-y-auto">{children}</div>
