@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 /**
@@ -14,7 +15,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
  * working, since everything resolves through the theme variables.
  */
 
-import { cx, buttonClass, type ButtonVariant, type ButtonSize } from '@/lib/ui-classes'
+import { cx, buttonClass, BTN_BASE, BTN_SIZE, BTN_VARIANT, type ButtonVariant, type ButtonSize } from '@/lib/ui-classes'
 
 // ─── Button ────────────────────────────────────────────────────────────
 // (class helpers live in lib/ui-classes — pure, callable from server components)
@@ -200,7 +201,7 @@ export function Pill({
   return <span className={cx(PILL, tones[tone])}>{children}</span>
 }
 
-export type ChannelKind = 'sms' | 'whatsapp' | 'chat' | 'email' | 'voice'
+export type ChannelKind = 'sms' | 'whatsapp' | 'chat' | 'email' | 'voice' | 'facebook' | 'instagram' | 'google'
 
 const CHANNEL: Record<ChannelKind, { cls: string; label: string }> = {
   sms: { cls: 'bg-sky-50 border-sky-200 text-sky-700', label: 'SMS' },
@@ -208,6 +209,9 @@ const CHANNEL: Record<ChannelKind, { cls: string; label: string }> = {
   chat: { cls: 'bg-violet-50 border-violet-200 text-violet-700', label: 'Live Chat' },
   email: { cls: 'bg-stone-50 border-stone-200 text-stone-600', label: 'Email' },
   voice: { cls: 'bg-rose-50 border-rose-200 text-rose-700', label: 'Voice' },
+  facebook: { cls: 'bg-blue-50 border-blue-200 text-blue-700', label: 'Facebook' },
+  instagram: { cls: 'bg-pink-50 border-pink-200 text-pink-700', label: 'Instagram' },
+  google: { cls: 'bg-amber-50 border-amber-200 text-amber-700', label: 'Google' },
 }
 
 export function ChannelPill({ channel }: { channel: ChannelKind }) {
@@ -393,5 +397,110 @@ export function HealthMeter({ score }: { score: number | null }) {
       </span>
       <span className="tabular-nums text-text-secondary">{score}</span>
     </span>
+  )
+}
+
+// ─── SplitDeployButton ─────────────────────────────────────────────────
+
+export interface SplitMenuItem {
+  label: string
+  hint?: string
+  href?: string
+  onClick?: () => void
+  /** Visible but inert — for options whose backend doesn't exist yet. */
+  disabled?: boolean
+}
+
+/** Primary action plus a chevron menu of related options (agent header, handoff §2). */
+export function SplitDeployButton({
+  label,
+  onClick,
+  busy,
+  disabled,
+  variant = 'primary',
+  items,
+}: {
+  label: ReactNode
+  onClick: () => void
+  busy?: boolean
+  disabled?: boolean
+  variant?: 'primary' | 'secondary'
+  items: SplitMenuItem[]
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', down)
+    document.addEventListener('keydown', key)
+    return () => { document.removeEventListener('mousedown', down); document.removeEventListener('keydown', key) }
+  }, [open])
+
+  const tone = variant === 'primary' ? BTN_VARIANT.primary : BTN_VARIANT.secondary
+  return (
+    <div ref={ref} className="relative inline-flex">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled || busy}
+        className={cx(BTN_BASE, BTN_SIZE.md, tone, 'rounded-r-none')}
+      >
+        {busy ? '…' : label}
+      </button>
+      <button
+        type="button"
+        aria-label="More deploy options"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+        className={cx(BTN_BASE, 'h-8 w-8 rounded-l-none border-l',
+          variant === 'primary' ? 'bg-brand-600 text-on-brand border-brand-700 hover:bg-brand-700' : 'bg-surface border-border-theme hover:bg-surface-secondary')}
+      >
+        ▾
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-9 z-40 w-56 xv-card shadow-xl overflow-hidden text-[12.5px]">
+          {items.map(it => {
+            const cls = cx('block w-full text-left px-3 py-2 border-b border-border-theme last:border-0',
+              it.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-secondary cursor-pointer')
+            const inner = (<>{it.label}{it.hint && <span className="block text-[10.5px] text-text-muted">{it.hint}</span>}</>)
+            return it.href && !it.disabled ? (
+              <Link key={it.label} href={it.href} role="menuitem" className={cls} onClick={() => setOpen(false)}>{inner}</Link>
+            ) : (
+              <button key={it.label} type="button" role="menuitem" disabled={it.disabled} className={cls}
+                onClick={() => { setOpen(false); it.onClick?.() }}>{inner}</button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Sparkline ─────────────────────────────────────────────────────────
+
+/** Tiny inline trend line. Renders nothing for fewer than 2 points. */
+export function Sparkline({ values, tone = 'brand', width = 100, height = 28 }: {
+  values: number[]
+  tone?: 'brand' | 'emerald' | 'red' | 'violet'
+  width?: number
+  height?: number
+}) {
+  if (values.length < 2) return null
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const span = max - min || 1
+  const pad = 2
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * (width - pad * 2) + pad
+    const y = height - pad - ((v - min) / span) * (height - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  const color = { brand: '#e8432e', emerald: '#10b981', red: '#ef4444', violet: '#8b5cf6' }[tone]
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden className="shrink-0">
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   )
 }

@@ -228,6 +228,8 @@ export default function NewAgentWizard() {
     return (valid as readonly string[]).includes(raw ?? '') ? (raw as Step) : 'template'
   })()
   const [step, setStep] = useState<Step>(stepFromUrl)
+  // Template-step category chips (filters the single card grid by role).
+  const [roleFilter, setRoleFilter] = useState<string>('all')
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null)
   // Default to 'native' — workspace creation auto-provisions native, so
   // every new workspace lands here with the native CRM already active.
@@ -580,117 +582,93 @@ export default function NewAgentWizard() {
   const canCreate = name.trim() && systemPrompt.trim()
 
   return (
-    <div className="p-8">
-      <div className="max-w-2xl mx-auto">
-        {/* Progress bar */}
-        <div className="flex items-center gap-1 mb-8">
-          {visibleSteps.map((s, i) => (
-            <div key={s.key} className="flex items-center flex-1">
-              <div className="flex items-center gap-2 flex-1">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors"
-                  style={
-                    i < currentIdx
-                      ? { background: 'var(--accent-emerald)', color: '#fff' }
-                      : i === currentIdx
-                      ? { background: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)' }
-                      : { background: 'var(--surface-tertiary)', color: 'var(--text-muted)' }
-                  }
-                >
-                  {i < currentIdx ? '✓' : i + 1}
-                </div>
-                <span
-                  className="text-xs font-medium hidden sm:block"
-                  style={{
-                    color: i <= currentIdx ? 'var(--text-primary)' : 'var(--text-muted)',
-                  }}
-                >{s.label}</span>
-              </div>
-              {i < visibleSteps.length - 1 && (
-                <div
-                  className="h-px flex-1 mx-2"
-                  style={{
-                    background: i < currentIdx ? 'var(--accent-emerald)' : 'var(--border)',
-                  }}
-                />
-              )}
-            </div>
-          ))}
+    <div className="p-6 md:p-8">
+      <div className={`${step === 'template' ? 'max-w-5xl' : 'max-w-2xl'} mx-auto`}>
+        {/* Step indicator: "Step X of N" pill + segmented progress */}
+        <div className="flex flex-col items-center gap-3 mb-8">
+          <span className="inline-flex items-center h-6 px-3 rounded-full border border-brand-200 bg-brand-50 text-[12px] font-medium text-brand-700">
+            Step {currentIdx + 1} of {visibleSteps.length}
+          </span>
+          <ol className="flex items-center gap-1.5 w-full max-w-md" aria-label="Progress">
+            {visibleSteps.map((s, i) => (
+              <li key={s.key} className="flex-1" title={s.label} aria-current={i === currentIdx ? 'step' : undefined}>
+                <div className={`h-1 rounded-full ${i < currentIdx ? 'bg-emerald-500' : i === currentIdx ? 'bg-brand-500' : 'bg-surface-tertiary'}`} />
+                <span className={`mt-1.5 block text-center text-[11px] hidden sm:block ${i <= currentIdx ? 'text-text-primary font-medium' : 'text-text-muted'}`}>{s.label}</span>
+              </li>
+            ))}
+          </ol>
         </div>
 
         {/* Step: Template */}
         {step === 'template' && (
           <div>
-            <h1 className="text-2xl font-semibold mb-2">What kind of agent?</h1>
-            <p className="text-zinc-400 text-sm mb-6">
-              Pick the template that best fits your use case. Everything can be customized afterward.
-            </p>
-
-            <Link
-              href={`/dashboard/${workspaceId}/agents/new/wizard`}
-              className="block mb-6 p-5 rounded-xl border-2 border-orange-500/40 bg-gradient-to-br from-orange-500/10 to-orange-500/5 hover:border-orange-500/60 transition-colors"
-            >
-              <div className="flex items-start gap-4">
-                <div className="text-3xl">✨</div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-white">Build with AI</p>
-                  <p className="text-[12px] text-zinc-300 mt-0.5">
-                    Skip the templates. Describe what you want in plain English and I&apos;ll generate the system prompt,
-                    rules, qualifying questions, and tools for you.
-                  </p>
-                </div>
-                <span className="text-xs text-orange-300 font-semibold whitespace-nowrap">Try it →</span>
-              </div>
-            </Link>
-
-            {/* Outbound */}
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Outbound — Agent initiates the conversation</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {TEMPLATES.filter(t => t.initiation === 'outbound').map(t => (
-                  <button key={t.id} type="button" onClick={() => selectTemplate(t)}
-                    className="flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors"
-                    style={
-                      selectedTemplate?.id === t.id
-                        ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
-                        : { borderColor: 'var(--border)', background: 'var(--surface)' }
-                    }>
-                    <span className="text-2xl">{t.icon}</span>
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">{ROLE_LABELS[t.role]}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{t.tagline}</p>
-                    </div>
-                    {selectedTemplate?.id === t.id && (
-                      <span className="text-xs text-emerald-400 font-medium">Selected</span>
-                    )}
-                  </button>
-                ))}
-              </div>
+            <div className="text-center mb-6">
+              <h1 className="text-[28px] leading-tight font-semibold tracking-tight text-text-primary">What should your agent do?</h1>
+              <p className="text-[14px] text-text-tertiary mt-2">
+                Pick a proven starting point or describe it and we&apos;ll build it for you. Everything can be customized afterward.
+              </p>
             </div>
 
-            {/* Inbound */}
-            <div>
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Inbound — Contact initiates the conversation</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {TEMPLATES.filter(t => t.initiation === 'inbound').map(t => (
-                  <button key={t.id} type="button" onClick={() => selectTemplate(t)}
-                    className="flex flex-col gap-2 rounded-xl border p-4 text-left transition-colors"
-                    style={
-                      selectedTemplate?.id === t.id
-                        ? { borderColor: 'var(--accent-primary)', background: 'var(--surface-secondary)' }
-                        : { borderColor: 'var(--border)', background: 'var(--surface)' }
-                    }>
-                    <span className="text-2xl">{t.icon}</span>
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">{ROLE_LABELS[t.role]}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{t.tagline}</p>
+            {/* Build with AI — the prompt-box entry point. Opens the AI
+                builder (agents/new/wizard), which takes the description there. */}
+            <Link
+              href={`/dashboard/${workspaceId}/agents/new/wizard`}
+              className="flex items-center gap-3 mb-6 rounded-xl border border-border-theme bg-surface px-4 py-3 shadow-sm hover:border-brand-200 transition-colors"
+            >
+              <span className="text-brand-500 text-lg" aria-hidden>✦</span>
+              <span className="flex-1 text-[14px] text-text-muted truncate">Describe what you want — we&apos;ll generate the prompt, rules, qualifying questions and tools</span>
+              <span className="h-9 inline-flex items-center rounded-md bg-brand-500 px-4 text-[13px] font-medium text-on-brand">Build with AI</span>
+            </Link>
+
+            <div className="flex items-center gap-4 mb-5">
+              <span className="h-px flex-1 bg-border-theme" />
+              <span className="text-[11px] uppercase tracking-wider text-text-muted">Or start from a template</span>
+              <span className="h-px flex-1 bg-border-theme" />
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Template category">
+              {['all', ...Array.from(new Set(TEMPLATES.map(t => t.role)))].map(r => (
+                <button
+                  key={r}
+                  type="button"
+                  aria-pressed={roleFilter === r}
+                  onClick={() => setRoleFilter(r)}
+                  className={`h-8 px-3.5 rounded-full border text-[13px] font-medium cursor-pointer transition-colors ${
+                    roleFilter === r
+                      ? 'bg-stone-900 border-stone-900 text-on-brand'
+                      : 'bg-surface border-border-theme text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {r === 'all' ? 'All' : ROLE_LABELS[r] ?? r}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {TEMPLATES.filter(t => roleFilter === 'all' || t.role === roleFilter).map(t => {
+                const sel = selectedTemplate?.id === t.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => selectTemplate(t)}
+                    aria-pressed={sel}
+                    className={`flex flex-col gap-3 rounded-xl border bg-surface p-4 text-left transition-colors cursor-pointer ${
+                      sel ? 'border-brand-500 ring-2 ring-brand-100' : 'border-border-theme hover:border-border-secondary'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <span className={`h-10 w-10 rounded-lg flex items-center justify-center text-xl ${sel ? 'bg-brand-500' : 'bg-surface-secondary'}`}>{t.icon}</span>
+                      <span className="text-[11px] text-text-muted">{INITIATION_LABELS[t.initiation]}</span>
                     </div>
-                    {selectedTemplate?.id === t.id && (
-                      <span className="text-xs text-emerald-400 font-medium">Selected</span>
-                    )}
+                    <div>
+                      <p className="text-[15px] font-semibold text-text-primary">{ROLE_LABELS[t.role]}</p>
+                      <p className="text-[13px] text-text-tertiary mt-0.5 leading-relaxed">{t.tagline}</p>
+                    </div>
+                    {/* TODO(redesign-followup): "Most used" / "New" badges and per-template channel hints — templates carry no usage or channel metadata. */}
                   </button>
-                ))}
-              </div>
+                )
+              })}
             </div>
           </div>
         )}

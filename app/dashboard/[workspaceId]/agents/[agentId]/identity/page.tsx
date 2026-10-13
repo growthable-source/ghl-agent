@@ -82,10 +82,10 @@ export default function IdentityOverviewPage() {
 
   if (agent === null || voice === null) {
     return (
-      <div className="p-8 max-w-3xl">
+      <div className="p-6 max-w-5xl">
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-28 rounded-xl animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
+            <div key={i} className="h-28 xv-card animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
           ))}
         </div>
       </div>
@@ -102,7 +102,11 @@ export default function IdentityOverviewPage() {
     (agent.languages?.length ?? 0) > 0
 
   return (
-    <div className="p-8 max-w-3xl space-y-5">
+    <div className="p-6 max-w-5xl">
+      <h2 className="text-[20px] font-semibold tracking-tight text-text-primary">Overview</h2>
+      <p className="text-[13px] text-text-tertiary mt-0.5 mb-4">Who this agent is and how it behaves.</p>
+      {/* TODO(redesign-followup): "Launch readiness" checklist card (e.g. 6 of 8 checks) and the Knowledge / Tools / Triggers / Working-hours stat tiles — no readiness or aggregate endpoint exists yet. */}
+      <div className="grid lg:grid-cols-2 gap-4 items-start">
       {/* Persona */}
       <OverviewSection
         title="Persona"
@@ -114,7 +118,7 @@ export default function IdentityOverviewPage() {
         }
         editHref={`${base}/persona`}
       >
-        <div className="space-y-1.5">
+        <div>
           <OverviewRow
             label="Persona name"
             value={agent.agentPersonaName || <span style={{ color: 'var(--text-tertiary)' }}>(uses agent name)</span>}
@@ -129,8 +133,8 @@ export default function IdentityOverviewPage() {
             value={agent.responseLength ? (LENGTH_LABEL[agent.responseLength] ?? agent.responseLength) : 'Medium — 2–4 sentences'}
           />
           <OverviewRow label="Emojis" value={agent.useEmojis ? 'On' : 'Off'} />
-          <div className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
-            <span className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>Languages</span>
+          <div className="flex items-center justify-between gap-4 py-2.5 text-[13px]">
+            <span className="text-text-secondary">Languages</span>
             <span className="flex flex-wrap gap-1 justify-end">
               {(agent.languages?.length ?? 0) > 0
                 ? agent.languages!.map(l => <Tag key={l}>{l}</Tag>)
@@ -141,6 +145,7 @@ export default function IdentityOverviewPage() {
         </div>
       </OverviewSection>
 
+      <div className="space-y-4">
       {/* Prompt */}
       <OverviewSection
         title="System prompt"
@@ -178,7 +183,7 @@ export default function IdentityOverviewPage() {
         editHref={`${base}/voice`}
       >
         {voice.isActive ? (
-          <div className="space-y-1.5">
+          <div>
             <OverviewRow label="Phone number" value={voice.phoneNumber || '—'} muted={!voice.phoneNumber} />
             {voice.ttsProvider && <OverviewRow label="Voice provider" value={voice.ttsProvider} />}
             {voice.ttsVoiceId && <OverviewRow label="Voice" value={voice.ttsVoiceId} />}
@@ -187,6 +192,8 @@ export default function IdentityOverviewPage() {
           <EmptyHint>Voice isn't configured. The agent only handles text channels right now.</EmptyHint>
         )}
       </OverviewSection>
+      </div>
+      </div>
     </div>
   )
 }

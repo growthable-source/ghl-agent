@@ -10,13 +10,13 @@ export const cx = (...c: Array<string | false | null | undefined>) => c.filter(B
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ButtonSize = 'md' | 'sm'
 
-const BTN_BASE =
+export const BTN_BASE =
   'inline-flex items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
-const BTN_SIZE: Record<ButtonSize, string> = {
+export const BTN_SIZE: Record<ButtonSize, string> = {
   md: 'h-8 px-3 text-[12.5px]',
   sm: 'h-7 px-2.5 text-[12px]',
 }
-const BTN_VARIANT: Record<ButtonVariant, string> = {
+export const BTN_VARIANT: Record<ButtonVariant, string> = {
   primary: 'bg-brand-500 text-on-brand hover:bg-brand-600 active:bg-brand-700',
   secondary: 'bg-surface text-text-primary border border-border-theme hover:bg-surface-secondary',
   ghost: 'text-text-secondary hover:bg-surface-secondary hover:text-text-primary',
