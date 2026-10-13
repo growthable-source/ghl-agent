@@ -15,19 +15,19 @@
    :root values just kept winning. */
 :root,
 [data-theme="soft-light"] {
-  --background:          #f8f7f4;
+  --background:          #fafaf9;
   --foreground:          #1c1917;
-  --surface:             #faf9f7;
-  --surface-secondary:   #f0eee9;
-  --surface-tertiary:    #e5e2dc;
-  --border:              #e0ddd6;
+  --surface:             #ffffff;
+  --surface-secondary:   #f5f5f4;
+  --surface-tertiary:    #e7e5e4;
+  --border:              #e7e5e4;
   --border-secondary:    #cdc9c0;
   --text-primary:        #1c1917;
   --text-secondary:      #57534e;
   --text-tertiary:       #78716c;
   --text-muted:          #a8a29e;
-  --accent-primary:      #e84425;
-  --accent-primary-bg:   rgba(232, 68, 37, 0.12);
+  --accent-primary:      #e8432e;
+  --accent-primary-bg:   #fef3f1;
   --accent-emerald:      #059669;
   --accent-emerald-bg:   rgba(209, 250, 229, 0.6);
   --accent-amber:        #d97706;
@@ -36,17 +36,17 @@
   --accent-blue-bg:      rgba(219, 234, 254, 0.6);
   --accent-red:          #dc2626;
   --accent-red-bg:       rgba(254, 226, 226, 0.6);
-  --btn-primary-bg:      #e84425;
+  --btn-primary-bg:      #e8432e;
   --btn-primary-text:    #faf9f7;
-  --btn-primary-hover:   #c73a1f;
-  --input-bg:            #faf9f7;
+  --btn-primary-hover:   #d13521;
+  --input-bg:            #ffffff;
   --input-border:        #cdc9c0;
   --input-text:          #1c1917;
   --input-placeholder:   #a8a29e;
-  --logo-bg:             #e84425;
+  --logo-bg:             #e8432e;
   --logo-text:           #faf9f7;
-  --sidebar-bg:          #f1f0ec;
-  --sidebar-border:      #e0ddd6;
+  --sidebar-bg:          #fbfaf9;
+  --sidebar-border:      #e7e5e4;
   /* Toggle off-state — needs to be visibly darker than --surface so
      OFF switches don't disappear into card backgrounds. surface-tertiary
      is too close to surface in light mode. */
@@ -58,7 +58,7 @@
   --gradient-card:       linear-gradient(135deg, #faf9f7 0%, #f4f2ee 100%);
   --shadow-primary:      0 10px 40px -10px rgba(250, 77, 46, 0.25);
   --shadow-primary-hover: 0 14px 50px -10px rgba(250, 77, 46, 0.4);
-  --shadow-card:         0 4px 20px -4px rgba(28, 25, 23, 0.06);
+  --shadow-card:         0 1px 2px rgba(16, 24, 40, 0.04);
   --shadow-card-hover:   0 8px 30px rgba(250, 77, 46, 0.08);
   --radius:              0.75rem;
   --radius-sm:           0.5rem;
@@ -248,6 +248,17 @@
   --color-logo-text: var(--logo-text);
   --color-sidebar-bg: var(--sidebar-bg);
   --color-sidebar-border: var(--sidebar-border);
+  /* ── Xovera redesign tokens (handoff §1) ── */
+  --color-brand-50:  #fef3f1;
+  --color-brand-100: #fde3de;
+  --color-brand-200: #fac5bb;
+  --color-brand-500: #e8432e;
+  --color-brand-600: #d13521;
+  --color-brand-700: #ae2a19;
+  /* Literal white for text/knobs ON brand fills — text-white and
+     bg-white are remapped by the legacy overrides below. */
+  --color-on-brand: #ffffff;
+  --radius-card: 10px;
   --font-sans: var(--font-dm-sans);
   --font-mono: var(--font-dm-mono);
 }
@@ -616,4 +627,25 @@ input[type="reset"]:not(:disabled) {
 button:disabled,
 [aria-disabled="true"] {
   cursor: not-allowed;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Xovera redesign — dashboard scope (handoff §1 typography)
+   Inter + JetBrains Mono at a 13px base, applied ONLY under .xv-app (the
+   dashboard layout wrapper) so landing/marketing pages keep DM Sans.
+   ═══════════════════════════════════════════════════════════════════════ */
+.xv-app {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+.xv-app .font-mono, .xv-app code, .xv-app kbd { font-family: var(--font-jetbrains), ui-monospace, monospace; }
+/* Flat card: elevation comes from the border, not a shadow. */
+.xv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import * as Lucide from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import XoveraLogo from '@/components/XoveraLogo'
 import { NavCountsProvider, useNavCounts, NavBadge } from './useNavCounts'
@@ -10,6 +11,8 @@ import WorkspaceAvatar from './WorkspaceAvatar'
 import CannyChangelogButton from '@/components/CannyChangelogButton'
 import NewBadge from '@/components/NewBadge'
 import { useEmbedded } from '@/lib/embedded-context'
+import { NAV_ITEMS, NAV_GROUP_LABELS, activeNavItem, type NavGroupKey, type NavItem } from '@/lib/dashboard-nav'
+import { Avatar, SectionLabel } from '@/components/ui/primitives'
 
 // Plain-language hover hints for nav entries whose label is a product
 // term a first-time user wouldn't recognise. Keyed by href suffix
@@ -80,6 +83,7 @@ function SidebarBody() {
   const [isNative, setIsNative] = useState(false)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string | null>(null)
   // Caller's role in the active workspace — drives the inbox-only
   // collapse for support-agent role. Null until loaded; sidebar
   // renders the full nav until we know otherwise so admins don't
@@ -89,11 +93,6 @@ function SidebarBody() {
   // toggle must be on. Single fetch per workspace switch, fails
   // silently to "hide it" so a 5xx never breaks the sidebar.
   const [ticketingActive, setTicketingActive] = useState(false)
-  // Manual disclosure for the "More" section. We previously used
-  // <details>/<summary> but Safari drops the click handler when
-  // <summary> is styled with display:flex, which made the button
-  // unclickable for some users. Plain button + state is bulletproof.
-  const [moreOpen, setMoreOpen] = useState(false)
 
   useEffect(() => {
     // Cheap check — is the signed-in user a Xovera super-admin? If yes
@@ -106,7 +105,7 @@ function SidebarBody() {
     // they're signed in as (and confirm a re-sign-in took effect).
     fetch('/api/auth/session')
       .then(r => r.json())
-      .then(s => setUserEmail(s?.user?.email ?? null))
+      .then(s => { setUserEmail(s?.user?.email ?? null); setUserName(s?.user?.name ?? null) })
       .catch(() => {})
   }, [])
 
@@ -148,429 +147,212 @@ function SidebarBody() {
 
   if (isOnboarding) return null
 
-  // `hint` becomes a native hover tooltip — the cheapest way to retire
-  // jargon debt (CSAT, Tool gate, Decisions, Consent…) without renaming
-  // routes. NAV_HINTS below maps href-suffix → plain-language meaning.
-  function navLink(href: string, label: string, badgeCount?: number | null, newSince?: string) {
-    const active = pathname === href || (href !== `/dashboard/${workspaceId}` && pathname.startsWith(href))
-    const hintKey = Object.keys(NAV_HINTS).find(k => href.endsWith(k))
-    const hint = hintKey ? NAV_HINTS[hintKey] : undefined
+  const icons = Lucide as unknown as Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>>
+  const current = workspaceId ? activeNavItem(pathname, workspaceId) : null
+  const onSettings = !!workspaceId && pathname.startsWith(`/dashboard/${workspaceId}/settings`) && !current
+
+  // Hover hints for jargon-y entries (kept from the previous sidebar).
+  function hintFor(item: NavItem) {
+    const key = Object.keys(NAV_HINTS).find(k => item.path.endsWith(k))
+    return key ? NAV_HINTS[key] : undefined
+  }
+
+  const shipDate: Record<string, string> = {
+    'voice-agents': FEATURE_SHIP_DATES.voiceAgents,
+    copilot: FEATURE_SHIP_DATES.copilot,
+    integrations: FEATURE_SHIP_DATES.integrations,
+  }
+
+  function gateOpen(item: NavItem) {
+    if (item.gate === 'native-crm') return isNative
+    if (item.gate === 'ticketing') return ticketingActive
+    return true
+  }
+
+  const rowBase = 'flex items-center gap-2.5 h-[30px] px-2.5 rounded-md text-[13px] transition-colors'
+  const rowIdle = 'text-text-secondary hover:bg-surface-secondary hover:text-text-primary'
+  // Active = white + ring + brand icon (handoff AppSidebar spec).
+  const rowActive = 'bg-surface text-text-primary font-medium shadow-sm ring-1 ring-border-theme'
+
+  function renderItem(item: NavItem) {
+    if (!workspaceId) return null
+    const Icon = icons[item.icon]
+    const active = current?.key === item.key
+    const count = item.badge ? counts[item.badge] : null
     return (
       <Link
-        href={href}
-        title={hint}
-        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-          active
-            ? 'text-white'
-            : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-        }`}
-        style={active ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+        key={item.key}
+        href={`/dashboard/${workspaceId}${item.path}`}
+        title={hintFor(item)}
+        aria-current={active ? 'page' : undefined}
+        className={`${rowBase} ${active ? rowActive : rowIdle}`}
       >
-        <span className="flex-1 truncate">{label}</span>
-        {newSince && <NewBadge since={newSince} />}
-        <NavBadge count={badgeCount} />
+        {Icon && <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-brand-500' : 'text-text-tertiary'}`} strokeWidth={1.7} />}
+        <span className="flex-1 truncate">{item.label}</span>
+        {shipDate[item.key] && <NewBadge since={shipDate[item.key]} />}
+        {/* TODO(redesign-followup): amber "integration issue" dot on Integrations once a connection-health signal is exposed to the sidebar. */}
+        {item.badge === 'needsAttention' || item.badge === 'inboxUnread'
+          ? <NavBadge count={count} />
+          : null}
       </Link>
     )
   }
 
-  function navItemPrimary(
-    href: string,
-    label: string,
-    icon: React.ReactNode,
-    badgeCount?: number | null,
-    newSince?: string,
-  ) {
-    const active = pathname === href || pathname.startsWith(href + '/') || pathname === href
-    return (
-      <Link
-        href={href}
-        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-          active ? '' : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-        }`}
-        style={active ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
-      >
-        <span className="shrink-0 w-[18px] h-[18px] flex items-center justify-center">{icon}</span>
-        <span className="flex-1 truncate font-medium">{label}</span>
-        {newSince && <NewBadge since={newSince} />}
-        <NavBadge count={badgeCount} />
-      </Link>
-    )
-  }
+  const GROUP_ORDER: NavGroupKey[] = ['top', 'agents', 'deploy', 'insights', 'data']
+  const visible = NAV_ITEMS.filter(gateOpen)
+  // Support-agent role is inbox-only (+ Tickets when ticketing is on).
+  const itemsForRole = isInboxOnly
+    ? visible.filter(i => i.key === 'inbox' || i.key === 'tickets')
+    : visible
+
+  const footerRow = `${rowBase} ${rowIdle} text-[13px]`
+  const displayName = userName || userEmail || 'Account'
 
   return (
-    <div className="hidden md:flex w-56 shrink-0 border-r border-sidebar-border flex-col h-full bg-sidebar-bg">
-      {/* Logo. When embedded inside the CRM iframe the user is locked
-          to one workspace — the "All Workspaces" picker isn't a
-          meaningful destination, so the logo points at the active
-          workspace dashboard instead (or is non-interactive if we don't
-          have a workspaceId in the path yet). */}
-      <div className="px-4 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
+    <div className="hidden md:flex w-[236px] shrink-0 border-r border-sidebar-border flex-col h-full bg-sidebar-bg">
+      {/* Workspace switcher. When embedded inside the CRM iframe the user is
+          locked to one workspace, so the switcher points at the active
+          workspace dashboard instead of the "All workspaces" picker. */}
+      <div className="px-3 pt-3.5 pb-2">
         <Link
           href={embedded
             ? (activeWorkspaceId ? `/dashboard/${activeWorkspaceId}` : '#')
             : '/dashboard'}
-          className="flex items-center gap-2.5"
+          title={embedded ? undefined : 'Switch workspace'}
+          className="flex items-center gap-2.5 px-1.5 py-1 rounded-lg hover:bg-surface-secondary transition-colors"
         >
-          <XoveraLogo variant="mark" height={26} />
-          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Xovera</span>
+          {workspaceId ? (
+            <WorkspaceAvatar
+              logoUrl={workspaceInfo?.logoUrl}
+              icon={workspaceInfo?.icon}
+              size={32}
+              title={workspaceInfo?.name || workspaceId}
+            />
+          ) : (
+            <XoveraLogo variant="mark" height={30} />
+          )}
+          <span className="flex-1 min-w-0">
+            <span className="block text-[13px] font-semibold text-text-primary truncate">
+              {workspaceId ? (workspaceInfo?.name || 'Workspace') : 'Xovera'}
+            </span>
+            {/* TODO(redesign-followup): "<plan> · Xovera" subtitle once the plan name is on /api/workspaces. */}
+            <span className="block text-[11px] text-text-tertiary truncate">
+              {workspaceId ? 'Xovera' : 'All workspaces'}
+            </span>
+          </span>
+          {!embedded && <Lucide.ChevronsUpDown className="w-3.5 h-3.5 text-text-muted shrink-0" />}
         </Link>
       </div>
 
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+      {/* ⌘K search — visual placeholder. */}
+      {workspaceId && (
+        <div className="px-3 pb-2">
+          {/* TODO(redesign-followup): wire to a ⌘K command palette; none exists yet, so this is intentionally non-interactive. */}
+          <div
+            aria-hidden
+            className="flex items-center gap-2 h-8 px-2.5 rounded-md border border-border-theme bg-surface text-[12.5px] text-text-muted select-none"
+          >
+            <Lucide.Search className="w-3.5 h-3.5" />
+            <span className="flex-1">Search or jump to…</span>
+            <kbd className="rounded bg-surface-secondary px-1 text-[10px] text-text-tertiary">⌘K</kbd>
+          </div>
+        </div>
+      )}
+
+      <nav className="flex-1 px-3 pb-2 overflow-y-auto">
         {!workspaceId || workspaceId === 'undefined' ? (
-          // Top-level nav
-          <>
-            {navLink('/dashboard', 'All Workspaces')}
-          </>
+          <Link href="/dashboard" className={`${rowBase} ${pathname === '/dashboard' ? rowActive : rowIdle}`}>
+            <Lucide.LayoutGrid className="w-[17px] h-[17px] text-text-tertiary" strokeWidth={1.7} />
+            All workspaces
+          </Link>
         ) : (
-          // Workspace-level nav
-          <>
-            <div className="px-3 py-1.5 mb-1 flex items-center gap-2">
-              <WorkspaceAvatar
-                logoUrl={workspaceInfo?.logoUrl}
-                icon={workspaceInfo?.icon}
-                size={20}
-                title={workspaceInfo?.name || workspaceId}
-              />
-              <p className="text-xs text-zinc-400 font-medium truncate" title={workspaceInfo?.name || workspaceId}>
-                {workspaceInfo?.name || 'Workspace'}
-              </p>
-            </div>
-            {!isOnboarding && (
-              <>
-                {/* Dashboard — the workspace overview page (KPI strip,
-                    activity charts, channel + outcome donuts). Lives
-                    at the top of the sidebar as the canonical "where
-                    am I" landing. Hidden for inbox-only support agents
-                    along with everything else below it. */}
-                {!isInboxOnly && navItemPrimary(
-                  `/dashboard/${workspaceId}`,
-                  'Dashboard',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <rect x="3"  y="3"  width="7" height="9" rx="1.5" />
-                    <rect x="14" y="3"  width="7" height="5" rx="1.5" />
-                    <rect x="14" y="12" width="7" height="9" rx="1.5" />
-                    <rect x="3"  y="16" width="7" height="5" rx="1.5" />
-                  </svg>,
-                )}
-                {/* Primary objects — the four things users actually do here.
-                    Inbox is the one nav item every role gets; everything
-                    after is hidden when the caller is a support-agent
-                    role (inbox-only). The `isInboxOnly` guard wraps
-                    everything below Inbox. */}
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/inbox`,
-                  'Inbox',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-                    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
-                  </svg>,
-                  counts.inboxUnread,
-                )}
-                {/* Tickets — inbox-only support agents need this too. The
-                    full nav (below the isInboxOnly guard) already lists
-                    Tickets under Native CRM; this surfaces it as a primary
-                    item for agents who otherwise see ONLY the Inbox. Gated
-                    on the same ticketingActive flag so it stays hidden
-                    where ticketing isn't enabled. */}
-                {isInboxOnly && ticketingActive && navItemPrimary(
-                  `/dashboard/${workspaceId}/tickets`,
-                  'Tickets',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4z" />
-                    <path d="M13 7v2M13 15v2M13 11v2" />
-                  </svg>,
-                )}
-                {!isInboxOnly && (<>
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/contacts`,
-                  'Contacts',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>,
-                )}
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/agents`,
-                  'Text agents',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
-                    <circle cx="12" cy="12" r="3.5" />
-                  </svg>,
-                )}
-                {/* Voice agents — their own top-level surface. Promoted
-                    out of the agent sub-tab on 2026-06-06. */}
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/voice`,
-                  'Voice agents',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="23" />
-                    <line x1="8" y1="23" x2="16" y2="23" />
-                  </svg>,
-                  null,
-                  FEATURE_SHIP_DATES.voiceAgents,
-                )}
-                {/* Co-Pilot — real-time screen-share + voice advisory
-                    surface. Read-only in v0; behind a per-workspace
-                    plan flag so it's invisible to anyone not on Scale
-                    or the dogfood allowlist. */}
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/copilot`,
-                  'Co-Pilot',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <rect x="2" y="4" width="20" height="14" rx="2" />
-                    <line x1="8" y1="22" x2="16" y2="22" />
-                    <line x1="12" y1="18" x2="12" y2="22" />
-                    <circle cx="12" cy="11" r="3" />
-                  </svg>,
-                  null,
-                  FEATURE_SHIP_DATES.copilot,
-                )}
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/playground`,
-                  'Playground',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    <path d="M10 9l4 3-4 3z" fill="currentColor" stroke="none" />
-                  </svg>,
-                )}
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/channels`,
-                  'Channels',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                  </svg>,
-                )}
-                {navItemPrimary(
-                  `/dashboard/${workspaceId}/widgets`,
-                  'Widgets',
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                  </svg>,
-                )}
-
-                {/* Everything else, demoted out of primary nav and
-                    grouped into mental hubs that mirror the agent
-                    sidebar (Activity / Queue / Insights / Library /
-                    Tools / Workspace). The kitchen-sink "Tools" group
-                    that used to mix Playground with Knowledge with
-                    Logs is gone — each item now lives under the heading
-                    that best describes its job. */}
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setMoreOpen(o => !o)}
-                    aria-expanded={moreOpen}
-                    className="cursor-pointer w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] uppercase tracking-wider font-semibold transition-colors hover:bg-zinc-900"
-                    style={{ color: 'var(--text-tertiary)' }}
-                  >
-                    <span>More</span>
-                    <span
-                      className="transition-transform"
-                      style={{ color: 'var(--text-muted)', transform: moreOpen ? 'rotate(90deg)' : undefined }}
-                    >
-                      ›
-                    </span>
-                  </button>
-                  <div
-                    className="mt-1 space-y-0.5"
-                    style={{ display: moreOpen ? undefined : 'none' }}
-                  >
-                    {/* Workspace home is the top-level "Dashboard"
-                        primary nav entry now. No duplicate Overview
-                        link here. */}
-
-                    {/* ── Getting started — first-run guide; lives on the
-                        public marketing surface (/getting-started) so a
-                        user can share the link, but we link it here too
-                        for newly-installed workspaces who want to re-open
-                        it from inside the dashboard. ── */}
-                    {navLink('/getting-started', 'Getting started', null, FEATURE_SHIP_DATES.gettingStarted)}
-
-                    {/* ── Activity — what the agents are doing ── */}
-                    <div className="pt-3 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Activity</p>
-                    </div>
-                    {navLink(`/dashboard/${workspaceId}/activity`, 'Live Activity')}
-                    {navLink(`/dashboard/${workspaceId}/conversations`, 'Conversations')}
-                    {navLink(`/dashboard/${workspaceId}/calls`, 'Calls')}
-                    {navLink(`/dashboard/${workspaceId}/logs`, 'Logs')}
-
-                    {/* ── Queue — things needing a human ──
-                        Collapsed to a single Queue entry. The unified
-                        /queue page already surfaces Needs Attention,
-                        Approvals, Next Actions, and Corrections as
-                        filterable buckets in one feed — putting them
-                        all in the sidebar as separate entries was
-                        IA noise. The legacy routes still exist for
-                        deep-links / muscle memory, just hidden from
-                        the sidebar. */}
-                    <div className="pt-3 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Queue</p>
-                    </div>
-                    {navLink(`/dashboard/${workspaceId}/queue`, 'Queue', counts.needsAttention)}
-
-                    {/* ── Insights — analytics ── */}
-                    <div className="pt-3 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Insights</p>
-                    </div>
-                    {navLink(`/dashboard/${workspaceId}/insights`, 'Insights')}
-                    {navLink(`/dashboard/${workspaceId}/performance`, 'Performance')}
-                    {navLink(`/dashboard/${workspaceId}/csat`, 'Satisfaction')}
-                    {navLink(`/dashboard/${workspaceId}/digest`, 'Weekly Digest')}
-
-                    {/* ── Native CRM (only when workspace is on the built-in CRM) ── */}
-                    {isNative && (
-                      <>
-                        <div className="pt-3 pb-1 px-3">
-                          <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Native CRM</p>
-                        </div>
-                        {navLink(`/dashboard/${workspaceId}/lists`, 'Lists')}
-                        {navLink(`/dashboard/${workspaceId}/imports`, 'Imports')}
-                        {navLink(`/dashboard/${workspaceId}/suppressions`, 'Suppressions')}
-                        {navLink(`/dashboard/${workspaceId}/custom-fields`, 'Custom fields')}
-                        {ticketingActive && navLink(`/dashboard/${workspaceId}/tickets`, 'Tickets')}
-                        {ticketingActive && navLink(`/dashboard/${workspaceId}/tickets/reports`, '↳ Reports')}
-                      </>
-                    )}
-
-                    {/* ── Library — content the agents pull from ── */}
-                    <div className="pt-3 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Library</p>
-                    </div>
-                    {navLink(`/dashboard/${workspaceId}/knowledge`, 'Knowledge')}
-                    {/* "↳ Topics & indexing" (/knowledge-sources) is hidden:
-                        it exposed KnowledgeDomains as a second, parallel
-                        knowledge container next to Collections, which is
-                        exactly the split that confused operators. The page
-                        still resolves for taxonomy/run debugging — it's just
-                        not a thing you can wander into. */}
-                    {navLink(`/dashboard/${workspaceId}/templates`, 'Templates')}
-                    {navLink(`/dashboard/${workspaceId}/brands`, 'Brands')}
-                    {navLink(`/dashboard/${workspaceId}/settings/brand-groups`, '↳ Priority groups')}
-                    {/* Widgets promoted to a primary nav item — see the
-                        navItemPrimary block at the top. The Library entry
-                        used to live here and was buried two levels deep
-                        (More → Library → Widgets). */}
-
-                    {/* ── Workspace — admin & plumbing ── */}
-                    <div className="pt-3 pb-1 px-3">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Workspace</p>
-                    </div>
-                    {navLink(`/dashboard/${workspaceId}/settings`, 'Settings')}
-                    {navLink(`/dashboard/${workspaceId}/settings/members`, 'Members')}
-                    {navLink(`/dashboard/${workspaceId}/integrations`, 'Integrations', null, FEATURE_SHIP_DATES.integrations)}
-                    {navLink(`/dashboard/${workspaceId}/settings/notifications`, 'Notifications')}
-                    {navLink(`/dashboard/${workspaceId}/settings/data-sources`, 'Data sources')}
-                    {navLink(`/dashboard/${workspaceId}/settings/integrations`, 'Shared channels')}
-                    {navLink(`/dashboard/${workspaceId}/audit-log`, 'Audit Log')}
-                    {navLink(`/dashboard/${workspaceId}/consent`, 'Consent')}
-                    {navLink(`/dashboard/${workspaceId}/settings/billing`, 'Billing')}
-                    {navLink(`/dashboard/${workspaceId}/settings/ticketing`, 'Ticketing')}
-                    {navLink(`/dashboard/${workspaceId}/settings/live-chat`, 'Live chat queue', null, '2026-06-15')}
-                    {navLink(`/dashboard/${workspaceId}/settings/domain`, 'Custom domain', null, '2026-10-11')}
-                  </div>
-                </div>
-                </>)}
-              </>
-            )}
-          </>
+          GROUP_ORDER.map(group => {
+            const items = itemsForRole.filter(i => i.group === group)
+            if (items.length === 0) return null
+            const label = NAV_GROUP_LABELS[group]
+            return (
+              <div key={group} className={label ? 'mt-4' : 'mt-1'}>
+                {label && <SectionLabel className="px-2.5 pb-1.5">{label}</SectionLabel>}
+                <div className="space-y-0.5">{items.map(renderItem)}</div>
+              </div>
+            )
+          })
         )}
       </nav>
 
-      {/* Bottom */}
-      <div className="p-3 border-t border-zinc-800 space-y-0.5">
-        <Link
-          href="/help"
-          target="_blank"
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
-        >
-          Help Center
-          <span className="text-zinc-700 text-[10px]">↗</span>
+      {/* Footer: Settings / Help / user */}
+      <div className="px-3 pt-2 pb-3 border-t border-sidebar-border space-y-0.5">
+        {workspaceId && !isInboxOnly && (
+          <Link
+            href={`/dashboard/${workspaceId}/settings`}
+            className={`${rowBase} ${onSettings ? rowActive : rowIdle}`}
+            aria-current={onSettings ? 'page' : undefined}
+          >
+            <Lucide.Settings className={`w-[17px] h-[17px] ${onSettings ? 'text-brand-500' : 'text-text-tertiary'}`} strokeWidth={1.7} />
+            Settings
+          </Link>
+        )}
+        <Link href="/help" target="_blank" className={footerRow}>
+          <Lucide.CircleHelp className="w-[17px] h-[17px] text-text-tertiary" strokeWidth={1.7} />
+          <span className="flex-1">Help &amp; docs</span>
+          <span className="text-text-muted text-[10px]">↗</span>
         </Link>
-        {workspaceId && workspaceId !== 'undefined' && (
+        {workspaceId && !isInboxOnly && (
           <Link
             href={`/dashboard/${workspaceId}/help`}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
-              pathname.startsWith(`/dashboard/${workspaceId}/help`)
-                ? ''
-                : 'text-zinc-500 hover:text-white hover:bg-zinc-900'
-            }`}
-            style={pathname.startsWith(`/dashboard/${workspaceId}/help`) ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+            className={`${rowBase} text-[12px] ${pathname.startsWith(`/dashboard/${workspaceId}/help`) ? rowActive : rowIdle}`}
           >
-            Merge Fields Reference
+            <span className="w-[17px]" />
+            Merge fields reference
           </Link>
         )}
         {isSuperAdmin && (
           <Link
             href="/dashboard/help-admin"
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
-              pathname.startsWith('/dashboard/help-admin')
-                ? ''
-                : 'text-zinc-500 hover:text-white hover:bg-zinc-900'
-            }`}
-            style={pathname.startsWith('/dashboard/help-admin') ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+            className={`${rowBase} text-[12px] ${pathname.startsWith('/dashboard/help-admin') ? rowActive : rowIdle}`}
           >
+            <span className="w-[17px]" />
             Help Center · Admin
           </Link>
         )}
-        {/* What's new — opens Canny changelog popover with an unread
-            badge. Sits above Feedback so users see the updates first. */}
         <CannyChangelogButton />
-        <a
-          href="https://xovera.canny.io"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white hover:bg-zinc-900 transition-colors"
-        >
-          Feedback
-          <span className="text-zinc-700 text-[10px]">↗</span>
+        <a href="https://xovera.canny.io" target="_blank" rel="noopener noreferrer" className={`${rowBase} text-[12px] ${rowIdle}`}>
+          <span className="w-[17px]" />
+          <span className="flex-1">Feedback</span>
+          <span className="text-text-muted text-[10px]">↗</span>
         </a>
         <Link
           href="/dashboard/settings"
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
-            pathname === '/dashboard/settings'
-              ? ''
-              : 'text-zinc-500 hover:text-white hover:bg-zinc-900'
-          }`}
-          style={pathname === '/dashboard/settings' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
+          className={`${rowBase} text-[12px] ${pathname === '/dashboard/settings' ? rowActive : rowIdle}`}
         >
+          <span className="w-[17px]" />
           Profile
         </Link>
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-white transition-colors"
-        >
-          ← All Workspaces
-        </Link>
 
-        {/* Signed-in-as + sign out. Showing the email here is how users
+        {/* Signed-in-as + sign out. Showing the account here is how users
             verify their session reflects the Google account they meant to
-            use — earlier users hit confusion signing in with a second
-            Google account while still holding the first session cookie. */}
+            use (a second account while still holding the first session
+            cookie has confused people before). */}
         {userEmail && (
-          <div className="pt-2 mt-1 border-t border-zinc-800 space-y-0.5">
-            <div className="px-3 py-1.5 text-[10px] text-zinc-600 truncate" title={userEmail}>
-              {userEmail}
+          <div className="pt-2 mt-1 border-t border-sidebar-border">
+            <div className="flex items-center gap-2.5 px-1.5 py-1.5" title={userEmail}>
+              <Avatar name={displayName} size={28} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12.5px] font-medium text-text-primary truncate">{displayName}</span>
+                {userName && <span className="block text-[11px] text-text-tertiary truncate">{userEmail}</span>}
+              </span>
             </div>
             {embedded ? (
-              // Inside the embedded iframe, sign-out is owned by the
-              // host CRM (signing out of Xovera while staying signed
-              // into the CRM just causes the next iframe load to
-              // re-handshake and sign back in).
-              // Surface an "Open in new tab" escape hatch instead — gives
-              // users a way to reach pages that don't play well inside
-              // a third-party iframe (Stripe checkout, OAuth pop-ups).
+              // Inside the embedded iframe, sign-out is owned by the host CRM
+              // (signing out of Xovera while staying signed into the CRM just
+              // causes the next iframe load to re-handshake and sign back in).
+              // "Open in new tab" is the escape hatch for pages that don't
+              // play well inside a third-party iframe (Stripe, OAuth pop-ups).
               <a
                 href={activeWorkspaceId ? `/dashboard/${activeWorkspaceId}` : '/dashboard'}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
+                className={`${rowBase} text-[12px] ${rowIdle}`}
               >
                 Open in new tab ↗
               </a>
@@ -578,7 +360,7 @@ function SidebarBody() {
               <button
                 type="button"
                 onClick={() => signOut({ callbackUrl: '/login' })}
-                className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:text-red-400 hover:bg-zinc-900 transition-colors"
+                className={`${rowBase} w-full text-left text-[12px] ${rowIdle} hover:!text-red-600 cursor-pointer`}
               >
                 Sign out
               </button>

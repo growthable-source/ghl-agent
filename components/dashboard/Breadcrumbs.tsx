@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { siblingsFor } from '@/lib/dashboard-nav'
 
 const ROUTE_LABELS: Record<string, string> = {
   agents: 'Agents',
@@ -105,7 +106,9 @@ export default function Breadcrumbs() {
     path += `/${seg}`
 
     if (seg === 'dashboard') {
-      crumbs.push({ label: 'Workspaces', href: '/dashboard' })
+      // Inside a workspace the workspace name is the root crumb (handoff
+      // TopBar); the generic "Workspaces" root only shows on /dashboard/*.
+      if (!workspaceId) crumbs.push({ label: 'Workspaces', href: '/dashboard' })
     } else if (segments[i - 1] === 'dashboard') {
       // This is the workspaceId (or a reserved segment like "new" / "settings")
       if (NON_WORKSPACE_DASHBOARD_SEGMENTS.has(seg)) {
@@ -130,22 +133,48 @@ export default function Breadcrumbs() {
     }
   }
 
-  if (crumbs.length <= 1) return null
+  if (crumbs.length <= 1 && !(workspaceId && siblingsFor(pathname, workspaceId).length)) return null
+
+  // Sibling pages of the current nav item (e.g. Live ops → Queue / Logs /
+  // Live activity). Stands in for the Phase 5 tabs so legacy pages that
+  // no longer have their own sidebar entry stay reachable.
+  const tabs = workspaceId ? siblingsFor(pathname, workspaceId) : []
 
   return (
-    <div className="flex items-center gap-1.5 px-6 py-3 border-b border-zinc-800/60 text-xs text-zinc-500">
-      {crumbs.map((crumb, i) => (
-        <span key={crumb.href} className="flex items-center gap-1.5">
-          {i > 0 && <span className="text-zinc-700">/</span>}
-          {i === crumbs.length - 1 ? (
-            <span className="text-zinc-200 font-medium">{crumb.label}</span>
-          ) : (
-            <Link href={crumb.href} className="hover:text-zinc-200 transition-colors">
-              {crumb.label}
+    <div className="shrink-0 bg-surface border-b border-border-theme">
+      <div className="h-14 flex items-center gap-1.5 px-6 text-[13px] text-text-tertiary">
+        {crumbs.map((crumb, i) => (
+          <span key={crumb.href} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-text-muted">/</span>}
+            {i === crumbs.length - 1 ? (
+              <span className="text-text-primary font-medium">{crumb.label}</span>
+            ) : (
+              <Link href={crumb.href} className="hover:text-text-primary transition-colors">
+                {crumb.label}
+              </Link>
+            )}
+          </span>
+        ))}
+        {/* TODO(redesign-followup): bell / date-range segmented control / Live pill in the right-hand actions (need a notifications source). */}
+      </div>
+      {tabs.length > 1 && (
+        <nav aria-label="Related pages" className="flex items-center gap-5 px-6 -mt-1">
+          {tabs.map(t => (
+            <Link
+              key={t.path}
+              href={t.href}
+              aria-current={t.active ? 'page' : undefined}
+              className={`-mb-px h-9 inline-flex items-center text-[13px] font-medium border-b-2 transition-colors ${
+                t.active
+                  ? 'border-brand-500 text-text-primary'
+                  : 'border-transparent text-text-tertiary hover:text-text-primary'
+              }`}
+            >
+              {t.label}
             </Link>
-          )}
-        </span>
-      ))}
+          ))}
+        </nav>
+      )}
     </div>
   )
 }

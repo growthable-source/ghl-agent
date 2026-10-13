@@ -67,7 +67,7 @@ export function NavBadge({ count }: { count: number | null | undefined }) {
   const label = count > 99 ? '99+' : String(count)
   return (
     <span
-      className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none"
+      className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-brand-500 text-on-brand text-[10px] font-semibold tabular-nums flex items-center justify-center leading-none"
       aria-label={`${count} item${count === 1 ? '' : 's'} needing attention`}
     >
       {label}
