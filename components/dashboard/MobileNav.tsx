@@ -61,7 +61,7 @@ export default function MobileNav() {
   ]
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-zinc-950/95 backdrop-blur border-t border-zinc-800">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface/95 backdrop-blur border-t border-border-theme">
       <div className="flex items-stretch">
         {links.map(link => {
           const active = pathname === link.href || pathname.startsWith(link.href + '/')
@@ -70,7 +70,7 @@ export default function MobileNav() {
               key={link.href}
               href={link.href}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors"
-              style={{ color: active ? '#fa4d2e' : '#71717a' }}
+              style={{ color: active ? '#e8432e' : 'var(--text-tertiary)' }}
             >
               {link.icon}
               <span className="text-[10px] font-medium">{link.label}</span>

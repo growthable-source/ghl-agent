@@ -1,11 +1,18 @@
 import { cookies } from 'next/headers'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar'
 import Breadcrumbs from '@/components/dashboard/Breadcrumbs'
+import CommandPalette from '@/components/dashboard/CommandPalette'
 import UserOnboardingModal from '@/components/dashboard/UserOnboardingModal'
 import { EmbeddedProvider } from '@/lib/embedded-context'
 import { SIGNUP_INTENT_COOKIE, readSignupIntent } from '@/lib/signup-intent'
+
+// Dashboard-scoped fonts (redesign handoff §1). Loaded here — not in the root
+// layout — so marketing pages keep DM Sans and don't pay for these.
+const inter = Inter({ variable: '--font-inter', subsets: ['latin'], weight: ['400', '500', '600', '700'] })
+const jetbrains = JetBrains_Mono({ variable: '--font-jetbrains', subsets: ['latin'], weight: ['400', '500'] })
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -62,8 +69,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <EmbeddedProvider>
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+    <div className={`xv-app ${inter.variable} ${jetbrains.variable} flex h-screen bg-background text-foreground overflow-hidden`}>
       <DashboardSidebar />
+      <CommandPalette />
       {/* main itself doesn't scroll — the children wrapper does. This
           flip is what lets full-viewport pages like the inbox use
           `h-full` and have their composer stick to the bottom. With
