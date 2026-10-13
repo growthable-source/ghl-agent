@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
+import { parseRange } from '@/lib/command-palette'
 import Link from 'next/link'
 import SetupChecklist from '@/components/dashboard/SetupChecklist'
 import {
@@ -149,7 +150,8 @@ export default function WorkspaceDashboardView() {
 
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [range, setRange] = useState<'7d' | '30d' | '90d'>('7d')
+  // Range now lives in the top bar (TopBarActions) as the `?range=` URL param.
+  const range = parseRange(useSearchParams().get('range'))
   const [agents, setAgents] = useState<any[]>([])
 
   useEffect(() => {
@@ -224,26 +226,6 @@ export default function WorkspaceDashboardView() {
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Workspace performance at a glance</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Date range selector */}
-          <div
-            className="flex items-center gap-0.5 rounded-lg p-0.5"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-          >
-            {(['7d', '30d', '90d'] as const).map(r => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                style={
-                  range === r
-                    ? { background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }
-                    : { background: 'transparent', color: 'var(--text-tertiary)' }
-                }
-              >
-                {r === '7d' ? '7 days' : r === '30d' ? '30 days' : '90 days'}
-              </button>
-            ))}
-          </div>
           <Link
             href={`/dashboard/${workspaceId}/agents/new`}
             className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"

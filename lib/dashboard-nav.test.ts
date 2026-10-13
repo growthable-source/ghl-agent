@@ -53,4 +53,12 @@ describe('dashboard-nav', () => {
     expect(settingsItemActive('/settings/members', '/settings')).toBe(false)
     expect(settingsItemActive('/settings/members', '/settings/members')).toBe(true)
   })
+
+  it('tells Shared channels and Webhooks apart by ?tab', () => {
+    const p = '/settings/integrations'
+    expect(settingsItemActive(p, p, undefined, null)).toBe(true)
+    expect(settingsItemActive(p, p, 'webhooks', null)).toBe(false)
+    expect(settingsItemActive(p, p, 'webhooks', 'webhooks')).toBe(true)
+    expect(settingsItemActive(p, p, undefined, 'webhooks')).toBe(false)
+  })
 })

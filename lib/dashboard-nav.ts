@@ -146,7 +146,13 @@ export function siblingsFor(
 }
 
 /** Settings shell nav (handoff §2 "Settings shell"). Paths are suffixes after /dashboard/<ws>. */
-export interface SettingsNavItem { path: string; label: string; gate?: 'ticketing' }
+export interface SettingsNavItem {
+  path: string
+  label: string
+  gate?: 'ticketing'
+  /** Sub-view selected by `?tab=`; items sharing a path are told apart by it. */
+  tab?: string
+}
 export const SETTINGS_NAV: Array<{ group: string; items: SettingsNavItem[] }> = [
   {
     group: 'Workspace',
@@ -162,6 +168,7 @@ export const SETTINGS_NAV: Array<{ group: string; items: SettingsNavItem[] }> = 
     items: [
       { path: '/integrations', label: 'Integrations' },
       { path: '/settings/integrations', label: 'Shared channels' },
+      { path: '/settings/integrations', label: 'Webhooks', tab: 'webhooks' },
       { path: '/settings/data-sources', label: 'Data sources' },
     ],
   },
@@ -186,7 +193,12 @@ export const SETTINGS_NAV: Array<{ group: string; items: SettingsNavItem[] }> = 
 ]
 
 /** Exact-or-descendant match, except '/settings' (General) which is exact-only. */
-export function settingsItemActive(rest: string, path: string): boolean {
+export function settingsItemActive(rest: string, path: string, tab?: string, currentTab?: string | null): boolean {
   if (path === '/settings') return rest === '/settings'
-  return underPath(rest, path)
+  if (!underPath(rest, path)) return false
+  // Several items can share one page (Shared channels / Webhooks): a tabbed
+  // item matches only its tab; the untabbed sibling matches every other state.
+  if (tab) return currentTab === tab
+  const sibling = SETTINGS_NAV.some(g => g.items.some(i => i.path === path && i.tab))
+  return !sibling || !currentTab || !SETTINGS_NAV.some(g => g.items.some(i => i.path === path && i.tab === currentTab))
 }

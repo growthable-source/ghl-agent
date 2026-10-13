@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { siblingsFor } from '@/lib/dashboard-nav'
+import { siblingsFor, activeNavItem, workspaceRest } from '@/lib/dashboard-nav'
+import TopBarActions from './TopBarActions'
 
 const ROUTE_LABELS: Record<string, string> = {
   agents: 'Agents',
@@ -133,7 +134,19 @@ export default function Breadcrumbs() {
     }
   }
 
-  if (crumbs.length <= 1 && !(workspaceId && siblingsFor(pathname, workspaceId).length)) return null
+  // Workspace root reads "Workspace / Dashboard"; pages missing from
+  // ROUTE_LABELS (queue, channels, tickets, …) fall back to their nav label.
+  if (workspaceId && crumbs.length === 1) {
+    const rest = workspaceRest(pathname, workspaceId)
+    if (rest === '') crumbs.push({ label: 'Dashboard', href: pathname })
+    else {
+      const item = activeNavItem(pathname, workspaceId)
+      if (item) crumbs.push({ label: item.label, href: `/dashboard/${workspaceId}${item.path}` })
+    }
+  }
+
+  // Inside a workspace the bar always renders (it hosts the actions); elsewhere only with 2+ crumbs.
+  if (!workspaceId && crumbs.length <= 1) return null
 
   // Sibling pages of the current nav item (e.g. Live ops → Queue / Logs /
   // Live activity). Stands in for the Phase 5 tabs so legacy pages that
@@ -155,7 +168,7 @@ export default function Breadcrumbs() {
             )}
           </span>
         ))}
-        {/* TODO(redesign-followup): bell / date-range segmented control / Live pill in the right-hand actions (need a notifications source). */}
+        {workspaceId && <TopBarActions workspaceId={workspaceId} />}
       </div>
       {tabs.length > 1 && (
         <nav aria-label="Related pages" className="flex items-center gap-5 px-6 -mt-1">

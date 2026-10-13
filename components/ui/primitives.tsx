@@ -272,22 +272,29 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   className,
+  disabled = false,
+  title,
 }: {
   options: Array<{ value: T; label: ReactNode }>
   value: T
   onChange: (v: T) => void
   className?: string
+  /** Visible but inert — for controls whose data source doesn't exist yet. */
+  disabled?: boolean
+  title?: string
 }) {
   return (
-    <div className={cx('inline-flex items-center rounded-md bg-surface-secondary p-0.5', className)}>
+    <div title={title} className={cx('inline-flex items-center rounded-md bg-surface-secondary p-0.5', disabled && 'opacity-50', className)}>
       {options.map(o => (
         <button
           key={o.value}
           type="button"
           aria-pressed={o.value === value}
+          disabled={disabled}
           onClick={() => onChange(o.value)}
           className={cx(
-            'h-7 px-2.5 rounded text-[12px] font-medium transition-colors cursor-pointer',
+            'h-7 px-2.5 rounded text-[12px] font-medium transition-colors',
+            disabled ? 'cursor-not-allowed' : 'cursor-pointer',
             o.value === value ? 'bg-surface text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-primary',
           )}
         >

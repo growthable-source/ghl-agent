@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { SETTINGS_NAV, settingsItemActive, workspaceRest } from '@/lib/dashboard-nav'
 import { SectionLabel } from '@/components/ui/primitives'
 
@@ -15,6 +15,7 @@ import { SectionLabel } from '@/components/ui/primitives'
 export default function SettingsShell({ workspaceId, children }: { workspaceId: string; children: React.ReactNode }) {
   const pathname = usePathname()
   const rest = workspaceRest(pathname, workspaceId) ?? ''
+  const currentTab = useSearchParams().get('tab')
 
   return (
     <div className="flex flex-1 min-h-0">
@@ -25,11 +26,11 @@ export default function SettingsShell({ workspaceId, children }: { workspaceId: 
             <SectionLabel className="px-2.5 pb-1.5">{group.group}</SectionLabel>
             <div className="space-y-0.5">
               {group.items.map(item => {
-                const active = settingsItemActive(rest, item.path)
+                const active = settingsItemActive(rest, item.path, item.tab, currentTab)
                 return (
                   <Link
-                    key={item.path}
-                    href={`/dashboard/${workspaceId}${item.path}`}
+                    key={`${item.path}:${item.tab ?? ''}`}
+                    href={`/dashboard/${workspaceId}${item.path}${item.tab ? `?tab=${item.tab}` : ''}`}
                     aria-current={active ? 'page' : undefined}
                     className={`flex items-center h-[30px] px-2.5 rounded-md text-[13px] transition-colors ${
                       active
@@ -44,7 +45,6 @@ export default function SettingsShell({ workspaceId, children }: { workspaceId: 
             </div>
           </div>
         ))}
-        {/* TODO(redesign-followup): "Webhooks" entry — no settings route exists yet. */}
       </aside>
       <div className="flex-1 min-w-0 overflow-y-auto">{children}</div>
     </div>

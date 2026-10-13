@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar'
 import Breadcrumbs from '@/components/dashboard/Breadcrumbs'
+import CommandPalette from '@/components/dashboard/CommandPalette'
 import UserOnboardingModal from '@/components/dashboard/UserOnboardingModal'
 import { EmbeddedProvider } from '@/lib/embedded-context'
 import { SIGNUP_INTENT_COOKIE, readSignupIntent } from '@/lib/signup-intent'
@@ -70,6 +71,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <EmbeddedProvider>
     <div className={`xv-app ${inter.variable} ${jetbrains.variable} flex h-screen bg-background text-foreground overflow-hidden`}>
       <DashboardSidebar />
+      <CommandPalette />
       {/* main itself doesn't scroll — the children wrapper does. This
           flip is what lets full-viewport pages like the inbox use
           `h-full` and have their composer stick to the bottom. With

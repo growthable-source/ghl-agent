@@ -27,7 +27,11 @@ export default function IntegrationsPage() {
   const [channels, setChannels] = useState<any[]>([])
   const [webhooks, setWebhooks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'notifications' | 'webhooks'>('notifications')
+  // Tab lives in the URL (?tab=webhooks) so the Settings nav's "Webhooks"
+  // entry can deep-link straight to it.
+  const tab: 'notifications' | 'webhooks' = searchParams.get('tab') === 'webhooks' ? 'webhooks' : 'notifications'
+  const setTab = (t: 'notifications' | 'webhooks') =>
+    router.replace(`/dashboard/${workspaceId}/settings/integrations${t === 'webhooks' ? '?tab=webhooks' : ''}`)
 
   // Banners from OAuth round-trips (?connected=slack, ?error=slack:access_denied, etc.)
   const connected = searchParams.get('connected')

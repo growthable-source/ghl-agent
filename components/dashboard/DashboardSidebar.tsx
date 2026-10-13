@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import * as Lucide from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import XoveraLogo from '@/components/XoveraLogo'
@@ -13,6 +13,9 @@ import NewBadge from '@/components/NewBadge'
 import { useEmbedded } from '@/lib/embedded-context'
 import { NAV_ITEMS, NAV_GROUP_LABELS, activeNavItem, type NavGroupKey, type NavItem } from '@/lib/dashboard-nav'
 import { Avatar, SectionLabel } from '@/components/ui/primitives'
+import { OPEN_PALETTE_EVENT } from './CommandPalette'
+import { PLAN_FEATURES, type PlanId } from '@/lib/plans'
+import { useBackgroundPolling } from '@/lib/use-background-polling'
 
 // Plain-language hover hints for nav entries whose label is a product
 // term a first-time user wouldn't recognise. Keyed by href suffix
@@ -77,7 +80,7 @@ function SidebarBody() {
   const sbMatch = pathname.match(/\/dashboard\/([^\/]+)/)
   const sbStatic = ['settings', 'new', 'feedback']
   const activeWorkspaceId = sbMatch && !sbStatic.includes(sbMatch[1]) ? sbMatch[1] : null
-  const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string; logoUrl: string | null } | null>(null)
+  const [workspaceInfo, setWorkspaceInfo] = useState<{ name: string; icon: string; logoUrl: string | null; plan: string | null } | null>(null)
   // True when the active workspace has any Location with crmProvider='native'.
   // Drives the Native CRM nav section (Lists / Imports / Suppressions / Custom fields).
   const [isNative, setIsNative] = useState(false)
@@ -130,6 +133,7 @@ function SidebarBody() {
             name: ws.name,
             icon: ws.icon || '🚀',
             logoUrl: ws.logoUrl ?? null,
+            plan: typeof ws.plan === 'string' ? ws.plan : null,
           })
           setIsNative(Array.isArray(ws.locations) && ws.locations.some((l: any) => l.crmProvider === 'native'))
           // ws.role is the caller's role in this workspace (the
@@ -141,6 +145,21 @@ function SidebarBody() {
   }, [workspaceId])
 
   const isInboxOnly = myRole === 'agent'
+
+  // Amber dot on Integrations: same signal as ConnectionHealthBanner
+  // (GET /connection-health → 'needs_attention' for an expired/refresh-failing
+  // LeadConnector token). Deliberately ignores banner dismissal — the dot is
+  // the persistent reminder. Only LeadConnector reports health today.
+  const [integrationIssue, setIntegrationIssue] = useState(false)
+  const checkIntegrations = useCallback(async () => {
+    if (!workspaceId) { setIntegrationIssue(false); return }
+    try {
+      const r = await fetch(`/api/workspaces/${workspaceId}/connection-health`, { cache: 'no-store' })
+      const d = r.ok ? await r.json() : null
+      setIntegrationIssue(d?.status === 'needs_attention')
+    } catch { /* leave the previous state */ }
+  }, [workspaceId])
+  useBackgroundPolling(checkIntegrations, 5 * 60_000, !!workspaceId)
 
   // Don't show location nav for these sub-pages
   const isOnboarding = pathname.includes('/onboarding')
@@ -190,7 +209,14 @@ function SidebarBody() {
         {Icon && <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-brand-500' : 'text-text-tertiary'}`} strokeWidth={1.7} />}
         <span className="flex-1 truncate">{item.label}</span>
         {shipDate[item.key] && <NewBadge since={shipDate[item.key]} />}
-        {/* TODO(redesign-followup): amber "integration issue" dot on Integrations once a connection-health signal is exposed to the sidebar. */}
+        {item.key === 'integrations' && integrationIssue && (
+          <span
+            role="img"
+            aria-label="Integration needs attention"
+            title="An integration is expired or disconnected"
+            className="h-2 w-2 rounded-full bg-amber-500 shrink-0"
+          />
+        )}
         {item.badge === 'needsAttention' || item.badge === 'inboxUnread'
           ? <NavBadge count={count} />
           : null}
@@ -235,27 +261,30 @@ function SidebarBody() {
             <span className="block text-[13px] font-semibold text-text-primary truncate">
               {workspaceId ? (workspaceInfo?.name || 'Workspace') : 'Xovera'}
             </span>
-            {/* TODO(redesign-followup): "<plan> · Xovera" subtitle once the plan name is on /api/workspaces. */}
             <span className="block text-[11px] text-text-tertiary truncate">
-              {workspaceId ? 'Xovera' : 'All workspaces'}
+              {workspaceId
+                ? (workspaceInfo?.plan && PLAN_FEATURES[workspaceInfo.plan as PlanId]
+                    ? `${PLAN_FEATURES[workspaceInfo.plan as PlanId].label} plan · Xovera`
+                    : 'Xovera')
+                : 'All workspaces'}
             </span>
           </span>
           {!embedded && <Lucide.ChevronsUpDown className="w-3.5 h-3.5 text-text-muted shrink-0" />}
         </Link>
       </div>
 
-      {/* ⌘K search — visual placeholder. */}
+      {/* ⌘K search — opens the command palette (components/dashboard/CommandPalette). */}
       {workspaceId && (
         <div className="px-3 pb-2">
-          {/* TODO(redesign-followup): wire to a ⌘K command palette; none exists yet, so this is intentionally non-interactive. */}
-          <div
-            aria-hidden
-            className="flex items-center gap-2 h-8 px-2.5 rounded-md border border-border-theme bg-surface text-[12.5px] text-text-muted select-none"
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
+            className="w-full flex items-center gap-2 h-8 px-2.5 rounded-md border border-border-theme bg-surface text-[12.5px] text-text-muted hover:border-border-secondary cursor-pointer"
           >
             <Lucide.Search className="w-3.5 h-3.5" />
-            <span className="flex-1">Search or jump to…</span>
+            <span className="flex-1 text-left">Search or jump to…</span>
             <kbd className="rounded bg-surface-secondary px-1 text-[10px] text-text-tertiary">⌘K</kbd>
-          </div>
+          </button>
         </div>
       )}
 
