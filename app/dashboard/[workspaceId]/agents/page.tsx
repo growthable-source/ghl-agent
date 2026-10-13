@@ -3,8 +3,14 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import NewBadge from '@/components/NewBadge'
 import { getLocationDashboardUrl } from '@/lib/leadconnector-dashboard-url'
+import {
+  agentKpis, channelsInUse, filterAndSort, getListeningState, initials, rowChannels, timeAgo,
+  type ListeningState, type SortKey, type StatusFilter, type ChannelPillKind,
+} from '@/lib/agents-list'
+import { AlertBanner, ChannelPill, KpiTile, PageHeader, StatusBadge } from '@/components/ui/primitives'
+import Toggle from '@/components/ui/Toggle'
+import { buttonClass, cx } from '@/lib/ui-classes'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -60,93 +66,13 @@ interface AgentFolderData {
 // with this string.
 const UNFILED = '__unfiled__'
 
-function formatNextActionTime(iso: string | null): string | null {
-  if (!iso) return null
-  const delta = new Date(iso).getTime() - Date.now()
-  if (delta < 0) return 'now'
-  const mins = Math.round(delta / 60000)
-  if (mins < 60) return `in ${mins}m`
-  const hours = Math.round(mins / 60)
-  if (hours < 24) return `in ${hours}h`
-  const days = Math.round(hours / 24)
-  if (days < 14) return `in ${days}d`
-  return `in ${Math.round(days / 7)}w`
-}
-
 interface AgentsMeta {
   total: number
   limit: number | null
   plan: string
 }
 
-// ─── Channel badge colors ───────────────────────────────────────────────────
-
-const CHANNEL_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  SMS:       { label: 'SMS',       color: '#22d3ee', bg: 'rgba(34,211,238,0.12)' },
-  WhatsApp:  { label: 'WhatsApp',  color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
-  Email:     { label: 'Email',     color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-  FB:        { label: 'Facebook',  color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
-  IG:        { label: 'Instagram', color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
-  GMB:       { label: 'Google',    color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
-  Live_Chat: { label: 'Live Chat', color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-  if (seconds < 60) return 'just now'
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-// ─── Listening status ───────────────────────────────────────────────────────
-// Three-state pill that tells operators at a glance whether an agent will
-// actually pick up an inbound. Derived from the same conditions the webhook
-// pre-filter uses, so what you see here matches what would happen if a real
-// SMS arrived right now.
-
-type ListeningState = 'live' | 'misconfigured' | 'off'
-
-function getListeningState(agent: AgentData): {
-  state: ListeningState
-  label: string
-  reason: string
-  fixHref: string | null
-} {
-  if (!agent.isActive) {
-    return {
-      state: 'off',
-      label: 'Off',
-      reason: 'Agent is turned off — flip the toggle to activate.',
-      fixHref: null,
-    }
-  }
-  const hasRules = (agent._count?.routingRules ?? 0) > 0
-  const hasChannels = (agent.channelDeployments?.length ?? 0) > 0
-  if (!hasRules || !hasChannels) {
-    const missing: string[] = []
-    if (!hasChannels) missing.push('channel deployment')
-    if (!hasRules) missing.push('routing rule')
-    return {
-      state: 'misconfigured',
-      label: 'Not deployed',
-      reason: `Active but missing ${missing.join(' + ')} — inbounds will be skipped.`,
-      fixHref: 'routing',
-    }
-  }
-  return {
-    state: 'live',
-    label: 'Listening',
-    reason: 'Active and listening on at least one channel.',
-    fixHref: null,
-  }
-}
+// Listening status, channel mapping, filtering and KPIs live in lib/agents-list.ts (unit-tested).
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -406,698 +332,350 @@ export default function AgentsPage() {
     return map
   }, [agents, folders])
 
-  // ─── Plan usage bar ────────────────────────────────────────────────────────
+  // ─── List controls (search / status / channel / sort / selection) ────────
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('any')
+  const [channelFilter, setChannelFilter] = useState<ChannelPillKind | 'any'>('any')
+  const [sort, setSort] = useState<SortKey>('updated')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+
+  const rows = useMemo(
+    () => filterAndSort(visibleAgents, { query, status: statusFilter, channel: channelFilter, sort }),
+    [visibleAgents, query, statusFilter, channelFilter, sort],
+  )
+  const kpis = useMemo(() => agentKpis(agents), [agents])
+  const channelOptions = useMemo(() => channelsInUse(agents), [agents])
+  const allSelected = rows.length > 0 && rows.every(r => selected.has(r.id))
+
+  function toggleSelected(id: string) {
+    setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
+
+  // Bulk actions reuse the single-agent handlers; sequential so a failure
+  // on one row doesn't race the others' optimistic state updates.
+  async function bulkSetActive(active: boolean) {
+    setBulkBusy(true)
+    for (const a of agents.filter(x => selected.has(x.id) && x.isActive !== active)) {
+      await toggleActive(a.id, a.isActive)
+    }
+    setBulkBusy(false)
+  }
+  async function bulkDelete() {
+    if (!window.confirm(`Delete ${selected.size} agent${selected.size === 1 ? '' : 's'} and all their data? This can't be undone.`)) return
+    setBulkBusy(true)
+    for (const id of Array.from(selected)) await deleteAgent(id)
+    setSelected(new Set())
+    setBulkBusy(false)
+  }
+
+  // ─── Plan usage ────────────────────────────────────────────────────────────
 
   const usedCount = meta?.total ?? agents.length
   const limitCount = meta?.limit
-  const usagePercent = limitCount ? Math.min((usedCount / limitCount) * 100, 100) : 0
   const atLimit = limitCount ? usedCount >= limitCount : false
+  const planLabel = meta?.plan ? `${meta.plan.charAt(0).toUpperCase()}${meta.plan.slice(1)} plan` : undefined
 
   // ─── Loading state ─────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div className="flex-1 p-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" />
-            <div className="h-10 w-32 bg-zinc-800 rounded-lg animate-pulse" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-52 bg-zinc-900/60 border border-zinc-800 rounded-xl animate-pulse" />
-            ))}
-          </div>
+      <div className="flex-1 p-6">
+        <div className="h-7 w-48 rounded bg-surface-tertiary animate-pulse mb-6" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-[88px] xv-card animate-pulse" />)}
         </div>
+        <div className="h-72 xv-card animate-pulse" />
       </div>
     )
   }
 
+  const pillBase = 'h-7 px-2.5 rounded text-[12px] font-medium transition-colors cursor-pointer'
+  const selectCls = 'h-8 rounded-md border border-border-theme bg-surface px-2.5 text-[12.5px] text-text-primary cursor-pointer'
+
   return (
-    <div className="flex-1 p-8 overflow-y-auto">
-      <div className="max-w-6xl mx-auto">
+    <div className="flex-1 p-6 overflow-y-auto">
+      <div className="max-w-[1200px] mx-auto space-y-4">
 
-        {/* ─── Header ──────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Text agents</h1>
-            <p className="text-sm text-zinc-400 mt-1">
-              SMS, WhatsApp, email, and live chat. For phone calls, head to{' '}
-              <Link href={`/dashboard/${workspaceId}/voice`} className="underline" style={{ color: 'var(--accent-primary)' }}>
-                Voice agents
-              </Link>
-              .
-            </p>
-          </div>
+        {/* The misconfigured banner names the problem once; each row's status
+            pill links straight to the fix (routing tab). */}
+        {kpis.needAttention > 0 && (
+          <AlertBanner lead={kpis.needAttention === 1 ? '1 agent will not receive inbound messages.' : `${kpis.needAttention} agents will not receive inbound messages.`}>
+            Active agents need at least one routing rule and one channel deployment — otherwise every inbound is skipped.
+          </AlertBanner>
+        )}
+        {atLimit && (
+          <AlertBanner tone="danger" lead="Agent limit reached." action={
+            <Link href={`/dashboard/${workspaceId}/settings/billing`} className={buttonClass('primary', 'sm')}>Upgrade</Link>
+          }>
+            Upgrade your plan or add agent slots to create more.
+          </AlertBanner>
+        )}
 
-          <NewTextAgentButton workspaceId={workspaceId} atLimit={atLimit} />
+        <PageHeader
+          title="Text agents"
+          subtitle={<>AI agents for SMS, WhatsApp, email and live chat. Phone agents live in{' '}
+            <Link href={`/dashboard/${workspaceId}/voice`} className="text-brand-500 hover:underline">Voice agents</Link>.</>}
+          actions={<NewTextAgentButton workspaceId={workspaceId} atLimit={atLimit} />}
+        />
+
+        {/* TODO(redesign-followup): "Avg. success rate" KPI, per-agent health score, 7-day sparkline, success % and deployed-version columns — no data source yet. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiTile label="Live agents" value={`${kpis.live} / ${kpis.total}`}
+            delta={kpis.needAttention > 0 ? `${kpis.needAttention} need attention` : undefined} deltaTone="warning" />
+          <KpiTile label="Conversations" value={kpis.conversations.toLocaleString()} />
+          <KpiTile label="Messages" value={kpis.messages.toLocaleString()} />
+          <KpiTile label="Plan usage"
+            value={limitCount != null ? `${usedCount} of ${limitCount.toLocaleString()}` : String(usedCount)}
+            suffix={planLabel} />
         </div>
 
-        {/* ─── Plan Usage Indicator ────────────────────────────────────── */}
-        {limitCount !== null && limitCount !== undefined && (
-          <div className="mb-6 p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-zinc-300">
-                  {usedCount} / {limitCount} agents used
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{
-                    background: 'rgba(250,77,46,0.12)',
-                    color: '#fa4d2e',
-                  }}
-                >
-                  {meta?.plan?.charAt(0).toUpperCase()}{meta?.plan?.slice(1)} plan
-                </span>
-              </div>
-              {atLimit && (
-                <Link
-                  href={`/dashboard/${workspaceId}/settings/billing`}
-                  className="text-xs font-medium hover:underline"
-                  style={{ color: '#fa4d2e' }}
-                >
-                  Upgrade or add agent slots
-                </Link>
-              )}
-            </div>
-            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${usagePercent}%`,
-                  background: atLimit
-                    ? 'linear-gradient(90deg, #ef4444, #dc2626)'
-                    : 'linear-gradient(90deg, #fa4d2e, #f97316)',
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* ─── Misconfigured-agents banner ─────────────────────────────── */}
-        {/* Surface every active agent that won't actually receive inbounds
-            (no routing rule and/or no channel deployment). The per-card
-            "Not deployed · fix" pill is easy to miss at a glance — this
-            banner names every offending agent with a direct link to its
-            routing tab. Hidden when nothing is misconfigured so the
-            surface stays clean during the happy path. */}
-        {(() => {
-          const misconfigured = agents.filter(a => getListeningState(a).state === 'misconfigured')
-          if (misconfigured.length === 0) return null
-          return (
-            <div
-              className="mb-6 p-4 rounded-xl border"
-              style={{ borderColor: 'var(--accent-amber)', background: 'var(--accent-amber-bg)' }}
-            >
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: 'var(--accent-amber)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
-                </svg>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium" style={{ color: 'var(--accent-amber)' }}>
-                    {misconfigured.length === 1
-                      ? '1 agent will not receive inbound messages'
-                      : `${misconfigured.length} agents will not receive inbound messages`}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    Active agents without a routing rule or channel deployment are silently skipped on every inbound. Add at least one routing rule and one channel deployment to start listening.
-                  </p>
-                  <ul className="mt-3 space-y-1">
-                    {misconfigured.map(a => {
-                      const status = getListeningState(a)
-                      return (
-                        <li key={a.id} className="text-xs flex items-center gap-2">
-                          <span style={{ color: 'var(--text-primary)' }}>{a.name}</span>
-                          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{status.reason}</span>
-                          <Link
-                            href={`/dashboard/${workspaceId}/agents/${a.id}/routing`}
-                            className="ml-auto font-medium hover:underline"
-                            style={{ color: 'var(--accent-amber)' }}
-                          >
-                            Fix →
-                          </Link>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* ─── Folders bar ─────────────────────────────────────────────
-            Pill row: All · <folder pills> · Unfiled · + Folder. Clicking
-            a pill filters the grid below; clicking the active pill
-            again clears the filter. Per-folder pill includes inline
-            rename (double-click the label) and a delete (×) on hover.
-
-            Hidden entirely when the schema hasn't yet picked up the
-            AgentFolder table (notMigrated=true from the API), so a
-            fresh deploy doesn't show a broken UI for a few seconds.
-            Also hidden when there are zero agents to keep the empty
-            state clean — folders are an organising tool, they don't
-            need to appear before there's anything to organise. */}
-        {foldersAvailable && agents.length > 0 && (
-          <div className="mb-5 flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setActiveFolder(null)}
-              className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
-              style={{
-                background: activeFolder === null ? 'rgba(250,77,46,0.15)' : 'var(--surface-secondary)',
-                color: activeFolder === null ? '#fa4d2e' : 'var(--text-secondary)',
-              }}
-            >
-              All <span className="opacity-60 ml-1">{counts.__all}</span>
-            </button>
-
-            {folders.map(folder => {
-              const isActive = activeFolder === folder.id
-              const isEditing = editingFolderId === folder.id
-              return (
-                <div key={folder.id} className="relative group/folder inline-flex items-center">
-                  {isEditing ? (
-                    <input
-                      autoFocus
-                      value={editingFolderName}
-                      onChange={e => setEditingFolderName(e.target.value)}
-                      onBlur={() => renameFolder(folder.id)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') renameFolder(folder.id)
-                        if (e.key === 'Escape') setEditingFolderId(null)
-                      }}
-                      className="text-xs font-medium px-3 py-1.5 rounded-full focus:outline-none"
-                      style={{
-                        background: 'var(--input-bg)',
-                        border: '1px solid var(--input-border)',
-                        color: 'var(--input-text)',
-                        minWidth: 80,
-                      }}
-                    />
-                  ) : (
-                    <button
-                      onClick={() => setActiveFolder(isActive ? null : folder.id)}
-                      onDoubleClick={() => {
-                        setEditingFolderId(folder.id)
-                        setEditingFolderName(folder.name)
-                      }}
-                      className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
-                      title="Click to filter · Double-click to rename"
-                      style={{
-                        background: isActive ? 'rgba(250,77,46,0.15)' : 'var(--surface-secondary)',
-                        color: isActive ? '#fa4d2e' : 'var(--text-secondary)',
-                      }}
-                    >
-                      {folder.name}
-                      <span className="opacity-60 ml-1">{counts[folder.id] ?? 0}</span>
-                    </button>
-                  )}
-                  {!isEditing && (
-                    <button
-                      onClick={() => deleteFolder(folder.id)}
-                      className="ml-1 opacity-0 group-hover/folder:opacity-100 transition-opacity text-zinc-500 hover:text-red-400 text-xs"
-                      title="Delete folder (agents inside become Unfiled)"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-
-            {/* "Unfiled" pill only renders when there are actually some
-                unfiled agents AND at least one folder exists. With zero
-                folders, the All pill already covers everything. */}
-            {folders.length > 0 && counts[UNFILED] > 0 && (
-              <button
-                onClick={() => setActiveFolder(activeFolder === UNFILED ? null : UNFILED)}
-                className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
-                style={{
-                  background: activeFolder === UNFILED ? 'rgba(250,77,46,0.15)' : 'var(--surface-secondary)',
-                  color: activeFolder === UNFILED ? '#fa4d2e' : 'var(--text-tertiary)',
-                }}
-              >
-                Unfiled <span className="opacity-60 ml-1">{counts[UNFILED]}</span>
-              </button>
-            )}
-
-            {/* + Folder — inline-prompt UX matches WidgetFolder's recent
-                redesign and avoids a modal for a single-field create. */}
-            {newFolderOpen ? (
-              <div className="inline-flex items-center gap-1">
-                <input
-                  autoFocus
-                  value={newFolderName}
-                  onChange={e => setNewFolderName(e.target.value)}
-                  onBlur={createFolder}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') createFolder()
-                    if (e.key === 'Escape') { setNewFolderOpen(false); setNewFolderName('') }
-                  }}
-                  placeholder="Folder name"
-                  className="text-xs font-medium px-3 py-1.5 rounded-full focus:outline-none"
-                  style={{
-                    background: 'var(--input-bg)',
-                    border: '1px solid var(--input-border)',
-                    color: 'var(--input-text)',
-                    minWidth: 120,
-                  }}
-                />
-              </div>
-            ) : (
-              <button
-                onClick={() => setNewFolderOpen(true)}
-                className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
-                style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
-              >
-                + Folder
-                <NewBadge since="2026-05-29" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ─── Empty State ─────────────────────────────────────────────── */}
         {agents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 px-6 border border-dashed border-zinc-700 rounded-xl bg-zinc-900/20">
-            <div className="w-16 h-16 mb-4 rounded-full bg-zinc-800 flex items-center justify-center">
-              <svg className="w-8 h-8 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>No agents yet</h3>
-            <p className="text-sm text-zinc-400 text-center max-w-sm mb-6">
-              Create your first AI agent to start automating conversations across SMS, WhatsApp, Email, and more.
+          <div className="xv-card border-dashed flex flex-col items-center justify-center py-16 px-6 text-center">
+            <h3 className="text-[15px] font-semibold text-text-primary mb-1">No agents yet</h3>
+            <p className="text-[13px] text-text-tertiary max-w-sm mb-5">
+              Create your first AI agent to start automating conversations across SMS, WhatsApp, email and more.
             </p>
-            <Link
-              href={`/dashboard/${workspaceId}/agents/new`}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-colors"
-              style={{ background: '#fa4d2e', color: '#fff' }}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              Create Agent
-            </Link>
+            <Link href={`/dashboard/${workspaceId}/agents/new`} className={buttonClass('primary')}>+ New text agent</Link>
           </div>
         ) : (
-          /* ─── Agent Grid ─────────────────────────────────────────────── */
-          visibleAgents.length === 0 ? (
-            // Filter active but nothing in this folder. Soft message
-            // rather than the big "No agents yet" empty state, since
-            // the workspace clearly has agents — they're just elsewhere.
-            <div
-              className="text-sm text-center py-12 px-4 rounded-xl border border-dashed"
-              style={{ borderColor: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}
-            >
-              No agents in this folder yet. Use the ⋯ menu on any agent to move it here.
-            </div>
-          ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {visibleAgents.map(agent => (
-              <div
-                key={agent.id}
-                className="group relative border border-zinc-800 rounded-xl bg-zinc-900/40 hover:border-zinc-700 transition-all duration-200 overflow-hidden"
-              >
-                {/* Status indicator bar */}
-                <div
-                  className="absolute top-0 left-0 right-0 h-0.5"
-                  style={{
-                    background: agent.isActive
-                      ? 'linear-gradient(90deg, #22c55e, #16a34a)'
-                      : 'linear-gradient(90deg, #52525b, #3f3f46)',
-                  }}
-                />
-
-                <div className="p-5">
-                  {/* Header: name + status toggle */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0 mr-3">
-                      <Link
-                        href={`/dashboard/${workspaceId}/agents/${agent.id}`}
-                        className="text-base font-semibold hover:underline truncate block" style={{ color: 'var(--text-primary)' }}
-                      >
-                        {/* Voice agents get a 🎤 prefix so they're
-                            visually distinct from text agents at a
-                            glance in a mixed-list workspace. */}
-                        {agent.agentType === 'VOICE' && <span className="mr-1.5" aria-hidden>🎤</span>}
-                        {agent.name}
-                      </Link>
-                      {(() => {
-                        const status = getListeningState(agent)
-                        // CSS-token styling so the pill sits in the same
-                        // visual register as every other status surface in
-                        // the app (theme-aware, no hardcoded RGB).
-                        const tone: Record<ListeningState, { bg: string; fg: string; dot: string }> = {
-                          live: {
-                            bg:  'var(--accent-emerald-bg)',
-                            fg:  'var(--accent-emerald)',
-                            dot: 'var(--accent-emerald)',
-                          },
-                          misconfigured: {
-                            bg:  'var(--accent-amber-bg)',
-                            fg:  'var(--accent-amber)',
-                            dot: 'var(--accent-amber)',
-                          },
-                          off: {
-                            bg:  'var(--surface-secondary)',
-                            fg:  'var(--text-tertiary)',
-                            dot: 'var(--text-tertiary)',
-                          },
-                        }
-                        const s = tone[status.state]
-                        const pill = (
-                          <span
-                            className="inline-flex items-center gap-1.5 mt-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                            style={{ background: s.bg, color: s.fg }}
-                            title={status.reason}
-                          >
-                            <span
-                              className="inline-block w-1.5 h-1.5 rounded-full"
-                              style={{ background: s.dot }}
-                            />
-                            {status.label}
-                            {status.state === 'misconfigured' && (
-                              <span className="opacity-60">· fix</span>
-                            )}
-                          </span>
-                        )
-                        return status.fixHref ? (
-                          <Link
-                            href={`/dashboard/${workspaceId}/agents/${agent.id}/${status.fixHref}`}
-                            className="inline-block transition-opacity hover:opacity-80"
-                          >
-                            {pill}
-                          </Link>
-                        ) : pill
-                      })()}
-                    </div>
-
-                    {/* Active toggle */}
-                    <button
-                      onClick={() => toggleActive(agent.id, agent.isActive)}
-                      disabled={togglingId === agent.id}
-                      className="shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
-                      style={{
-                        background: agent.isActive ? '#22c55e' : 'var(--toggle-off-bg)',
-                        opacity: togglingId === agent.id ? 0.5 : 1,
-                      }}
-                      title={agent.isActive ? 'Active — click to deactivate' : 'Inactive — click to activate'}
-                    >
-                      <span
-                        className="inline-block h-4 w-4 rounded-full transition-transform duration-200"
-                        style={{
-                          background: '#fff',
-                          transform: agent.isActive ? 'translateX(22px)' : 'translateX(4px)',
-                        }}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Channel badges — VOICE agents always show a Voice
-                      pill (voice IS the channel) regardless of the
-                      ChannelDeployment table; text agents render whatever
-                      channels they've deployed plus a Voice pill if
-                      they've bolted voice on. */}
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {agent.agentType === 'VOICE' ? (
-                      <span
-                        className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7' }}
-                      >
-                        Voice
-                      </span>
-                    ) : agent.channelDeployments.length > 0 ? (
-                      agent.channelDeployments.map((cd: { channel: string }) => {
-                        const cfg = CHANNEL_CONFIG[cd.channel]
-                        return cfg ? (
-                          <span
-                            key={cd.channel}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                            style={{ background: cfg.bg, color: cfg.color }}
-                          >
-                            {cfg.label}
-                          </span>
-                        ) : null
-                      })
+          <div className="xv-card">
+            {/* ─── Toolbar: folders · search · filters · sort ─── */}
+            <div className="flex flex-wrap items-center gap-2 p-3 border-b border-border-theme">
+              {foldersAvailable && (
+                <div className="flex flex-wrap items-center gap-1 rounded-md bg-surface-secondary p-0.5">
+                  <button onClick={() => setActiveFolder(null)}
+                    className={cx(pillBase, activeFolder === null ? 'bg-surface text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-primary')}>
+                    All <span className="text-text-muted tabular-nums">{counts.__all}</span>
+                  </button>
+                  {folders.map(folder => {
+                    const isActive = activeFolder === folder.id
+                    return editingFolderId === folder.id ? (
+                      <input key={folder.id} autoFocus value={editingFolderName}
+                        onChange={e => setEditingFolderName(e.target.value)}
+                        onBlur={() => renameFolder(folder.id)}
+                        onKeyDown={e => { if (e.key === 'Enter') renameFolder(folder.id); if (e.key === 'Escape') setEditingFolderId(null) }}
+                        className="h-7 px-2 rounded text-[12px] bg-surface border border-border-theme outline-none min-w-[80px]" />
                     ) : (
-                      <span className="text-[11px] text-zinc-600 italic">No channels deployed</span>
-                    )}
-                    {agent.agentType !== 'VOICE' && agent.vapiConfig?.isActive && (
-                      <span
-                        className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7' }}
-                      >
-                        Voice
+                      <span key={folder.id} className="group/folder inline-flex items-center">
+                        <button
+                          onClick={() => setActiveFolder(isActive ? null : folder.id)}
+                          onDoubleClick={() => { setEditingFolderId(folder.id); setEditingFolderName(folder.name) }}
+                          title="Click to filter · Double-click to rename"
+                          className={cx(pillBase, isActive ? 'bg-surface text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-primary')}>
+                          {folder.name} <span className="text-text-muted tabular-nums">{counts[folder.id] ?? 0}</span>
+                        </button>
+                        <button onClick={() => deleteFolder(folder.id)} title="Delete folder (agents inside become Unfiled)"
+                          className="opacity-0 group-hover/folder:opacity-100 px-1 text-[12px] text-text-muted hover:text-red-600 cursor-pointer">×</button>
                       </span>
-                    )}
-                  </div>
-
-                  {/* Connected-to line — surfaces the CRM sub-account
-                      business name (joined from MarketplaceInstall) so
-                      the operator can see which LeadConnector location
-                      this agent is wired to without clicking through.
-                      Format: "<BusinessName> (<linked locationId>)".
-                      The locationId itself is a hyperlink into the
-                      whitelabel LC dashboard (app.xovera.io by
-                      default; configurable via env). Fallback chain:
-                        1. businessName + linked locationId (real install
-                           with a snapshot)
-                        2. Just the linked locationId (snapshot hasn't
-                           backfilled yet)
-                        3. "Native CRM" / "No CRM connected" label only
-                           for native/placeholder rows (no external
-                           dashboard to link to) */}
-                  {(() => {
-                    const c = agent.connection
-                    if (!c) return null
-                    const label = c.businessName
-                      ? c.businessName
-                      : c.provider === 'native'
-                        ? 'Native CRM'
-                        : c.provider === 'none'
-                          ? 'No CRM connected'
-                          : null
-                    const dashHref = getLocationDashboardUrl(c.locationId, c.provider)
-                    return (
-                      <p
-                        className="text-[11px] mb-3 flex items-center gap-1 min-w-0"
-                        style={{ color: 'var(--text-tertiary)' }}
-                        title={c.locationId}
-                      >
-                        <svg className="w-3 h-3 flex-shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                        {label && <span className="truncate">{label}</span>}
-                        {dashHref ? (
-                          <a
-                            href={dashHref}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="font-mono truncate hover:underline"
-                            style={{ color: 'var(--text-muted)' }}
-                            title="Open in LeadConnector"
-                          >
-                            {label ? `(${c.locationId})` : c.locationId}
-                          </a>
-                        ) : !label ? (
-                          // No real label (so no native/none copy) and
-                          // no dashboard URL — render the bare id so we
-                          // at least show something for diagnostics.
-                          <span className="font-mono truncate select-all" style={{ color: 'var(--text-muted)' }}>
-                            {c.locationId}
-                          </span>
-                        ) : null}
-                      </p>
                     )
-                  })()}
-
-                  {/* Stats row */}
-                  <div className="grid grid-cols-3 gap-3 py-3 border-t border-zinc-800">
-                    <div>
-                      <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{agent._count.messageLogs.toLocaleString()}</p>
-                      <p className="text-[11px] text-zinc-500">Messages</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{agent._count.conversationStates}</p>
-                      <p className="text-[11px] text-zinc-500">Conversations</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{agent._count.attachedCollections ?? agent._count.attachedKnowledge ?? agent._count.knowledgeEntries ?? 0}</p>
-                      <p className="text-[11px] text-zinc-500">Collections</p>
-                    </div>
-                  </div>
-
-                  {/* Tools & rules summary */}
-                  <div className="flex items-center gap-3 pt-3 border-t border-zinc-800 text-[11px] text-zinc-500">
-                    <span>{agent.enabledTools?.length || 0} tools</span>
-                    <span className="w-px h-3 bg-zinc-700" />
-                    <span>{agent._count.routingRules} rules</span>
-                    <span className="w-px h-3 bg-zinc-700" />
-                    <span>{agent.languages?.join(', ') || 'en'}</span>
-                  </div>
-
-                  {/* Next actions indicator */}
-                  {agent.nextActions?.count > 0 && (
-                    <Link
-                      href={`/dashboard/${workspaceId}/next-actions?agentId=${agent.id}`}
-                      className="flex items-center justify-between gap-2 mt-3 px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/80 transition-colors group/next"
-                    >
-                      <div className="flex items-center gap-2">
-                        <svg className="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="text-[11px] font-medium text-zinc-300">
-                          {agent.nextActions.count} scheduled
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-amber-400 font-medium">
-                        {formatNextActionTime(agent.nextActions.nextAt)}
-                      </span>
-                    </Link>
+                  })}
+                  {folders.length > 0 && counts[UNFILED] > 0 && (
+                    <button onClick={() => setActiveFolder(activeFolder === UNFILED ? null : UNFILED)}
+                      className={cx(pillBase, activeFolder === UNFILED ? 'bg-surface text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-primary')}>
+                      Unfiled <span className="text-text-muted tabular-nums">{counts[UNFILED]}</span>
+                    </button>
                   )}
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 mt-4 pt-3 border-t border-zinc-800">
-                    <Link
-                      href={`/dashboard/${workspaceId}/agents/${agent.id}`}
-                      className="flex-1 text-center text-xs font-medium py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors"
-                    >
-                      Edit
-                    </Link>
-                    <Link
-                      href={`/dashboard/${workspaceId}/agents/${agent.id}/deploy`}
-                      className="flex-1 text-center text-xs font-medium py-2 rounded-lg transition-colors hover:opacity-90"
-                      style={{ background: 'rgba(250,77,46,0.8)', color: '#fff' }}
-                    >
-                      Deploy
-                    </Link>
-
-                    {/* Overflow menu: Duplicate + Save as template. Wraps
-                        the existing Delete button so all secondary actions
-                        are one place. */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setMenuOpen(menuOpen === agent.id ? null : agent.id)}
-                        disabled={actionBusy === agent.id}
-                        className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
-                        title="More actions"
-                      >
-                        {actionBusy === agent.id ? (
-                          <span className="block w-4 h-4 border-2 border-zinc-600 border-t-white rounded-full animate-spin" />
-                        ) : (
-                          <span className="block w-4 text-center leading-none">⋯</span>
-                        )}
-                      </button>
-                      {menuOpen === agent.id && (
-                        <div className="absolute right-0 bottom-full mb-1 w-52 rounded-lg border border-zinc-700 bg-zinc-950 shadow-lg z-20 overflow-hidden">
-                          <button
-                            onClick={() => duplicateAgent(agent.id)}
-                            className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors"
-                          >
-                            Duplicate agent
-                            <span className="block text-[10px] text-zinc-600 mt-0.5">Deep copy — paused by default</span>
-                          </button>
-                          <button
-                            onClick={() => saveAsTemplate(agent.id, agent.name)}
-                            className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors border-t border-zinc-800"
-                          >
-                            Save as template
-                            <span className="block text-[10px] text-zinc-600 mt-0.5">Reuse this agent's full config</span>
-                          </button>
-                          {/* Move to folder — hidden when no folders exist
-                              and when the schema isn't migrated, since
-                              there's nowhere to move TO. */}
-                          {foldersAvailable && folders.length > 0 && (
-                            <>
-                              <button
-                                onClick={() => setMoveMenuAgentId(moveMenuAgentId === agent.id ? null : agent.id)}
-                                className="w-full text-left px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-900 transition-colors border-t border-zinc-800 flex items-center justify-between"
-                              >
-                                <span>Move to folder…</span>
-                                <span className="text-zinc-500">›</span>
-                              </button>
-                              {moveMenuAgentId === agent.id && (
-                                <div className="bg-zinc-900/60 border-t border-zinc-800 max-h-48 overflow-y-auto">
-                                  {agent.folderId && (
-                                    <button
-                                      onClick={() => moveAgentToFolder(agent.id, null)}
-                                      className="w-full text-left px-5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800 transition-colors italic"
-                                    >
-                                      Remove from folder
-                                    </button>
-                                  )}
-                                  {folders.filter(f => f.id !== agent.folderId).map(f => (
-                                    <button
-                                      key={f.id}
-                                      onClick={() => moveAgentToFolder(agent.id, f.id)}
-                                      className="w-full text-left px-5 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-800 transition-colors"
-                                    >
-                                      {f.name}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          )}
-                          <button
-                            onClick={() => { setMenuOpen(null); setDeleteConfirm(agent.id) }}
-                            className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors border-t border-zinc-800"
-                          >
-                            Delete agent
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Confirm-delete footer (kept outside the menu so it's
-                      clearly a two-step action) */}
-                  {deleteConfirm === agent.id && (
-                    <div
-                      className="mt-2 flex items-center justify-between gap-2 rounded-lg border px-3 py-2"
-                      style={{ background: 'var(--accent-red-bg)', borderColor: 'var(--accent-red)' }}
-                    >
-                      <p className="text-xs font-medium" style={{ color: 'var(--accent-red)' }}>
-                        Delete this agent and all its data?
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => deleteAgent(agent.id)}
-                          className="text-xs font-semibold py-1.5 px-3 rounded transition-opacity hover:opacity-90"
-                          style={{ background: 'var(--accent-red)', color: '#ffffff' }}
-                        >
-                          Confirm delete
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(null)}
-                          className="text-xs font-medium py-1.5 px-2 rounded transition-colors"
-                          style={{ color: 'var(--text-secondary)' }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Action result flash (duplicate succeeded / save
-                      succeeded / error message) */}
-                  {actionFlash?.agentId === agent.id && (
-                    <p className={`mt-2 text-xs ${actionFlash.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {actionFlash.msg}
-                    </p>
+                  {newFolderOpen ? (
+                    <input autoFocus value={newFolderName} placeholder="Folder name"
+                      onChange={e => setNewFolderName(e.target.value)} onBlur={createFolder}
+                      onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') { setNewFolderOpen(false); setNewFolderName('') } }}
+                      className="h-7 px-2 rounded text-[12px] bg-surface border border-border-theme outline-none min-w-[110px]" />
+                  ) : (
+                    <button onClick={() => setNewFolderOpen(true)} className={cx(pillBase, 'text-text-muted hover:text-text-primary')}>+ Folder</button>
                   )}
                 </div>
-              </div>
-            ))}
+              )}
+
+              <div className="flex-1" />
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search agents…" aria-label="Search agents"
+                className="h-8 w-[200px] rounded-md border border-border-theme bg-surface px-2.5 text-[12.5px] outline-none focus:border-brand-500" />
+              <select aria-label="Status" value={statusFilter} onChange={e => setStatusFilter(e.target.value as StatusFilter)} className={selectCls}>
+                <option value="any">Status: Any</option>
+                <option value="live">Listening</option>
+                <option value="misconfigured">Not deployed</option>
+                <option value="off">Off</option>
+              </select>
+              {channelOptions.length > 0 && (
+                <select aria-label="Channel" value={channelFilter} onChange={e => setChannelFilter(e.target.value as ChannelPillKind | 'any')} className={selectCls}>
+                  <option value="any">Channel: Any</option>
+                  {channelOptions.map(c => <option key={c} value={c}>{c === 'chat' ? 'Live Chat' : c === 'sms' ? 'SMS' : c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                </select>
+              )}
+              <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value as SortKey)} className={selectCls}>
+                <option value="updated">Sort: Last updated</option>
+                <option value="name">Sort: Name</option>
+                <option value="conversations">Sort: Conversations</option>
+              </select>
+              {/* TODO(redesign-followup): list/grid view toggle — the card grid was retired; add back if wanted. */}
+            </div>
+
+            {rows.length === 0 ? (
+              <p className="py-12 text-center text-[13px] text-text-tertiary">
+                {activeFolder && agents.length > 0 && visibleAgents.length === 0
+                  ? 'No agents in this folder yet. Use the ⋯ menu on any agent to move it here.'
+                  : 'No agents match these filters.'}
+              </p>
+            ) : (
+              <table className="w-full text-[13px] text-text-primary">
+                <thead className="border-b border-border-theme">
+                  <tr>
+                    <th className="h-9 w-10 pl-4 text-left">
+                      <input type="checkbox" aria-label="Select all" checked={allSelected}
+                        onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map(r => r.id)))} />
+                    </th>
+                    {['Agent', 'Status', 'Channels', 'Conversations', 'Tools · Rules', 'Updated'].map(h => (
+                      <th key={h} className="h-9 px-3 text-left text-[11px] uppercase tracking-wider font-semibold text-text-muted">{h}</th>
+                    ))}
+                    <th className="w-[150px]" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(agent => {
+                    const status = getListeningState(agent as never)
+                    const kind = ({ live: 'live', misconfigured: 'attention', off: 'paused' } as const)[status.state as ListeningState]
+                    const chans = rowChannels(agent)
+                    const c = agent.connection
+                    const connLabel = c ? (c.businessName ?? (c.provider === 'native' ? 'Native CRM' : c.provider === 'none' ? 'No CRM connected' : null)) : null
+                    const dashHref = c ? getLocationDashboardUrl(c.locationId, c.provider) : null
+                    const isSel = selected.has(agent.id)
+                    return (
+                      <FragmentRow key={agent.id}>
+                        <tr className={cx('border-b border-border-theme last:border-0 transition-colors', isSel ? 'bg-brand-50' : 'hover:bg-surface-secondary/60')}>
+                          <td className="pl-4"><input type="checkbox" aria-label={`Select ${agent.name}`} checked={isSel} onChange={() => toggleSelected(agent.id)} /></td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="h-8 w-8 shrink-0 rounded-md bg-surface-secondary text-[11px] font-semibold text-text-secondary flex items-center justify-center">{initials(agent.name)}</span>
+                              <div className="min-w-0">
+                                <Link href={`/dashboard/${workspaceId}/agents/${agent.id}`} className="block font-medium truncate hover:underline">
+                                  {agent.agentType === 'VOICE' && <span className="mr-1" aria-hidden>🎤</span>}{agent.name}
+                                </Link>
+                                <p className="text-[11.5px] text-text-tertiary truncate" title={c?.locationId}>
+                                  {connLabel ?? (c ? '' : '—')}
+                                  {dashHref && (
+                                    <a href={dashHref} target="_blank" rel="noreferrer" title="Open in LeadConnector" className="font-mono text-text-muted hover:underline ml-1">
+                                      {connLabel ? `(${c!.locationId})` : c!.locationId}
+                                    </a>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3">
+                            {status.fixHref ? (
+                              <Link href={`/dashboard/${workspaceId}/agents/${agent.id}/${status.fixHref}`} title={status.reason}>
+                                <StatusBadge status={kind} label={`${status.label} · fix`} />
+                              </Link>
+                            ) : <span title={status.reason}><StatusBadge status={kind} label={status.label === 'Listening' ? 'Live' : status.label} /></span>}
+                          </td>
+                          <td className="px-3">
+                            <div className="flex flex-wrap gap-1">
+                              {chans.length > 0 ? chans.map(k => <ChannelPill key={k} channel={k} />) : <span className="text-[11.5px] italic text-text-muted">None deployed</span>}
+                            </div>
+                          </td>
+                          <td className="px-3 tabular-nums">
+                            {agent._count.conversationStates.toLocaleString()}
+                            {agent.nextActions?.count > 0 && (
+                              <Link href={`/dashboard/${workspaceId}/next-actions?agentId=${agent.id}`} className="ml-2 text-[11.5px] text-amber-600 hover:underline" title="Scheduled follow-ups">
+                                {agent.nextActions.count} scheduled
+                              </Link>
+                            )}
+                          </td>
+                          <td className="px-3 tabular-nums text-text-secondary">{agent.enabledTools?.length || 0} · {agent._count.routingRules}</td>
+                          <td className="px-3 text-text-secondary whitespace-nowrap">{timeAgo(agent.updatedAt)}</td>
+                          <td className="pr-3">
+                            <div className="flex items-center justify-end gap-2">
+                              <Toggle checked={agent.isActive} disabled={togglingId === agent.id}
+                                onChange={() => toggleActive(agent.id, agent.isActive)}
+                                title={agent.isActive ? 'Active — click to deactivate' : 'Inactive — click to activate'} />
+                              <Link href={`/dashboard/${workspaceId}/agents/${agent.id}`} className={buttonClass('secondary', 'sm')}>Edit</Link>
+                              <div className="relative">
+                                <button onClick={() => setMenuOpen(menuOpen === agent.id ? null : agent.id)} disabled={actionBusy === agent.id}
+                                  title="More actions" aria-label="More actions"
+                                  className="h-7 w-7 rounded-md text-text-tertiary hover:bg-surface-secondary cursor-pointer disabled:opacity-50">
+                                  {actionBusy === agent.id ? <span className="block mx-auto w-4 h-4 border-2 border-border-secondary border-t-text-primary rounded-full animate-spin" /> : '⋯'}
+                                </button>
+                                {menuOpen === agent.id && (
+                                  <div className="absolute right-0 top-8 w-52 xv-card shadow-xl z-20 overflow-hidden text-[12.5px]">
+                                    <Link href={`/dashboard/${workspaceId}/agents/${agent.id}/deploy`} className="block px-3 py-2 hover:bg-surface-secondary">Deploy…</Link>
+                                    <button onClick={() => duplicateAgent(agent.id)} className="w-full text-left px-3 py-2 hover:bg-surface-secondary border-t border-border-theme cursor-pointer">
+                                      Duplicate agent<span className="block text-[10.5px] text-text-muted">Deep copy — paused by default</span>
+                                    </button>
+                                    <button onClick={() => saveAsTemplate(agent.id, agent.name)} className="w-full text-left px-3 py-2 hover:bg-surface-secondary border-t border-border-theme cursor-pointer">
+                                      Save as template<span className="block text-[10.5px] text-text-muted">Reuse this agent&apos;s full config</span>
+                                    </button>
+                                    {foldersAvailable && folders.length > 0 && (
+                                      <>
+                                        <button onClick={() => setMoveMenuAgentId(moveMenuAgentId === agent.id ? null : agent.id)}
+                                          className="w-full text-left px-3 py-2 hover:bg-surface-secondary border-t border-border-theme flex justify-between cursor-pointer">
+                                          <span>Move to folder…</span><span className="text-text-muted">›</span>
+                                        </button>
+                                        {moveMenuAgentId === agent.id && (
+                                          <div className="bg-surface-secondary border-t border-border-theme max-h-48 overflow-y-auto">
+                                            {agent.folderId && <button onClick={() => moveAgentToFolder(agent.id, null)} className="w-full text-left px-5 py-1.5 text-[11.5px] italic text-text-tertiary hover:bg-surface-tertiary cursor-pointer">Remove from folder</button>}
+                                            {folders.filter(f => f.id !== agent.folderId).map(f => (
+                                              <button key={f.id} onClick={() => moveAgentToFolder(agent.id, f.id)} className="w-full text-left px-5 py-1.5 text-[11.5px] hover:bg-surface-tertiary cursor-pointer">{f.name}</button>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                    <button onClick={() => { setMenuOpen(null); setDeleteConfirm(agent.id) }}
+                                      className="w-full text-left px-3 py-2 text-red-600 hover:bg-red-50 border-t border-border-theme cursor-pointer">Delete agent</button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        {(deleteConfirm === agent.id || actionFlash?.agentId === agent.id) && (
+                          <tr className="border-b border-border-theme">
+                            <td colSpan={8} className="px-4 py-2">
+                              {deleteConfirm === agent.id && (
+                                <div className="flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                                  <p className="text-[12.5px] font-medium text-red-700">Delete this agent and all its data?</p>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => deleteAgent(agent.id)} className={buttonClass('primary', 'sm')}>Confirm delete</button>
+                                    <button onClick={() => setDeleteConfirm(null)} className={buttonClass('ghost', 'sm')}>Cancel</button>
+                                  </div>
+                                </div>
+                              )}
+                              {actionFlash?.agentId === agent.id && (
+                                <p className={cx('text-[12.5px]', actionFlash.kind === 'ok' ? 'text-emerald-600' : 'text-red-600')}>{actionFlash.msg}</p>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </FragmentRow>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
-          )
         )}
       </div>
+
+      {/* Bulk-action bar (dark, floating) */}
+      {selected.size > 0 && (
+        <div role="toolbar" aria-label="Bulk actions"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 rounded-xl bg-stone-900 px-3 py-2 text-[13px] text-stone-50 shadow-xl">
+          <span className="px-2 font-medium tabular-nums">{selected.size} selected</span>
+          <span className="h-4 w-px bg-stone-700" />
+          <button disabled={bulkBusy} onClick={() => bulkSetActive(true)} className="px-3 py-1 rounded hover:bg-stone-800 disabled:opacity-50 cursor-pointer">Activate</button>
+          <button disabled={bulkBusy} onClick={() => bulkSetActive(false)} className="px-3 py-1 rounded hover:bg-stone-800 disabled:opacity-50 cursor-pointer">Pause</button>
+          <button disabled={bulkBusy} onClick={bulkDelete} className="px-3 py-1 rounded text-red-300 hover:bg-stone-800 disabled:opacity-50 cursor-pointer">Delete</button>
+          <button onClick={() => setSelected(new Set())} aria-label="Clear selection" className="px-2 py-1 rounded text-stone-400 hover:bg-stone-800 cursor-pointer">✕</button>
+          {/* TODO(redesign-followup): bulk Deploy / Move to folder / Duplicate / Archive (no archive state exists; Delete is permanent). */}
+        </div>
+      )}
     </div>
   )
+}
+
+/** <tbody> may hold several <tr>s per agent (row + confirm/flash row). */
+function FragmentRow({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
 }
 
 // ─── + New text agent button ────────────────────────────────────────
@@ -1110,19 +688,9 @@ function NewTextAgentButton({ workspaceId, atLimit }: { workspaceId: string; atL
       href={atLimit ? '#' : `/dashboard/${workspaceId}/agents/new`}
       onClick={e => { if (atLimit) e.preventDefault() }}
       aria-disabled={atLimit}
-      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-        atLimit ? 'cursor-not-allowed' : 'hover:opacity-90'
-      }`}
-      style={
-        atLimit
-          ? { background: 'var(--surface-tertiary)', color: 'var(--text-muted)' }
-          : { background: '#fa4d2e', color: '#fff' }
-      }
+      className={buttonClass('primary', 'md', atLimit ? 'opacity-50 pointer-events-none' : undefined)}
     >
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-      </svg>
-      New text agent
+      + New text agent
     </Link>
   )
 }

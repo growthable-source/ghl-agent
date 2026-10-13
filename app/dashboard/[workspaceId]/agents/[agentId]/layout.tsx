@@ -6,6 +6,10 @@ import Link from 'next/link'
 import { AgentReferenceHealthBanner } from '@/components/dashboard/AgentReferenceHealthBanner'
 import NewBadge from '@/components/NewBadge'
 import { ViewModeToggle } from '@/components/dashboard/ViewModeToggle'
+import PlaygroundPanel from '@/components/dashboard/PlaygroundPanel'
+import { SplitDeployButton, StatusBadge, type StatusKind } from '@/components/ui/primitives'
+import { initials, timeAgo } from '@/lib/agents-list'
+import { buttonClass, cx } from '@/lib/ui-classes'
 
 // ─── IA ──────────────────────────────────────────────────────────────────────
 // Five primary "hubs" that answer the only five questions an operator has
@@ -127,9 +131,21 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
 
   const base = `/dashboard/${workspaceId}/agents/${agentId}`
 
-  const [agent, setAgent] = useState<{ name: string; isActive: boolean; ruleCount: number; viewMode: 'simple' | 'advanced'; agentType: string; agentKind: string } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; updatedAt: string | null; isActive: boolean; ruleCount: number; viewMode: 'simple' | 'advanced'; agentType: string; agentKind: string } | null>(null)
   const [toggling, setToggling] = useState(false)
   const [channelCount, setChannelCount] = useState<number | null>(null)
+  // Right-hand test panel (handoff TestPanel). Closed by default so dense
+  // editors keep their width; the choice is remembered per browser.
+  const [testOpen, setTestOpen] = useState(false)
+  useEffect(() => {
+    try { setTestOpen(localStorage.getItem('xv:agent-test-panel') === '1') } catch { /* private mode */ }
+  }, [])
+  function toggleTest() {
+    setTestOpen(o => {
+      try { localStorage.setItem('xv:agent-test-panel', o ? '0' : '1') } catch { /* private mode */ }
+      return !o
+    })
+  }
 
   useEffect(() => {
     fetch(`/api/workspaces/${workspaceId}/agents/${agentId}`)
@@ -158,6 +174,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         }
         setAgent({
           name: agent.name,
+          updatedAt: typeof agent.updatedAt === 'string' ? agent.updatedAt : null,
           isActive: agent.isActive,
           // Routing rules are required for the agent to actually pick up
           // an inbound (the webhook pre-filter checks for ≥1). Surface the
@@ -251,186 +268,135 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
     paused:  { label: 'Paused', color: 'zinc', tooltip: "Agent is paused — it won't respond to any inbounds until you activate it." },
   }[statusKey]
 
+  const badgeKind: StatusKind = statusKey === 'live' ? 'live' : statusKey === 'paused' ? 'paused' : 'attention'
+
   return (
     <div className="flex flex-col h-full">
-      {/* Agent header */}
-      <div className="flex items-center justify-between px-8 pt-6 pb-0 shrink-0">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/dashboard/${workspaceId}/agents`}
-            className="transition-colors text-sm"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            ← Agents
-          </Link>
-          <span style={{ color: 'var(--text-muted)' }}>/</span>
+      {/* Agent header: avatar tile · name + status · meta  |  actions */}
+      <div className="flex items-center justify-between gap-4 px-6 py-4 shrink-0 bg-surface border-b border-border-theme">
+        <div className="flex items-center gap-3 min-w-0">
           {agent ? (
             <>
-              <h1 className="text-lg font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>{agent.name}</h1>
-              <span
-                title={statusConfig.tooltip}
-                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium cursor-help"
-                style={
-                  statusConfig.color === 'emerald'
-                    ? { background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }
-                    : statusConfig.color === 'amber'
-                    ? { background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }
-                    : { background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }
-                }
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    background: statusConfig.color === 'emerald'
-                      ? 'var(--accent-emerald)'
-                      : statusConfig.color === 'amber'
-                      ? 'var(--accent-amber)'
-                      : 'var(--text-tertiary)',
-                  }}
-                />
-                {statusConfig.label}
+              <span className="h-11 w-11 shrink-0 rounded-lg bg-brand-500 text-on-brand text-[14px] font-semibold flex items-center justify-center">
+                {initials(agent.name)}
               </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-[20px] leading-tight font-semibold tracking-tight text-text-primary truncate">{agent.name}</h1>
+                  <span title={statusConfig.tooltip} className="cursor-help">
+                    <StatusBadge status={badgeKind} label={statusConfig.label} />
+                  </span>
+                  {/* TODO(redesign-followup): version + "draft changes" chip (v8 · draft changes) — agents have no draft/publish versioning yet. */}
+                </div>
+                <p className="mt-0.5 text-[12px] text-text-tertiary truncate">
+                  {channelCount ?? '—'} channel{channelCount === 1 ? '' : 's'} · {agent.ruleCount} routing rule{agent.ruleCount === 1 ? '' : 's'}
+                  {agent.updatedAt && <> · Edited {timeAgo(agent.updatedAt)}</>}
+                </p>
+              </div>
             </>
           ) : (
-            <div className="h-5 w-32 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
+            <div className="h-11 w-56 rounded-lg animate-pulse bg-surface-tertiary" />
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {agent && (
-            <ViewModeToggle
-              workspaceId={workspaceId}
-              agentId={agentId}
-              viewMode={agent.viewMode}
-            />
-          )}
-          <Link
-            href={`/dashboard/${workspaceId}/playground?agentId=${agentId}`}
-            className="text-xs border rounded-lg px-3 py-1.5 transition-colors"
-            style={{ color: 'var(--text-secondary)', borderColor: 'var(--border)' }}
-          >
-            Test
-          </Link>
-          <button
-            onClick={toggleActive}
-            disabled={toggling || !agent}
-            title={agent?.isActive ? 'Pause this agent — it will stop responding to inbounds' : 'Activate this agent so it starts responding to inbounds'}
-            className="text-xs border rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
-            style={
-              agent?.isActive
-                ? { color: 'var(--text-secondary)', borderColor: 'var(--border)' }
-                : { color: 'var(--accent-emerald)', borderColor: 'var(--accent-emerald)' }
-            }
-          >
-            {toggling ? '...' : agent?.isActive ? 'Pause' : 'Activate'}
+        <div className="flex items-center gap-2 shrink-0">
+          {agent && <ViewModeToggle workspaceId={workspaceId} agentId={agentId} viewMode={agent.viewMode} />}
+          <Link href={`${base}/prompt-versions`} className={buttonClass('secondary')}>History</Link>
+          <button type="button" onClick={toggleTest} aria-pressed={testOpen} className={buttonClass('secondary', 'md', testOpen ? 'bg-surface-secondary' : undefined)}>
+            ▷ Test
           </button>
+          <SplitDeployButton
+            label={agent?.isActive ? 'Pause' : 'Activate'}
+            variant={agent?.isActive ? 'secondary' : 'primary'}
+            busy={toggling}
+            disabled={!agent}
+            onClick={toggleActive}
+            items={[
+              { label: 'Deploy to channels…', hint: 'Channels and CRM events', href: `${base}/trigger` },
+              // TODO(redesign-followup): scheduled deploys and saved drafts need versioning/scheduling support that doesn't exist yet.
+              { label: 'Schedule…', hint: 'Coming soon', disabled: true },
+              { label: 'Save draft', hint: 'Coming soon', disabled: true },
+            ]}
+          />
         </div>
       </div>
 
-      {/* Tabbed IA — only rendered in 'simple' mode. In 'advanced' mode
-          the workflow canvas at /flow is the entire surface and the
-          tab strips are suppressed so the canvas can render edge to
-          edge below the header. */}
-      {!isAdvanced && (
-        <>
-          {/* Primary tabs — five hubs. Renders without a bottom border when
-              a secondary strip follows it, so the two strips read as one
-              continuous nav rather than stacked banners. */}
-          <div className="flex items-stretch px-8 mt-4 shrink-0">
-            <div className="flex items-stretch gap-1 overflow-x-auto min-w-0 flex-1">
-              {activeHubs.map(h => {
-                const isActive = activeHub.key === h.key
-                const href = `${base}${h.tabs[0].path}`
-                return (
-                  <Link
-                    key={h.key}
-                    href={href}
-                    className="px-3 py-2 text-[13px] font-medium tracking-tight whitespace-nowrap rounded-md transition-colors"
-                    style={
-                      isActive
-                        ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                        : { color: 'var(--text-secondary)' }
-                    }
-                    onMouseEnter={e => {
-                      if (!isActive) e.currentTarget.style.color = 'var(--text-primary)'
-                    }}
-                    onMouseLeave={e => {
-                      if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
-                    }}
-                  >
-                    {h.label}
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Divider that sits between primary and secondary strips. Single
-              line, full bleed under the page padding. */}
-          <div className="px-8 mt-2 shrink-0">
-            <div className="h-px" style={{ background: 'var(--border)' }} />
-          </div>
-
-          {/* Secondary tabs — sections within the active hub. Underline-style
-              on the same canvas (no banner background), smaller text and
-              tighter padding so the hierarchy is obvious without shouting. */}
-          {activeHub.tabs.length > 1 && (
-            <div className="flex items-stretch px-8 shrink-0">
-              <div className="flex items-stretch gap-0 overflow-x-auto min-w-0 flex-1">
-                {activeHub.tabs.map(t => {
-                  const isActive = activeTab.key === t.key
-                  return (
-                    <Link
-                      key={t.key}
-                      href={`${base}${t.path}`}
-                      className="relative px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors"
-                      style={
-                        isActive
-                          ? { color: 'var(--accent-primary)' }
-                          : { color: 'var(--text-tertiary)' }
-                      }
-                      onMouseEnter={e => {
-                        if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'
-                      }}
-                      onMouseLeave={e => {
-                        if (!isActive) e.currentTarget.style.color = 'var(--text-tertiary)'
-                      }}
-                    >
-                      {tabLabel(t)}
-                      {t.key === 'tools' && <NewBadge since="2026-05-29" className="ml-1.5" />}
-                      {t.key === 'procedure' && <NewBadge since="2026-06-18" className="ml-1.5" />}
-                      {isActive && (
-                        <span
-                          className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full"
-                          style={{ background: 'var(--accent-primary)' }}
-                        />
-                      )}
-                    </Link>
-                  )
-                })}
+      <div className="flex flex-1 min-h-0">
+        {/* Section rail — every hub and its pages, replacing the two
+            horizontal tab strips. Hidden in advanced (canvas) mode. */}
+        {!isAdvanced && (
+          <nav aria-label="Agent sections" className="hidden lg:block w-[232px] shrink-0 border-r border-border-theme bg-surface overflow-y-auto px-3 py-4">
+            {activeHubs.map(h => (
+              <div key={h.key} className="mb-4">
+                <p className={cx('px-2 pb-1 text-[12.5px] font-semibold', activeHub.key === h.key ? 'text-text-primary' : 'text-text-secondary')}>{h.label}</p>
+                <div className="ml-2 border-l border-border-theme">
+                  {h.tabs.map(t => {
+                    const isActive = activeTab.key === t.key && activeHub.key === h.key
+                    return (
+                      <Link
+                        key={t.key}
+                        href={`${base}${t.path}`}
+                        aria-current={isActive ? 'page' : undefined}
+                        className={cx('flex items-center h-8 pl-3 pr-2 -ml-px border-l-2 text-[13px] transition-colors',
+                          isActive
+                            ? 'border-brand-500 bg-brand-50 text-brand-700 font-medium'
+                            : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-surface-secondary')}
+                      >
+                        {tabLabel(t)}
+                        {t.key === 'tools' && <NewBadge since="2026-05-29" className="ml-1.5" />}
+                        {t.key === 'procedure' && <NewBadge since="2026-06-18" className="ml-1.5" />}
+                      </Link>
+                    )
+                  })}
+                </div>
               </div>
+            ))}
+          </nav>
+        )}
+
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Narrow screens: the rail is hidden, so offer a section picker. */}
+          {!isAdvanced && (
+            <div className="lg:hidden px-4 pt-3 shrink-0">
+              <select
+                aria-label="Agent section"
+                value={activeTab.path}
+                onChange={e => router.push(`${base}${e.target.value}`)}
+                className="w-full h-9 rounded-md border border-border-theme bg-surface px-2 text-[13px]"
+              >
+                {activeHubs.map(h => (
+                  <optgroup key={h.key} label={h.label}>
+                    {h.tabs.map(t => <option key={t.key} value={t.path}>{tabLabel(t)}</option>)}
+                  </optgroup>
+                ))}
+              </select>
             </div>
           )}
-
-          {/* Bottom divider — separates the nav from page content. Always
-              present so the canvas reads consistently whether or not a
-              secondary strip is showing. */}
-          <div className="shrink-0">
-            <div className="h-px" style={{ background: 'var(--border)' }} />
+          {/* Page content. In advanced mode the canvas is the entire surface
+              so the reference-health banner and padding wrapper are suppressed
+              — /flow sizes itself with viewport math and wants edge-to-edge. */}
+          <div className="flex-1 overflow-y-auto">
+            {!isAdvanced && (
+              <div className="px-6 pt-4">
+                <AgentReferenceHealthBanner workspaceId={workspaceId} agentId={agentId} />
+              </div>
+            )}
+            {children}
           </div>
-        </>
-      )}
+        </div>
 
-      {/* Page content. In advanced mode the canvas is the entire surface
-          so we suppress the reference-health banner and the surrounding
-          padding wrapper — the /flow page sizes itself with viewport
-          math and wants edge-to-edge bleed. */}
-      <div className="flex-1 overflow-y-auto">
-        {!isAdvanced && (
-          <div className="px-8 pt-4">
-            <AgentReferenceHealthBanner workspaceId={workspaceId} agentId={agentId} />
-          </div>
+        {testOpen && agent && (
+          <aside aria-label="Test chat" className="hidden md:flex w-[360px] shrink-0 flex-col border-l border-border-theme bg-surface">
+            <div className="h-11 px-4 flex items-center justify-between border-b border-border-theme shrink-0">
+              <span className="text-[13px] font-semibold text-text-primary">Test chat</span>
+              <button type="button" onClick={toggleTest} className="text-[12px] text-text-tertiary hover:text-text-primary cursor-pointer">Close</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {/* Reuses the Playground runtime (POST /playground) pinned to this agent. */}
+              <PlaygroundPanel workspaceId={workspaceId} agents={[{ id: agentId, name: agent.name }]} defaultAgentId={agentId} />
+            </div>
+            {/* TODO(redesign-followup): "Simulating contact" picker, channel selector (SMS · draft vN) and latency/cost stats in the test panel. */}
+          </aside>
         )}
-        {children}
       </div>
     </div>
   )

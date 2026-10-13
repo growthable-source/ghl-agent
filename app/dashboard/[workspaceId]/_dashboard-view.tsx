@@ -3,6 +3,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { parseRange } from '@/lib/command-palette'
+import { useSession } from 'next-auth/react'
+import { buttonClass } from '@/lib/ui-classes'
+import { ChannelPill, StatusBadge, Sparkline } from '@/components/ui/primitives'
+import { channelKind } from '@/lib/agents-list'
 import Link from 'next/link'
 import SetupChecklist from '@/components/dashboard/SetupChecklist'
 import {
@@ -152,6 +156,8 @@ export default function WorkspaceDashboardView() {
   const [loading, setLoading] = useState(true)
   // Range now lives in the top bar (TopBarActions) as the `?range=` URL param.
   const range = parseRange(useSearchParams().get('range'))
+  const { data: session } = useSession()
+  const firstName = session?.user?.name?.split(' ')[0] ?? null
   const [agents, setAgents] = useState<any[]>([])
 
   useEffect(() => {
@@ -219,66 +225,51 @@ export default function WorkspaceDashboardView() {
           set up, so established workspaces never see it. */}
       <SetupChecklist workspaceId={workspaceId} />
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      {/* Header: greeting + workspace summary; range lives in the top bar. */}
+      <div className="flex items-end justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Overview</h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Workspace performance at a glance</p>
+          <h1 className="text-[26px] leading-tight font-semibold tracking-tight text-text-primary">{greeting(firstName)}</h1>
+          <p className="text-[13px] mt-1 text-text-tertiary">
+            {agents.length} agent{agents.length === 1 ? '' : 's'} · {kpi.activeAgents} live · Workspace performance {rangeLabel(range)}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/dashboard/${workspaceId}/agents/new`}
-            className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
-            style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
-          >
-            + New Agent
-          </Link>
-        </div>
+        <Link href={`/dashboard/${workspaceId}/agents/new`} className={buttonClass('primary')}>
+          + New agent
+        </Link>
       </div>
 
-      {/* ─── KPI Cards ───
-          Big-number-first layout. Label on top in muted caps, big bold
-          value, delta badge to the right when we have comparison data.
-          Drops the emoji-as-icon pattern — emoji on a light-theme white
-          card looked busy and added no information. */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+      {/* ─── KPI tiles ─── label + delta, big number, sparkline from the
+          existing daily time series (where one exists for the metric). */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         {[
-          { label: 'Messages',      value: formatNum(kpi.totalMessages),                          delta: kpi.messagesDelta },
-          { label: 'Success Rate',  value: `${kpi.successRate}%`,                                 delta: kpi.successRateDelta },
-          { label: 'Active Convos', value: formatNum(kpi.activeConversations) },
-          { label: 'Appointments',  value: kpi.appointmentsBooked.toString() },
-          { label: 'Voice Calls',   value: kpi.callCount.toString(),                              delta: kpi.callsDelta },
-          { label: 'Time Saved',    value: `${Math.round(kpi.estimatedMinutesSaved / 60)}h` },
+          { label: 'Messages',      value: formatNum(kpi.totalMessages),                          delta: kpi.messagesDelta,      spark: chartData.map(d => d.success + d.errors), tone: 'brand' as const },
+          { label: 'Success rate',  value: `${kpi.successRate}%`,                                 delta: kpi.successRateDelta },
+          { label: 'Active convos', value: formatNum(kpi.activeConversations) },
+          { label: 'Appointments',  value: kpi.appointmentsBooked.toString(),                                                    spark: chartData.map(d => d.appointments), tone: 'emerald' as const },
+          { label: 'Voice calls',   value: kpi.callCount.toString(),                              delta: kpi.callsDelta,         spark: chartData.map(d => d.calls), tone: 'violet' as const },
+          { label: 'Time saved',    value: `${Math.round(kpi.estimatedMinutesSaved / 60)}h` },
         ].map(card => (
-          <div
-            key={card.label}
-            className="rounded-xl px-4 py-3.5"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-          >
-            <p
-              className="text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              {card.label}
-            </p>
-            <div className="flex items-baseline justify-between gap-2 mt-1">
-              <p className="text-2xl font-bold leading-none tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                {card.value}
-              </p>
+          <div key={card.label} className="xv-card px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[12px] text-text-tertiary">{card.label}</p>
               {card.delta !== undefined && <DeltaBadge value={card.delta} />}
+            </div>
+            <div className="flex items-end justify-between gap-2 mt-1.5">
+              <p className="text-[24px] font-semibold leading-none tracking-tight tabular-nums text-text-primary">{card.value}</p>
+              {card.spark && <Sparkline values={card.spark} tone={card.tone} width={72} height={26} />}
             </div>
           </div>
         ))}
       </div>
+      {/* TODO(redesign-followup): sparklines for Success rate / Active convos / Time saved — the analytics time series has no per-day series for them. */}
 
       {/* ─── Charts Row ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
         {/* Messages Over Time */}
         <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          className="xv-card p-4"
         >
-          <h3 className="text-sm font-medium mb-4" style={{ color: 'var(--text-secondary)' }}>Messages Over Time</h3>
+          <h3 className="text-[14px] font-semibold text-text-primary mb-4">Messages Over Time</h3>
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
@@ -327,10 +318,9 @@ export default function WorkspaceDashboardView() {
 
         {/* Calls & Appointments */}
         <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          className="xv-card p-4"
         >
-          <h3 className="text-sm font-medium mb-4" style={{ color: 'var(--text-secondary)' }}>Calls & Appointments</h3>
+          <h3 className="text-[14px] font-semibold text-text-primary mb-4">Calls & Appointments</h3>
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
@@ -358,20 +348,18 @@ export default function WorkspaceDashboardView() {
       </div>
 
       {/* ─── Agent Performance + Recent Calls ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
         {/* Agent Breakdown */}
         <div
-          className="lg:col-span-2 rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          className="lg:col-span-2 xv-card p-4"
         >
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Agent Performance</h3>
+            <h3 className="text-[14px] font-semibold text-text-primary">Agent Performance</h3>
             <Link
-              href={`/dashboard/${workspaceId}/agents/new`}
-              className="text-xs transition-colors"
-              style={{ color: 'var(--text-tertiary)' }}
+              href={`/dashboard/${workspaceId}/agents`}
+              className="text-[12px] font-medium text-brand-500 hover:text-brand-600"
             >
-              + Add Agent
+              All agents →
             </Link>
           </div>
 
@@ -390,7 +378,7 @@ export default function WorkspaceDashboardView() {
             <div className="space-y-2">
               {/* Header row */}
               <div
-                className="grid grid-cols-[1fr_80px_80px_80px_80px_60px] gap-2 px-3 text-[11px] font-medium uppercase tracking-wide"
+                className="grid grid-cols-[1fr_72px_56px_56px_72px_84px] gap-2 px-3 text-[11px] font-medium uppercase tracking-wide"
                 style={{ color: 'var(--text-muted)' }}
               >
                 <span>Agent</span>
@@ -408,19 +396,18 @@ export default function WorkspaceDashboardView() {
                   <Link
                     key={agent.id}
                     href={`/dashboard/${workspaceId}/agents/${agent.id}`}
-                    className="grid grid-cols-[1fr_80px_80px_80px_80px_60px] gap-2 items-center rounded-lg px-3 py-2.5 hover:bg-zinc-900 transition-colors"
+                    className="grid grid-cols-[1fr_72px_56px_56px_72px_84px] gap-2 items-center rounded-lg px-3 py-2.5 hover:bg-zinc-900 transition-colors"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{agent.name}</p>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {channels.slice(0, 3).map((ch: string) => (
-                          <span key={ch} className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                            {CHANNEL_LABELS[ch] ?? ch}
-                          </span>
-                        ))}
-                        {channels.length > 3 && (
-                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>+{channels.length - 3}</span>
-                        )}
+                      <div className="flex flex-wrap items-center gap-1 mt-1">
+                        {channels.slice(0, 3).map((ch: string) => {
+                          const k = channelKind(ch)
+                          return k ? <ChannelPill key={ch} channel={k} /> : (
+                            <span key={ch} className="text-[10px] text-text-muted">{CHANNEL_LABELS[ch] ?? ch}</span>
+                          )
+                        })}
+                        {channels.length > 3 && <span className="text-[10px] text-text-muted">+{channels.length - 3}</span>}
                       </div>
                     </div>
                     <span className="text-sm text-right font-medium" style={{ color: 'var(--text-secondary)' }}>
@@ -439,10 +426,7 @@ export default function WorkspaceDashboardView() {
                       {breakdown?.successRate ?? 0}%
                     </span>
                     <div className="flex justify-end">
-                      <span
-                        className="w-2 h-2 rounded-full"
-                        style={{ background: agent.isActive ? 'var(--accent-emerald)' : 'var(--text-muted)' }}
-                      />
+                      <StatusBadge status={agent.isActive ? 'live' : 'paused'} />
                     </div>
                   </Link>
                 )
@@ -453,17 +437,15 @@ export default function WorkspaceDashboardView() {
 
         {/* Recent Voice Calls */}
         <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          className="xv-card p-4"
         >
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Recent Calls</h3>
+            <h3 className="text-[14px] font-semibold text-text-primary">Recent Calls</h3>
             <Link
               href={`/dashboard/${workspaceId}/calls`}
-              className="text-xs transition-colors"
-              style={{ color: 'var(--text-tertiary)' }}
+              className="text-[12px] font-medium text-brand-500 hover:text-brand-600"
             >
-              View all
+              View all →
             </Link>
           </div>
 
@@ -490,10 +472,10 @@ export default function WorkspaceDashboardView() {
                     <p className="text-[11px] line-clamp-2 mb-1" style={{ color: 'var(--text-tertiary)' }}>{call.summary}</p>
                   )}
                   <div className="flex items-center gap-2 text-[10px]">
-                    <span
-                      className="font-medium"
-                      style={{ color: call.status === 'completed' ? 'var(--accent-emerald)' : 'var(--text-tertiary)' }}
-                    >
+                    <span className={`inline-flex items-center h-5 px-2 rounded-full border font-medium ${
+                      call.status === 'completed' ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        : call.status === 'failed' ? 'bg-red-50 border-red-200 text-red-700'
+                        : 'bg-stone-50 border-stone-200 text-stone-600'}`}>
                       {call.status}
                     </span>
                     {call.durationSecs != null && (
@@ -514,12 +496,13 @@ export default function WorkspaceDashboardView() {
             same data visually + scales with channel count. */}
         <ChannelDonut breakdown={data?.channelBreakdown ?? []} />
 
+        <IntegrationHealthCard workspaceId={workspaceId} />
+
         {/* AI Usage — big-number card, unchanged. */}
         <div
-          className="rounded-xl p-5"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          className="xv-card p-4"
         >
-          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>AI Usage</h3>
+          <h3 className="text-[14px] font-semibold text-text-primary mb-3">AI Usage</h3>
           <div className="space-y-3">
             <div>
               <p className="text-2xl font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatNum(kpi.totalTokens)}</p>
@@ -579,10 +562,9 @@ function ChannelDonut({ breakdown }: { breakdown: { channel: string; agents: num
 
   return (
     <div
-      className="rounded-xl p-5"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      className="xv-card p-4"
     >
-      <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Channel mix</h3>
+      <h3 className="text-[14px] font-semibold text-text-primary mb-3">Channel mix</h3>
       {data.length === 0 ? (
         <div className="flex items-center justify-center h-[180px]">
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No channels deployed yet</p>
@@ -646,10 +628,9 @@ function OutcomesDonut({
 
   return (
     <div
-      className="rounded-xl p-5"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      className="xv-card p-4"
     >
-      <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-secondary)' }}>Message outcomes</h3>
+      <h3 className="text-[14px] font-semibold text-text-primary mb-3">Message outcomes</h3>
       {total === 0 ? (
         <div className="flex items-center justify-center h-[180px]">
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No messages yet</p>
@@ -695,6 +676,65 @@ function OutcomesDonut({
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ─── Greeting / range helpers ──────────────────────────────────────────────
+
+function greeting(firstName: string | null): string {
+  const h = new Date().getHours()
+  const part = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+  return firstName ? `${part}, ${firstName}` : part
+}
+
+function rangeLabel(range: '7d' | '30d' | '90d'): string {
+  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90
+  const end = new Date()
+  const start = new Date(end.getTime() - (days - 1) * 86_400_000)
+  const f = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${f(start)} – ${f(end)}`
+}
+
+// ─── Integration health ────────────────────────────────────────────────────
+// Reads the same /connection-health status as the expired-connection banner.
+// Only the CRM connection reports health today; other integrations are
+// listed on the Integrations page.
+
+function IntegrationHealthCard({ workspaceId }: { workspaceId: string }) {
+  const [state, setState] = useState<{ status: string; message: string | null } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/workspaces/${workspaceId}/connection-health`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d) setState(d) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [workspaceId])
+
+  const bad = state?.status === 'needs_attention'
+  return (
+    <div className="xv-card p-4">
+      <h3 className="text-[14px] font-semibold text-text-primary mb-3">Integration health</h3>
+      {state === null ? (
+        <p className="text-[12.5px] text-text-muted">Checking…</p>
+      ) : state.status === 'not_connected' ? (
+        <p className="text-[12.5px] text-text-tertiary">No CRM connected yet.</p>
+      ) : bad ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-[13px] font-semibold text-amber-700">CRM connection</p>
+          <p className="mt-1 text-[12px] text-amber-700">{state.message}</p>
+          <Link href={`/dashboard/${workspaceId}/integrations`} className={buttonClass('primary', 'sm', 'mt-2.5')}>Reconnect</Link>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between text-[13px]">
+          <span className="flex items-center gap-2 text-text-primary"><span className="h-2 w-2 rounded-full bg-emerald-500" />CRM connection</span>
+          <span className="text-text-tertiary">Healthy</span>
+        </div>
+      )}
+      {/* TODO(redesign-followup): per-integration rows (Twilio, WhatsApp, Shopify, Calendar) with last-sync — needs a health summary across integrations. */}
+      <Link href={`/dashboard/${workspaceId}/integrations`} className="mt-3 inline-block text-[12px] font-medium text-brand-500 hover:text-brand-600">All integrations →</Link>
     </div>
   )
 }

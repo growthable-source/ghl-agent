@@ -55,30 +55,28 @@ export default function ConnectionHealthBanner({ workspaceId }: Props) {
 
   if (!data || data.status !== 'needs_attention' || hidden) return null
 
-  // Theme-token-driven colours — raw amber-950/300/200 weren't in
-  // globals.css's light-mode override map, so the banner rendered as
-  // pale-on-pale on the soft-light theme.
+  // Amber banner (handoff AlertBanner): icon + message + Reconnect + Dismiss.
   return (
-    <div
-      className="px-4 py-2 flex items-center justify-between gap-3 border-b"
-      style={{ background: 'var(--accent-amber-bg)', borderColor: 'var(--accent-amber)' }}
-    >
-      <p className="text-xs font-medium truncate" style={{ color: 'var(--accent-amber)' }}>
-        {data.message ?? 'Your integration may need a refresh.'}
-      </p>
-      <div className="flex items-center gap-2 shrink-0">
-        <Link
-          href={`/dashboard/${workspaceId}/integrations`}
-          className="text-xs font-semibold px-3 py-1 rounded-md transition-opacity hover:opacity-90"
-          style={{ background: 'var(--accent-amber)', color: 'var(--btn-primary-text)' }}
-        >
-          Reconnect
-        </Link>
-        <BannerDismissMenu
-          accentColor="var(--accent-amber)"
-          onSnooze={snooze}
-          onDismissForever={dismissForever}
-        />
+    <div className="px-6 pt-4">
+      <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <p className="text-[13px] text-amber-700 min-w-0">
+          <span aria-hidden className="mr-2">⚠</span>
+          <strong className="font-semibold">LeadConnector connection needs attention.</strong>{' '}
+          {data.message ?? 'Your integration may need a refresh.'}
+        </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href={`/dashboard/${workspaceId}/integrations`}
+            className="h-8 inline-flex items-center rounded-md px-3 text-[12.5px] font-semibold bg-amber-500 text-on-brand hover:bg-amber-600"
+          >
+            Reconnect
+          </Link>
+          <BannerDismissMenu
+            accentColor="var(--accent-amber)"
+            onSnooze={snooze}
+            onDismissForever={dismissForever}
+          />
+        </div>
       </div>
     </div>
   )
