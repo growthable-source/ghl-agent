@@ -5,6 +5,7 @@ import { PrismaAdapter } from '@auth/prisma-adapter'
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { authRequestHref } from '@/lib/auth-host'
+import { getSupportSession, type SupportAwareSession } from '@/lib/support-session'
 
 /**
  * Operator Google sign-in.
@@ -181,7 +182,19 @@ const authConfig: NextAuthConfig = {
 
 // Initializes secret / basePath / provider defaults on `authConfig`.
 // The returned HTTP handlers are not used — see `handlers` below.
-const { signIn, signOut, auth } = NextAuth(authConfig)
+const { signIn, signOut, auth: nextAuth } = NextAuth(authConfig)
+
+/**
+ * Session for the current request. A valid support session (a super
+ * admin working inside one customer workspace — see lib/support-session.ts)
+ * takes precedence over any regular sign-in in the same browser, so
+ * everything done during support is attributed to the staff member.
+ */
+async function auth(): Promise<SupportAwareSession | null> {
+  const support = await getSupportSession()
+  if (support) return support
+  return nextAuth()
+}
 
 function handleAuthRequest(req: NextRequest) {
   const href = authRequestHref({

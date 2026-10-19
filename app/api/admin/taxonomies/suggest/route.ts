@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { createMessage } from '@/lib/llm'
+import { findMemberRole } from '@/lib/support-session'
 
 /**
  * POST /api/admin/taxonomies/suggest
@@ -27,10 +28,7 @@ async function memberAccess(domainId: string) {
     select: { workspaceId: true },
   })
   if (!domain) return null
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId: domain.workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, domain.workspaceId)
   return member ? { session, workspaceId: domain.workspaceId } : null
 }
 

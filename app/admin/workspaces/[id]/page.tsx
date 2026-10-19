@@ -104,6 +104,18 @@ export default async function WorkspaceDrillDown({ params }: Params) {
             Connection health →
           </Link>
           {canMutate && (
+            // Support session: work inside this customer's dashboard
+            // without joining their team (lib/support-session.ts).
+            <form action={`/api/admin/workspaces/${workspace.id}/support`} method="post">
+              <button
+                type="submit"
+                className="text-xs font-semibold rounded-lg px-3 py-2 bg-amber-500 text-black hover:bg-amber-400 transition-colors"
+              >
+                Open workspace →
+              </button>
+            </form>
+          )}
+          {canMutate && (
             <form action={`/api/admin/workspaces/${workspace.id}/pause`} method="post">
               <button
                 type="submit"

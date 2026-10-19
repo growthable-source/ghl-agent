@@ -9,6 +9,8 @@ import NewChatAlert from '@/components/dashboard/NewChatAlert'
 import EmbeddedWorkspaceBanner from '@/components/dashboard/EmbeddedWorkspaceBanner'
 import MobileNav from '@/components/dashboard/MobileNav'
 import PresenceHeartbeat from '@/components/dashboard/PresenceHeartbeat'
+import SupportSessionBanner from '@/components/dashboard/SupportSessionBanner'
+import { findMemberRole, type SupportAwareSession } from '@/lib/support-session'
 
 /**
  * Workspace-level layout — enforces that the current user has access to
@@ -27,16 +29,10 @@ export default async function WorkspaceLayout({
 
   const { workspaceId } = await params
 
-  // Check that this user has access to this workspace
-  const access = await db.workspaceMember.findUnique({
-    where: {
-      userId_workspaceId: {
-        userId: session.user.id,
-        workspaceId,
-      },
-    },
-    select: { id: true },
-  })
+  // Check that this user has access to this workspace (membership, or a
+  // super admin's support session scoped to it — lib/support-session.ts)
+  const access = await findMemberRole(session, workspaceId)
+  const support = (session as SupportAwareSession).support
 
   if (!access) {
     // User doesn't have access — check if the workspace even exists
@@ -84,6 +80,9 @@ export default async function WorkspaceLayout({
           doesn't think they've been dropped into someone else's data. */}
       {/* Invisible — reports real input to the auto-away heartbeat so
           routing knows who's actually at their desk. */}
+      {support?.workspaceId === workspaceId && (
+        <SupportSessionBanner workspaceId={workspaceId} adminEmail={support.adminEmail} />
+      )}
       <PresenceHeartbeat workspaceId={workspaceId} />
       <EmbeddedWorkspaceBanner workspaceId={workspaceId} />
       <TrialBanner workspaceId={workspaceId} />

@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { executeTool } from '@/lib/agent/execute-tool'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
 import { verifyBridgeRequest } from '@/lib/voice/gemini/signing'
+import { findMemberRole } from '@/lib/support-session'
 
 /**
  * POST { agentId, name, args, widgetId? }
@@ -71,10 +72,7 @@ export async function POST(req: NextRequest) {
     if (!agent.workspaceId) {
       return NextResponse.json({ error: 'Agent has no workspace' }, { status: 403, headers: cors })
     }
-    const member = await db.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId: session.user.id, workspaceId: agent.workspaceId } },
-      select: { role: true },
-    })
+    const member = await findMemberRole(session, agent.workspaceId)
     if (!member) return NextResponse.json({ error: 'Access denied' }, { status: 403, headers: cors })
   }
 

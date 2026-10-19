@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { ingestSource } from '@/lib/ingest/pipeline'
+import { findMemberRole } from '@/lib/support-session'
 
 type Params = { params: Promise<{ sourceId: string }> }
 
@@ -28,10 +29,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   })
   if (!source) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId: source.domain.workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, source.domain.workspaceId)
   if (!member) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
   // Don't start a second concurrent run on the same source — return

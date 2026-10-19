@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { findMemberRole } from '@/lib/support-session'
 
 type Params = { params: Promise<{ runId: string }> }
 
@@ -39,10 +40,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
   if (!run) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId: run.source.domain.workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, run.source.domain.workspaceId)
   if (!member) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
   return NextResponse.json({

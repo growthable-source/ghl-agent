@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
+import { findMemberRole } from '@/lib/support-session'
 
 interface TurnIn {
   role?: string
@@ -85,10 +86,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id || !agent.workspaceId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors })
   }
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId: agent.workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, agent.workspaceId)
   if (!member) return NextResponse.json({ error: 'Access denied' }, { status: 403, headers: cors })
 
   const log = await db.callLog.create({

@@ -8,6 +8,7 @@ import CommandPalette from '@/components/dashboard/CommandPalette'
 import UserOnboardingModal from '@/components/dashboard/UserOnboardingModal'
 import { EmbeddedProvider } from '@/lib/embedded-context'
 import { SIGNUP_INTENT_COOKIE, readSignupIntent } from '@/lib/signup-intent'
+import type { SupportAwareSession } from '@/lib/support-session'
 
 // Dashboard-scoped fonts (redesign handoff §1). Loaded here — not in the root
 // layout — so marketing pages keep DM Sans and don't pay for these.
@@ -33,7 +34,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   let existingWorkspaceId: string | null = null
   let existingInstallSource: string | null = null
 
-  if (session?.user) {
+  // Staff in a support session (lib/support-session.ts) are working in a
+  // customer's workspace — never onboard them.
+  const inSupport = !!(session as SupportAwareSession | null)?.support
+
+  if (session?.user && !inSupport) {
     // Fetch the oldest workspace this user belongs to — for marketplace
     // installs this is the one the OAuth callback created. Asking for
     // it once here is cheaper than rehydrating later inside the modal.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { findMemberRole } from '@/lib/support-session'
 
 /**
  * Per-domain taxonomy CRUD + `_other` bucket review.
@@ -20,10 +21,7 @@ async function memberAccess(domainId: string) {
     select: { workspaceId: true },
   })
   if (!domain) return null
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId: domain.workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, domain.workspaceId)
   return member ? { session, role: member.role, workspaceId: domain.workspaceId } : null
 }
 

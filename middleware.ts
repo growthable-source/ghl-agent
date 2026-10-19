@@ -124,7 +124,11 @@ export function middleware(request: NextRequest) {
   // covers do their own per-route auth (often workspace-scoped) and
   // we don't want to short-circuit them here.
   if (request.nextUrl.pathname.startsWith('/dashboard')) {
-    const hasAnySession = !!(regular || regularUnprefixed || embed)
+    // voxility_support: a super admin's support session (verified, with
+    // the admin session it depends on, by auth() — lib/support-session.ts).
+    // Staff often have no regular app sign-in at all.
+    const support = request.cookies.get('voxility_support')
+    const hasAnySession = !!(regular || regularUnprefixed || embed || support)
     if (!hasAnySession) {
       const loginUrl = new URL('/login', request.url)
       loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname)

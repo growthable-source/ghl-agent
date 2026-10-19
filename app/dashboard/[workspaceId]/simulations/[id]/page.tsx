@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import SimulationAutoRefresh from '@/components/dashboard/SimulationAutoRefresh'
 import SimulationLearningCard from '@/components/dashboard/SimulationLearningCard'
 import { workspaceRoleHas, type WorkspaceRole } from '@/lib/require-workspace-role'
+import { findMemberRole } from '@/lib/support-session'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,10 +42,7 @@ export default async function SimulationDetail({ params }: Params) {
   // can roll back an auto-applied learning; members see it read-only.
   // Members who got here have workspace access; the Retire button is
   // just gated on role at the UI layer and re-checked server-side.
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, workspaceId)
   const role: WorkspaceRole = member?.role === 'owner' || member?.role === 'admin' || member?.role === 'member'
     ? member.role as WorkspaceRole
     : 'member'
