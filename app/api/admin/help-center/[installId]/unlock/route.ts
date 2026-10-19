@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAdminRole, logAdminActionAfter } from '@/lib/admin-auth'
-import { getPlanDefaults } from '@/lib/plans'
 import { syncHelpCenterArticles } from '@/lib/partner/article-sync'
 import { provisionPartnerInstall } from '@/lib/partner/provision'
 import { isGrowthablePlan } from '@/lib/partner/growthable-plans'
+import { grantWorkspacePlan, XOVERA_PLAN } from '@/lib/partner/grant-plan'
 
 type Params = { params: Promise<{ installId: string }> }
 
 // Registered installs get provisioned inline (5+ sequential writes).
 export const maxDuration = 60
-
-// Every unlock grants the full internal capability set — the
-// GROWTHABLE plan is the commercial fact we record; Xovera tiers are
-// an implementation detail of our own support engine.
-const XOVERA_PLAN = 'scale'
 
 /**
  * POST — super-admin "unlock" for a free Help Center install.
@@ -82,23 +77,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
-  await db.workspace.update({
-    where: { id: install.workspaceId },
-    data: {
-      plan,
-      ...getPlanDefaults(plan),
-      trialEndsAt: null,
-      planSelectedDuringTrial: null,
-    },
-  })
-
-  // Ticketing is part of every unlock — these customers can't reach the
-  // settings page to flip it themselves.
-  await db.ticketingSettings.upsert({
-    where: { workspaceId: install.workspaceId },
-    create: { workspaceId: install.workspaceId, enabled: true },
-    update: { enabled: true },
-  })
+  await grantWorkspacePlan(install.workspaceId)
 
   let articles: Awaited<ReturnType<typeof syncHelpCenterArticles>> | null = null
   let articleError: string | null = null

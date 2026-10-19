@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { db } from '@/lib/db'
 import { requireAdminOrNull, logAdminAction, roleHas } from '@/lib/admin-auth'
+import { growthablePlanLabel, isGrowthablePlan } from '@/lib/partner/growthable-plans'
+import SetPlanControl from './SetPlanControl'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +52,23 @@ export default async function WorkspaceDrillDown({ params }: Params) {
       },
     }),
   ])
+
+  // The Growthable plan the customer is on: latest set-plan audit row,
+  // or the help-centre unlock record, whichever is newer.
+  const [lastSet, install] = await Promise.all([
+    db.adminAuditLog.findFirst({
+      where: { action: 'set_workspace_growthable_plan', target: id },
+      orderBy: { createdAt: 'desc' },
+      select: { meta: true, createdAt: true },
+    }),
+    db.partnerInstall.findFirst({ where: { workspaceId: id }, select: { metadata: true } }),
+  ])
+  const unlock = ((install?.metadata ?? {}) as { unlock?: { growthablePlan?: string; at?: string } }).unlock
+  const candidates = [
+    { id: (lastSet?.meta as { growthablePlan?: string } | null)?.growthablePlan, at: lastSet?.createdAt.getTime() ?? 0 },
+    { id: unlock?.growthablePlan, at: unlock?.at ? Date.parse(unlock.at) || 0 : 0 },
+  ].filter(c => isGrowthablePlan(c.id)).sort((a, b) => b.at - a.at)
+  const growthablePlan = candidates[0]?.id && isGrowthablePlan(candidates[0].id) ? candidates[0].id : null
 
   logAdminAction({
     admin: session,
@@ -117,6 +136,25 @@ export default async function WorkspaceDrillDown({ params }: Params) {
           label="Voice mins"
           value={`${workspace.voiceMinuteUsage.toLocaleString()}${workspace.voiceMinuteLimit > 0 ? ` / ${workspace.voiceMinuteLimit.toLocaleString()}` : ''}`}
         />
+      </section>
+
+      {/* Growthable plan */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-5">
+        <h2 className="text-sm font-medium text-zinc-200">Growthable plan</h2>
+        <p className="text-xs text-zinc-500 mt-1 max-w-xl">
+          Put this customer on the plan they bought. Grants the full capability
+          set and turns ticketing on — no help-centre install needed. Stripe
+          fields are never touched.
+        </p>
+        <p className="text-[11px] text-zinc-500 mt-2 mb-3">
+          Current:{' '}
+          <span className="text-zinc-200 font-medium">
+            {growthablePlanLabel(growthablePlan) ?? 'not set'}
+          </span>
+        </p>
+        {canMutate
+          ? <SetPlanControl workspaceId={workspace.id} currentGrowthablePlan={growthablePlan} />
+          : <p className="text-xs text-zinc-600">Admin role required to change plans.</p>}
       </section>
 
       {/* Platform learnings opt-out */}
