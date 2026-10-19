@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback, useRef, Fragment, type ReactNode } from 'react'
+import { ChannelPill, Pill, type ChannelKind } from '@/components/ui/primitives'
+import { cx } from '@/lib/ui-classes'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import InboxConversationPanel from '@/components/inbox/InboxConversationPanel'
@@ -61,7 +63,8 @@ interface Row {
 // Maps onto the existing data shape — see the counts useMemo for the
 // exact predicates. The "ended" status doesn't get a chip in the new
 // IA; it's accessible via the brand picker / search if needed.
-type StatusTab = 'all' | 'unread' | 'needs_human' | 'ai_handled'
+type StatusTab = 'all' | 'unread' | 'needs_human' | 'ai_handled' | 'resolved'
+type ChannelFilter = 'all' | 'widget' | 'messenger' | 'instagram'
 type AssignTab = 'all' | 'mine' | 'unassigned'
 // CSAT filter — 'any' = no filter, 'rated' = any 1-5 rating, '1'..'5'
 // = exact star count, 'unrated' = closed/handed-off chats with no
@@ -105,6 +108,8 @@ export default function InboxPage() {
   const [notMigrated, setNotMigrated] = useState(false)
   const [tab, setTab] = useState<StatusTab>('all')
   const [assignTab, setAssignTab] = useState<AssignTab>('all')
+  // Channel filter for the Views rail — client-side over the feed already loaded.
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all')
   // CSAT rating filter — applied client-side from the csatRating
   // already on each row. Default 'any' = no filter so the inbox
   // behaves exactly as before unless the operator explicitly narrows.
@@ -331,7 +336,13 @@ export default function InboxPage() {
     const ai_handled = rows.filter(isAiHandledRow).length
     const mine = meId ? rows.filter(r => r.assignedUserId === meId).length : 0
     const unassigned = rows.filter(r => !r.assignedUserId).length
-    return { all: rows.length, unread, needs_human, ai_handled, mine, unassigned }
+    const resolved = rows.filter(r => r.status === 'ended').length
+    const byChannel = {
+      widget: rows.filter(r => r.channel === 'widget').length,
+      messenger: rows.filter(r => r.channel === 'messenger').length,
+      instagram: rows.filter(r => r.channel === 'instagram').length,
+    }
+    return { all: rows.length, unread, needs_human, ai_handled, mine, unassigned, resolved, byChannel }
   }, [rows, meId])
 
   const filtered = useMemo(() => {
@@ -339,6 +350,8 @@ export default function InboxPage() {
     if (tab === 'unread') f = f.filter(isUnreadRow)
     else if (tab === 'needs_human') f = f.filter(r => r.status === 'handed_off')
     else if (tab === 'ai_handled') f = f.filter(isAiHandledRow)
+    else if (tab === 'resolved') f = f.filter(r => r.status === 'ended')
+    if (channelFilter !== 'all') f = f.filter(r => r.channel === channelFilter)
 
     if (assignTab === 'mine' && meId) f = f.filter(r => r.assignedUserId === meId)
     else if (assignTab === 'unassigned') f = f.filter(r => !r.assignedUserId)
@@ -370,7 +383,7 @@ export default function InboxPage() {
       return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
     })
     return f
-  }, [rows, tab, assignTab, ratingFilter, assigneeFilter, meId])
+  }, [rows, tab, assignTab, channelFilter, ratingFilter, assigneeFilter, meId])
 
   // Index of the first 'ended' row in the sorted list — used to drop
   // a "Closed" divider before it. -1 if there are no ended chats or
@@ -402,14 +415,71 @@ export default function InboxPage() {
     // it resolved against an auto-height parent (= no constraint) and
     // the page grew past the fold.
     <div className="flex-1 min-h-0 flex overflow-hidden">
-      {/* LEFT PANE — list, filters, search. Fixed width on md+; full
-          width on mobile (right pane is hidden via md:flex). */}
+      {/* VIEWS RAIL — saved views, channels, brands. Drives the same
+          filters as the chip rows below (which hide at xl when this shows). */}
+      <nav aria-label="Inbox views" className="hidden xl:flex w-[176px] shrink-0 flex-col gap-4 border-r border-border-theme bg-surface px-3 py-4 overflow-y-auto">
+        <div>
+          <p className="px-2 pb-1.5 text-[10.5px] uppercase tracking-wider font-semibold text-text-muted">Views</p>
+          {([
+            { id: 'all',         label: 'All',            count: counts.all,         on: tab === 'all' && assignTab === 'all',        go: () => { setTab('all'); setAssignTab('all') } },
+            { id: 'mine',        label: 'Assigned to me', count: counts.mine,        on: tab === 'all' && assignTab === 'mine',       go: () => { setTab('all'); setAssignTab('mine') } },
+            { id: 'unassigned',  label: 'Unassigned',     count: counts.unassigned,  on: tab === 'all' && assignTab === 'unassigned', go: () => { setTab('all'); setAssignTab('unassigned') } },
+            { id: 'unread',      label: 'Unread',         count: counts.unread,      on: tab === 'unread',                            go: () => { setTab('unread'); setAssignTab('all') } },
+            { id: 'needs_human', label: 'Needs human',    count: counts.needs_human, on: tab === 'needs_human',                       go: () => { setTab('needs_human'); setAssignTab('all') } },
+            { id: 'ai_handled',  label: 'AI handling',    count: counts.ai_handled,  on: tab === 'ai_handled',                        go: () => { setTab('ai_handled'); setAssignTab('all') } },
+            { id: 'resolved',    label: 'Resolved',       count: counts.resolved,    on: tab === 'resolved',                          go: () => { setTab('resolved'); setAssignTab('all') } },
+          ]).map(v => (
+            <button key={v.id} type="button" onClick={v.go} aria-pressed={v.on}
+              className={cx('w-full flex items-center justify-between h-8 px-2 rounded-md text-[13px] cursor-pointer transition-colors',
+                v.on ? 'bg-brand-50 text-brand-700 font-medium' : 'text-text-secondary hover:bg-surface-secondary')}>
+              <span className="truncate">{v.label}</span>
+              <span className="text-[11.5px] tabular-nums text-text-muted">{v.count}</span>
+            </button>
+          ))}
+        </div>
+        <div>
+          <p className="px-2 pb-1.5 text-[10.5px] uppercase tracking-wider font-semibold text-text-muted">Channels</p>
+          {([
+            { id: 'all', label: 'All channels', count: counts.all },
+            { id: 'widget', label: 'Live Chat', count: counts.byChannel.widget },
+            { id: 'messenger', label: 'Messenger', count: counts.byChannel.messenger },
+            { id: 'instagram', label: 'Instagram', count: counts.byChannel.instagram },
+          ] as Array<{ id: ChannelFilter; label: string; count: number }>).filter(c => c.id === 'all' || c.count > 0).map(c => (
+            <button key={c.id} type="button" onClick={() => setChannelFilter(c.id)} aria-pressed={channelFilter === c.id}
+              className={cx('w-full flex items-center justify-between h-8 px-2 rounded-md text-[13px] cursor-pointer transition-colors',
+                channelFilter === c.id ? 'bg-brand-50 text-brand-700 font-medium' : 'text-text-secondary hover:bg-surface-secondary')}>
+              <span className="truncate">{c.label}</span>
+              <span className="text-[11.5px] tabular-nums text-text-muted">{c.count}</span>
+            </button>
+          ))}
+          {/* TODO(redesign-followup): SMS / WhatsApp channel views — those conversations aren't in the inbox feed yet. */}
+        </div>
+        {brands.length > 0 && (
+          <div>
+            <p className="px-2 pb-1.5 text-[10.5px] uppercase tracking-wider font-semibold text-text-muted">Brands</p>
+            {[{ slug: 'all', name: 'All brands' }, ...brands.slice(0, 12)].map(b => {
+              const on = brandSlug === b.slug
+              return (
+                <button key={b.slug} type="button" onClick={() => setBrandSlug(b.slug)} aria-pressed={on}
+                  className={cx('w-full flex items-center h-8 px-2 rounded-md text-[13px] cursor-pointer transition-colors',
+                    on ? 'bg-brand-50 text-brand-700 font-medium' : 'text-text-secondary hover:bg-surface-secondary')}>
+                  <span className="truncate">{b.name}</span>
+                </button>
+              )
+            })}
+            {brands.length > 12 && <Link href={`/dashboard/${workspaceId}/brands`} className="block px-2 pt-1 text-[11.5px] text-brand-500 hover:underline">All {brands.length} brands →</Link>}
+          </div>
+        )}
+      </nav>
+
+      {/* LIST PANE — conversations, filters, search. Full width on mobile
+          (detail pane is hidden below md). */}
       <div
-        className="w-full md:w-[440px] lg:w-[480px] md:flex-shrink-0 flex flex-col border-r overflow-y-auto p-4"
+        className="w-full md:w-[360px] xl:w-[330px] md:flex-shrink-0 flex flex-col border-r overflow-y-auto p-3 bg-surface"
         style={{ borderColor: 'var(--border)' }}
       >
         <div className="flex items-center justify-between mb-3 gap-2">
-          <h1 className="text-lg font-semibold tracking-tight inline-flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-[15px] font-semibold tracking-tight inline-flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
             Inbox
             {hot > 0 && (
               <span
@@ -460,7 +530,7 @@ export default function InboxPage() {
           </div>
         )}
 
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-2 mb-3 flex-wrap xl:hidden">
           {([
             { id: 'all', label: 'Everyone' },
             { id: 'mine', label: 'Assigned to me' },
@@ -511,7 +581,7 @@ export default function InboxPage() {
                 || b.slug.toLowerCase().includes(sb))
             : brands
           return (
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-2 mb-3 flex-wrap xl:hidden">
               <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Brand</span>
               <div className="relative">
                 <button
@@ -735,11 +805,13 @@ export default function InboxPage() {
         })()}
 
         <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap xl:hidden">
           {([
             { id: 'all', label: 'All' },
             { id: 'unread', label: 'Unread' },
             { id: 'needs_human', label: 'Needs human' },
             { id: 'ai_handled', label: 'AI handled' },
+            { id: 'resolved', label: 'Resolved' },
           ] as Array<{ id: StatusTab; label: string }>).map(t => {
             const active = tab === t.id
             const count = counts[t.id]
@@ -759,7 +831,8 @@ export default function InboxPage() {
               </button>
             )
           })}
-          <div className="ml-auto relative">
+          </div>
+          <div className="relative w-full">
             <input
               type="text"
               value={search}
@@ -767,7 +840,7 @@ export default function InboxPage() {
               placeholder={brandSlug !== 'all' && brandSlug !== 'untagged'
                 ? 'Search transcripts in this brand\u2026'
                 : 'Search conversations\u2026'}
-              className="w-80 max-w-full rounded-lg pl-9 pr-8 py-1.5 text-xs focus:outline-none transition-colors"
+              className="w-full rounded-md pl-9 pr-8 h-8 text-[12.5px] focus:outline-none focus:border-brand-500 transition-colors"
               style={{
                 background: 'var(--input-bg)',
                 color: 'var(--input-text)',
@@ -930,8 +1003,7 @@ export default function InboxPage() {
             // pane scrollHeight == clientHeight, nothing scrollable.
             // shrink-0 keeps the card at natural height so the pane's
             // own overflow-y-auto scrolls the list like before.
-            className="flex-shrink-0 rounded-xl border overflow-hidden divide-y divide-zinc-800"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            className="flex-shrink-0 overflow-hidden divide-y divide-border-theme border-y border-border-theme -mx-3"
           >
             {filtered.map((r, idx) => {
               const visitorLabel = r.visitor.name || r.visitor.email || `Visitor ${r.visitor.cookieId.slice(-6)}`
@@ -995,12 +1067,12 @@ export default function InboxPage() {
                     if (selectable) { toggleSelect(r.id); return }
                     setSelectedId(r.id); markConversationOpened(r.id)
                   }}
-                  className={`flex-1 min-w-0 text-left flex items-start gap-3 p-4 transition-colors border-l-2 ${
-                    isSelected ? '' : 'hover:bg-zinc-900/60'
+                  className={`flex-1 min-w-0 text-left flex items-start gap-3 px-4 py-3 transition-colors border-l-2 cursor-pointer ${
+                    isSelected ? '' : 'hover:bg-surface-secondary/60'
                   } ${isEnded && !isSelected ? 'opacity-60' : ''}`}
                   style={
                     isSelected
-                      ? { background: 'var(--surface-secondary)', borderLeftColor: 'var(--accent-primary)' }
+                      ? { background: 'var(--accent-primary-bg)', borderLeftColor: 'var(--accent-primary)' }
                       : isUnread
                         ? { background: 'var(--surface)', borderLeftColor: 'var(--accent-emerald)' }
                         : { borderLeftColor: 'transparent' }
@@ -1012,11 +1084,11 @@ export default function InboxPage() {
                       <img
                         src={r.visitor.avatarUrl}
                         alt=""
-                        className="w-10 h-10 rounded-full object-cover bg-zinc-800"
+                        className="w-9 h-9 rounded-full object-cover bg-surface-secondary"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold text-white"
-                        style={{ background: `linear-gradient(135deg, ${accent}, ${accent}cc)` }}>
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-semibold"
+                        style={{ background: `${accent}1f`, color: accent }}>
                         {initial}
                       </div>
                     )}
@@ -1041,197 +1113,51 @@ export default function InboxPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      {/* Unread dot — small accent disc next to the
-                          name when the operator hasn't opened the
-                          conversation since the latest message. Same
-                          UX pattern Gmail / Slack / Intercom use. */}
+                    <div className="flex items-center gap-2 mb-0.5">
                       {isUnread && (
-                        <span
-                          aria-label="Unread"
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ background: 'var(--accent-primary)' }}
-                        />
+                        <span aria-label="Unread" className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'var(--accent-primary)' }} />
                       )}
-                      <p
-                        className={`text-sm truncate ${isUnread ? 'font-bold' : 'font-semibold'}`}
-                        style={{ color: 'var(--text-primary)' }}
-                      >
+                      <p className={`text-[13px] truncate ${isUnread ? 'font-bold' : 'font-semibold'}`} style={{ color: 'var(--text-primary)' }}>
                         {visitorLabel}
                       </p>
-                      {r.brand && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-medium"
-                          style={{
-                            background: `${r.brand.primaryColor || '#fa4d2e'}20`,
-                            color: r.brand.primaryColor || '#fa4d2e',
-                          }}
-                          title={`Brand: ${r.brand.name}`}
-                        >
-                          {r.brand.logoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={r.brand.logoUrl} alt="" className="w-3 h-3 rounded-sm object-cover" />
-                          ) : (
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: r.brand.primaryColor || '#fa4d2e' }} />
-                          )}
-                          {r.brand.name}
-                        </span>
-                      )}
-                      {/* Priority group chip — only renders when the
-                          brand belongs to a named group AND it's not
-                          the lowest tier. Colour falls back to amber
-                          for visual urgency on un-coloured groups. */}
-                      {r.brandGroup && r.brandGroup.priority < 100 && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-semibold"
-                          style={{
-                            background: `${r.brandGroup.color || '#f59e0b'}22`,
-                            color: r.brandGroup.color || '#f59e0b',
-                          }}
-                          title={`Priority group: ${r.brandGroup.name} (priority ${r.brandGroup.priority})`}
-                        >
-                          ★ {r.brandGroup.name}
-                        </span>
-                      )}
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded"
-                        style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }}
-                      >
-                        {r.widget.name}
-                      </span>
-                      {r.status === 'active' && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded"
-                          style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}
-                        >
-                          live
-                        </span>
-                      )}
-                      {r.status === 'handed_off' && !r.assignedUserId && (
-                        // Handed off but no one's picked it up yet — red to
-                        // surface urgency. "Needs human" is clearer than the
-                        // old "needs you" (which felt personally addressed
-                        // to whoever was viewing, regardless of assignment).
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                          style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
-                          title="The AI handed this conversation off but no one has taken it yet. Click to reply as a human."
-                        >
-                          needs human
-                        </span>
-                      )}
-                      {r.status === 'handed_off' && r.assignedUserId && (
-                        // Someone's on it — neutral tone, name visible so
-                        // the viewer knows who. Avoids the alarmist
-                        // "needs you" when in fact another teammate is
-                        // already handling.
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                          style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
-                          title={`Handed off and currently being handled by ${r.assignedUser?.name || 'a teammate'}.`}
-                        >
-                          {r.assignedUser?.name ? `with ${r.assignedUser.name}` : 'taken over'}
-                        </span>
-                      )}
-                      {r.status === 'ended' && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded"
-                          style={{ background: 'var(--surface-secondary)', color: 'var(--text-muted)' }}
-                        >
-                          ended
-                        </span>
-                      )}
-                      {typeof r.csatRating === 'number' && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5"
-                          style={{ background: 'var(--accent-amber-bg)', color: 'var(--accent-amber)' }}
-                        >
-                          {r.csatRating}/5
-                        </span>
-                      )}
-                      <span className="ml-auto text-[10px] whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                        {timeAgo(r.lastMessageAt)}
-                      </span>
+                      <span className="ml-auto text-[11px] whitespace-nowrap text-text-tertiary">{timeAgo(r.lastMessageAt)}</span>
                     </div>
-                    {/* When the row matched on a search query, show
-                        the snippets with the term highlighted. Falls
-                        back to the regular last-message preview when
-                        not searching. */}
+                    {/* Search hits show highlighted snippets; otherwise the last message. */}
                     {(r.snippets && r.snippets.length > 0) ? (
                       <div className="space-y-0.5">
-                        {r.snippets.slice(0, 2).map((s, i) => (
-                          <p key={i} className="text-xs line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
-                            <Highlight text={s} term={search.trim()} />
-                          </p>
+                        {r.snippets.slice(0, 2).map((sn, i) => (
+                          <p key={i} className="text-[12.5px] line-clamp-2 text-text-tertiary"><Highlight text={sn} term={search.trim()} /></p>
                         ))}
                         {r.matchedIn && r.matchedIn.length > 0 && (
-                          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                            matched in {r.matchedIn.join(', ')}
-                          </p>
+                          <p className="text-[10.5px] text-text-muted">matched in {r.matchedIn.join(', ')}</p>
                         )}
                       </div>
                     ) : r.lastMessage ? (
-                      <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>
-                        {r.lastMessage.role === 'agent' && (
-                          r.lastMessage.sentByUserId ? (
-                            // Human operator sent the last reply — show a
-                            // neutral person marker, not the "AI" badge.
-                            <span
-                              className="inline-flex items-center text-[9px] font-bold tracking-wider px-1 py-px rounded mr-1.5 align-middle"
-                              style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}
-                              title="Sent by a human operator"
-                            >
-                              <svg viewBox="0 0 24 24" width="9" height="9" fill="currentColor" aria-hidden><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5Z"/></svg>
-                            </span>
-                          ) : (
-                            <span
-                              className="inline-flex items-center text-[9px] font-bold tracking-wider px-1 py-px rounded mr-1.5 align-middle"
-                              style={{ background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }}
-                            >
-                              AI
-                            </span>
-                          )
-                        )}
+                      <p className="text-[12.5px] truncate text-text-secondary">
                         {lastKind === 'image'
-                          ? <span className="italic" style={{ color: 'var(--text-muted)' }}>sent an image</span>
+                          ? <span className="italic text-text-muted">sent an image</span>
                           : lastKind === 'file'
-                            ? <span className="italic" style={{ color: 'var(--text-muted)' }}>sent a file</span>
+                            ? <span className="italic text-text-muted">sent a file</span>
                             : r.lastMessage.content}
                       </p>
                     ) : null}
-                    <div className="flex items-center gap-2 mt-1 text-[10px] flex-wrap" style={{ color: 'var(--text-muted)' }}>
-                      <span>{r.messageCount} message{r.messageCount === 1 ? '' : 's'}</span>
-                      {r.visitor.email && <span>· {r.visitor.email}</span>}
-                      {r.assignedUser ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
-                          style={
-                            isMine
-                              ? { background: 'var(--accent-primary-bg)', color: 'var(--accent-primary)' }
-                              : { background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }
-                          }
-                        >
-                          {r.assignedUser.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={r.assignedUser.image} alt="" className="w-3.5 h-3.5 rounded-full" />
-                          ) : (
-                            <span
-                              className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-semibold"
-                              style={{ background: 'var(--surface-tertiary)', color: 'var(--text-primary)' }}
-                            >
-                              {initialOf(r.assignedUser.name, r.assignedUser.email)}
-                            </span>
-                          )}
-                          {isMine ? 'You' : (r.assignedUser.name || r.assignedUser.email || 'Assigned')}
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-dashed"
-                          style={{ borderColor: 'var(--border-secondary)', color: 'var(--text-tertiary)' }}
-                        >
-                          unassigned
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <ChannelPill channel={(r.channel === 'messenger' ? 'facebook' : r.channel === 'instagram' ? 'instagram' : 'chat') as ChannelKind} />
+                      {r.status === 'handed_off' && !r.assignedUserId && (
+                        <span title="The AI handed this conversation off but no one has taken it yet."><Pill tone="danger">Needs human</Pill></span>
+                      )}
+                      {r.status === 'handed_off' && r.assignedUserId && (
+                        <span title={`Handed off and handled by ${r.assignedUser?.name || 'a teammate'}.`}>
+                          <Pill tone="warning">{isMine ? 'With you' : r.assignedUser?.name ? `With ${r.assignedUser.name}` : 'Taken over'}</Pill>
                         </span>
                       )}
+                      {r.status === 'active' && isAiHandledRow(r) && <Pill tone="brand">✦ AI</Pill>}
+                      {r.status === 'ended' && <Pill>Resolved</Pill>}
+                      {typeof r.csatRating === 'number' && <Pill tone="warning">{r.csatRating}/5</Pill>}
+                      {r.brandGroup && r.brandGroup.priority < 100 && (
+                        <span title={`Priority group: ${r.brandGroup.name}`}><Pill tone="warning">★ {r.brandGroup.name}</Pill></span>
+                      )}
+                      <span className="text-[11px] text-text-muted truncate max-w-[110px]" title={r.widget.name}>{r.brand?.name ?? r.widget.name}</span>
                     </div>
                   </div>
                 </button>

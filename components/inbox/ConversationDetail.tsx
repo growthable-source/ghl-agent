@@ -1505,10 +1505,15 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
     <div className={`flex ${isVisitor ? 'justify-start' : 'justify-end'}`}>
       <div className="max-w-[70%]">
         <div
-          className={`px-4 py-2.5 rounded-2xl text-sm ${
-            isVisitor ? 'rounded-tl-sm bg-zinc-800 text-zinc-100 whitespace-pre-wrap' : 'rounded-tr-sm'
+          className={`px-4 py-2.5 rounded-2xl text-[13.5px] border ${
+            isVisitor
+              ? 'rounded-tl-sm bg-surface border-border-theme text-text-primary whitespace-pre-wrap'
+              : msg.fromHuman
+                // Human operator: solid dark bubble (clearly not the AI).
+                ? 'rounded-tr-sm bg-stone-900 border-stone-900 text-stone-50'
+                // AI agent: brand-tinted.
+                : 'rounded-tr-sm bg-brand-50 border-brand-200 text-text-primary'
           }`}
-          style={!isVisitor ? { background: accent, color: agentFg } : undefined}
         >
           {/* Agent/operator replies are markdown — render bold, bullets,
               and links the same way the visitor's widget does, so what
@@ -1533,7 +1538,7 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
         <div className={`flex items-center gap-1.5 mt-1 ${isVisitor ? 'justify-start' : 'justify-end'}`}>
           {!isVisitor && msg.fromHuman !== undefined && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-              msg.fromHuman ? 'bg-orange-500/10 text-orange-400' : 'bg-zinc-800 text-zinc-500'
+              msg.fromHuman ? 'bg-stone-900 text-stone-50' : 'bg-brand-50 text-brand-700'
             }`}>
               {msg.fromHuman ? '👤 you' : '🤖 AI'}
             </span>

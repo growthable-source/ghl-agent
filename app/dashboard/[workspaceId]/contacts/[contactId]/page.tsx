@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import * as Lucide from 'lucide-react'
+import { Avatar, KpiTile, Pill } from '@/components/ui/primitives'
 
 interface TimelineEvent {
   id: string
@@ -27,16 +29,18 @@ interface Summary {
   memories: { agent: { id: string; name: string } | null; summary: string; updatedAt: string }[]
 }
 
-const EVENT_STYLE: Record<string, { color: string; label: string }> = {
-  inbound:              { color: '#60a5fa', label: 'IN' },
-  outbound:             { color: '#22c55e', label: 'OUT' },
-  tool:                 { color: '#a855f7', label: 'TOOL' },
-  error:                { color: '#ef4444', label: 'ERR' },
-  follow_up_scheduled:  { color: '#f59e0b', label: 'SCHED' },
-  follow_up_sent:       { color: '#fbbf24', label: 'SENT' },
-  follow_up_cancelled:  { color: '#71717a', label: 'CXL' },
-  paused:               { color: '#f87171', label: 'PAUSE' },
-  resumed:              { color: '#4ade80', label: 'RESUME' },
+// Icon + tone per timeline event (replaces the old IN/OUT text badges).
+const EVENT_VISUAL: Record<string, { icon: string; cls: string }> = {
+  inbound:             { icon: 'MessageSquare', cls: 'bg-rose-50 border-rose-200 text-rose-600' },
+  outbound:            { icon: 'MessageSquare', cls: 'bg-emerald-50 border-emerald-200 text-emerald-600' },
+  tool:                { icon: 'Wrench',        cls: 'bg-violet-50 border-violet-200 text-violet-600' },
+  error:               { icon: 'TriangleAlert', cls: 'bg-red-50 border-red-200 text-red-600' },
+  follow_up_scheduled: { icon: 'Clock',         cls: 'bg-amber-50 border-amber-200 text-amber-600' },
+  follow_up_sent:      { icon: 'Send',          cls: 'bg-sky-50 border-sky-200 text-sky-600' },
+  follow_up_cancelled: { icon: 'CircleX',       cls: 'bg-stone-50 border-stone-200 text-stone-500' },
+  paused:              { icon: 'Pause',         cls: 'bg-amber-50 border-amber-200 text-amber-600' },
+  resumed:             { icon: 'Play',          cls: 'bg-emerald-50 border-emerald-200 text-emerald-600' },
+  default:             { icon: 'User',          cls: 'bg-stone-50 border-stone-200 text-stone-500' },
 }
 
 function formatTime(iso: string): string {
@@ -51,6 +55,7 @@ export default function ContactTimelinePage() {
   const [events, setEvents] = useState<TimelineEvent[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [activityFilter, setActivityFilter] = useState<'all' | 'conversations' | 'system'>('all')
   // Populated when the contactId resolves to a native contact. Drives the
   // header so native contacts show name/email/phone instead of a bare cuid.
   const [nativeContact, setNativeContact] = useState<{
@@ -119,202 +124,177 @@ export default function ContactTimelinePage() {
   }, [workspaceId, contactId, callLocationId])
 
   if (loading) {
-    return <div className="flex-1 p-8"><div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} /></div>
+    return <div className="flex-1 p-6"><div className="h-8 w-48 rounded animate-pulse bg-surface-tertiary" /></div>
   }
 
-  return (
-    <div className="flex-1 p-8 overflow-y-auto">
-      <div className="max-w-5xl mx-auto">
-        <Link
-          href={`/dashboard/${workspaceId}/contacts`}
-          className="text-xs hover:opacity-80 transition-colors mb-4 inline-block"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
-          ← All contacts
-        </Link>
+  const displayName = nativeContact
+    ? ([nativeContact.firstName, nativeContact.lastName].filter(Boolean).join(' ') || '(no name)')
+    : 'Contact'
+  const sorted = [...events].sort((x, y) => new Date(y.at).getTime() - new Date(x.at).getTime())
+  const shown = sorted.filter(e => activityFilter === 'all' ? true
+    : activityFilter === 'conversations' ? (e.type === 'inbound' || e.type === 'outbound')
+    : !(e.type === 'inbound' || e.type === 'outbound'))
 
-        <div className="mb-8 flex items-start justify-between">
+  return (
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      {/* Header: avatar · name + status · contact lines  |  actions */}
+      <div className="flex items-center justify-between gap-4 px-6 py-4 shrink-0 bg-surface border-b border-border-theme">
+        <div className="flex items-center gap-4 min-w-0">
+          <Avatar name={nativeContact ? displayName : contactId.slice(-4)} size={52} />
           <div className="min-w-0">
-            {nativeContact ? (
-              <>
-                <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {[nativeContact.firstName, nativeContact.lastName].filter(Boolean).join(' ') || '(no name)'}
-                </h1>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-                  {nativeContact.email && (
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{nativeContact.email}</span>
-                  )}
-                  {nativeContact.phone && (
-                    <span className="text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>{nativeContact.phone}</span>
-                  )}
-                  {nativeContact.isSuppressed && (
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                      style={{ background: 'var(--accent-red-bg)', color: 'var(--accent-red)' }}
-                    >
-                      opted out
-                    </span>
-                  )}
-                </div>
-                {nativeContact.tags.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {nativeContact.tags.map(t => (
-                      <span
-                        key={t}
-                        className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-                        style={{ background: 'var(--surface-secondary)', color: 'var(--text-secondary)' }}
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Contact Timeline</h1>
-                <p className="text-sm mt-1 font-mono" style={{ color: 'var(--text-tertiary)' }}>{contactId}</p>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {nativeContact?.phone && voiceAgents.length > 0 && callLocationId && (
-              <CallThisContactButton
-                voiceAgents={voiceAgents}
-                contactPhone={nativeContact.phone}
-                contactId={contactId}
-                locationId={callLocationId}
-                workspaceId={workspaceId}
-              />
-            )}
-            {summary?.agentsInvolved && summary.agentsInvolved[0] && (
-              <TakeoverControl
-                workspaceId={workspaceId}
-                contactId={contactId}
-                agentId={summary.agentsInvolved[0].id}
-              />
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-text-primary truncate">
+                {nativeContact ? displayName : 'Contact timeline'}
+              </h1>
+              {nativeContact?.isSuppressed && <Pill tone="danger">Opted out</Pill>}
+              {/* TODO(redesign-followup): stage pill and CRM-source pill (Qualified · GoHighLevel) — stage isn't stored on the contact. */}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[13px] text-text-secondary">
+              {nativeContact ? (
+                <>
+                  {nativeContact.email && <span>{nativeContact.email}</span>}
+                  {nativeContact.phone && <span className="font-mono text-[12.5px]">{nativeContact.phone}</span>}
+                </>
+              ) : (
+                <span className="font-mono text-[12.5px] text-text-tertiary">{contactId}</span>
+              )}
+            </div>
           </div>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {nativeContact?.phone && voiceAgents.length > 0 && callLocationId && (
+            <CallThisContactButton
+              voiceAgents={voiceAgents}
+              contactPhone={nativeContact.phone}
+              contactId={contactId}
+              locationId={callLocationId}
+              workspaceId={workspaceId}
+            />
+          )}
+          {summary?.agentsInvolved && summary.agentsInvolved[0] && (
+            <TakeoverControl
+              workspaceId={workspaceId}
+              contactId={contactId}
+              agentId={summary.agentsInvolved[0].id}
+            />
+          )}
+          {/* TODO(redesign-followup): Message / Open in CRM header actions. */}
+        </div>
+      </div>
 
-        {/* Summary */}
-        {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-            <Tile label="Events" value={summary.totalEvents} />
-            <Tile label="Inbound" value={summary.inboundMessages} />
-            <Tile label="Outbound" value={summary.outboundMessages} />
-            <Tile label="Tool calls" value={summary.toolCalls} />
-            <Tile label="Follow-ups sent" value={summary.followUpsSent} />
-          </div>
-        )}
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 min-w-0 overflow-y-auto p-6">
+          {summary && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+              <KpiTile label="Events" value={summary.totalEvents} />
+              <KpiTile label="Inbound" value={summary.inboundMessages} />
+              <KpiTile label="Outbound" value={summary.outboundMessages} />
+              <KpiTile label="Tool calls" value={summary.toolCalls} />
+              <KpiTile label="Follow-ups sent" value={summary.followUpsSent} />
+            </div>
+          )}
 
-        {/* Agents involved */}
-        {summary?.agentsInvolved && summary.agentsInvolved.length > 0 && (
-          <div className="mb-6">
-            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Agents involved</p>
-            <div className="flex flex-wrap gap-2">
-              {summary.agentsInvolved.map(a => (
-                <Link
-                  key={a.id}
-                  href={`/dashboard/${workspaceId}/agents/${a.id}`}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-                  style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-                >
-                  {a.name}
-                </Link>
+          <div className="flex items-center gap-3 mb-4">
+            <h2 className="text-[15px] font-semibold text-text-primary">Activity</h2>
+            <div className="inline-flex items-center rounded-md bg-surface-secondary p-0.5">
+              {([['all', 'All'], ['conversations', 'Conversations'], ['system', 'System']] as const).map(([k, label]) => (
+                <button key={k} type="button" aria-pressed={activityFilter === k} onClick={() => setActivityFilter(k)}
+                  className={`h-7 px-2.5 rounded text-[12px] font-medium cursor-pointer ${activityFilter === k ? 'bg-surface text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-primary'}`}>
+                  {label}
+                </button>
               ))}
             </div>
+            {/* TODO(redesign-followup): Calls and Appointments filters — the contact timeline API doesn't emit call or appointment events. */}
           </div>
-        )}
 
-        {/* Agent memories (contextual notes) */}
-        {summary?.memories && summary.memories.length > 0 && (
-          <div className="mb-8">
-            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Agent memories</p>
-            <div className="space-y-2">
-              {summary.memories.map((m, i) => (
-                <div key={i} className="p-3 rounded-lg" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-                  {m.agent && (
-                    <p className="text-[11px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>{m.agent.name}</p>
-                  )}
-                  <p className="text-xs italic" style={{ color: 'var(--text-secondary)' }}>{m.summary}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Timeline */}
-        {events.length === 0 ? (
-          <div className="text-center py-16 text-sm" style={{ color: 'var(--text-tertiary)' }}>No activity yet for this contact.</div>
-        ) : (
-          <div className="relative">
-            <div className="absolute left-[37px] top-4 bottom-4 w-px" style={{ background: 'var(--border)' }} />
-            <div className="space-y-3">
-              {events.map(event => {
-                const style = EVENT_STYLE[event.type] || { color: '#71717a', label: 'EVT' }
+          {shown.length === 0 ? (
+            <div className="xv-card text-center py-14 text-[13px] text-text-tertiary">No activity yet for this contact.</div>
+          ) : (
+            <ol className="relative space-y-3">
+              <span aria-hidden className="absolute left-[17px] top-4 bottom-4 w-px bg-border-theme" />
+              {shown.map(event => {
+                const st = EVENT_VISUAL[event.type] ?? EVENT_VISUAL.default
+                const Icon = (Lucide as unknown as Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>>)[st.icon]
                 return (
-                  <div key={event.id} className="relative flex items-start gap-3">
-                    {/* Time */}
-                    <div className="flex-shrink-0 w-20 pt-2 text-[10px] text-right" style={{ color: 'var(--text-muted)' }}>
-                      {formatTime(event.at)}
-                    </div>
-                    {/* Type badge */}
-                    <div className="relative z-10 flex-shrink-0">
-                      <div
-                        className="w-[54px] py-1 text-center text-[9px] font-bold rounded"
-                        style={{ background: `${style.color}1a`, color: style.color }}
-                      >
-                        {style.label}
-                      </div>
-                    </div>
-                    {/* Content */}
-                    <div className="flex-1 min-w-0 p-3 rounded-lg" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{event.label}</span>
-                        {event.agent && (
-                          <Link
-                            href={`/dashboard/${workspaceId}/agents/${event.agent.id}`}
-                            className="text-[11px] hover:opacity-80"
-                            style={{ color: 'var(--text-secondary)' }}
-                          >
-                            · {event.agent.name}
-                          </Link>
-                        )}
-                        {event.meta?.channel && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>
-                            {event.meta.channel}
-                          </span>
-                        )}
-                      </div>
-                      {event.content && (
-                        <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{event.content}</p>
-                      )}
-                      {event.detail && !event.content && (
-                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{event.detail}</p>
-                      )}
-                      {event.meta?.scheduledFor && (
-                        <p className="text-[10px] mt-1" style={{ color: 'var(--accent-amber)' }}>
-                          Scheduled for {formatTime(event.meta.scheduledFor)}
+                  <li key={event.id} className="relative flex items-start gap-3">
+                    <span className={`relative z-10 h-9 w-9 shrink-0 rounded-full border flex items-center justify-center ${st.cls}`}>
+                      {Icon && <Icon className="w-4 h-4" strokeWidth={1.8} />}
+                    </span>
+                    <div className="xv-card flex-1 min-w-0 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-[13.5px] font-medium text-text-primary">
+                          {event.label}
+                          {event.agent && (
+                            <Link href={`/dashboard/${workspaceId}/agents/${event.agent.id}`} className="font-normal text-text-secondary hover:underline"> · {event.agent.name}</Link>
+                          )}
+                          {event.meta?.channel && <span className="ml-2 align-middle"><Pill>{String(event.meta.channel)}</Pill></span>}
                         </p>
+                        <span className="text-[12px] text-text-tertiary whitespace-nowrap">{formatTime(event.at)}</span>
+                      </div>
+                      {event.content && <p className="mt-1 text-[13px] whitespace-pre-wrap text-text-secondary">{event.content}</p>}
+                      {event.detail && !event.content && <p className="mt-1 text-[13px] text-text-tertiary">{event.detail}</p>}
+                      {event.meta?.scheduledFor && (
+                        <p className="mt-1 text-[12px] text-amber-600">Scheduled for {formatTime(event.meta.scheduledFor)}</p>
                       )}
                     </div>
-                  </div>
+                  </li>
                 )
               })}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+            </ol>
+          )}
+        </div>
 
-function Tile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="p-4 rounded-xl" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}>
-      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-      <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
+        {/* Right sidebar: details, agents, memories, tags */}
+        <aside className="hidden lg:block w-[300px] shrink-0 border-l border-border-theme bg-surface overflow-y-auto">
+          {summary?.memories && summary.memories.length > 0 && (
+            <section className="p-5 border-b border-border-theme">
+              <h3 className="text-[10.5px] uppercase tracking-wider font-semibold text-text-muted mb-2">Agent memory</h3>
+              <div className="space-y-2.5">
+                {summary.memories.map((m, i) => (
+                  <div key={i}>
+                    {m.agent && <p className="text-[11.5px] font-semibold text-text-secondary">{m.agent.name}</p>}
+                    <p className="text-[13px] leading-relaxed text-text-primary">{m.summary}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          <section className="p-5 border-b border-border-theme">
+            <h3 className="text-[10.5px] uppercase tracking-wider font-semibold text-text-muted mb-2">Details</h3>
+            <dl className="text-[13px]">
+              {[
+                ['Email', nativeContact?.email],
+                ['Phone', nativeContact?.phone],
+                ['Status', nativeContact ? (nativeContact.isSuppressed ? 'Opted out' : 'Active') : null],
+                ['First contact', summary?.firstContact ? formatTime(summary.firstContact) : null],
+                ['Last activity', summary?.lastActivity ? formatTime(summary.lastActivity) : null],
+              ].filter(([, v]) => v).map(([k, v]) => (
+                <div key={k as string} className="flex items-start justify-between gap-4 py-2 border-b border-border-theme last:border-0">
+                  <dt className="text-text-secondary">{k}</dt>
+                  <dd className="text-right font-medium text-text-primary break-all">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            {/* TODO(redesign-followup): Stage, Owner, Source, Lifetime value, Preferred channel, Timezone, Consent and Custom fields — not exposed by the contact/timeline APIs. */}
+          </section>
+          {summary?.agentsInvolved && summary.agentsInvolved.length > 0 && (
+            <section className="p-5 border-b border-border-theme">
+              <h3 className="text-[10.5px] uppercase tracking-wider font-semibold text-text-muted mb-2">Agents involved</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {summary.agentsInvolved.map(a => (
+                  <Link key={a.id} href={`/dashboard/${workspaceId}/agents/${a.id}`}><Pill tone="neutral">{a.name}</Pill></Link>
+                ))}
+              </div>
+            </section>
+          )}
+          {nativeContact && nativeContact.tags.length > 0 && (
+            <section className="p-5">
+              <h3 className="text-[10.5px] uppercase tracking-wider font-semibold text-text-muted mb-2">Lists &amp; tags</h3>
+              <div className="flex flex-wrap gap-1.5">{nativeContact.tags.map(t => <Pill key={t}>{t}</Pill>)}</div>
+            </section>
+          )}
+        </aside>
+      </div>
     </div>
   )
 }
