@@ -49,7 +49,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Idempotent — an already-ended/expired session is a no-op success
     // (the page fires this from pagehide and cannot retry).
     if (!loaded.ok) return NextResponse.json({ ok: true, alreadyEnded: true })
-    const body = (await req.json().catch(() => ({}))) as { endedReason?: string }
+    const body = (await req.json().catch(() => ({}))) as {
+      endedReason?: string
+      eventBatches?: EventBatch[]
+    }
+    // Final telemetry and end travel in one keepalive request, so the end
+    // transition cannot race a separate best-effort events request.
+    for (const batch of (body.eventBatches ?? []).slice(0, 3)) {
+      await recordSessionEvents(loaded.session, batch)
+    }
     const result = await endCopilotSession(
       loaded.session.id,
       typeof body.endedReason === 'string' ? body.endedReason.slice(0, 64) : 'meeting_ended',

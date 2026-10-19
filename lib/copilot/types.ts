@@ -135,12 +135,16 @@ export interface RealtimeModelProvider {
   close(): Promise<void>
 
   // Event callbacks — set before connect().
-  onAudioOutput?: (base64Pcm: string) => void
+  onAudioOutput?: (base64Pcm: string, meta: { responseEpoch: number }) => void
   onTranscript?: (turn: { role: 'user' | 'agent'; text: string; final: boolean }) => void
   /** Model requested a tool. Resolve with the JSON result; the provider feeds it back. */
   onToolCall?: (call: { id: string; name: string; args: Record<string, unknown> }) => Promise<Record<string, unknown>>
   /** Model speech was interrupted by the user (flush playback queues). */
-  onInterrupted?: () => void
+  onInterrupted?: (responseEpoch: number) => void
+  /** Provider declared the current input/output turn complete. */
+  onTurnComplete?: () => void
+  /** Recent model output re-entered the mixed meeting input and was ignored for UI activation. */
+  onSelfEchoSuppressed?: () => void
   onError?: (message: string) => void
   /** Connection ended (vendor-side close, goAway exhaustion, or close()). */
   onEnded?: (reason: string) => void

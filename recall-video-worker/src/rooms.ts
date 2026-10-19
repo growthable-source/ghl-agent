@@ -31,7 +31,14 @@ export class RoomRegistry {
     this.getOrCreate(token).recall = sink
   }
   attachAgent(token: string, sink: Sink): void {
-    this.getOrCreate(token).agent = sink
+    const room = this.getOrCreate(token)
+    room.agent = sink
+    // Re-seed Gemini's visual context immediately after a relay reconnect.
+    // Waiting for the screen to change can otherwise leave the model
+    // grounded on a pre-disconnect frame indefinitely.
+    if (room.lastFrame) {
+      sink.send(JSON.stringify({ type: 'frame', mime: 'image/png', data: room.lastFrame, replayed: true }))
+    }
   }
   detachRecall(token: string): void {
     const r = this.rooms.get(token)
@@ -49,11 +56,12 @@ export class RoomRegistry {
   /** Handle one raw message from the Recall ingest socket. Returns whether a frame was forwarded. */
   handleRecallMessage(token: string, raw: string | Buffer): boolean {
     const r = this.rooms.get(token)
-    if (!r || !r.agent) return false
+    if (!r) return false
     const parsed = parseRecallMessage(raw)
     if (parsed.kind !== 'frame' || !parsed.isScreenshare) return false
     if (parsed.pngBase64 === r.lastFrame) return false
     r.lastFrame = parsed.pngBase64
+    if (!r.agent) return false
     r.agent.send(JSON.stringify({ type: 'frame', mime: 'image/png', data: parsed.pngBase64, ts: parsed.ts }))
     return true
   }

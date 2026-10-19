@@ -38,7 +38,20 @@ describe('RoomRegistry', () => {
   })
   it('does not throw when no agent socket is attached', () => {
     const reg = new RoomRegistry()
+    reg.attachRecall('tok', fakeSink().sink)
     expect(reg.handleRecallMessage('tok', frame('screenshare'))).toBe(false)
+  })
+  it('replays the latest shared screen when the agent reconnects', () => {
+    const reg = new RoomRegistry()
+    reg.attachRecall('tok', fakeSink().sink)
+    reg.handleRecallMessage('tok', frame('screenshare', 'LATEST'))
+    const agent = fakeSink()
+    reg.attachAgent('tok', agent.sink)
+    expect(JSON.parse(agent.sent[0])).toMatchObject({
+      type: 'frame',
+      data: 'LATEST',
+      replayed: true,
+    })
   })
   it('drops the room once both sides detach', () => {
     const reg = new RoomRegistry()
