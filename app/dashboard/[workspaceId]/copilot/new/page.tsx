@@ -294,7 +294,7 @@ export default function NewCopilotAgentPage() {
           </select>
           <p className="text-[11px] text-zinc-500 mt-1">
             The agent understands both English and Spanish on every call, and speaks the language you pick. During a
-            live call someone can ask it to switch — for example &ldquo;speak Spanish&rdquo; or &ldquo;habla en español&rdquo; — and it stays in that language until asked again.
+            live call someone can ask it to switch — for example &ldquo;speak Spanish&rdquo; or &ldquo;habla en español&rdquo; — and it stays in that language until asked again. Pick <strong>Match the caller</strong> to answer in whichever of the two the visitor speaks.
           </p>
         </div>
         <div>

@@ -39,11 +39,7 @@ export default async function AcceptInvitePage({ params }: Params) {
           {invite?.portal.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={invite.portal.logoUrl} alt={invite.portal.name} className="h-9 mx-auto mb-3" />
-          ) : (
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--portal-accent)]">
-              {invite ? invite.portal.name : 'Xovera'}
-            </p>
-          )}
+          ) : null}
           <h1 className="text-2xl font-semibold text-white mt-2">
             {invite ? invite.portal.name : 'Customer Portal'}
           </h1>

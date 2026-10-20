@@ -124,6 +124,15 @@ model Workspace {
   whitelabelUnlockedAt DateTime?
   whitelabelUnlockedBy String?
   whitelabelDomain     WorkspaceDomain?
+  // Branding for pages served on the white-label domain (browser tab
+  // title, favicon, where the bare domain goes). All optional: the brand
+  // name falls back to Workspace.name, the favicon to logoUrl and then a
+  // generated initial — never to our own brand. See lib/domains/host-brand.ts.
+  whitelabelBrandName  String?
+  whitelabelFaviconUrl String?
+  // Where https://<domain>/ redirects (e.g. the customer's own site).
+  // Null = a minimal branded landing page.
+  whitelabelRootUrl    String?
 
   // ─── Install provenance + primary CRM ───
   // installSource records where this workspace was created from — set
@@ -4104,7 +4113,7 @@ model CopilotAgent {
   /// never left unset, which is what made native-audio drift. See
   /// lib/copilot/voices.ts.
   voice              String?
-  /// Spoken language. 'en' | 'es'. Null resolves to English. The
+  /// Spoken language. 'en' | 'es' | 'auto' (match the caller). Null resolves to English. The
   /// agent understands both English and Spanish; this is the language
   /// it speaks unless someone on the call explicitly asks it to
   /// switch. See lib/copilot/language.ts.

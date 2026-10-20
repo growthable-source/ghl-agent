@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
+import { DEFAULT_POWERED_BY, widgetPoweredByLine } from '@/lib/widget-powered-by'
 
 type Params = { params: Promise<{ widgetId: string }> }
 
@@ -67,19 +68,16 @@ export async function GET(req: NextRequest, { params }: Params) {
   let liveHelpEnabled = false
   // Visitor-facing footer branding. Default for everyone; paid plans may
   // override with custom text or remove it ('' = hidden).
-  let poweredBy = 'Powered by Growthable'
+  let poweredBy = DEFAULT_POWERED_BY
   try {
     const { db } = await import('@/lib/db')
-    const { canUseCopilot, canCustomizeBranding } = await import('@/lib/plans')
+    const { canUseCopilot } = await import('@/lib/plans')
     const workspace = await db.workspace.findUnique({
       where: { id: w.workspaceId },
       select: { plan: true },
     })
     liveHelpEnabled = !!workspace && canUseCopilot(workspace.plan, w.workspaceId)
-    const custom = (w as { poweredByText?: string | null }).poweredByText
-    if (workspace && canCustomizeBranding(workspace.plan) && custom !== null && custom !== undefined) {
-      poweredBy = String(custom)
-    }
+    poweredBy = widgetPoweredByLine(workspace?.plan, (w as { poweredByText?: string | null }).poweredByText)
   } catch {
     liveHelpEnabled = false
   }

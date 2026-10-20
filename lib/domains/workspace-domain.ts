@@ -56,11 +56,19 @@ function view(row: {
 export async function getWorkspaceDomainState(workspaceId: string) {
   const ws = await db.workspace.findUnique({
     where: { id: workspaceId },
-    select: { whitelabelUnlocked: true, whitelabelDomain: true },
+    select: {
+      whitelabelUnlocked: true, whitelabelDomain: true,
+      whitelabelBrandName: true, whitelabelFaviconUrl: true, whitelabelRootUrl: true,
+    },
   })
   return {
     unlocked: !!ws?.whitelabelUnlocked,
     domain: ws?.whitelabelDomain ? view(ws.whitelabelDomain) : null,
+    branding: {
+      brandName: ws?.whitelabelBrandName ?? null,
+      faviconUrl: ws?.whitelabelFaviconUrl ?? null,
+      rootUrl: ws?.whitelabelRootUrl ?? null,
+    },
   }
 }
 

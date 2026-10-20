@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isAllowedOnCustomHost, isBlockedOnCustomHost, validateWorkspaceDomain } from './hostname'
+import { brandAssetRewrite, isAllowedOnCustomHost, isBlockedOnCustomHost, validateWorkspaceDomain } from './hostname'
 
 describe('validateWorkspaceDomain', () => {
   it('accepts a subdomain and normalizes it', () => {
@@ -57,5 +57,24 @@ describe('isBlockedOnCustomHost', () => {
     expect(isBlockedOnCustomHost('live.acme.com', '/api/auth/session')).toBe(true)
     expect(isBlockedOnCustomHost('live.acme.com', '/copilot/live/cpa_x')).toBe(false)
     expect(isBlockedOnCustomHost('live.acme.com', '/widget.js')).toBe(false)
+  })
+})
+
+describe('brandAssetRewrite', () => {
+  it('routes our file-based brand assets to the brand routes', () => {
+    for (const p of ['/favicon.ico', '/icon.svg', '/apple-icon.png', '/opengraph-image', '/opengraph-image-abc123', '/twitter-image.png']) {
+      expect(brandAssetRewrite(p), p).toBe('/api/brand/icon')
+    }
+    expect(brandAssetRewrite('/manifest.webmanifest')).toBe('/api/brand/manifest')
+  })
+  it('leaves every other path alone', () => {
+    for (const p of ['/', '/widget.js', '/icon.svg.map', '/favicon.ico/x', '/logo-color.svg', '/portal/login']) {
+      expect(brandAssetRewrite(p), p).toBeNull()
+    }
+  })
+  it('every rewritten asset is reachable on a custom host (the allowlist runs first)', () => {
+    for (const p of ['/favicon.ico', '/icon.svg', '/apple-icon.png', '/opengraph-image', '/twitter-image.png', '/manifest.webmanifest']) {
+      expect(isBlockedOnCustomHost('live.acme.com', p), p).toBe(false)
+    }
   })
 })

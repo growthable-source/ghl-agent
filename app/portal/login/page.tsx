@@ -26,14 +26,7 @@ export default async function PortalLoginPage() {
           {branding?.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={branding.logoUrl} alt={branding.name} className="h-9 mx-auto mb-3" />
-          ) : (
-            <p
-              className="text-[10px] font-semibold uppercase tracking-widest"
-              style={accent ? { color: accent } : undefined}
-            >
-              {branding?.name ?? 'Xovera'}
-            </p>
-          )}
+          ) : null}
           <h1 className="text-2xl font-semibold text-white mt-2">
             {branding ? branding.name : 'Customer Portal'}
           </h1>

@@ -13,6 +13,8 @@ interface Props {
   buttonTextColor: string
   headline: string | null
   subtext: string | null
+  /** Footer line from widgetPoweredByLine; '' when removed. */
+  poweredBy: string
 }
 
 const VISITOR_KEY = 'voxility_visitor_id'
@@ -184,9 +186,11 @@ export default function HostedCallClient(p: Props) {
         )}
       </main>
 
-      <footer className="px-6 py-4 text-center">
-        <p className="text-[11px] text-zinc-600">Powered by Xovera</p>
-      </footer>
+      {p.poweredBy && (
+        <footer className="px-6 py-4 text-center">
+          <p className="text-[11px] text-zinc-600">{p.poweredBy}</p>
+        </footer>
+      )}
     </div>
   )
 }

@@ -19,6 +19,10 @@ export const dynamic = 'force-dynamic'
  *   - image/png, image/jpeg, image/webp, image/svg+xml, image/gif.
  *   - Owner/admin only. Members can't rebrand the workspace.
  *
+ * `target=favicon` (form field) stores the upload as the white-label
+ * favicon (Workspace.whitelabelFaviconUrl) instead of the logo, and also
+ * accepts .ico files.
+ *
  * Requires BLOB_READ_WRITE_TOKEN in env. If missing, returns a clear
  * error so operators know exactly what to wire up.
  */
@@ -32,6 +36,7 @@ const ALLOWED_MIME = new Set([
   'image/svg+xml',
   'image/gif',
 ])
+const ICO_MIME = new Set(['image/x-icon', 'image/vnd.microsoft.icon'])
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params
@@ -63,7 +68,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       error: `File too large — max ${Math.round(MAX_SIZE_BYTES / 1024 / 1024)} MB. Your upload was ${(file.size / 1024 / 1024).toFixed(2)} MB.`,
     }, { status: 413 })
   }
-  if (!ALLOWED_MIME.has(file.type.toLowerCase())) {
+  const isFavicon = form.get('target') === 'favicon'
+  const mime = file.type.toLowerCase()
+  if (!ALLOWED_MIME.has(mime) && !(isFavicon && ICO_MIME.has(mime))) {
     return NextResponse.json({
       error: `Unsupported file type: ${file.type || 'unknown'}. Allowed: PNG, JPEG, WebP, SVG, GIF.`,
     }, { status: 415 })
@@ -74,7 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   // with workspaceId means each workspace's logos are grouped for the
   // eventual "clean up blobs for deleted workspaces" cron.
   const ext = guessExt(file.name, file.type)
-  const filename = `workspaces/${workspaceId}/logo-${Date.now()}.${ext}`
+  const filename = `workspaces/${workspaceId}/${isFavicon ? 'favicon' : 'logo'}-${Date.now()}.${ext}`
 
   let blobUrl: string
   try {
@@ -92,6 +99,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
     return NextResponse.json({ error: `Upload failed: ${err?.message ?? 'unknown error'}` }, { status: 500 })
   }
 
+  if (isFavicon) {
+    await db.workspace.update({ where: { id: workspaceId }, data: { whitelabelFaviconUrl: blobUrl } })
+    return NextResponse.json({ faviconUrl: blobUrl })
+  }
   await db.workspace.update({
     where: { id: workspaceId },
     data: { logoUrl: blobUrl },
@@ -132,6 +143,8 @@ function guessExt(name: string, mime: string): string {
     case 'image/webp':    return 'webp'
     case 'image/svg+xml': return 'svg'
     case 'image/gif':     return 'gif'
+    case 'image/x-icon':
+    case 'image/vnd.microsoft.icon': return 'ico'
     default:              return 'bin'
   }
 }
