@@ -5,6 +5,7 @@ import { workspaceRoleHas, type WorkspaceRole } from '@/lib/require-workspace-ro
 import { agencyOAuthConfigured } from '@/lib/leadconnector-agency'
 import LocationList from '@/components/locations/LocationList'
 import DisconnectAgencyButton from '@/components/locations/DisconnectAgencyButton'
+import { findMemberRole } from '@/lib/support-session'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,10 +45,7 @@ export default async function WidgetLocationsPage({
   const session = await auth()
   let canManage = false
   if (session?.user?.id) {
-    const member = await db.workspaceMember.findUnique({
-      where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
-      select: { role: true },
-    })
+    const member = await findMemberRole(session, workspaceId)
     canManage = !!member && workspaceRoleHas(member.role as WorkspaceRole, 'admin')
   }
 

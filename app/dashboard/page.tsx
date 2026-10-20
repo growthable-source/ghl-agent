@@ -3,6 +3,7 @@ import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import type { SupportAwareSession } from '@/lib/support-session'
 import { getPlanFeatures } from '@/lib/plans'
 import { EMBED_WORKSPACE_COOKIE } from '@/lib/embed-session'
 import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
@@ -12,6 +13,11 @@ export const dynamic = 'force-dynamic'
 export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
+
+  // Support session (lib/support-session.ts): staff only ever work in
+  // the one customer workspace the session is scoped to.
+  const supportWorkspaceId = (session as SupportAwareSession).support?.workspaceId
+  if (supportWorkspaceId) redirect(`/dashboard/${supportWorkspaceId}`)
 
   // Get workspaces this user has access to. We select the full
   // Locations list (not _count) so the render can dedupe by provider

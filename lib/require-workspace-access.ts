@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { supportRoleFor } from '@/lib/support-session'
 
 /**
  * Checks that the currently authenticated user has access to the given workspace.
@@ -30,6 +31,10 @@ export async function requireWorkspaceAccess(workspaceId: string) {
   })
 
   if (!member) {
+    // A super admin in a support session for this workspace (see
+    // lib/support-session.ts) — no membership row by design.
+    const supportRole = supportRoleFor(session, workspaceId)
+    if (supportRole) return { session, role: supportRole as string }
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 

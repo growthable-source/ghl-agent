@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { findMemberRole } from '@/lib/support-session'
 
 type Params = { params: Promise<{ chunkId: string }> }
 
@@ -27,10 +28,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   })
   if (!chunk) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId: chunk.domain.workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, chunk.domain.workspaceId)
   if (!member) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => ({}))

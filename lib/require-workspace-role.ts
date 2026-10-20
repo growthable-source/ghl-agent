@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { supportRoleFor } from '@/lib/support-session'
 
 /**
  * Role-gated version of requireWorkspaceAccess. Returns the session +
@@ -45,13 +46,16 @@ export async function requireWorkspaceRole(
     },
     select: { role: true },
   })
-  if (!member) {
+  // No membership row: a super admin in a support session for this
+  // workspace gets the support role (see lib/support-session.ts).
+  const rawRole = member?.role ?? supportRoleFor(session, workspaceId)
+  if (!rawRole) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 
   // Unknown role string in DB → treat as lowest tier for safety, so an
   // ops mistake can't accidentally grant escalated access.
-  const role: WorkspaceRole = isWorkspaceRole(member.role) ? member.role : 'member'
+  const role: WorkspaceRole = isWorkspaceRole(rawRole) ? rawRole : 'member'
   if (!workspaceRoleHas(role, required)) {
     return NextResponse.json({
       error: `Requires workspace role "${required}" or higher (you are "${role}")`,

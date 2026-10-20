@@ -60,6 +60,11 @@ export function roleHas(role: AdminRole, required: AdminRole): boolean {
   return rank[role] >= rank[required]
 }
 
+/** Signing key for admin-issued tokens (also the support-session cookie). */
+export function adminTokenSecret(): Uint8Array {
+  return secret()
+}
+
 // ─── Token helpers ──────────────────────────────────────────────────────────
 
 export async function signAdminToken(admin: AdminSession): Promise<string> {

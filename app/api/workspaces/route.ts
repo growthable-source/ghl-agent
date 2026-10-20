@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { canCreateWorkspace } from '@/lib/plans'
 import { provisionWorkspace } from '@/lib/provision-workspace'
+import { SUPPORT_ROLE, type SupportAwareSession } from '@/lib/support-session'
 
 /**
  * GET /api/workspaces — list workspaces for the current user
@@ -31,10 +32,25 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   })
 
-  const workspaces = memberships.map(m => ({
+  const workspaces: Array<Record<string, unknown>> = memberships.map(m => ({
     ...m.workspace,
     role: m.role,
   }))
+
+  // Support session (super admin inside a customer workspace — see
+  // lib/support-session.ts): list that workspace first so the switcher,
+  // breadcrumbs and settings resolve it like any other.
+  const supportWorkspaceId = (session as SupportAwareSession).support?.workspaceId
+  if (supportWorkspaceId && !workspaces.some(w => w.id === supportWorkspaceId)) {
+    const ws = await db.workspace.findUnique({
+      where: { id: supportWorkspaceId },
+      include: {
+        _count: { select: { agents: true, locations: true, members: true } },
+        locations: { select: { id: true, crmProvider: true } },
+      },
+    })
+    if (ws) workspaces.unshift({ ...ws, role: SUPPORT_ROLE })
+  }
 
   return NextResponse.json({ workspaces })
 }

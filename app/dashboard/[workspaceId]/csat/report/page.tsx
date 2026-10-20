@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 import { renderCsatReportHtml } from '@/lib/csat-report'
 import PrintTrigger from './PrintTrigger'
+import { findMemberRole } from '@/lib/support-session'
 
 /**
  * Server-rendered CSAT report. Reads the same /csat API the dashboard
@@ -29,10 +30,7 @@ export default async function CsatReportPage({
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, workspaceId)
   if (!member) notFound()
 
   const workspace = await db.workspace.findUnique({

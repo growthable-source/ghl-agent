@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { findMemberRole } from '@/lib/support-session'
 
 /**
  * Ingestion-run feed for the admin viewer. Filterable by source.
@@ -33,10 +34,7 @@ export async function GET(req: NextRequest) {
   }
   if (!workspaceId) return NextResponse.json({ error: 'sourceId or knowledgeDomainId required' }, { status: 400 })
 
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, workspaceId)
   if (!member) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
   try {

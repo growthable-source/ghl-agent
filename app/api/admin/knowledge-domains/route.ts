@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { DOMAIN_TEMPLATES } from '@/lib/ingest/templates'
+import { findMemberRole } from '@/lib/support-session'
 
 /**
  * Admin endpoints for KnowledgeDomain CRUD. Scoped per workspace via
@@ -11,10 +12,7 @@ import { DOMAIN_TEMPLATES } from '@/lib/ingest/templates'
 async function getAccess(req: NextRequest, workspaceId: string) {
   const session = await auth()
   if (!session?.user?.id) return null
-  const member = await db.workspaceMember.findUnique({
-    where: { userId_workspaceId: { userId: session.user.id, workspaceId } },
-    select: { role: true },
-  })
+  const member = await findMemberRole(session, workspaceId)
   return member ? { session, role: member.role } : null
 }
 
