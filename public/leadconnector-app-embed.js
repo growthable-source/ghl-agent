@@ -38,6 +38,7 @@
   } catch (_) {}
 
   var loadedForLocation = null
+  var lastLocation = null
 
   // Docs examples namespace the context API under AppUtils.Utilities
   // (getCurrentUser/getCurrentLocation/getCompany). Fall back to a flat
@@ -70,21 +71,22 @@
     Promise.resolve(utils().getCurrentLocation())
       .then(function (loc) {
         var locationId = loc && loc.id
-        if (!locationId || locationId === loadedForLocation) return
+        // Compare against the last location we RESOLVED, not the one we
+        // first mounted for — A → B(off) → A used to return early here.
+        if (!locationId || locationId === lastLocation) return
+        lastLocation = locationId
         return fetch(HOST + '/api/leadconnector-embed/resolve?locationId=' + encodeURIComponent(locationId))
           .then(function (r) { return r.json() })
           .then(function (data) {
-            if (!data || !data.widget) {
-              // Toggled off / not connected. If a widget from a previous
-              // sub-account is on screen, hide it.
-              if (loadedForLocation && window.Xovera) window.Xovera.hide()
-              return
-            }
+            // Once mounted, widget.js follows sub-account switches itself
+            // (it reads /location/<id> from the URL and re-checks the
+            // toggle). Never call Xovera.hide()/show() for this: those are
+            // the PERSISTENT per-browser staff preference, so hiding for
+            // an off location kept the widget hidden everywhere after.
+            if (!data || !data.widget) return
             if (loadedForLocation) {
               // widget.js guards against double-load; a different widget
               // per sub-account needs a reload we can't do from here.
-              // Same widget, new location: just make sure it's visible.
-              if (window.Xovera) window.Xovera.show()
               identify()
               return
             }

@@ -34,12 +34,23 @@
   var widgetId = me.getAttribute('data-widget-id') || me.getAttribute('data-key')
   var publicKey = me.getAttribute('data-public-key') || me.getAttribute('data-pk')
   var mountSelector = me.getAttribute('data-mount')
-  // Optional per-location identity for the agency kill switch. The CRM
-  // resolves {{location.id}} per sub-account when the snippet is installed
-  // via agency custom code — but on plain sites the literal braces come
-  // through untouched, so treat an unreplaced merge tag as absent.
-  var locationId = me.getAttribute('data-location-id')
-  if (locationId && (locationId.indexOf('{{') !== -1 || !locationId.trim())) locationId = null
+  // Per-location identity for the agency kill switch (Locations tab).
+  // An explicit data-location-id wins only off-CRM: the agency-wide Custom
+  // JS snippet is ONE snippet for every sub-account and its {{location.id}}
+  // merge tag isn't resolved there, so a widget installed that way never
+  // knew its location and the toggle was silently ignored (fail-open).
+  // Inside the CRM the active sub-account is in the URL
+  // (/v2/location/<id>/…) on every whitelabel domain, so read it from
+  // there — and re-read it on SPA navigation (watchLocation below).
+  var explicitLocationId = me.getAttribute('data-location-id')
+  if (explicitLocationId && (explicitLocationId.indexOf('{{') !== -1 || !explicitLocationId.trim())) explicitLocationId = null
+  function pageLocationId() {
+    try {
+      var m = /\/location\/([A-Za-z0-9]{12,40})(?:\/|$)/.exec(window.location.pathname)
+      return m ? m[1] : null
+    } catch (_) { return null }
+  }
+  var locationId = pageLocationId() || explicitLocationId
   if (!widgetId || !publicKey) {
     console.warn('[Xovera] widget.js needs data-widget-id and data-public-key attributes')
     return
@@ -73,6 +84,11 @@
     iframe: null,
     iframeWrap: null,
     identity: null,
+    // Toggled off for the CURRENT location (server says disabled). Kept
+    // apart from the per-browser VIS_KEY preference: it must never
+    // persist, or switching back to an enabled sub-account stays hidden.
+    locationOff: false,
+    tracking: false,
   }
 
   // ─── Visibility kill switch ─────────────────────────────────────────
@@ -86,17 +102,53 @@
   function setHidden(h) {
     try { h ? localStorage.setItem(VIS_KEY, '1') : localStorage.removeItem(VIS_KEY) } catch (_) {}
     if (h && state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call')
-    if (state.launcher) state.launcher.style.display = h ? 'none' : state.launcherDisplay
+    paintLauncher()
+  }
+  function paintLauncher() {
+    if (!state.launcher) return
+    state.launcher.style.display = (visHidden() || state.locationOff) ? 'none' : state.launcherDisplay
   }
 
-  fetch(hostUrl + '/api/widget/' + widgetId + '/config?pk=' + encodeURIComponent(publicKey)
-      + (locationId ? '&locationId=' + encodeURIComponent(locationId) : ''))
-    .then(function (r) { return r.json() })
-    .then(function (cfg) {
-      if (cfg && cfg.disabled) return   // location toggled off — render nothing
-      if (cfg && cfg.id) { state.config = cfg; render(); startVisitorTracking() }
-    })
-    .catch(function (e) { console.warn('[Xovera] config fetch failed:', e) })
+  // Config for the current location. disabled → hide (or never render);
+  // enabled → render once, or re-show after an off location.
+  var configSeq = 0
+  function loadConfig() {
+    var seq = ++configSeq
+    fetch(hostUrl + '/api/widget/' + widgetId + '/config?pk=' + encodeURIComponent(publicKey)
+        + (locationId ? '&locationId=' + encodeURIComponent(locationId) : ''))
+      .then(function (r) { return r.json() })
+      .then(function (cfg) {
+        if (seq !== configSeq) return   // a newer location's answer wins
+        if (cfg && cfg.disabled) {
+          state.locationOff = true
+          if (state.open) toggleIframe(state.launcher, state.config && state.config.type !== 'click_to_call')
+          paintLauncher()
+          return
+        }
+        if (!cfg || !cfg.id) return
+        state.locationOff = false
+        if (!state.config) {
+          state.config = cfg
+          render()
+          if (!state.tracking) { state.tracking = true; startVisitorTracking() }
+        } else {
+          paintLauncher()
+        }
+      })
+      .catch(function (e) { console.warn('[Xovera] config fetch failed:', e) })
+  }
+  loadConfig()
+
+  // CRM sub-account switches are client-side route changes; the page
+  // never reloads, so poll the URL (cheap string compare) and re-check
+  // the kill switch when the sub-account changes. Off-CRM pages never
+  // match /location/<id>, so this is a no-op there.
+  setInterval(function () {
+    var next = pageLocationId() || explicitLocationId
+    if (next === locationId) return
+    locationId = next
+    loadConfig()
+  }, 1000)
 
   // ─── Visitor tracking ──────────────────────────────────────────────
   // Fires page_view events to /visitor/events so the operator inbox
@@ -216,7 +268,7 @@
     document.body.appendChild(btn)
     state.launcher = btn
     state.launcherDisplay = 'flex'
-    if (visHidden()) btn.style.display = 'none'
+    if (visHidden() || state.locationOff) btn.style.display = 'none'
 
     // Pass the parent-page cookieId into the iframe so chat
     // conversations + page_view events end up on the same WidgetVisitor
@@ -289,7 +341,7 @@
     }
     state.launcher = btn
     state.launcherDisplay = 'inline-flex'
-    if (visHidden()) btn.style.display = 'none'
+    if (visHidden() || state.locationOff) btn.style.display = 'none'
 
     // Same cookieId hand-off as the chat widget — keeps page_view
     // events fired by the parent on the same visitor row as any
