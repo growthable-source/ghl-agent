@@ -1,0 +1,70 @@
+{
+  "subject": "Your quarter in Xovera: happier clients, your brand everywhere, and AI that learns from every chat",
+  "preheader": "Three months of Xovera in one email: portals that keep proving your value, your branding everywhere, and a support desk that runs itself.",
+  "title": "Everything you need to keep clients longer and run more of them",
+  "intro": "This is your quarterly round-up from Xovera — the conversational AI platform behind your agents: the ones answering calls, texts and live chats for your clients, qualifying leads and booking appointments straight into your CRM. Over the last three months we focused on three things: proving your value to clients so they stay, putting your brand in front of them, not ours, and taking busywork off your team so you can serve more accounts. Everything below is live in your dashboard now.",
+  "videoUrl": null,
+  "sections": [
+    {
+      "emoji": "📈",
+      "title": "Client portals that keep proving your value",
+      "body": "Your clients' portals do more this quarter. Client admins get an email the moment a customer <strong>rates a chat 4 stars or more</strong>, with a summary of what the chat was about, so your wins land in their inbox as they happen. They can now <strong>work their own tickets</strong> right in the portal instead of looking at a list that went nowhere. All of it makes the renewal conversation easier."
+    },
+    {
+      "emoji": "🏷️",
+      "title": "Your brand, everywhere your clients look",
+      "body": "On paid plans the chat widget carries <strong>your branding instead of ours</strong>, and you can set the chat colours to match each client's site. Want to go further? Reply to this email and we'll switch on <strong>custom domains</strong>, so the widget and Co-Pilot links run on your own address (e.g. <em>live.youragency.com</em>). To your clients, it's your platform."
+    },
+    {
+      "emoji": "🧠",
+      "title": "An AI that gets smarter every week, with you in control",
+      "body": "Your agents now <strong>learn from what works</strong>. Highly rated chats, approved ticket replies and your team's corrections are turned into new answers for the agent, and every one waits for a human to approve it first. Poorly rated chats never teach it anything. The more your clients use it, the fewer questions reach your team."
+    },
+    {
+      "emoji": "🎫",
+      "title": "A support desk that runs itself",
+      "body": "Each client brand's tickets now go <strong>straight to the right people</strong>, either one owner or round-robin across a team, and the assignee is notified, so nothing sits unassigned. During live chats your team sees <strong>suggested help articles</strong> matched to what the customer is asking. With <strong>approval queues</strong>, a reviewer can edit a proposed reply before it goes out, and the person who wrote it sees exactly what changed."
+    },
+    {
+      "emoji": "🛡️",
+      "title": "Protect the people answering chats",
+      "body": "Every live chat now shows a <strong>green / amber / red conduct light</strong>, so frustrated or abusive visitors stand out at a glance. When someone crosses the line, your team can <strong>end the chat and block them</strong> in one click, and the client's admins get a report. It's always a human's call, and it's reversible."
+    },
+    {
+      "emoji": "🤖",
+      "title": "Sell AI-only packages with confidence",
+      "body": "Each widget now has a <strong>Human support switch</strong>. Turn it off and the agent handles everything itself, without offering a handover nobody will pick up, and those chats stay out of your team's inbox. That makes a lower-touch, AI-only tier simple to offer alongside your fully managed plans."
+    },
+    {
+      "emoji": "📚",
+      "title": "Launch new clients faster with reusable knowledge",
+      "body": "Built a great knowledge base for one client? <strong>Copy it into another workspace</strong>, or send a share link, so you're not starting from scratch on every account in the same industry. All knowledge now lives in one simple list of <strong>Collections</strong>, and you tick the ones each agent should use."
+    },
+    {
+      "emoji": "🎙️",
+      "title": "Co-Pilot that's at home in real meetings",
+      "body": "Co-Pilot, the agent that joins Zoom, Google Meet and Teams calls, now <strong>speaks Spanish</strong> as well as English, keeps the same voice for the whole call, responds faster, and is better at telling when it's actually being spoken to, so it doesn't jump in on side conversations."
+    },
+    {
+      "emoji": "📞",
+      "title": "Voice agents you can rely on",
+      "body": "Your voice agent now behaves the same on a test call from the dashboard as it does on a real phone line, in the web widget and on outbound calls. Buying <strong>international numbers</strong> now works end-to-end, and you only see the countries you can actually buy in. Voice previews play reliably too, so it's easy to pick the right voice for each client."
+    },
+    {
+      "emoji": "✨",
+      "title": "A faster, cleaner dashboard",
+      "body": "The whole app has been redesigned: a simpler sidebar, <strong>⌘K search</strong> to jump to any agent, conversation or page, KPI tiles on your dashboard, an agent page with a built-in test chat, and a rebuilt inbox, contacts and voice agents area. You'll get through your daily work with fewer clicks."
+    },
+    {
+      "emoji": "🚨",
+      "title": "We watch your agents around the clock",
+      "body": "We now monitor every agent across the platform every five minutes, and our team is <strong>alerted automatically</strong> if replies stop flowing. That means problems get fixed before your clients notice them."
+    },
+    {
+      "emoji": "🔁",
+      "title": "In case you missed it",
+      "body": "Earlier this quarter: <strong>Auto-pilot mode</strong> to fine-tune how and when each agent replies, booking agents that <strong>check the calendar before every reply</strong> so double bookings stop, knowledge that only kicks in <strong>when it's relevant</strong>, and chats that no longer route to teammates who've gone offline."
+    }
+  ],
+  "outro": "Everything above is live in Xovera now — nothing to install or update. Reply to this email if you'd like a walkthrough of any of it for your team or your clients."
+}
