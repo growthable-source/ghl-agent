@@ -27,4 +27,8 @@ describe('middleware matcher: broad entry', () => {
       expect(matches(h), h).toBe(true)
     }
   })
+  it('runs on custom hosts for the favicon too, so it can be rewritten to the brand icon', () => {
+    expect(matches('live.acme.com', '/favicon.ico')).toBe(true)
+    expect(matches('app.xovera.io', '/favicon.ico')).toBe(false)
+  })
 })

@@ -21,7 +21,8 @@ interface DomainView {
   lastError: string | null
   lastCheckedAt: string | null
 }
-interface State { unlocked: boolean; domain: DomainView | null; publicOrigin: string }
+interface Branding { brandName: string | null; faviconUrl: string | null; rootUrl: string | null }
+interface State { unlocked: boolean; domain: DomainView | null; publicOrigin: string; branding: Branding }
 
 export default function CustomDomainPage() {
   const params = useParams()
@@ -191,7 +192,126 @@ export default function CustomDomainPage() {
         </div>
       )}
 
+      {state.unlocked && (
+        <BrandingCard
+          workspaceId={workspaceId}
+          initial={state.branding}
+          hostname={d?.hostname ?? null}
+          onSaved={next => setState(prev => (prev ? { ...prev, branding: next.branding } : next))}
+        />
+      )}
+
       {error && <p className="text-sm" style={{ color: 'var(--accent-red)' }}>{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * Tab title + favicon + bare-domain destination for pages on the custom
+ * domain. All optional; blanks fall back to the workspace name / logo /
+ * a minimal branded page — never to our brand.
+ */
+function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
+  workspaceId: string
+  initial: Branding
+  hostname: string | null
+  onSaved: (next: State) => void
+}) {
+  const [brandName, setBrandName] = useState(initial.brandName ?? '')
+  const [faviconUrl, setFaviconUrl] = useState(initial.faviconUrl ?? '')
+  const [rootUrl, setRootUrl] = useState(initial.rootUrl ?? '')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const input = { background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' } as const
+
+  async function save() {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/domain`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandName, faviconUrl, rootUrl }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setMsg({ ok: false, text: data.error || 'Could not save.' }); return }
+      onSaved(data)
+      setFaviconUrl(data.branding?.faviconUrl ?? '')
+      setRootUrl(data.branding?.rootUrl ?? '')
+      setMsg({ ok: true, text: 'Saved. Browsers cache favicons — a hard refresh may be needed to see a new one.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function upload(file: File) {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('target', 'favicon')
+      const res = await fetch(`/api/workspaces/${workspaceId}/logo/upload`, { method: 'POST', body: form })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setMsg({ ok: false, text: data.error || 'Upload failed.' }); return }
+      setFaviconUrl(data.faviconUrl ?? '')
+      setMsg({ ok: true, text: 'Favicon uploaded.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <div>
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Branding</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+          What visitors see in the browser tab on your domain{hostname ? <> (<span className="font-mono">{hostname}</span>)</> : null} — live
+          help, Co-Pilot links, hosted call pages and the chat widget.
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Brand name (page title)</label>
+        <input value={brandName} onChange={e => setBrandName(e.target.value)} maxLength={60} placeholder="Defaults to your workspace name"
+          className="w-full rounded-lg px-3 py-2 text-sm" style={input} />
+        <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Tabs read like &ldquo;Live help | {brandName.trim() || 'Your brand'}&rdquo;.</p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Favicon</label>
+        <div className="flex gap-2 items-center flex-wrap">
+          {faviconUrl.trim() && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={faviconUrl} alt="" className="w-8 h-8 rounded border object-contain" style={{ borderColor: 'var(--border)' }} />
+          )}
+          <input value={faviconUrl} onChange={e => setFaviconUrl(e.target.value)} placeholder="https://… (defaults to your workspace logo)"
+            className="flex-1 min-w-[220px] rounded-lg px-3 py-2 text-sm font-mono" style={input} />
+          <label className="px-3 py-2 rounded-lg text-xs font-semibold border cursor-pointer" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+            Upload
+            <input type="file" accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,image/webp,image/jpeg,image/gif" className="hidden"
+              disabled={busy} onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
+          </label>
+        </div>
+        <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Square image, 64×64 or larger. PNG, SVG or ICO.</p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Homepage redirect</label>
+        <input value={rootUrl} onChange={e => setRootUrl(e.target.value)} placeholder="https://yourcompany.com"
+          className="w-full rounded-lg px-3 py-2 text-sm font-mono" style={input} />
+        <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+          Where people land if they visit {hostname ? <span className="font-mono">{hostname}</span> : 'your domain'} directly. Leave blank for a simple page with your name and logo.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button type="button" disabled={busy} onClick={() => void save()}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--accent-primary)' }}>
+          {busy ? 'Saving…' : 'Save branding'}
+        </button>
+        {msg && <p className="text-xs" style={{ color: msg.ok ? 'var(--text-secondary)' : 'var(--accent-red)' }}>{msg.text}</p>}
+      </div>
     </div>
   )
 }

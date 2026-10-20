@@ -6,6 +6,9 @@
  *   POST   admin+       → { hostname }  add the domain
  *   PATCH  admin+       → re-check DNS/verification now
  *   DELETE admin+       → remove the domain
+ *   PUT    admin+       → { brandName, faviconUrl, rootUrl }  branding for
+ *                         pages served on the domain (tab title, favicon,
+ *                         where the bare domain goes). Blank = fall back.
  *
  * Adding is refused until a platform admin has unlocked white-labelling
  * for the workspace (commercial deal is outside the product).
@@ -23,6 +26,8 @@ import {
   removeWorkspaceDomain,
 } from '@/lib/domains/workspace-domain'
 import { VercelError, VercelNotConfiguredError } from '@/lib/domains/vercel'
+import { parseBrandSettings } from '@/lib/domains/brand-metadata'
+import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,4 +95,23 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   } catch (err) {
     return errorResponse(err)
   }
+}
+
+export async function PUT(req: NextRequest, { params }: Params) {
+  const { workspaceId } = await params
+  const access = await requireWorkspaceRole(workspaceId, 'admin')
+  if (access instanceof NextResponse) return access
+  const parsed = parseBrandSettings(await req.json().catch(() => ({})))
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error, code: 'invalid' }, { status: 400 })
+  // Saved whether or not the workspace is unlocked yet — it only takes
+  // effect on branded pages once white-labelling is unlocked.
+  await db.workspace.update({
+    where: { id: workspaceId },
+    data: {
+      whitelabelBrandName: parsed.value.brandName,
+      whitelabelFaviconUrl: parsed.value.faviconUrl,
+      whitelabelRootUrl: parsed.value.rootUrl,
+    },
+  })
+  return NextResponse.json(await snapshot(req, workspaceId))
 }

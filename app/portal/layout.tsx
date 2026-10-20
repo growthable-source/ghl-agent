@@ -1,17 +1,28 @@
 import Link from 'next/link'
 import { headers } from 'next/headers'
-import { redirect } from 'next/navigation'
+import type { Metadata } from 'next'
+import { notFound, redirect } from 'next/navigation'
 import { getPortalSession } from '@/lib/portal-auth'
 import { getPortalBranding } from '@/lib/portal-branding'
+import { customHostOrigin, resolveHostBrand } from '@/lib/domains/host-brand'
+import { brandMetadata } from '@/lib/domains/brand-metadata'
 import { db } from '@/lib/db'
 import NewBadge from '@/components/NewBadge'
 import PortalShell from '@/components/portal/PortalShell'
 
-export const metadata = {
-  title: 'Customer Portal',
-  // Don't index portal-facing surfaces. Each portal has its own customer
-  // audience; search engines have no business there.
-  robots: { index: false, follow: false },
+export async function generateMetadata(): Promise<Metadata> {
+  // On a portal's custom domain the tab carries the portal's name and
+  // icon (root template would append "| Xovera"); on our host it stays
+  // plain "Customer Portal".
+  const host = (await headers()).get('host')
+  const brand = await resolveHostBrand(host)
+  if (brand?.kind === 'portal') return brandMetadata(brand, customHostOrigin(host))
+  return {
+    title: 'Customer Portal',
+    // Don't index portal-facing surfaces. Each portal has its own customer
+    // audience; search engines have no business there.
+    robots: { index: false, follow: false },
+  }
 }
 
 // Cookies + DB lookups make this layout intrinsically dynamic.
@@ -20,6 +31,13 @@ export const dynamic = 'force-dynamic'
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const h = await headers()
   const host = h.get('host')
+  // The portal only exists on our host and on portals' own domains. A
+  // workspace white-label domain (or any other custom host) is not a
+  // portal — serving a "Customer Portal" login there confused customers.
+  if (customHostOrigin(host)) {
+    const brand = await resolveHostBrand(host)
+    if (brand?.kind !== 'portal') notFound()
+  }
   const pathname = h.get('x-invoke-path') ?? h.get('x-matched-path') ?? h.get('next-url') ?? ''
   // Login + invite-acceptance are the only routes reachable without
   // a session. Everything else under /portal/* bounces to /portal/login.

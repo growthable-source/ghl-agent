@@ -412,7 +412,8 @@ export default function CopilotAgentEditor() {
           <p className="text-[11px] text-zinc-500 mt-1">
             Understands both English and Spanish. Speaks the language you pick. On a live call, an explicit request
             (&ldquo;speak Spanish&rdquo;, &ldquo;habla en español&rdquo;) switches the spoken language and keeps it
-            until someone asks to switch back. The voice stays the one selected above.
+            until someone asks to switch back. <strong>Match the caller</strong> answers in whichever of the two the
+            visitor speaks — best for public live-help links. The voice stays the one selected above.
           </p>
         </div>
 

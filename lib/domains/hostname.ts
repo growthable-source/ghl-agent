@@ -120,6 +120,7 @@ const CUSTOM_HOST_ALLOWED_PREFIXES = [
   '/manifest.webmanifest',
   '/robots.txt',
   '/opengraph-image',
+  '/twitter-image',
   '/sw.js',
   '/logo-',
   '/brands/',
@@ -128,8 +129,31 @@ const CUSTOM_HOST_ALLOWED_PREFIXES = [
   '/api/health',
 ]
 
+/**
+ * Our file-based brand assets (app/favicon.ico, app/icon.svg,
+ * app/apple-icon.png, app/opengraph-image.tsx, app/twitter-image.png,
+ * app/manifest.ts) apply to EVERY route and beat any per-segment
+ * metadata, so on a custom host middleware rewrites them to routes that
+ * serve the customer's brand instead. Returns the rewrite target, or
+ * null for any other path. Query strings (Next's ?<hash> cache-busters)
+ * are irrelevant: this matches the pathname only.
+ */
+export function brandAssetRewrite(pathname: string): '/api/brand/icon' | '/api/brand/manifest' | null {
+  if (pathname === '/manifest.webmanifest') return '/api/brand/manifest'
+  if (
+    pathname === '/favicon.ico' ||
+    pathname === '/icon.svg' ||
+    pathname === '/apple-icon.png' ||
+    pathname.startsWith('/opengraph-image') ||
+    pathname.startsWith('/twitter-image')
+  ) {
+    return '/api/brand/icon'
+  }
+  return null
+}
+
 export function isAllowedOnCustomHost(pathname: string): boolean {
-  if (pathname === '/') return true // rewritten to the portal root by middleware
+  if (pathname === '/') return true // rewritten to /domain-root by middleware
   return CUSTOM_HOST_ALLOWED_PREFIXES.some(p => pathname === p || pathname.startsWith(p))
 }
 

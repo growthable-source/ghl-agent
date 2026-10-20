@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useEffect, useSyncExternalStore } from 'react'
 import { isPublicChatPath } from '@/lib/leadconnector-chat-paths'
+import { isPrimaryHost } from '@/lib/domains/primary-hosts'
 import {
   subscribePublicChatSuppressed,
   getPublicChatSuppressed,
@@ -98,7 +99,10 @@ export default function LeadConnectorChat() {
     // this component rendered but before this effect runs. Without the
     // re-read we would inject the loader on a whitelabel lander and only
     // then hide it.
-    const on = show && !readPublicChatSuppressed()
+    // Never on a customer's white-label host: every path there is theirs
+    // (the bare root is a branded landing). Client-side env only knows the
+    // NEXT_PUBLIC_ hosts, so an env-only primary host errs toward hiding.
+    const on = show && !readPublicChatSuppressed() && isPrimaryHost(window.location.hostname)
 
     // Flip visibility first — on a marketing → dashboard navigation this
     // runs before anything paints the app shell, so the bubble does not

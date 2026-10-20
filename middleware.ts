@@ -6,7 +6,7 @@ import {
   REGULAR_SESSION_COOKIE,
 } from '@/lib/embed-session'
 import { isPrimaryHost } from '@/lib/domains/primary-hosts'
-import { isBlockedOnCustomHost } from '@/lib/domains/hostname'
+import { brandAssetRewrite, isBlockedOnCustomHost } from '@/lib/domains/hostname'
 
 /**
  * Two responsibilities, both centralised here so the rest of the
@@ -61,6 +61,18 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Our favicon / app icon / OG image / manifest are file-based and
+  // apply to every route, so a custom host would otherwise show our logo
+  // in the tab. Swap them for the customer's brand (resolved by host in
+  // the Node route — no DB here).
+  const brandAsset = onCustomHost ? brandAssetRewrite(pathname) : null
+  if (brandAsset) {
+    const url = request.nextUrl.clone()
+    url.pathname = brandAsset
+    url.search = ''
+    return NextResponse.rewrite(url)
+  }
+
   // Cron dedup for the widget-runtime deployment. vercel.json crons fire
   // on EVERY Vercel project deploying this repo, and the xovera-widget
   // project (IS_WIDGET_RUNTIME=1) ships the same codebase — without this
@@ -108,15 +120,15 @@ export function middleware(request: NextRequest) {
     request.cookies.set(REGULAR_SESSION_COOKIE, embed.value)
   }
 
-  // Whitelabel routing: on a portal custom domain, the root path serves
-  // the portal (not the Xovera marketing site). Host-only check — no
-  // DB lookup (Edge); the portal pages resolve branding by host. Only
-  // the root is rewritten; /portal/*, /api/*, /_next/* pass through and
-  // already work on the custom domain.
-  const host = (request.headers.get('host') || '').toLowerCase().split(':')[0]
-  if (request.nextUrl.pathname === '/' && host && !isPrimaryHost(host)) {
+  // Whitelabel routing: on a custom host the root path never serves the
+  // Xovera marketing site. Edge has no DB, so we can't tell a portal
+  // domain from a workspace domain here — app/domain-root decides
+  // (portal → /portal; workspace → its configured URL or a branded
+  // landing). It used to rewrite straight to /portal, which put a
+  // "Customer Portal" login on every workspace's live-help domain.
+  if (pathname === '/' && onCustomHost) {
     const url = request.nextUrl.clone()
-    url.pathname = '/portal'
+    url.pathname = '/domain-root'
     return NextResponse.rewrite(url, { request })
   }
 
@@ -159,7 +171,7 @@ export const config = {
     // invocation. Hosts the regex doesn't know (env-added PRIMARY_HOSTS)
     // still run middleware and are classified in code by isPrimaryHost().
     {
-      source: '/((?!_next/static|_next/image|favicon.ico).*)',
+      source: '/((?!_next/static|_next/image).*)',
       missing: [
         {
           type: 'host',

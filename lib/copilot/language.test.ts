@@ -16,10 +16,13 @@ describe('resolveCopilotLanguage', () => {
     expect(resolveCopilotLanguage('ES_ES').code).toBe('es')
     expect(normalizeStoredCopilotLanguage('nope')).toBe('en')
     expect(normalizeStoredCopilotLanguage('es')).toBe('es')
+    expect(normalizeStoredCopilotLanguage('auto')).toBe('auto')
+    expect(resolveCopilotLanguage('AUTO').code).toBe('auto')
   })
 
   it('reads only an en/es session pin', () => {
     expect(readPinnedCopilotLanguage({ pinnedLanguage: 'es' })).toBe('es')
+    expect(readPinnedCopilotLanguage({ pinnedLanguage: 'auto' })).toBe('auto')
     expect(readPinnedCopilotLanguage({ pinnedLanguage: 'es-MX' })).toBeNull()
     expect(readPinnedCopilotLanguage(undefined)).toBeNull()
   })
@@ -38,6 +41,14 @@ describe('copilotLanguageDirective', () => {
     expect(english).toContain('Speak only in English')
     expect(english).toContain('speak Spanish')
     expect(english).toContain('Do not switch languages because of an accent')
+  })
+
+  it("'auto' follows the caller into Spanish on a greeting instead of pinning one language", () => {
+    const auto = copilotLanguageDirective('auto')
+    expect(auto).toContain('Speak the language the person speaks to you')
+    expect(auto).toContain('Hola')
+    expect(auto).not.toContain('Speak only in')
+    expect(auto).not.toContain('a few words of')
   })
 })
 
