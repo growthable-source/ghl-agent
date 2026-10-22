@@ -28,6 +28,11 @@
   --text-muted:          #a8a29e;
   --accent-primary:      #e8432e;
   --accent-primary-bg:   #fef3f1;
+  /* Brand tint scale — see the dark override block above @theme. */
+  --brand-50:            #fef3f1;
+  --brand-100:           #fde3de;
+  --brand-200:           #fac5bb;
+  --brand-700:           #ae2a19;
   --accent-emerald:      #059669;
   --accent-emerald-bg:   rgba(209, 250, 229, 0.6);
   --accent-amber:        #d97706;
@@ -187,6 +192,21 @@
   --shadow-card:         0 4px 20px -4px rgba(28, 33, 40, 0.4);
 }
 
+/* ─── Brand tints on dark themes ──────────────────────────────────────
+   bg-brand-50/100/200 were literal light pinks, so on a dark theme they
+   rendered as near-white boxes holding light (text-text-primary) text —
+   e.g. AI reply bubbles in the inbox were unreadable. On dark themes the
+   tints become translucent brand washes over the surface, and
+   brand-700 (used as text on those tints) lightens to stay legible. */
+[data-theme="midnight"],
+[data-theme="sunset"],
+[data-theme="dim"] {
+  --brand-50:            rgba(250, 77, 46, 0.12);
+  --brand-100:           rgba(250, 77, 46, 0.2);
+  --brand-200:           rgba(250, 77, 46, 0.35);
+  --brand-700:           #fb8e6a;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Tailwind v4 Theme Tokens
    ═══════════════════════════════════════════════════════════════════════ */
@@ -249,12 +269,12 @@
   --color-sidebar-bg: var(--sidebar-bg);
   --color-sidebar-border: var(--sidebar-border);
   /* ── Xovera redesign tokens (handoff §1) ── */
-  --color-brand-50:  #fef3f1;
-  --color-brand-100: #fde3de;
-  --color-brand-200: #fac5bb;
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
   --color-brand-500: #e8432e;
   --color-brand-600: #d13521;
-  --color-brand-700: #ae2a19;
+  --color-brand-700: var(--brand-700);
   /* Literal white for text/knobs ON brand fills — text-white and
      bg-white are remapped by the legacy overrides below. */
   --color-on-brand: #ffffff;
