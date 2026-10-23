@@ -120,19 +120,29 @@ model Workspace {
   // this per workspace from /admin/workspaces/[id]. Until unlocked, the
   // workspace sees the feature (so they can ask for it) but cannot add a
   // domain; re-locking stops an existing domain from being served.
-  whitelabelUnlocked   Boolean         @default(false)
-  whitelabelUnlockedAt DateTime?
-  whitelabelUnlockedBy String?
-  whitelabelDomain     WorkspaceDomain?
+  whitelabelUnlocked     Boolean              @default(false)
+  whitelabelUnlockedAt   DateTime?
+  whitelabelUnlockedBy   String?
+  whitelabelDomain       WorkspaceDomain?
   // Branding for pages served on the white-label domain (browser tab
   // title, favicon, where the bare domain goes). All optional: the brand
   // name falls back to Workspace.name, the favicon to logoUrl and then a
   // generated initial — never to our own brand. See lib/domains/host-brand.ts.
-  whitelabelBrandName  String?
-  whitelabelFaviconUrl String?
+  whitelabelBrandName    String?
+  whitelabelFaviconUrl   String?
   // Where https://<domain>/ redirects (e.g. the customer's own site).
   // Null = a minimal branded landing page.
-  whitelabelRootUrl    String?
+  whitelabelRootUrl      String?
+  // Team sign-in page on the white-label domain (/sign-in): staff of this
+  // workspace sign in there with an emailed one-time code and get the
+  // dashboard branded as below. Logo falls back to logoUrl, accent to our
+  // neutral default. Only platform super admins edit any whitelabel* field
+  // (app/api/workspaces/[workspaceId]/domain).
+  whitelabelLogoUrl      String?
+  whitelabelAccentColor  String?
+  whitelabelLoginHeading String?
+  whitelabelLoginMessage String?              @db.Text
+  loginCodes             WorkspaceLoginCode[]
 
   // ─── Install provenance + primary CRM ───
   // installSource records where this workspace was created from — set
@@ -671,8 +681,8 @@ model Agent {
   //     the same workspace.
   // Empty knowledgeDomainIds is no longer overloaded to mean "all" — the
   // scope flag carries that, so deselecting the only collection sticks.
-  knowledgeScopeAll  Boolean  @default(true)
-  knowledgeDomainIds String[] @default([])
+  knowledgeScopeAll   Boolean  @default(true)
+  knowledgeDomainIds  String[] @default([])
   // Per-source usage triggers. Map of knowledge source id — a
   // KnowledgeDomain id OR a KnowledgeCollection id — to a natural-
   // language condition ("the visitor asks about pricing or plans").
@@ -682,7 +692,7 @@ model Agent {
   // builders annotate each conditioned source's knowledge block with
   // its condition, so gating happens where the conversation context
   // lives instead of via a second classifier call on the reply path.
-  knowledgeConditions Json    @default("{}")
+  knowledgeConditions Json     @default("{}")
 
   // ─── Quiet check-in ───
   // When the agent's last message has been sitting unanswered for the
@@ -1145,12 +1155,12 @@ model Taxonomy {
 // new source types (Notion, RSS, Zendesk, etc.) drop in as new adapter
 // files with no pipeline changes.
 model KnowledgeSource {
-  id                String           @id @default(cuid())
+  id                String               @id @default(cuid())
   // Storage/tenancy anchor. Chunks hang off the domain and retrieval
   // joins through it for the workspace filter. Operators never see or
   // choose a domain — it's an internal container.
   knowledgeDomainId String
-  domain            KnowledgeDomain  @relation(fields: [knowledgeDomainId], references: [id], onDelete: Cascade)
+  domain            KnowledgeDomain      @relation(fields: [knowledgeDomainId], references: [id], onDelete: Cascade)
   // The collection this source belongs to — the ONLY grouping an
   // operator sees or an agent attaches to. Nullable purely so the
   // backfill can run before every row is assigned; treat as required.
@@ -1161,11 +1171,11 @@ model KnowledgeSource {
   urlOrIdentifier   String
   // Adapter-specific config. For docs: { recrawlIntervalDays, includeSubpaths[], excludePatterns[] }.
   // For pdf: { storageKey, originalFilename }. Free-shape per adapter.
-  crawlConfig       Json             @default("{}")
-  isActive          Boolean          @default(true)
+  crawlConfig       Json                 @default("{}")
+  isActive          Boolean              @default(true)
   lastCrawledAt     DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
   runs              IngestionRun[]
   chunks            KnowledgeChunk[]
 
@@ -1243,15 +1253,15 @@ model KnowledgeChunk {
   embeddingModel String
 
   // Semantic
-  primaryTopic    String?
-  taxonomyTags    String[] @default([])
-  intentTags      String[] @default([])
-  taxonomyVersion Int      @default(1)
+  primaryTopic      String?
+  taxonomyTags      String[] @default([])
+  intentTags        String[] @default([])
+  taxonomyVersion   Int      @default(1)
   // How many times auto-topics has shown this chunk to the model without
   // managing to tag it. Chunks at the cap count as unclassifiable and are
   // skipped — without this, a bucket of untaggable chunks made the idle
   // backstop burn a Haiku call every minute, forever (Jul 2026).
-  autoTopicAttempts Int @default(0)
+  autoTopicAttempts Int      @default(0)
 
   // Quality
   confidenceTier String @default("provisional") // 'canonical' | 'provisional' | 'draft'
@@ -1998,37 +2008,37 @@ model ChannelDeployment {
 }
 
 model VapiConfig {
-  id              String   @id @default(cuid())
-  agentId         String   @unique
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  phoneNumberId   String?
-  phoneNumber     String?
+  id                  String   @id @default(cuid())
+  agentId             String   @unique
+  agent               Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  phoneNumberId       String?
+  phoneNumber         String?
   // Which TTS provider powers this agent's voice. The VoiceAdapter factory
   // keys off this to pick Vapi vs. XAI (or future providers). Vapi is the
   // only provider that can do phone calls today — other providers are
   // browser/widget-only until we ship the Twilio bridge.
-  ttsProvider     String   @default("vapi")
-  voiceProvider   String   @default("elevenlabs")
-  voiceId         String   @default("EXAVITQu4vr4xnSDxMaL")
-  voiceName       String?
-  stability       Float    @default(0.5)
-  similarityBoost Float    @default(0.75)
-  speed           Float    @default(1.0)
-  style           Float    @default(0.0)
-  firstMessage    String?  @db.Text
-  endCallMessage  String?  @db.Text
-  maxDurationSecs Int      @default(600)
-  recordCalls     Boolean  @default(true)
-  backgroundSound String?
-  endCallPhrases  String[] @default([])
-  language        String?
-  voiceTools      Json?
+  ttsProvider         String   @default("vapi")
+  voiceProvider       String   @default("elevenlabs")
+  voiceId             String   @default("EXAVITQu4vr4xnSDxMaL")
+  voiceName           String?
+  stability           Float    @default(0.5)
+  similarityBoost     Float    @default(0.75)
+  speed               Float    @default(1.0)
+  style               Float    @default(0.0)
+  firstMessage        String?  @db.Text
+  endCallMessage      String?  @db.Text
+  maxDurationSecs     Int      @default(600)
+  recordCalls         Boolean  @default(true)
+  backgroundSound     String?
+  endCallPhrases      String[] @default([])
+  language            String?
+  voiceTools          Json?
   // E.164 number the agent can hand a live call to (Vapi built-in
   // transferCall). Null = transfer disabled, tool not registered.
   transferPhoneNumber String?
   // Script spoken when an outbound call hits an answering machine.
-  voicemailMessage    String? @db.Text
-  isActive        Boolean  @default(false)
+  voicemailMessage    String?  @db.Text
+  isActive            Boolean  @default(false)
   // Vapi assistant id — the id of the pre-registered assistant in Vapi
   // that browser + phone calls reference by id. Replaces the previous
   // approach of building an inline transient assistant config at every
@@ -2037,9 +2047,9 @@ model VapiConfig {
   // null, the lifecycle code creates the assistant lazily on the next
   // save / call and stores the id here. Unique because Vapi assistant
   // ids are 1:1 with VapiConfig rows.
-  vapiAssistantId String?  @unique
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  vapiAssistantId     String?  @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 // Native Gemini speech-to-speech voice config. Sibling to VapiConfig
@@ -2224,38 +2234,38 @@ model BrandGroup {
 }
 
 model Brand {
-  id            String                @id @default(cuid())
-  workspaceId   String
-  workspace     Workspace             @relation("WorkspaceBrands", fields: [workspaceId], references: [id], onDelete: Cascade)
-  name          String
+  id                              String                @id @default(cuid())
+  workspaceId                     String
+  workspace                       Workspace             @relation("WorkspaceBrands", fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                            String
   // URL-safe identifier — used in transcript export filenames and the
   // brand-scoped inbox URL. Lowercase letters/numbers/dashes.
-  slug          String
-  description   String?
+  slug                            String
+  description                     String?
   // When false, widget conversations tagged to this brand skip the AI
   // agent entirely — visitor messages still come through to the inbox
   // for human operators to reply to, but no AI agent runs. Useful for
   // agencies that prefer human-only support for specific clients.
-  aiEnabled     Boolean               @default(true)
+  aiEnabled                       Boolean               @default(true)
   // Priority bucket the brand belongs to. Null = no group, treated as
   // the lowest-priority bucket by the inbox sort. SetNull on group
   // delete so brands survive group deletion (they just become
   // ungrouped + drop in priority).
-  brandGroupId  String?
-  brandGroup    BrandGroup?           @relation(fields: [brandGroupId], references: [id], onDelete: SetNull)
+  brandGroupId                    String?
+  brandGroup                      BrandGroup?           @relation(fields: [brandGroupId], references: [id], onDelete: SetNull)
   // Visual identity for the operator inbox: a chip with a colored dot
   // + the brand logo on each conversation row makes routing obvious.
-  logoUrl       String?
-  primaryColor  String?
+  logoUrl                         String?
+  primaryColor                    String?
   // Optional login URL for this brand's own platform (CRM, dashboard,
   // etc.). Surfaced in the inbox as a quick "Open login" button so
   // agents can jump to the right place fast. Generic — no vendor brand.
-  loginUrl      String?
+  loginUrl                        String?
   // Words / phrases the AI must never use when drafting replies for this
   // brand. Maintained by portal users on the portal Knowledge page; applied
   // as a hard prompt rule in ticket suggest-reply plus a post-generation
   // check that warns the composing agent about violations.
-  negativeKeywords String[]           @default([])
+  negativeKeywords                String[]              @default([])
   // Ticket routing for this brand — where tickets created for this brand
   // (promoted chats, visitor follow-ups, inbound email…) get assigned.
   // Mirrors ChatWidget.routingMode naming but with ticket-specific modes:
@@ -2267,19 +2277,19 @@ model Brand {
   // ChatWidget.routingTargetUserIds): lib/ticket-routing.ts validates
   // membership at pick time, so a departed member degrades to "skip"
   // instead of blocking user deletion.
-  ticketRoutingMode               String   @default("manual")
+  ticketRoutingMode               String                @default("manual")
   ticketAssigneeUserId            String?
-  ticketPoolUserIds               String[] @default([])
+  ticketPoolUserIds               String[]              @default([])
   ticketRoutingLastAssignedUserId String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  widgets       ChatWidget[]
-  collections   KnowledgeCollection[]
-  portalAccess  PortalUserBrand[]     @relation("BrandPortalAccess")
-  portalCatalog PortalBrand[]         @relation("BrandPortalCatalog")
-  tickets       Ticket[]              @relation("TicketBrand")
-  knowledgeDomain KnowledgeDomain?    @relation("BrandKnowledgeDomain")
-  snippets      BrandSnippet[]
+  createdAt                       DateTime              @default(now())
+  updatedAt                       DateTime              @updatedAt
+  widgets                         ChatWidget[]
+  collections                     KnowledgeCollection[]
+  portalAccess                    PortalUserBrand[]     @relation("BrandPortalAccess")
+  portalCatalog                   PortalBrand[]         @relation("BrandPortalCatalog")
+  tickets                         Ticket[]              @relation("TicketBrand")
+  knowledgeDomain                 KnowledgeDomain?      @relation("BrandKnowledgeDomain")
+  snippets                        BrandSnippet[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -3194,27 +3204,27 @@ model PortalBrand {
 }
 
 model PortalUser {
-  id               String            @id @default(cuid())
-  portalId         String
-  portal           Portal            @relation(fields: [portalId], references: [id], onDelete: Cascade)
-  email            String
-  name             String?
+  id                 String             @id @default(cuid())
+  portalId           String
+  portal             Portal             @relation(fields: [portalId], references: [id], onDelete: Cascade)
+  email              String
+  name               String?
   // Null until the user accepts their invite and sets a password. Until
   // then they can log in only via the invite link.
-  passwordHash     String?
-  isActive         Boolean           @default(true)
+  passwordHash       String?
+  isActive           Boolean            @default(true)
   // Include this user in the portal's scheduled email reports. Everyone
   // is on by default; the Email reports card lets any portal user (or an
   // admin in preview) exclude individuals.
-  receiveReports   Boolean           @default(true)
-  lastLoginAt      DateTime?
-  invitedAt        DateTime          @default(now())
-  acceptedAt       DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  brandAssignments PortalUserBrand[]
-  draftReviews     TicketReplyDraft[] @relation("TicketDraftReviewer")
-  sentTicketMessages TicketMessage[]  @relation("TicketMessagePortalAuthor")
+  receiveReports     Boolean            @default(true)
+  lastLoginAt        DateTime?
+  invitedAt          DateTime           @default(now())
+  acceptedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  brandAssignments   PortalUserBrand[]
+  draftReviews       TicketReplyDraft[] @relation("TicketDraftReviewer")
+  sentTicketMessages TicketMessage[]    @relation("TicketMessagePortalAuthor")
 
   @@unique([portalId, email])
   @@index([email])
@@ -3870,6 +3880,26 @@ model PartnerInstall {
 /// One shared PIN per workspace. Entering it on /kiosk/<slug> unlocks the
 /// operator name-grid (but grants no app access on its own). PIN is bcrypt
 /// hashed — plaintext is shown once at creation and never stored.
+// One-time sign-in code for the white-label team sign-in page
+// (app/sign-in). Issued only to a member (or pending invitee) of the
+// workspace whose domain the request came in on; stored hashed
+// (lib/whitelabel/login-code.ts). Single use, short expiry, attempt-capped.
+model WorkspaceLoginCode {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email       String
+  codeHash    String
+  attempts    Int       @default(0)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  ip          String?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, email, createdAt])
+  @@index([ip, createdAt])
+}
+
 model KioskCredential {
   id             String    @id @default(cuid())
   workspaceId    String    @unique
@@ -3944,11 +3974,11 @@ model CopilotSession {
   toolCallCount   Int       @default(0)
   metadata        Json      @default("{}")
 
-  workspace Workspace               @relation("WorkspaceCopilotSessions", fields: [workspaceId], references: [id], onDelete: Cascade)
-  turns     CopilotTranscriptTurn[]
-  events    CopilotScreenEvent[]
-  toolCalls CopilotToolCall[]
-  evals     CopilotEvalRecord[]
+  workspace        Workspace               @relation("WorkspaceCopilotSessions", fields: [workspaceId], references: [id], onDelete: Cascade)
+  turns            CopilotTranscriptTurn[]
+  events           CopilotScreenEvent[]
+  toolCalls        CopilotToolCall[]
+  evals            CopilotEvalRecord[]
   telemetryBatches CopilotTelemetryBatch[]
 
   @@index([workspaceId, startedAt(sort: Desc)])
@@ -4382,34 +4412,34 @@ model PortalInsight {
 // dangling id after an out-of-band delete must never block or cascade
 // into demo rows.
 model DemoProspect {
-  id                 String    @id @default(cuid())
-  slug               String    @unique
-  businessName       String
-  websiteUrl         String
-  websiteDomain      String // normalized host, e.g. "acmeplumbing.com" — hand-run partial UNIQUE index enforces one live (non expired/claimed/failed) demo per domain; Prisma can't express a partial unique index in this schema, see prisma/migrations/manual_demo_prospects.sql
-  contactEmail       String?
-  vertical           String? // maps to a landing page + template preset
-  templates          Json? // optional per-prospect {prompt,instructions,firstMessage} template overrides
-  metadata           Json? // free-form from the prospecting tool; string values become template vars
-  status             String    @default("registered") // registered | provisioning | ready | failed | expired | claimed
-  agentId            String?
-  knowledgeDomainId  String?
-  ingestionRunId     String?
-  clickedAt          DateTime?
-  firstCallAt        DateTime?
-  callCount          Int       @default(0)
-  totalCallSecs      Int       @default(0)
-  claimedByUserId    String?
-  claimedWorkspaceId String?
-  expiresAt          DateTime?
+  id                  String    @id @default(cuid())
+  slug                String    @unique
+  businessName        String
+  websiteUrl          String
+  websiteDomain       String // normalized host, e.g. "acmeplumbing.com" — hand-run partial UNIQUE index enforces one live (non expired/claimed/failed) demo per domain; Prisma can't express a partial unique index in this schema, see prisma/migrations/manual_demo_prospects.sql
+  contactEmail        String?
+  vertical            String? // maps to a landing page + template preset
+  templates           Json? // optional per-prospect {prompt,instructions,firstMessage} template overrides
+  metadata            Json? // free-form from the prospecting tool; string values become template vars
+  status              String    @default("registered") // registered | provisioning | ready | failed | expired | claimed
+  agentId             String?
+  knowledgeDomainId   String?
+  ingestionRunId      String?
+  clickedAt           DateTime?
+  firstCallAt         DateTime?
+  callCount           Int       @default(0)
+  totalCallSecs       Int       @default(0)
+  claimedByUserId     String?
+  claimedWorkspaceId  String?
+  expiresAt           DateTime?
   // Website-redesign offer (vertical: "redesign"). The prospect asks for a
   // free rebuild from /redesign/[slug]; we build it offline and paste the
   // preview back, which is what turns the request into a delivery.
   redesignRequestedAt DateTime?
   redesignContact     Json? // {name, email, notes} from the capture form
   previewUrl          String? // set once the rebuilt page is ready to send
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([status])
   @@index([websiteDomain])

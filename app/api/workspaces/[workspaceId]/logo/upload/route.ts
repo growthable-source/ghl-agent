@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
+import { WHITELABEL_FORBIDDEN_MESSAGE, whitelabelManager } from '@/lib/whitelabel/super-admin'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +22,9 @@ export const dynamic = 'force-dynamic'
  *
  * `target=favicon` (form field) stores the upload as the white-label
  * favicon (Workspace.whitelabelFaviconUrl) instead of the logo, and also
- * accepts .ico files.
+ * accepts .ico files. `target=whitelabel-logo` stores the team sign-in
+ * page logo (Workspace.whitelabelLogoUrl). Both white-label targets are
+ * platform-admin only.
  *
  * Requires BLOB_READ_WRITE_TOKEN in env. If missing, returns a clear
  * error so operators know exactly what to wire up.
@@ -68,7 +71,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       error: `File too large — max ${Math.round(MAX_SIZE_BYTES / 1024 / 1024)} MB. Your upload was ${(file.size / 1024 / 1024).toFixed(2)} MB.`,
     }, { status: 413 })
   }
-  const isFavicon = form.get('target') === 'favicon'
+  // White-label assets (favicon, team sign-in logo) are platform-admin
+  // only — see lib/whitelabel/super-admin.ts. The workspace logo isn't.
+  const target = form.get('target')
+  const isFavicon = target === 'favicon'
+  const isWhitelabelLogo = target === 'whitelabel-logo'
+  if ((isFavicon || isWhitelabelLogo) && !(await whitelabelManager())) {
+    return NextResponse.json({ error: WHITELABEL_FORBIDDEN_MESSAGE }, { status: 403 })
+  }
   const mime = file.type.toLowerCase()
   if (!ALLOWED_MIME.has(mime) && !(isFavicon && ICO_MIME.has(mime))) {
     return NextResponse.json({
@@ -81,7 +91,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   // with workspaceId means each workspace's logos are grouped for the
   // eventual "clean up blobs for deleted workspaces" cron.
   const ext = guessExt(file.name, file.type)
-  const filename = `workspaces/${workspaceId}/${isFavicon ? 'favicon' : 'logo'}-${Date.now()}.${ext}`
+  const filename = `workspaces/${workspaceId}/${isFavicon ? 'favicon' : isWhitelabelLogo ? 'whitelabel-logo' : 'logo'}-${Date.now()}.${ext}`
 
   let blobUrl: string
   try {
@@ -102,6 +112,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   if (isFavicon) {
     await db.workspace.update({ where: { id: workspaceId }, data: { whitelabelFaviconUrl: blobUrl } })
     return NextResponse.json({ faviconUrl: blobUrl })
+  }
+  if (isWhitelabelLogo) {
+    await db.workspace.update({ where: { id: workspaceId }, data: { whitelabelLogoUrl: blobUrl } })
+    return NextResponse.json({ logoUrl: blobUrl })
   }
   await db.workspace.update({
     where: { id: workspaceId },

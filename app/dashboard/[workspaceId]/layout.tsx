@@ -11,6 +11,7 @@ import MobileNav from '@/components/dashboard/MobileNav'
 import PresenceHeartbeat from '@/components/dashboard/PresenceHeartbeat'
 import SupportSessionBanner from '@/components/dashboard/SupportSessionBanner'
 import { findMemberRole, type SupportAwareSession } from '@/lib/support-session'
+import { agentPageAllowed, customHostWorkspaceId } from '@/lib/whitelabel/guard'
 
 /**
  * Workspace-level layout — enforces that the current user has access to
@@ -29,10 +30,24 @@ export default async function WorkspaceLayout({
 
   const { workspaceId } = await params
 
+  // White-label domain: only its own workspace is reachable here
+  // (lib/whitelabel/guard.ts). '' = a custom host serving no workspace.
+  const hostWorkspaceId = await customHostWorkspaceId()
+  if (hostWorkspaceId !== null && hostWorkspaceId !== workspaceId) {
+    if (hostWorkspaceId) redirect(`/dashboard/${hostWorkspaceId}`)
+    notFound()
+  }
+
   // Check that this user has access to this workspace (membership, or a
   // super admin's support session scoped to it — lib/support-session.ts)
   const access = await findMemberRole(session, workspaceId)
   const support = (session as SupportAwareSession).support
+
+  if (!access && hostWorkspaceId) {
+    // Signed in on the team's domain but not (or no longer) on the team.
+    // The generic fallbacks below would bounce between /dashboard and here.
+    redirect('/sign-in?error=no_access')
+  }
 
   if (!access) {
     // User doesn't have access — check if the workspace even exists
@@ -68,6 +83,12 @@ export default async function WorkspaceLayout({
     redirect('/dashboard')
   }
 
+  // Support Agents work the inbox and tickets only (lib/whitelabel/
+  // access-policy.ts); the APIs behind every other page refuse them too.
+  if (access.role === 'agent' && !(await agentPageAllowed())) {
+    redirect(`/dashboard/${workspaceId}/inbox`)
+  }
+
   // Empty-workspace auto-launch lives in page.tsx now — `params` is
   // a reliable "we're on the workspace root" signal, while the
   // headers-based path detection we used here was Next.js-runtime-
@@ -85,7 +106,9 @@ export default async function WorkspaceLayout({
       )}
       <PresenceHeartbeat workspaceId={workspaceId} />
       <EmbeddedWorkspaceBanner workspaceId={workspaceId} />
-      <TrialBanner workspaceId={workspaceId} />
+      {/* Plan/trial upsell is between the workspace and us — never shown
+          on the customer's own branded domain. */}
+      {!hostWorkspaceId && <TrialBanner workspaceId={workspaceId} />}
       <PauseBanner />
       {/* Loud, persistent alert when one or more agents have paused
           and need a human. Renders nothing when everything is calm.

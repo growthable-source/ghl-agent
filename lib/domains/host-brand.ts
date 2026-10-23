@@ -16,7 +16,7 @@ import { db } from '@/lib/db'
 import { isPrimaryHost } from './primary-hosts'
 import { resolveWorkspaceIdForHost } from './workspace-domain'
 import type { Metadata } from 'next'
-import { brandMetadata, cleanBrandName, type ResolvedBrand } from './brand-metadata'
+import { brandMetadata, cleanBrandName, safeAccent, type ResolvedBrand } from './brand-metadata'
 
 export type HostBrand = ResolvedBrand & (
   | { kind: 'workspace'; workspaceId: string; rootUrl: string | null }
@@ -45,6 +45,7 @@ export const getWorkspaceBrand = cache(async (workspaceId: string): Promise<Host
     select: {
       name: true, logoUrl: true, whitelabelUnlocked: true,
       whitelabelBrandName: true, whitelabelFaviconUrl: true, whitelabelRootUrl: true,
+      whitelabelAccentColor: true,
     },
   })
   if (!ws?.whitelabelUnlocked) return null
@@ -53,7 +54,7 @@ export const getWorkspaceBrand = cache(async (workspaceId: string): Promise<Host
     workspaceId,
     name: cleanBrandName(ws.whitelabelBrandName) || cleanBrandName(ws.name),
     iconUrl: ws.whitelabelFaviconUrl || ws.logoUrl || null,
-    accent: null,
+    accent: safeAccent(ws.whitelabelAccentColor),
     rootUrl: ws.whitelabelRootUrl || null,
   }
 })
@@ -99,3 +100,51 @@ export async function visitorPageBrandMetadata(
   const brand = await visitorPageBrand(host, workspaceId)
   return brand ? brandMetadata(brand, customHostOrigin(host)) : null
 }
+
+/** What the team sign-in page and the dashboard header show on a white-label host. */
+export interface TeamBrand {
+  workspaceId: string
+  name: string
+  logoUrl: string | null
+  accent: string | null
+  heading: string | null
+  message: string | null
+}
+
+/** Team-facing brand of a white-label-unlocked workspace, or null. */
+export const teamBrandForWorkspace = cache(async (workspaceId: string): Promise<TeamBrand | null> => {
+  const ws = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      name: true, logoUrl: true, whitelabelUnlocked: true, whitelabelBrandName: true,
+      whitelabelLogoUrl: true, whitelabelAccentColor: true,
+      whitelabelLoginHeading: true, whitelabelLoginMessage: true,
+    },
+  })
+  if (!ws?.whitelabelUnlocked) return null
+  return {
+    workspaceId,
+    name: cleanBrandName(ws.whitelabelBrandName) || cleanBrandName(ws.name) || 'Sign in',
+    logoUrl: ws.whitelabelLogoUrl || ws.logoUrl || null,
+    accent: safeAccent(ws.whitelabelAccentColor),
+    heading: ws.whitelabelLoginHeading,
+    message: ws.whitelabelLoginMessage,
+  }
+})
+
+/**
+ * Team-facing brand of the workspace serving this host, or null when the
+ * host isn't an active white-label workspace domain (our own hosts,
+ * portal domains, locked/pending domains).
+ */
+export const resolveTeamBrand = cache(async (host: string | null | undefined): Promise<TeamBrand | null> => {
+  const h = bareHost(host)
+  if (!h || isPrimaryHost(h)) return null
+  try {
+    const workspaceId = await resolveWorkspaceIdForHost(h)
+    return workspaceId ? await teamBrandForWorkspace(workspaceId) : null
+  } catch (err) {
+    console.error('[host-brand] team brand lookup failed', err)
+    return null
+  }
+})

@@ -36,8 +36,15 @@ describe('isAllowedOnCustomHost', () => {
       expect(isAllowedOnCustomHost(p), p).toBe(true)
     }
   })
-  it('blocks dashboard, auth, admin and workspace APIs', () => {
-    for (const p of ['/dashboard/x', '/api/auth/session', '/admin', '/api/workspaces/w/domain', '/api/auth/callback/google', '/login',
+  it('serves the team sign-in and dashboard (workspace binding is enforced server-side)', () => {
+    for (const p of ['/sign-in', '/api/sign-in/request-code', '/dashboard/x/inbox', '/api/workspaces', '/api/workspaces/w/tickets',
+      '/api/me/super', '/api/auth/session', '/api/auth/csrf', '/api/auth/signout']) {
+      expect(isAllowedOnCustomHost(p), p).toBe(true)
+    }
+  })
+  it('blocks OAuth sign-in, admin and staff-only surfaces', () => {
+    for (const p of ['/admin', '/api/admin/workspaces', '/api/auth/callback/google', '/api/auth/signin/google', '/login',
+      '/api/workspaces-api-temp/x', '/api/billing/checkout', '/api/meta/oauth/connect',
       '/api/vapi/webhook', '/api/voice/gemini/token', '/copilot/bot/tok', '/api/copilot/meeting/tok', '/copilotevil']) {
       expect(isAllowedOnCustomHost(p), p).toBe(false)
     }
@@ -53,8 +60,8 @@ describe('isBlockedOnCustomHost', () => {
     }
   })
   it('blocks private surfaces on a customer host but serves the public ones', () => {
-    expect(isBlockedOnCustomHost('live.acme.com', '/dashboard/w')).toBe(true)
-    expect(isBlockedOnCustomHost('live.acme.com', '/api/auth/session')).toBe(true)
+    expect(isBlockedOnCustomHost('live.acme.com', '/admin')).toBe(true)
+    expect(isBlockedOnCustomHost('live.acme.com', '/api/auth/callback/google')).toBe(true)
     expect(isBlockedOnCustomHost('live.acme.com', '/copilot/live/cpa_x')).toBe(false)
     expect(isBlockedOnCustomHost('live.acme.com', '/widget.js')).toBe(false)
   })
