@@ -2,14 +2,25 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import BrandPicker, { type BrandWithWorkspace } from '../BrandPicker'
 
-export default function NewPortalForm() {
+export default function NewPortalForm({ allBrands }: { allBrands: BrandWithWorkspace[] }) {
   const router = useRouter()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [slugTouched, setSlugTouched] = useState(false)
+  const [brandIds, setBrandIds] = useState<Set<string>>(new Set())
+
+  function toggleBrand(id: string) {
+    setBrandIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   function onName(v: string) {
     setName(v)
@@ -26,7 +37,7 @@ export default function NewPortalForm() {
       const res = await fetch('/api/admin/portals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, slug }),
+        body: JSON.stringify({ name, slug, brandIds: Array.from(brandIds) }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -62,6 +73,17 @@ export default function NewPortalForm() {
           className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm text-zinc-100 font-mono focus:border-amber-400 outline-none"
         />
       </Field>
+      <div>
+        <span className="block text-sm text-zinc-300 mb-1.5">
+          Brands <span className="text-zinc-500">({brandIds.size} selected)</span>
+        </span>
+        <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/30">
+          <BrandPicker allBrands={allBrands} selected={brandIds} onToggle={toggleBrand} />
+        </div>
+        <span className="block text-xs text-zinc-500 mt-1.5">
+          Optional. Brands from any workspace; customers only see the brands you later assign them.
+        </span>
+      </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="flex items-center gap-3 pt-2">
         <button

@@ -113,6 +113,25 @@ export interface BrandSettings {
   brandName: string | null
   faviconUrl: string | null
   rootUrl: string | null
+  /** Team sign-in page + dashboard header logo; null → workspace logo. */
+  logoUrl: string | null
+  /** #rrggbb for the sign-in page button and generated favicon. */
+  accentColor: string | null
+  loginHeading: string | null
+  loginMessage: string | null
+}
+
+const LOGIN_HEADING_MAX = 80
+const LOGIN_MESSAGE_MAX = 500
+
+function optionalText(raw: unknown, field: string, max: number, multiline: boolean): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (raw === null || raw === undefined) return { ok: true, value: null }
+  if (typeof raw !== 'string') return { ok: false, error: `${field} must be text.` }
+  const v = multiline
+    ? raw.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+    : raw.replace(/\s+/g, ' ').trim()
+  if (v.length > max) return { ok: false, error: `${field} must be ${max} characters or fewer.` }
+  return { ok: true, value: v || null }
 }
 
 function optionalUrl(raw: unknown, field: string, httpsOnly: boolean): { ok: true; value: string | null } | { ok: false; error: string } {
@@ -141,5 +160,28 @@ export function parseBrandSettings(body: unknown): { ok: true; value: BrandSetti
   if (!favicon.ok) return favicon
   const root = optionalUrl(b.rootUrl, 'Homepage redirect', false)
   if (!root.ok) return root
-  return { ok: true, value: { brandName: rawName || null, faviconUrl: favicon.value, rootUrl: root.value } }
+  const logo = optionalUrl(b.logoUrl, 'Logo URL', true)
+  if (!logo.ok) return logo
+  if (b.accentColor !== undefined && b.accentColor !== null && typeof b.accentColor !== 'string') {
+    return { ok: false, error: 'Accent colour must be a hex colour like #1d4ed8.' }
+  }
+  const rawAccent = typeof b.accentColor === 'string' ? b.accentColor.trim() : ''
+  const accent = rawAccent ? safeAccent(rawAccent) : null
+  if (rawAccent && !accent) return { ok: false, error: 'Accent colour must be a hex colour like #1d4ed8.' }
+  const heading = optionalText(b.loginHeading, 'Sign-in heading', LOGIN_HEADING_MAX, false)
+  if (!heading.ok) return heading
+  const message = optionalText(b.loginMessage, 'Sign-in message', LOGIN_MESSAGE_MAX, true)
+  if (!message.ok) return message
+  return {
+    ok: true,
+    value: {
+      brandName: rawName || null,
+      faviconUrl: favicon.value,
+      rootUrl: root.value,
+      logoUrl: logo.value,
+      accentColor: accent ? accent.toLowerCase() : null,
+      loginHeading: heading.value,
+      loginMessage: message.value,
+    },
+  }
 }

@@ -1,13 +1,16 @@
 'use client'
 
 /**
- * Custom domain (white-label) — serve Co-Pilot links and the chat/voice
- * widget from the workspace's own subdomain (live.acme.com) instead of
- * app.xovera.io. One domain per workspace, subdomains only.
+ * Custom domain (white-label) — serve Co-Pilot links, the chat/voice
+ * widget and the team's own branded sign-in + dashboard from the
+ * workspace's own subdomain (live.acme.com) instead of app.xovera.io.
+ * One domain per workspace, subdomains only.
  *
  * Always visible; adding a domain requires a platform admin to unlock
  * the workspace first (the commercial deal is outside the product), so
  * locked workspaces see the explainer + a contact prompt, not a form.
+ * Changing anything here is platform-admin only (`canManage`, see
+ * lib/whitelabel/super-admin.ts); workspace owners/admins see it read-only.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -21,8 +24,16 @@ interface DomainView {
   lastError: string | null
   lastCheckedAt: string | null
 }
-interface Branding { brandName: string | null; faviconUrl: string | null; rootUrl: string | null }
-interface State { unlocked: boolean; domain: DomainView | null; publicOrigin: string; branding: Branding }
+interface Branding {
+  brandName: string | null
+  faviconUrl: string | null
+  rootUrl: string | null
+  logoUrl: string | null
+  accentColor: string | null
+  loginHeading: string | null
+  loginMessage: string | null
+}
+interface State { unlocked: boolean; domain: DomainView | null; publicOrigin: string; branding: Branding; canManage: boolean }
 
 export default function CustomDomainPage() {
   const params = useParams()
@@ -78,9 +89,18 @@ export default function CustomDomainPage() {
         <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Custom domain</h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Serve your Co-Pilot links and chat/voice widget from your own subdomain, e.g.{' '}
-          <span className="font-mono">live.yourcompany.com/copilot/live/…</span>, instead of our domain.
+          <span className="font-mono">live.yourcompany.com/copilot/live/…</span>, instead of our domain. Your team
+          signs in there too, on a page with your branding.
         </p>
       </div>
+
+      {!state.canManage && (
+        <div className="rounded-xl border p-4" style={card}>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            White-label settings are managed by your platform administrator. Contact them to change your domain or branding.
+          </p>
+        </div>
+      )}
 
       {!state.unlocked && (
         <div className="rounded-xl border p-5" style={card}>
@@ -91,7 +111,7 @@ export default function CustomDomainPage() {
         </div>
       )}
 
-      {state.unlocked && !d && (
+      {state.unlocked && !d && state.canManage && (
         <div className="rounded-xl border p-5 space-y-3" style={card}>
           <label className="block text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Subdomain</label>
           <div className="flex gap-2 flex-wrap">
@@ -137,6 +157,7 @@ export default function CustomDomainPage() {
               )}
             </div>
             <div className="flex gap-2">
+              {state.canManage && (<>
               <button type="button" disabled={busy} onClick={() => void act('PATCH')}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50"
                 style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
@@ -148,14 +169,24 @@ export default function CustomDomainPage() {
                 style={{ background: 'var(--accent-red)' }}>
                 Remove
               </button>
+              </>)}
             </div>
           </div>
 
           {d.status === 'active' ? (
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Live. Your Co-Pilot share links, buttons and widget snippets now use <span className="font-mono">https://{d.hostname}</span>.
-              Links you already shared on the old domain keep working.
-            </p>
+            <>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Live. Your Co-Pilot share links, buttons and widget snippets now use <span className="font-mono">https://{d.hostname}</span>.
+                Links you already shared on the old domain keep working.
+              </p>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Team sign-in:{' '}
+                <a href={`https://${d.hostname}/sign-in`} target="_blank" rel="noopener noreferrer" className="font-mono underline">
+                  https://{d.hostname}/sign-in
+                </a>
+                {' '}— members sign in with a one-time code emailed to them. Support agents only see the inbox and tickets.
+              </p>
+            </>
           ) : (
             <>
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -192,7 +223,7 @@ export default function CustomDomainPage() {
         </div>
       )}
 
-      {state.unlocked && (
+      {state.unlocked && state.canManage && (
         <BrandingCard
           workspaceId={workspaceId}
           initial={state.branding}
@@ -220,6 +251,10 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
   const [brandName, setBrandName] = useState(initial.brandName ?? '')
   const [faviconUrl, setFaviconUrl] = useState(initial.faviconUrl ?? '')
   const [rootUrl, setRootUrl] = useState(initial.rootUrl ?? '')
+  const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? '')
+  const [accentColor, setAccentColor] = useState(initial.accentColor ?? '')
+  const [loginHeading, setLoginHeading] = useState(initial.loginHeading ?? '')
+  const [loginMessage, setLoginMessage] = useState(initial.loginMessage ?? '')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const input = { background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' } as const
@@ -231,31 +266,38 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
       const res = await fetch(`/api/workspaces/${workspaceId}/domain`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandName, faviconUrl, rootUrl }),
+        body: JSON.stringify({ brandName, faviconUrl, rootUrl, logoUrl, accentColor, loginHeading, loginMessage }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setMsg({ ok: false, text: data.error || 'Could not save.' }); return }
       onSaved(data)
       setFaviconUrl(data.branding?.faviconUrl ?? '')
       setRootUrl(data.branding?.rootUrl ?? '')
+      setLogoUrl(data.branding?.logoUrl ?? '')
+      setAccentColor(data.branding?.accentColor ?? '')
       setMsg({ ok: true, text: 'Saved. Browsers cache favicons — a hard refresh may be needed to see a new one.' })
     } finally {
       setBusy(false)
     }
   }
 
-  async function upload(file: File) {
+  async function upload(file: File, target: 'favicon' | 'whitelabel-logo' = 'favicon') {
     setBusy(true)
     setMsg(null)
     try {
       const form = new FormData()
       form.append('file', file)
-      form.append('target', 'favicon')
+      form.append('target', target)
       const res = await fetch(`/api/workspaces/${workspaceId}/logo/upload`, { method: 'POST', body: form })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setMsg({ ok: false, text: data.error || 'Upload failed.' }); return }
-      setFaviconUrl(data.faviconUrl ?? '')
-      setMsg({ ok: true, text: 'Favicon uploaded.' })
+      if (target === 'whitelabel-logo') {
+        setLogoUrl(data.logoUrl ?? '')
+        setMsg({ ok: true, text: 'Logo uploaded.' })
+      } else {
+        setFaviconUrl(data.faviconUrl ?? '')
+        setMsg({ ok: true, text: 'Favicon uploaded.' })
+      }
     } finally {
       setBusy(false)
     }
@@ -303,6 +345,57 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
         <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
           Where people land if they visit {hostname ? <span className="font-mono">{hostname}</span> : 'your domain'} directly. Leave blank for a simple page with your name and logo.
         </p>
+      </div>
+
+      <div className="pt-3 border-t space-y-4" style={{ borderColor: 'var(--border)' }}>
+        <div>
+          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Team sign-in page</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+            Shown at {hostname ? <span className="font-mono">{hostname}/sign-in</span> : 'your domain’s /sign-in page'}, and the logo
+            also heads the dashboard your team uses there.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Logo</label>
+          <div className="flex gap-2 items-center flex-wrap">
+            {logoUrl.trim() && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt="" className="h-8 max-w-[120px] rounded border object-contain" style={{ borderColor: 'var(--border)' }} />
+            )}
+            <input value={logoUrl} onChange={e => setLogoUrl(e.target.value)} placeholder="https://… (defaults to your workspace logo)"
+              className="flex-1 min-w-[220px] rounded-lg px-3 py-2 text-sm font-mono" style={input} />
+            <label className="px-3 py-2 rounded-lg text-xs font-semibold border cursor-pointer" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+              Upload
+              <input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif" className="hidden"
+                disabled={busy} onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f, 'whitelabel-logo'); e.target.value = '' }} />
+            </label>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Accent colour</label>
+          <div className="flex gap-2 items-center">
+            <input type="color" value={/^#[0-9a-f]{6}$/i.test(accentColor) ? accentColor : '#18181b'} onChange={e => setAccentColor(e.target.value)}
+              className="h-9 w-12 rounded border cursor-pointer" style={{ borderColor: 'var(--border)' }} />
+            <input value={accentColor} onChange={e => setAccentColor(e.target.value)} placeholder="#1d4ed8" maxLength={7}
+              className="w-32 rounded-lg px-3 py-2 text-sm font-mono" style={input} />
+          </div>
+          <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Sign-in button and the generated favicon. Leave blank for neutral dark.</p>
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Heading</label>
+          <input value={loginHeading} onChange={e => setLoginHeading(e.target.value)} maxLength={80} placeholder={`Sign in to ${brandName.trim() || 'your brand'}`}
+            className="w-full rounded-lg px-3 py-2 text-sm" style={input} />
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Message</label>
+          <textarea value={loginMessage} onChange={e => setLoginMessage(e.target.value)} maxLength={500} rows={3}
+            placeholder="Optional — e.g. who to contact if you can't sign in."
+            className="w-full rounded-lg px-3 py-2 text-sm" style={input} />
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
