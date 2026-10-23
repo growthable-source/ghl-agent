@@ -454,8 +454,11 @@ export function SplitDeployButton({
         aria-label="More deploy options"
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
+        // Literal deep red rather than brand-700: that token lightens on
+        // dark themes (it's tuned for text on brand tints), which would
+        // wash out the white chevron on hover.
         className={cx(BTN_BASE, 'h-8 w-8 rounded-l-none border-l',
-          variant === 'primary' ? 'bg-brand-600 text-on-brand border-brand-700 hover:bg-brand-700' : 'bg-surface border-border-theme hover:bg-surface-secondary')}
+          variant === 'primary' ? 'bg-brand-600 text-on-brand border-[#ae2a19] hover:bg-[#ae2a19]' : 'bg-surface border-border-theme hover:bg-surface-secondary')}
       >
         ▾
       </button>
