@@ -15,6 +15,7 @@ import { headers } from 'next/headers'
 import { isPrimaryHost } from '@/lib/domains/primary-hosts'
 import { resolveWorkspaceIdForHost } from '@/lib/domains/workspace-domain'
 import { agentMayCallApi, agentMayOpenPage } from './access-policy'
+import { previewWorkspaceId } from './preview'
 import { METHOD_HEADER, PATH_HEADER, SIG_HEADER, requestPathSecret, verifyRequestPath } from './request-path'
 
 export const AGENT_DENIED_MESSAGE = 'Support agents can only use the inbox and tickets.'
@@ -36,11 +37,13 @@ export async function requestHost(): Promise<string | null> {
 
 /**
  * null on our own hosts. On a custom host: the workspace it serves, or
- * '' when it serves none (portal domain, pending/locked domain).
+ * '' when it serves none (portal domain, pending/locked domain). In
+ * white-label test mode (./preview.ts, non-production only) our own host
+ * acts as the test workspace's domain.
  */
 export async function customHostWorkspaceId(): Promise<string | null> {
   const host = await requestHost()
-  if (!host || isPrimaryHost(host)) return null
+  if (!host || isPrimaryHost(host)) return previewWorkspaceId()
   return (await resolveWorkspaceIdForHost(host)) ?? ''
 }
 

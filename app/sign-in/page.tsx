@@ -81,6 +81,12 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
             <p className="mt-2 text-sm whitespace-pre-line" style={{ color: '#52525b' }}>{brand.message}</p>
           )}
         </div>
+        {brand.preview && (
+          <p className="mb-4 text-xs rounded-lg px-3 py-2 text-center" style={{ background: '#eef2ff', color: '#3730a3' }}>
+            Test mode: this is how the team&rsquo;s own sign-in page will look.{' '}
+            <a href="/api/sign-in/preview?exit=1" className="underline">Leave test mode</a>
+          </p>
+        )}
         <div className="rounded-2xl p-6 shadow-sm" style={{ background: '#ffffff', border: '1px solid #e4e4e7' }}>
           {sp.error === 'no_access' && (
             <p className="mb-4 text-sm rounded-lg px-3 py-2" style={{ background: '#fef2f2', color: '#b91c1c' }}>

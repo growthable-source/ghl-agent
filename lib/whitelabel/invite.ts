@@ -10,16 +10,27 @@
 
 import { getWorkspacePublicOrigin } from '@/lib/domains/workspace-domain'
 import { teamBrandForWorkspace, type TeamBrand } from '@/lib/domains/host-brand'
+import { createPreviewToken, previewLinkPath } from './preview'
 
-export async function inviteTarget(workspaceId: string, email: string, token: string): Promise<{
+/**
+ * `requestOrigin` is the origin the inviter is using. On a non-production
+ * build, an unlocked workspace with no live domain gets a white-label
+ * TEST link on that origin instead (lib/whitelabel/preview.ts), so
+ * testers can be invited without any domain set up.
+ */
+export async function inviteTarget(workspaceId: string, email: string, token: string, requestOrigin: string): Promise<{
   inviteUrl: string
   brand: TeamBrand | null
 }> {
   const appBase = process.env.NEXT_PUBLIC_APP_URL || ''
   const origin = await getWorkspacePublicOrigin(workspaceId, '')
-  const brand = origin ? await teamBrandForWorkspace(workspaceId) : null
+  const brand = await teamBrandForWorkspace(workspaceId)
   if (origin && brand) {
     return { inviteUrl: `${origin}/sign-in?email=${encodeURIComponent(email)}`, brand }
+  }
+  const previewToken = brand ? createPreviewToken(workspaceId) : null
+  if (brand && previewToken) {
+    return { inviteUrl: `${requestOrigin}${previewLinkPath(previewToken, email)}`, brand }
   }
   return { inviteUrl: `${appBase}/invite/${token}`, brand: null }
 }

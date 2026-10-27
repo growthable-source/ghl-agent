@@ -17,6 +17,7 @@ import { isPrimaryHost } from './primary-hosts'
 import { resolveWorkspaceIdForHost } from './workspace-domain'
 import type { Metadata } from 'next'
 import { brandMetadata, cleanBrandName, safeAccent, type ResolvedBrand } from './brand-metadata'
+import { previewWorkspaceId } from '@/lib/whitelabel/preview'
 
 export type HostBrand = ResolvedBrand & (
   | { kind: 'workspace'; workspaceId: string; rootUrl: string | null }
@@ -109,6 +110,8 @@ export interface TeamBrand {
   accent: string | null
   heading: string | null
   message: string | null
+  /** True in white-label test mode (lib/whitelabel/preview.ts): our host standing in for the domain. */
+  preview?: boolean
 }
 
 /** Team-facing brand of a white-label-unlocked workspace, or null. */
@@ -135,11 +138,17 @@ export const teamBrandForWorkspace = cache(async (workspaceId: string): Promise<
 /**
  * Team-facing brand of the workspace serving this host, or null when the
  * host isn't an active white-label workspace domain (our own hosts,
- * portal domains, locked/pending domains).
+ * portal domains, locked/pending domains) — except that in white-label
+ * test mode our own host resolves to the test workspace.
  */
 export const resolveTeamBrand = cache(async (host: string | null | undefined): Promise<TeamBrand | null> => {
   const h = bareHost(host)
-  if (!h || isPrimaryHost(h)) return null
+  if (!h || isPrimaryHost(h)) {
+    // White-label test mode: our own host stands in for the domain.
+    const previewId = await previewWorkspaceId()
+    const brand = previewId ? await teamBrandForWorkspace(previewId) : null
+    return brand ? { ...brand, preview: true } : null
+  }
   try {
     const workspaceId = await resolveWorkspaceIdForHost(h)
     return workspaceId ? await teamBrandForWorkspace(workspaceId) : null

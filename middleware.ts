@@ -173,7 +173,11 @@ export async function middleware(request: NextRequest) {
     const support = request.cookies.get('voxility_support')
     const hasAnySession = !!(regular || regularUnprefixed || embed || support)
     if (!hasAnySession) {
-      const loginUrl = new URL(onCustomHost ? '/sign-in' : '/login', request.url)
+      // wl_preview: white-label test mode (lib/whitelabel/preview.ts) —
+      // send the tester back to the branded sign-in, not our /login. The
+      // cookie is only honoured server-side off production.
+      const teamSignIn = onCustomHost || !!request.cookies.get('wl_preview')
+      const loginUrl = new URL(teamSignIn ? '/sign-in' : '/login', request.url)
       loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname)
       return NextResponse.redirect(loginUrl)
     }

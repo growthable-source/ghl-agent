@@ -15,7 +15,7 @@ type Params = { params: Promise<{ workspaceId: string; inviteId: string }> }
  * extends the expiry by 7 days from now, and re-sends the email.
  * Use this for "I never got it / it's about to expire."
  */
-export async function POST(_req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId, inviteId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
@@ -50,7 +50,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       where: { id: workspaceId },
       select: { name: true },
     })
-    const target = await inviteTarget(workspaceId, invite.email, newToken)
+    const target = await inviteTarget(workspaceId, invite.email, newToken, req.nextUrl.origin)
     await sendWorkspaceInviteEmail({
       to: invite.email,
       workspaceName: ws?.name || 'a Xovera workspace',
