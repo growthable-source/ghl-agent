@@ -120,29 +120,32 @@ model Workspace {
   // this per workspace from /admin/workspaces/[id]. Until unlocked, the
   // workspace sees the feature (so they can ask for it) but cannot add a
   // domain; re-locking stops an existing domain from being served.
-  whitelabelUnlocked     Boolean              @default(false)
-  whitelabelUnlockedAt   DateTime?
-  whitelabelUnlockedBy   String?
-  whitelabelDomain       WorkspaceDomain?
+  whitelabelUnlocked        Boolean              @default(false)
+  whitelabelUnlockedAt      DateTime?
+  whitelabelUnlockedBy      String?
+  whitelabelDomain          WorkspaceDomain?
   // Branding for pages served on the white-label domain (browser tab
   // title, favicon, where the bare domain goes). All optional: the brand
   // name falls back to Workspace.name, the favicon to logoUrl and then a
   // generated initial — never to our own brand. See lib/domains/host-brand.ts.
-  whitelabelBrandName    String?
-  whitelabelFaviconUrl   String?
+  whitelabelBrandName       String?
+  whitelabelFaviconUrl      String?
   // Where https://<domain>/ redirects (e.g. the customer's own site).
   // Null = a minimal branded landing page.
-  whitelabelRootUrl      String?
+  whitelabelRootUrl         String?
   // Team sign-in page on the white-label domain (/sign-in): staff of this
   // workspace sign in there with an emailed one-time code and get the
   // dashboard branded as below. Logo falls back to logoUrl, accent to our
   // neutral default. Only platform super admins edit any whitelabel* field
   // (app/api/workspaces/[workspaceId]/domain).
-  whitelabelLogoUrl      String?
-  whitelabelAccentColor  String?
-  whitelabelLoginHeading String?
-  whitelabelLoginMessage String?              @db.Text
-  loginCodes             WorkspaceLoginCode[]
+  whitelabelLogoUrl         String?
+  whitelabelAccentColor     String?
+  whitelabelLoginHeading    String?
+  whitelabelLoginMessage    String?              @db.Text
+  // Sign-in button text colour; null → black or white, whichever reads
+  // better on whitelabelAccentColor (lib/domains/brand-metadata.ts).
+  whitelabelButtonTextColor String?
+  loginCodes                WorkspaceLoginCode[]
 
   // ─── Install provenance + primary CRM ───
   // installSource records where this workspace was created from — set

@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { readableTextOn } from '@/lib/domains/brand-metadata'
 
 interface DnsRecord { type: string; name: string; value: string; reason?: string }
 interface DomainView {
@@ -30,6 +31,7 @@ interface Branding {
   rootUrl: string | null
   logoUrl: string | null
   accentColor: string | null
+  buttonTextColor: string | null
   loginHeading: string | null
   loginMessage: string | null
 }
@@ -253,6 +255,7 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
   const [rootUrl, setRootUrl] = useState(initial.rootUrl ?? '')
   const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? '')
   const [accentColor, setAccentColor] = useState(initial.accentColor ?? '')
+  const [buttonTextColor, setButtonTextColor] = useState(initial.buttonTextColor ?? '')
   const [loginHeading, setLoginHeading] = useState(initial.loginHeading ?? '')
   const [loginMessage, setLoginMessage] = useState(initial.loginMessage ?? '')
   const [busy, setBusy] = useState(false)
@@ -266,7 +269,7 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
       const res = await fetch(`/api/workspaces/${workspaceId}/domain`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandName, faviconUrl, rootUrl, logoUrl, accentColor, loginHeading, loginMessage }),
+        body: JSON.stringify({ brandName, faviconUrl, rootUrl, logoUrl, accentColor, buttonTextColor, loginHeading, loginMessage }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setMsg({ ok: false, text: data.error || 'Could not save.' }); return }
@@ -275,6 +278,7 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
       setRootUrl(data.branding?.rootUrl ?? '')
       setLogoUrl(data.branding?.logoUrl ?? '')
       setAccentColor(data.branding?.accentColor ?? '')
+      setButtonTextColor(data.branding?.buttonTextColor ?? '')
       setMsg({ ok: true, text: 'Saved. Browsers cache favicons — a hard refresh may be needed to see a new one.' })
     } finally {
       setBusy(false)
@@ -373,15 +377,23 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Accent colour</label>
-          <div className="flex gap-2 items-center">
-            <input type="color" value={/^#[0-9a-f]{6}$/i.test(accentColor) ? accentColor : '#18181b'} onChange={e => setAccentColor(e.target.value)}
-              className="h-9 w-12 rounded border cursor-pointer" style={{ borderColor: 'var(--border)' }} />
-            <input value={accentColor} onChange={e => setAccentColor(e.target.value)} placeholder="#1d4ed8" maxLength={7}
-              className="w-32 rounded-lg px-3 py-2 text-sm font-mono" style={input} />
-          </div>
-          <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Sign-in button and the generated favicon. Leave blank for neutral dark.</p>
+        <div className="flex gap-6 flex-wrap">
+          <ColourField label="Button colour" value={accentColor} onChange={setAccentColor} fallback="#18181b" placeholder="#1d4ed8"
+            hint="Leave blank for neutral dark. Also used for the generated favicon." />
+          <ColourField label="Button text colour" value={buttonTextColor} onChange={setButtonTextColor}
+            fallback={readableTextOn(/^#[0-9a-f]{6}$/i.test(accentColor) ? accentColor : '#18181b')} placeholder="Automatic"
+            hint="Leave blank to pick black or white automatically." />
+        </div>
+
+        <div className="rounded-lg p-3 flex items-center justify-center" style={{ background: '#f4f4f5' }}>
+          <span className="px-4 py-2 rounded-lg text-sm font-semibold"
+            style={{
+              background: /^#[0-9a-f]{6}$/i.test(accentColor) ? accentColor : '#18181b',
+              color: /^#[0-9a-f]{6}$/i.test(buttonTextColor) ? buttonTextColor
+                : readableTextOn(/^#[0-9a-f]{6}$/i.test(accentColor) ? accentColor : '#18181b'),
+            }}>
+            Email me a sign-in code
+          </span>
         </div>
 
         <div className="space-y-1">
@@ -405,6 +417,36 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
         </button>
         {msg && <p className="text-xs" style={{ color: msg.ok ? 'var(--text-secondary)' : 'var(--accent-red)' }}>{msg.text}</p>}
       </div>
+    </div>
+  )
+}
+
+/** Hex colour: swatch picker + text box. Blank = the caller's fallback. */
+function ColourField({ label, value, onChange, fallback, placeholder, hint }: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  fallback: string
+  placeholder: string
+  hint: string
+}) {
+  const valid = /^#[0-9a-f]{6}$/i.test(value)
+  return (
+    <div className="space-y-1">
+      <label className="block text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{label}</label>
+      <div className="flex gap-2 items-center">
+        <input type="color" value={valid ? value : fallback} onChange={e => onChange(e.target.value)} aria-label={`${label} picker`}
+          className="h-9 w-12 rounded border cursor-pointer" style={{ borderColor: 'var(--border)' }} />
+        <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} maxLength={7}
+          className="w-32 rounded-lg px-3 py-2 text-sm font-mono"
+          style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
+        {value && (
+          <button type="button" onClick={() => onChange('')} className="text-xs underline" style={{ color: 'var(--text-tertiary)' }}>
+            Clear
+          </button>
+        )}
+      </div>
+      <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{hint}</p>
     </div>
   )
 }

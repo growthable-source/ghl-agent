@@ -3,8 +3,10 @@
 import { useState } from 'react'
 
 /** Two steps: email → 6-digit code. See app/api/sign-in/*. */
-export default function SignInForm({ accent, callbackUrl, initialEmail }: {
+export default function SignInForm({ accent, buttonText, callbackUrl, initialEmail }: {
   accent: string
+  /** Inline so no global button style can override it. */
+  buttonText: string
   callbackUrl: string | null
   initialEmail: string
 }) {
@@ -60,7 +62,7 @@ export default function SignInForm({ accent, callbackUrl, initialEmail }: {
 
   const input = 'w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2'
   const inputStyle = { border: '1px solid #d4d4d8', background: '#ffffff', color: '#18181b' }
-  const button = 'w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60'
+  const button = 'w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-60'
 
   if (step === 'email') {
     return (
@@ -71,7 +73,7 @@ export default function SignInForm({ accent, callbackUrl, initialEmail }: {
             placeholder="you@company.com" className={input} style={inputStyle} />
         </label>
         {error && <p className="text-sm" style={{ color: '#b91c1c' }}>{error}</p>}
-        <button type="submit" disabled={busy || !email.trim()} className={button} style={{ background: accent }}>
+        <button type="submit" disabled={busy || !email.trim()} className={button} style={{ background: accent, color: buttonText }}>
           {busy ? 'Sending…' : 'Email me a sign-in code'}
         </button>
       </form>
@@ -88,7 +90,7 @@ export default function SignInForm({ accent, callbackUrl, initialEmail }: {
           placeholder="123456" className={`${input} tracking-[0.3em] font-mono text-center text-lg`} style={inputStyle} />
       </label>
       {error && <p className="text-sm" style={{ color: '#b91c1c' }}>{error}</p>}
-      <button type="submit" disabled={busy || code.replace(/\D/g, '').length !== 6} className={button} style={{ background: accent }}>
+      <button type="submit" disabled={busy || code.replace(/\D/g, '').length !== 6} className={button} style={{ background: accent, color: buttonText }}>
         {busy ? 'Signing in…' : 'Sign in'}
       </button>
       <div className="flex justify-between text-xs" style={{ color: '#71717a' }}>

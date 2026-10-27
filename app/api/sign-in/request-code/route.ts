@@ -3,6 +3,7 @@ import { resolveTeamBrand } from '@/lib/domains/host-brand'
 import { isCrossSiteRequest } from '@/lib/csrf'
 import { normalizeEmail } from '@/lib/whitelabel/login-code'
 import { requestLoginCode } from '@/lib/whitelabel/sign-in'
+import { previewModeAvailable } from '@/lib/whitelabel/preview'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +33,9 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error('[sign-in] request-code failed', err)
-    return NextResponse.json({ error: 'Could not send a code right now. Try again shortly.' }, { status: 500 })
+    // Test builds say why (testers report it); production stays generic.
+    const detail = previewModeAvailable() && err instanceof Error ? ` (${err.message})` : ''
+    return NextResponse.json({ error: `Could not send a code right now. Try again shortly.${detail}` }, { status: 500 })
   }
   return NextResponse.json({ ok: true })
 }

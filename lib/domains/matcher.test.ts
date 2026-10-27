@@ -29,6 +29,13 @@ describe('middleware matcher: broad entry', () => {
   })
   it('runs on custom hosts for the favicon too, so it can be rewritten to the brand icon', () => {
     expect(matches('live.acme.com', '/favicon.ico')).toBe(true)
-    expect(matches('app.xovera.io', '/favicon.ico')).toBe(false)
+  })
+  it('runs on our own hosts for the four icon files only (white-label test mode icon swap)', () => {
+    for (const p of ['/favicon.ico', '/icon.svg', '/apple-icon.png', '/manifest.webmanifest']) {
+      expect(matches('app.xovera.io', p), p).toBe(true)
+      expect(matches('abc.vercel.app', p), p).toBe(true)
+    }
+    expect(matches('app.xovera.io', '/logo-white.svg')).toBe(false)
+    expect(matches('app.xovera.io', '/opengraph-image')).toBe(false)
   })
 })

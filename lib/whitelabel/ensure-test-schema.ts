@@ -1,6 +1,7 @@
 /**
  * Test builds only: make sure the database has the white-label team
- * sign-in schema (migration 20261023120000_whitelabel_team_sign_in).
+ * sign-in schema (migrations 20261023120000_whitelabel_team_sign_in and
+ * 20261027120000_whitelabel_button_text_color).
  *
  * Why this exists: Vercel preview builds run the migration step, but on
  * this project it does not reliably reach the database the preview
@@ -29,6 +30,7 @@ const STATEMENTS = [
   `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "whitelabelAccentColor" TEXT`,
   `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "whitelabelLoginHeading" TEXT`,
   `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "whitelabelLoginMessage" TEXT`,
+  `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "whitelabelButtonTextColor" TEXT`,
   `CREATE TABLE IF NOT EXISTS "WorkspaceLoginCode" (
     "id" TEXT NOT NULL,
     "workspaceId" TEXT NOT NULL,
@@ -55,11 +57,12 @@ async function schemaPresent(): Promise<boolean> {
   const rows = await db.$queryRawUnsafe<{ n: bigint | number }[]>(
     `SELECT
        (SELECT count(*) FROM information_schema.columns
-         WHERE table_name = 'Workspace'
-           AND column_name IN ('whitelabelLogoUrl','whitelabelAccentColor','whitelabelLoginHeading','whitelabelLoginMessage'))
-     + (SELECT count(*) FROM information_schema.tables WHERE table_name = 'WorkspaceLoginCode') AS n`,
+         WHERE table_schema = current_schema() AND table_name = 'Workspace'
+           AND column_name IN ('whitelabelLogoUrl','whitelabelAccentColor','whitelabelLoginHeading','whitelabelLoginMessage','whitelabelButtonTextColor'))
+     + (SELECT count(*) FROM information_schema.tables
+         WHERE table_schema = current_schema() AND table_name = 'WorkspaceLoginCode') AS n`,
   )
-  return Number(rows[0]?.n ?? 0) === 5
+  return Number(rows[0]?.n ?? 0) === 6
 }
 
 export async function ensureWhitelabelTestSchema(): Promise<void> {

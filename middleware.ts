@@ -74,6 +74,18 @@ export async function middleware(request: NextRequest) {
   if (isBlockedOnCustomHost(hostHeader, pathname)) {
     return new NextResponse('Not found', { status: 404 })
   }
+  // White-label TEST MODE (lib/whitelabel/preview.ts): on our own host a
+  // tester's browser carries wl_preview, so swap our icons for the test
+  // workspace's exactly as on a real custom host. The brand routes only
+  // honour the cookie off production; elsewhere they 404 and the browser
+  // keeps its default icon.
+  const testModeAsset = !onCustomHost && request.cookies.get('wl_preview') ? brandAssetRewrite(pathname) : null
+  if (testModeAsset) {
+    const url = request.nextUrl.clone()
+    url.pathname = testModeAsset
+    url.search = ''
+    return NextResponse.rewrite(url)
+  }
   if (!onCustomHost && !isLegacyMatchedPath(pathname)) {
     return NextResponse.next()
   }
@@ -221,6 +233,12 @@ export const config = {
     // Root is matched so custom-domain visitors get rewritten to the
     // portal; on the primary host '/' falls through to the marketing page.
     '/',
+    // Our file-based icons, matched on primary hosts only for white-label
+    // test mode's icon swap (see testModeAsset above).
+    '/favicon.ico',
+    '/icon.svg',
+    '/apple-icon.png',
+    '/manifest.webmanifest',
     // Matched ONLY for the widget-runtime cron guard above — on the main
     // project the guard is a no-op and crons pass straight through.
     '/api/cron/:path*',

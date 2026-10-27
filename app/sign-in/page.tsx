@@ -70,7 +70,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
             // eslint-disable-next-line @next/next/no-img-element
             <img src={brand.logoUrl} alt={brand.name} className="h-12 max-w-[220px] object-contain mb-4" />
           ) : (
-            <div className="h-12 w-12 rounded-xl mb-4 flex items-center justify-center text-white text-xl font-bold" style={{ background: accent }}>
+            <div className="h-12 w-12 rounded-xl mb-4 flex items-center justify-center text-xl font-bold" style={{ background: accent, color: brand.buttonText }}>
               {brand.name.slice(0, 1).toUpperCase()}
             </div>
           )}
@@ -93,7 +93,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
               Your account isn&rsquo;t on this team. Sign in with a different email, or ask your administrator for an invite.
             </p>
           )}
-          <SignInForm accent={accent} callbackUrl={callbackUrl} initialEmail={typeof sp.email === 'string' ? sp.email : ''} />
+          <SignInForm accent={accent} buttonText={brand.buttonText} callbackUrl={callbackUrl} initialEmail={typeof sp.email === 'string' ? sp.email : ''} />
         </div>
       </div>
     </main>

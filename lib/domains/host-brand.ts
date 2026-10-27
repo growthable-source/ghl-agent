@@ -16,7 +16,7 @@ import { db } from '@/lib/db'
 import { isPrimaryHost } from './primary-hosts'
 import { resolveWorkspaceIdForHost } from './workspace-domain'
 import type { Metadata } from 'next'
-import { brandMetadata, cleanBrandName, safeAccent, type ResolvedBrand } from './brand-metadata'
+import { brandMetadata, cleanBrandName, readableTextOn, safeAccent, type ResolvedBrand } from './brand-metadata'
 import { previewWorkspaceId } from '@/lib/whitelabel/preview'
 
 export type HostBrand = ResolvedBrand & (
@@ -82,6 +82,19 @@ export const resolveHostBrand = cache(async (host: string | null | undefined): P
 })
 
 /**
+ * Brand for the favicon / manifest routes (app/api/brand/*): the custom
+ * host's brand, or on our own host the white-label TEST MODE workspace
+ * (lib/whitelabel/preview.ts) — null when neither applies.
+ */
+export async function assetBrand(host: string | null | undefined): Promise<HostBrand | null> {
+  const h = bareHost(host)
+  if (!h) return null
+  if (!isPrimaryHost(h)) return resolveHostBrand(h)
+  const previewId = await previewWorkspaceId()
+  return previewId ? getWorkspaceBrand(previewId) : null
+}
+
+/**
  * Metadata for a visitor-facing page owned by `workspaceId` (widget,
  * hosted call, Co-Pilot link): the host's brand on a custom domain, else
  * the workspace's own brand when it is white-label unlocked (the link may
@@ -108,6 +121,8 @@ export interface TeamBrand {
   name: string
   logoUrl: string | null
   accent: string | null
+  /** Sign-in button text colour, already resolved (explicit or auto-contrast). */
+  buttonText: string
   heading: string | null
   message: string | null
   /** True in white-label test mode (lib/whitelabel/preview.ts): our host standing in for the domain. */
@@ -120,7 +135,7 @@ export const teamBrandForWorkspace = cache(async (workspaceId: string): Promise<
     where: { id: workspaceId },
     select: {
       name: true, logoUrl: true, whitelabelUnlocked: true, whitelabelBrandName: true,
-      whitelabelLogoUrl: true, whitelabelAccentColor: true,
+      whitelabelLogoUrl: true, whitelabelAccentColor: true, whitelabelButtonTextColor: true,
       whitelabelLoginHeading: true, whitelabelLoginMessage: true,
     },
   })
@@ -130,6 +145,7 @@ export const teamBrandForWorkspace = cache(async (workspaceId: string): Promise<
     name: cleanBrandName(ws.whitelabelBrandName) || cleanBrandName(ws.name) || 'Sign in',
     logoUrl: ws.whitelabelLogoUrl || ws.logoUrl || null,
     accent: safeAccent(ws.whitelabelAccentColor),
+    buttonText: safeAccent(ws.whitelabelButtonTextColor) ?? readableTextOn(safeAccent(ws.whitelabelAccentColor) ?? '#18181b'),
     heading: ws.whitelabelLoginHeading,
     message: ws.whitelabelLoginMessage,
   }

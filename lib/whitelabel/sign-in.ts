@@ -101,15 +101,19 @@ export async function requestLoginCode(brand: TeamBrand, email: string, ip: stri
       <p style="margin:0;">It expires in ${CODE_TTL_MINUTES} minutes and works once. If you didn't try to sign in, you can ignore this email.</p>`,
     brand: { name: brand.name, accent: brand.accent },
   })
-  const platformFrom = process.env.NOTIFICATION_FROM_EMAIL || 'notifications@xovera.io'
-  await sendEmail({
-    to: email,
-    subject: `${code} is your ${brand.name} sign-in code`,
-    html,
-    text,
-    from: brandedFromAddress(brand.name, platformFrom),
-    context: 'TeamSignIn',
-  })
+  const message = { to: email, subject: `${code} is your ${brand.name} sign-in code`, html, text, context: 'TeamSignIn' }
+  const platformFrom = process.env.NOTIFICATION_FROM_EMAIL
+  try {
+    // Brand name as the sender name, on our verified sending address.
+    await sendEmail({ ...message, from: brandedFromAddress(brand.name, platformFrom || 'notifications@xovera.io') })
+  } catch (err) {
+    // If the email provider refuses the branded sender (e.g. no
+    // NOTIFICATION_FROM_EMAIL on this deployment and the fallback address
+    // isn't verified), a code under our default sender beats no code: the
+    // person is waiting on the sign-in page. A second failure is real.
+    console.warn('[sign-in] branded sender refused, retrying with the default sender', err)
+    await sendEmail(message)
+  }
   return 'sent'
 }
 

@@ -59,7 +59,7 @@ export async function getWorkspaceDomainState(workspaceId: string) {
     select: {
       whitelabelUnlocked: true, whitelabelDomain: true,
       whitelabelBrandName: true, whitelabelFaviconUrl: true, whitelabelRootUrl: true,
-      whitelabelLogoUrl: true, whitelabelAccentColor: true,
+      whitelabelLogoUrl: true, whitelabelAccentColor: true, whitelabelButtonTextColor: true,
       whitelabelLoginHeading: true, whitelabelLoginMessage: true,
     },
   })
@@ -72,6 +72,7 @@ export async function getWorkspaceDomainState(workspaceId: string) {
       rootUrl: ws?.whitelabelRootUrl ?? null,
       logoUrl: ws?.whitelabelLogoUrl ?? null,
       accentColor: ws?.whitelabelAccentColor ?? null,
+      buttonTextColor: ws?.whitelabelButtonTextColor ?? null,
       loginHeading: ws?.whitelabelLoginHeading ?? null,
       loginMessage: ws?.whitelabelLoginMessage ?? null,
     },

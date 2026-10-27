@@ -132,6 +132,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       whitelabelRootUrl: parsed.value.rootUrl,
       whitelabelLogoUrl: parsed.value.logoUrl,
       whitelabelAccentColor: parsed.value.accentColor,
+      whitelabelButtonTextColor: parsed.value.buttonTextColor,
       whitelabelLoginHeading: parsed.value.loginHeading,
       whitelabelLoginMessage: parsed.value.loginMessage,
     },
