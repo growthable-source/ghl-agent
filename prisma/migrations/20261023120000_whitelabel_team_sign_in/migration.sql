@@ -1,11 +1,15 @@
+-- Idempotent on purpose: test (preview) builds may already have added
+-- these via lib/whitelabel/ensure-test-schema.ts, which runs the same
+-- statements. Every statement is a no-op when its object exists.
+
 -- AlterTable
-ALTER TABLE "Workspace" ADD COLUMN     "whitelabelLogoUrl" TEXT,
-ADD COLUMN     "whitelabelAccentColor" TEXT,
-ADD COLUMN     "whitelabelLoginHeading" TEXT,
-ADD COLUMN     "whitelabelLoginMessage" TEXT;
+ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "whitelabelLogoUrl" TEXT,
+ADD COLUMN IF NOT EXISTS "whitelabelAccentColor" TEXT,
+ADD COLUMN IF NOT EXISTS "whitelabelLoginHeading" TEXT,
+ADD COLUMN IF NOT EXISTS "whitelabelLoginMessage" TEXT;
 
 -- CreateTable
-CREATE TABLE "WorkspaceLoginCode" (
+CREATE TABLE IF NOT EXISTS "WorkspaceLoginCode" (
     "id" TEXT NOT NULL,
     "workspaceId" TEXT NOT NULL,
     "email" TEXT NOT NULL,
@@ -20,10 +24,14 @@ CREATE TABLE "WorkspaceLoginCode" (
 );
 
 -- CreateIndex
-CREATE INDEX "WorkspaceLoginCode_workspaceId_email_createdAt_idx" ON "WorkspaceLoginCode"("workspaceId", "email", "createdAt");
+CREATE INDEX IF NOT EXISTS "WorkspaceLoginCode_workspaceId_email_createdAt_idx" ON "WorkspaceLoginCode"("workspaceId", "email", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "WorkspaceLoginCode_ip_createdAt_idx" ON "WorkspaceLoginCode"("ip", "createdAt");
+CREATE INDEX IF NOT EXISTS "WorkspaceLoginCode_ip_createdAt_idx" ON "WorkspaceLoginCode"("ip", "createdAt");
 
 -- AddForeignKey
-ALTER TABLE "WorkspaceLoginCode" ADD CONSTRAINT "WorkspaceLoginCode_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'WorkspaceLoginCode_workspaceId_fkey') THEN
+    ALTER TABLE "WorkspaceLoginCode" ADD CONSTRAINT "WorkspaceLoginCode_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
