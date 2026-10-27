@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
 import ChatMarkdown from '@/components/ChatMarkdown'
+import RichComposer, { type RichComposerHandle } from './RichComposer'
 import AISummarySection from './AISummarySection'
 import UserInfoSection from './UserInfoSection'
 import VisitorTimelineSection from './VisitorTimelineSection'
@@ -85,8 +86,6 @@ interface Member {
   user: { id: string; name: string | null; email: string | null; image: string | null }
 }
 
-const EMOJI_GRID = ['👍', '🙏', '😀', '😅', '🎉', '💯', '🔥', '✅', '❌', '👀', '❤️', '🤔', '👋', '✨', '⏰', '📅']
-
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
@@ -156,7 +155,6 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const [reconnectNonce, setReconnectNonce] = useState(0)
   const lastEventIdRef = useRef<string | null>(null)
   const lastSeenAtRef = useRef<number>(Date.now())
-  const [emojiOpen, setEmojiOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   // Internal-note composer mode (#7). When on, the box posts a private
   // note to teammates instead of a customer-facing reply; the visitor
@@ -254,6 +252,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const scrollRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const composerRef = useRef<RichComposerHandle>(null)
   const typingPingTimer = useRef<any>(null)
   const lastTypingPing = useRef(0)
 
@@ -543,7 +542,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: reply.trim() }),
       })
-      setReply('')
+      composerRef.current?.clear()
     } finally { setSending(false) }
   }
 
@@ -566,7 +565,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: reply.trim(), mentionedUserIds: Array.from(noteMentions) }),
       })
-      setReply('')
+      composerRef.current?.clear()
       setNoteMentions(new Set())
     } finally { setSending(false) }
   }
@@ -1017,109 +1016,43 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                   })}
                 </div>
               )}
-              <div
-                className="flex items-end gap-2 rounded-lg"
-                style={noteMode ? { background: 'var(--accent-amber-bg)', padding: '6px', margin: '-6px' } : undefined}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  hidden
-                  onChange={e => { const f = e.target.files?.[0]; if (f) void uploadFile(f); if (e.target) e.target.value = '' }}
-                  accept="image/*,application/pdf,text/plain,text/csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  title="Attach a file"
-                  className="w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-30"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-                  </svg>
-                </button>
-                <div className="relative">
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                onChange={e => { const f = e.target.files?.[0]; if (f) void uploadFile(f); if (e.target) e.target.value = '' }}
+                accept="image/*,application/pdf,text/plain,text/csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              />
+              {/* Rich text → markdown. The widget renders operator replies
+                  through ChatMarkdown, so formatting here is what the
+                  visitor sees. Notes are text-only (separate table): no
+                  file paste/attach in note mode. */}
+              <RichComposer
+                ref={composerRef}
+                tone={noteMode ? 'note' : 'default'}
+                placeholder={noteMode ? 'Write a private note for your team…' : 'Type your reply…  (paste or drop a screenshot to attach)'}
+                onChange={md => { setReply(md); if (!noteMode && md) pingTyping() }}
+                onSubmit={() => { if (noteMode) void sendNote(); else void send() }}
+                onFiles={noteMode ? undefined : files => files.forEach(f => void uploadFile(f))}
+                onAttachClick={noteMode ? undefined : () => fileInputRef.current?.click()}
+                attachDisabled={uploading}
+                actions={
                   <button
-                    type="button"
-                    onClick={() => setEmojiOpen(o => !o)}
-                    className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-                    style={{ color: 'var(--text-tertiary)' }}
-                    title="Emoji"
+                    onClick={() => (noteMode ? sendNote() : send())}
+                    disabled={!reply.trim() || sending}
+                    className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-opacity"
+                    style={
+                      !reply.trim() || sending
+                        ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
+                        : noteMode
+                          ? { background: 'var(--accent-amber)', color: '#fff' }
+                          : { background: accent, color: '#fff' }
+                    }
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                    {sending ? '…' : noteMode ? 'Add note' : 'Send'}
                   </button>
-                  {emojiOpen && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => setEmojiOpen(false)} />
-                      <div
-                        className="absolute bottom-11 left-0 z-40 rounded-lg p-2 shadow-xl grid grid-cols-8 gap-1 w-[260px]"
-                        style={{ background: 'var(--surface)', border: '1px solid var(--border-secondary)' }}
-                      >
-                        {EMOJI_GRID.map(e => (
-                          <button
-                            key={e}
-                            type="button"
-                            onClick={() => { setReply(prev => prev + e); setEmojiOpen(false) }}
-                            className="text-lg w-8 h-8 rounded transition-colors hover:bg-zinc-800"
-                          >{e}</button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-                <textarea
-                  value={reply}
-                  onChange={e => { setReply(e.target.value); if (!noteMode) pingTyping() }}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); noteMode ? sendNote() : send() } }}
-                  onPaste={e => {
-                    // Paste a screenshot straight into the box — no need to save it
-                    // locally first. Upload any image in the clipboard via the same
-                    // path as the attach button; let text paste through normally.
-                    // Notes are text-only (separate table), so skip in note mode.
-                    if (noteMode) return
-                    const imageFiles = Array.from(e.clipboardData.files).filter(f => f.type.startsWith('image/'))
-                    if (imageFiles.length > 0) {
-                      e.preventDefault()
-                      imageFiles.forEach(f => void uploadFile(f))
-                    }
-                  }}
-                  onDragOver={e => { if (!noteMode) e.preventDefault() }}
-                  onDrop={e => {
-                    if (noteMode) return
-                    const files = Array.from(e.dataTransfer.files)
-                    if (files.length > 0) {
-                      e.preventDefault()
-                      files.forEach(f => void uploadFile(f))
-                    }
-                  }}
-                  placeholder={noteMode ? 'Write a private note for your team…' : 'Type your reply…  (paste or drop a screenshot to attach)'}
-                  rows={2}
-                  className="flex-1 resize-none rounded-lg px-3 py-2 text-sm focus:outline-none max-h-32"
-                  style={{
-                    background: 'var(--input-bg)',
-                    color: 'var(--input-text)',
-                    border: '1px solid var(--input-border)',
-                  }}
-                />
-                <button
-                  onClick={() => (noteMode ? sendNote() : send())}
-                  disabled={!reply.trim() || sending}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
-                  style={
-                    !reply.trim() || sending
-                      ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
-                      : noteMode
-                        ? { background: 'var(--accent-amber)', color: '#fff' }
-                        : { background: accent, color: '#fff' }
-                  }
-                >
-                  {sending ? '…' : noteMode ? 'Add note' : 'Send'}
-                </button>
-              </div>
+                }
+              />
               {uploading && <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>Uploading…</p>}
             </div>
           </div>
@@ -1443,7 +1376,8 @@ function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent
             <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>· {msg.authorName}</span>
           )}
         </div>
-        <p className="whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{msg.content}</p>
+        {/* Notes come from the same rich composer, so they're markdown too. */}
+        <div className="leading-relaxed" style={{ color: 'var(--text-secondary)' }}><ChatMarkdown text={msg.content} /></div>
       </div>
     )
   }
