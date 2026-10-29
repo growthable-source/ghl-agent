@@ -33,6 +33,9 @@ export default function InboxConversationPanel({ workspaceId, conversationId, on
   }
   return (
     <ConversationDetail
+      // Remount per conversation so a half-written draft (text or staged
+      // screenshots) can't be sent into the next conversation opened.
+      key={conversationId}
       workspaceId={workspaceId}
       conversationId={conversationId}
       onClose={onClose}

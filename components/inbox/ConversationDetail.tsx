@@ -129,6 +129,18 @@ function languageLabel(code: string): string {
 }
 // relTime moved to ./conversation-helpers (imported above).
 
+/** A file staged on the reply draft, not yet uploaded. */
+interface PendingFile {
+  id: string
+  file: File
+  /** blob: URL for image thumbnails; null for documents. */
+  previewUrl: string | null
+}
+
+// Mirrors MAX_SIZE_BYTES in the operator upload route — fail at paste
+// time instead of after the operator hits Send.
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
 interface ConversationDetailProps {
   workspaceId: string
   conversationId: string
@@ -156,6 +168,13 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const lastEventIdRef = useRef<string | null>(null)
   const lastSeenAtRef = useRef<number>(Date.now())
   const [uploading, setUploading] = useState(false)
+  // Files staged on the draft (pasted, dropped or picked). They used to
+  // upload the moment they were pasted, which posted the screenshot as
+  // its own message before the operator had typed the instructions that
+  // go with it. Now they sit on the composer and go out on Send, right
+  // after the text ("…as shown in the image below").
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
+  const [attachError, setAttachError] = useState<string | null>(null)
   // Internal-note composer mode (#7). When on, the box posts a private
   // note to teammates instead of a customer-facing reply; the visitor
   // never receives it. `noteMentions` = teammates to notify.
@@ -255,6 +274,12 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const composerRef = useRef<RichComposerHandle>(null)
   const typingPingTimer = useRef<any>(null)
   const lastTypingPing = useRef(0)
+  const pendingFilesRef = useRef<PendingFile[]>([])
+  useEffect(() => { pendingFilesRef.current = pendingFiles }, [pendingFiles])
+  // Release preview blobs for anything still staged when we unmount.
+  useEffect(() => () => {
+    for (const p of pendingFilesRef.current) if (p.previewUrl) URL.revokeObjectURL(p.previewUrl)
+  }, [])
 
   const fetchConvo = useCallback(async () => {
     const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/messages`)
@@ -535,26 +560,74 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   }
 
   async function send() {
-    if (!reply.trim() || sending) return
+    const text = reply.trim()
+    if ((!text && pendingFiles.length === 0) || sending) return
     setSending(true)
+    setAttachError(null)
     try {
-      await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/messages`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: reply.trim() }),
-      })
-      composerRef.current?.clear()
+      if (text) {
+        const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/messages`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text }),
+        })
+        if (!res.ok) { setAttachError('Message failed to send — try again.'); return }
+        composerRef.current?.clear()
+      }
+      // Sequential so the visitor sees attachments in the order staged.
+      // Anything that fails stays on the draft for a retry.
+      const failed: PendingFile[] = []
+      let lastError: string | null = null
+      for (const p of pendingFiles) {
+        const err = await uploadFile(p.file)
+        if (err) { failed.push(p); lastError = err }
+        else if (p.previewUrl) URL.revokeObjectURL(p.previewUrl)
+      }
+      setPendingFiles(failed)
+      if (lastError) setAttachError(`${failed.length === 1 ? failed[0].file.name : `${failed.length} files`} didn't send: ${lastError}`)
     } finally { setSending(false) }
   }
 
-  async function uploadFile(file: File) {
+  /** Uploads + posts one attachment message. Returns an error string, or null on success. */
+  async function uploadFile(file: File): Promise<string | null> {
     setUploading(true)
     const form = new FormData()
     form.append('file', file)
     try {
-      await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/upload`, {
+      const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/upload`, {
         method: 'POST', body: form,
       })
+      if (res.ok) return null
+      const body = await res.json().catch(() => null)
+      return body?.error || `upload failed (${res.status})`
+    } catch {
+      return 'network error'
     } finally { setUploading(false) }
+  }
+
+  function stageFiles(files: File[]) {
+    setAttachError(null)
+    const ok: PendingFile[] = []
+    for (const file of files) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setAttachError(`${file.name || 'File'} is over ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`)
+        continue
+      }
+      ok.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+      })
+    }
+    if (ok.length) setPendingFiles(prev => [...prev, ...ok])
+    composerRef.current?.focus()
+  }
+
+  function unstageFile(id: string) {
+    setPendingFiles(prev => {
+      const hit = prev.find(p => p.id === id)
+      if (hit?.previewUrl) URL.revokeObjectURL(hit.previewUrl)
+      return prev.filter(p => p.id !== id)
+    })
   }
 
   async function sendNote() {
@@ -598,6 +671,8 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const visitorInitial = (convo.visitor.name || convo.visitor.email || 'V').charAt(0).toUpperCase()
   const isLive = convo.status === 'active'
   const isHandedOff = convo.status === 'handed_off'
+  // A reply can be attachments alone; a note needs text.
+  const canSend = !sending && (!!reply.trim() || (!noteMode && pendingFiles.length > 0))
   const isEnded = convo.status === 'ended'
   let lastAgentIdx = -1
   for (let i = convo.messages.length - 1; i >= 0; i--) {
@@ -1020,7 +1095,8 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                 ref={fileInputRef}
                 type="file"
                 hidden
-                onChange={e => { const f = e.target.files?.[0]; if (f) void uploadFile(f); if (e.target) e.target.value = '' }}
+                multiple
+                onChange={e => { const fs = Array.from(e.target.files ?? []); if (fs.length) stageFiles(fs); if (e.target) e.target.value = '' }}
                 accept="image/*,application/pdf,text/plain,text/csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               />
               {/* Rich text → markdown. The widget renders operator replies
@@ -1033,16 +1109,44 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                 placeholder={noteMode ? 'Write a private note for your team…' : 'Type your reply…  (paste or drop a screenshot to attach)'}
                 onChange={md => { setReply(md); if (!noteMode && md) pingTyping() }}
                 onSubmit={() => { if (noteMode) void sendNote(); else void send() }}
-                onFiles={noteMode ? undefined : files => files.forEach(f => void uploadFile(f))}
+                onFiles={noteMode ? undefined : stageFiles}
                 onAttachClick={noteMode ? undefined : () => fileInputRef.current?.click()}
-                attachDisabled={uploading}
+                attachDisabled={sending}
+                attachments={!noteMode && pendingFiles.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 px-3 pb-2">
+                    {pendingFiles.map(p => (
+                      <div
+                        key={p.id}
+                        className="relative group rounded-md overflow-hidden"
+                        style={{ border: '1px solid var(--border-secondary)', background: 'var(--surface-secondary)' }}
+                        title={p.file.name}
+                      >
+                        {p.previewUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- local blob: preview
+                          <img src={p.previewUrl} alt={p.file.name || 'attachment'} className="block h-16 w-auto max-w-[160px] object-cover" />
+                        ) : (
+                          <div className="h-16 max-w-[180px] px-3 flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                            <span>📎</span><span className="truncate">{p.file.name}</span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => unstageFile(p.id)}
+                          disabled={sending}
+                          aria-label={`Remove ${p.file.name || 'attachment'}`}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[11px] leading-none bg-black/60 text-white hover:bg-black/80"
+                        >✕</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : undefined}
                 actions={
                   <button
                     onClick={() => (noteMode ? sendNote() : send())}
-                    disabled={!reply.trim() || sending}
+                    disabled={!canSend}
                     className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-opacity"
                     style={
-                      !reply.trim() || sending
+                      !canSend
                         ? { background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }
                         : noteMode
                           ? { background: 'var(--accent-amber)', color: '#fff' }
@@ -1054,6 +1158,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
                 }
               />
               {uploading && <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>Uploading…</p>}
+              {attachError && !noteMode && <p className="text-[11px] mt-2" style={{ color: 'var(--accent-red, #ef4444)' }}>{attachError}</p>}
             </div>
           </div>
         ) : (

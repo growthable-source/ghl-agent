@@ -23,7 +23,8 @@
  * Typed markdown (**bold**, `code`) also passes straight through.
  *
  * Paste is forced to plain text so styles from Docs/web pages don't
- * leak into the box; pasted/dropped files go to onFiles (screenshots).
+ * leak into the box; pasted/dropped files go to onFiles (screenshots),
+ * which the parent stages on the draft and renders via `attachments`.
  *
  * Note on embedding: link entry is an inline popover, not
  * window.prompt — the dashboard runs inside the GHL marketplace iframe,
@@ -47,6 +48,8 @@ interface Props {
   onFiles?: (files: File[]) => void
   onAttachClick?: () => void
   attachDisabled?: boolean
+  /** Staged-attachment previews, shown inside the box above the toolbar. */
+  attachments?: React.ReactNode
   /** Right-hand slot in the toolbar — the Send button. */
   actions?: React.ReactNode
   /** Tint the box (note mode). */
@@ -119,7 +122,7 @@ function ToolButton({ title, active, onPress, children }: {
 }
 
 const RichComposer = forwardRef<RichComposerHandle, Props>(function RichComposer(
-  { placeholder, onChange, onSubmit, onFiles, onAttachClick, attachDisabled, actions, tone = 'default' },
+  { placeholder, onChange, onSubmit, onFiles, onAttachClick, attachDisabled, attachments, actions, tone = 'default' },
   ref,
 ) {
   const editorRef = useRef<HTMLDivElement>(null)
@@ -390,6 +393,8 @@ const RichComposer = forwardRef<RichComposerHandle, Props>(function RichComposer
           style={{ color: 'var(--input-text)' }}
         />
       </div>
+
+      {attachments}
 
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
