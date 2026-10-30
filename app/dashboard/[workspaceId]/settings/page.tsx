@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
+import { useWhitelabelAccess } from '@/lib/whitelabel/use-whitelabel-access'
 
 const WORKSPACE_ICONS = [
   '🚀', '⚡', '🎯', '💎', '🔥', '🌊', '🏔️', '🌿',
@@ -30,6 +31,7 @@ interface Invite {
 export default function WorkspaceSettingsPage() {
   const params = useParams()
   const workspaceId = params.workspaceId as string
+  const { canEditBranding } = useWhitelabelAccess(workspaceId)
 
   const [loading, setLoading] = useState(true)
 
@@ -253,7 +255,10 @@ export default function WorkspaceSettingsPage() {
               Three modes — emoji (existing 24-option grid), upload
               (Vercel Blob), or paste a URL. A "Remove logo" button
               appears whenever a logoUrl is set so operators can go
-              back to the emoji cleanly. */}
+              back to the emoji cleanly. Hidden (not disabled) for admins
+              once white-label is unlocked: the logo then brands the
+              customer's domain and is owner-only. */}
+          {canEditBranding && (
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1.5">Brand avatar</label>
             <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-900 p-0.5 text-[11px] mb-2">
@@ -350,6 +355,7 @@ export default function WorkspaceSettingsPage() {
               </button>
             )}
           </div>
+          )}
           <div className="flex items-center gap-3">
             <button
               type="submit"

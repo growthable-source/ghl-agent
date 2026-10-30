@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { brandingLockedFor } from '@/lib/whitelabel/manager'
 
 /**
  * GET /api/workspaces/:id/members — list workspace members
@@ -83,6 +84,10 @@ export async function PATCH(
   // validation is soft — we only require the protocol, not reachability,
   // since the image element handles 404s naturally.
   if (Object.prototype.hasOwnProperty.call(body, 'logoUrl')) {
+    // On a white-label workspace the logo brands the customer's domain,
+    // so only the owner / a platform admin may change it.
+    const denied = await brandingLockedFor(workspaceId)
+    if (denied) return denied
     if (body.logoUrl === null || body.logoUrl === '') {
       data.logoUrl = null
     } else if (typeof body.logoUrl === 'string') {

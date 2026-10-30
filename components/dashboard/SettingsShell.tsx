@@ -11,8 +11,20 @@ import { SectionLabel } from '@/components/ui/primitives'
  * existing settings page keeps its URL and content and simply gains the nav.
  * Entries that live outside /settings (Integrations, Audit log, Consent)
  * link to their existing routes; Phase 5 moves them under the shell.
+ *
+ * `canManageWhitelabel` (resolved server-side in the settings layout)
+ * shows the white-label entries; without it they are left out entirely —
+ * admins must not see that white-label exists.
  */
-export default function SettingsShell({ workspaceId, children }: { workspaceId: string; children: React.ReactNode }) {
+export default function SettingsShell({
+  workspaceId,
+  canManageWhitelabel,
+  children,
+}: {
+  workspaceId: string
+  canManageWhitelabel: boolean
+  children: React.ReactNode
+}) {
   const pathname = usePathname()
   const rest = workspaceRest(pathname, workspaceId) ?? ''
   const currentTab = useSearchParams().get('tab')
@@ -25,7 +37,7 @@ export default function SettingsShell({ workspaceId, children }: { workspaceId: 
           <div key={group.group} className="mb-4">
             <SectionLabel className="px-2.5 pb-1.5">{group.group}</SectionLabel>
             <div className="space-y-0.5">
-              {group.items.map(item => {
+              {group.items.filter(item => item.gate !== 'whitelabel' || canManageWhitelabel).map(item => {
                 const active = settingsItemActive(rest, item.path, item.tab, currentTab)
                 return (
                   <Link

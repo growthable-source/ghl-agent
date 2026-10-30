@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { brandingLockedFor } from '@/lib/whitelabel/manager'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { isMissingColumn } from '@/lib/migration-error'
@@ -58,6 +59,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // simply ignored there.
   if (typeof data.poweredByText === 'string') {
     data.poweredByText = data.poweredByText.slice(0, 60)
+  }
+  // On a white-label workspace the "Powered by" line is owner-only
+  // (lib/whitelabel/manage-policy.ts). Dropped silently rather than
+  // refused: the builder sends every field on save, and an admin must be
+  // able to save the rest without learning the setting exists.
+  if (data.poweredByText !== undefined && (await brandingLockedFor(workspaceId))) {
+    delete data.poweredByText
   }
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No valid fields' }, { status: 400 })

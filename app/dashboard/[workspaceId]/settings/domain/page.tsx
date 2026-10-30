@@ -9,8 +9,10 @@
  * Always visible; adding a domain requires a platform admin to unlock
  * the workspace first (the commercial deal is outside the product), so
  * locked workspaces see the explainer + a contact prompt, not a form.
- * Changing anything here is platform-admin only (`canManage`, see
- * lib/whitelabel/super-admin.ts); workspace owners/admins see it read-only.
+ * Only the workspace owner and platform admins reach this page
+ * (./layout.tsx, lib/whitelabel/manage-policy.ts); admins get a 404 and
+ * never see it in the nav. `canManage` is therefore always true here — the
+ * checks below are a belt-and-braces fallback.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -95,14 +97,6 @@ export default function CustomDomainPage() {
           signs in there too, on a page with your branding.
         </p>
       </div>
-
-      {!state.canManage && (
-        <div className="rounded-xl border p-4" style={card}>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            White-label settings are managed by your platform administrator. Contact them to change your domain or branding.
-          </p>
-        </div>
-      )}
 
       {!state.unlocked && (
         <div className="rounded-xl border p-5" style={card}>

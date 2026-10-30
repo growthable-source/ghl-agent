@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
-import { WHITELABEL_FORBIDDEN_MESSAGE, whitelabelManager } from '@/lib/whitelabel/super-admin'
+import { brandingLockedFor, whitelabelHidden, whitelabelManager } from '@/lib/whitelabel/manager'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 
 export const dynamic = 'force-dynamic'
@@ -23,8 +23,11 @@ export const dynamic = 'force-dynamic'
  * `target=favicon` (form field) stores the upload as the white-label
  * favicon (Workspace.whitelabelFaviconUrl) instead of the logo, and also
  * accepts .ico files. `target=whitelabel-logo` stores the team sign-in
- * page logo (Workspace.whitelabelLogoUrl). Both white-label targets are
- * platform-admin only.
+ * page logo (Workspace.whitelabelLogoUrl). Both white-label targets — and,
+ * once white-label is unlocked, the workspace logo itself (it brands the
+ * customer's domain) — are owner / platform-admin only
+ * (lib/whitelabel/manage-policy.ts). Admins get a plain 404 for those so
+ * the feature stays invisible to them.
  *
  * Requires BLOB_READ_WRITE_TOKEN in env. If missing, returns a clear
  * error so operators know exactly what to wire up.
@@ -71,13 +74,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
       error: `File too large — max ${Math.round(MAX_SIZE_BYTES / 1024 / 1024)} MB. Your upload was ${(file.size / 1024 / 1024).toFixed(2)} MB.`,
     }, { status: 413 })
   }
-  // White-label assets (favicon, team sign-in logo) are platform-admin
-  // only — see lib/whitelabel/super-admin.ts. The workspace logo isn't.
   const target = form.get('target')
   const isFavicon = target === 'favicon'
   const isWhitelabelLogo = target === 'whitelabel-logo'
-  if ((isFavicon || isWhitelabelLogo) && !(await whitelabelManager())) {
-    return NextResponse.json({ error: WHITELABEL_FORBIDDEN_MESSAGE }, { status: 403 })
+  if ((isFavicon || isWhitelabelLogo) && !(await whitelabelManager(workspaceId))) {
+    return whitelabelHidden()
+  }
+  if (!isFavicon && !isWhitelabelLogo) {
+    const denied = await brandingLockedFor(workspaceId)
+    if (denied) return denied
   }
   const mime = file.type.toLowerCase()
   if (!ALLOWED_MIME.has(mime) && !(isFavicon && ICO_MIME.has(mime))) {
@@ -138,6 +143,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (access.role !== 'owner' && access.role !== 'admin') {
     return NextResponse.json({ error: 'Only owners and admins can change the workspace logo.' }, { status: 403 })
   }
+  const denied = await brandingLockedFor(workspaceId)
+  if (denied) return denied
   await db.workspace.update({
     where: { id: workspaceId },
     data: { logoUrl: null },
