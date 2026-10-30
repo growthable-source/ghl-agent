@@ -18,6 +18,7 @@ import NewBadge from '@/components/NewBadge'
 import { COPILOT_LANGUAGES } from '@/lib/copilot/language'
 import { COPILOT_VOICES, DEFAULT_COPILOT_VOICE_ID, ROTATE_VOICE, isCopilotVoiceId } from '@/lib/copilot/voices'
 import { useWorkspacePublicOrigin } from '@/lib/domains/use-public-origin'
+import { useWhitelabelAccess } from '@/lib/whitelabel/use-whitelabel-access'
 import CopilotBlockBuilder from '@/components/copilot/CopilotBlockBuilder'
 import type { CopilotBlock } from '@/lib/copilot/blocks'
 
@@ -60,6 +61,7 @@ export default function CopilotAgentEditor() {
   const params = useParams<{ workspaceId: string; agentId: string }>()
   const workspaceId = params?.workspaceId
   const publicOrigin = useWorkspacePublicOrigin(workspaceId)
+  const { canManage: canManageWhitelabel } = useWhitelabelAccess(workspaceId)
   const agentId = params?.agentId
 
   const [agent, setAgent] = useState<AgentDetail | null>(null)
@@ -669,10 +671,13 @@ export default function CopilotAgentEditor() {
             Publish to launch this agent from a shareable link, a button on any site, or a JavaScript snippet inside
             your app. Unpublishing disables all of them instantly (the key is kept, so re-publishing restores them).
           </p>
+          {/* White-label: only the owner / a platform admin learns custom domains exist. */}
+          {canManageWhitelabel && (
           <p className="text-[11px] text-zinc-500 mb-3">
             Links use your own domain once one is connected.{' '}
             <Link href={`/dashboard/${workspaceId}/settings/domain`} className="underline hover:text-zinc-300">Custom domain settings →</Link>
           </p>
+          )}
           {agent.published && agent.publicKey && (
             <div className="space-y-3">
               <DeployField label="Shareable link" value={`${publicOrigin}/copilot/live/${agent.publicKey}`} />

@@ -62,6 +62,9 @@ export function pageItems(workspaceId: string, gates: Partial<Record<NavGate, bo
   }
   for (const g of SETTINGS_NAV) {
     for (const s of g.items) {
+      // Only the white-label gate hides a settings page here; the
+      // ticketing pages stay findable so they can be switched on.
+      if (s.gate === 'whitelabel' && !gates.whitelabel) continue
       out.push({ id: `settings:${s.path}`, group: 'Pages', label: s.label, hint: `Settings · ${g.group}`, href: `${base}${s.path}${s.tab ? `?tab=${s.tab}` : ''}` })
     }
   }

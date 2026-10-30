@@ -6,6 +6,7 @@ import { canInviteCrossDomain, canAddTeamMember, recommendPlanForLimit, PLAN_FEA
 import { isInternalWorkspace } from '@/lib/internal-workspace'
 import { can, isValidRole, assignableRoles, type WorkspaceRole } from '@/lib/permissions'
 import { sendWorkspaceInviteEmail } from '@/lib/workspace-invite-email'
+import { inviteTarget } from '@/lib/whitelabel/invite'
 
 function newInviteToken(): string {
   // 24-byte URL-safe random — opaque, single-use. Stored as the
@@ -225,13 +226,14 @@ export async function POST(req: NextRequest, { params }: Params) {
           where: { id: workspaceId },
           select: { name: true },
         })
-        const base = process.env.NEXT_PUBLIC_APP_URL || ''
+        const target = await inviteTarget(workspaceId, email, saved.token, req.nextUrl.origin)
         await sendWorkspaceInviteEmail({
           to: email,
           workspaceName: ws?.name || 'a Xovera workspace',
           inviterName: inviter?.name ?? inviter?.email ?? null,
           role: saved.role,
-          inviteUrl: `${base}/invite/${saved.token}`,
+          inviteUrl: target.inviteUrl,
+          brand: target.brand ? { name: target.brand.name, accent: target.brand.accent } : null,
         })
       } catch (err: any) {
         console.warn('[invites] email failed for', email, err?.message)

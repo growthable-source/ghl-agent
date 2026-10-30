@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { can } from '@/lib/permissions'
 import { sendWorkspaceInviteEmail } from '@/lib/workspace-invite-email'
+import { inviteTarget } from '@/lib/whitelabel/invite'
 
 type Params = { params: Promise<{ workspaceId: string; inviteId: string }> }
 
@@ -14,7 +15,7 @@ type Params = { params: Promise<{ workspaceId: string; inviteId: string }> }
  * extends the expiry by 7 days from now, and re-sends the email.
  * Use this for "I never got it / it's about to expire."
  */
-export async function POST(_req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, { params }: Params) {
   const { workspaceId, inviteId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
@@ -49,13 +50,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
       where: { id: workspaceId },
       select: { name: true },
     })
-    const base = process.env.NEXT_PUBLIC_APP_URL || ''
+    const target = await inviteTarget(workspaceId, invite.email, newToken, req.nextUrl.origin)
     await sendWorkspaceInviteEmail({
       to: invite.email,
       workspaceName: ws?.name || 'a Xovera workspace',
       inviterName: inviter?.name ?? inviter?.email ?? null,
       role: invite.role,
-      inviteUrl: `${base}/invite/${newToken}`,
+      inviteUrl: target.inviteUrl,
+      brand: target.brand ? { name: target.brand.name, accent: target.brand.accent } : null,
     })
   } catch (err: any) {
     console.warn('[invites] resend email failed for', invite.email, err?.message)

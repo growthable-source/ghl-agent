@@ -90,3 +90,22 @@ describe('paragraphs', () => {
     expect(paragraphs([{ html: '<a href="x">link</a>' }])).toContain('<a href="x">link</a>')
   })
 })
+
+describe('renderBrandedEmail — white-label brand', () => {
+  it('names the customer brand and never ours', () => {
+    const { html, text } = renderBrandedEmail({
+      title: 'Your sign-in code', bodyHtml: '<p>123456</p>',
+      brand: { name: 'Acme <Support>', accent: '#1d4ed8' },
+    })
+    expect(html).not.toContain('Xovera')
+    expect(text).not.toContain('Xovera')
+    expect(html).toContain('Acme &lt;Support&gt;')
+    expect(html).toContain('#1d4ed8')
+    expect(text).toContain('[Acme <Support>]')
+  })
+  it('falls back to a neutral accent', () => {
+    const { html } = renderBrandedEmail({ title: 't', bodyHtml: '', brand: { name: 'Acme', accent: 'red' } })
+    expect(html).toContain('#18181b')
+    expect(html).not.toContain('#fa4d2e')
+  })
+})

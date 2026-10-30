@@ -7,6 +7,7 @@ import {
 } from '@/lib/embed-session'
 import { isPrimaryHost } from '@/lib/domains/primary-hosts'
 import { brandAssetRewrite, isBlockedOnCustomHost } from '@/lib/domains/hostname'
+import { METHOD_HEADER, PATH_HEADER, SIG_HEADER, requestPathSecret, signRequestPath } from '@/lib/whitelabel/request-path'
 
 /**
  * Two responsibilities, both centralised here so the rest of the
@@ -46,16 +47,44 @@ function isLegacyMatchedPath(path: string): boolean {
   )
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const hostHeader = (request.headers.get('host') || '').toLowerCase().split(':')[0]
   const onCustomHost = !!hostHeader && !isPrimaryHost(hostHeader)
   const pathname = request.nextUrl.pathname
+
+  // A white-label team signs in on its own branded page (app/sign-in);
+  // our /login (Google/GitHub) is never served on a customer host.
+  if (onCustomHost && pathname === '/login') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/sign-in'
+    return NextResponse.redirect(url)
+  }
+  // Creating workspaces and editing our help center are ours, not the
+  // customer team's; /dashboard on a custom host resolves to its workspace.
+  if (onCustomHost && /^\/dashboard\/(new|help-admin)(\/|$)/.test(pathname)) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
 
   // Customer-branded hosts (portal + workspace white-label) serve a fixed
   // allowlist of public surfaces; everything else — dashboard, auth,
   // admin, workspace APIs — is a 404 there. See lib/domains/hostname.ts.
   if (isBlockedOnCustomHost(hostHeader, pathname)) {
     return new NextResponse('Not found', { status: 404 })
+  }
+  // White-label TEST MODE (lib/whitelabel/preview.ts): on our own host a
+  // tester's browser carries wl_preview, so swap our icons for the test
+  // workspace's exactly as on a real custom host. The brand routes only
+  // honour the cookie off production; elsewhere they 404 and the browser
+  // keeps its default icon.
+  const testModeAsset = !onCustomHost && request.cookies.get('wl_preview') ? brandAssetRewrite(pathname) : null
+  if (testModeAsset) {
+    const url = request.nextUrl.clone()
+    url.pathname = testModeAsset
+    url.search = ''
+    return NextResponse.rewrite(url)
   }
   if (!onCustomHost && !isLegacyMatchedPath(pathname)) {
     return NextResponse.next()
@@ -81,6 +110,20 @@ export function middleware(request: NextRequest) {
   // all scheduled work; the widget runtime only serves chat traffic.
   if (process.env.IS_WIDGET_RUNTIME === '1' && request.nextUrl.pathname.startsWith('/api/cron')) {
     return new NextResponse(null, { status: 204 })
+  }
+
+  // Signed path + method for the central access guards (lib/whitelabel/
+  // guard.ts): route handlers can't see their own URL, and the Support
+  // Agent allowlist is keyed on it. Always overwritten, never trusted
+  // from the client — see lib/whitelabel/request-path.ts.
+  request.headers.delete(PATH_HEADER)
+  request.headers.delete(METHOD_HEADER)
+  request.headers.delete(SIG_HEADER)
+  const pathSecret = requestPathSecret()
+  if (pathSecret) {
+    request.headers.set(PATH_HEADER, pathname)
+    request.headers.set(METHOD_HEADER, request.method)
+    request.headers.set(SIG_HEADER, await signRequestPath(pathname, request.method, pathSecret))
   }
 
   const regular = request.cookies.get(REGULAR_SESSION_COOKIE)
@@ -142,7 +185,11 @@ export function middleware(request: NextRequest) {
     const support = request.cookies.get('voxility_support')
     const hasAnySession = !!(regular || regularUnprefixed || embed || support)
     if (!hasAnySession) {
-      const loginUrl = new URL('/login', request.url)
+      // wl_preview: white-label test mode (lib/whitelabel/preview.ts) —
+      // send the tester back to the branded sign-in, not our /login. The
+      // cookie is only honoured server-side off production.
+      const teamSignIn = onCustomHost || !!request.cookies.get('wl_preview')
+      const loginUrl = new URL(teamSignIn ? '/sign-in' : '/login', request.url)
       loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname)
       return NextResponse.redirect(loginUrl)
     }
@@ -186,6 +233,12 @@ export const config = {
     // Root is matched so custom-domain visitors get rewritten to the
     // portal; on the primary host '/' falls through to the marketing page.
     '/',
+    // Our file-based icons, matched on primary hosts only for white-label
+    // test mode's icon swap (see testModeAsset above).
+    '/favicon.ico',
+    '/icon.svg',
+    '/apple-icon.png',
+    '/manifest.webmanifest',
     // Matched ONLY for the widget-runtime cron guard above — on the main
     // project the guard is a no-op and crons pass straight through.
     '/api/cron/:path*',

@@ -100,6 +100,9 @@ export interface BrandedEmail {
   footer?: string
   /** When set, included as a "Manage notifications" link in the footer. */
   manageNotificationsUrl?: string
+  /** White-label: replaces our name in the header bar, footer and text
+   *  version, and our accent with theirs (null → neutral dark). */
+  brand?: { name: string; accent?: string | null }
 }
 
 export interface RenderedEmail {
@@ -113,11 +116,20 @@ export interface RenderedEmail {
  * untrusted strings.
  */
 export function renderBrandedEmail(email: BrandedEmail): RenderedEmail {
-  const sev = SEVERITY[email.severity || 'info']
+  const brandName = email.brand ? (email.brand.name.trim() || 'Notification') : BRAND.name
+  const brandAccent = email.brand
+    ? (/^#[0-9a-f]{6}$/i.test(email.brand.accent ?? '') ? email.brand.accent! : '#18181b')
+    : null
+  const baseSev = SEVERITY[email.severity || 'info']
+  // Only the neutral 'info' style carries our accent; warning/error/success keep theirs.
+  const sev = brandAccent && (email.severity || 'info') === 'info'
+    ? { ...baseSev, topBar: brandAccent, buttonBg: brandAccent }
+    : baseSev
+  const heroBg = brandAccent ?? BRAND.heroGradient
   const safeTitle = escapeHtml(email.title)
   const safeIntro = email.intro ? escapeHtml(email.intro) : null
   const safePreheader = email.preheader ? escapeHtml(email.preheader) : ''
-  const safeFooter = email.footer ? escapeHtml(email.footer) : `Sent by ${BRAND.name}`
+  const safeFooter = email.footer ? escapeHtml(email.footer) : `Sent by ${escapeHtml(brandName)}`
 
   const manageLink = email.manageNotificationsUrl
     ? ` · <a href="${escapeAttr(email.manageNotificationsUrl)}" style="color:#9ca3af;text-decoration:underline;">Manage notifications</a>`
@@ -162,12 +174,12 @@ export function renderBrandedEmail(email: BrandedEmail): RenderedEmail {
              style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;
                     box-shadow:0 1px 3px rgba(0,0,0,0.06);">
 
-        <!-- Hero header bar with the Xovera wordmark. CSS only — no
+        <!-- Hero header bar with the brand wordmark. CSS only — no
              external image, so every client renders it consistently. -->
-        <tr><td style="background:${BRAND.heroGradient};padding:18px 28px;">
+        <tr><td style="background:${heroBg};padding:18px 28px;">
           <span style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;
                        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-            ${BRAND.name}
+            ${escapeHtml(brandName)}
           </span>
         </td></tr>
 
@@ -202,14 +214,14 @@ export function renderBrandedEmail(email: BrandedEmail): RenderedEmail {
   // HTML to its tags-removed form; callers can pass a richer plaintext
   // via the future `text` override if this proves insufficient.
   const text = [
-    `[${BRAND.name}]`,
+    `[${brandName}]`,
     email.title,
     '',
     email.intro || null,
     htmlToPlain(email.bodyHtml),
     email.cta ? `\n${email.cta.label}: ${email.cta.url}` : null,
     '',
-    `— ${BRAND.name}`,
+    `— ${brandName}`,
   ].filter(Boolean).join('\n')
 
   return { html, text }

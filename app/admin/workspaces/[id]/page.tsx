@@ -4,6 +4,9 @@ import { db } from '@/lib/db'
 import { requireAdminOrNull, logAdminAction, roleHas } from '@/lib/admin-auth'
 import { growthablePlanLabel, isGrowthablePlan } from '@/lib/partner/growthable-plans'
 import SetPlanControl from './SetPlanControl'
+import CopyField from './CopyField'
+import { headers } from 'next/headers'
+import { createPreviewToken, previewLinkPath, previewModeAvailable } from '@/lib/whitelabel/preview'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,6 +80,15 @@ export default async function WorkspaceDrillDown({ params }: Params) {
   }).catch(() => {})
 
   const canMutate = roleHas(session.role, 'admin')
+
+  // undefined = test mode unavailable (production); null = workspace locked.
+  let testLink: string | null | undefined
+  if (previewModeAvailable()) {
+    const token = workspace.whitelabelUnlocked ? createPreviewToken(workspace.id) : null
+    const host = (await headers()).get('host') || ''
+    const proto = /^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https'
+    testLink = token ? `${proto}://${host}${previewLinkPath(token)}` : null
+  }
 
   return (
     <div className="p-8 max-w-6xl space-y-6">
@@ -247,6 +259,46 @@ export default async function WorkspaceDrillDown({ params }: Params) {
           )}
         </div>
       </section>
+
+      {/* White-label test link — preview/dev builds only (lib/whitelabel/preview.ts). */}
+      {canMutate && testLink !== undefined && (
+        <section className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-5">
+          <h2 className="text-sm font-medium text-zinc-200 mb-1">White-label test link</h2>
+          <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">
+            For testing this build only — not available in production. Anyone who opens the link sees this
+            workspace&rsquo;s branded team sign-in and dashboard, exactly as they would on the customer&rsquo;s own
+            domain, without any domain being set up.
+          </p>
+          {testLink ? (
+            <div className="mt-3 space-y-3 max-w-2xl">
+              <CopyField value={testLink} />
+              <ol className="list-decimal pl-5 text-xs text-zinc-400 space-y-1">
+                <li>Set the branding: <strong className="text-zinc-300">Open workspace</strong> (above) → Settings → Custom domain.</li>
+                <li>Invite testers from Settings → Members. Their invite email links straight into test mode.</li>
+                <li>Or send testers this link. They sign in with an emailed code, so their email must be on the team.</li>
+              </ol>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                <strong className="text-zinc-300">Testing roles without the customer:</strong> invite your own email
+                with a <span className="font-mono">+tag</span> once per role, e.g.{' '}
+                <span className="font-mono">you+admin@…</span> as Admin and{' '}
+                <span className="font-mono">you+agent@…</span> as Support agent, then open this link in a private
+                window and sign in as each. Owner (and you, as a platform admin) can see and change Custom domain;
+                Admin can&rsquo;t see it at all; Support agent only gets Inbox and Tickets.
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                Open it in a private window yourself, or your own browser will stay in test mode until you choose
+                &ldquo;Leave test mode&rdquo; on the sign-in page.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-amber-400 mt-3">
+              {workspace.whitelabelUnlocked
+                ? 'Test links need AUTH_SECRET set on this build. Ask a developer to add it to the Preview environment.'
+                : 'Unlock white-labelling above first, then the test link appears here.'}
+            </p>
+          )}
+        </section>
+      )}
 
       {/* Billing */}
       <section className="rounded-lg border border-zinc-800 bg-zinc-950 p-5">

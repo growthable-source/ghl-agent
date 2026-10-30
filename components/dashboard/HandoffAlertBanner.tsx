@@ -327,7 +327,7 @@ export default function HandoffAlertBanner() {
           title={
             takeOverIsExternal(primary)
               ? 'Open the conversation in LeadConnector (new tab)'
-              : 'Open the conversation in Xovera'
+              : 'Open the conversation'
           }
         >
           {takeOverLabel(primary) === 'Open in CRM' ? 'Open in CRM' : 'Take over now'}
@@ -382,7 +382,7 @@ export default function HandoffAlertBanner() {
                 title={
                   takeOverIsExternal(item)
                     ? 'Open the conversation in LeadConnector (new tab)'
-                    : 'Open the conversation in Xovera'
+                    : 'Open the conversation'
                 }
               >
                 {takeOverLabel(item)}{takeOverIsExternal(item) && <span aria-hidden> ↗</span>}
