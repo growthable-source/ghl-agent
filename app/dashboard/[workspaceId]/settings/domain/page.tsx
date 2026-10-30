@@ -385,8 +385,13 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
             hint="Leave blank to pick black or white automatically." />
         </div>
 
-        <div className="rounded-lg p-3 flex items-center justify-center" style={{ background: '#f4f4f5' }}>
-          <span className="px-4 py-2 rounded-lg text-sm font-semibold"
+        {/* Look-only sample of the sign-in button — the real one is on the
+            team sign-in page. Labelled so nobody tries to click it. */}
+        <div className="rounded-lg p-3 flex flex-col items-center gap-2" style={{ background: '#f4f4f5' }} aria-hidden="true">
+          <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: '#71717a' }}>
+            Preview only — how the button will look
+          </span>
+          <span className="px-4 py-2 rounded-lg text-sm font-semibold cursor-default select-none"
             style={{
               background: /^#[0-9a-f]{6}$/i.test(accentColor) ? accentColor : '#18181b',
               color: /^#[0-9a-f]{6}$/i.test(buttonTextColor) ? buttonTextColor
