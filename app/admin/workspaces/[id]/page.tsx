@@ -277,6 +277,14 @@ export default async function WorkspaceDrillDown({ params }: Params) {
                 <li>Invite testers from Settings → Members. Their invite email links straight into test mode.</li>
                 <li>Or send testers this link. They sign in with an emailed code, so their email must be on the team.</li>
               </ol>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                <strong className="text-zinc-300">Testing roles without the customer:</strong> invite your own email
+                with a <span className="font-mono">+tag</span> once per role, e.g.{' '}
+                <span className="font-mono">you+admin@…</span> as Admin and{' '}
+                <span className="font-mono">you+agent@…</span> as Support agent, then open this link in a private
+                window and sign in as each. Owner (and you, as a platform admin) can see and change Custom domain;
+                Admin can&rsquo;t see it at all; Support agent only gets Inbox and Tickets.
+              </p>
               <p className="text-[11px] text-zinc-500">
                 Open it in a private window yourself, or your own browser will stay in test mode until you choose
                 &ldquo;Leave test mode&rdquo; on the sign-in page.
