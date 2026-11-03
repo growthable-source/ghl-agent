@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PlanLimitNotice, { isPlanLimitError, type PlanLimitData } from '@/components/PlanLimitNotice'
 import { useBackgroundPolling } from '@/lib/use-background-polling'
+import { KpiTile, Pill } from '@/components/ui/primitives'
+import { buttonClass } from '@/lib/ui-classes'
 
 interface Widget {
   id: string
@@ -80,11 +82,17 @@ export default function WidgetsPage() {
   // Visibility-aware: stops in backgrounded tabs, refreshes on return.
   useBackgroundPolling(fetchAll, 15000)
 
+  const [query, setQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'chat' | 'call'>('all')
   const filtered = useMemo(() => {
-    if (activeFolder === ALL) return widgets
-    if (activeFolder === UNFILED) return widgets.filter(w => !w.folderId)
-    return widgets.filter(w => w.folderId === activeFolder)
-  }, [widgets, activeFolder])
+    const inFolder = activeFolder === ALL ? widgets
+      : activeFolder === UNFILED ? widgets.filter(w => !w.folderId)
+      : widgets.filter(w => w.folderId === activeFolder)
+    const q = query.trim().toLowerCase()
+    return inFolder.filter(w =>
+      (typeFilter === 'all' || (typeFilter === 'call') === (w.type === 'click_to_call')) &&
+      (!q || w.name.toLowerCase().includes(q)))
+  }, [widgets, activeFolder, query, typeFilter])
 
   const totalLive = widgets.reduce((s, w) => s + (w.activeConversationsCount || 0), 0)
 
@@ -249,20 +257,12 @@ export default function WidgetsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-6xl mx-auto p-8">
-        <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
+      <div className="max-w-[1200px] mx-auto p-6">
+        <div className="flex items-end justify-between mb-4 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
-              Widgets
-              {totalLive > 0 && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1.5" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
-                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-emerald)' }} />
-                  {totalLive} active conversation{totalLive === 1 ? '' : 's'}
-                </span>
-              )}
-            </h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-              Embeddable chat widgets and click-to-call buttons. Drop them anywhere — landing pages, blog posts, email signatures.
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-text-primary">Widgets</h1>
+            <p className="text-[13px] mt-1 text-text-tertiary">
+              Embeddable chat widgets and click-to-call buttons for landing pages, sites and CRM dashboards.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -311,8 +311,7 @@ export default function WidgetsPage() {
               <button
                 onClick={() => setSelectMode(true)}
                 disabled={widgets.length === 0}
-                className="text-xs font-medium px-3 py-2 rounded-lg border transition-colors disabled:opacity-30"
-                style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-secondary)' }}
+                className={buttonClass('secondary', 'md', 'disabled:opacity-30')}
               >Select</button>
             ) : (
               <>
@@ -332,8 +331,7 @@ export default function WidgetsPage() {
             <button
               onClick={() => setPickerOpen(true)}
               disabled={creating}
-              className="text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
-              style={{ background: 'var(--accent-primary)', color: 'var(--btn-primary-text)' }}
+              className={buttonClass('primary')}
             >{creating ? 'Creating…' : '+ New widget'}</button>
           </div>
         </div>
@@ -344,10 +342,18 @@ export default function WidgetsPage() {
           </div>
         )}
 
+        {/* TODO(redesign-followup): "Visitors · 7d" / "Conversations · 7d" with deltas — only all-time visitor and conversation counts are loaded here. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <KpiTile label="Active conversations" value={totalLive} suffix="live now" />
+          <KpiTile label="Visitors" value={widgets.reduce((n, w) => n + (w._count?.visitors ?? 0), 0).toLocaleString()} suffix="all time" />
+          <KpiTile label="Conversations" value={widgets.reduce((n, w) => n + (w._count?.conversations ?? 0), 0).toLocaleString()} suffix="all time" />
+          <KpiTile label="Widgets" value={widgets.length} suffix={`${folders.length} folder${folders.length === 1 ? '' : 's'}`} />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-6">
           {/* Folder sidebar */}
           <aside className="space-y-1">
-            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 px-2" style={{ color: 'var(--text-tertiary)' }}>Folders</p>
+            <p className="text-[10.5px] uppercase tracking-wider font-semibold mb-2 px-2 text-text-muted">Folders</p>
             <FolderRow
               label="All widgets"
               count={widgets.length}
@@ -381,8 +387,20 @@ export default function WidgetsPage() {
 
           {/* Widget grid */}
           <div>
+            {widgets.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search widgets…" aria-label="Search widgets"
+                  className="h-8 w-[240px] rounded-md border border-border-theme bg-surface px-2.5 text-[12.5px] outline-none focus:border-brand-500" />
+                <select aria-label="Type" value={typeFilter} onChange={e => setTypeFilter(e.target.value as 'all' | 'chat' | 'call')}
+                  className="h-8 rounded-md border border-border-theme bg-surface px-2.5 text-[12.5px] cursor-pointer">
+                  <option value="all">Type: All</option>
+                  <option value="chat">Chat</option>
+                  <option value="call">Click-to-call</option>
+                </select>
+              </div>
+            )}
             {filtered.length === 0 ? (
-              <div className="text-center py-16 border border-dashed rounded-xl" style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}>
+              <div className="xv-card border-dashed text-center py-16">
                 <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-2xl" style={{ background: 'var(--surface-tertiary)' }}>💬</div>
                 <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
                   {widgets.length === 0 ? 'No widgets yet' : 'Nothing in this folder'}
@@ -400,7 +418,7 @@ export default function WidgetsPage() {
                 )}
               </div>
             ) : viewMode === 'list' ? (
-              <div className="rounded-xl border overflow-hidden divide-y divide-zinc-800" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <div className="xv-card overflow-hidden divide-y divide-border-theme">
                 {filtered.map(w => (
                   <WidgetRow
                     key={w.id}
@@ -442,8 +460,8 @@ export default function WidgetsPage() {
       </div>
 
       {pickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setPickerOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl border p-6 shadow-2xl" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40" onClick={() => setPickerOpen(false)}>
+          <div className="w-full max-w-md xv-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-1">
               <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Create a widget</h2>
               <button onClick={() => setPickerOpen(false)} className="text-xl leading-none" style={{ color: 'var(--text-tertiary)' }}>×</button>
@@ -488,8 +506,8 @@ export default function WidgetsPage() {
       )}
 
       {folderDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setFolderDialogOpen(false)}>
-          <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40" onClick={() => setFolderDialogOpen(false)}>
+          <div className="w-full max-w-sm xv-card p-5" onClick={e => e.stopPropagation()}>
             <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>New folder</p>
             <input
               autoFocus
@@ -618,13 +636,13 @@ function WidgetCard({
   onToggleSelect: () => void
   onDelete: () => void
 }) {
-  const cardCls = 'relative p-5 rounded-xl border transition-colors'
+  const cardCls = 'relative p-4 rounded-[10px] border transition-colors shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:border-border-secondary'
   const cardStyle = isSelected
     ? { background: 'var(--accent-primary-bg)', borderColor: 'var(--accent-primary)' }
     : { background: 'var(--surface)', borderColor: 'var(--border)' }
   const inner = (
     <>
-      <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl" style={{ background: w.isActive ? w.primaryColor : 'var(--border-secondary)' }} />
+      
       <div className="flex items-start justify-between mb-3">
         <div className="w-10 h-10 rounded-lg flex items-center justify-center"
           style={{ background: w.primaryColor, color: '#fff' }}>
@@ -640,31 +658,28 @@ function WidgetCard({
         </div>
         <div className="flex items-center gap-1.5">
           {isLive && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded inline-flex items-center gap-1" style={{ background: 'var(--accent-emerald-bg)', color: 'var(--accent-emerald)' }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent-emerald)' }} />
-              {w.activeConversationsCount} live
-            </span>
+            <Pill tone="success">● {w.activeConversationsCount} live</Pill>
           )}
-          <span className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-secondary)' }}>
-            {isCall ? 'call' : 'chat'}
-          </span>
-          {!w.isActive && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>paused</span>
-          )}
+          <Pill>{isCall ? 'Call' : 'Chat'}</Pill>
+          {!w.isActive && <Pill>Paused</Pill>}
         </div>
       </div>
-      <p className="text-sm font-semibold mb-1 truncate" style={{ color: 'var(--text-primary)' }}>{w.name}</p>
+      <p className="text-[14px] font-semibold mb-1 truncate text-text-primary">{w.name}</p>
       <p className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
         {w.allowedDomains.length > 0 ? w.allowedDomains.join(', ') : 'any domain'}
       </p>
-      <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+      <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-border-theme">
         <div>
-          <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{w._count.visitors}</p>
-          <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Visitors</p>
+          <p className="text-[18px] font-semibold tabular-nums text-text-primary">{w._count.visitors}</p>
+          <p className="text-[11px] text-text-tertiary">Visitors</p>
         </div>
         <div>
-          <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{w._count.conversations}</p>
-          <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{isCall ? 'Calls' : 'Conversations'}</p>
+          <p className="text-[18px] font-semibold tabular-nums text-text-primary">{w._count.conversations}</p>
+          <p className="text-[11px] text-text-tertiary">{isCall ? 'Calls' : 'Conversations'}</p>
+        </div>
+        <div>
+          <p className={`text-[18px] font-semibold tabular-nums ${w.activeConversationsCount > 0 ? 'text-emerald-600' : 'text-text-primary'}`}>{w.activeConversationsCount || 0}</p>
+          <p className="text-[11px] text-text-tertiary">Live now</p>
         </div>
       </div>
       {w.voiceEnabled && !isCall && (
@@ -839,7 +854,7 @@ function DeleteConfirmModal({
     : target.blocked.length > 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40" onClick={onCancel}>
       <div className="w-full max-w-md rounded-2xl border border-red-500/40 shadow-2xl" style={{ background: 'var(--surface)' }} onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-start gap-3">
