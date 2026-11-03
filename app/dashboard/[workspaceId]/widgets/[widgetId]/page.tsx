@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Toggle from '@/components/ui/Toggle'
+import { Pill } from '@/components/ui/primitives'
+import { buttonClass } from '@/lib/ui-classes'
 import NewBadge from '@/components/NewBadge'
 import { useWorkspacePublicOrigin } from '@/lib/domains/use-public-origin'
 import { useWhitelabelAccess } from '@/lib/whitelabel/use-whitelabel-access'
@@ -198,45 +201,46 @@ export default function WidgetEditorPage() {
     : ''
 
   return (
-    <div className="flex-1 p-8 overflow-y-auto">
+    <div className="flex-1 p-6 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
-        <Link href={`/dashboard/${workspaceId}/widgets`} className="text-xs text-zinc-500 hover:text-zinc-300 mb-4 inline-block">
-          ← Back to widgets
+        <Link href={`/dashboard/${workspaceId}/widgets`} className="text-[13px] text-text-tertiary hover:text-text-primary mb-3 inline-block">
+          ← Widgets
         </Link>
 
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <input
-              type="text"
-              value={widget.name}
-              onChange={e => update('name', e.target.value)}
-              className="text-2xl font-bold text-white bg-transparent border-0 p-0 focus:outline-none focus:ring-0"
-            />
-            <p className="text-xs text-zinc-500 font-mono mt-1">
-              {widget.id}
-              <span className="ml-2 px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-sans uppercase tracking-wide">
-                {isCallType ? 'click-to-call' : 'chat'}
-              </span>
-            </p>
+        {/* TODO(redesign-followup): split into Appearance / Install / Routing / Behaviour / Analytics tabs with a side-by-side live preview (and a Desktop/Mobile switch) — the editor is currently one long page, and it has no analytics source for the "153 live · 162 visitors · 7d" header meta. */}
+        <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <span
+              className="h-12 w-12 shrink-0 rounded-xl flex items-center justify-center text-on-brand"
+              style={{ background: widget.primaryColor }}
+              aria-hidden
+            >
+              {isCallType ? '📞' : '💬'}
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  value={widget.name}
+                  onChange={e => update('name', e.target.value)}
+                  aria-label="Widget name"
+                  className="text-[22px] leading-tight font-semibold tracking-tight text-text-primary bg-transparent border-0 p-0 outline-none focus:ring-0 min-w-[200px]"
+                />
+                <Pill tone={widget.isActive ? 'success' : 'neutral'}>{widget.isActive ? '● Live' : 'Paused'}</Pill>
+                <Pill>{isCallType ? 'Click-to-call' : 'Chat'}</Pill>
+              </div>
+              <p className="text-[12px] text-text-tertiary font-mono mt-0.5 truncate">{widget.id}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <button
-                type="button"
-                onClick={() => update('isActive', !widget.isActive)}
-                className="relative inline-flex h-5 w-9 items-center rounded-full"
-                style={{ background: widget.isActive ? '#22c55e' : '#3f3f46' }}
-              >
-                <span className="inline-block h-3 w-3 rounded-full bg-white transition-transform"
-                  style={{ transform: widget.isActive ? 'translateX(20px)' : 'translateX(4px)' }} />
-              </button>
-              <span className="text-xs text-zinc-400">{widget.isActive ? 'Live' : 'Paused'}</span>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-[12.5px] text-text-secondary">
+              <Toggle checked={widget.isActive} onChange={v => update('isActive', v)} />
+              {widget.isActive ? 'Live' : 'Paused'}
             </label>
             <button
               onClick={save}
               disabled={!dirty || saving}
-              className="text-xs font-semibold px-4 py-2 rounded-lg text-white transition-colors disabled:opacity-40"
-              style={{ background: dirty ? '#fa4d2e' : '#3f3f46' }}
+              className={buttonClass(dirty ? 'primary' : 'secondary', 'md', 'disabled:opacity-60')}
             >
               {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
             </button>
@@ -250,7 +254,7 @@ export default function WidgetEditorPage() {
         )}
 
         {/* Install / share section */}
-        <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-6 space-y-4">
+        <div className="xv-card p-5 mb-4 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-white">📦 Install</p>
             {isCallType && (
