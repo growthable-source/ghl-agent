@@ -22,10 +22,10 @@
  * admin+ and 2FA-verified. Revoking an admin, or their admin session
  * expiring, ends support access immediately.
  *
- * SUPPORT_ROLE is 'admin', not 'owner': enough to build agents, connect
- * channels and deploy, but owner-only actions (billing, deleting the
- * workspace, ownership transfer) stay with the customer. Billing routes
- * do their own membership lookups and deliberately don't honour support.
+ * SUPPORT_ROLE is 'owner': staff act as the workspace owner, so they can
+ * do anything the customer could (invite admins, white-label, settings).
+ * Billing routes do their own membership lookups and deliberately don't
+ * honour support.
  *
  * Hidden from the customer by design (no member row → not in Team,
  * not in chat routing, not in digests). The paper trail is the admin
@@ -41,7 +41,7 @@ import { adminTokenSecret, requireAdminRole, type AdminSession } from './admin-a
 
 export const SUPPORT_COOKIE = 'voxility_support'
 const SUPPORT_TTL_SECONDS = 60 * 60 * 2 // 2 hours
-export const SUPPORT_ROLE = 'admin' as const
+export const SUPPORT_ROLE = 'owner' as const
 
 export interface SupportContext {
   adminId: string

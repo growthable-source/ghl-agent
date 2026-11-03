@@ -28,7 +28,7 @@ describe('supportRoleFor', () => {
   const session = { user: { id: 'u' }, support: { adminId: 'adm_1', adminEmail: 'x', workspaceId: 'ws_a' } }
 
   it('grants the support role only for the scoped workspace', () => {
-    expect(supportRoleFor(session, 'ws_a')).toBe('admin')
+    expect(supportRoleFor(session, 'ws_a')).toBe('owner')
     expect(supportRoleFor(session, 'ws_b')).toBeNull()
   })
 

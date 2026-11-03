@@ -11,10 +11,9 @@
  *     the product is simply their own branded app.
  *   - Support Agent ('agent'): chats and tickets only (./access-policy.ts).
  *
- * A super admin in a support session reaches the workspace as 'admin'
- * (lib/support-session.ts) and qualifies through the platform-admin path,
- * never through the owner path, so support mode can't be mistaken for
- * ownership.
+ * A super admin in a support session reaches the workspace as 'owner'
+ * (lib/support-session.ts), and also qualifies through the platform-admin
+ * path.
  *
  * White-label settings = the custom domain, everything on the Custom
  * domain page (tab title, favicon, sign-in logo/colours/copy, which also
