@@ -53,7 +53,19 @@ const FEATURE_SHIP_DATES: Record<string, string> = {
   slaPolicies: '2026-06-24', // SLA Policies settings page (support-metrics connector)
 }
 
-export default function DashboardSidebar() {
+/**
+ * Set on a white-label workspace domain (app/dashboard/layout.tsx): the
+ * sidebar shows the customer's logo + name and drops everything that is
+ * about our product (help center, changelog, feedback board, plan badge,
+ * workspace switcher).
+ */
+export interface SidebarWhitelabel {
+  name: string
+  logoUrl: string | null
+  workspaceId: string
+}
+
+export default function DashboardSidebar({ whitelabel = null }: { whitelabel?: SidebarWhitelabel | null }) {
   const pathname = usePathname()
   // Extract workspaceId up front so the counts-provider can scope its
   // polling. We still compute it again inside the inner component for
@@ -65,12 +77,12 @@ export default function DashboardSidebar() {
 
   return (
     <NavCountsProvider workspaceId={pollingWorkspaceId}>
-      <SidebarBody />
+      <SidebarBody whitelabel={whitelabel} />
     </NavCountsProvider>
   )
 }
 
-function SidebarBody() {
+function SidebarBody({ whitelabel }: { whitelabel: SidebarWhitelabel | null }) {
   const pathname = usePathname()
   const counts = useNavCounts()
   const { embedded } = useEmbedded()
@@ -240,6 +252,20 @@ function SidebarBody() {
           locked to one workspace, so the switcher points at the active
           workspace dashboard instead of the "All workspaces" picker. */}
       <div className="px-3 pt-3.5 pb-2">
+        {whitelabel ? (
+          <Link
+            href={`/dashboard/${whitelabel.workspaceId}`}
+            className="flex items-center gap-2.5 px-1.5 py-1 rounded-lg hover:bg-surface-secondary transition-colors"
+          >
+            {whitelabel.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={whitelabel.logoUrl} alt="" className="h-8 max-w-[64px] object-contain shrink-0" />
+            ) : (
+              <WorkspaceAvatar logoUrl={null} icon={workspaceInfo?.icon} size={32} title={whitelabel.name} />
+            )}
+            <span className="flex-1 min-w-0 block text-[13px] font-semibold text-text-primary truncate">{whitelabel.name}</span>
+          </Link>
+        ) : (
         <Link
           href={embedded
             ? (activeWorkspaceId ? `/dashboard/${activeWorkspaceId}` : '#')
@@ -271,6 +297,7 @@ function SidebarBody() {
           </span>
           {!embedded && <Lucide.ChevronsUpDown className="w-3.5 h-3.5 text-text-muted shrink-0" />}
         </Link>
+        )}
       </div>
 
       {/* ⌘K search — opens the command palette (components/dashboard/CommandPalette). */}
@@ -321,11 +348,13 @@ function SidebarBody() {
             Settings
           </Link>
         )}
+        {!whitelabel && (
         <Link href="/help" target="_blank" className={footerRow}>
           <Lucide.CircleHelp className="w-[17px] h-[17px] text-text-tertiary" strokeWidth={1.7} />
           <span className="flex-1">Help &amp; docs</span>
           <span className="text-text-muted text-[10px]">↗</span>
         </Link>
+        )}
         {workspaceId && !isInboxOnly && (
           <Link
             href={`/dashboard/${workspaceId}/help`}
@@ -335,7 +364,7 @@ function SidebarBody() {
             Merge fields reference
           </Link>
         )}
-        {isSuperAdmin && (
+        {isSuperAdmin && !whitelabel && (
           <Link
             href="/dashboard/help-admin"
             className={`${rowBase} text-[12px] ${pathname.startsWith('/dashboard/help-admin') ? rowActive : rowIdle}`}
@@ -344,12 +373,14 @@ function SidebarBody() {
             Help Center · Admin
           </Link>
         )}
+        {!whitelabel && (<>
         <CannyChangelogButton />
         <a href="https://xovera.canny.io" target="_blank" rel="noopener noreferrer" className={`${rowBase} text-[12px] ${rowIdle}`}>
           <span className="w-[17px]" />
           <span className="flex-1">Feedback</span>
           <span className="text-text-muted text-[10px]">↗</span>
         </a>
+        </>)}
         <Link
           href="/dashboard/settings"
           className={`${rowBase} text-[12px] ${pathname === '/dashboard/settings' ? rowActive : rowIdle}`}
@@ -388,7 +419,7 @@ function SidebarBody() {
             ) : (
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => signOut({ callbackUrl: whitelabel ? '/sign-in' : '/login' })}
                 className={`${rowBase} w-full text-left text-[12px] ${rowIdle} hover:!text-red-600 cursor-pointer`}
               >
                 Sign out

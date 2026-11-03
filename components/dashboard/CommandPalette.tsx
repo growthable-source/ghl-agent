@@ -59,7 +59,8 @@ export default function CommandPalette() {
       j(`/api/workspaces/${workspaceId}/inbox`),
       j('/api/workspaces'),
       j(`/api/workspaces/${workspaceId}/settings/ticketing`),
-    ]).then(([agents, inbox, workspaces, ticketing]) => {
+      j(`/api/workspaces/${workspaceId}/domain`),
+    ]).then(([agents, inbox, workspaces, ticketing, domain]) => {
       if (cancelled) return
       const ws = workspaces?.workspaces?.find((w: { id: string }) => w.id === workspaceId)
       setData({
@@ -69,6 +70,7 @@ export default function CommandPalette() {
         gates: {
           'native-crm': Array.isArray(ws?.locations) && ws.locations.some((l: { crmProvider?: string }) => l.crmProvider === 'native'),
           ticketing: !!ticketing?.status?.active,
+          whitelabel: !!domain?.canManage,
         },
       })
     })

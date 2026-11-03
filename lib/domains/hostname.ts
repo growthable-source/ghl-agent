@@ -88,9 +88,16 @@ export function validateWorkspaceDomain(
 
 /**
  * Paths a WORKSPACE/PORTAL custom host may serve. Everything else on a
- * non-primary host is a 404 — in particular /dashboard, /api/auth,
- * /admin and /api/workspaces must never be reachable from a
- * customer-branded host, where a look-alike page could phish a session.
+ * non-primary host is a 404 — in particular /admin, /login and the OAuth
+ * half of /api/auth must never be reachable from a customer-branded host:
+ * our own staff never type credentials there.
+ *
+ * The dashboard IS served (for the workspace's own team, signed in through
+ * the branded /sign-in with an emailed code — no OAuth), but only to that
+ * one workspace: lib/whitelabel/guard.ts refuses any other workspace id on
+ * a custom host, and a portal domain reaches none. Integrations whose OAuth
+ * callbacks are registered on our host (Meta, Google, Shopify, CRM) stay
+ * on the primary host and are not listed here.
  *
  * Host-agnostic on purpose (Edge middleware has no DB): portal domains
  * and workspace domains share one allowlist.
@@ -127,7 +134,30 @@ const CUSTOM_HOST_ALLOWED_PREFIXES = [
   '/images/',
   '/fonts/',
   '/api/health',
+  // White-label team sign-in + the dashboard for that workspace's team.
+  '/sign-in',
+  '/api/sign-in/',
+  '/dashboard',
+  '/api/workspaces/',
+  '/api/me/',
+  '/api/user/',
+  '/api/voices',
+  '/api/voice/diagnostic',
+  '/api/actions/',
+  '/api/kiosk/',
+  '/api/copilot/sessions',
+  '/api/integrations/verify',
+  // NextAuth session read + sign-out only (no sign-in/callback routes).
+  '/api/auth/session',
+  '/api/auth/csrf',
+  '/api/auth/signout',
 ]
+
+/** Allowed on custom hosts only as an exact path (a prefix would also admit siblings). */
+const CUSTOM_HOST_ALLOWED_EXACT = new Set([
+  '/api/workspaces', // the caller's workspace list (sidebar) — not /api/workspaces-api-temp
+  '/api/me', // not /api/meta/*
+])
 
 /**
  * Our file-based brand assets (app/favicon.ico, app/icon.svg,
@@ -154,6 +184,7 @@ export function brandAssetRewrite(pathname: string): '/api/brand/icon' | '/api/b
 
 export function isAllowedOnCustomHost(pathname: string): boolean {
   if (pathname === '/') return true // rewritten to /domain-root by middleware
+  if (CUSTOM_HOST_ALLOWED_EXACT.has(pathname)) return true
   return CUSTOM_HOST_ALLOWED_PREFIXES.some(p => pathname === p || pathname.startsWith(p))
 }
 

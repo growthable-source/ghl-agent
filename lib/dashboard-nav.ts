@@ -15,7 +15,9 @@
 export type NavGroupKey = 'top' | 'agents' | 'deploy' | 'insights' | 'data'
 
 /** Optional gate resolved by the sidebar from data it already loads. */
-export type NavGate = 'native-crm' | 'ticketing'
+// 'whitelabel' = may manage white-label (owner / platform admin,
+// lib/whitelabel/manage-policy.ts); hidden entirely from everyone else.
+export type NavGate = 'native-crm' | 'ticketing' | 'whitelabel'
 
 export interface NavPage {
   /** Path suffix after /dashboard/<ws> ('' = workspace root). */
@@ -149,7 +151,7 @@ export function siblingsFor(
 export interface SettingsNavItem {
   path: string
   label: string
-  gate?: 'ticketing'
+  gate?: 'ticketing' | 'whitelabel'
   /** Sub-view selected by `?tab=`; items sharing a path are told apart by it. */
   tab?: string
 }
@@ -160,7 +162,7 @@ export const SETTINGS_NAV: Array<{ group: string; items: SettingsNavItem[] }> = 
       { path: '/settings', label: 'General' },
       { path: '/settings/members', label: 'Members' },
       { path: '/settings/notifications', label: 'Notifications' },
-      { path: '/settings/domain', label: 'Custom domain' },
+      { path: '/settings/domain', label: 'Custom domain', gate: 'whitelabel' },
     ],
   },
   {

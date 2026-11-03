@@ -2,6 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useEffect } from 'react'
+import { isPrimaryHost } from '@/lib/domains/primary-hosts'
 
 declare global {
   interface Window {
@@ -14,6 +15,9 @@ export default function CannyIdentify() {
 
   useEffect(() => {
     if (!session?.user || !window.Canny) return
+    // A white-label team's staff aren't our users — never send them to our
+    // feedback board (same client-side host rule as LeadConnectorChat).
+    if (!isPrimaryHost(window.location.hostname)) return
 
     window.Canny('identify', {
       appID: '69d62477414c6291da2963c2',

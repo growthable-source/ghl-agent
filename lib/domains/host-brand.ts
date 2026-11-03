@@ -16,7 +16,8 @@ import { db } from '@/lib/db'
 import { isPrimaryHost } from './primary-hosts'
 import { resolveWorkspaceIdForHost } from './workspace-domain'
 import type { Metadata } from 'next'
-import { brandMetadata, cleanBrandName, type ResolvedBrand } from './brand-metadata'
+import { brandMetadata, cleanBrandName, readableTextOn, safeAccent, type ResolvedBrand } from './brand-metadata'
+import { previewWorkspaceId } from '@/lib/whitelabel/preview'
 
 export type HostBrand = ResolvedBrand & (
   | { kind: 'workspace'; workspaceId: string; rootUrl: string | null }
@@ -45,6 +46,7 @@ export const getWorkspaceBrand = cache(async (workspaceId: string): Promise<Host
     select: {
       name: true, logoUrl: true, whitelabelUnlocked: true,
       whitelabelBrandName: true, whitelabelFaviconUrl: true, whitelabelRootUrl: true,
+      whitelabelAccentColor: true,
     },
   })
   if (!ws?.whitelabelUnlocked) return null
@@ -53,7 +55,7 @@ export const getWorkspaceBrand = cache(async (workspaceId: string): Promise<Host
     workspaceId,
     name: cleanBrandName(ws.whitelabelBrandName) || cleanBrandName(ws.name),
     iconUrl: ws.whitelabelFaviconUrl || ws.logoUrl || null,
-    accent: null,
+    accent: safeAccent(ws.whitelabelAccentColor),
     rootUrl: ws.whitelabelRootUrl || null,
   }
 })
@@ -80,6 +82,19 @@ export const resolveHostBrand = cache(async (host: string | null | undefined): P
 })
 
 /**
+ * Brand for the favicon / manifest routes (app/api/brand/*): the custom
+ * host's brand, or on our own host the white-label TEST MODE workspace
+ * (lib/whitelabel/preview.ts) — null when neither applies.
+ */
+export async function assetBrand(host: string | null | undefined): Promise<HostBrand | null> {
+  const h = bareHost(host)
+  if (!h) return null
+  if (!isPrimaryHost(h)) return resolveHostBrand(h)
+  const previewId = await previewWorkspaceId()
+  return previewId ? getWorkspaceBrand(previewId) : null
+}
+
+/**
  * Metadata for a visitor-facing page owned by `workspaceId` (widget,
  * hosted call, Co-Pilot link): the host's brand on a custom domain, else
  * the workspace's own brand when it is white-label unlocked (the link may
@@ -99,3 +114,62 @@ export async function visitorPageBrandMetadata(
   const brand = await visitorPageBrand(host, workspaceId)
   return brand ? brandMetadata(brand, customHostOrigin(host)) : null
 }
+
+/** What the team sign-in page and the dashboard header show on a white-label host. */
+export interface TeamBrand {
+  workspaceId: string
+  name: string
+  logoUrl: string | null
+  accent: string | null
+  /** Sign-in button text colour, already resolved (explicit or auto-contrast). */
+  buttonText: string
+  heading: string | null
+  message: string | null
+  /** True in white-label test mode (lib/whitelabel/preview.ts): our host standing in for the domain. */
+  preview?: boolean
+}
+
+/** Team-facing brand of a white-label-unlocked workspace, or null. */
+export const teamBrandForWorkspace = cache(async (workspaceId: string): Promise<TeamBrand | null> => {
+  const ws = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      name: true, logoUrl: true, whitelabelUnlocked: true, whitelabelBrandName: true,
+      whitelabelLogoUrl: true, whitelabelAccentColor: true, whitelabelButtonTextColor: true,
+      whitelabelLoginHeading: true, whitelabelLoginMessage: true,
+    },
+  })
+  if (!ws?.whitelabelUnlocked) return null
+  return {
+    workspaceId,
+    name: cleanBrandName(ws.whitelabelBrandName) || cleanBrandName(ws.name) || 'Sign in',
+    logoUrl: ws.whitelabelLogoUrl || ws.logoUrl || null,
+    accent: safeAccent(ws.whitelabelAccentColor),
+    buttonText: safeAccent(ws.whitelabelButtonTextColor) ?? readableTextOn(safeAccent(ws.whitelabelAccentColor) ?? '#18181b'),
+    heading: ws.whitelabelLoginHeading,
+    message: ws.whitelabelLoginMessage,
+  }
+})
+
+/**
+ * Team-facing brand of the workspace serving this host, or null when the
+ * host isn't an active white-label workspace domain (our own hosts,
+ * portal domains, locked/pending domains) — except that in white-label
+ * test mode our own host resolves to the test workspace.
+ */
+export const resolveTeamBrand = cache(async (host: string | null | undefined): Promise<TeamBrand | null> => {
+  const h = bareHost(host)
+  if (!h || isPrimaryHost(h)) {
+    // White-label test mode: our own host stands in for the domain.
+    const previewId = await previewWorkspaceId()
+    const brand = previewId ? await teamBrandForWorkspace(previewId) : null
+    return brand ? { ...brand, preview: true } : null
+  }
+  try {
+    const workspaceId = await resolveWorkspaceIdForHost(h)
+    return workspaceId ? await teamBrandForWorkspace(workspaceId) : null
+  } catch (err) {
+    console.error('[host-brand] team brand lookup failed', err)
+    return null
+  }
+})

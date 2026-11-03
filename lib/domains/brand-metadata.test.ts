@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { brandedPageTitle, brandIconSvg, brandManifest, brandMetadata, cleanBrandName, parseBrandSettings, safeAccent } from './brand-metadata'
+import { brandedPageTitle, brandIconSvg, brandManifest, brandMetadata, cleanBrandName, parseBrandSettings, readableTextOn, safeAccent } from './brand-metadata'
 
 describe('brandMetadata', () => {
   const md = brandMetadata({ name: 'Zolutium', iconUrl: null, accent: '#1d4ed8' }, 'https://live.zolutium.com')
@@ -56,11 +56,22 @@ describe('helpers', () => {
 describe('parseBrandSettings', () => {
   it('accepts and normalizes', () => {
     expect(parseBrandSettings({ brandName: '  Zolutium   Live ', faviconUrl: 'https://cdn.x.com/f.png', rootUrl: 'https://zolutium.com' }))
-      .toEqual({ ok: true, value: { brandName: 'Zolutium Live', faviconUrl: 'https://cdn.x.com/f.png', rootUrl: 'https://zolutium.com/' } })
+      .toEqual({ ok: true, value: { brandName: 'Zolutium Live', faviconUrl: 'https://cdn.x.com/f.png', rootUrl: 'https://zolutium.com/', logoUrl: null, accentColor: null, buttonTextColor: null, loginHeading: null, loginMessage: null } })
+  })
+  it('accepts sign-in page branding', () => {
+    expect(parseBrandSettings({
+      logoUrl: 'https://cdn.x.com/logo.png', accentColor: ' #1D4ED8 ', buttonTextColor: '#FFFFFF',
+      loginHeading: '  Team   sign in ', loginMessage: 'Line one  \r\n\n\n\nLine two',
+    })).toEqual({ ok: true, value: {
+      brandName: null, faviconUrl: null, rootUrl: null,
+      logoUrl: 'https://cdn.x.com/logo.png', accentColor: '#1d4ed8', buttonTextColor: '#ffffff',
+      loginHeading: 'Team sign in', loginMessage: 'Line one\n\nLine two',
+    } })
   })
   it('blank fields clear to null', () => {
-    expect(parseBrandSettings({ brandName: ' ', faviconUrl: '', rootUrl: null })).toEqual({ ok: true, value: { brandName: null, faviconUrl: null, rootUrl: null } })
-    expect(parseBrandSettings(undefined)).toEqual({ ok: true, value: { brandName: null, faviconUrl: null, rootUrl: null } })
+    const empty = { brandName: null, faviconUrl: null, rootUrl: null, logoUrl: null, accentColor: null, buttonTextColor: null, loginHeading: null, loginMessage: null }
+    expect(parseBrandSettings({ brandName: ' ', faviconUrl: '', rootUrl: null, accentColor: '', loginHeading: '  ' })).toEqual({ ok: true, value: empty })
+    expect(parseBrandSettings(undefined)).toEqual({ ok: true, value: empty })
   })
   it('rejects bad input', () => {
     expect(parseBrandSettings({ faviconUrl: 'http://x.com/f.png' }).ok).toBe(false)
@@ -69,11 +80,27 @@ describe('parseBrandSettings', () => {
     expect(parseBrandSettings({ rootUrl: 'ftp://zolutium.com' }).ok).toBe(false)
     expect(parseBrandSettings({ brandName: 'x'.repeat(61) }).ok).toBe(false)
     expect(parseBrandSettings({ brandName: 5 }).ok).toBe(false)
+    expect(parseBrandSettings({ logoUrl: 'http://x.com/l.png' }).ok).toBe(false)
+    expect(parseBrandSettings({ accentColor: 'blue' }).ok).toBe(false)
+    expect(parseBrandSettings({ accentColor: '#12345' }).ok).toBe(false)
+    expect(parseBrandSettings({ buttonTextColor: 'white' }).ok).toBe(false)
+    expect(parseBrandSettings({ loginHeading: 'x'.repeat(81) }).ok).toBe(false)
+    expect(parseBrandSettings({ loginMessage: 'x'.repeat(501) }).ok).toBe(false)
   })
 })
 
 describe('brandedPageTitle', () => {
   it('formats a same-segment page title under the brand', () => {
     expect(brandedPageTitle({ name: 'Zolutium', iconUrl: null, accent: null }, 'Talk to us')).toEqual({ absolute: 'Talk to us | Zolutium' })
+  })
+})
+
+describe('readableTextOn', () => {
+  it('picks white on dark buttons and black on light ones', () => {
+    expect(readableTextOn('#3730a3')).toBe('#ffffff')
+    expect(readableTextOn('#18181b')).toBe('#ffffff')
+    expect(readableTextOn('#facc15')).toBe('#111111')
+    expect(readableTextOn('#ffffff')).toBe('#111111')
+    expect(readableTextOn(null)).toBe('#ffffff')
   })
 })

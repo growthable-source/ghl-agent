@@ -1,16 +1,22 @@
 import Link from 'next/link'
 import { headers, cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import type { SupportAwareSession } from '@/lib/support-session'
 import { getPlanFeatures } from '@/lib/plans'
 import { EMBED_WORKSPACE_COOKIE } from '@/lib/embed-session'
 import WorkspaceAvatar from '@/components/dashboard/WorkspaceAvatar'
+import { customHostWorkspaceId } from '@/lib/whitelabel/guard'
 
 export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
+  // A white-label domain serves exactly one workspace — no picker there.
+  const hostWorkspaceId = await customHostWorkspaceId()
+  if (hostWorkspaceId) redirect(`/dashboard/${hostWorkspaceId}`)
+  if (hostWorkspaceId === '') notFound()
+
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 

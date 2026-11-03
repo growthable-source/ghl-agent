@@ -1,4 +1,5 @@
-import { cookies } from 'next/headers'
+import type { Metadata } from 'next'
+import { cookies, headers } from 'next/headers'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -9,14 +10,29 @@ import UserOnboardingModal from '@/components/dashboard/UserOnboardingModal'
 import { EmbeddedProvider } from '@/lib/embedded-context'
 import { SIGNUP_INTENT_COOKIE, readSignupIntent } from '@/lib/signup-intent'
 import type { SupportAwareSession } from '@/lib/support-session'
+import { customHostOrigin, resolveTeamBrand } from '@/lib/domains/host-brand'
+import { brandMetadata } from '@/lib/domains/brand-metadata'
 
 // Dashboard-scoped fonts (redesign handoff §1). Loaded here — not in the root
 // layout — so marketing pages keep DM Sans and don't pay for these.
 const inter = Inter({ variable: '--font-inter', subsets: ['latin'], weight: ['400', '500', '600', '700'] })
 const jetbrains = JetBrains_Mono({ variable: '--font-jetbrains', subsets: ['latin'], weight: ['400', '500'] })
 
+/**
+ * On a white-label workspace domain the whole dashboard wears the
+ * customer's brand: tab title template, sidebar logo, no product links
+ * (lib/domains/host-brand.ts → resolveTeamBrand).
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const host = (await headers()).get('host')
+  const brand = await resolveTeamBrand(host)
+  if (!brand) return {}
+  return brandMetadata({ name: brand.name, iconUrl: brand.logoUrl, accent: brand.accent }, customHostOrigin(host))
+}
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
+  const teamBrand = await resolveTeamBrand((await headers()).get('host'))
 
   // Onboarding modal logic — three signals we care about:
   //   needsOnboarding         — user hasn't run through the onboarding
@@ -38,7 +54,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // customer's workspace — never onboard them.
   const inSupport = !!(session as SupportAwareSession | null)?.support
 
-  if (session?.user && !inSupport) {
+  // A white-label team member was invited into an existing workspace —
+  // never show them our create-a-workspace onboarding.
+  if (session?.user && !inSupport && !teamBrand) {
     // Fetch the oldest workspace this user belongs to — for marketplace
     // installs this is the one the OAuth callback created. Asking for
     // it once here is cheaper than rehydrating later inside the modal.
@@ -75,7 +93,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <EmbeddedProvider>
     <div className={`xv-app ${inter.variable} ${jetbrains.variable} flex h-screen bg-background text-foreground overflow-hidden`}>
-      <DashboardSidebar />
+      <DashboardSidebar
+        whitelabel={teamBrand ? { name: teamBrand.name, logoUrl: teamBrand.logoUrl, workspaceId: teamBrand.workspaceId } : null}
+      />
       <CommandPalette />
       {/* main itself doesn't scroll — the children wrapper does. This
           flip is what lets full-viewport pages like the inbox use

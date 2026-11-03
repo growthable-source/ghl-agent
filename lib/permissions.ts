@@ -19,7 +19,8 @@
  *              (invite/remove/change role for anyone below owner),
  *              edit workspace settings, see billing
  *   - owner    everything `admin` does + delete workspace, transfer
- *              ownership, change billing plan
+ *              ownership, change billing plan, and white-label
+ *              (domain + branding — lib/whitelabel/manage-policy.ts)
  *
  * Owners are not removable by anyone but themselves (or another
  * owner). At least one owner must always exist per workspace.
@@ -47,7 +48,7 @@ export const ROLE_LABEL: Record<WorkspaceRole, string> = {
 }
 
 export const ROLE_DESCRIPTION: Record<WorkspaceRole, string> = {
-  owner: 'Full access including billing, ownership transfer, and workspace deletion.',
+  owner: 'Full access including branding, billing, ownership transfer, and workspace deletion.',
   admin: 'Manage members, edit workspace settings, and everything members can do.',
   member: 'Handle conversations, edit agents and knowledge, run the day-to-day.',
   viewer: 'Read-only access. See conversations and contacts but cannot reply or change anything.',

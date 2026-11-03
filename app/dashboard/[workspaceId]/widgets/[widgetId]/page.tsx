@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NewBadge from '@/components/NewBadge'
 import { useWorkspacePublicOrigin } from '@/lib/domains/use-public-origin'
+import { useWhitelabelAccess } from '@/lib/whitelabel/use-whitelabel-access'
 import {
   WidgetAppearanceFields, Section, Field, LauncherBubblePreview, ChatPreview,
 } from '@/components/widget/WidgetAppearance'
@@ -73,6 +74,7 @@ export default function WidgetEditorPage() {
   const router = useRouter()
   const workspaceId = params.workspaceId as string
   const origin = useWorkspacePublicOrigin(workspaceId)
+  const { canEditBranding } = useWhitelabelAccess(workspaceId)
   const widgetId = params.widgetId as string
 
   const [widget, setWidget] = useState<Widget | null>(null)
@@ -400,6 +402,9 @@ export default function WidgetEditorPage() {
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
                 />
               </Field>
+              {/* Owner-only on a white-label workspace (the API ignores it
+                  from anyone else), so it isn't shown to admins at all. */}
+              {canEditBranding && (
               <Field
                 label="Footer “Powered by” text"
                 helper="Shown to visitors in the widget footer. Set your own on any paid plan; the free plan always shows “Powered by Growthable”. Leave blank for the default."
@@ -413,6 +418,7 @@ export default function WidgetEditorPage() {
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm text-white"
                 />
               </Field>
+              )}
               {!isCallType && (
                 // Explicit AI on/off. When off the widget is a pure
                 // human inbox — visitor messages arrive for operators
