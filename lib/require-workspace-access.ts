@@ -28,6 +28,12 @@ export async function requireWorkspaceAccess(workspaceId: string) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  // A super admin in a support session for this workspace (see
+  // lib/support-session.ts) acts as owner, even if their user is also a
+  // member with a lower role.
+  const supportRole = supportRoleFor(session, workspaceId)
+  if (supportRole) return { session, role: supportRole as string }
+
   const member = await db.workspaceMember.findUnique({
     where: {
       userId_workspaceId: {
@@ -39,10 +45,6 @@ export async function requireWorkspaceAccess(workspaceId: string) {
   })
 
   if (!member) {
-    // A super admin in a support session for this workspace (see
-    // lib/support-session.ts) — no membership row by design.
-    const supportRole = supportRoleFor(session, workspaceId)
-    if (supportRole) return { session, role: supportRole as string }
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 

@@ -13,7 +13,7 @@
  *     own User row (matched by email, created on first use) whenever this
  *     cookie verifies. That Session carries `support.workspaceId`.
  *   - requireWorkspaceAccess / requireWorkspaceRole / findMemberRole
- *     grant the role SUPPORT_ROLE for that one workspace when there is no
+ *     grant the role SUPPORT_ROLE for that one workspace, ahead of any
  *     membership row. Every other workspace still requires membership,
  *     so the cookie can't be replayed against a different customer.
  *
@@ -154,11 +154,11 @@ export async function findMemberRole(
 ): Promise<{ role: string } | null> {
   const userId = session?.user?.id
   if (!userId) return null
-  const member = await db.workspaceMember.findUnique({
+  // Support wins over a membership row: staff in support mode act as owner.
+  const support = supportRoleFor(session, workspaceId)
+  if (support) return { role: support }
+  return db.workspaceMember.findUnique({
     where: { userId_workspaceId: { userId, workspaceId } },
     select: { role: true },
   })
-  if (member) return member
-  const support = supportRoleFor(session, workspaceId)
-  return support ? { role: support } : null
 }

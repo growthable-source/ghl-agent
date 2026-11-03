@@ -54,9 +54,9 @@ export async function requireWorkspaceRole(
     },
     select: { role: true },
   })
-  // No membership row: a super admin in a support session for this
-  // workspace gets the support role (see lib/support-session.ts).
-  const rawRole = member?.role ?? supportRoleFor(session, workspaceId)
+  // A super admin in a support session for this workspace gets the
+  // support role (owner), ahead of any membership row (lib/support-session.ts).
+  const rawRole = supportRoleFor(session, workspaceId) ?? member?.role
   if (!rawRole) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
