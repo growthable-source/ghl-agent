@@ -167,3 +167,25 @@ export async function workspaceSenderAddress(workspaceId: string): Promise<strin
   }).catch(() => null) // table not migrated yet → platform sender
   return row && row.status === 'verified' && row.workspace.whitelabelUnlocked ? senderAddressFor(row.domain) : null
 }
+
+/**
+ * Sender for ANY email a white-label workspace sends (team invites,
+ * sign-in codes, ticket replies, CSAT, live-chat transcripts, visitor
+ * emails): its brand name on its verified sending domain. Null when the
+ * workspace has no verified sending domain (or white-label is locked) —
+ * callers keep their normal sender.
+ */
+export async function brandSender(workspaceId: string): Promise<{ name: string; address: string } | null> {
+  const row = await db.workspaceSendingDomain.findUnique({
+    where: { workspaceId },
+    select: {
+      domain: true, status: true,
+      workspace: { select: { whitelabelUnlocked: true, whitelabelBrandName: true, name: true } },
+    },
+  }).catch(() => null) // table not migrated yet → normal sender
+  if (!row || row.status !== 'verified' || !row.workspace.whitelabelUnlocked) return null
+  return {
+    name: row.workspace.whitelabelBrandName?.trim() || row.workspace.name,
+    address: senderAddressFor(row.domain),
+  }
+}

@@ -115,7 +115,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         })
         const widgetRow = await db.chatWidget.findUnique({
           where: { id: widgetId },
-          select: { name: true, primaryColor: true, publicKey: true },
+          select: { name: true, primaryColor: true, publicKey: true, workspaceId: true },
         })
         const base = process.env.NEXT_PUBLIC_APP_URL || ''
         const recoverUrl = `${base}/widget/${widgetId}/embed?pk=${encodeURIComponent(widgetRow?.publicKey || '')}&recover=${token}`
@@ -125,6 +125,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           widgetName: widgetRow?.name || 'our chat',
           recoverUrl,
           primaryColor: widgetRow?.primaryColor,
+          workspaceId: widgetRow?.workspaceId,
         })
         recoveryEmailed = true
       }

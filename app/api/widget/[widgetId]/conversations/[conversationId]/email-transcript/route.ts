@@ -1,3 +1,5 @@
+import { brandSender } from '@/lib/domains/sending-domain'
+import { brandedFromAddress } from '@/lib/whitelabel/login-code'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateWidgetRequest, widgetCorsHeaders } from '@/lib/widget-auth'
@@ -93,13 +95,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       error: 'Email delivery not configured. Operator: set RESEND_API_KEY.',
     }, { status: 500, headers })
   }
-  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
+  let from = process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
 
   const convo = await db.widgetConversation.findFirst({
     where: { id: conversationId, widgetId },
     include: { widget: true },
   })
   if (!convo) return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers })
+  const brand = await brandSender(convo.widget.workspaceId)
+  if (brand) from = brandedFromAddress(brand.name, brand.address)
 
   const messages = await db.widgetMessage.findMany({
     where: { conversationId },

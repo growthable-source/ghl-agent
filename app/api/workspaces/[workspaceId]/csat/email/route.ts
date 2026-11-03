@@ -1,3 +1,5 @@
+import { brandSender } from '@/lib/domains/sending-domain'
+import { brandedFromAddress } from '@/lib/whitelabel/login-code'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
@@ -58,7 +60,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const html = renderCsatReportHtml(data, { workspaceId, workspaceName })
   const subject = renderCsatReportSubject(data, workspaceName)
-  const from = process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
+  const brand = await brandSender(workspaceId)
+  const from = brand
+    ? brandedFromAddress(brand.name, brand.address)
+    : process.env.NOTIFICATION_FROM_EMAIL || 'Xovera <notifications@xovera.io>'
 
   const sendRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',

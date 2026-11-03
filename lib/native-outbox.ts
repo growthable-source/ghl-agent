@@ -14,6 +14,8 @@
  * drain runs don't double-send.
  */
 
+import { brandSender } from './domains/sending-domain'
+import { brandedFromAddress } from './whitelabel/login-code'
 import { db } from './db'
 import { sanitizeEmailSubject } from './email-subject'
 
@@ -198,7 +200,8 @@ async function sendViaResend(args: {
   if (!args.to) return { ok: false, error: 'Contact has no email address' }
 
   const apiKey = process.env.RESEND_API_KEY
-  const from = process.env.NOTIFICATION_FROM_EMAIL
+  const brand = await brandSender(args.workspaceId)
+  const from = brand ? brandedFromAddress(brand.name, brand.address) : process.env.NOTIFICATION_FROM_EMAIL
   if (!apiKey || !from) {
     return { ok: false, error: 'RESEND_API_KEY or NOTIFICATION_FROM_EMAIL not set' }
   }

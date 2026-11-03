@@ -13,6 +13,8 @@
  *   - app/api/workspaces/:ws/settings/ticketing/test-email (pre-flight)
  */
 
+import { brandSender } from './domains/sending-domain'
+import { brandedFromAddress } from './whitelabel/login-code'
 import { db } from './db'
 import { sanitizeEmailSubject } from './email-subject'
 
@@ -69,7 +71,13 @@ export async function sendTicketingEmail(p: SendArgs): Promise<SendResult> {
       reason: 'No from-email configured. Set one in Settings → Ticketing → Reply from.',
     }
   }
-  const from = fromAddr.includes('<') ? fromAddr : `${fromName} <${fromAddr}>`
+  const normalFrom = fromAddr.includes('<') ? fromAddr : `${fromName} <${fromAddr}>`
+  // White-label workspace with a verified sending domain: send from it
+  // under the brand, and point replies at the address we'd normally send
+  // from so they still thread back into the ticket.
+  const brand = await brandSender(p.workspaceId)
+  const from = brand ? brandedFromAddress(settings?.fromName || brand.name, brand.address) : normalFrom
+  const replyTo = brand ? (fromAddr.match(/<([^>]+)>/)?.[1]?.trim() || fromAddr.trim()) : undefined
   // Flatten BEFORE prefixing so the `[#N]` marker (which inbound
   // threading parses back out) can never be pushed past the length
   // cap or split across a line break.
@@ -79,19 +87,28 @@ export async function sendTicketingEmail(p: SendArgs): Promise<SendResult> {
     ? `${p.text}\n\n--\n${settings.signature}`
     : p.text
 
+  const post = (sender: string) => fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: sender,
+      to: [p.to],
+      subject: subjectWithRef,
+      text: bodyWithSig,
+      ...(sender !== normalFrom && replyTo ? { reply_to: replyTo } : {}),
+      headers: p.ticketRef ? { 'X-Voxility-Ticket-Id': p.ticketRef.id } : undefined,
+    }),
+  })
+
   let res: Response
   try {
-    res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: [p.to],
-        subject: subjectWithRef,
-        text: bodyWithSig,
-        headers: p.ticketRef ? { 'X-Voxility-Ticket-Id': p.ticketRef.id } : undefined,
-      }),
-    })
+    res = await post(from)
+    // Brand domain refused (e.g. its DNS records were removed since it
+    // verified): the reply still goes out, from the normal sender.
+    if (!res.ok && from !== normalFrom && (res.status === 403 || res.status === 422)) {
+      console.warn(`[ticketing-send] brand sender refused for ${p.workspaceId} (${res.status}), retrying with ${fromAddr}`)
+      res = await post(normalFrom)
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'network error'
     return { ok: false, messageId: null, reason: `Couldn't reach Resend: ${msg}` }

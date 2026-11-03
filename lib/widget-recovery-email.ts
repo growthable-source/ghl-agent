@@ -15,6 +15,8 @@
  * footer link.
  */
 
+import { brandSender } from '@/lib/domains/sending-domain'
+import { brandedFromAddress } from '@/lib/whitelabel/login-code'
 import { escapeHtml, paragraphs, renderBrandedEmail } from '@/lib/email-render'
 import { sendEmail } from '@/lib/email-send'
 
@@ -25,6 +27,8 @@ interface RecoveryPayload {
   recoverUrl: string
   /** Retained for back-compat; the branded wrapper sets its own accent. */
   primaryColor?: string | null
+  /** White-label workspace with a verified sending domain sends from it. */
+  workspaceId?: string
 }
 
 export async function sendVisitorRecoveryEmail(p: RecoveryPayload): Promise<void> {
@@ -44,11 +48,13 @@ export async function sendVisitorRecoveryEmail(p: RecoveryPayload): Promise<void
     cta: { label: 'Resume chat', url: p.recoverUrl },
   })
 
+  const brand = p.workspaceId ? await brandSender(p.workspaceId) : null
   await sendEmail({
     to: p.to,
     subject: `Resume your chat with ${p.widgetName}`,
     html,
     text,
+    ...(brand ? { from: brandedFromAddress(brand.name, brand.address) } : {}),
     context: 'WidgetRecovery',
   })
 }
