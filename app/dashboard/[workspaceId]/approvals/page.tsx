@@ -86,7 +86,7 @@ export default function ApprovalsPage() {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Approval Queue</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Approval Queue</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Messages your agents flagged for human review before sending.
             </p>
@@ -342,10 +342,10 @@ function JudgeConfigModal({ workspaceId, onClose }: { workspaceId: string; onClo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col xv-card shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="p-6 flex items-start justify-between shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
           <div>
-            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>🤖 AI Judge settings</h2>
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>🤖 AI Judge settings</h2>
             <p className="text-xs mt-1 max-w-xl" style={{ color: 'var(--text-tertiary)' }}>
               When approval rules flag a message, run a cheap LLM pass first. SAFE → auto-release; UNSAFE → optionally
               auto-block; UNCERTAIN → keep for human review. Cuts queue volume ~80% on the typical mix.
