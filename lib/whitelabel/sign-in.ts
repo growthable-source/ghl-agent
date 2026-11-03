@@ -14,6 +14,7 @@
  * /invite/[token] proves on our own host.
  */
 
+import { workspaceSenderAddress } from '@/lib/domains/sending-domain'
 import { randomBytes } from 'node:crypto'
 import { db } from '@/lib/db'
 import { renderBrandedEmail, escapeHtml } from '@/lib/email-render'
@@ -103,9 +104,12 @@ export async function requestLoginCode(brand: TeamBrand, email: string, ip: stri
   })
   const message = { to: email, subject: `${code} is your ${brand.name} sign-in code`, html, text, context: 'TeamSignIn' }
   const platformFrom = process.env.NOTIFICATION_FROM_EMAIL
+  // The workspace's own verified sending domain when it has one
+  // (lib/domains/sending-domain.ts), else our sending address.
+  const fromAddress = (await workspaceSenderAddress(brand.workspaceId)) || platformFrom || 'notifications@xovera.io'
   try {
-    // Brand name as the sender name, on our verified sending address.
-    await sendEmail({ ...message, from: brandedFromAddress(brand.name, platformFrom || 'notifications@xovera.io') })
+    // Brand name as the sender name.
+    await sendEmail({ ...message, from: brandedFromAddress(brand.name, fromAddress) })
   } catch (err) {
     // If the email provider refuses the branded sender (e.g. no
     // NOTIFICATION_FROM_EMAIL on this deployment and the fallback address

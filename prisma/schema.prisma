@@ -124,6 +124,7 @@ model Workspace {
   whitelabelUnlockedAt      DateTime?
   whitelabelUnlockedBy      String?
   whitelabelDomain          WorkspaceDomain?
+  whitelabelSendingDomain   WorkspaceSendingDomain?
   // Branding for pages served on the white-label domain (browser tab
   // title, favicon, where the bare domain goes). All optional: the brand
   // name falls back to Workspace.name, the favicon to logoUrl and then a
@@ -4497,6 +4498,29 @@ model WorkspaceDomain {
   failedChecks  Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+}
+
+/// White-label email sending domain (e.g. mail.acme.com), registered on
+/// OUR Resend account so the customer only adds DNS records. Once
+/// verified, the workspace's white-label emails send from it.
+/// See lib/domains/sending-domain.ts.
+model WorkspaceSendingDomain {
+  id             String    @id @default(cuid())
+  workspaceId    String    @unique
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  domain         String    @unique
+  resendDomainId String
+  /// 'pending' | 'verified' | 'failed'
+  status         String    @default("pending")
+  /// DNS records the customer must create: [{ type, name, value, priority?, status? }]
+  dnsRecords     Json      @default("[]")
+  lastError      String?   @db.Text
+  lastCheckedAt  DateTime?
+  verifiedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([status])
 }

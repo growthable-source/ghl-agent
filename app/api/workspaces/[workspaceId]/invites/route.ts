@@ -228,6 +228,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         })
         const target = await inviteTarget(workspaceId, email, saved.token, req.nextUrl.origin)
         await sendWorkspaceInviteEmail({
+          workspaceId,
           to: email,
           workspaceName: ws?.name || 'a Xovera workspace',
           inviterName: inviter?.name ?? inviter?.email ?? null,

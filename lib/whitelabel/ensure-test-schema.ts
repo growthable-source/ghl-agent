@@ -1,7 +1,8 @@
 /**
  * Test builds only: make sure the database has the white-label team
- * sign-in schema (migrations 20261023120000_whitelabel_team_sign_in and
- * 20261027120000_whitelabel_button_text_color).
+ * sign-in schema (migrations 20261023120000_whitelabel_team_sign_in,
+ * 20261027120000_whitelabel_button_text_color and
+ * 20261103120000_whitelabel_sending_domain).
  *
  * Why this exists: Vercel preview builds run the migration step, but on
  * this project it does not reliably reach the database the preview
@@ -51,6 +52,30 @@ const STATEMENTS = [
         FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     END IF;
   END $$`,
+  // 20261103120000_whitelabel_sending_domain
+  `CREATE TABLE IF NOT EXISTS "WorkspaceSendingDomain" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "domain" TEXT NOT NULL,
+    "resendDomainId" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "dnsRecords" JSONB NOT NULL DEFAULT '[]',
+    "lastError" TEXT,
+    "lastCheckedAt" TIMESTAMP(3),
+    "verifiedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "WorkspaceSendingDomain_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceSendingDomain_workspaceId_key" ON "WorkspaceSendingDomain"("workspaceId")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceSendingDomain_domain_key" ON "WorkspaceSendingDomain"("domain")`,
+  `CREATE INDEX IF NOT EXISTS "WorkspaceSendingDomain_status_idx" ON "WorkspaceSendingDomain"("status")`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'WorkspaceSendingDomain_workspaceId_fkey') THEN
+      ALTER TABLE "WorkspaceSendingDomain" ADD CONSTRAINT "WorkspaceSendingDomain_workspaceId_fkey"
+        FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+  END $$`,
 ]
 
 async function schemaPresent(): Promise<boolean> {
@@ -60,9 +85,9 @@ async function schemaPresent(): Promise<boolean> {
          WHERE table_schema = current_schema() AND table_name = 'Workspace'
            AND column_name IN ('whitelabelLogoUrl','whitelabelAccentColor','whitelabelLoginHeading','whitelabelLoginMessage','whitelabelButtonTextColor'))
      + (SELECT count(*) FROM information_schema.tables
-         WHERE table_schema = current_schema() AND table_name = 'WorkspaceLoginCode') AS n`,
+         WHERE table_schema = current_schema() AND table_name IN ('WorkspaceLoginCode','WorkspaceSendingDomain')) AS n`,
   )
-  return Number(rows[0]?.n ?? 0) === 6
+  return Number(rows[0]?.n ?? 0) === 7
 }
 
 export async function ensureWhitelabelTestSchema(): Promise<void> {

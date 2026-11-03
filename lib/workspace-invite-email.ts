@@ -11,6 +11,7 @@
 import { escapeHtml, paragraphs, renderBrandedEmail } from '@/lib/email-render'
 import { sendEmail } from '@/lib/email-send'
 import { brandedFromAddress } from '@/lib/whitelabel/login-code'
+import { workspaceSenderAddress } from '@/lib/domains/sending-domain'
 
 interface InvitePayload {
   to: string
@@ -23,6 +24,8 @@ interface InvitePayload {
   /** White-label workspace (lib/whitelabel/invite.ts): sent under the
    *  customer's brand, never mentions us, and the link is their sign-in. */
   brand?: { name: string; accent: string | null } | null
+  /** Lets a white-label invite send from the workspace's verified sending domain. */
+  workspaceId?: string
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -86,12 +89,16 @@ async function sendWhitelabelInvite(p: InvitePayload, brand: { name: string; acc
     cta: { label: 'Sign in', url: p.inviteUrl },
     brand,
   })
-  await sendEmail({
-    to: p.to,
-    subject: title,
-    html,
-    text,
-    from: brandedFromAddress(brand.name, process.env.NOTIFICATION_FROM_EMAIL || 'notifications@xovera.io'),
-    context: 'WorkspaceInvite',
-  })
+  const platformFrom = process.env.NOTIFICATION_FROM_EMAIL || 'notifications@xovera.io'
+  const ownFrom = p.workspaceId ? await workspaceSenderAddress(p.workspaceId) : null
+  const message = { to: p.to, subject: title, html, text, context: 'WorkspaceInvite' }
+  try {
+    await sendEmail({ ...message, from: brandedFromAddress(brand.name, ownFrom || platformFrom) })
+  } catch (err) {
+    // The workspace's own domain was refused (e.g. its DNS records were
+    // removed since it verified) — fall back to our address, same brand name.
+    if (!ownFrom) throw err
+    console.warn('[invite] workspace sending domain refused, retrying with the platform sender', err)
+    await sendEmail({ ...message, from: brandedFromAddress(brand.name, platformFrom) })
+  }
 }

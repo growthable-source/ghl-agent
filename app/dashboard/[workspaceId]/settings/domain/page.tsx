@@ -6,6 +6,10 @@
  * workspace's own subdomain (live.acme.com) instead of app.xovera.io.
  * One domain per workspace, subdomains only.
  *
+ * The email sending domain card (SendingDomainCard) registers a subdomain
+ * on our Resend account so team emails send from the customer's own
+ * domain; the customer only adds the DNS records shown.
+ *
  * Always visible; adding a domain requires a platform admin to unlock
  * the workspace first (the commercial deal is outside the product), so
  * locked workspaces see the explainer + a contact prompt, not a form.
@@ -218,6 +222,8 @@ export default function CustomDomainPage() {
           {d.lastError && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>Last check failed: {d.lastError}</p>}
         </div>
       )}
+
+      {state.unlocked && state.canManage && <SendingDomainCard workspaceId={workspaceId} />}
 
       {state.unlocked && state.canManage && (
         <BrandingCard
@@ -446,6 +452,173 @@ function ColourField({ label, value, onChange, fallback, placeholder, hint }: {
         )}
       </div>
       <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{hint}</p>
+    </div>
+  )
+}
+
+interface SendingDnsRecord { type: string; name: string; value: string; priority?: number; verified: boolean }
+interface SendingDomainView {
+  domain: string
+  status: string
+  dnsRecords: SendingDnsRecord[]
+  senderAddress: string
+  lastError: string | null
+}
+
+/**
+ * Email sending domain: team invites and sign-in codes send from
+ * notifications@<this domain> once Resend has verified it. Until then
+ * they keep sending from our address under the brand name.
+ */
+function SendingDomainCard({ workspaceId }: { workspaceId: string }) {
+  const base = `/api/workspaces/${workspaceId}/sending-domain`
+  const [sd, setSd] = useState<SendingDomainView | null | undefined>(undefined)
+  const [domain, setDomain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const res = await fetch(base)
+    if (res.ok) setSd((await res.json()).sendingDomain)
+  }, [base])
+  useEffect(() => { void load() }, [load])
+
+  // Poll while waiting so the badge flips without a manual re-check.
+  useEffect(() => {
+    if (!sd || sd.status === 'verified') return
+    const t = setInterval(() => { void load() }, 30_000)
+    return () => clearInterval(t)
+  }, [sd, load])
+
+  async function act(method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(base, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Something went wrong.'); return }
+      setSd(data.sendingDomain)
+      if (method === 'POST') setDomain('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (sd === undefined) return null
+  const card = { borderColor: 'var(--border)', background: 'var(--surface)' } as const
+  const verified = sd?.status === 'verified'
+
+  return (
+    <div className="rounded-xl border p-5 space-y-3" style={card}>
+      <div>
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Email sending domain</p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+          Team invites and sign-in codes are sent from your own domain instead of ours. Use a dedicated subdomain
+          such as <span className="font-mono">mail.yourcompany.com</span> so it doesn&rsquo;t affect your normal email.
+        </p>
+      </div>
+
+      {!sd && (
+        <div className="flex gap-2 flex-wrap">
+          <input
+            value={domain}
+            onChange={e => setDomain(e.target.value)}
+            placeholder="mail.yourcompany.com"
+            className="flex-1 min-w-[240px] rounded-lg px-3 py-2 text-sm font-mono"
+            style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }}
+          />
+          <button
+            type="button"
+            disabled={busy || !domain.trim()}
+            onClick={() => void act('POST', { domain })}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: 'var(--accent-primary)' }}
+          >
+            {busy ? 'Adding…' : 'Add sending domain'}
+          </button>
+        </div>
+      )}
+
+      {sd && (
+        <>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm" style={{ color: 'var(--text-primary)' }}>{sd.domain}</span>
+              <span
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                style={{
+                  background: verified ? 'var(--accent-emerald)' : sd.status === 'failed' ? 'var(--accent-red)' : 'var(--surface-hover, #3f3f46)',
+                  color: '#fff',
+                }}
+              >
+                {verified ? 'Verified' : sd.status === 'failed' ? 'Verification failed' : 'Waiting for DNS'}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" disabled={busy} onClick={() => void act('PATCH')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+                {busy ? 'Checking…' : 'Re-check'}
+              </button>
+              <button type="button" disabled={busy}
+                onClick={() => { if (confirm(`Remove ${sd.domain}? Emails will go back to being sent from our address.`)) void act('DELETE') }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                style={{ background: 'var(--accent-red)' }}>
+                Remove
+              </button>
+            </div>
+          </div>
+
+          {verified ? (
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              Live. Team emails now send from <span className="font-mono">{sd.senderAddress}</span>.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Add these records at the DNS provider for your root domain. We re-check automatically; it usually takes
+                a few minutes, occasionally a few hours. Until then emails keep sending from our address under your brand name.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ color: 'var(--text-tertiary)' }}>
+                      <th className="text-left font-medium py-1 pr-3">Type</th>
+                      <th className="text-left font-medium py-1 pr-3">Name / Host</th>
+                      <th className="text-left font-medium py-1 pr-3">Value</th>
+                      <th className="text-left font-medium py-1 pr-3">Priority</th>
+                      <th className="text-left font-medium py-1" />
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono" style={{ color: 'var(--text-primary)' }}>
+                    {sd.dnsRecords.map((r, i) => (
+                      <tr key={i} className="align-top">
+                        <td className="py-1 pr-3">{r.type}</td>
+                        <td className="py-1 pr-3 break-all">{r.name}</td>
+                        <td className="py-1 pr-3 break-all">{r.value}</td>
+                        <td className="py-1 pr-3">{r.priority ?? ''}</td>
+                        <td className="py-1" style={{ color: r.verified ? 'var(--accent-emerald)' : 'var(--text-tertiary)' }}>
+                          {r.verified ? '✓' : ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                Names are relative to your root domain — most DNS providers add the root domain for you. If yours wants the
+                full name, add it to the end.
+              </p>
+            </>
+          )}
+          {sd.lastError && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>Last check failed: {sd.lastError}</p>}
+        </>
+      )}
+      {error && <p className="text-sm" style={{ color: 'var(--accent-red)' }}>{error}</p>}
     </div>
   )
 }
