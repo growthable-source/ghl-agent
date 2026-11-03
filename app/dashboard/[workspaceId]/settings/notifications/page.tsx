@@ -174,7 +174,7 @@ export default function NotificationsSettingsPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Notifications</h1>
+        <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Notifications</h1>
         <p className="text-sm mt-1 max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
           Pick where you want to be pinged for each event. These preferences are personal to you — your teammates each set their own. Workspace-shared channels (Slack, Discord, team email) are managed under Settings → Integrations.
         </p>
@@ -187,7 +187,7 @@ export default function NotificationsSettingsPage() {
       )}
 
       {/* Browser push card */}
-      <div className="mb-8 p-5 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <div className="mb-8 p-5 xv-card">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>🔔 Browser push notifications</p>

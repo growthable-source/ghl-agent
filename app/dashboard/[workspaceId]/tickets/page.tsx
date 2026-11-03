@@ -148,7 +148,7 @@ export default function TicketsPage() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Tickets</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Tickets</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Email-driven cases promoted from chats or created from scratch.
             </p>
@@ -306,7 +306,7 @@ export default function TicketsPage() {
             </div>
 
             {tickets.length === 0 ? (
-              <div className="rounded-xl border p-10 text-center" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <div className="xv-card p-10 text-center">
                 <div className="text-3xl mb-2">🎫</div>
                 <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>No tickets match these filters</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
@@ -413,7 +413,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function GridView({ tickets, workspaceId }: { tickets: Ticket[]; workspaceId: string }) {
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card overflow-hidden">
       {tickets.map(t => (
         <Link
           key={t.id}
@@ -482,7 +482,7 @@ function PriorityPill({ priority }: { priority: Ticket['priority'] }) {
 function InactiveState({ workspaceId, reason }: { workspaceId: string; reason: string }) {
   const planLocked = reason === 'plan_locked' || reason === 'plan_locked_and_not_enabled'
   return (
-    <div className="rounded-xl border p-10 text-center" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-10 text-center">
       <div className="text-3xl mb-2">🎫</div>
       <p className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
         {planLocked ? 'Ticketing is a Scale plan feature' : 'Ticketing is off for this workspace'}

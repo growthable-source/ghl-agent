@@ -83,7 +83,7 @@ export default function CustomFieldsClient({
       <div className="max-w-4xl mx-auto">
         <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Custom fields</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight tracking-tight">Custom fields</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Define fields you can reference as <code style={{ color: 'var(--text-primary)' }}>{'{{contact.<key>}}'}</code> in agent prompts.
             </p>
@@ -100,7 +100,7 @@ export default function CustomFieldsClient({
         </div>
 
         {creating && (
-          <div className="rounded-xl border p-4 mb-6 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-4 mb-6 space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Label</label>
@@ -168,14 +168,13 @@ export default function CustomFieldsClient({
 
         {fields.length === 0 && !creating ? (
           <div
-            className="text-center py-12 border border-dashed rounded-xl"
-            style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}
+            className="text-center py-12 -dashed xv-card"
           >
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No custom fields</p>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Add fields to extend your contact records beyond name + email + phone.</p>
           </div>
         ) : fields.length > 0 ? (
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card overflow-hidden">
             {fields.map((f, i) => (
               <div
                 key={f.id}

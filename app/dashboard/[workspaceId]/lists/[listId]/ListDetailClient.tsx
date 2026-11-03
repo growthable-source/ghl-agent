@@ -97,7 +97,7 @@ export default function ListDetailClient({
         <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
             <Link href={`/dashboard/${workspaceId}/lists`} className="text-xs" style={{ color: 'var(--text-tertiary)' }}>← All lists</Link>
-            <h1 className="text-2xl font-semibold tracking-tight mt-1">{list.name}</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight tracking-tight mt-1">{list.name}</h1>
             {list.description && (
               <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{list.description}</p>
             )}
@@ -117,7 +117,7 @@ export default function ListDetailClient({
         </div>
 
         {picking && (
-          <div className="rounded-xl border p-4 mb-6 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-4 mb-6 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Add members</p>
               <button onClick={() => setPicking(false)} className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Done</button>
@@ -159,14 +159,13 @@ export default function ListDetailClient({
 
         {members.length === 0 ? (
           <div
-            className="text-center py-12 border border-dashed rounded-xl"
-            style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}
+            className="text-center py-12 -dashed xv-card"
           >
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No members yet</p>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Use "+ Add members" or import a CSV with this list selected.</p>
           </div>
         ) : (
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card overflow-hidden">
             <div
               className="grid items-center gap-3 px-4 py-2.5 text-[10px] uppercase tracking-wider font-semibold border-b"
               style={{

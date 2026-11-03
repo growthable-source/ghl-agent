@@ -96,7 +96,7 @@ export default function NeedsAttentionPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Needs Attention</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Needs Attention</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Conversations where your agents stopped, errored, or asked for help.
           </p>
@@ -156,8 +156,7 @@ export default function NeedsAttentionPage() {
               return (
                 <div
                   key={`${item.contactId}-${i}`}
-                  className="p-4 rounded-xl transition-colors"
-                  style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+                  className="p-4 xv-card transition-colors"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 mt-1.5">

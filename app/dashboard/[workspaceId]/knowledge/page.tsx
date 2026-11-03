@@ -75,7 +75,7 @@ export default function WorkspaceKnowledgePage() {
     <div className="flex-1 p-8">
       <div className="max-w-5xl mx-auto space-y-3">
         <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" />
-        <div className="h-32 bg-zinc-900/40 rounded-xl border border-zinc-800 animate-pulse" />
+        <div className="h-32 animate-pulse xv-card" />
       </div>
     </div>
   )
@@ -84,7 +84,7 @@ export default function WorkspaceKnowledgePage() {
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-5xl mx-auto p-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Knowledge</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Knowledge</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Everything your AI knows lives in a collection. Paste a link, drop a file or write
             notes — then connect whole collections to the agents that should use them.
@@ -98,7 +98,7 @@ export default function WorkspaceKnowledgePage() {
 
         <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
           <div>
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Collections</h2>
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>Collections</h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
               Each collection holds links and files your AI keeps re-reading, plus any notes and
               Q&amp;A you write by hand. Attach a collection to an agent to give it that knowledge.
@@ -174,7 +174,7 @@ export default function WorkspaceKnowledgePage() {
                 <Link
                   key={c.id}
                   href={`/dashboard/${workspaceId}/knowledge/${c.id}`}
-                  className="block p-4 rounded-xl border border-zinc-800 bg-zinc-950 hover:border-zinc-600 transition-colors"
+                  className="block p-4 hover:border-zinc-600 transition-colors xv-card"
                 >
                   <div className="flex items-start gap-3 mb-2">
                     <div
@@ -272,7 +272,7 @@ function ImportCollectionModal({
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden">
         <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Import a shared collection</h2>
+          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>Import a shared collection</h2>
           <button onClick={onClose} style={{ color: 'var(--text-tertiary)' }} aria-label="Close">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -355,7 +355,7 @@ function CreateCollectionModal({
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>New collection</h2>
+          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>New collection</h2>
           <button onClick={onClose} style={{ color: 'var(--text-tertiary)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

@@ -119,7 +119,7 @@ export default async function LogsPage({
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>Message Logs</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Message Logs</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>
               {activeStatus === 'ALL'
                 ? `${totalUnfiltered} total messages`

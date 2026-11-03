@@ -201,7 +201,7 @@ export default function BrandGroupsPage() {
       <div className="max-w-5xl mx-auto">
         <div className="mb-6 flex items-end justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Brand priority groups</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Brand priority groups</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Sort brands into priority buckets. The inbox surfaces conversations from higher-priority groups first when humans are needed.
             </p>
@@ -226,7 +226,7 @@ export default function BrandGroupsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           {/* Groups list — ordered by priority, lowest number first. */}
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card overflow-hidden">
             <div className="px-4 py-2 border-b text-[10px] uppercase tracking-wider font-semibold"
               style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}>
               {groups.length} group{groups.length === 1 ? '' : 's'}
@@ -265,7 +265,7 @@ export default function BrandGroupsPage() {
           </div>
 
           {/* Detail panel. */}
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card overflow-hidden">
             {!selected ? (
               <div className="p-8 text-center">
                 <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>

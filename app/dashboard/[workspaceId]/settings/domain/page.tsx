@@ -81,7 +81,7 @@ export default function CustomDomainPage() {
   }
 
   if (!state) {
-    return <div className="p-8 max-w-2xl"><div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--surface)' }} /></div>
+    return <div className="p-8 max-w-2xl"><div className="h-40 xv-card animate-pulse" /></div>
   }
 
   const d = state.domain
@@ -90,7 +90,7 @@ export default function CustomDomainPage() {
   return (
     <div className="p-8 max-w-2xl space-y-5">
       <div>
-        <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Custom domain</h1>
+        <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>Custom domain</h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Serve your Co-Pilot links and chat/voice widget from your own subdomain, e.g.{' '}
           <span className="font-mono">live.yourcompany.com/copilot/live/…</span>, instead of our domain. Your team
@@ -302,7 +302,7 @@ function BrandingCard({ workspaceId, initial, hostname, onSaved }: {
   }
 
   return (
-    <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-5 space-y-4">
       <div>
         <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Branding</p>
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>

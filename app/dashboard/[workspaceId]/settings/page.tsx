@@ -225,12 +225,12 @@ export default function WorkspaceSettingsPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-xl font-semibold mb-1">Workspace Settings</h1>
+        <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-1">Workspace Settings</h1>
         <p className="text-zinc-400 text-sm">Manage your workspace details and team members.</p>
       </div>
 
       {/* ─── Workspace Details ─── */}
-      <form onSubmit={saveWorkspace} className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">
+      <form onSubmit={saveWorkspace} className="p-5 mb-6 xv-card">
         <h2 className="text-sm font-medium text-zinc-200 mb-4">General</h2>
         <div className="space-y-4">
           <div>
@@ -372,7 +372,7 @@ export default function WorkspaceSettingsPage() {
       {/* ─── Billing ─── */}
       <Link
         href={`/dashboard/${workspaceId}/settings/billing`}
-        className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6 flex items-center justify-between group hover:border-zinc-700 transition-colors"
+        className="p-5 mb-6 flex items-center justify-between group hover:border-zinc-700 transition-colors xv-card"
       >
         <div>
           <h2 className="text-sm font-medium text-zinc-200 mb-1">Billing & Usage</h2>
@@ -386,7 +386,7 @@ export default function WorkspaceSettingsPage() {
           a CRM resource (calendar, workflow) that no longer exists. The
           hourly health check flags broken references; this picker decides
           how aggressive the runtime treatment is. */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">
+      <div className="p-5 mb-6 xv-card">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-medium text-zinc-200">Broken-reference behaviour</h2>
           {savingBrm && <span className="text-xs text-zinc-500">Saving…</span>}
@@ -457,7 +457,7 @@ export default function WorkspaceSettingsPage() {
       </div>
 
       {/* ─── Team Members ─── */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">
+      <div className="p-5 mb-6 xv-card">
         <h2 className="text-sm font-medium text-zinc-200 mb-1">Team Members</h2>
         <p className="text-xs text-zinc-500 mb-4">People with access to this workspace.</p>
 

@@ -86,7 +86,7 @@ export default function CsatPage() {
       <div className="max-w-5xl mx-auto">
         <div className="mb-6 flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Visitor satisfaction</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Visitor satisfaction</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Click any bar, brand, or handler pill to drill in. Reset filters with the chip&nbsp;×.
             </p>
@@ -177,7 +177,7 @@ export default function CsatPage() {
 
 function EmptyState({ days, hasFilter }: { days: number; hasFilter: boolean }) {
   return (
-    <div className="rounded-xl border p-10 text-center" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-10 text-center">
       <div className="text-3xl mb-2">⭐</div>
       <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
         {hasFilter ? 'No ratings match these filters' : `No ratings yet in the last ${days} days`}

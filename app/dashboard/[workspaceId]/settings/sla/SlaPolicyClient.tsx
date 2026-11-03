@@ -109,8 +109,7 @@ export default function SlaPolicyClient({
         return (
           <div
             key={priority}
-            className="rounded-xl border p-4 grid grid-cols-[1fr_120px_120px_56px] gap-3 items-center"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            className="xv-card p-4 grid grid-cols-[1fr_120px_120px_56px] gap-3 items-center"
           >
             {/* Label */}
             <div>

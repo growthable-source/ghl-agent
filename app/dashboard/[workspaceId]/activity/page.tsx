@@ -76,7 +76,7 @@ export default function ActivityPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Live Activity</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Live Activity</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Every action your agents take, as it happens.
             </p>
