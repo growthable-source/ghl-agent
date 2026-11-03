@@ -50,7 +50,9 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({ members })
+  // myRole is the caller's effective role, which a support session (super
+  // admin, not a member row) also has — the page can't derive it from the list.
+  return NextResponse.json({ members, myRole: access.role })
 }
 
 /**

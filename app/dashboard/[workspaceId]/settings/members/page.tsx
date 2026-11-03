@@ -88,11 +88,8 @@ export default function MembersPage() {
       ])
       setMembers(m.members || [])
       setInvites(i.invites || [])
-      if (me?.user?.id) {
-        setMeId(me.user.id)
-        const myRow = (m.members || []).find((row: Member) => row.user.id === me.user.id)
-        if (myRow) setMyRole(myRow.role)
-      }
+      if (me?.user?.id) setMeId(me.user.id)
+      if (m.myRole) setMyRole(m.myRole)
     } finally {
       setLoading(false)
     }
