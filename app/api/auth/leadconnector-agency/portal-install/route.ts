@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getPortalSession } from '@/lib/portal-auth'
 import { agencyOAuthConfigured, AGENCY_OAUTH_SCOPES } from '@/lib/leadconnector-agency'
+import { agencyStateSecret, signAgencyState } from '@/lib/agency-oauth-state'
 
 /**
  * GET /api/auth/leadconnector-agency/portal-install?widgetId=...&variant=whitelabel|standard
@@ -32,10 +33,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/portal/locations?error=not_configured', req.url))
   }
 
-  const state = Buffer.from(
-    JSON.stringify({ widgetId: widget.id, workspaceId: widget.workspaceId, portalReturn: true }),
-    'utf8',
-  ).toString('base64url')
+  const secret = agencyStateSecret()
+  if (!secret) {
+    return NextResponse.redirect(new URL('/portal/locations?error=not_configured', req.url))
+  }
+  // Signed + expiring, and names the portal user who started the flow:
+  // the callback re-checks their brand access before saving anything.
+  const state = signAgencyState({
+    widgetId: widget.id,
+    workspaceId: widget.workspaceId,
+    portalReturn: true,
+    actor: { kind: 'portal', portalId: session.portalId, portalUserId: session.userId },
+  }, secret)
   const clientId = process.env.LEADCONNECTOR_AGENCY_CLIENT_ID!
   const versionId = process.env.LEADCONNECTOR_AGENCY_VERSION_ID ?? clientId.split('-')[0]
   const domain = req.nextUrl.searchParams.get('variant') === 'standard'

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceRole } from '@/lib/require-workspace-role'
 import { agencyOAuthConfigured, AGENCY_OAUTH_SCOPES } from '@/lib/leadconnector-agency'
+import { agencyStateSecret, signAgencyState } from '@/lib/agency-oauth-state'
 
 /**
  * GET /api/auth/leadconnector-agency/install?widgetId=...&variant=whitelabel|standard
@@ -42,10 +43,18 @@ export async function GET(req: NextRequest) {
   if (!agencyOAuthConfigured()) {
     return NextResponse.redirect(new URL(`${settingsUrl}?error=not_configured`, req.url))
   }
-  const state = Buffer.from(
-    JSON.stringify({ widgetId: widget.id, workspaceId: widget.workspaceId }),
-    'utf8',
-  ).toString('base64url')
+  const secret = agencyStateSecret()
+  if (!secret) {
+    return NextResponse.redirect(new URL(`${settingsUrl}?error=not_configured`, req.url))
+  }
+  // Signed + expiring, and names who started the flow: the callback
+  // re-checks this user's admin access before saving anything.
+  const state = signAgencyState({
+    widgetId: widget.id,
+    workspaceId: widget.workspaceId,
+    portalReturn: false,
+    actor: { kind: 'user', userId: access.session.user!.id! },
+  }, secret)
   const clientId = process.env.LEADCONNECTOR_AGENCY_CLIENT_ID!
   // version_id is the app id — also the prefix of the client id
   // ("<appId>-<suffix>"), so derive it when the env var isn't set.
