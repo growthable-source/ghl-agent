@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { auth } from '@/lib/auth'
 import { exchangeAgencyCode, fetchCompanyName, syncAgencyLocations } from '@/lib/leadconnector-agency'
+import { agencyStateSecret, unverifiedPortalReturn, verifyAgencyState } from '@/lib/agency-oauth-state'
+import { actorMayConnectWidget } from '@/lib/agency-oauth-authority'
 
 /**
  * GET /api/auth/leadconnector-agency/callback
@@ -15,17 +16,17 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get('code')
   const rawState = searchParams.get('state')
 
-  let widgetId: string | null = null
-  let workspaceId: string | null = null
-  let portalReturn = false
-  try {
-    const decoded = JSON.parse(Buffer.from(rawState ?? '', 'base64url').toString('utf8'))
-    if (decoded && typeof decoded.widgetId === 'string') widgetId = decoded.widgetId
-    if (decoded && typeof decoded.workspaceId === 'string') workspaceId = decoded.workspaceId
-    // Flow started from /portal/locations (portal-install route) — land
-    // the user back in the portal, not the dashboard they can't access.
-    if (decoded && decoded.portalReturn === true) portalReturn = true
-  } catch { /* handled below */ }
+  // The state is HMAC-signed by the install routes (lib/agency-oauth-state.ts).
+  // Nothing in an unverified state is trusted; on failure we only peek at
+  // portalReturn to choose which page shows the error.
+  const secret = agencyStateSecret()
+  const verified = secret ? verifyAgencyState(rawState, secret) : null
+  const state = verified?.ok ? verified.state : null
+  const widgetId: string | null = state?.widgetId ?? null
+  const workspaceId: string | null = state?.workspaceId ?? null
+  // Flow started from /portal/locations (portal-install route) — land
+  // the user back in the portal, not the dashboard they can't access.
+  const portalReturn = state ? state.portalReturn : unverifiedPortalReturn(rawState)
 
   const fail = (error: string) => NextResponse.redirect(
     new URL(portalReturn
@@ -35,7 +36,13 @@ export async function GET(req: NextRequest) {
         : `/dashboard?error=${encodeURIComponent(error)}`, req.url),
   )
 
-  if (!widgetId || !workspaceId) return fail('missing_state')
+  if (!state || !widgetId || !workspaceId) {
+    if (verified && !verified.ok) {
+      console.warn('[AgencyOAuth] rejected state:', verified.reason)
+      return fail(verified.reason === 'expired' ? 'state_expired' : 'bad_state')
+    }
+    return fail('missing_state')
+  }
   if (searchParams.get('error')) return fail(searchParams.get('error')!)
   if (!code) return fail('missing_code')
 
@@ -44,9 +51,16 @@ export async function GET(req: NextRequest) {
     // belong to the workspace named in state.
     const widget = await db.chatWidget.findUnique({
       where: { id: widgetId },
-      select: { id: true, workspaceId: true },
+      select: { id: true, workspaceId: true, brandId: true },
     })
     if (!widget || widget.workspaceId !== workspaceId) return fail('widget_not_found')
+    // The person who started the flow must STILL be allowed to connect
+    // this widget — checked before the code exchange, so a refused
+    // callback never touches the token endpoint or the connection row.
+    if (!(await actorMayConnectWidget(state.actor, widget))) {
+      console.warn('[AgencyOAuth] actor not allowed for widget', widget.id, state.actor.kind)
+      return fail('not_allowed')
+    }
 
     let t
     try {
@@ -60,7 +74,6 @@ export async function GET(req: NextRequest) {
       return fail('no_company_in_grant')
     }
 
-    const session = await auth()
     // Agency display name for the connection card. Best-effort — null on
     // 403/timeout, and the upsert retries without the field on DBs that
     // haven't run the companyName ALTER yet.
@@ -81,7 +94,7 @@ export async function GET(req: NextRequest) {
           widgetId: widget.id,
           ...tokenData,
           ...extra,
-          connectedByUserId: session?.user?.id ?? null,
+          connectedByUserId: state.actor.kind === 'user' ? state.actor.userId : null,
         },
         update: { ...tokenData, ...extra },
       })
