@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { buttonClass } from '@/lib/ui-classes'
 import { COPILOT_LANGUAGES } from '@/lib/copilot/language'
 import { COPILOT_VOICES, DEFAULT_COPILOT_VOICE_ID, ROTATE_VOICE } from '@/lib/copilot/voices'
 import CopilotBlockBuilder from '@/components/copilot/CopilotBlockBuilder'
@@ -189,14 +190,15 @@ export default function NewCopilotAgentPage() {
   if (!workspaceId) return null
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8 w-full">
-      <Link href={`/dashboard/${workspaceId}/copilot`} className="text-sm text-zinc-400 hover:text-zinc-200">
-        ← Co-Pilot agents
+    <div className="max-w-3xl mx-auto px-6 py-6 w-full">
+      <Link href={`/dashboard/${workspaceId}/copilot`} className="text-[13px] text-text-tertiary hover:text-text-primary">
+        ← Co-Pilot
       </Link>
-      <h1 className="text-3xl font-semibold text-zinc-100 mt-3 mb-1">New Co-Pilot agent</h1>
-      <p className="text-zinc-400 mb-6 max-w-2xl">
+      <h1 className="text-[22px] font-semibold tracking-tight text-text-primary mt-2 mb-1">New Co-Pilot</h1>
+      <p className="text-[13px] text-text-tertiary mb-5 max-w-2xl">
         Pick the agent type, give it directions, then teach it from recordings and SOP documents. Once published, launch it from a link, a button, or a JavaScript snippet in any app.
       </p>
+      {/* TODO(redesign-followup): step rail (Type → Basics → Voice → Call script → Teach → Deploy), draft autosave and the live "Session preview" panel — this is a single create form; teaching and deploy happen on the agent page after creation. */}
 
       {/* Template choice */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -205,58 +207,59 @@ export default function NewCopilotAgentPage() {
             key={t.key}
             type="button"
             onClick={() => pickTemplate(t)}
-            className="rounded-xl border p-4 text-left transition-colors"
-            style={
-              template.key === t.key
-                ? { borderColor: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }
-                : { borderColor: 'var(--border-secondary)', background: 'var(--surface)' }
-            }
+            aria-pressed={template.key === t.key}
+            className={`rounded-xl border bg-surface p-4 text-left transition-colors cursor-pointer ${
+              template.key === t.key ? 'border-brand-500 ring-2 ring-brand-100' : 'border-border-theme hover:border-border-secondary'
+            }`}
           >
-            <p className="text-sm font-semibold text-zinc-100">{t.name}</p>
-            <p className="text-xs text-zinc-400 mt-1">{t.blurb}</p>
+            <p className="text-[14px] font-semibold text-text-primary">{t.name}</p>
+            <p className="text-[12.5px] text-text-tertiary mt-1">{t.blurb}</p>
           </button>
         ))}
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-4">
+        <FormCard title="Basics" subtitle="What kind of help this agent gives, and inside which app.">
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Name</label>
+          <label className="block text-[13px] font-medium text-text-primary mb-1">Name</label>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g. Onboarding Olivia"
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+            className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted outline-none focus:border-brand-500"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Application focus</label>
+          <label className="block text-[13px] font-medium text-text-primary mb-1">Application focus</label>
           <input
             value={appContext}
             onChange={e => setAppContext(e.target.value)}
             placeholder="e.g. the GoHighLevel dashboard / our billing portal at app.acme.com"
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+            className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted outline-none focus:border-brand-500"
           />
-          <p className="text-[11px] text-zinc-500 mt-1">
+          <p className="text-[12px] text-text-tertiary mt-1">
             The one app this agent works inside — it grounds instructions in that product&rsquo;s real screens instead
             of guessing, and steers the user back if they wander off. Leave blank for a general assistant.
           </p>
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Persona / tone</label>
+          <label className="block text-[13px] font-medium text-text-primary mb-1">Persona / tone</label>
           <textarea
             value={persona}
             onChange={e => setPersona(e.target.value)}
             rows={3}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+            className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted outline-none focus:border-brand-500"
           />
         </div>
+        </FormCard>
+        <FormCard title="Voice &amp; language">
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Voice</label>
+          <label className="block text-[13px] font-medium text-text-primary mb-1">Voice</label>
           <div className="flex gap-2">
             <select
               value={voice}
               onChange={e => { setVoice(e.target.value); setPreviewError(null) }}
-              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+              className="flex-1 bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary outline-none focus:border-brand-500"
             >
               {COPILOT_VOICES.map(v => (
                 <option key={v.id} value={v.id}>{v.label}</option>
@@ -274,7 +277,7 @@ export default function NewCopilotAgentPage() {
               {previewing ? '♪ Playing…' : '▶ Preview'}
             </button>
           </div>
-          <p className="text-[11px] text-zinc-500 mt-1">
+          <p className="text-[12px] text-text-tertiary mt-1">
             The agent keeps this voice for every call and for the whole call. Choose <strong>Rotate</strong> only if
             each new session should open as a different person — that choice is locked once the call starts, so a
             reconnect cannot change it. Hit <strong>Preview</strong> to hear a voice first.
@@ -282,39 +285,41 @@ export default function NewCopilotAgentPage() {
           {previewError && <p className="text-[11px] mt-1" style={{ color: 'var(--accent-red)' }}>{previewError}</p>}
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Spoken language</label>
+          <label className="block text-[13px] font-medium text-text-primary mb-1">Spoken language</label>
           <select
             value={language}
             onChange={e => setLanguage(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+            className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary outline-none focus:border-brand-500"
           >
             {COPILOT_LANGUAGES.map(l => (
               <option key={l.code} value={l.code}>{l.label}</option>
             ))}
           </select>
-          <p className="text-[11px] text-zinc-500 mt-1">
+          <p className="text-[12px] text-text-tertiary mt-1">
             The agent understands both English and Spanish on every call, and speaks the language you pick. During a
             live call someone can ask it to switch — for example &ldquo;speak Spanish&rdquo; or &ldquo;habla en español&rdquo; — and it stays in that language until asked again. Pick <strong>Match the caller</strong> to answer in whichever of the two the visitor speaks.
           </p>
         </div>
+        </FormCard>
+        <FormCard title="Call script">
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">How to start the call</label>
+          <label className="block text-[13px] font-medium text-text-primary mb-1">How to start the call</label>
           <textarea
             value={openingLine}
             onChange={e => setOpeningLine(e.target.value)}
             rows={2}
             placeholder="e.g. Welcome them, introduce yourself, set expectations, then begin."
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+            className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted outline-none focus:border-brand-500"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Information to ask the user for</label>
+          <label className="block text-[13px] font-medium text-text-primary mb-1">Information to ask the user for</label>
           <textarea
             value={collectInfo}
             onChange={e => setCollectInfo(e.target.value)}
             rows={2}
             placeholder="e.g. Their name and role; the business name; their main goal."
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+            className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted outline-none focus:border-brand-500"
           />
         </div>
         {/* The procedure section is the structural fork between the two
@@ -323,7 +328,7 @@ export default function NewCopilotAgentPage() {
             it narrate "step 1 of N". Onboarding/Other are PROCEDURAL — the
             steps + timebox are the whole point, so they lead. */}
         {template.type === 'support' ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+          <div className="rounded-lg border border-border-theme bg-surface-secondary px-4 py-3">
             <p className="text-xs text-zinc-400">
               <strong className="text-zinc-200">Reactive agent.</strong> It listens, diagnoses, and resolves whatever the
               user brings — no fixed steps, no &ldquo;step 1 of 3.&rdquo; It leans on your connected knowledge to find the fix.
@@ -331,7 +336,7 @@ export default function NewCopilotAgentPage() {
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent-primary)' }}>
+          <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <p className="text-xs text-zinc-400 flex-1 min-w-[220px]">
                 <strong className="text-zinc-200">Procedural agent.</strong> It leads the call through a sequence, tracking
@@ -355,15 +360,15 @@ export default function NewCopilotAgentPage() {
               <div className="space-y-3">
                 <CopilotBlockBuilder blocks={blocks} onChange={setBlocks} />
                 <div className="w-32">
-                  <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
+                  <label className="block text-[13px] font-medium text-text-primary mb-1">Timebox (min)</label>
                   <input value={minutes} onChange={e => setMinutes(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none" />
+                    className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary outline-none focus:border-brand-500" />
                 </div>
               </div>
             ) : (
               <div className="flex gap-3 flex-wrap">
                 <div className="flex-1 min-w-[240px]">
-                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                  <label className="block text-[13px] font-medium text-text-primary mb-1">
                     Procedure steps <span className="text-zinc-600">(one per line)</span>
                   </label>
                   <textarea
@@ -371,23 +376,25 @@ export default function NewCopilotAgentPage() {
                     onChange={e => setStepsText(e.target.value)}
                     rows={6}
                     placeholder={'Welcome the user and confirm their goal\nConnect their CRM\nImport their first contacts\nRecap what was set up'}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none"
+                    className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted outline-none focus:border-brand-500"
                   />
                 </div>
                 <div className="w-32">
-                  <label className="block text-xs font-medium text-zinc-400 mb-1">Timebox (min)</label>
+                  <label className="block text-[13px] font-medium text-text-primary mb-1">Timebox (min)</label>
                   <input value={minutes} onChange={e => setMinutes(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none" />
+                    className="w-full bg-surface border border-border-theme rounded-md px-3 py-2 text-[13px] text-text-primary outline-none focus:border-brand-500" />
                 </div>
               </div>
             )}
           </div>
         )}
 
+        </FormCard>
+
         {/* Connect knowledge */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-          <h3 className="text-sm font-semibold text-zinc-100 mb-1">Knowledge</h3>
-          <p className="text-xs text-zinc-400 mb-3">
+        <div className="xv-card p-4">
+          <h3 className="text-[14px] font-semibold text-text-primary mb-1">Knowledge</h3>
+          <p className="text-[12.5px] text-text-tertiary mb-3">
             Connect this co-pilot to your indexed knowledge — the same articles, docs, and videos your text and voice
             agents use. It searches this during a session to answer questions and look up the fix. Leave all unchecked
             to use every domain in the workspace. You can change this any time in the editor.
@@ -407,7 +414,7 @@ export default function NewCopilotAgentPage() {
                 return (
                   <label
                     key={d.id}
-                    className="flex items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 cursor-pointer hover:border-zinc-700"
+                    className="flex items-start gap-2.5 rounded-md border border-border-theme bg-surface px-3 py-2 cursor-pointer hover:border-border-secondary"
                   >
                     <input type="checkbox" checked={checked} onChange={() => toggleDomain(d.id)} className="mt-0.5" />
                     <span className="min-w-0">
@@ -433,12 +440,24 @@ export default function NewCopilotAgentPage() {
           type="button"
           onClick={() => void create()}
           disabled={submitting}
-          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
-          style={{ background: 'var(--accent-primary)' }}
+          className={buttonClass('primary', 'md', 'px-5')}
         >
           {submitting ? 'Creating…' : 'Create agent'}
         </button>
       </div>
     </div>
+  )
+}
+
+/** Section card used to group the create form (handoff "Basics / Voice / Call script"). */
+function FormCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <section className="xv-card p-5 space-y-4">
+      <div>
+        <h2 className="text-[15px] font-semibold text-text-primary">{title}</h2>
+        {subtitle && <p className="text-[12.5px] text-text-tertiary mt-0.5">{subtitle}</p>}
+      </div>
+      {children}
+    </section>
   )
 }
