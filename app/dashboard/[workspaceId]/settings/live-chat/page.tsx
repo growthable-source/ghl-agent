@@ -64,13 +64,13 @@ export default function LiveChatSettingsPage() {
   }
 
   if (loading || !settings) {
-    return <div className="p-8 max-w-2xl"><div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--surface)' }} /></div>
+    return <div className="p-8 max-w-2xl"><div className="h-40 xv-card animate-pulse" /></div>
   }
 
   const s = settings
   return (
     <div className="p-8 max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+      <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>
         Live chat queue <NewBadge since="2026-06-15" className="ml-1" />
       </h1>
       <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
@@ -78,7 +78,7 @@ export default function LiveChatSettingsPage() {
         position and estimate, can keep chatting with the AI, and (below) play a game or leave an email while they wait.
       </p>
 
-      <div className="rounded-xl border p-5 space-y-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <div className="xv-card p-5 space-y-5">
         <Toggle
           label="Enable the capacity queue"
           help="When on, handoffs wait once you hit the cap below. When off, an online agent is assigned immediately. Either way, if nobody is online the visitor still sees the wait experience."

@@ -74,13 +74,13 @@ export default function SuppressionsClient({
     <div className="p-6 md:p-8">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Suppression list</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight tracking-tight">Suppression list</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Workspace-wide opt-outs. Sends and imports skip anyone on this list.
           </p>
         </div>
 
-        <div className="rounded-xl border p-4 mb-6 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="xv-card p-4 mb-6 space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Add suppression</p>
           <div className="flex flex-wrap gap-2 items-center">
             <select
@@ -137,14 +137,13 @@ export default function SuppressionsClient({
 
         {filtered.length === 0 ? (
           <div
-            className="text-center py-12 border border-dashed rounded-xl"
-            style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}
+            className="text-center py-12 -dashed xv-card"
           >
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No suppressions</p>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>STOP replies and bounces will land here automatically.</p>
           </div>
         ) : (
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card overflow-hidden">
             {filtered.map((item, i) => (
               <div
                 key={item.id}

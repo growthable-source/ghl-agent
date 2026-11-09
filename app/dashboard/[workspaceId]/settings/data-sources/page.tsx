@@ -58,7 +58,7 @@ export default function DataSourcesPage() {
     <div className="p-8 max-w-5xl mx-auto">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Data sources</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Data sources</h1>
           <p className="text-sm mt-1 max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
             Live handles your agents can query at runtime — Google Sheets, Airtable bases, or any REST endpoint.
             Pair them with the <code style={{ color: 'var(--accent-primary)' }}>lookup_sheet</code>, <code style={{ color: 'var(--accent-primary)' }}>query_airtable</code>, and <code style={{ color: 'var(--accent-primary)' }}>fetch_data</code> tools on each agent&apos;s Tools tab.
@@ -121,7 +121,7 @@ function SourceCard({ source, workspaceId, onChange }: { source: DataSource; wor
     } finally { setBusy(false) }
   }
   return (
-    <div className="p-4 rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="p-4 xv-card">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
           <span className="text-2xl">{KIND_ICONS[source.kind]}</span>
@@ -197,10 +197,10 @@ function CreateModal({ workspaceId, onClose, onCreated }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border shadow-2xl" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }} onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-lg xv-card shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b flex items-start justify-between" style={{ borderColor: 'var(--border)' }}>
           <div>
-            <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Connect a data source</h2>
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>Connect a data source</h2>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>Agents reference this by its name in tool calls.</p>
           </div>
           <button onClick={onClose} className="text-xl leading-none" style={{ color: 'var(--text-tertiary)' }}>×</button>

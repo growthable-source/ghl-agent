@@ -60,7 +60,7 @@ export default function AuditLogPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Audit Log</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Audit Log</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Every human action in this workspace — who did what, when.
           </p>

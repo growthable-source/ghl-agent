@@ -182,7 +182,7 @@ export default function BillingPage() {
       </div>
 
       <div className="mb-8">
-        <h1 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Billing & Usage</h1>
+        <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>Billing & Usage</h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your plan, view usage, and update payment details.</p>
       </div>
 
@@ -257,11 +257,11 @@ export default function BillingPage() {
       {/* Current usage */}
       {isOnPaidPlan && usage && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-4">
             <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>Current Plan</p>
             <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{usage.planLabel}</p>
           </div>
-          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-4">
             <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>Messages This Period</p>
             <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
               {usage.messages.used.toLocaleString()}
@@ -282,7 +282,7 @@ export default function BillingPage() {
               />
             </div>
           </div>
-          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-4">
             <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-tertiary)' }}>Voice Minutes</p>
             <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
               {usage.voice.minutesUsed}

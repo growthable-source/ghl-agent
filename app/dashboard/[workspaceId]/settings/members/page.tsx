@@ -215,7 +215,7 @@ export default function MembersPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Members</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Members</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Add teammates and decide who can do what.
           </p>
@@ -225,8 +225,7 @@ export default function MembersPage() {
         {canManage && (
           <form
             onSubmit={sendInvites}
-            className="mb-8 rounded-xl border p-5"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            className="mb-8 xv-card p-5"
           >
             <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Invite teammates</h2>
             <div className="flex flex-col md:flex-row gap-3">
@@ -279,8 +278,7 @@ export default function MembersPage() {
 
         {/* Members */}
         <div
-          className="rounded-xl border overflow-hidden mb-8"
-          style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          className="xv-card overflow-hidden mb-8"
         >
           <div className="px-4 py-3 border-b flex items-center justify-between"
             style={{ borderColor: 'var(--border)' }}>
@@ -429,8 +427,7 @@ export default function MembersPage() {
         {/* Pending invites */}
         {invites.length > 0 && (
           <div
-            className="rounded-xl border overflow-hidden"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            className="xv-card overflow-hidden"
           >
             <div className="px-4 py-3 border-b text-[10px] uppercase tracking-wider font-semibold"
               style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}>

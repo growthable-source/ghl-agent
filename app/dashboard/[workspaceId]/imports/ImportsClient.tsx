@@ -145,7 +145,7 @@ export default function ImportsClient({
       <div className="max-w-5xl mx-auto">
         <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Imports</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight tracking-tight">Imports</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Upload a CSV. We dedupe by email + phone, apply suppression, and track per-row errors.
             </p>
@@ -155,8 +155,7 @@ export default function ImportsClient({
         {/* Upload */}
         {!filename && (
           <label
-            className="block rounded-xl border border-dashed p-10 text-center cursor-pointer transition-opacity hover:opacity-90"
-            style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}
+            className="block xv-card -dashed p-10 text-center cursor-pointer transition-opacity hover:opacity-90"
           >
             <input
               type="file"
@@ -171,7 +170,7 @@ export default function ImportsClient({
 
         {/* Mapping + preview */}
         {filename && !result && (
-          <div className="rounded-xl border p-4 mb-6 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-4 mb-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{filename}</p>
@@ -277,7 +276,7 @@ export default function ImportsClient({
         {imports.length > 0 && (
           <>
             <h2 className="text-sm font-semibold mt-6 mb-3" style={{ color: 'var(--text-secondary)' }}>Recent imports</h2>
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <div className="xv-card overflow-hidden">
               {imports.map((imp, i) => (
                 <Link
                   key={imp.id}

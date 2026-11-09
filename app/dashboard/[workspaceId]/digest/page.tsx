@@ -66,7 +66,7 @@ export default function DigestPage() {
             <span>·</span>
             <span>{weekStart && fmtDate(weekStart)} — {weekEnd && fmtDate(weekEnd)}</span>
           </div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Your agents this week</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Your agents this week</h1>
         </div>
 
         {/* Headline totals */}
@@ -94,8 +94,7 @@ export default function DigestPage() {
                   <Link
                     key={a.id}
                     href={`/dashboard/${workspaceId}/agents/${a.id}`}
-                    className="block p-4 rounded-xl transition-colors"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                    className="block p-4 xv-card transition-colors"
                   >
                     <div className="flex items-center gap-4 mb-3">
                       <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'var(--surface-tertiary)', color: 'var(--text-tertiary)' }}>
@@ -199,11 +198,11 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
   }
 
   if (optIn === null) {
-    return <div className="mt-12 h-16 rounded-xl animate-pulse" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+    return <div className="mt-12 h-16 xv-card animate-pulse" />
   }
 
   return (
-    <div className="mt-12 p-5 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+    <div className="mt-12 p-5 xv-card">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>📬 Email me this digest every Monday</p>
@@ -246,7 +245,7 @@ function DigestEmailControls({ workspaceId }: { workspaceId: string }) {
 
 function TotalCard({ label, value, sub, delta }: { label: string; value: string | number; sub?: string; delta?: number | null }) {
   return (
-    <div className="p-4 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+    <div className="p-4 xv-card">
       <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
       <div className="flex items-baseline gap-2">
         <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
