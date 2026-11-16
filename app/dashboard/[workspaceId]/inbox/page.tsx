@@ -188,7 +188,7 @@ export default function InboxPage() {
   }, [selectedId, workspaceId])
 
   // Two fetch modes:
-  //   1) No query, no brand filter → cheap list endpoint, polled every 8s.
+  //   1) No query, no brand filter → preview list, polled every 20s.
   //   2) Query OR a non-default brand filter → server-backed search
   //      that walks transcripts + metadata. Debounced via the effect
   //      that triggers it; not polled (search results don't need to
@@ -301,10 +301,11 @@ export default function InboxPage() {
   }, [brandSlug, selectedId, router])
 
   // Initial fetch + refetch when filters change. For the live recency
-  // list (no query, no brand), poll every 8 seconds so new
-  // conversations stream in. For the search view, debounce 250ms to
-  // avoid hammering the server on every keystroke and don't poll —
-  // the search is an explicit user action, not ambient.
+  // list (no query, no brand), poll every 20 seconds. The open thread
+  // is live over SSE, so the list only has to catch new rows and
+  // previews; 8s was re-reading the whole page often enough to dominate
+  // database egress. Search is debounced 250ms and not polled — it's
+  // an explicit lookup, not ambient.
   useEffect(() => {
     if (usingSearch) {
       const t = setTimeout(() => { fetchRows() }, 250)
@@ -313,7 +314,7 @@ export default function InboxPage() {
     fetchRows()
   }, [fetchRows, usingSearch])
   // Visibility-aware: stops in backgrounded tabs, refreshes on return.
-  useBackgroundPolling(fetchRows, 8000, !usingSearch)
+  useBackgroundPolling(fetchRows, 20_000, !usingSearch)
 
   async function togglePresence() {
     const next = !isAvailable

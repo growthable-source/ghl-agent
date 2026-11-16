@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { loadLastMessagePreviews } from '@/lib/widget-message-preview'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -9,6 +10,9 @@ type Params = { params: Promise<{ workspaceId: string }> }
  *
  * Lists all widget conversations across every widget in this workspace.
  * Each row includes the latest message preview and visitor identity.
+ * The preview is a separate DISTINCT ON query (see
+ * lib/widget-message-preview) — nesting `messages: { take: 1 }` here
+ * made Postgres return every message for the page of conversations.
  */
 export async function GET(_req: NextRequest, { params }: Params) {
   const { workspaceId } = await params
@@ -29,7 +33,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       },
     },
     visitor: { select: { id: true, name: true, email: true, cookieId: true } },
-    messages: { orderBy: { createdAt: 'desc' as const }, take: 1 },
     assignedUser: { select: { id: true, name: true, email: true, image: true } },
     _count: { select: { messages: true } },
   }
@@ -50,7 +53,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
           include: {
             widget: { select: { id: true, name: true, primaryColor: true } },
             visitor: { select: { id: true, name: true, email: true, cookieId: true } },
-            messages: { orderBy: { createdAt: 'desc' }, take: 1 },
             _count: { select: { messages: true } },
           },
         })
@@ -61,6 +63,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ conversations: [], notMigrated: true })
     }
   }
+
+  const previews = await loadLastMessagePreviews(conversations.map((c: any) => c.id))
 
   const shaped = conversations.map((c: any) => ({
     id: c.id,
@@ -94,12 +98,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
     assignedAt: c.assignedAt ? c.assignedAt.toISOString() : null,
     assignmentReason: c.assignmentReason ?? null,
     lastMessageAt: c.lastMessageAt.toISOString(),
-    lastMessage: c.messages[0] ? {
-      role: c.messages[0].role,
-      content: (c.messages[0].content || '').slice(0, 120),
-      kind: c.messages[0].kind,
-      createdAt: c.messages[0].createdAt.toISOString(),
-    } : null,
+    lastMessage: (() => {
+      const preview = previews.get(c.id)
+      if (!preview) return null
+      return {
+        role: preview.role,
+        sentByUserId: preview.sentByUserId ?? null,
+        content: (preview.content || '').slice(0, 120),
+        kind: preview.kind,
+        createdAt: preview.createdAt.toISOString(),
+      }
+    })(),
   }))
 
   return NextResponse.json({ conversations: shaped })

@@ -82,39 +82,55 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true, skipped: 'no-visitor' }, { headers })
   }
 
-  // Cheap rate-limit: cap events per visitor per hour. Prevents a
-  // misbehaving SPA from hammering us on every router transition.
-  try {
-    const recent = await (db as any).widgetVisitorEvent.count({
-      where: { visitorId: visitor.id, createdAt: { gte: new Date(Date.now() - 3600_000) } },
-    })
-    if (recent >= MAX_EVENTS_PER_VISITOR_PER_HOUR) {
-      return NextResponse.json({ ok: true, throttled: true }, { headers })
-    }
-  } catch { /* migration pending — skip the count */ }
-
   const data = sanitizeEventData(kind, body.data)
+
+  // Hourly cap for identify/custom only. page_view is the vast majority
+  // of this route (millions of calls) and already collapses same-URL
+  // bursts below; a COUNT(*) on every one of those was one of the
+  // hottest statements in the project and transferred nothing useful.
+  // The cap check that remains reads at most MAX ids and stops — it
+  // does not count the whole hour.
+  if (kind !== 'page_view') {
+    try {
+      const recent = await (db as any).widgetVisitorEvent.findMany({
+        where: { visitorId: visitor.id, createdAt: { gte: new Date(Date.now() - 3600_000) } },
+        select: { id: true },
+        orderBy: { createdAt: 'desc' },
+        take: MAX_EVENTS_PER_VISITOR_PER_HOUR,
+      })
+      if (recent.length >= MAX_EVENTS_PER_VISITOR_PER_HOUR) {
+        return NextResponse.json({ ok: true, throttled: true }, { headers })
+      }
+    } catch { /* migration pending — skip the cap */ }
+  }
 
   // Only persist a page_view if it's a *new* page — repeated events
   // for the same URL within 60s are de-duped so SPA bursts don't
-  // pollute the timeline.
+  // pollute the timeline. The previous row's jsonb `data` is not
+  // needed; the URL alone answers the comparison.
   if (kind === 'page_view') {
     const url = (data.url as string) || ''
-    const lastEvent = await (db as any).widgetVisitorEvent.findFirst({
-      where: { visitorId: visitor.id, kind: 'page_view' },
-      orderBy: { createdAt: 'desc' },
-      select: { data: true, createdAt: true },
-    }).catch((err: any) => {
+    const lastEvent = await db.$queryRaw<Array<{ url: string | null; createdAt: Date }>>`
+      SELECT "data"->>'url' AS url, "createdAt"
+      FROM "WidgetVisitorEvent"
+      WHERE "visitorId" = ${visitor.id} AND "kind" = 'page_view'
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `.catch((err: any) => {
       console.warn('[visitor-events] dedupe lookup failed:', err?.message)
-      return null
+      return [] as Array<{ url: string | null; createdAt: Date }>
     })
-    const sameUrl = lastEvent?.data?.url === url
-    const tooSoon = lastEvent && Date.now() - new Date(lastEvent.createdAt).getTime() < 60_000
+    const previous = lastEvent[0]
+    // Compare the raw extracted URL. A missing key comes back as null,
+    // and `null === ''` stays false — same as the old `data.url === url`
+    // check when the field was absent.
+    const sameUrl = previous?.url === url
+    const tooSoon = previous && Date.now() - new Date(previous.createdAt).getTime() < 60_000
     if (sameUrl && tooSoon) {
       // Update lastSeen on the visitor but don't write a new event row.
-      // We log failures rather than block the visitor's request — the
-      // chat path can't get blocked on this metadata write.
-      await db.widgetVisitor.update({
+      // updateMany returns a count, not the row — the caller only needs
+      // to know the write was attempted.
+      await db.widgetVisitor.updateMany({
         where: { id: visitor.id },
         data: { lastSeenAt: new Date() },
       }).catch((err: any) => console.warn('[visitor-events] lastSeen update failed:', err?.message))
@@ -123,11 +139,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     // Store + keep the visitor's "current page" denormalized for
     // fast inbox display. Updates on every new page hit.
+    // createMany / updateMany so Postgres does not RETURNING the
+    // jsonb payload or the full visitor row on this hot path.
     await Promise.all([
-      (db as any).widgetVisitorEvent.create({
-        data: { visitorId: visitor.id, kind, data },
+      (db as any).widgetVisitorEvent.createMany({
+        data: [{ visitorId: visitor.id, kind, data }],
       }),
-      db.widgetVisitor.update({
+      db.widgetVisitor.updateMany({
         where: { id: visitor.id },
         data: {
           currentUrl: url || null,
@@ -141,10 +159,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Other kinds: just persist + bump lastSeenAt.
   await Promise.all([
-    (db as any).widgetVisitorEvent.create({
-      data: { visitorId: visitor.id, kind, data },
+    (db as any).widgetVisitorEvent.createMany({
+      data: [{ visitorId: visitor.id, kind, data }],
     }).catch((err: any) => console.warn('[visitor-events] event create failed:', err?.message)),
-    db.widgetVisitor.update({
+    db.widgetVisitor.updateMany({
       where: { id: visitor.id },
       data: { lastSeenAt: new Date() },
     }).catch((err: any) => console.warn('[visitor-events] lastSeen update failed:', err?.message)),

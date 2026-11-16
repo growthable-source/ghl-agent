@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { loadLastMessagePreviews } from '@/lib/widget-message-preview'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -69,7 +70,6 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
       },
     },
     visitor: { select: { id: true, name: true, email: true, cookieId: true } },
-    messages: { orderBy: { createdAt: 'desc' as const }, take: 1 },
     assignedUser: { select: { id: true, name: true, email: true, image: true } },
     _count: { select: { messages: true } },
   }
@@ -91,7 +91,6 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
           include: {
             widget: { select: { id: true, name: true, primaryColor: true } },
             visitor: { select: { id: true, name: true, email: true, cookieId: true } },
-            messages: { orderBy: { createdAt: 'desc' }, take: 1 },
             _count: { select: { messages: true } },
           },
         })
@@ -102,6 +101,11 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
       return []
     }
   }
+
+  // One short preview per row. Do not include `messages` on the
+  // findMany above — Prisma's nested take: 1 still selects every
+  // message (content + translationEn) for the IN-list of conversations.
+  const previews = await loadLastMessagePreviews(conversations.map((c: any) => c.id))
 
   return conversations.map((c: any) => ({
     id: c.id,
@@ -140,15 +144,19 @@ async function fetchWidgetRows(workspaceId: string): Promise<any[]> {
     assignedAt: c.assignedAt ? c.assignedAt.toISOString() : null,
     assignmentReason: c.assignmentReason ?? null,
     lastMessageAt: c.lastMessageAt.toISOString(),
-    lastMessage: c.messages[0] ? {
-      role: c.messages[0].role,
-      // Non-null when a human operator sent the last message — the inbox
-      // uses this to show "AI" only for genuine agent replies.
-      sentByUserId: c.messages[0].sentByUserId ?? null,
-      content: (c.messages[0].content || '').slice(0, 120),
-      kind: c.messages[0].kind,
-      createdAt: c.messages[0].createdAt.toISOString(),
-    } : null,
+    lastMessage: (() => {
+      const preview = previews.get(c.id)
+      if (!preview) return null
+      return {
+        role: preview.role,
+        // Non-null when a human operator sent the last message — the inbox
+        // uses this to show "AI" only for genuine agent replies.
+        sentByUserId: preview.sentByUserId ?? null,
+        content: (preview.content || '').slice(0, 120),
+        kind: preview.kind,
+        createdAt: preview.createdAt.toISOString(),
+      }
+    })(),
   }))
 }
 

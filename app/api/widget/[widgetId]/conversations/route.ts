@@ -65,7 +65,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     where: { widgetId, visitorId, status: { in: ['active', 'handed_off'] } },
     orderBy: { lastMessageAt: 'desc' },
     include: {
-      messages: { orderBy: { createdAt: 'asc' }, take: 50 },
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+        select: { id: true, role: true, content: true, kind: true, createdAt: true },
+      },
       assignedUser: { select: { name: true, email: true, image: true } },
     },
   })

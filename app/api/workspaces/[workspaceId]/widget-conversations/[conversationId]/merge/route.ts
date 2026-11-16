@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { loadLastMessagePreviews } from '@/lib/widget-message-preview'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { can } from '@/lib/permissions'
@@ -74,7 +75,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
         createdAt: true,
         lastMessageAt: true,
         _count: { select: { messages: true } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { content: true, role: true, kind: true } },
       } as any,
     })
   } catch {
@@ -87,13 +87,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
       select: {
         id: true, status: true, createdAt: true, lastMessageAt: true,
         _count: { select: { messages: true } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { content: true, role: true, kind: true } },
       } as any,
     })
   }
 
+  const previews = await loadLastMessagePreviews(rows.map(r => r.id))
+
   const candidates = rows.map(r => {
-    const last = r.messages?.[0]
+    const last = previews.get(r.id)
     const preview = last
       ? (last.kind === 'text' ? String(last.content).slice(0, 90) : `[${last.kind}]`)
       : '(no messages)'

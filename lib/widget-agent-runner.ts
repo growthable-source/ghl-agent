@@ -275,6 +275,9 @@ Never apologise for the language or mention translation — just speak naturally
     where: { conversationId: convo.id },
     orderBy: { createdAt: 'desc' },
     take: 20,
+    // History for the model. Skip translationEn — the prompt uses the
+    // original content, and that column is a second full copy of the text.
+    select: { id: true, role: true, content: true, kind: true, createdAt: true },
   })
   const history = recent.reverse().slice(0, -1).map(m => {
     let attachmentKind: 'image' | 'file' | undefined

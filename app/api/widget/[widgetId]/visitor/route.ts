@@ -54,6 +54,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       ...(body.name ? { name: body.name } : {}),
       ...(body.phone ? { phone: body.phone } : {}),
     },
+    // The caller only reads these. Returning the full visitor row
+    // (user-agent, geo, current page) on every identify is wasted egress.
+    select: { id: true, email: true, name: true, phone: true, crmContactId: true },
   })
 
   // Coarse geo from Vercel's edge headers (city-level, not the raw IP) —
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // columns aren't migrated yet (tolerant of the missing-column error).
   const geo = getRequestGeo(req.headers)
   if (hasGeo(geo)) {
-    await db.widgetVisitor.update({
+    await db.widgetVisitor.updateMany({
       where: { id: visitor.id },
       data: { country: geo.country, city: geo.city, latitude: geo.latitude, longitude: geo.longitude },
     }).catch(() => {})

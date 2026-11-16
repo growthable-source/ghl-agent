@@ -10,7 +10,7 @@
  * header navigates instead.
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { buildBrandPalette } from '@/lib/brand-theme'
 import { playNotificationSound } from '@/lib/notification-sound'
@@ -185,12 +185,19 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   const [assigning, setAssigning] = useState(false)
   const [members, setMembers] = useState<Member[]>([])
   const [meId, setMeId] = useState<string | null>(null)
-  // How many of the trailing messages to render. Long threads (50+)
-  // pushed the composer below the fold and made the page feel
-  // overwhelming, so we render the last N and let the operator
-  // "Load older" in batches. Each click roughly doubles the window.
-  const INITIAL_MESSAGE_WINDOW = 7
-  const [messageWindow, setMessageWindow] = useState<number>(INITIAL_MESSAGE_WINDOW)
+  // The thread opens on the latest 50 messages from the server. Older
+  // pages load from `?before=` when the operator scrolls up or clicks
+  // "Load earlier" — the previous client window still downloaded the
+  // entire transcript first.
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const hasMoreRef = useRef(false)
+  const nextCursorRef = useRef<string | null>(null)
+  const loadingEarlierRef = useRef(false)
+  const pinToBottomRef = useRef(true)
+  // Scroll position to restore after an older page is prepended. Applied
+  // in a layout effect so it runs after the DOM grows and before paint.
+  const pendingScrollRestore = useRef<{ prevHeight: number; prevTop: number } | null>(null)
 
   // Ticketing — populated by a small probe on mount when ticketing is
   // active. Shows either a "View ticket #N" pill or a "Promote to
@@ -282,10 +289,15 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   }, [])
 
   const fetchConvo = useCallback(async () => {
-    const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/messages`)
+    pinToBottomRef.current = true
+    const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/messages?limit=50`)
     const data = await res.json()
     if (data.conversation) {
       setConvo(data.conversation)
+      const more = !!data.page?.hasMore
+      setHasMoreMessages(more)
+      hasMoreRef.current = more
+      nextCursorRef.current = data.page?.nextCursor ?? null
       // Seed the ticket pill from the convo payload — saves an extra
       // round-trip and matches what the user sees server-side.
       if (data.conversation.ticket) {
@@ -299,12 +311,45 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
 
   useEffect(() => { fetchConvo() }, [fetchConvo])
 
-  // Reset the trailing-message window whenever the operator switches
-  // to a different conversation. Without this, a long thread would
-  // stay expanded forever once "Load older" had been clicked.
-  useEffect(() => {
-    setMessageWindow(INITIAL_MESSAGE_WINDOW)
-  }, [conversationId])
+  const loadEarlier = useCallback(async () => {
+    const cursor = nextCursorRef.current
+    if (!hasMoreRef.current || loadingEarlierRef.current || !cursor) return
+    loadingEarlierRef.current = true
+    setLoadingEarlier(true)
+    pinToBottomRef.current = false
+    const el = scrollRef.current
+    const prevHeight = el?.scrollHeight ?? 0
+    const prevTop = el?.scrollTop ?? 0
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/widget-conversations/${conversationId}/messages?limit=50&before=${encodeURIComponent(cursor)}`)
+      const data = await res.json()
+      const older: Message[] = Array.isArray(data.messages) ? data.messages : []
+      const more = !!data.page?.hasMore
+      setHasMoreMessages(more)
+      hasMoreRef.current = more
+      nextCursorRef.current = data.page?.nextCursor ?? null
+      if (older.length > 0) {
+        pendingScrollRestore.current = { prevHeight, prevTop }
+        setConvo(c => {
+          if (!c) {
+            pendingScrollRestore.current = null
+            return c
+          }
+          const next = prependMessages(older, c.messages)
+          if (next === c.messages) {
+            pendingScrollRestore.current = null
+            return c
+          }
+          return { ...c, messages: next }
+        })
+      }
+    } catch {
+      // Leave the thread as-is; the operator can retry the control.
+    } finally {
+      loadingEarlierRef.current = false
+      setLoadingEarlier(false)
+    }
+  }, [workspaceId, conversationId])
 
   // Workspace members for the assignee dropdown + current user id so we
   // can highlight "you" and offer Claim. One-shot — assigning rarely
@@ -535,8 +580,19 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
     }
   }, [workspaceId, conversationId, reconnectNonce])
 
+  useLayoutEffect(() => {
+    const pending = pendingScrollRestore.current
+    const node = scrollRef.current
+    if (!pending || !node) return
+    pendingScrollRestore.current = null
+    node.scrollTop = pending.prevTop + (node.scrollHeight - pending.prevHeight)
+  }, [convo?.messages.length])
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    if (!pinToBottomRef.current) return
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [convo?.messages.length, visitorTyping, agentTyping])
 
   function pingTyping() {
@@ -560,6 +616,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   }
 
   async function send() {
+    pinToBottomRef.current = true
     const text = reply.trim()
     if ((!text && pendingFiles.length === 0) || sending) return
     setSending(true)
@@ -631,6 +688,7 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
   }
 
   async function sendNote() {
+    pinToBottomRef.current = true
     if (!reply.trim() || sending) return
     setSending(true)
     try {
@@ -971,43 +1029,40 @@ export default function ConversationDetail({ workspaceId, conversationId, onClos
           </div>
         )}
 
-        {/* Messages — long threads collapsed to the trailing window.
-            "Load older" reveals the earlier ones in batches. The hidden
-            indexes still map to the same MessageBubble + lastAgentIdx
-            indices so quick replies and other index-dependent behaviour
-            keeps working. */}
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-3">
-          {(() => {
-            const total = convo.messages.length
-            const visibleStart = Math.max(0, total - messageWindow)
-            const hiddenCount = visibleStart
-            return (
-              <>
-                {hiddenCount > 0 && (
-                  <div className="flex justify-center">
-                    <button
-                      onClick={() => setMessageWindow(w => Math.min(total, w + 20))}
-                      className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors hover:bg-zinc-900/40"
-                      style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}
-                    >
-                      ↑ Load older messages ({hiddenCount})
-                    </button>
-                  </div>
-                )}
-                {convo.messages.slice(visibleStart).map((m, idxInWindow) => {
-                  const absoluteIdx = visibleStart + idxInWindow
-                  return (
-                    <MessageBubble
-                      key={m.id}
-                      msg={m}
-                      accent={accent}
-                      showQuickReplies={absoluteIdx === lastAgentIdx && !!m.quickReplies?.length}
-                    />
-                  )
-                })}
-              </>
-            )
-          })()}
+        {/* Latest page of the thread. Older pages come from the server
+            when the operator scrolls to the top or uses the control. */}
+        <div
+          ref={scrollRef}
+          onScroll={() => {
+            const el = scrollRef.current
+            if (!el) return
+            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+            pinToBottomRef.current = distanceFromBottom < 80
+            if (distanceFromBottom > 120 && el.scrollTop < 48) void loadEarlier()
+          }}
+          className="flex-1 min-h-0 overflow-y-auto p-6 space-y-3"
+        >
+          {hasMoreMessages && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => void loadEarlier()}
+                disabled={loadingEarlier}
+                className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors hover:bg-zinc-900/40 disabled:opacity-50"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-tertiary)' }}
+              >
+                {loadingEarlier ? 'Loading earlier messages…' : '↑ Load earlier messages'}
+              </button>
+            </div>
+          )}
+          {convo.messages.map((m, absoluteIdx) => (
+            <MessageBubble
+              key={m.id}
+              msg={m}
+              accent={accent}
+              showQuickReplies={absoluteIdx === lastAgentIdx && !!m.quickReplies?.length}
+            />
+          ))}
           {visitorTyping && (
             <div className="flex justify-start">
               <div className="bg-zinc-800 px-3 py-2 rounded-2xl rounded-tl-sm text-xs text-zinc-400 inline-flex items-center gap-1.5">
@@ -1452,6 +1507,14 @@ function Row({ k, v }: { k: string; v: string }) {
 function appendOrReplace(messages: Message[], next: Message): Message[] {
   if (messages.some(m => m.id === next.id)) return messages
   return [...messages, next]
+}
+
+function prependMessages(older: Message[], current: Message[]): Message[] {
+  if (older.length === 0) return current
+  const seen = new Set(current.map(m => m.id))
+  const prefix = older.filter(m => !seen.has(m.id))
+  if (prefix.length === 0) return current
+  return [...prefix, ...current]
 }
 
 function MessageBubble({ msg, accent, showQuickReplies }: { msg: Message; accent: string; showQuickReplies: boolean }) {

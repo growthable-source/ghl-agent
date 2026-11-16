@@ -31,6 +31,13 @@ export interface ConversationSearchInput {
   /** Result limit. Defaults to 100 for inbox search; the export caller
    *  passes 1000 since exports are bounded differently. */
   take?: number
+  /**
+   * Transcript export needs every message body. The inbox search does
+   * not — it only needs match snippets. Leaving this false avoids the
+   * unbounded `messages` include (every body + translationEn for every
+   * matched conversation).
+   */
+  includeMessages?: boolean
 }
 
 export interface MatchedConversation {
@@ -128,21 +135,31 @@ export async function searchConversations(input: ConversationSearchInput): Promi
       },
       visitor: { select: { id: true, name: true, email: true, phone: true, cookieId: true } },
       assignedUser: { select: { id: true, name: true, email: true, image: true } } as any,
-      // For snippet generation we pull the full message thread when q
-      // is present. When q is empty we only need the latest message
-      // for the inbox preview, matching the existing list behaviour.
-      messages: q
-        ? { orderBy: { createdAt: 'asc' as const } }
-        : { orderBy: { createdAt: 'desc' as const }, take: 1 },
+      // Message bodies are loaded separately, and only for transcript
+      // export. Nesting them here (even with take: 1) made Postgres
+      // return every message for the IN-list of conversations.
       _count: { select: { messages: true } },
     } as any,
   })
 
+  if (input.includeMessages && conversations.length > 0) {
+    const byId = await loadTranscriptMessages(conversations.map((c: any) => c.id))
+    for (const c of conversations as any[]) c.messages = byId.get(c.id) ?? []
+  }
+
   if (!q) {
     // No query → return everything, no match metadata. The inbox
-    // shapes this into rows the same as the regular list endpoint.
+    // shapes this into rows the same as the regular list endpoint
+    // and attaches last-message previews itself.
     return conversations.map(c => ({ conversation: c, matchedIn: [], snippets: [] }))
   }
+
+  // Snippets without the rest of the thread. At most 3 short windows
+  // per conversation, truncated in SQL. Export already has the bodies
+  // and keeps the in-memory walk below.
+  const snippetBodies = input.includeMessages
+    ? null
+    : await matchingSnippetBodies(conversations.map((c: any) => c.id), q)
 
   // For each result, figure out *where* the match was so we can show
   // a small chip + extract message snippets.
@@ -166,15 +183,71 @@ export async function searchConversations(input: ConversationSearchInput): Promi
     if (c.csatComment && c.csatComment.toLowerCase().includes(ql)) matchedIn.push('csat')
 
     // Walk messages to find matching ones; emit up to 3 snippets.
-    const matchingMessages = (c.messages ?? []).filter((m: any) => m.content?.toLowerCase().includes(ql))
-    if (matchingMessages.length > 0) matchedIn.push('message')
-    for (const m of matchingMessages.slice(0, 3)) {
-      snippets.push(snippetAround(m.content, ql))
+    const matchingContents: string[] = input.includeMessages
+      ? (c.messages ?? []).filter((m: any) => m.content?.toLowerCase().includes(ql)).map((m: any) => m.content as string)
+      : (snippetBodies?.get(c.id) ?? [])
+    if (matchingContents.length > 0) matchedIn.push('message')
+    for (const content of matchingContents.slice(0, 3)) {
+      snippets.push(snippetAround(content, ql))
     }
 
     out.push({ conversation: c, matchedIn, snippets })
   }
   return out
+}
+
+/**
+ * Full transcript bodies for an explicit export. Selected columns only
+ * (no translationEn). Batched so one statement isn't an unbounded
+ * IN-list over a thousand conversations at once — each batch is still
+ * the whole thread, which is what the download is for.
+ */
+async function loadTranscriptMessages(conversationIds: string[]): Promise<Map<string, any[]>> {
+  const byId = new Map<string, any[]>()
+  const BATCH = 40
+  for (let i = 0; i < conversationIds.length; i += BATCH) {
+    const batch = conversationIds.slice(i, i + BATCH)
+    const msgs = await db.widgetMessage.findMany({
+      where: { conversationId: { in: batch } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, conversationId: true, role: true, kind: true, content: true, createdAt: true },
+    })
+    for (const m of msgs) {
+      const list = byId.get(m.conversationId) ?? []
+      list.push(m)
+      byId.set(m.conversationId, list)
+    }
+  }
+  return byId
+}
+
+/** Up to 3 matching message windows per conversation, truncated in SQL. */
+async function matchingSnippetBodies(conversationIds: string[], q: string): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>()
+  if (conversationIds.length === 0) return map
+  const needle = `%${q.replace(/[\\%_]/g, ch => `\\${ch}`)}%`
+  try {
+    const rows = await db.$queryRaw<Array<{ conversationId: string; content: string }>>`
+      SELECT "conversationId", "content"
+      FROM (
+        SELECT "conversationId",
+               LEFT("content", 400) AS "content",
+               ROW_NUMBER() OVER (PARTITION BY "conversationId" ORDER BY "createdAt" ASC) AS rn
+        FROM "WidgetMessage"
+        WHERE "conversationId" = ANY(${conversationIds}::text[])
+          AND "content" ILIKE ${needle} ESCAPE '\\'
+      ) s
+      WHERE rn <= 3
+    `
+    for (const row of rows) {
+      const list = map.get(row.conversationId) ?? []
+      list.push(row.content ?? '')
+      map.set(row.conversationId, list)
+    }
+  } catch (err) {
+    console.warn('[conversation-search] snippet lookup failed:', err instanceof Error ? err.message : err)
+  }
+  return map
 }
 
 /** Pull a short window of text centred on the first occurrence of

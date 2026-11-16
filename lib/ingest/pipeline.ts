@@ -28,6 +28,7 @@ import type { SourceAdapter, AdapterContext, NormalizedContent } from './adapter
 import { chunkMarkdown } from './chunker'
 import { classifyChunk, type TaxonomyRow } from './classify'
 import { embedTexts, EMBEDDING_MODEL } from './embed'
+import { sourceUrlLookupVariants } from './source-url-variants'
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   docs:    docsAdapter,
@@ -147,12 +148,18 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     // feeds keep updating because each new item is a new URL. `force`
     // bypasses this for a deliberate full re-scrape.
     //
-    // Lookup scope: GLOBAL by sourceUrl (bounded to the discovered hosts
-    // so the query never scans unrelated URLs). It used to be per-source,
-    // which meant a duplicate source pointing at an already-indexed site
-    // re-fetched every page each recrawl and then no-op'd at the hash
-    // match — full fetch cost, zero chunks, forever (the July 2026
-    // runaway recrawl). Do NOT revert to per-source fetching.
+    // Lookup scope: GLOBAL by sourceUrl, but only for the URLs just
+    // discovered (plus scheme / trailing-slash variants). It used to be
+    // per-source, which meant a duplicate source pointing at an
+    // already-indexed site re-fetched every page each recrawl and then
+    // no-op'd at the hash match — full fetch cost, zero chunks, forever
+    // (the July 2026 runaway recrawl). Do NOT revert to per-source
+    // fetching.
+    //
+    // It also used to be `sourceUrl ILIKE '%//host%'` with no LIMIT,
+    // which returned every live chunk on the host (tens of thousands of
+    // rows per call) when the caller only looks the discovered URLs up.
+    // Exact equality on those URLs answers the same question.
     //
     // But the fetch decision and the OWNERSHIP decision are different
     // questions. A URL already indexed under THIS source is a true skip
@@ -165,19 +172,7 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     let toFetch = discovered
     let chunksCopied = 0
     if (!opts.force && discovered.length > 0) {
-      const hosts = Array.from(new Set(
-        discovered.map(d => {
-          try { return new URL(d.identifier).host.toLowerCase() } catch { return '' }
-        }),
-      )).filter(Boolean)
-      const indexed: Array<{ sourceUrl: string; sourceId: string }> = hosts.length === 0 ? [] :
-        await (db as any).knowledgeChunk.findMany({
-          where: {
-            supersededAt: null,
-            OR: hosts.map(h => ({ sourceUrl: { contains: `//${h}`, mode: 'insensitive' } })),
-          },
-          select: { sourceUrl: true, sourceId: true },
-        }).catch(() => [])
+      const indexed = await findLiveChunkOwners(discovered.map(d => d.identifier))
 
       // Canonical URL key -> which source id(s) currently own live chunks
       // for it, plus the exact sourceUrl string(s) on record (the clone
@@ -377,6 +372,36 @@ export async function ingestSource(sourceId: string, opts: IngestOptions = {}): 
     deadlineExhausted,
     skippedAlreadyCrawled,
   }
+}
+
+/**
+ * Distinct (sourceUrl, sourceId) pairs that already have a live chunk
+ * for any spelling of the discovered URLs. One row per page per owning
+ * source — not one row per chunk, and not every page on the host.
+ * Failures degrade to "nothing indexed" so a lookup glitch re-fetches
+ * instead of failing the run (same posture as the old findMany catch).
+ */
+async function findLiveChunkOwners(identifiers: string[]): Promise<Array<{ sourceUrl: string; sourceId: string }>> {
+  const variants = new Set<string>()
+  for (const id of identifiers) {
+    for (const variant of sourceUrlLookupVariants(id)) variants.add(variant)
+  }
+  const list = [...variants]
+  if (list.length === 0) return []
+
+  const out: Array<{ sourceUrl: string; sourceId: string }> = []
+  const BATCH = 400
+  for (let i = 0; i < list.length; i += BATCH) {
+    const batch = list.slice(i, i + BATCH)
+    const rows = await db.$queryRaw<Array<{ sourceUrl: string; sourceId: string }>>`
+      SELECT DISTINCT "sourceUrl", "sourceId"
+      FROM "KnowledgeChunk"
+      WHERE "supersededAt" IS NULL
+        AND lower("sourceUrl") = ANY(${batch}::text[])
+    `.catch(() => [] as Array<{ sourceUrl: string; sourceId: string }>)
+    out.push(...rows)
+  }
+  return out
 }
 
 /**

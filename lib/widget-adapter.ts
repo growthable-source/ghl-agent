@@ -222,6 +222,7 @@ export class WidgetAdapter implements CrmAdapter {
       where: { conversationId },
       orderBy: { createdAt: 'desc' },
       take: limit,
+      select: { id: true, role: true, content: true },
     })
     return msgs.map(m => ({
       id: m.id,

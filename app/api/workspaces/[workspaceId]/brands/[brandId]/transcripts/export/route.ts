@@ -60,6 +60,9 @@ export async function GET(req: NextRequest, { params }: Params) {
     to: toParam,
     q: qParam,
     take: 1000,
+    // Export is the one caller that needs the bodies. It loads them
+    // in batches with an explicit column list (no translationEn).
+    includeMessages: true,
   })
   const conversations = matched.map(m => m.conversation)
 

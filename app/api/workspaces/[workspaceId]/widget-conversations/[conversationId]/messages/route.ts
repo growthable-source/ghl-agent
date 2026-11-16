@@ -10,13 +10,147 @@ export const maxDuration = 60
 
 type Params = { params: Promise<{ workspaceId: string; conversationId: string }> }
 
+// Inbox opens on the latest page and asks for older pages explicitly.
+// 50 is enough to fill the thread pane; the previous unbounded include
+// shipped every message body and translationEn (thousands of rows on
+// long-lived chats).
+const MESSAGE_PAGE_DEFAULT = 50
+const MESSAGE_PAGE_MAX = 100
+
+function parseMessagePageParams(req: NextRequest): { limit: number; before: string | null } {
+  const url = new URL(req.url)
+  const raw = parseInt(url.searchParams.get('limit') || '', 10)
+  const limit = Math.min(MESSAGE_PAGE_MAX, Math.max(1, Number.isFinite(raw) && raw > 0 ? raw : MESSAGE_PAGE_DEFAULT))
+  const beforeRaw = url.searchParams.get('before')
+  const before = beforeRaw && beforeRaw.trim() ? beforeRaw.trim().slice(0, 64) : null
+  return { limit, before }
+}
+
 /**
- * GET — full message history for one conversation (for the inbox detail view)
+ * One page of messages, newest window first, returned chronological.
+ * `before` is a message id; the page is strictly older than that row.
+ * `nextCursor` is the oldest message id in the page when more exist.
  */
-export async function GET(_req: NextRequest, { params }: Params) {
+async function loadMessagePage(conversationId: string, limit: number, beforeId: string | null) {
+  let cursor: { id: string; createdAt: Date } | null = null
+  if (beforeId) {
+    cursor = await db.widgetMessage.findFirst({
+      where: { id: beforeId, conversationId },
+      select: { id: true, createdAt: true },
+    })
+    if (!cursor) return { messages: [] as any[], hasMore: false, nextCursor: null as string | null }
+  }
+
+  const where = cursor
+    ? {
+        conversationId,
+        OR: [
+          { createdAt: { lt: cursor.createdAt } },
+          { AND: [{ createdAt: cursor.createdAt }, { id: { lt: cursor.id } }] },
+        ],
+      }
+    : { conversationId }
+
+  const orderBy = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
+  let rows: any[]
+  try {
+    rows = await db.widgetMessage.findMany({
+      where,
+      orderBy,
+      take: limit + 1,
+      select: {
+        id: true, role: true, content: true, kind: true, createdAt: true,
+        sentByUserId: true, language: true, translationEn: true,
+      },
+    })
+  } catch {
+    // Translation / sentByUserId columns may not exist yet.
+    rows = await db.widgetMessage.findMany({
+      where,
+      orderBy,
+      take: limit + 1,
+      select: { id: true, role: true, content: true, kind: true, createdAt: true },
+    })
+  }
+
+  const hasMore = rows.length > limit
+  const chronological = (hasMore ? rows.slice(0, limit) : rows).slice().reverse()
+  const nextCursor = hasMore && chronological.length > 0 ? chronological[0].id as string : null
+  const messages: any[] = chronological.map(m => ({
+    id: m.id,
+    conversationId,
+    role: m.role,
+    content: m.content,
+    kind: m.kind ?? 'text',
+    language: m.language ?? null,
+    translationEn: m.translationEn ?? null,
+    sentByUserId: m.sentByUserId ?? null,
+    createdAt: m.createdAt,
+  }))
+
+  // Operator notes that fall inside this window. Notes older than the
+  // oldest loaded message arrive with the next page; notes after the
+  // latest message stay on the first page. Capped so a note-heavy
+  // thread can't turn the page back into an unbounded read.
+  try {
+    const oldest = chronological[0]?.createdAt as Date | undefined
+    const noteWhere: any = { conversationId }
+    if (oldest && cursor) noteWhere.createdAt = { gte: oldest, lt: cursor.createdAt }
+    else if (oldest && hasMore) noteWhere.createdAt = { gte: oldest }
+    const notes = await db.conversationNote.findMany({
+      where: noteWhere,
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+      include: { author: { select: { name: true, email: true } } },
+    })
+    if (notes.length > 0) {
+      const noteMessages = notes.map(n => ({
+        id: n.id,
+        conversationId,
+        role: 'agent',
+        content: n.body,
+        kind: 'note',
+        language: null,
+        translationEn: null,
+        mentionedUserIds: n.mentionedUserIds,
+        authorName: n.author?.name ?? n.author?.email ?? 'A teammate',
+        createdAt: n.createdAt,
+      }))
+      messages.push(...noteMessages)
+      messages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    }
+  } catch { /* table missing pre-migration — skip notes */ }
+
+  return { messages, hasMore, nextCursor }
+}
+
+/**
+ * GET — one page of a conversation for the inbox detail view.
+ *
+ * Default: the latest 50 messages, oldest-to-newest within the page,
+ * plus `page.nextCursor` for the next older page (`?before=<id>`).
+ * `?before=` returns only that page (no conversation metadata) so
+ * scrolling up doesn't re-read the visitor sidebar.
+ */
+export async function GET(req: NextRequest, { params }: Params) {
   const { workspaceId, conversationId } = await params
   const access = await requireWorkspaceAccess(workspaceId)
   if (access instanceof NextResponse) return access
+
+  const { limit, before } = parseMessagePageParams(req)
+
+  if (before) {
+    const owned = await db.widgetConversation.findFirst({
+      where: { id: conversationId, widget: { workspaceId } },
+      select: { id: true },
+    })
+    if (!owned) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    const page = await loadMessagePage(conversationId, limit, before)
+    return NextResponse.json({
+      messages: page.messages,
+      page: { hasMore: page.hasMore, nextCursor: page.nextCursor },
+    })
+  }
 
   let convo: any
   try {
@@ -35,7 +169,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
           },
         },
         visitor: { select: { id: true, name: true, email: true, phone: true, crmContactId: true, firstSeenAt: true, lastSeenAt: true } },
-        messages: { orderBy: { createdAt: 'asc' } },
         assignedUser: { select: { id: true, name: true, email: true, image: true } },
         _count: { select: { messages: true } },
       } as any,
@@ -48,7 +181,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       include: {
         widget: { select: { id: true, name: true, primaryColor: true } },
         visitor: { select: { id: true, name: true, email: true, firstSeenAt: true } },
-        messages: { orderBy: { createdAt: 'asc' } },
       },
     })
   }
@@ -116,33 +248,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     })
   } catch { /* table missing */ }
 
-  // Merge internal notes into the thread (operator-only — notes are a
-  // separate table the visitor never queries). Rendered inline as
-  // kind='note' pseudo-messages, ordered with the real messages.
-  try {
-    const notes = await db.conversationNote.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: 'asc' },
-      include: { author: { select: { name: true, email: true } } },
-    })
-    if (notes.length > 0) {
-      const noteMessages = notes.map(n => ({
-        id: n.id,
-        conversationId,
-        role: 'agent',
-        content: n.body,
-        kind: 'note',
-        language: null,
-        translationEn: null,
-        mentionedUserIds: n.mentionedUserIds,
-        authorName: n.author?.name ?? n.author?.email ?? 'A teammate',
-        createdAt: n.createdAt,
-      }))
-      convo.messages = [...convo.messages, ...noteMessages].sort(
-        (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      )
-    }
-  } catch { /* table missing pre-migration — skip notes */ }
+  const messagePage = await loadMessagePage(conversationId, limit, null)
+  convo.messages = messagePage.messages
 
   return NextResponse.json({
     conversation: {
@@ -153,6 +260,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       contactMemory,
       ticket,
     },
+    page: { hasMore: messagePage.hasMore, nextCursor: messagePage.nextCursor },
   })
 }
 

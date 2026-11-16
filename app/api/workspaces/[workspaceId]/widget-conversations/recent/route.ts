@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
+import { loadFirstVisitorPreviews } from '@/lib/widget-message-preview'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -45,12 +46,6 @@ export async function GET(req: NextRequest, { params }: Params) {
         assignedUserId: true,
         widget: { select: { name: true } },
         visitor: { select: { name: true, email: true } },
-        messages: {
-          where: { role: 'visitor' },
-          orderBy: { createdAt: 'asc' },
-          take: 1,
-          select: { content: true, kind: true },
-        },
       } as any,
     })
   } catch {
@@ -59,8 +54,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     rows = []
   }
 
+  // First visitor line, truncated in SQL. Nested take: 1 on the
+  // conversation query above would still pull every visitor message.
+  const previews = await loadFirstVisitorPreviews(rows.map(r => r.id))
+
   const chats = rows.map(r => {
-    const first = r.messages?.[0]
+    const first = previews.get(r.id)
     const preview = first
       ? (first.kind === 'text' ? String(first.content).slice(0, 120) : `[${first.kind}]`)
       : ''

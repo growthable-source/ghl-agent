@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireWorkspaceAccess } from '@/lib/require-workspace-access'
 import { searchConversations } from '@/lib/conversation-search'
+import { loadLastMessagePreviews } from '@/lib/widget-message-preview'
 
 type Params = { params: Promise<{ workspaceId: string }> }
 
@@ -49,6 +50,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     throw err
   }
 
+  const previews = await loadLastMessagePreviews(results.map(r => r.conversation.id))
+
   const shaped = results.map(({ conversation: c, matchedIn, snippets }) => ({
     id: c.id,
     widget: c.widget ? {
@@ -79,18 +82,17 @@ export async function GET(req: NextRequest, { params }: Params) {
     assignedAt: c.assignedAt ? c.assignedAt.toISOString() : null,
     assignmentReason: c.assignmentReason ?? null,
     lastMessageAt: c.lastMessageAt.toISOString(),
-    // When q is set we have the full thread loaded; pull the latest
-    // message for the preview shape regardless. Avoids the inbox row
-    // having to special-case the search-vs-list response shape.
-    lastMessage: (c.messages && c.messages.length > 0) ? (() => {
-      const last = c.messages[c.messages.length - 1]
+    lastMessage: (() => {
+      const preview = previews.get(c.id)
+      if (!preview) return null
       return {
-        role: last.role,
-        content: (last.content || '').slice(0, 120),
-        kind: last.kind,
-        createdAt: last.createdAt.toISOString(),
+        role: preview.role,
+        sentByUserId: preview.sentByUserId ?? null,
+        content: (preview.content || '').slice(0, 120),
+        kind: preview.kind,
+        createdAt: preview.createdAt.toISOString(),
       }
-    })() : null,
+    })(),
     matchedIn,
     snippets,
   }))

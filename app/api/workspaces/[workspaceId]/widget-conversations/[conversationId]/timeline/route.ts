@@ -16,9 +16,10 @@ type Params = { params: Promise<{ workspaceId: string; conversationId: string }>
  *     conversations: [{ id, status, createdAt, lastMessageAt, … }]
  *   }
  *
- * Events are capped at 100 by default — the timeline is for context,
+ * Events are capped at 40 by default — the timeline is for context,
  * not deep audit. For deep-archive lookups, use the brand transcripts
- * export.
+ * export. Only the jsonb keys the sidebar renders (url, title, email,
+ * name) are selected; the rest of `data` stays in the database.
  */
 export async function GET(req: NextRequest, { params }: Params) {
   const { workspaceId, conversationId } = await params
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (access instanceof NextResponse) return access
 
   const url = new URL(req.url)
-  const take = Math.min(200, Math.max(10, parseInt(url.searchParams.get('limit') || '100', 10) || 100))
+  const take = Math.min(80, Math.max(10, parseInt(url.searchParams.get('limit') || '40', 10) || 40))
 
   // Verify the conversation belongs to this workspace + grab the
   // visitorId so we can pull their full event stream.
@@ -66,16 +67,32 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   // Pull events + every conversation this visitor has had so the
   // sidebar can show the full multi-chat history (Intercom-style).
-  let events: any[] = []
+  // Project the few jsonb keys the sidebar paints instead of shipping
+  // the whole `data` document. WidgetVisitorEvent is the large table
+  // (page-view history); this endpoint is opened with every conversation.
+  let events: Array<{
+    id: string
+    kind: string
+    createdAt: Date
+    url: string | null
+    title: string | null
+    email: string | null
+    name: string | null
+  }> = []
   try {
-    events = await (db as any).widgetVisitorEvent.findMany({
-      where: { visitorId: convo.visitorId },
-      orderBy: { createdAt: 'desc' },
-      take,
-      select: { id: true, kind: true, data: true, createdAt: true },
-    })
+    events = await db.$queryRaw`
+      SELECT "id", "kind", "createdAt",
+             "data"->>'url' AS url,
+             "data"->>'title' AS title,
+             "data"->>'email' AS email,
+             "data"->>'name' AS name
+      FROM "WidgetVisitorEvent"
+      WHERE "visitorId" = ${convo.visitorId}
+      ORDER BY "createdAt" DESC
+      LIMIT ${take}
+    `
   } catch (err: any) {
-    if (err?.code !== 'P2021' && !/relation .* does not exist/i.test(err?.message ?? '')) throw err
+    if (err?.code !== 'P2021' && !/does not exist/i.test(err?.message ?? '')) throw err
   }
 
   let conversations: any[] = []
@@ -107,8 +124,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     events: events.map(e => ({
       id: e.id,
       kind: e.kind,
-      data: e.data,
-      createdAt: e.createdAt.toISOString(),
+      data: {
+        ...(e.url ? { url: e.url } : {}),
+        ...(e.title ? { title: e.title } : {}),
+        ...(e.email ? { email: e.email } : {}),
+        ...(e.name ? { name: e.name } : {}),
+      },
+      createdAt: new Date(e.createdAt).toISOString(),
     })),
     conversations: conversations.map(c => ({
       id: c.id,

@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     where: { id: conversationId, widget: { workspaceId } },
     include: {
       visitor: true,
-      messages: { orderBy: { createdAt: 'asc' } },
+      messages: { orderBy: { createdAt: 'asc' }, select: { role: true, content: true, createdAt: true } },
       ticket: { select: { id: true, ticketNumber: true } },
       // Pull the widget's brand so the new Ticket can denormalise it
       // — reports + filter chips query by brand directly without

@@ -27,7 +27,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       widget: { select: { id: true, name: true, brand: { select: { id: true, name: true, slug: true } } } },
       visitor: { select: { id: true, name: true, email: true, phone: true } },
       assignedUser: { select: { id: true, name: true, email: true } },
-      messages: { orderBy: { createdAt: 'asc' } },
+      messages: {
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, role: true, content: true, kind: true, createdAt: true },
+      },
     } as any,
   }) as any
   if (!c) return NextResponse.json({ error: 'Not found' }, { status: 404 })
