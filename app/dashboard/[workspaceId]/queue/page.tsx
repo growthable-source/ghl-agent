@@ -116,7 +116,7 @@ export default function QueuePage() {
     <div className="p-6 max-w-5xl mx-auto w-full">
       <div className="mb-4 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Queue</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Queue</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
             One place for everything that needs your attention. Paused conversations, errors, approvals, corrections, follow-ups — newest first.
           </p>
@@ -151,8 +151,7 @@ export default function QueuePage() {
 
       {!loading && visible.length === 0 && (
         <div
-          className="rounded-xl border p-8 text-center"
-          style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          className="xv-card p-8 text-center"
         >
           <div className="text-2xl mb-2">✓</div>
           <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
@@ -165,7 +164,7 @@ export default function QueuePage() {
       )}
 
       {visible.length > 0 && (
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="xv-card overflow-hidden">
           {visible.map((item, idx) => (
             <Link
               key={item.id}

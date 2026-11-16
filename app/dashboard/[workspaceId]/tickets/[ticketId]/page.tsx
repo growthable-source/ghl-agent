@@ -235,7 +235,7 @@ export default function TicketDetailPage() {
                 </Link>
               )}
             </div>
-            <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{ticket.subject}</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>{ticket.subject}</h1>
             <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
               {ticket.contactName ? `${ticket.contactName} · ` : ''}{ticket.contactEmail}
               {ticket.contactPhone && ` · ${ticket.contactPhone}`}
@@ -283,7 +283,7 @@ export default function TicketDetailPage() {
           </div>
         )}
 
-        <div className="rounded-xl border overflow-hidden mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="xv-card overflow-hidden mb-6">
           {ticket.messages.map(m => (
             <MessageRowView key={m.id} message={m} contactName={ticket.contactName} contactEmail={ticket.contactEmail} />
           ))}
@@ -333,7 +333,7 @@ export default function TicketDetailPage() {
         )}
 
         {/* Composer */}
-        <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="xv-card p-4">
           <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
               {internalNote ? 'Internal note' : `Reply to ${ticket.contactEmail}`}

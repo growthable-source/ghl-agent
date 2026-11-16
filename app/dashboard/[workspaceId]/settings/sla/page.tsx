@@ -11,7 +11,7 @@ export default async function SlaPage({ params }: Props) {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>SLA Policies</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>SLA Policies</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Set first-response and resolution targets per ticket priority. Attainment is measured against these in your support metrics and the operations dashboard. Leave a field blank to stop tracking it.
           </p>

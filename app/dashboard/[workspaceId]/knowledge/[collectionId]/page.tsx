@@ -225,7 +225,7 @@ export default function CollectionEditorPage() {
     <div className="flex-1 p-8">
       <div className="max-w-4xl mx-auto space-y-3">
         <div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
-        <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }} />
+        <div className="h-32 xv-card animate-pulse" style={{ background: 'var(--surface-secondary)' }} />
       </div>
     </div>
   )
@@ -252,7 +252,7 @@ export default function CollectionEditorPage() {
             {collection.icon || '📚'}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{collection.name}</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>{collection.name}</h1>
             {collection.description && (
               <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{collection.description}</p>
             )}
@@ -391,7 +391,7 @@ export default function CollectionEditorPage() {
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Add an item from the buttons above.</p>
               </div>
             ) : (
-              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+              <div className="xv-card overflow-hidden">
                 {collection.entries.map((e, idx) => (
                   <div key={e.id} className="p-4 transition-colors" style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
                     {editingId === e.id ? (
@@ -523,7 +523,7 @@ function AddItemPanel({
   onAdded: () => void
 }) {
   return (
-    <div className="rounded-xl p-4" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
           {type === 'manual' ? 'Write a new item'
@@ -750,7 +750,7 @@ function DataSourcesTab({
           <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Wire up a Sheet, Airtable base, or REST endpoint and it'll be available as a tool to every agent on this collection.</p>
         </div>
       ) : (
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+        <div className="xv-card overflow-hidden">
           {sources.map((s, idx) => (
             <div key={s.id} className="p-3 flex items-start gap-3" style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--border)' }}>
               <span className="text-base flex-shrink-0">
@@ -811,9 +811,9 @@ function CreateDataSourceModal({
   const validName = /^[a-z0-9_-]{2,40}$/.test(name)
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="rounded-2xl w-full max-w-lg overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="xv-card w-full max-w-lg overflow-hidden">
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>New data source</h2>
+          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>New data source</h2>
           <button onClick={onClose} className="hover:opacity-80" style={{ color: 'var(--text-tertiary)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -949,7 +949,7 @@ function ConnectedAgentsTab({
       {allAgents.length === 0 ? (
         <p className="text-sm italic" style={{ color: 'var(--text-tertiary)' }}>No agents in this workspace yet.</p>
       ) : (
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+        <div className="xv-card overflow-hidden">
           {allAgents.map((a, idx) => {
             const checked = picked.includes(a.id)
             return (
@@ -1085,7 +1085,7 @@ function MinedQaTab({
       )}
 
       {loadingPairs ? (
-        <div className="h-24 rounded-xl animate-pulse" style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }} />
+        <div className="h-24 xv-card animate-pulse" style={{ background: 'var(--surface-secondary)' }} />
       ) : pairs.length === 0 ? (
         <div className="text-center py-12 rounded-xl" style={{ border: '1px dashed var(--border-secondary)', background: 'var(--surface-secondary)' }}>
           <div className="text-2xl mb-2">💬</div>
@@ -1122,7 +1122,7 @@ function MinedPairRow({ pair, onAct }: { pair: MinedPair; onAct: (id: string, a:
   const conf = Math.round((pair.confidence || 0) * 100)
 
   return (
-    <div className="rounded-xl p-3" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-3">
       {editing ? (
         <div className="space-y-2">
           <input value={q} onChange={e => setQ(e.target.value)} className="w-full rounded px-2 py-1.5 text-sm" style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--input-text)' }} />
@@ -1221,7 +1221,7 @@ function MineModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-md xv-card p-5" onClick={e => e.stopPropagation()}>
         <h2 className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>Mine past conversations</h2>
 
         <label className="block text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>Agent (CRM source)</label>

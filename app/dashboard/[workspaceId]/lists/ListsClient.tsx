@@ -67,7 +67,7 @@ export default function ListsClient({
       <div className="max-w-5xl mx-auto">
         <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Lists</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight tracking-tight">Lists</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Static segments for outbound campaigns and follow-ups.
             </p>
@@ -84,7 +84,7 @@ export default function ListsClient({
         </div>
 
         {creating && (
-          <div className="rounded-xl border p-4 mb-6 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-4 mb-6 space-y-3">
             <input
               autoFocus
               value={name}
@@ -123,14 +123,13 @@ export default function ListsClient({
 
         {lists.length === 0 && !creating ? (
           <div
-            className="text-center py-16 border border-dashed rounded-xl"
-            style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}
+            className="text-center py-16 -dashed xv-card"
           >
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>No lists yet</p>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Create a list to group contacts for outbound campaigns.</p>
           </div>
         ) : (
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card overflow-hidden">
             {lists.map((l, i) => (
               <div
                 key={l.id}

@@ -139,7 +139,7 @@ export default function IntegrationsPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Notifications &amp; Webhooks</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-white">Notifications &amp; Webhooks</h1>
           <p className="text-sm text-zinc-400 mt-1">Get alerted in Slack/email and fire events into your own systems.</p>
         </div>
 
@@ -164,7 +164,7 @@ export default function IntegrationsPage() {
           </div>
         )}
 
-        <div className="flex gap-1 p-1 rounded-xl bg-zinc-900/60 border border-zinc-800 mb-6 w-fit">
+        <div className="flex gap-1 p-1 mb-6 w-fit xv-card">
           <button onClick={() => setTab('notifications')}
             className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${tab === 'notifications' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
             style={tab === 'notifications' ? { background: 'rgba(250,77,46,0.12)', color: '#fa4d2e' } : undefined}
@@ -185,7 +185,7 @@ export default function IntegrationsPage() {
             {channels.length > 0 && (
               <div className="space-y-2 mb-6">
                 {channels.map(c => (
-                  <div key={c.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 flex items-center gap-3">
+                  <div key={c.id} className="p-4 flex items-center gap-3 xv-card">
                     <span className="text-lg">{
                       c.type === 'slack' ? '💬'
                       : c.type === 'discord' ? '🎮'
@@ -231,7 +231,7 @@ export default function IntegrationsPage() {
               </div>
             )}
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3 flex items-start gap-4">
+            <div className="p-5 mb-3 flex items-start gap-4 xv-card">
               <span className="text-2xl">💬</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white">Slack</p>
@@ -246,7 +246,7 @@ export default function IntegrationsPage() {
               </button>
             </div>
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3">
+            <div className="p-5 mb-3 xv-card">
               <p className="text-sm font-semibold text-white mb-3">📧 Add Email</p>
               <p className="text-xs text-zinc-500 mb-3">Receive notifications via email. Powered by Resend — requires <code className="text-orange-400">RESEND_API_KEY</code> in server env.</p>
               <div className="flex gap-2">
@@ -261,7 +261,7 @@ export default function IntegrationsPage() {
               </div>
             </div>
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 mb-3 flex items-start gap-4">
+            <div className="p-5 mb-3 flex items-start gap-4 xv-card">
               <span className="text-2xl">🎮</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white">Discord</p>
@@ -276,7 +276,7 @@ export default function IntegrationsPage() {
               </button>
             </div>
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+            <div className="p-5 xv-card">
               <p className="text-sm font-semibold text-white mb-3">📱 Add SMS</p>
               <p className="text-xs text-zinc-500 mb-3">
                 Get paged via SMS when an agent hands over. Sends through your workspace&apos;s existing Twilio connection
@@ -302,7 +302,7 @@ export default function IntegrationsPage() {
             {webhooks.length > 0 && (
               <div className="space-y-2 mb-6">
                 {webhooks.map(w => (
-                  <div key={w.id} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
+                  <div key={w.id} className="p-4 xv-card">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-2 h-2 rounded-full"
                         style={{ background: w.isActive ? '#22c55e' : '#3f3f46' }} />
@@ -340,7 +340,7 @@ export default function IntegrationsPage() {
               </div>
             )}
 
-            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40">
+            <div className="p-5 xv-card">
               <p className="text-sm font-semibold text-white mb-2">🔌 New webhook endpoint</p>
               <p className="text-xs text-zinc-500 mb-3">
                 Payloads are HMAC-SHA256 signed — check the <code className="text-orange-400">X-Voxility-Signature</code> header.

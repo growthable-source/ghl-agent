@@ -131,7 +131,7 @@ export default function ApiAccessClient({ workspaceId }: Props) {
         {/* Header */}
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>API Access</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>API Access</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Create API keys so external apps can read your support metrics. Treat keys like passwords — they grant read access to this workspace.
             </p>
@@ -190,8 +190,7 @@ export default function ApiAccessClient({ workspaceId }: Props) {
         {showForm && (
           <form
             onSubmit={handleCreate}
-            className="mb-6 rounded-xl border p-5"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            className="mb-6 xv-card p-5"
           >
             <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>New API key</h2>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -232,8 +231,7 @@ export default function ApiAccessClient({ workspaceId }: Props) {
 
         {/* Active keys table */}
         <div
-          className="rounded-xl border overflow-hidden mb-8"
-          style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          className="xv-card overflow-hidden mb-8"
         >
           <div
             className="px-4 py-3 border-b"
@@ -316,8 +314,7 @@ export default function ApiAccessClient({ workspaceId }: Props) {
         {/* Revoked keys (collapsed list at bottom) */}
         {revokedKeys.length > 0 && (
           <div
-            className="rounded-xl border overflow-hidden"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            className="xv-card overflow-hidden"
           >
             <div
               className="px-4 py-3 border-b"

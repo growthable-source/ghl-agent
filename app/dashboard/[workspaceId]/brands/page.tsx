@@ -80,7 +80,7 @@ export default function BrandsPage() {
     <div className="flex-1 p-8">
       <div className="max-w-5xl mx-auto space-y-3">
         <div className="h-8 w-48 rounded animate-pulse" style={{ background: 'var(--surface-tertiary)' }} />
-        <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} />
+        <div className="h-32 xv-card animate-pulse" />
       </div>
     </div>
   )
@@ -90,7 +90,7 @@ export default function BrandsPage() {
       <div className="max-w-5xl mx-auto p-8">
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Brands</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Brands</h1>
           </div>
           <button
             onClick={() => setEditor({ mode: 'create' })}
@@ -130,7 +130,7 @@ export default function BrandsPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-16 border border-dashed rounded-xl" style={{ borderColor: 'var(--border-secondary)', background: 'var(--surface)' }}>
+          <div className="text-center py-16 -dashed xv-card">
             <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-2xl" style={{ background: 'var(--surface-tertiary)' }}>🏷️</div>
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
               {search.trim() ? 'No matches' : 'No brands yet'}
@@ -146,7 +146,7 @@ export default function BrandsPage() {
             {filtered.map(b => {
               const accent = b.primaryColor || '#fa4d2e'
               return (
-                <div key={b.id} className="p-4 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div key={b.id} className="p-4 xv-card">
                   <div className="flex items-start gap-3 mb-3">
                     {b.logoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -448,9 +448,9 @@ function BrandEditorModal({
     // button must never scroll out of reach as sections grow (ticket
     // routing pushed this past one screen).
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="rounded-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="xv-card w-full max-w-lg overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]">
         <div className="px-5 py-4 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{mode === 'create' ? 'New brand' : 'Edit brand'}</h2>
+          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>{mode === 'create' ? 'New brand' : 'Edit brand'}</h2>
           <button onClick={onClose} style={{ color: 'var(--text-muted)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

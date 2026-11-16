@@ -48,7 +48,7 @@ export default function ConsentPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Consent &amp; Compliance</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Consent &amp; Compliance</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             TCPA and GDPR consent tracking per contact per channel. Required for SMS marketing at scale.
           </p>

@@ -61,7 +61,7 @@ export default function PerformancePage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Performance</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Performance</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               When your agents work best — by day of week, hour, and channel.
             </p>
@@ -86,8 +86,7 @@ export default function PerformancePage() {
 
         {/* Heatmap */}
         <div
-          className="mb-10 p-5 rounded-xl"
-          style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+          className="mb-10 p-5 xv-card" style={{ background: 'var(--surface-secondary)' }}
         >
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -167,8 +166,7 @@ export default function PerformancePage() {
         {/* Channel breakdown */}
         {channels.length > 0 && (
           <div
-            className="mb-10 p-5 rounded-xl"
-            style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+            className="mb-10 p-5 xv-card" style={{ background: 'var(--surface-secondary)' }}
           >
             <p className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Follow-ups by channel</p>
             <div className="space-y-2">
@@ -195,8 +193,7 @@ export default function PerformancePage() {
         {/* Goal leaderboard */}
         {goals.length > 0 && (
           <div
-            className="p-5 rounded-xl"
-            style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+            className="p-5 xv-card" style={{ background: 'var(--surface-secondary)' }}
           >
             <p className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Wins by goal</p>
             <div className="space-y-2">

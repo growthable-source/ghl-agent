@@ -87,7 +87,7 @@ export default async function ConversationsPage({ params, searchParams }: PagePr
   return (
     <div className="p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Conversations</h1>
+        <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-2" style={{ color: 'var(--text-primary)' }}>Conversations</h1>
         <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>Track and manage all agent conversations for this location.</p>
 
         {/* Filter tabs */}

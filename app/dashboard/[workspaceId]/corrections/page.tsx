@@ -54,7 +54,7 @@ export default function CorrectionsPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Corrections</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Corrections</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Messages where a human edited what the agent would have said. Each correction
             is stored as a training signal for improving future responses.
@@ -82,7 +82,7 @@ export default function CorrectionsPage() {
         ) : (
           <div className="space-y-3">
             {corrections.map(c => (
-              <div key={c.id} className="p-4 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div key={c.id} className="p-4 xv-card">
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {c.messageLog.agent && (
                     <Link

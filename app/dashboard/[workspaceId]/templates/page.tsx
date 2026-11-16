@@ -72,7 +72,7 @@ export default function TemplatesPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Agent Templates</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Agent Templates</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Start from a proven template. Install in one click — tweak after.
           </p>
@@ -111,8 +111,7 @@ export default function TemplatesPage() {
             {filtered.map(t => (
               <div
                 key={t.id}
-                className="group relative p-5 rounded-xl transition-all flex flex-col"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                className="group relative p-5 xv-card transition-all flex flex-col"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="text-3xl">{t.icon}</div>

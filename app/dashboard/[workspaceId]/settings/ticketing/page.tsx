@@ -106,7 +106,7 @@ export default function TicketingSettingsPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Ticketing</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Ticketing</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Email-driven case management. Promote chats to tickets, draft replies with your AI agent, auto-close stale ones.
           </p>
@@ -280,7 +280,7 @@ export default function TicketingSettingsPage() {
 
 function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-5">
       <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
       <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>{description}</p>
       {children}

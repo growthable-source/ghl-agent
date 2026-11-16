@@ -166,8 +166,7 @@ export default function NextActionsPage() {
             {[1, 2, 3, 4].map(i => (
               <div
                 key={i}
-                className="h-20 rounded-xl animate-pulse"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                className="h-20 xv-card animate-pulse"
               />
             ))}
           </div>
@@ -183,7 +182,7 @@ export default function NextActionsPage() {
         {/* ─── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Next Actions</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Next Actions</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Scheduled follow-ups from your agents — auto-cancel when contacts respond.
             </p>
@@ -221,29 +220,25 @@ export default function NextActionsPage() {
         {/* ─── Summary tiles ───────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-8">
           <div
-            className="p-4 rounded-xl"
-            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+            className="p-4 xv-card"
           >
             <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>Total Scheduled</p>
             <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{summary?.total ?? 0}</p>
           </div>
           <div
-            className="p-4 rounded-xl"
-            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+            className="p-4 xv-card"
           >
             <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>Next Hour</p>
             <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{buckets['Next hour'].length}</p>
           </div>
           <div
-            className="p-4 rounded-xl"
-            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+            className="p-4 xv-card"
           >
             <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>Today</p>
             <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{buckets.Today.length + buckets['Next hour'].length}</p>
           </div>
           <div
-            className="p-4 rounded-xl"
-            style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+            className="p-4 xv-card"
           >
             <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>This Week</p>
             <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -341,8 +336,7 @@ export default function NextActionsPage() {
                       return (
                         <div
                           key={job.id}
-                          className="group flex items-start gap-4 p-4 rounded-xl transition-colors"
-                          style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}
+                          className="group flex items-start gap-4 p-4 xv-card transition-colors"
                         >
                           {/* Timeline dot */}
                           <div className="flex-shrink-0 mt-1">

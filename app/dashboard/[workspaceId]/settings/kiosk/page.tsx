@@ -102,7 +102,7 @@ export default function KioskSettingsPage() {
   }
 
   if (loading || !status) {
-    return <div className="p-8 max-w-2xl"><div className="h-40 rounded-xl animate-pulse" style={{ background: 'var(--surface)' }} /></div>
+    return <div className="p-8 max-w-2xl"><div className="h-40 xv-card animate-pulse" /></div>
   }
 
   const kioskUrl = status.slug
@@ -111,7 +111,7 @@ export default function KioskSettingsPage() {
 
   return (
     <div className="p-8 max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+      <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>
         Shared-login operators <NewBadge since="2026-06-17" className="ml-1" />
       </h1>
       <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
@@ -139,7 +139,7 @@ export default function KioskSettingsPage() {
       )}
 
       {/* Shared PIN */}
-      <div className="rounded-xl border p-5 mb-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <div className="xv-card p-5 mb-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Shared team PIN</p>
@@ -172,7 +172,7 @@ export default function KioskSettingsPage() {
       </div>
 
       {/* Operators */}
-      <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+      <div className="xv-card p-5">
         <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>Operators</p>
 
         <div className="flex gap-2 mb-4">

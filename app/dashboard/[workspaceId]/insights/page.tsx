@@ -47,7 +47,7 @@ export default function InsightsPage() {
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Insights</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>Insights</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             At-risk contacts and knowledge gaps — derived from the last 14 days.
           </p>
@@ -55,8 +55,7 @@ export default function InsightsPage() {
 
         {/* Tabs */}
         <div
-          className="flex gap-1 p-1 rounded-xl mb-6 w-fit"
-          style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+          className="flex gap-1 p-1 xv-card mb-6 w-fit" style={{ background: 'var(--surface-secondary)' }}
         >
           <button
             onClick={() => setTab('health')}
@@ -87,8 +86,7 @@ export default function InsightsPage() {
             {[1, 2, 3].map(i => (
               <div
                 key={i}
-                className="h-20 rounded-xl animate-pulse"
-                style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+                className="h-20 xv-card animate-pulse" style={{ background: 'var(--surface-secondary)' }}
               />
             ))}
           </div>
@@ -101,8 +99,7 @@ export default function InsightsPage() {
                 <Link
                   key={h.contactId}
                   href={`/dashboard/${workspaceId}/contacts/${h.contactId}`}
-                  className="block p-4 rounded-xl transition-colors"
-                  style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+                  className="block p-4 xv-card transition-colors" style={{ background: 'var(--surface-secondary)' }}
                 >
                   <div className="flex items-center gap-3">
                     {/* Risk score gauge */}
@@ -183,8 +180,7 @@ export default function InsightsPage() {
                 {gaps.map((gap, i) => (
                   <div
                     key={i}
-                    className="p-4 rounded-xl"
-                    style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+                    className="p-4 xv-card" style={{ background: 'var(--surface-secondary)' }}
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-sm font-semibold capitalize" style={{ color: 'var(--text-primary)' }}>&ldquo;{gap.theme}&rdquo;</span>
@@ -232,8 +228,7 @@ export default function InsightsPage() {
 function Tile({ label, value }: { label: string; value: string | number }) {
   return (
     <div
-      className="p-4 rounded-xl"
-      style={{ background: 'var(--surface-secondary)', border: '1px solid var(--border)' }}
+      className="p-4 xv-card" style={{ background: 'var(--surface-secondary)' }}
     >
       <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
       <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>

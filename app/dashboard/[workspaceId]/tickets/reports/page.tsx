@@ -106,7 +106,7 @@ export default function TicketsReportsPage() {
             <Link href={`/dashboard/${workspaceId}/tickets`} className="text-xs hover:underline" style={{ color: 'var(--text-tertiary)' }}>
               ← All tickets
             </Link>
-            <h1 className="text-2xl font-bold mt-2" style={{ color: 'var(--text-primary)' }}>Ticket reports</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight mt-2" style={{ color: 'var(--text-primary)' }}>Ticket reports</h1>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               Click any card to drill into the list filtered to that scope.
             </p>
@@ -143,7 +143,7 @@ export default function TicketsReportsPage() {
         {loading && !data ? (
           <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p>
         ) : data?.inactive ? (
-          <div className="rounded-xl border p-10 text-center" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="xv-card p-10 text-center">
             <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Ticketing isn&apos;t active for this workspace.</p>
             <Link href={`/dashboard/${workspaceId}/settings/ticketing`} className="text-xs underline mt-2 inline-block" style={{ color: 'var(--accent-primary)' }}>Open settings →</Link>
           </div>
@@ -157,7 +157,7 @@ export default function TicketsReportsPage() {
             </div>
 
             {/* Trend chart: created vs closed daily */}
-            <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <div className="xv-card p-5 mb-6">
               <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Volume over time</h2>
               <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>
                 Tickets <span style={{ color: STATUS_TONES.open }}>created</span> vs <span style={{ color: STATUS_TONES.resolved }}>closed</span> per day.
@@ -237,7 +237,7 @@ function Scorecard({ label, value, hint, delta, priorLabel, deltaLowerIsBetter }
   const isGood = delta !== undefined && (deltaLowerIsBetter ? delta < 0 : delta > 0)
   const sign = delta !== undefined && delta > 0 ? '+' : ''
   return (
-    <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-4">
       <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
       <div className="flex items-baseline gap-2 mt-1 flex-wrap">
         <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
@@ -266,7 +266,7 @@ function DistributionCard({ title, rows }: {
 }) {
   const max = Math.max(1, ...rows.map(r => r.count))
   return (
-    <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-5">
       <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>{title}</h2>
       <div className="space-y-2">
         {rows.map(r => {
@@ -288,7 +288,7 @@ function DistributionCard({ title, rows }: {
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border p-5 mb-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <div className="xv-card p-5 mb-6">
       <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{title}</h2>
       {hint && <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>{hint}</p>}
       {children}

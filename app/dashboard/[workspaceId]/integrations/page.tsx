@@ -515,7 +515,7 @@ export default function IntegrationsPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Integrations</h1>
+        <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>Integrations</h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           {embedded
             ? 'These extras run on top of LeadConnector. Channels, calendars, and contacts are managed in your CRM.'
@@ -568,7 +568,7 @@ export default function IntegrationsPage() {
           AND we're not embedded inside GHL (in embed mode, the CRM is
           implicitly LeadConnector and the choice doesn't make sense). */}
       {!embedded && ghlConnected && hubspotIntegrations.length > 0 && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 mb-6">
+        <div className="p-5 mb-6 xv-card">
           <p className="text-sm font-medium text-zinc-200 mb-1">Primary CRM</p>
           <p className="text-xs text-zinc-500 mb-3">Choose which CRM your agents use for contacts, deals, messaging, and calendar.</p>
           <div className="grid grid-cols-2 gap-2">
@@ -616,7 +616,7 @@ export default function IntegrationsPage() {
             explicitly opens the alternatives panel. Hidden entirely in
             embed mode (GHL is the CRM, Native is irrelevant). */}
         {!embedded && (primaryCrm === 'native' || showAllCrms) && (
-        <div className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="xv-card p-5">
           {primaryCrm === 'native' && (
             <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
               {installSource === 'direct' || installSource === null
@@ -679,7 +679,7 @@ export default function IntegrationsPage() {
             voice agents → Configuration). The pointer card below sends
             people there. */}
         {embedded && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           {embedded ? (
             <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
               Connected via marketplace
@@ -826,7 +826,7 @@ export default function IntegrationsPage() {
         {/* LeadConnector pointer — standalone mode. The connect /
             reconnect / disconnect controls moved into each agent. */}
         {!embedded && (primaryCrm === 'ghl' || showAllCrms || ghlConnected) && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><LeadConnectorIcon className="w-8 h-8" /></div>
@@ -858,7 +858,7 @@ export default function IntegrationsPage() {
             HubSpot isn't a meaningful choice). Otherwise rendered when
             primary or after the user expands "Use a different CRM". */}
         {!embedded && (primaryCrm === 'hubspot' || showAllCrms) && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           {primaryCrm === 'hubspot' && (
             <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'var(--accent-primary)' }}>
               {installSource === 'hubspot_marketplace'
@@ -918,7 +918,7 @@ export default function IntegrationsPage() {
         )}
 
         {/* Shopify */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div
@@ -983,7 +983,7 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Vapi Voice */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><VapiIcon className="w-8 h-8" /></div>
@@ -1026,7 +1026,7 @@ export default function IntegrationsPage() {
             own Twilio integration; Xovera-direct Twilio would be
             duplicative). */}
         {!embedded && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#F22F46]"><TwilioIcon className="w-7 h-7" /></div>
@@ -1105,7 +1105,7 @@ export default function IntegrationsPage() {
             second direct connection here would create two intake
             paths for the same message. */}
         {!embedded && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 relative">
@@ -1220,7 +1220,7 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Calendly */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#006BFF]"><CalendlyIcon className="w-7 h-7" /></div>
@@ -1270,7 +1270,7 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Cal.com */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-white"><CalcomIcon className="w-7 h-7" /></div>
@@ -1332,7 +1332,7 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Stripe */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+        <div className="p-5 xv-card">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-[#635BFF]"><StripeIcon className="w-7 h-7" /></div>

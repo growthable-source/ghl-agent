@@ -54,7 +54,7 @@ export default async function CallsPage({
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Call Logs</h1>
+            <h1 className="text-[22px] leading-tight font-semibold tracking-tight mb-1" style={{ color: 'var(--text-primary)' }}>Call Logs</h1>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Inbound and outbound voice calls handled by your agents.</p>
           </div>
           <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{total} total</p>
