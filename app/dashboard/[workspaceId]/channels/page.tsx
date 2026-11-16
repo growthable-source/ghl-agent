@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { db } from '@/lib/db'
+import { PageHeader, StatusBadge } from '@/components/ui/primitives'
+import { buttonClass } from '@/lib/ui-classes'
 
 /**
  * Channels — primary nav object. Shows the customer-communication
@@ -56,21 +58,21 @@ export default async function ChannelsPage({
   const integrationsHref = `/dashboard/${workspaceId}/integrations`
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Channels</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Where your agent talks to customers. Connect a channel and your agent picks up the conversation automatically.
-          </p>
-        </div>
+    <div className="p-6">
+      <div className="max-w-[1200px] mx-auto">
+        <PageHeader
+          title="Channels"
+          subtitle="Where your agents talk to customers. Connect a channel and any assigned agent picks up conversations automatically."
+          actions={<Link href={integrationsHref} className={buttonClass('secondary')}>CRM &amp; calendar integrations</Link>}
+        />
+        {/* TODO(redesign-followup): "conversations · 7d" total, the "Via GoHighLevel (LeadConnector)" group (SMS / WhatsApp / GHL Live Chat) and per-channel "agents · open convos" meta — the WhatsApp-via-GHL connection is unconfirmed and the page has no per-channel agent/convo aggregates, so only the channels the app wires today are shown. */}
+        <p className="mb-6 text-[13px] text-text-secondary">
+          <span className="text-[20px] font-semibold text-text-primary tabular-nums">{[instagramConnected, facebookConnected, smsConnected].filter(Boolean).length}</span>{' '}connected
+        </p>
 
         {/* Connected */}
         <section className="mb-10">
-          <h2 className="text-[11px] uppercase tracking-wider font-semibold mb-3" style={{ color: 'var(--text-tertiary)' }}>
-            Live
-          </h2>
+          <h2 className="text-[15px] font-semibold text-text-primary mb-3">Native channels</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <ChannelCard
               kind="instagram"
@@ -107,9 +109,7 @@ export default async function ChannelsPage({
 
         {/* Coming soon */}
         <section className="mb-10">
-          <h2 className="text-[11px] uppercase tracking-wider font-semibold mb-3" style={{ color: 'var(--text-tertiary)' }}>
-            Coming soon
-          </h2>
+          <h2 className="text-[15px] font-semibold text-text-primary mb-3">More channels</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <ChannelCard
               kind="whatsapp"
@@ -139,23 +139,12 @@ export default async function ChannelsPage({
         </section>
 
         {/* Footer link to advanced integrations */}
-        <div
-          className="rounded-xl border p-4 flex items-center justify-between"
-          style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-        >
+        <div className="xv-card p-4 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium">Looking for CRM, payments, or calendaring?</p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              Those live under Integrations — they don&apos;t carry conversations themselves.
-            </p>
+            <p className="text-[13.5px] font-medium text-text-primary">Looking for CRM, payments, or calendaring?</p>
+            <p className="text-[12.5px] mt-0.5 text-text-tertiary">Those live under Integrations — they don&apos;t carry conversations themselves.</p>
           </div>
-          <Link
-            href={integrationsHref}
-            className="text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
-            style={{ color: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }}
-          >
-            Open Integrations →
-          </Link>
+          <Link href={integrationsHref} className={buttonClass('secondary')}>Open Integrations →</Link>
         </div>
       </div>
     </div>
@@ -182,72 +171,32 @@ function ChannelCard({
 }) {
   const disabled = status === 'coming-soon'
   return (
-    <div
-      className="rounded-xl border p-4 flex flex-col gap-3"
-      style={{
-        borderColor: 'var(--border)',
-        background: 'var(--surface)',
-        opacity: disabled ? 0.65 : 1,
-      }}
-    >
+    <div className={`xv-card p-4 flex flex-col gap-3 ${disabled ? 'opacity-70' : ''}`}>
       <div className="flex items-center justify-between">
         <ChannelGlyph kind={kind} />
         <StatusPill status={status} />
       </div>
-      <div>
-        <p className="font-medium text-sm">{title}</p>
-        <p className="text-xs mt-1 line-clamp-2" style={{ color: 'var(--text-tertiary)' }}>
-          {meta}
-        </p>
+      <div className="flex-1">
+        <p className="text-[14px] font-semibold text-text-primary">{title}</p>
+        <p className="text-[12.5px] mt-1 line-clamp-2 text-text-tertiary">{meta}</p>
       </div>
-      {!disabled ? (
-        <Link
-          href={href}
-          className="self-start text-xs font-medium px-2.5 py-1 rounded-md transition-colors"
-          style={{ color: 'var(--accent-primary)', background: 'var(--accent-primary-bg)' }}
-        >
-          {cta}
-        </Link>
-      ) : (
-        <span
-          className="self-start text-xs font-medium px-2.5 py-1 rounded-md"
-          style={{ color: 'var(--text-tertiary)', background: 'var(--surface-secondary)' }}
-        >
-          {cta}
-        </span>
-      )}
+      <div className="flex items-center justify-end pt-3 border-t border-border-theme">
+        {!disabled ? (
+          <Link href={href} className={buttonClass(status === 'connected' ? 'secondary' : 'primary', 'sm')}>{cta}</Link>
+        ) : (
+          <span className={buttonClass('secondary', 'sm', 'opacity-60 cursor-not-allowed')}>{cta}</span>
+        )}
+      </div>
     </div>
   )
 }
 
 function StatusPill({ status }: { status: ChannelStatus }) {
-  if (status === 'connected') {
-    return (
-      <span
-        className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-        style={{ color: 'var(--accent-emerald)', background: 'var(--accent-emerald-bg)' }}
-      >
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-emerald)' }} />
-        Live
-      </span>
-    )
-  }
-  if (status === 'coming-soon') {
-    return (
-      <span
-        className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-        style={{ color: 'var(--text-tertiary)', background: 'var(--surface-secondary)' }}
-      >
-        Coming soon
-      </span>
-    )
-  }
+  if (status === 'connected') return <StatusBadge status="live" />
+  const label = status === 'coming-soon' ? 'Coming soon' : 'Not connected'
   return (
-    <span
-      className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-      style={{ color: 'var(--text-tertiary)', background: 'var(--surface-secondary)' }}
-    >
-      Available
+    <span className="inline-flex items-center h-5 px-2 rounded-full border border-border-theme bg-surface text-[11px] font-medium text-text-tertiary">
+      {label}
     </span>
   )
 }

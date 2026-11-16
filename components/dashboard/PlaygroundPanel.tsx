@@ -130,11 +130,11 @@ export default function PlaygroundPanel({
     <div className="space-y-4">
       {/* Agent selector */}
       <div>
-        <label className="block text-xs text-zinc-500 mb-1.5">Agent</label>
+        <label className="block text-[12px] font-medium text-text-secondary mb-1.5">Agent</label>
         <select
           value={selectedAgentId}
           onChange={(e) => { setSelectedAgentId(e.target.value); setMessages([]); contactIdRef.current = `playground-${Date.now()}` }}
-          className="bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
+          className="bg-surface border border-border-theme rounded-md px-3 h-9 text-[13px] text-text-primary outline-none focus:border-brand-500"
         >
           {agents.map(a => (
             <option key={a.id} value={a.id}>{a.name}</option>
@@ -144,25 +144,25 @@ export default function PlaygroundPanel({
 
       {/* Conversation */}
       {messages.length > 0 && (
-        <div className="rounded-lg border border-zinc-800 p-4 space-y-4 max-h-[500px] overflow-y-auto">
+        <div className="xv-card p-4 space-y-4 max-h-[500px] overflow-y-auto">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} flex-col gap-2`}>
               <div className={`max-w-sm rounded-2xl px-4 py-3 ${
                 msg.role === 'user'
-                  ? 'bg-zinc-700 text-white rounded-tr-sm self-end'
-                  : 'bg-zinc-900 border border-zinc-800 text-white rounded-tl-sm self-start'
+                  ? 'bg-stone-900 text-stone-50 rounded-tr-sm self-end'
+                  : 'bg-surface border border-border-theme text-text-primary rounded-tl-sm self-start'
               }`}>
-                <p className="text-sm">{msg.content}</p>
+                <p className="text-[13.5px]">{msg.content}</p>
                 {msg.tokensUsed && (
                   <p className="text-xs text-zinc-500 mt-1">{msg.tokensUsed} tokens</p>
                 )}
               </div>
               {msg.toolTrace && msg.toolTrace.length > 0 && (
-                <div className="border border-zinc-800 rounded-lg overflow-hidden self-start max-w-md">
+                <div className="border border-border-theme rounded-lg overflow-hidden self-start max-w-md bg-surface">
                   {msg.toolTrace.map((t, j) => (
                     <details key={j} className="group border-t border-zinc-800 first:border-t-0">
                       <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none">
-                        <span className="text-xs font-mono bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded">{t.tool}</span>
+                        <span className="text-[11.5px] font-mono bg-violet-50 border border-violet-200 text-violet-700 px-1.5 py-0.5 rounded">tool · {t.tool}</span>
                         <span className="text-xs text-zinc-600">{t.durationMs}ms</span>
                       </summary>
                       <div className="px-3 pb-2">
@@ -213,12 +213,12 @@ export default function PlaygroundPanel({
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a test message…"
           disabled={loading}
-          className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 disabled:opacity-50"
+          className="flex-1 bg-surface border border-border-theme rounded-md px-4 h-10 text-[13px] text-text-primary placeholder:text-text-muted outline-none focus:border-brand-500 disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          className="inline-flex items-center justify-center rounded-lg bg-white text-black font-medium text-sm h-10 px-4 hover:bg-zinc-200 transition-colors disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-md bg-brand-500 text-on-brand font-medium text-[13px] h-10 px-4 hover:bg-brand-600 transition-colors disabled:opacity-50 cursor-pointer"
         >
           Send
         </button>

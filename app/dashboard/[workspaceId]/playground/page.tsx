@@ -24,10 +24,18 @@ export default async function PlaygroundPage({
   })
 
   return (
-    <div className="p-8 max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Playground</h1>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Send test messages to any agent and see exactly how it responds.</p>
+    <div className="p-6 max-w-3xl">
+      <div className="mb-5">
+        <h1 className="text-[22px] font-semibold tracking-tight text-text-primary mb-1">Playground</h1>
+        <p className="text-[13px] text-text-tertiary">Send test messages to any agent and see exactly how it responds.</p>
+      </div>
+      {/* Mode switcher. Compare (side-by-side agents) and Scenario runs (saved
+          scenarios + scoring) need runtime support that doesn't exist yet. */}
+      {/* TODO(redesign-followup): Compare + Scenario runs modes, Save as scenario, Trace sidebar (knowledge/rule/tool/model timeline), per-reply Eval score + latency. */}
+      <div className="inline-flex items-center rounded-md bg-surface-secondary p-0.5 mb-4" role="group" aria-label="Playground mode">
+        <span className="h-7 px-2.5 inline-flex items-center rounded text-[12px] font-medium bg-surface text-text-primary shadow-sm">Single chat</span>
+        <span className="h-7 px-2.5 inline-flex items-center rounded text-[12px] font-medium text-text-muted cursor-not-allowed" title="Coming soon" aria-disabled="true">Compare</span>
+        <span className="h-7 px-2.5 inline-flex items-center rounded text-[12px] font-medium text-text-muted cursor-not-allowed" title="Coming soon" aria-disabled="true">Scenario runs</span>
       </div>
       <PlaygroundPanel workspaceId={workspaceId} agents={agents} defaultAgentId={defaultAgentId} />
     </div>
